@@ -133,7 +133,7 @@ public struct PosReceiptView: View {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     Text("Signature captured with Pencil")
                         .font(.brandTitleSmall())
-                        .foregroundStyle(Color(red: 0.61, green: 0.88, blue: 0.91))
+                        .foregroundStyle(.bizarreTeal)
                     Text("Archived to ticket #\(ticketId) · PKCanvasView")
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -142,10 +142,10 @@ public struct PosReceiptView: View {
             }
             .padding(.vertical, BrandSpacing.sm + 2)
             .padding(.horizontal, BrandSpacing.md)
-            .background(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.08), in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color(red: 0.30, green: 0.72, blue: 0.79, opacity: 0.30), lineWidth: 1)
+                    .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Signature captured with Pencil and archived to ticket \(ticketId)")
