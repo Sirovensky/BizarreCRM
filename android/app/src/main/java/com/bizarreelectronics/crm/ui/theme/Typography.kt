@@ -45,8 +45,7 @@ val JetBrainsMonoFamily = FontFamily(
  *
  * Migration targets (Wave 3+):
  *   - LoginScreen.kt:468-471   (backup codes — currently FontFamily.Monospace)
- *   - TicketSuccessScreen.kt:67-74  (ticket ID — currently letterSpaced headline)
- *   - LoginScreen.kt:1010-1015 (TOTP input)
+ * *   - LoginScreen.kt:1010-1015 (TOTP input)
  *   - SmsThreadScreen.kt:238-244 (character counter)
  */
 val BrandMono: TextStyle = TextStyle(

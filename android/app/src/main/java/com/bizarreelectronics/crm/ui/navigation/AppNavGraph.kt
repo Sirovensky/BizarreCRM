@@ -56,8 +56,7 @@ import com.bizarreelectronics.crm.ui.screens.pos.PosEntryScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosCartScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosTenderScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosReceiptScreen
-import com.bizarreelectronics.crm.ui.screens.pos.CheckoutScreen
-import com.bizarreelectronics.crm.ui.screens.pos.TicketSuccessScreen
+import com.bizarreelectronics.crm.ui.screens.pos.StoreCreditPaymentScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsListScreen
 import com.bizarreelectronics.crm.ui.screens.communications.SmsThreadScreen
 import com.bizarreelectronics.crm.ui.screens.notifications.NotificationListScreen
@@ -168,6 +167,8 @@ sealed class Screen(val route: String) {
     data object Pos : Screen("pos")
     data object PosCart : Screen("pos/cart")
     data object PosTender : Screen("pos/tender")
+    // AUDIT-030: dedicated screen for store-credit payment path tile.
+    data object StoreCreditPayment : Screen("pos/store-credit-payment")
     data object PosReceipt : Screen("pos/receipt/{orderId}") {
         fun createRoute(orderId: String) = "pos/receipt/${Uri.encode(orderId)}"
     }
@@ -195,19 +196,8 @@ sealed class Screen(val route: String) {
         fun createRoute(customerId: Long? = null): String =
             if (customerId != null) "checkin-entry?customerId=$customerId" else "checkin-entry"
     }
-    data object Checkout : Screen("checkout/{ticketId}/{total}/{customerName}") {
-        fun createRoute(ticketId: Long, total: Double, customerName: String): String {
-            val encodedName = Uri.encode(customerName)
-            val formattedTotal = String.format(Locale.US, "%.2f", total)
-            return "checkout/$ticketId/$formattedTotal/$encodedName"
-        }
-    }
-    data object TicketSuccess : Screen("ticket-success/{ticketId}") {
-        fun createRoute(ticketId: Long, ticketOrderId: String? = null): String {
-            val base = "ticket-success/$ticketId"
-            return if (ticketOrderId != null) "$base?orderId=${Uri.encode(ticketOrderId)}" else base
-        }
-    }
+    // POS-AUDIT-041: Screen.Checkout + Screen.TicketSuccess removed — both were
+    // Phase-3 stubs superseded by the check-in flow. Screen files deleted.
     data object Messages : Screen("messages")
     data object SmsThread : Screen("messages/{phone}") {
         fun createRoute(phone: String) = "messages/${Uri.encode(phone)}"
@@ -642,8 +632,6 @@ fun AppNavGraph(
             !currentRoute.startsWith("inventory-edit/") &&
             currentRoute != Screen.InventoryCreate.route &&
             !currentRoute.startsWith("messages/") &&
-            !currentRoute.startsWith("checkout/") &&
-            !currentRoute.startsWith("ticket-success/") &&
             !currentRoute.startsWith("leads/") &&
             currentRoute != Screen.LeadCreate.route &&
             currentRoute != Screen.AppointmentCreate.route &&
@@ -651,6 +639,12 @@ fun AppNavGraph(
             currentRoute != Screen.ExpenseCreate.route &&
             !currentRoute.startsWith("settings/") &&
             currentRoute != Screen.Scanner.route &&
+            // POS-AUDIT-032: Cart, Tender, Receipt, and StoreCreditPayment are
+            // full-screen POS flows; bottom nav must not show on any of them.
+            currentRoute != Screen.PosCart.route &&
+            currentRoute != Screen.PosTender.route &&
+            !currentRoute.startsWith("pos/receipt/") &&
+            currentRoute != Screen.StoreCreditPayment.route &&
             // AUD-20260414-M5: Sync Issues is a modal-ish diagnostic screen
             // reached from Settings, so hide the bottom bar like other
             // non-root detail routes.
@@ -1118,20 +1112,8 @@ fun AppNavGraph(
                     onAddPhotos = { id, deviceId ->
                         navController.navigate(Screen.TicketPhotos.createRoute(id, deviceId))
                     },
-                    // AND-20260414-H4: wire the payment screen so the top-bar
-                    // Checkout action can reach it. The detail screen pulls
-                    // the total + customer display name from its DTO so the
-                    // summary card and payment-method gates are populated
-                    // without a second API round-trip.
-                    onCheckout = { id, total, customerName ->
-                        navController.navigate(
-                            Screen.Checkout.createRoute(
-                                ticketId = id,
-                                total = total,
-                                customerName = customerName,
-                            )
-                        )
-                    },
+                    // POS-AUDIT-041: Screen.Checkout (stub) deleted; onCheckout omitted
+                    // so the top-bar Checkout icon auto-hides (null guard in TicketDetailScreen).
                 )
             }
             composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
@@ -1213,6 +1195,14 @@ fun AppNavGraph(
                     },
                     onNavigateToTender = { navController.navigate(Screen.PosTender.route) },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    // AUDIT-030: wire dedicated store-credit payment screen.
+                    onNavigateToStoreCreditPayment = { navController.navigate(Screen.StoreCreditPayment.route) },
+                )
+            }
+            // AUDIT-030: store-credit payment path tile destination (placeholder).
+            composable(Screen.StoreCreditPayment.route) {
+                StoreCreditPaymentScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.PosCart.route) { backStack ->
@@ -1315,86 +1305,10 @@ fun AppNavGraph(
                     },
                 )
             }
-            // AND-20260414-H4: declare typed nav arguments so `ticketId` arrives
-            // as a Long, `total` as a Float (NavType has no DoubleType — see
-            // androidx.navigation.NavType), and `customerName` as a nullable
-            // String. Previously the route had no `navArgument(...)` declarations
-            // so every path segment was coerced into a String, and the
-            // CheckoutViewModel's `savedStateHandle.get<Long>("ticketId")` call
-            // silently returned null, booting the screen with ticket 0, a blank
-            // customer, and a $0.00 total. `Screen.Checkout.createRoute()` had
-            // no call sites either, so the screen was effectively dead code.
-            composable(
-                route = Screen.Checkout.route,
-                arguments = listOf(
-                    navArgument("ticketId") { type = NavType.LongType },
-                    // AUDIT-AND-004: use StringType instead of FloatType to
-                    // avoid the Double→Float→Double precision loss. $99.99
-                    // serialised through FloatType round-trips as 99.9899...
-                    // because IEEE-754 single-precision cannot represent all
-                    // decimal currency values exactly. createRoute() already
-                    // formats the value to "%.2f" so the URL segment is always
-                    // a fixed-point decimal string; we parse it back via
-                    // toBigDecimal() which preserves the exact representation.
-                    navArgument("total") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = "0.00"
-                    },
-                    navArgument("customerName") {
-                        type = NavType.StringType
-                        nullable = true
-                    },
-                ),
-            ) { backStackEntry ->
-                val ticketId = backStackEntry.arguments?.getLong("ticketId") ?: 0L
-                // AUDIT-AND-004: parse the fixed-point string via toBigDecimal()
-                // to recover the exact decimal value that createRoute() formatted.
-                val total = backStackEntry.arguments?.getString("total")
-                    ?.toBigDecimalOrNull()
-                    ?.toDouble()
-                    ?: 0.0
-                val rawName = backStackEntry.arguments?.getString("customerName")
-                val customerName = rawName?.let { Uri.decode(it) } ?: ""
-                CheckoutScreen(
-                    ticketId = ticketId,
-                    total = total,
-                    customerName = customerName,
-                    onBack = { navController.popBackStack() },
-                    onSuccess = { id ->
-                        navController.navigate(Screen.TicketSuccess.createRoute(id)) {
-                            popUpTo(Screen.Tickets.route)
-                        }
-                    },
-                )
-            }
-            composable(
-                route = Screen.TicketSuccess.route + "?orderId={orderId}",
-                arguments = listOf(
-                    navArgument("orderId") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                ),
-            ) { backStackEntry ->
-                val ticketId = backStackEntry.arguments?.getString("ticketId")?.toLongOrNull() ?: return@composable
-                val orderId = backStackEntry.arguments?.getString("orderId")
-                TicketSuccessScreen(
-                    ticketId = ticketId,
-                    ticketOrderId = orderId,
-                    onViewTicket = { id ->
-                        navController.navigate(Screen.TicketDetail.createRoute(id)) {
-                            popUpTo(Screen.Dashboard.route)
-                        }
-                    },
-                    onNewTicket = {
-                        navController.navigate(Screen.CheckInEntry.route) {
-                            popUpTo(Screen.Dashboard.route)
-                        }
-                    },
-                )
-            }
+            // POS-AUDIT-041: Screen.Checkout + Screen.TicketSuccess composables removed.
+            // Both were Phase-3 stubs ("Coming soon" / placeholder text only).
+            // The new check-in flow (CheckInEntry → CheckIn) handles ticket creation;
+            // CheckoutScreen.kt and TicketSuccessScreen.kt have been deleted.
             composable(Screen.Inventory.route) { backStackEntry ->
                 val scannedBarcode by backStackEntry.savedStateHandle
                     .getStateFlow<String?>("scanned_barcode", null)

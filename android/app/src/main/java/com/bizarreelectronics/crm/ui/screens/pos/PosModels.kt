@@ -18,6 +18,8 @@ data class CartLine(
     val taxRate: Double = 0.0,
     val photoUrl: String? = null,
     val note: String? = null,
+    // TODO: populate stockQty from inventory lookup when adding to cart
+    val stockQty: Int? = null,
 ) {
     val lineTotalCents: Long get() = (unitPriceCents * qty) - discountCents
     val taxCents: Long get() = (lineTotalCents * taxRate).toLong()

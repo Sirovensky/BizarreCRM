@@ -33,8 +33,7 @@ import androidx.compose.ui.unit.dp
  * ## Sanctioned placements (at most ONE per screen):
  *   - LoginScreen.kt:506    — under the "Bizarre CRM" wordmark
  *   - DashboardScreen.kt:290 — above the greeting block
- *   - TicketSuccessScreen.kt:33 — above the checkmark Surface
- *   - SharedComponents.kt EmptyState composable — framing empty states
+ * *   - SharedComponents.kt EmptyState composable — framing empty states
  *
  * ## Forbidden placements:
  *   - Card borders

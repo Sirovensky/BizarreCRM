@@ -53,6 +53,7 @@ fun PosEntryScreen(
     onNavigateToCheckin: (Long?) -> Unit,
     onNavigateToTender: () -> Unit,
     onNavigateToTicket: (Long) -> Unit = {},
+    onNavigateToStoreCreditPayment: () -> Unit = {},
     viewModel: PosEntryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -83,7 +84,7 @@ fun PosEntryScreen(
                 // walk-in marker and skips its Customer step so the cashier
                 // doesn't pick the customer twice.
                 onRepairTicket = { onNavigateToCheckin(state.attachedCustomer?.id) },
-                onStoreCredit = onNavigateToCart,
+                onStoreCredit = onNavigateToStoreCreditPayment,
                 onOpenPickup = { ticketId ->
                     // Mockup PHONE 1 'Open cart →' hero pill: skip the cart
                     // step entirely; the line is seeded by the VM and we
@@ -99,6 +100,7 @@ fun PosEntryScreen(
                     // flow.
                     viewModel.attachWalkIn()
                 },
+                onNavigateToCart = onNavigateToCart,
                 onNavigateToTicket = onNavigateToTicket,
                 onSearchTap = {
                     searchExpanded = true
@@ -122,7 +124,12 @@ fun PosEntryScreen(
             onSearch = {},
             active = searchExpanded,
             onActiveChange = { searchExpanded = it },
-            placeholder = { Text("Customer, part, or ticket…") },
+            placeholder = {
+                Text(
+                    if (state.attachedCustomer != null) "Scan or search parts..."
+                    else "Search customer or scan..."
+                )
+            },
             leadingIcon = {
                 Icon(
                     Icons.Outlined.Search,
@@ -186,6 +193,7 @@ private fun EntryContent(
     onStoreCredit: () -> Unit,
     onOpenPickup: (Long) -> Unit,
     onWalkIn: () -> Unit,
+    onNavigateToCart: () -> Unit,
     onNavigateToTicket: (Long) -> Unit,
     onSearchTap: () -> Unit,
     onCreateCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
@@ -214,7 +222,15 @@ private fun EntryContent(
                 .padding(bottom = 88.dp),
         ) {
             CustomerHeaderBanner(customer = state.attachedCustomer!!)
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
+            // AUDIT-023: compact cart summary strip between the customer banner
+            // and the path tiles. Tapping navigates to PosCart.
+            CartSummaryStrip(
+                lineCount = state.cartLineCount,
+                subtotalCents = state.cartSubtotalCents,
+                onClick = onNavigateToCart,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
 
             Spacer(modifier = Modifier.weight(0.4f))
 
@@ -441,10 +457,59 @@ private fun CreateCustomerDialog(
 
 // ─── Reusable sub-composables ────────────────────────────────────────────────
 
+// ─── Cart summary strip (AUDIT-023) ─────────────────────────────────────────
+
+/**
+ * Compact one-line strip shown between CustomerHeaderBanner and the path tiles
+ * in the post-attach state. Shows item count + subtotal (or "Cart · empty")
+ * and navigates to PosCart on tap.
+ */
+@Composable
+private fun CartSummaryStrip(
+    lineCount: Int,
+    subtotalCents: Long,
+    onClick: () -> Unit,
+) {
+    val label = if (lineCount == 0) {
+        "Cart · empty / \$0.00"
+    } else {
+        "Cart · $lineCount ${if (lineCount == 1) "item" else "items"} / ${subtotalCents.toDollarString()}"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+            .clickable(onClickLabel = "Open cart") { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "›",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun CustomerHeaderBanner(customer: PosAttachedCustomer) {
+    val bannerDescription = buildString {
+        append("Customer ${customer.name}")
+        customer.phone?.let { append(", $it") }
+        append(", ${customer.ticketCount} ${if (customer.ticketCount == 1) "ticket" else "tickets"}")
+    }
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) { contentDescription = bannerDescription },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -608,13 +673,14 @@ private fun GhostWalkInTile(onWalkIn: () -> Unit) {
 
 @Composable
 private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit) {
-    // M3 Expressive: MaterialShapes.Cookie12Sided for the hero tile —
-    // distinct brand silhouette that marks this row as the priority action.
-    // Usability guardrail #5 is met: morph shape only on a brand surface
-    // (not on content rows), not on list items.
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-    val heroShape = MaterialShapes.Cookie12Sided.toShape()
+    // AUDIT-031: replaced Cookie12Sided with plain RoundedCornerShape(12.dp).
+    // Cookie12Sided clipped the border at its concave notches, creating a
+    // "bitten cookie" silhouette and leaving tap-target gaps at each notch.
+    val heroShape = RoundedCornerShape(12.dp)
     val success = LocalExtendedColors.current.success
+    // AUDIT-039 + AUDIT-040: merged semantics so TalkBack reads the card as
+    // one focusable, and Role.Button so it's announced as a button.
+    val cardDescription = "Ready for pickup, Ticket #${ticket.ticketId}, ${ticket.deviceName}, ${ticket.dueCents.toDollarString()} due"
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -623,7 +689,11 @@ private fun ReadyForPickupCard(ticket: ReadyForPickupTicket, onOpen: () -> Unit)
             .background(success.copy(alpha = 0.08f))
             .clickable(onClickLabel = "Open ticket ${ticket.ticketId} cart") { onOpen() }
             .padding(horizontal = 18.dp, vertical = 14.dp)
-            .defaultMinSize(minHeight = 60.dp),
+            .defaultMinSize(minHeight = 60.dp)
+            .semantics(mergeDescendants = true) {
+                contentDescription = cardDescription
+                role = Role.Button
+            },
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -666,19 +736,22 @@ private fun PastRepairRow(repair: PastRepair, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
+        // AUDIT-038: bumped from bodySmall (12sp, ~4.1:1 on onSurfaceVariant) to
+        // bodyMedium (14sp) which clears AA-medium (3:1). The ticket-id accent
+        // color (info) is on a surface background and passes at 14sp.
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
                 "#${repair.ticketId}",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = LocalExtendedColors.current.info,
             )
-            Text("· ${repair.description}", style = MaterialTheme.typography.bodySmall)
+            Text("· ${repair.description}", style = MaterialTheme.typography.bodyMedium)
         }
         Text(
             "${repair.date} · ${repair.amountCents.toDollarString()}",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
         )
     }
 }

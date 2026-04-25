@@ -4716,36 +4716,36 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 
 ## Mockup deviations
 
-- [ ] **POS-AUDIT-022 (Mockup). `+ Note` dashed slot missing on cart screen.** Mockup PHONE 3 shows three slots; Android renders only two. Wire cart-level note -> coordinator + `PosSaleRequest.notes`. `PosCartScreen.kt:191-195` vs mockup line 851.
-- [ ] **POS-AUDIT-023 (Mockup). Cart summary strip missing on PosEntry post-attach.** Mockup PHONE 1 line 641 shows a `Cart - empty / $0.00` strip between topbar and path tiles. Add compact row under `CustomerHeaderBanner`. `PosEntryScreen.kt:163-232`.
-- [ ] **POS-AUDIT-024 (Mockup). `CartPathTabs` underline + border use hardcoded hex.** Active underline `Color(0xFFFDEED0)` and inactive border `Color(0xFF332C3F)` bypass theme tokens. Replace with `MaterialTheme.colorScheme.primary` / `outline`. `PosCartScreen.kt:464-475`.
-- [ ] **POS-AUDIT-025 (Mockup). Cart top-bar overflow menu missing.** Mockup PHONE 3 shows a kebab menu in cart top-bar. Android renders inoperative `Icons.Outlined.Person` "Attach customer" no-op. Replace with `MoreVert` overflow opening sheet (Detach customer, Apply discount, Add note, Park cart). `PosCartScreen.kt:125-128`.
-- [ ] **POS-AUDIT-026 (Mockup). Store-credit tile absent from `PaymentMethodGrid`.** `applyStoreCredit()` exists in VM but no tile invokes it. Add tile labeled `Store credit - $X available` when `attachedCustomer.storeCreditCents > 0`. `PosTenderViewModel.kt:53-65`, `PosTenderScreen.kt:244-295`.
-- [ ] **POS-AUDIT-027 (Mockup). Cart tab label shows post-tax total; mockup uses pre-tax subtotal.** `state.totalCents` includes tax + discount; mockup PHONE 3 reads `Cart - 3 - $262` matching subtotal. Switch to `state.subtotalCents`. `PosCartScreen.kt:451-453`.
-- [ ] **POS-AUDIT-028 (Mockup). Search bar placeholder is the same string in both attach states.** Mockup PHONE 1 swaps placeholder to `Scan or search parts...` once a customer is attached. Branch placeholder on `state.attachedCustomer != null`. `PosEntryScreen.kt:93`.
-- [ ] **POS-AUDIT-029 (Mockup). `CartLineBottomSheet` doesn't show stock qty.** Mockup PHONE 4 sheet header reads `SKU USB-C3 - Stock 22`. Add `stockQty` to `CartLine` from inventory lookup. `CartLineBottomSheet.kt:63-65`, `PosModels.kt:7-25`.
-- [ ] **POS-AUDIT-030 (Mockup). "Store credit - payment" path tile routes to retail Cart.** `onStoreCredit = onNavigateToCart` — tile lands cashier on empty retail cart. Build dedicated store-credit screen. `PosEntryScreen.kt:71`.
-- [ ] **POS-AUDIT-031 (Mockup). `ReadyForPickupCard` Cookie12Sided shape clips border at concave notches.** Border + clip on same `Cookie12Sided` produces "bitten cookie" silhouette + tap-target gaps. Mockup uses plain 12dp radius. Drop Cookie12Sided here OR move shape to non-bordered child. `PosEntryScreen.kt:565-572`.
+- [x] **POS-AUDIT-022 (Mockup). `+ Note` dashed slot missing on cart screen.** Mockup PHONE 3 shows three slots; Android renders only two. Wire cart-level note -> coordinator + `PosSaleRequest.notes`. `PosCartScreen.kt:191-195` vs mockup line 851.
+- [x] **POS-AUDIT-023 (Mockup). Cart summary strip missing on PosEntry post-attach.** Mockup PHONE 1 line 641 shows a `Cart - empty / $0.00` strip between topbar and path tiles. Add compact row under `CustomerHeaderBanner`. `PosEntryScreen.kt:163-232`.
+- [x] **POS-AUDIT-024 (Mockup). `CartPathTabs` underline + border use hardcoded hex.** Active underline `Color(0xFFFDEED0)` and inactive border `Color(0xFF332C3F)` bypass theme tokens. Replace with `MaterialTheme.colorScheme.primary` / `outline`. `PosCartScreen.kt:464-475`.
+- [x] **POS-AUDIT-025 (Mockup). Cart top-bar overflow menu missing.** Mockup PHONE 3 shows a kebab menu in cart top-bar. Android renders inoperative `Icons.Outlined.Person` "Attach customer" no-op. Replace with `MoreVert` overflow opening sheet (Detach customer, Apply discount, Add note, Park cart). `PosCartScreen.kt:125-128`.
+- [x] **POS-AUDIT-026 (Mockup). Store-credit tile absent from `PaymentMethodGrid`.** `applyStoreCredit()` exists in VM but no tile invokes it. Add tile labeled `Store credit - $X available` when `attachedCustomer.storeCreditCents > 0`. `PosTenderViewModel.kt:53-65`, `PosTenderScreen.kt:244-295`.
+- [x] **POS-AUDIT-027 (Mockup). Cart tab label shows post-tax total; mockup uses pre-tax subtotal.** `state.totalCents` includes tax + discount; mockup PHONE 3 reads `Cart - 3 - $262` matching subtotal. Switch to `state.subtotalCents`. `PosCartScreen.kt:451-453`.
+- [x] **POS-AUDIT-028 (Mockup). Search bar placeholder is the same string in both attach states.** Mockup PHONE 1 swaps placeholder to `Scan or search parts...` once a customer is attached. Branch placeholder on `state.attachedCustomer != null`. `PosEntryScreen.kt:93`.
+- [x] **POS-AUDIT-029 (Mockup). `CartLineBottomSheet` doesn't show stock qty.** Mockup PHONE 4 sheet header reads `SKU USB-C3 - Stock 22`. Add `stockQty` to `CartLine` from inventory lookup. `CartLineBottomSheet.kt:63-65`, `PosModels.kt:7-25`.
+- [x] **POS-AUDIT-030 (Mockup). "Store credit - payment" path tile routes to retail Cart.** `onStoreCredit = onNavigateToCart` — tile lands cashier on empty retail cart. Build dedicated store-credit screen. `PosEntryScreen.kt:71`.
+- [x] **POS-AUDIT-031 (Mockup). `ReadyForPickupCard` Cookie12Sided shape clips border at concave notches.** Border + clip on same `Cookie12Sided` produces "bitten cookie" silhouette + tap-target gaps. Mockup uses plain 12dp radius. Drop Cookie12Sided here OR move shape to non-bordered child. `PosEntryScreen.kt:565-572`.
 
 ## UI / UX
 
-- [ ] **POS-AUDIT-032 (UX). Bottom nav stays visible on Cart + Tender + Receipt.** `showBottomNav` predicate at `AppNavGraph.kt:619` excludes only Scanner. Add `Screen.PosCart.route`, `Screen.PosTender.route`, `Screen.PosReceipt.route` to hide list.
+- [x] **POS-AUDIT-032 (UX). Bottom nav stays visible on Cart + Tender + Receipt.** `showBottomNav` predicate at `AppNavGraph.kt:619` excludes only Scanner. Add `Screen.PosCart.route`, `Screen.PosTender.route`, `Screen.PosReceipt.route` to hide list.
 - [x] **POS-AUDIT-033 (UX). `CartLineBottomSheet` `skipPartiallyExpanded = false` produces snap jitter.** Sheet content overflows partial-peek height on most phones, snapping immediately to full. Set `skipPartiallyExpanded = true`. `CartLineBottomSheet.kt:39`.
-- [ ] **POS-AUDIT-034 (UX). Cart-line bottom sheet doesn't dim the topBar.** Sheet rendered outside Scaffold content lambda; topBar stays bright while everything below dims. Move sheet inside Scaffold. `PosCartScreen.kt:222-234`.
+- [x] **POS-AUDIT-034 (UX). Cart-line bottom sheet doesn't dim the topBar.** Sheet rendered outside Scaffold content lambda; topBar stays bright while everything below dims. Move sheet inside Scaffold. `PosCartScreen.kt:222-234`.
 - [x] **POS-AUDIT-035 (UX). `CartDiscountDialog` doesn't validate `cents <= subtotal`.** Discount > subtotal silently zeroes sale. Surface validation error + disable Apply. `PosCartScreen.kt:610-631`.
 - [x] **POS-AUDIT-036 (UX). `CartLineBottomSheet` chip state doesn't reflect existing line discount on open.** `selectedChip` initializes to `null` regardless of `line.discountCents`. Compute initial `selectedChip` from existing discount value vs known thresholds. `CartLineBottomSheet.kt:43-44`.
 
 ## Accessibility
 
 - [x] **POS-AUDIT-037 (A11y). `CartLineBottomSheet` qty stepper buttons 34dp < 48dp min.** Bump to 48.dp. `CartLineBottomSheet.kt:85, 101`.
-- [ ] **POS-AUDIT-038 (A11y). `PastRepairRow` subtitle bodySmall 12sp may fall below AA contrast.** `onSurfaceVariant` (#a79fb8) on Surface1 (#1a1722) ~= 4.1:1, fails AA-small. Bump to bodyMedium or increase color contrast. `PosEntryScreen.kt:629-633`.
-- [ ] **POS-AUDIT-039 (A11y). `CustomerHeaderBanner` + `ReadyForPickupCard` lack merged `contentDescription`.** TalkBack announces avatar + name + subtitle as 3 separate focusables. Add `Modifier.semantics(mergeDescendants = true)`. `PosEntryScreen.kt:395-422, 560-606`.
-- [ ] **POS-AUDIT-040 (A11y). `ReadyForPickupCard` lacks `Role.Button` semantics.** `clickable` with `onClickLabel` only, no `role = Role.Button`. Add to Row's semantics. `PosEntryScreen.kt:565-606`.
+- [x] **POS-AUDIT-038 (A11y). `PastRepairRow` subtitle bodySmall 12sp may fall below AA contrast.** `onSurfaceVariant` (#a79fb8) on Surface1 (#1a1722) ~= 4.1:1, fails AA-small. Bump to bodyMedium or increase color contrast. `PosEntryScreen.kt:629-633`.
+- [x] **POS-AUDIT-039 (A11y). `CustomerHeaderBanner` + `ReadyForPickupCard` lack merged `contentDescription`.** TalkBack announces avatar + name + subtitle as 3 separate focusables. Add `Modifier.semantics(mergeDescendants = true)`. `PosEntryScreen.kt:395-422, 560-606`.
+- [x] **POS-AUDIT-040 (A11y). `ReadyForPickupCard` lacks `Role.Button` semantics.** `clickable` with `onClickLabel` only, no `role = Role.Button`. Add to Row's semantics. `PosEntryScreen.kt:565-606`.
 
 ## Code quality
 
-- [ ] **POS-AUDIT-041 (Code). `CheckoutScreen` + `TicketSuccessScreen` are routable Phase-3 stubs.** Both reachable from real nav, render placeholder strings. Either delete routes (now that new check-in flow handles tickets) OR replace with proper screens. `CheckoutScreen.kt`, `TicketSuccessScreen.kt`, `AppNavGraph.kt:1120-1129`.
-- [ ] **POS-AUDIT-042 (Code). `CheckoutScreen` uses `Button` as `TopAppBar.navigationIcon`.** M3 contract requires `IconButton` (48dp, no fill). Filled `Button` renders incorrectly. `CheckoutScreen.kt:36-37`.
+- [x] **POS-AUDIT-041 (Code). `CheckoutScreen` + `TicketSuccessScreen` are routable Phase-3 stubs.** Both reachable from real nav, render placeholder strings. Either delete routes (now that new check-in flow handles tickets) OR replace with proper screens. `CheckoutScreen.kt`, `TicketSuccessScreen.kt`, `AppNavGraph.kt:1120-1129`.
+- [x] **POS-AUDIT-042 (Code). `CheckoutScreen` uses `Button` as `TopAppBar.navigationIcon`.** M3 contract requires `IconButton` (48dp, no fill). Filled `Button` renders incorrectly. `CheckoutScreen.kt:36-37`.
 
 ## User-flagged (this wave)
 

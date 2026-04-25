@@ -18,6 +18,7 @@ data class PosCartUiState(
     val customer: PosAttachedCustomer? = null,
     val lines: List<CartLine> = emptyList(),
     val cartDiscountCents: Long = 0L,
+    val cartNote: String? = null,
     val editingLineId: String? = null,
     val taxRate: Double = 0.0,
     val scanMessage: String? = null,
@@ -53,6 +54,7 @@ class PosCartViewModel @Inject constructor(
                         customer = session.customer,
                         lines = session.lines,
                         cartDiscountCents = session.cartDiscountCents,
+                        cartNote = session.cartNote,
                         linkedTicketId = session.linkedTicketId,
                     )
                 }
@@ -203,6 +205,10 @@ class PosCartViewModel @Inject constructor(
 
     fun setCartDiscount(cents: Long) {
         coordinator.setCartDiscount(cents)
+    }
+
+    fun setCartNote(note: String) {
+        coordinator.setCartNote(note.take(1000))
     }
 
     fun detachCustomer() = coordinator.detachCustomer()

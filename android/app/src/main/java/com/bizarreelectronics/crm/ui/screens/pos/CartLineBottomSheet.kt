@@ -104,7 +104,8 @@ fun CartLineBottomSheet(
             // ── Header ────────────────────────────────────────────────────────
             Text(line.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             line.itemId?.let {
-                Text("Unit · ${line.unitPriceCents.toDollarString()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val stockSuffix = if (line.stockQty != null && line.stockQty > 0) " · Stock ${line.stockQty}" else ""
+                Text("Unit · ${line.unitPriceCents.toDollarString()}$stockSuffix", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Spacer(modifier = Modifier.height(8.dp))
 

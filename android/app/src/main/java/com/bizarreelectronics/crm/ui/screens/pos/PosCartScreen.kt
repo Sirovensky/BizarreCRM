@@ -13,7 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Delete
-import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.*
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -51,6 +51,8 @@ fun PosCartScreen(
     var showDetachConfirm by remember { mutableStateOf(false) }
     var showMiscDialog by remember { mutableStateOf(false) }
     var showDiscountDialog by remember { mutableStateOf(false) }
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     // Mockup PHONE 3 path tabs: Catalog | Cart · N · $X — selected tab
     // index 1 by default since cashier reaches this screen with intent to
     // tender. Catalog tab populates from quick-add (Today's Top-5).
@@ -122,8 +124,46 @@ fun PosCartScreen(
                     IconButton(onClick = onScanBarcode) {
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
                     }
-                    IconButton(onClick = {}) {
-                        Icon(Icons.Outlined.Person, contentDescription = "Attach customer")
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                        ) {
+                            // "Detach customer" only when a customer is attached
+                            if (state.customer != null) {
+                                DropdownMenuItem(
+                                    text = { Text("Detach customer") },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        showDetachConfirm = true
+                                    },
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text("Apply discount") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showDiscountDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Add note") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showNoteDialog = true
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Park cart") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    // TODO: POS-PARK-001 — park cart implementation
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -137,7 +177,7 @@ fun PosCartScreen(
             CartPathTabs(
                 selectedIndex = selectedTab,
                 cartLineCount = state.lines.size,
-                cartTotalCents = state.totalCents,
+                cartTotalCents = state.subtotalCents,
                 onSelect = { selectedTab = it },
             )
 
@@ -190,11 +230,27 @@ fun PosCartScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
+                            DashedSlot(label = "+ Note", onClick = { showNoteDialog = true }, modifier = Modifier.weight(1f))
                             DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
                         }
                     }
                 }
             }
+        }
+
+        // ── Line edit bottom sheet — INSIDE Scaffold content lambda so the
+        // scrim covers the topBar correctly (POS-AUDIT-034).
+        state.editingLine?.let { line ->
+            CartLineBottomSheet(
+                line = line,
+                cartDimAlpha = 0.35f,
+                onQtyChange = { viewModel.setLineQty(line.id, it) },
+                onDiscountChange = { viewModel.setLineDiscount(line.id, it) },
+                onNoteChange = { viewModel.setLineNote(line.id, it) },
+                onRemove = { viewModel.removeLine(line.id) },
+                onSave = { viewModel.dismissLineEdit() },
+                onDismiss = { viewModel.dismissLineEdit() },
+            )
         }
     }
 
@@ -208,6 +264,17 @@ fun PosCartScreen(
         )
     }
 
+    if (showNoteDialog) {
+        CartNoteDialog(
+            currentNote = state.cartNote,
+            onApply = { text ->
+                viewModel.setCartNote(text)
+                showNoteDialog = false
+            },
+            onDismiss = { showNoteDialog = false },
+        )
+    }
+
     if (showDiscountDialog) {
         CartDiscountDialog(
             currentCents = state.discountCents,
@@ -217,20 +284,6 @@ fun PosCartScreen(
                 showDiscountDialog = false
             },
             onDismiss = { showDiscountDialog = false },
-        )
-    }
-
-    // ── Line edit bottom sheet ───────────────────────────────────────────────
-    state.editingLine?.let { line ->
-        CartLineBottomSheet(
-            line = line,
-            cartDimAlpha = 0.35f,
-            onQtyChange = { viewModel.setLineQty(line.id, it) },
-            onDiscountChange = { viewModel.setLineDiscount(line.id, it) },
-            onNoteChange = { viewModel.setLineNote(line.id, it) },
-            onRemove = { viewModel.removeLine(line.id) },
-            onSave = { viewModel.dismissLineEdit() },
-            onDismiss = { viewModel.dismissLineEdit() },
         )
     }
 
@@ -448,6 +501,8 @@ private fun CartPathTabs(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface),
     ) {
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val outlineVariantColor = MaterialTheme.colorScheme.outlineVariant
         listOf(
             "Catalog" to 0,
             "Cart · $cartLineCount · ${cartTotalCents.toDollarString()}" to 1,
@@ -463,16 +518,16 @@ private fun CartPathTabs(
                             // 2dp primary underline matches mockup .tab.active
                             val w = 2.dp.toPx()
                             drawRect(
-                                color = androidx.compose.ui.graphics.Color(0xFFFDEED0),
+                                color = primaryColor,
                                 topLeft = Offset(0f, size.height - w),
                                 size = Size(size.width, w),
                             )
                         } else {
-                            // 1px outline border-bottom on inactive tabs to
+                            // 1px outlineVariant border-bottom on inactive tabs to
                             // mirror the mockup's full-width row separator.
                             val w = 1.dp.toPx()
                             drawRect(
-                                color = androidx.compose.ui.graphics.Color(0xFF332C3F),
+                                color = outlineVariantColor,
                                 topLeft = Offset(0f, size.height - w),
                                 size = Size(size.width, w),
                             )
@@ -645,6 +700,37 @@ private fun CartDiscountDialog(
         },
         confirmButton = {
             TextButton(onClick = { onApply(cents) }, enabled = canApply) { Text("Apply") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ─── Cart-level note dialog ──────────────────────────────────────────────────
+
+@Composable
+private fun CartNoteDialog(
+    currentNote: String?,
+    onApply: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var input by remember(currentNote) { mutableStateOf(currentNote.orEmpty()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Cart note") },
+        text = {
+            OutlinedTextField(
+                value = input,
+                onValueChange = { input = it.take(1000) },
+                label = { Text("Note") },
+                placeholder = { Text("e.g. customer requested gift wrap") },
+                minLines = 3,
+                maxLines = 6,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onApply(input.trim()) }) { Text("Apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

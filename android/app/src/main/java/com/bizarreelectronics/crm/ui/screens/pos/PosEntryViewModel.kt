@@ -11,6 +11,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
@@ -29,6 +30,10 @@ data class PosEntryUiState(
     // AUDIT-006: default tax rate loaded on init so openReadyForPickup can
     // seed the CartLine with the correct rate rather than leaving it at 0.0.
     val defaultTaxRate: Double = 0.0,
+    // AUDIT-023: cart summary strip — mirrors coordinator session so the strip
+    // shows live item count + subtotal without a separate API call.
+    val cartLineCount: Int = 0,
+    val cartSubtotalCents: Long = 0L,
 )
 
 @HiltViewModel
@@ -56,6 +61,18 @@ class PosEntryViewModel @Inject constructor(
                         ?: 0.0
                     _uiState.update { it.copy(defaultTaxRate = ratePercent / 100.0) }
                 }
+        }
+        // AUDIT-023: mirror coordinator cart lines into UI state so the cart
+        // summary strip on PosEntry stays live without a separate API call.
+        viewModelScope.launch {
+            coordinator.session.collect { session ->
+                _uiState.update {
+                    it.copy(
+                        cartLineCount = session.lines.size,
+                        cartSubtotalCents = session.subtotalCents,
+                    )
+                }
+            }
         }
     }
 

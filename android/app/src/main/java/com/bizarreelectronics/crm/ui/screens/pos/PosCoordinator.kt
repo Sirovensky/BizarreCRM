@@ -21,6 +21,7 @@ class PosCoordinator @Inject constructor() {
         val customer: PosAttachedCustomer? = null,
         val lines: List<CartLine> = emptyList(),
         val cartDiscountCents: Long = 0L,
+        val cartNote: String? = null,
         val linkedTicketId: Long? = null,
         val appliedTenders: List<AppliedTender> = emptyList(),
         val completedOrderId: String? = null,
@@ -51,6 +52,9 @@ class PosCoordinator @Inject constructor() {
 
     fun setCartDiscount(cents: Long) =
         _session.update { it.copy(cartDiscountCents = cents) }
+
+    fun setCartNote(note: String) =
+        _session.update { it.copy(cartNote = note.ifBlank { null }) }
 
     fun setLinkedTicket(ticketId: Long?) =
         _session.update { it.copy(linkedTicketId = ticketId) }

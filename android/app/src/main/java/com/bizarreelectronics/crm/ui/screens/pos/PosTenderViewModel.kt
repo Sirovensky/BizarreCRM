@@ -24,6 +24,7 @@ data class PosTenderUiState(
     val isProcessing: Boolean = false,
     val errorMessage: String? = null,
     val completedOrderId: String? = null,
+    val attachedCustomerStoreCreditCents: Long = 0L,
 ) {
     val paidCents: Long get() = appliedTenders.sumOf { it.amountCents }
     val remainingCents: Long get() = (totalCents - paidCents).coerceAtLeast(0L)
@@ -50,6 +51,7 @@ class PosTenderViewModel @Inject constructor(
                     it.copy(
                         totalCents = session.totalCents,
                         appliedTenders = session.appliedTenders,
+                        attachedCustomerStoreCreditCents = session.customer?.storeCreditCents ?: 0L,
                     )
                 }
             }
@@ -181,6 +183,7 @@ class PosTenderViewModel @Inject constructor(
                     PosPaymentDto(method = t.method, amountCents = t.amountCents)
                 },
                 linkedTicketId = session.linkedTicketId,
+                notes = session.cartNote,
             )
 
             runCatching {

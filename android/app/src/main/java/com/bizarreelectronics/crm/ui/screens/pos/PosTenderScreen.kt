@@ -126,10 +126,12 @@ fun PosTenderScreen(
             item {
                 PaymentMethodGrid(
                     remainingCents = state.remainingCents,
+                    attachedCustomerStoreCreditCents = state.attachedCustomerStoreCreditCents,
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
                     onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
                     onParkCart = { viewModel.parkCart() },
+                    onStoreCredit = { viewModel.applyStoreCredit() },
                 )
             }
         }
@@ -245,10 +247,12 @@ private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
 @Composable
 private fun PaymentMethodGrid(
     remainingCents: Long,
+    attachedCustomerStoreCreditCents: Long,
     onCardReader: () -> Unit,
     onCash: () -> Unit,
     onAch: () -> Unit,
     onParkCart: () -> Unit,
+    onStoreCredit: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
@@ -290,6 +294,16 @@ private fun PaymentMethodGrid(
                 isPrimary = false,
                 onClick = onParkCart,
                 modifier = Modifier.weight(1f),
+            )
+        }
+        if (attachedCustomerStoreCreditCents > 0L) {
+            PaymentTile(
+                emoji = "🎁",
+                label = "Store credit",
+                sublabel = "${attachedCustomerStoreCreditCents.toDollarString()} available",
+                isPrimary = false,
+                onClick = onStoreCredit,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
