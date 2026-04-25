@@ -366,6 +366,7 @@ class LoginViewModel @Inject constructor(
         // storage beyond the already-saved `username` in AuthPreferences, so
         // no new persistence keys are introduced.
         username = authPreferences.username.orEmpty(),
+        storeName = authPreferences.storeName ?: "",
         // §2.17-L407/L408 — restore biometric stash preferences from prefs.
         biometricEnabled = authPreferences.biometricCredentialsEnabled,
         // §2.17-L414 — default remember-me to true when TalkBack is active.
@@ -1999,15 +2000,11 @@ fun LoginScreen(
                 contentKey = { it.ordinal },
                 label = "step",
             ) { step ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 0.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF1F1F23),
-                    ),
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF1F1F23),
+                    tonalElevation = 0.dp,
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
                         when (step) {

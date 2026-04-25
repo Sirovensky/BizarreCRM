@@ -613,7 +613,7 @@ fun AppNavGraph(
     //  be needed, making this a small but intentional routing refactor — evaluate
     //  when next adding detail routes rather than as a standalone change.
     val showBottomNav = currentRoute != null &&
-            currentRoute != Screen.Login.route &&
+            (currentRoute?.startsWith("login") != true) &&
             !currentRoute.startsWith("tickets/") &&
             // CROSS47-seed: the registered route is now
             // `ticket-create?customerId={customerId}`, so an exact equality
