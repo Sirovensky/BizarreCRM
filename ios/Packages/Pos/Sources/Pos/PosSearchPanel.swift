@@ -360,18 +360,18 @@ struct PosFilterChip: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isActive ? Color(hex: 0x2B1400) : .bizarreOnSurface)
+                .foregroundStyle(isActive ? Color.bizarreOnPrimary : .bizarreOnSurface)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
                     isActive
-                        ? Color(hex: 0xFDEED0)
+                        ? Color.bizarreOrange
                         : Color.bizarreSurface2.opacity(0.6),
                     in: Capsule()
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isActive ? Color(hex: 0xFDEED0) : Color.bizarreOutline.opacity(0.9),
+                        isActive ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.9),
                         lineWidth: 0.5
                     )
                 )
@@ -426,7 +426,7 @@ struct PosCatalogTile: View {
                             // Cream/primary price — Barlow Condensed in mockup
                             Text(CartMath.formatCents(cents))
                                 .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(Color(hex: 0xFDEED0))
+                                .foregroundStyle(Color.bizarreOrange)
                                 .monospacedDigit()
                         }
                         Spacer()
@@ -440,7 +440,7 @@ struct PosCatalogTile: View {
                     RoundedRectangle(cornerRadius: 14)
                         .strokeBorder(
                             isInCart
-                                ? Color(hex: colorScheme == .dark ? 0xFDEED0 : 0xC2410C, alpha: colorScheme == .dark ? 0.35 : 0.30)
+                                ? Color.bizarreOrange.opacity(colorScheme == .dark ? 0.35 : 0.30)
                                 : Color.bizarreOutline.opacity(0.4),
                             lineWidth: isInCart ? 1 : 0.5
                         )
@@ -450,10 +450,10 @@ struct PosCatalogTile: View {
                 if isInCart {
                     Text("In cart")
                         .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(Color(hex: 0x2B1400))
+                        .foregroundStyle(Color.bizarreOnPrimary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)
-                        .background(Color(hex: 0xFDEED0), in: Capsule())
+                        .background(Color.bizarreOrange, in: Capsule())
                         .padding(.top, 8)
                         .padding(.trailing, 8)
                 }
@@ -477,17 +477,17 @@ struct PosCatalogTile: View {
             if isLow {
                 Text("\(qty) low")
                     .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(Color(hex: 0xE8A33D)) // warning
+                    .foregroundStyle(Color.bizarreWarning)
             } else {
                 Text("\(qty)")
                     .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(Color(hex: 0x34C47E)) // success
+                    .foregroundStyle(Color.bizarreSuccess) // success
             }
         } else {
             // No stock field = service item
             Text("Service")
                 .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(Color(hex: 0x34C47E))
+                .foregroundStyle(Color.bizarreSuccess)
         }
     }
 }

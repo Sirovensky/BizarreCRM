@@ -370,7 +370,7 @@ struct PosCartPanel: View {
             let isNegative = cents < 0
             Text(isNegative ? "− \(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
                 .font(.brandBodyLarge())
-                .foregroundStyle(isNegative ? Color(hex: 0x34C47E) : .bizarreOnSurface)
+                .foregroundStyle(isNegative ? Color.bizarreSuccess : .bizarreOnSurface)
                 .monospacedDigit()
             if let onEdit {
                 Button {

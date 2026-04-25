@@ -123,10 +123,10 @@ public struct PosIPadCartPanel: View {
             if cart.lineCount > 0 {
                 Text("\(cart.lineCount) \(cart.lineCount == 1 ? "line" : "lines")")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .foregroundStyle(Color.bizarreOnPrimary)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Color(hex: 0xFDEED0), in: Capsule())
+                    .background(Color.bizarreOrange, in: Capsule())
                     .accessibilityLabel("\(cart.lineCount) cart lines")
             }
         }
@@ -278,11 +278,11 @@ public struct PosIPadCartPanel: View {
             if cart.effectiveDiscountCents > 0 {
                 let label = cart.cartDiscountPercent
                     .map { "\(Int($0 * 100))% discount" } ?? "Discount"
-                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color(hex: 0x34C47E))
+                totalsRow(label: label, cents: -cart.effectiveDiscountCents, color: Color.bizarreSuccess)
             }
 
             if cart.couponDiscountCents > 0 {
-                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color(hex: 0x34C47E))
+                totalsRow(label: "Coupon", cents: -cart.couponDiscountCents, color: Color.bizarreSuccess)
             }
 
             if cart.pricingSavingCents > 0 {
@@ -383,10 +383,10 @@ public struct PosIPadCartPanel: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .padding(.horizontal, 16)
-                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .foregroundStyle(Color.bizarreOnPrimary)
                     .background(
                         LinearGradient(
-                            colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
+                            colors: [Color.bizarreOrange.opacity(0.92), Color.bizarreOrange],
                             startPoint: .top,
                             endPoint: .bottom
                         ),

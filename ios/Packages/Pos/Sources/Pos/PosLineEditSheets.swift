@@ -209,7 +209,7 @@ struct PosLineEditSheet: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color(hex: 0xFFF7E0, alpha: 1.0), Color.bizarreOrange],
+                                        colors: [Color.bizarreOrange.opacity(0.92), Color.bizarreOrange],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
