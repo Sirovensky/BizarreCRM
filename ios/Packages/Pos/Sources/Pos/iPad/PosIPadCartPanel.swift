@@ -206,6 +206,20 @@ public struct PosIPadCartPanel: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+        .contextMenu {
+            Button {
+                BrandHaptics.tap()
+                onEditItem?(item)
+            } label: {
+                Label("Edit line", systemImage: "pencil")
+            }
+            Button(role: .destructive) {
+                BrandHaptics.tap()
+                cart.removeLine(id: item.id)
+            } label: {
+                Label("Remove from cart", systemImage: "trash")
+            }
+        }
         .accessibilityLabel("\(item.name), qty \(item.quantity)" + (isEditing ? ", being edited" : "") + ". Tap to inspect.")
         .accessibilityIdentifier("pos.ipad.cartRow.\(item.id)")
     }
