@@ -103,12 +103,15 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Fetch unread count on mount + poll every 60s (visibility-gated)
-  // @audit-fixed (WEB-FAD-002): bumped 30s→60s, gated on
-  // document.visibilityState so background tabs don't fire requests; the
-  // visibilitychange listener forces an immediate refresh on focus so the
-  // badge isn't stale once the tab comes forward. WS already pushes
-  // NOTIFICATION_NEW + sms_received — this poll is the disconnect fallback.
+  // Fetch unread count on mount + on visibility-change resume.
+  // @audit-fixed (WEB-FO-006 / Fixer-B12 2026-04-25): dropped the 60s
+  // setInterval entirely. WS already pushes NOTIFICATION_NEW + SMS_RECEIVED
+  // through useWebSocket → invalidates ['notification-count']. The interval
+  // duplicated that work and doubled backend load on the bell counter (50
+  // sessions/tenant ≈ 100 wasted req/min). The visibility-resume fetch is
+  // kept as a recovery for missed WS events while the tab was hidden.
+  // Previous fixes: WEB-FAD-002 (30s→60s + visibility gate), Fixer-PPP
+  // WEB-FO-019 (park-on-hidden).
   const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await notificationApi.unreadCount();
@@ -139,61 +142,30 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     let cancelled = false;
     const isAuthed = () => useAuthStore.getState().isAuthenticated;
 
-    // Fixer-PPP (WEB-FO-019): the previous implementation kept a
-    // 60s setInterval running while the tab was hidden — the gated
-    // body suppressed fetches but the timer itself still woke the JS
-    // thread every minute on tablets parked in a back office. Park
-    // the timer entirely on `hidden`, recreate it on `visible`. Net
-    // effect: zero CPU/battery overhead while hidden, immediate
-    // refresh on focus (preserved from previous behaviour).
-    let interval: ReturnType<typeof setInterval> | null = null;
-    const startInterval = () => {
-      if (interval == null && !cancelled && isAuthed()) {
-        interval = setInterval(() => {
-          if (cancelled) return;
-          if (!isAuthed()) return;
-          // Visibility is checked by the timer-park logic below — by the
-          // time this fires the tab is visible.
-          fetchUnreadCount();
-          fetchSmsUnreadCount();
-        }, 60_000);
-      }
-    };
-    const stopInterval = () => {
-      if (interval != null) {
-        clearInterval(interval);
-        interval = null;
-      }
-    };
-
     if (isAuthed()) {
       fetchUnreadCount();
       fetchSmsUnreadCount();
-      if (document.visibilityState === 'visible') startInterval();
     }
 
-    // Resume polling immediately when tab becomes visible again; park
-    // the timer when it goes hidden so it stops waking the JS thread.
+    // Resume fetch immediately when tab becomes visible again — recovery
+    // for any WS events missed while the tab was hidden. No background
+    // interval; WS handles the live-update path.
     const handleVisibilityChange = () => {
+      if (cancelled) return;
       if (!isAuthed()) return;
       if (document.visibilityState === 'visible') {
         fetchUnreadCount();
         fetchSmsUnreadCount();
-        startInterval();
-      } else {
-        stopInterval();
       }
     };
     const handleAuthCleared = () => {
       cancelled = true;
-      stopInterval();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
 
     return () => {
       cancelled = true;
-      stopInterval();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
     };

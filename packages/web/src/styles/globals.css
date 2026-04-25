@@ -304,3 +304,21 @@
     color: #71717a;
   }
   .dark .table-header { background-color: rgba(39, 39, 42, 0.5); color: #a1a1aa; }
+
+  /* WEB-FQ-022 (Fixer-C12 2026-04-25): canonical section-label "eyebrow"
+   * style. Sidebar / CommandPalette / SpotlightCoach already used
+   * `uppercase tracking-wider text-xs` for section labels (10+ inline
+   * usages). Page bodies invented their own h2/h3 and broke visual rhythm.
+   * Apply `.section-eyebrow` to a small heading or div above content
+   * groupings (e.g. dashboard "NEEDS ATTENTION", settings tab columns) for
+   * consistent chrome rhythm. Once Bebas Neue display font fully loads
+   * (project_brand_fonts), swap font-medium → font-display for the brand
+   * uppercase voice; until then this still fixes the inconsistency. */
+  .section-eyebrow {
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #71717a;
+  }
+  .dark .section-eyebrow { color: #a1a1aa; }

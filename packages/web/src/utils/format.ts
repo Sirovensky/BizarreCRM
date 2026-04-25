@@ -175,5 +175,18 @@ export function formatPhone(phone: string | null | undefined): string {
   const trimmed = phone.trim();
   if (trimmed.startsWith('+')) return trimmed;
   if (digits.length > 11) return `+${digits}`;
+  // WEB-FD-018 (Fixer-C12 2026-04-25): half-formatted US numbers (e.g. user
+  // typed "(303) 261-19" while still entering it) used to echo back raw with
+  // no `+1` hint, so display surfaces showed an inconsistent mix of
+  // canonical "+1 (303)-261-1900" and raw "(303) 261-19" side-by-side. For
+  // partial inputs of 4-9 digits with no leading "+" / "00" we promote to
+  // a partial-progressive canonical form: keep the typed digits, add the
+  // `+1` prefix and as much of the parens-dashes ladder as we have. Fewer
+  // than 4 digits (area-code prefix only) is too ambiguous — fall through.
+  if (digits.length >= 4 && digits.length < 10) {
+    const a = digits.slice(0, 3);
+    if (digits.length <= 6) return `+1 (${a})-${digits.slice(3)}`;
+    return `+1 (${a})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
   return trimmed;
 }

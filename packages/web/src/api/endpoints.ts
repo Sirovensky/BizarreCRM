@@ -629,6 +629,48 @@ export const posApi = {
       },
     }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
+
+  // WEB-FN-012 (Fixer-C12 2026-04-25): wrappers for the orphan POS server
+  // routes that audit flagged. Pages were either hand-rolling axios calls
+  // or the features were silently unreachable. All four are guarded by
+  // `requirePermission` server-side, so a missing wrapper here does not
+  // weaken auth — but having a typed wrapper means new callers can't
+  // accidentally hit `/api/v1/...` directly and bypass the bearer interceptor
+  // (cf. WEB-FB-006 / WEB-FD-021 cookie-vs-bearer footgun).
+  /**
+   * Non-checkout-with-ticket sale path (legacy walk-in cash sale).
+   * `/pos/sales` is a separate server route from `checkoutWithTicket`.
+   * Pass an idempotency key from the caller-side cart session — server
+   * idempotent middleware will short-circuit double-submits.
+   */
+  sales: (data: unknown, idempotencyKey?: string) =>
+    api.post('/pos/sales', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-sale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
+  /**
+   * Cash refund on an existing sale. Idempotency key required to avoid
+   * double-refunds on a flaky-network double-click.
+   */
+  return: (data: unknown, idempotencyKey?: string) =>
+    api.post('/pos/return', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-return-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
+  /** Multi-station kiosk workstations CRUD (`/pos/workstations*`). */
+  listWorkstations: () => api.get('/pos/workstations'),
+  createWorkstation: (data: { name: string; description?: string }) =>
+    api.post('/pos/workstations', data),
+  updateWorkstation: (id: number, data: { name?: string; description?: string; active?: boolean }) =>
+    api.put(`/pos/workstations/${id}`, data),
 };
 
 // ==================== Notifications ====================

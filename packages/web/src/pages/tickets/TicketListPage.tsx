@@ -629,7 +629,11 @@ const TicketRow = memo(function TicketRow({
                   onAddNote(ticket.id, input.value.trim()).then(() => { input.value = ''; });
                 }}>
                   <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400" />
-                  <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add</button>
+                  {/* WEB-FQ-017 (Fixer-C12 2026-04-25): bare ">Add<" was ambiguous next
+                      to the "Add Customer" / "Add Ticket" / "Create" labels elsewhere.
+                      Spelled-out object name keeps the same row-CRUD verb but disambiguates
+                      from the page-level "Add Ticket" CTA. */}
+                  <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add note</button>
                 </form>
                 {customer?.phone && (
                   <form className="flex gap-1.5" onClick={(e) => e.stopPropagation()} onSubmit={(e) => {

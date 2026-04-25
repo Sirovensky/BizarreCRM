@@ -75,14 +75,10 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
       queryKeys: [['tickets'], ['dashboard']],
       toast: undefined,
     },
-    'sms_received': {
-      // SMS routes currently broadcast with literal 'sms_received'
-      queryKeys: [['sms-conversations']],
-      toast: (data: unknown) => {
-        const d = data as { from?: string; customer?: { first_name?: string } } | null;
-        return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
-      },
-    },
+    // WEB-FN-007 (Fixer-B12 2026-04-25): dropped legacy `'sms_received'`
+    // literal subscription. Server only ever broadcasts the colon-form
+    // `WS_EVENTS.SMS_RECEIVED` (`sms:received`); the snake_case literal
+    // never fired. Keep the canonical handler below as the single source.
     [WS_EVENTS.SMS_RECEIVED]: {
       queryKeys: [['sms-conversations']],
       toast: (data: unknown) => {
