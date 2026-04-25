@@ -1278,6 +1278,29 @@ router.post('/sales', idempotent, asyncHandler(async (req, res) => {
     method: methodLabel,
   });
 
+  if (inv?.id != null) {
+    try {
+      await accruePaymentPoints({
+        adb,
+        customerId: resolvedCustomerId,
+        invoiceId: inv.id,
+        paymentAmount: total,
+      });
+    } catch (err: unknown) {
+      logger.error('pos_sales_loyalty_accrual_failed', {
+        customer_id: resolvedCustomerId,
+        invoice_id: inv.id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      broadcast(WS_EVENTS.INVOICE_CREATED, { invoice_id: inv.id, order_id: invoiceOrderId });
+    } catch (_) {
+      // non-fatal
+    }
+  }
+
   res.status(201).json({
     success: true,
     data: {
