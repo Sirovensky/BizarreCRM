@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import timber.log.Timber
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -68,6 +69,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
 import android.app.Activity
+import android.provider.Settings
 import androidx.fragment.app.FragmentActivity
 import com.bizarreelectronics.crm.data.local.prefs.BiometricCredentialStore
 import com.bizarreelectronics.crm.ui.auth.BiometricAuth
@@ -642,6 +644,11 @@ class LoginViewModel @Inject constructor(
             },
             // Reset sub-step when leaving REGISTER entirely
             registerSubStep = if (current.step == SetupStep.REGISTER) RegisterSubStep.Company else current.registerSubStep,
+            // LOGIN-MOCK-189: clear TOTP secret from VM heap when backing out of TWO_FA_SETUP
+            // to avoid leaving sensitive data live while the user is back on CREDENTIALS.
+            twoFaSecret = if (current.step == SetupStep.TWO_FA_SETUP) "" else current.twoFaSecret,
+            twoFaManualEntry = if (current.step == SetupStep.TWO_FA_SETUP) "" else current.twoFaManualEntry,
+            qrCodeDataUrl = if (current.step == SetupStep.TWO_FA_SETUP) "" else current.qrCodeDataUrl,
         )
     }
 
@@ -1677,6 +1684,11 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(passkeyError = null)
     }
 
+    /** LOGIN-MOCK-165: dismiss the setup-needed banner. Sets setupNeeded=false locally. */
+    fun dismissSetupNeededBanner() {
+        _state.value = _state.value.copy(setupNeeded = false)
+    }
+
     fun clearPasskeyLoginSuccess() {
         _state.value = _state.value.copy(passkeyLoginSuccess = false)
     }
@@ -1906,6 +1918,12 @@ fun LoginScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     // LOGIN-MOCK-148: haptic for biometric auth events in this scope.
     val haptic = LocalHapticFeedback.current
+    // LOGIN-MOCK-153: Reduce Motion guard. Read ANIMATOR_DURATION_SCALE once per
+    // composition; value rarely changes mid-session. Cache via remember.
+    val isReduceMotion = remember {
+        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    }
+    val animDuration = if (isReduceMotion) 0 else 300
 
     // §2.7 L330 — when an invite token arrives via deep link, jump to the
     // Register step and store the token once. Keyed on setupToken identity so
@@ -2101,7 +2119,7 @@ fun LoginScreen(
                     ) {
                         Icon(
                             Icons.Default.Lock,
-                            contentDescription = null,
+                            contentDescription = "Sign-out icon",
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                         )
                         Text(
@@ -2136,7 +2154,7 @@ fun LoginScreen(
                     ) {
                         Icon(
                             Icons.Default.PhonelinkErase,
-                            contentDescription = null,
+                            contentDescription = "Device changed icon",
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                         )
                         Text(
@@ -2167,7 +2185,7 @@ fun LoginScreen(
                     ) {
                         Icon(
                             Icons.Default.Lock,
-                            contentDescription = null,
+                            contentDescription = "Sign-out icon",
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                         )
                         Text(
@@ -2185,7 +2203,8 @@ fun LoginScreen(
             }
 
             // Tab strip — Server | Sign In | 2FA
-            LoginTabBar(currentStep = state.step)
+            // LOGIN-MOCK-153: pass animDuration so tab indicator respects Reduce Motion.
+            LoginTabBar(currentStep = state.step, animDuration = animDuration)
             Spacer(Modifier.height(24.dp))
 
             // Step content with animation
@@ -2196,12 +2215,13 @@ fun LoginScreen(
                     // artifact caused by default 300ms simultaneous fade+slide. The 100ms
                     // delay on fadeIn ensures the incoming card begins appearing only after
                     // the outgoing card is nearly gone.
+                    // LOGIN-MOCK-153: animDuration is 0 when Reduce Motion is enabled.
                     val isForward = targetState.ordinal > initialState.ordinal
                     val direction = if (isForward) 1 else -1
-                    (slideInHorizontally(animationSpec = tween(300)) { it * direction } +
-                        fadeIn(animationSpec = tween(300, delayMillis = 100))) togetherWith
-                    (slideOutHorizontally(animationSpec = tween(300)) { -it * direction } +
-                        fadeOut(animationSpec = tween(150)))
+                    (slideInHorizontally(animationSpec = tween(animDuration)) { it * direction } +
+                        fadeIn(animationSpec = tween(animDuration, delayMillis = if (animDuration == 0) 0 else 100))) togetherWith
+                    (slideOutHorizontally(animationSpec = tween(animDuration)) { -it * direction } +
+                        fadeOut(animationSpec = tween(if (animDuration == 0) 0 else 150)))
                 },
                 // AND-038: contentKey ensures AnimatedContent remeasures correctly
                 // when transitioning between enum values with the same ordinal index.
@@ -2227,9 +2247,10 @@ fun LoginScreen(
                     // LOGIN-MOCK-142: animateContentSize lets the card height interpolate
                     // smoothly when transitioning between steps of different heights,
                     // preventing a jarring snap to the new height mid-slide.
+                    // LOGIN-MOCK-153: animDuration 0 collapses to instant snap with Reduce Motion.
                     Column(modifier = Modifier
                         .padding(horizontal = 20.dp, vertical = 20.dp)
-                        .animateContentSize(animationSpec = tween(300))) {
+                        .animateContentSize(animationSpec = tween(animDuration))) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
@@ -2256,7 +2277,7 @@ fun LoginScreen(
  * Container is transparent so it blends with the screen background.
  */
 @Composable
-private fun LoginTabBar(currentStep: SetupStep) {
+private fun LoginTabBar(currentStep: SetupStep, animDuration: Int = 300) {
     val tabLabels = listOf("Server", "Sign In", "2FA")
     val selectedIndex = when (currentStep) {
         SetupStep.SERVER, SetupStep.REGISTER -> 0
@@ -2277,14 +2298,15 @@ private fun LoginTabBar(currentStep: SetupStep) {
             // Animate pos.left and pos.width via animateDpAsState so the indicator
             // slides smoothly between tabs instead of hard-cutting.
             val pos = tabPositions[selectedIndex]
+            // LOGIN-MOCK-153: animDuration respects Reduce Motion (0 = instant snap).
             val animatedLeft by animateDpAsState(
                 targetValue = pos.left,
-                animationSpec = tween(durationMillis = 300),
+                animationSpec = tween(durationMillis = animDuration),
                 label = "tab_indicator_left",
             )
             val animatedWidth by animateDpAsState(
                 targetValue = pos.width,
-                animationSpec = tween(durationMillis = 300),
+                animationSpec = tween(durationMillis = animDuration),
                 label = "tab_indicator_width",
             )
             Box(Modifier.fillMaxSize()) {
@@ -2334,10 +2356,18 @@ private fun ErrorMessage(error: String?) {
     // LOGIN-MOCK-144: AnimatedVisibility gives the error a fade+expand entrance so
     // validation failures draw attention without a jarring instant-appear.
     // Spacer is outside AnimatedVisibility to prevent layout jump when error appears.
+    // LOGIN-MOCK-153: collapse animation durations when Reduce Motion is enabled.
+    val ctx = LocalContext.current
+    val errAnimDuration = remember {
+        if (Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) 0 else 150
+    }
+    val errExpandDuration = remember {
+        if (Settings.Global.getFloat(ctx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) 0 else 200
+    }
     AnimatedVisibility(
         visible = error != null,
-        enter = fadeIn(animationSpec = tween(150)) + expandVertically(animationSpec = tween(200)),
-        exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150)),
+        enter = fadeIn(animationSpec = tween(errAnimDuration)) + expandVertically(animationSpec = tween(errExpandDuration)),
+        exit = fadeOut(animationSpec = tween(errAnimDuration)) + shrinkVertically(animationSpec = tween(errAnimDuration)),
     ) {
         Column {
             Spacer(Modifier.height(12.dp))
@@ -2524,7 +2554,8 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
 @Composable
 private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLoginSuccess: () -> Unit) {
     val focusManager = LocalFocusManager.current
-    var showPassword by remember { mutableStateOf(false) }
+    // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
+    var showPassword by rememberSaveable { mutableStateOf(false) }
     // LOGIN-MOCK-094: auto-focus Shop URL field on entry so TalkBack users don't
     // have to swipe through heading nodes before reaching the first input.
     val shopUrlFocusRequester = remember { FocusRequester() }
@@ -2537,6 +2568,25 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     val emailRegex = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
     val emailError = state.registerEmail.isNotBlank() && !emailRegex.matches(state.registerEmail.trim())
     val passwordError = state.registerPassword.isNotBlank() && state.registerPassword.length < 8
+
+    // LOGIN-MOCK-161: welcome banner for setup invite token.
+    // Shown above the heading when an invite token was delivered via deep link so the
+    // user knows they are completing a shop invite rather than a self-registration.
+    if (state.registerSetupToken != null) {
+        Surface(
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Welcome — completing your shop invite.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+    }
 
     // Header row: back arrow + title
     // LOGIN-MOCK-098/055: title + subtitle merged into one heading stop; back arrow
@@ -2665,10 +2715,18 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     // Error shown between password helper and Create Shop button
     // LOGIN-MOCK-091: liveRegion=Polite so TalkBack announces this error on appearance.
     // LOGIN-MOCK-144: AnimatedVisibility gives the inline error a fade+expand entrance.
+    // LOGIN-MOCK-153: collapse durations when Reduce Motion is enabled.
+    val regErrCtx = LocalContext.current
+    val regErrAnimDuration = remember {
+        if (Settings.Global.getFloat(regErrCtx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) 0 else 150
+    }
+    val regErrExpandDuration = remember {
+        if (Settings.Global.getFloat(regErrCtx.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f) 0 else 200
+    }
     AnimatedVisibility(
         visible = state.error != null,
-        enter = fadeIn(animationSpec = tween(150)) + expandVertically(animationSpec = tween(200)),
-        exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150)),
+        enter = fadeIn(animationSpec = tween(regErrAnimDuration)) + expandVertically(animationSpec = tween(regErrExpandDuration)),
+        exit = fadeOut(animationSpec = tween(regErrAnimDuration)) + shrinkVertically(animationSpec = tween(regErrAnimDuration)),
     ) {
         Text(
             text = state.error ?: "",
@@ -2704,7 +2762,8 @@ private fun CredentialsStep(
     viewModel: LoginViewModel,
 ) {
     val focusManager = LocalFocusManager.current
-    var showPassword by remember { mutableStateOf(false) }
+    // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
+    var showPassword by rememberSaveable { mutableStateOf(false) }
 
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
@@ -2740,6 +2799,8 @@ private fun CredentialsStep(
     // Wizard (§2.10) is not implemented; informational banner directs admin to docs.
     // Does NOT block the login form — admin may already have credentials if setup
     // was completed outside the wizard flow.
+    // LOGIN-MOCK-165: (b) banner is now dismissible via X button. Copy updated to remove
+    // placeholder "future release" text. Dismiss sets setupNeeded=false locally.
     if (state.setupNeeded == true) {
         val setupContext = LocalContext.current
         Surface(
@@ -2759,11 +2820,23 @@ private fun CredentialsStep(
                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
                     Text(
-                        "This server needs initial setup. A setup wizard will appear in a future release. Please contact your admin to complete setup manually.",
+                        "This server has not been set up. Please contact your admin or follow the docs to complete setup.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = androidx.compose.ui.Modifier.weight(1f),
                     )
+                    // LOGIN-MOCK-165: dismiss button
+                    IconButton(
+                        onClick = { viewModel.dismissSetupNeededBanner() },
+                        modifier = androidx.compose.ui.Modifier.size(24.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Dismiss setup banner",
+                            modifier = androidx.compose.ui.Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                        )
+                    }
                 }
                 Spacer(androidx.compose.ui.Modifier.height(4.dp))
                 TextButton(
@@ -3036,8 +3109,9 @@ private fun CredentialsStep(
     // §2.20 L445 — "Sign in with SSO" button + provider picker.
     // Visible only when the server returned at least one SSO provider (404 = hidden).
     val ssoAvailable = !state.ssoProviders.isNullOrEmpty()
+    // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
+    var showSsoSheet by rememberSaveable { mutableStateOf(false) }
     if (ssoAvailable) {
-        var showSsoSheet by remember { mutableStateOf(false) }
         val activity = LocalContext.current as? Activity
 
         Spacer(Modifier.height(12.dp))
@@ -3087,9 +3161,10 @@ private fun CredentialsStep(
     }
 
     // §2.21 L454 — "Email me a link" button + bottom sheet.
-    // Visible only when magic_links_enabled is true (or null = optimistic default).
-    // Hidden when the tenant has explicitly disabled magic-link login (false).
-    val magicLinksVisible = state.magicLinksEnabled != false
+    // LOGIN-MOCK-155: opt-in model — button only visible after probe confirms enabled.
+    // Hides the button during probe-pending state to avoid jank + spurious error path.
+    // Matches passkey opt-in pattern (passkeyEnabled == true).
+    val magicLinksVisible = state.magicLinksEnabled == true
     if (magicLinksVisible) {
         Spacer(Modifier.height(if (ssoAvailable) 8.dp else 12.dp))
         if (!ssoAvailable) {
@@ -3156,6 +3231,13 @@ private fun CredentialsStep(
         }
         // Inline error below the passkey button.
         val passkeyErr = state.passkeyError
+        // LOGIN-MOCK-156: auto-dismiss passkey error after 5 s so it doesn't persist indefinitely.
+        LaunchedEffect(passkeyErr) {
+            if (passkeyErr != null) {
+                delay(5_000L)
+                viewModel.clearPasskeyError()
+            }
+        }
         if (passkeyErr != null) {
             Text(
                 text = passkeyErr,
@@ -3513,6 +3595,11 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
             else -> null
         }
     }
+    // LOGIN-MOCK-188: recycle the bitmap when composition leaves or keys change
+    // to prevent ~60-150 KB leak on low-RAM devices during 2FA setup.
+    DisposableEffect(qrBitmap) {
+        onDispose { qrBitmap?.recycle() }
+    }
 
     // LOGIN-MOCK-169: 10-second QR load timeout — fires timeoutQrSetupIfStillBlank()
     // when qrCodeDataUrl and twoFaSecret are still blank after 10 seconds.
@@ -3704,7 +3791,7 @@ private fun TwoFaVerifyStep(
         if (activity != null) {
             SmsRetrieverHelper.startRetriever(activity)
                 .addOnFailureListener { e ->
-                    android.util.Log.w("TwoFaVerifyStep", "SmsRetriever start failed", e)
+                    Timber.w(e, "SmsRetriever start failed")
                 }
         }
     }

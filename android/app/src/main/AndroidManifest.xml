@@ -135,7 +135,6 @@
             android:exported="true"
             android:theme="@style/Theme.BizarreCRM"
             android:windowSoftInputMode="adjustResize"
-            android:supportsPictureInPicture="true"
             android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation">
             <!-- §22 L2251 — minimum window size for freeform / desktop windowing.
                  ChromeOS and Samsung DeX honour these constraints.

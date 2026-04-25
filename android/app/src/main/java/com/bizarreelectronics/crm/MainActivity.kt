@@ -2,10 +2,13 @@ package com.bizarreelectronics.crm
 
 import android.content.Context
 import android.content.Intent
+import android.hardware.display.DisplayManager
 import android.net.Uri
 import android.os.Bundle
+import android.view.Display
 import android.view.MotionEvent
 import android.view.WindowManager
+import timber.log.Timber
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -202,6 +205,28 @@ class MainActivity : FragmentActivity() {
             biometricAuth.canAuthenticate(this)
         lockedState.value = shouldLock
 
+        // LOGIN-MOCK-217 — Warn when an external Presentation display is connected
+        // at launch time. FLAG_SECURE suppresses screencap but does not prevent the
+        // Presentation API from mirroring content to a connected secondary display
+        // (e.g. Miracast, USB-C HDMI, ChromeCast). We log a warning + breadcrumb so
+        // the issue surfaces in crash reports. Full UX enforcement (blocking login
+        // while a display is connected) requires a product decision and is deferred.
+        val displayManager = getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+        val presentationDisplays = displayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)
+        if (presentationDisplays.isNotEmpty()) {
+            Timber.w(
+                "LOGIN-MOCK-217: %d external Presentation display(s) connected at launch — " +
+                "FLAG_SECURE does not block Presentation API mirroring. " +
+                "Displays: %s",
+                presentationDisplays.size,
+                presentationDisplays.joinToString { it.name },
+            )
+            breadcrumbs.log(
+                "security",
+                "external_display_at_launch: ${presentationDisplays.size} display(s)",
+            )
+        }
+
         setContent {
             // AUDIT-AND-003 / Wave-3: observe darkModeFlow and dynamicColorFlow
             // as Compose State so the theme re-renders immediately when the user
@@ -297,10 +322,15 @@ class MainActivity : FragmentActivity() {
                         },
                     )
                 } else {
+                    // LOGIN-MOCK-214: gate POST_NOTIFICATIONS permission prompt on auth state so
+                    // the system dialog never fires on the pre-login / setup screens.
                     // §13.2: prompt for POST_NOTIFICATIONS on first unlock
                     // (Android 13+ only — pre-T the permission didn't exist).
                     // Runs here so it never fires behind the lock screen.
-                    rememberNotificationPermission(autoRequest = true)
+                    val isAuthenticated by authPreferences.isLoggedInFlow.collectAsState()
+                    if (isAuthenticated) {
+                        rememberNotificationPermission(autoRequest = true)
+                    }
                     AppNavGraph(
                         authPreferences = authPreferences,
                         serverReachabilityMonitor = serverReachabilityMonitor,
