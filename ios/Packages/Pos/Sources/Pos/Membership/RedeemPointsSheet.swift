@@ -11,6 +11,7 @@
 import SwiftUI
 import DesignSystem
 import Core
+import Networking
 
 /// Mid-tender sheet that lets the cashier apply loyalty points as a discount.
 ///

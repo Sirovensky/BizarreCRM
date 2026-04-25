@@ -150,7 +150,7 @@ public struct PosRepairDevicePickerView: View {
 
                     if let subtitle = option.displaySubtitle {
                         Text(subtitle)
-                            .font(.brandBodySmall())
+                            .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                             .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     }

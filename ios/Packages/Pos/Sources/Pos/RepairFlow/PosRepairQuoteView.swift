@@ -293,7 +293,7 @@ public struct PosRepairQuoteView: View {
         VStack(spacing: BrandSpacing.xs) {
             if let error = coordinator.errorMessage {
                 Text(error)
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreError)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, BrandSpacing.md)

@@ -87,7 +87,7 @@ public struct PosRepairDepositView: View {
                 .accessibilityIdentifier("repairFlow.deposit.header")
 
             Text("15% deposit collected before work begins")
-                .font(.brandBodySmall())
+                .font(.brandLabelSmall())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .frame(maxWidth: .infinity)
@@ -227,7 +227,7 @@ public struct PosRepairDepositView: View {
         VStack(spacing: BrandSpacing.xs) {
             if let error = coordinator.errorMessage ?? depositCoordinator.errorMessage {
                 Text(error)
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreError)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, BrandSpacing.md)

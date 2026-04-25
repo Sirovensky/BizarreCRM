@@ -1,4 +1,5 @@
 import Foundation
+import Networking
 
 /// §D — A tender leg that has been committed during the v2 two-step tender flow.
 ///

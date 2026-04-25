@@ -71,7 +71,7 @@ public struct RepairFlowAdapter: View {
 // MARK: - PosRepairFlowCoordinator + Identifiable
 
 extension PosRepairFlowCoordinator: Identifiable {
-    public var id: ObjectIdentifier { ObjectIdentifier(self) }
+    nonisolated public var id: ObjectIdentifier { ObjectIdentifier(self) }
 }
 
 // MARK: - PosView extension hook
@@ -93,6 +93,7 @@ extension PosRepairFlowCoordinator: Identifiable {
 //       )
 //   }
 
+@MainActor
 public enum PosRepairRouter {
     /// Creates a fully wired coordinator ready for presentation.
     public static func makeCoordinator(

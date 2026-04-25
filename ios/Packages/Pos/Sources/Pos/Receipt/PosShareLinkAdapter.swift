@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import DesignSystem
+import Core
 
 /// §Agent-E — Wraps `ShareLink(item:preview:)` for the system share sheet
 /// (AirDrop, copy, third-party share targets) and `UIPrintInteractionController`

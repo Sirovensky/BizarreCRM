@@ -15,8 +15,8 @@ import Networking
 public struct PreviewCustomerRepository: CustomerRepository {
     private let summaries: [CustomerSummary]
 
-    public init(summaries: [CustomerSummary] = Self.sampleData) {
-        self.summaries = summaries
+    public init(summaries: [CustomerSummary]? = nil) {
+        self.summaries = summaries ?? Self.sampleData
     }
 
     public func list(keyword: String?) async throws -> [CustomerSummary] {

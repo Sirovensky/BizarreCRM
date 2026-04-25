@@ -207,7 +207,7 @@ public final class PosGateViewModel {
             let summaries = try await customerRepo.list(keyword: keyword)
             guard !Task.isCancelled else { return }
             results = summaries.map(CustomerSearchHit.init(summary:))
-            AppLog.pos.info("PosGateVM: \(results.count, privacy: .public) results for query")
+            AppLog.pos.info("PosGateVM: \(self.results.count, privacy: .public) results for query")
         } catch {
             guard !Task.isCancelled else { return }
             let msg = error.localizedDescription
