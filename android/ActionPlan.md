@@ -1562,8 +1562,8 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH /notifications/:id/dismiss` (verify)._
 
 ### 13.1 List
-- [ ] Base list.
-- [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
+- [x] Base list.
+- [x] **Tabs** — All / Unread / Assigned to me / Mentions.
 - [x] **Mark all read** action (top-bar button).
 - [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
 - [~] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).

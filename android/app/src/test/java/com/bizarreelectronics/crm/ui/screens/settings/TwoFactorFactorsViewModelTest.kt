@@ -171,5 +171,7 @@ class TwoFactorFactorsViewModelTest {
             throw UnsupportedOperationException()
         override suspend fun enrollFactor(body: Map<String, String>) =
             throw UnsupportedOperationException()
+        override suspend fun deleteDeviceToken(token: String) =
+            throw UnsupportedOperationException()
     }
 }

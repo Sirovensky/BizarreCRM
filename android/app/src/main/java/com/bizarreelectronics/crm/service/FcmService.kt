@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
+import com.bizarreelectronics.crm.util.DeviceTokenManager
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import dagger.hilt.android.AndroidEntryPoint
@@ -23,6 +24,7 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var appPreferences: AppPreferences
     @Inject lateinit var authPreferences: AuthPreferences
     @Inject lateinit var authApi: AuthApi
+    @Inject lateinit var deviceTokenManager: DeviceTokenManager
     @Inject lateinit var quietHours: com.bizarreelectronics.crm.util.QuietHours
     @Inject lateinit var breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs
 
@@ -49,23 +51,16 @@ class FcmService : FirebaseMessagingService() {
         if (BuildConfig.DEBUG) {
             Log.d("FCM", "New FCM token received (len=${token.length})")
         }
+        // Persist the new token locally and mark it as unregistered so the
+        // next foreground cycle (FcmTokenRefresher) will re-register with the
+        // server even if the network is unavailable right now.
         appPreferences.fcmToken = token
         appPreferences.fcmTokenRegistered = false
-        // Attempt to register with server if logged in
+        // §13.2 — attempt to register with server immediately if logged in.
+        // DeviceTokenManager sends the full 5-field payload (token, platform,
+        // model, os_version, app_version) and persists registration state.
         if (authPreferences.isLoggedIn) {
-            serviceScope.launch {
-                try {
-                    authApi.registerDeviceToken(mapOf("token" to token, "platform" to "android"))
-                    appPreferences.fcmTokenRegistered = true
-                    if (BuildConfig.DEBUG) {
-                        Log.d("FCM", "FCM token registered with server")
-                    }
-                } catch (e: Exception) {
-                    if (BuildConfig.DEBUG) {
-                        Log.w("FCM", "Failed to register FCM token, will retry on next app launch", e)
-                    }
-                }
-            }
+            serviceScope.launch { deviceTokenManager.register(token) }
         }
     }
 

@@ -263,6 +263,7 @@ class ForgotPinViewModelTest {
         override suspend fun getTenantMe() = err()
         override suspend fun requestForgotPin(r: ForgotPinRequest): ApiResponse<MessageResponse> = err()
         override suspend fun confirmForgotPin(r: ForgotPinConfirm): ApiResponse<MessageResponse> = err()
+        override suspend fun deleteDeviceToken(token: String) = err()
         private fun err(): Nothing = throw UnsupportedOperationException("stub")
     }
 }

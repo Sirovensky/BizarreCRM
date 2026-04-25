@@ -130,5 +130,7 @@ class ActiveSessionsViewModelTest {
             throw UnsupportedOperationException()
         override suspend fun regenerateRecoveryCodes(body: Map<String, String>) =
             throw UnsupportedOperationException()
+        override suspend fun deleteDeviceToken(token: String) =
+            throw UnsupportedOperationException()
     }
 }

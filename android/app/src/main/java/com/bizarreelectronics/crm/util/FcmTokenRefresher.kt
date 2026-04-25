@@ -12,6 +12,10 @@ import timber.log.Timber
 import javax.inject.Inject
 import javax.inject.Singleton
 
+// NOTE: AuthApi is kept as a constructor param for legacy callers / tests
+// that inject FcmTokenRefresher directly. New registration logic delegates to
+// DeviceTokenManager which sends the full 5-field payload.
+
 /**
  * §1.7 line 238 — push-token refresh helper, invoked on every ON_START/ON_RESUME
  * to ensure the FCM registration token the server holds is not stale.
@@ -36,6 +40,7 @@ class FcmTokenRefresher @Inject constructor(
     private val appPreferences: AppPreferences,
     private val authPreferences: AuthPreferences,
     private val authApi: AuthApi,
+    private val deviceTokenManager: DeviceTokenManager,
 ) {
 
     /**
@@ -55,26 +60,25 @@ class FcmTokenRefresher @Inject constructor(
 
         val lastRefreshMs = appPreferences.lastFcmTokenRefreshAtMs
         val nowMs = System.currentTimeMillis()
-        if (nowMs - lastRefreshMs < REFRESH_INTERVAL_MS) return
+        // Skip if within the 24-hour window AND already registered.
+        // Always re-register if fcmTokenRegistered = false (e.g. after a token
+        // rotation that fired while the user was logged out).
+        if (appPreferences.fcmTokenRegistered && nowMs - lastRefreshMs < REFRESH_INTERVAL_MS) return
 
         withContext(Dispatchers.IO) {
-            try {
+            runCatching {
                 val token = FirebaseMessaging.getInstance().token.await()
                 if (BuildConfig.DEBUG) {
-                    Timber.d("FcmTokenRefresher: fetched token (len=${token.length})")
+                    Timber.d("FcmTokenRefresher: fetched token (len=%d)", token.length)
                 }
-
-                // Attempt server registration. NotificationsApi is absent; reuse
-                // AuthApi.registerDeviceToken which already handles this endpoint.
-                authApi.registerDeviceToken(mapOf("token" to token, "platform" to "android"))
-
-                // Persist token + mark refresh time only on success so a network
-                // failure causes a retry on the next foreground cycle.
-                appPreferences.fcmToken = token
-                appPreferences.lastFcmTokenRefreshAtMs = nowMs
-
-                Timber.i("FcmTokenRefresher: token refreshed and registered with server")
-            } catch (e: Exception) {
+                // §13.2 — delegate to DeviceTokenManager which sends the full
+                // 5-field payload and updates fcmToken + fcmTokenRegistered +
+                // lastFcmTokenRefreshAtMs on success.
+                val ok = deviceTokenManager.register(token)
+                if (ok) {
+                    Timber.i("FcmTokenRefresher: token refreshed and registered with server")
+                }
+            }.onFailure { e ->
                 // Non-fatal — the existing token remains valid; retry next cycle.
                 Timber.w(e, "FcmTokenRefresher: refresh failed, will retry on next foreground")
             }

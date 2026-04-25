@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -69,6 +70,36 @@ enum class NotificationFilter(val label: String) {
     }
 }
 
+/**
+ * CROSS55 §13.1 tabs — four top-level scopes that sit above the type filter
+ * chips. Tab filters are applied first; chip filters narrow within the tab.
+ *
+ *  - ALL        → all notifications (no scope restriction)
+ *  - UNREAD     → `!isRead` — same predicate as NotificationFilter.UNREAD but
+ *                 surfaced as a primary tab so it's one tap away, not buried in chips
+ *  - ASSIGNED   → `userId == currentUserId` — notifications addressed to the
+ *                 logged-in user.  Uses `userId` because that is the field set to
+ *                 `authPreferences.userId` at upsert time; we have no separate
+ *                 `assignedToUserId` column in this schema.
+ *  - MENTIONS   → `type == "mention"` — mirrors the chip but promoted to tab
+ *                 for discoverability.
+ */
+enum class NotificationTab(val label: String) {
+    ALL("All"),
+    UNREAD("Unread"),
+    ASSIGNED("Assigned to me"),
+    MENTIONS("Mentions"),
+    ;
+
+    /** Returns true when [n] belongs in this tab for [currentUserId]. */
+    fun matches(n: NotificationEntity, currentUserId: Long): Boolean = when (this) {
+        ALL -> true
+        UNREAD -> !n.isRead
+        ASSIGNED -> n.userId == currentUserId
+        MENTIONS -> n.type.equals("mention", ignoreCase = true)
+    }
+}
+
 data class NotificationUiState(
     val notifications: List<NotificationEntity> = emptyList(),
     val unreadCount: Int = 0,
@@ -81,17 +112,27 @@ data class NotificationUiState(
     // on every keystroke.
     val searchQuery: String = "",
     val selectedFilter: NotificationFilter = NotificationFilter.ALL,
+    // §13.1 tabs — selected tab index mirrored here so the VM can expose
+    // per-tab unread counts without the Composable doing the counting itself.
+    val selectedTab: NotificationTab = NotificationTab.ALL,
+    // current user ID from AuthPreferences — needed to evaluate the
+    // ASSIGNED tab predicate in-memory without an extra DAO query.
+    val currentUserId: Long = 0L,
 ) {
     /**
      * CROSS55: filtered + searched list derived from `notifications`. Applied
      * in-memory (Room already returns a bounded recent-first list) so typing
      * feels instant and filter chips flip without waiting on a DB round-trip.
+     *
+     * §13.1 tabs — tab filter is applied first (broader scope), then the
+     * type chip filter narrows within it. Search runs last.
      */
     val filteredNotifications: List<NotificationEntity>
         get() {
             val q = searchQuery.trim()
             return notifications
                 .asSequence()
+                .filter { selectedTab.matches(it, currentUserId) }
                 .filter { selectedFilter.matches(it) }
                 .filter { n ->
                     if (q.isEmpty()) true
@@ -100,6 +141,13 @@ data class NotificationUiState(
                 }
                 .toList()
         }
+
+    /**
+     * §13.1 — per-tab unread count for badge rendering. Ignores the active
+     * chip filter so the badge reflects the raw tab scope (not a narrowed sub-view).
+     */
+    fun unreadCountForTab(tab: NotificationTab): Int =
+        notifications.count { tab.matches(it, currentUserId) && !it.isRead }
 }
 
 @HiltViewModel
@@ -110,7 +158,9 @@ class NotificationListViewModel @Inject constructor(
     private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(NotificationUiState())
+    private val _state = MutableStateFlow(
+        NotificationUiState(currentUserId = authPreferences.userId),
+    )
     val state = _state.asStateFlow()
 
     init {
@@ -223,6 +273,16 @@ class NotificationListViewModel @Inject constructor(
         _state.value = _state.value.copy(selectedFilter = filter)
     }
 
+    // §13.1 — tab change handler. Switching tabs resets the type-chip filter to
+    // ALL so the new tab always shows its full scope on first open. This matches
+    // the pattern used by Tickets (status tabs reset search on tab switch).
+    fun onTabChange(tab: NotificationTab) {
+        _state.value = _state.value.copy(
+            selectedTab = tab,
+            selectedFilter = NotificationFilter.ALL,
+        )
+    }
+
     companion object {
         private const val TAG = "NotificationListVM"
     }
@@ -246,6 +306,7 @@ fun NotificationListScreen(
         state.notifications,
         state.searchQuery,
         state.selectedFilter,
+        state.selectedTab,
     ) { state.filteredNotifications }
 
     Scaffold(
@@ -303,6 +364,47 @@ fun NotificationListScreen(
                     },
                 )
                 WaveDivider()
+
+                // §13.1 tabs — All / Unread / Assigned to me / Mentions.
+                // Placed inside the topBar Column so it scrolls with the app bar
+                // on very short screens (follows Material 3 tab-below-toolbar pattern).
+                // Each tab shows a count badge when there are unread items in that scope.
+                ScrollableTabRow(
+                    selectedTabIndex = NotificationTab.entries.indexOf(state.selectedTab),
+                    edgePadding = 16.dp,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
+                    divider = {},
+                ) {
+                    NotificationTab.entries.forEach { tab ->
+                        val tabUnread = state.unreadCountForTab(tab)
+                        Tab(
+                            selected = state.selectedTab == tab,
+                            onClick = { viewModel.onTabChange(tab) },
+                            text = {
+                                if (tabUnread > 0) {
+                                    BadgedBox(
+                                        badge = {
+                                            Badge(
+                                                containerColor = MaterialTheme.colorScheme.primary,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                            ) {
+                                                Text(
+                                                    tabUnread.toString(),
+                                                    fontSize = 10.sp,
+                                                )
+                                            }
+                                        },
+                                    ) {
+                                        Text(tab.label)
+                                    }
+                                } else {
+                                    Text(tab.label)
+                                }
+                            },
+                        )
+                    }
+                }
             }
         },
     ) { padding ->
