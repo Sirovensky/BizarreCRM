@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { repairPricingApi, catalogApi, inventoryApi } from '@/api/endpoints';
+import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -474,10 +475,9 @@ function GradesSection({ priceId }: { priceId: number }) {
       // I can work around it. Actually, I set up the POST /prices/:id/grades for adding.
       // Let me add an inline fetch using the api client directly.
 
-      const res = await repairPricingApi.getPrices();
-      // This doesn't return grades. We need to call a different way.
-      // Let me just use the raw api to fetch grades for this price.
-      const { api } = await import('@/api/client');
+      // WEB-FF-010: was 3 serial awaits — `getPrices()` (result discarded),
+      // dynamic `import('@/api/client')` per render, then the grades GET.
+      // Now a single GET; the api client is imported statically at module top.
       const gradesRes = await api.get(`/repair-pricing/prices/${priceId}/grades`);
       return gradesRes.data.data as RepairGrade[];
     },

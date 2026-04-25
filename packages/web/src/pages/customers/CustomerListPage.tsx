@@ -837,11 +837,19 @@ export function CustomerListPage() {
                     {Object.keys(importPreview[0]).slice(0, 6).map(h => <th key={h} className="px-2 py-1.5 text-left font-medium text-surface-500">{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {importPreview.slice(0, 10).map((row, i) => (
-                      <tr key={i} className="border-t border-surface-100 dark:border-surface-700/50">
-                        {Object.values(row).slice(0, 6).map((v, j) => <td key={j} className="px-2 py-1 text-surface-700 dark:text-surface-300 truncate max-w-[120px]">{String(v)}</td>)}
-                      </tr>
-                    ))}
+                    {importPreview.slice(0, 10).map((row, i) => {
+                      // WEB-FF-014: stable composite key from row content so
+                      // re-parses (after edit-then-re-paste) don't shift state
+                      // / focus / animations onto the wrong row. Falls back to
+                      // index suffix if every value is empty.
+                      const vals = Object.values(row).slice(0, 6).map(v => String(v ?? ''));
+                      const rowKey = vals.join('|') + `#${i}`;
+                      return (
+                        <tr key={rowKey} className="border-t border-surface-100 dark:border-surface-700/50">
+                          {vals.map((v, j) => <td key={`${rowKey}:${j}`} className="px-2 py-1 text-surface-700 dark:text-surface-300 truncate max-w-[120px]">{v}</td>)}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {importPreview.length > 10 && <p className="text-xs text-surface-400 p-2">...and {importPreview.length - 10} more rows</p>}

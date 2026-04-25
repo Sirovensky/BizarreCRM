@@ -42,7 +42,7 @@ export function TrustBadges(): React.ReactElement | null {
   return (
     <section
       aria-label="Shop information and trust badges"
-      className="rounded-lg bg-gradient-to-br from-gray-50 to-primary-50 dark:from-gray-800 dark:to-primary-900/30 border border-gray-200 dark:border-gray-700 p-4 space-y-3"
+      className="rounded-lg bg-gradient-to-br from-surface-50 to-primary-50 dark:from-surface-800 dark:to-primary-900/30 border border-surface-200 dark:border-surface-700 p-4 space-y-3"
     >
       {showSla && slaMessage ? (
         <div className="text-xs font-medium text-primary-800 dark:text-primary-200 flex items-center gap-2">
@@ -62,7 +62,7 @@ export function TrustBadges(): React.ReactElement | null {
         </span>
       </div>
 
-      <dl className="text-xs text-gray-700 dark:text-gray-300 space-y-1">
+      <dl className="text-xs text-surface-700 dark:text-surface-300 space-y-1">
         {address ? (
           <div className="flex gap-2">
             <dt className="font-medium w-14">{t('trust.address')}</dt>

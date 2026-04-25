@@ -39,7 +39,7 @@ export function FaqTooltip({ text, children }: FaqTooltipProps): React.ReactElem
         onKeyDown={(e) => {
           if (e.key === 'Escape') setOpen(false);
         }}
-        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-[10px] font-bold hover:bg-primary-200 dark:hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-surface-200 dark:bg-surface-700 text-surface-600 dark:text-surface-300 text-[10px] font-bold hover:bg-primary-200 dark:hover:bg-primary-900 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
       >
         ?
       </button>
@@ -47,7 +47,7 @@ export function FaqTooltip({ text, children }: FaqTooltipProps): React.ReactElem
         <span
           id={tooltipId}
           role="tooltip"
-          className="absolute top-full left-0 mt-1 z-10 w-56 rounded-md bg-gray-900 dark:bg-gray-700 text-white text-xs p-2 shadow-lg"
+          className="absolute top-full left-0 mt-1 z-10 w-56 rounded-md bg-surface-900 dark:bg-surface-700 text-white text-xs p-2 shadow-lg"
         >
           {text}
         </span>

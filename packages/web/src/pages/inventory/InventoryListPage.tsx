@@ -1387,35 +1387,50 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
         received = res.data.data?.received?.length || 0;
       }
 
-      // 2. Create from catalog matches
-      for (const item of scannedItems.filter(s => s.status === 'catalog' && s.catalogMatch)) {
-        try {
-          await inventoryApi.receiveScanFromCatalog({
+      // 2. Create from catalog matches — WEB-FF-009: run in parallel via
+      // Promise.allSettled so a 50-row session takes 1× RTT instead of 50×.
+      // Errors stay per-item: rejected promises still toast the failing row.
+      const catalogTargets = scannedItems.filter(s => s.status === 'catalog' && s.catalogMatch);
+      if (catalogTargets.length > 0) {
+        const results = await Promise.allSettled(catalogTargets.map(item =>
+          inventoryApi.receiveScanFromCatalog({
             catalog_id: item.catalogMatch!.id,
             quantity: item.quantity,
-          });
-          created++;
-        } catch (err: any) {
-          const msg = err?.response?.data?.message || 'Failed';
-          toast.error(`${item.catalogMatch!.name}: ${msg}`);
-        }
+          }),
+        ));
+        results.forEach((r, idx) => {
+          if (r.status === 'fulfilled') {
+            created++;
+          } else {
+            const item = catalogTargets[idx];
+            const msg = (r.reason as any)?.response?.data?.message || 'Failed';
+            toast.error(`${item.catalogMatch!.name}: ${msg}`);
+          }
+        });
       }
 
-      // 3. Quick-add unknown items
-      for (const item of scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name)) {
-        try {
-          await inventoryApi.receiveScanQuickAdd({
+      // 3. Quick-add unknown items — WEB-FF-009: same parallelization as above.
+      const quickTargets = scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name);
+      if (quickTargets.length > 0) {
+        const results = await Promise.allSettled(quickTargets.map(item =>
+          inventoryApi.receiveScanQuickAdd({
             barcode: item.barcode,
             name: item.quickAdd!.name,
             cost_price: parseFloat(item.quickAdd!.cost_price) || undefined,
             retail_price: parseFloat(item.quickAdd!.retail_price) || undefined,
             category: item.quickAdd!.category || undefined,
             quantity: item.quantity,
-          });
-          created++;
-        } catch (err: any) {
-          toast.error(`${item.quickAdd!.name}: ${err?.response?.data?.message || 'Failed'}`);
-        }
+          }),
+        ));
+        results.forEach((r, idx) => {
+          if (r.status === 'fulfilled') {
+            created++;
+          } else {
+            const item = quickTargets[idx];
+            const msg = (r.reason as any)?.response?.data?.message || 'Failed';
+            toast.error(`${item.quickAdd!.name}: ${msg}`);
+          }
+        });
       }
 
       setSummary({ received, created });

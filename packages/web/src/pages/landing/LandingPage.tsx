@@ -192,9 +192,15 @@ export default function LandingPage() {
 
   return (
     <div className="landing-root">
+      {/* WEB-FG-017 (Fixer-C9 2026-04-25): dropped per-page <style>@import —
+          Bebas Neue + Jost (body fallback) are loaded once globally via
+          index.html <link rel="stylesheet"> (preload + onload-swap). The
+          inline @import duplicated the network round-trip on every landing
+          mount AND render-blocked first paint while it resolved. Also leaks
+          visitor IP to fonts.googleapis.com on every cookieless landing hit
+          (GDPR-relevant). League Spartan + Roboto refs in the rules below
+          fall back to Jost / system stack (project_brand_fonts canonical). */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=League+Spartan:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-
         .landing-root {
           font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           color: #333;

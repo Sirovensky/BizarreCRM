@@ -14,6 +14,7 @@ import { invoiceApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -195,7 +196,14 @@ export function InvoiceListPage() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
     },
-    onError: () => toast.error('Bulk action failed'),
+    // WEB-FB-023 (Fixer-C9 2026-04-25): surface the server's actual reason
+    // (ERR_* code + ref id) instead of a generic "Bulk action failed". When a
+    // colleague voids one of the selected invoices mid-click, the server now
+    // tells the user which guard tripped via formatApiError's structured
+    // suffix. Note: per-invoice partial-success reporting still requires a
+    // server-side response shape change (separate task) — this just stops
+    // swallowing the message we already get back.
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   // @audit-fixed: confirm before destructive bulk actions (was firing on single click)

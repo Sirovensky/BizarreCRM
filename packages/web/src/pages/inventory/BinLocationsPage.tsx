@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, MapPin, Plus, Flame, Loader2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
 // WEB-FB-007 (Fixer-KKK 2026-04-25): themed async confirm — matches the
 // pattern used on Estimates / POS / Customers / Tickets / Invoices.
@@ -98,7 +99,9 @@ export function BinLocationsPage() {
       setNewShelf('');
       setNewBin('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create bin'),
+    // WEB-FL-024 (Fixer-C9 2026-04-25): consolidate onto shared formatApiError
+    // for ERR_* + ref id surfacing (replaces hand-rolled message chain).
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const deleteMut = useMutation({

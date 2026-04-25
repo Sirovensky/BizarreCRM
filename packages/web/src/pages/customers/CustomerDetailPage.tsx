@@ -210,8 +210,24 @@ export function CustomerDetailPage() {
       const contentType = (res.headers?.['content-type'] as string | undefined) || 'text/html';
       const blob = new Blob([res.data as BlobPart], { type: contentType });
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+      // WEB-FB-011: Safari on iPad rewrites `window.open(blobUrl)` to
+      // `about:blank`, so the pass never renders. For .pkpass binaries we
+      // synthesize an <a download> click instead — iOS Safari then hands
+      // the file off to the Wallet system intent. HTML wallet-pass response
+      // (the dev/preview path) keeps the popup behaviour.
+      const isPkpass = contentType.includes('application/vnd.apple.pkpass');
+      if (isPkpass) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wallet-pass-${customerId}.pkpass`;
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+      }
       // WEB-FJ-017: bumped from 60s → 5min so staff have time to print or
       // screenshot the loyalty pass before the blob URL is revoked. After
       // revoke the popup's reload/back keys produce a broken page silently

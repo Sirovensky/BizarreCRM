@@ -59,6 +59,36 @@ if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => wipeAllDrafts());
 }
 
+// WEB-FO-021 (Fixer-C9 2026-04-25): module-level Set tracking every active
+// useDraft instance's pending-write payload. On `beforeunload` we synchronously
+// flush each pending draft to localStorage so a tab close mid-debounce-window
+// does not lose work. Each entry is `{ key, value }`; entries are added when
+// a debounce timer is scheduled and removed when it fires (or on unmount /
+// when value clears). localStorage.setItem is synchronous so this is safe to
+// run inside the `beforeunload` handler — no async work, no quota retry.
+type PendingDraft = { key: string; getValue: () => string };
+const pendingDrafts = new Set<PendingDraft>();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (pendingDrafts.size === 0) return;
+    pendingDrafts.forEach((p) => {
+      try {
+        const v = p.getValue();
+        if (!v) {
+          localStorage.removeItem(p.key);
+          return;
+        }
+        if (v.length > DRAFT_MAX_BYTES) {
+          localStorage.removeItem(p.key);
+          return;
+        }
+        localStorage.setItem(p.key, v);
+      } catch { /* best-effort — quota / storage disabled */ }
+    });
+  });
+}
+
 /**
  * Hook for localStorage-based draft saving with debounce.
  * Returns [value, setValue, clearDraft, hasDraft] where hasDraft indicates
@@ -86,12 +116,23 @@ export function useDraft(
   // update an unmounted component (React logs a warning) and doesn't
   // leak the pending timer reference beyond unmount.
   const mountedRef = useRef(true);
+  // WEB-FO-021: a stable ref holding the latest value so the module-level
+  // `beforeunload` handler can read whatever this instance is currently
+  // editing without depending on React re-renders.
+  const valueRef = useRef('');
+  // WEB-FO-021: pending-flush registration token — same identity for the
+  // lifetime of this hook instance so we can reliably remove on unmount.
+  const pendingRef = useRef<PendingDraft | null>(null);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       clearTimeout(timerRef.current);
       timerRef.current = undefined;
+      if (pendingRef.current) {
+        pendingDrafts.delete(pendingRef.current);
+        pendingRef.current = null;
+      }
     };
   }, []);
 
@@ -116,15 +157,38 @@ export function useDraft(
     // Capture key at schedule time so a key change between schedule and fire
     // doesn't write the old value under the new key (SCAN-601).
     const currentKey = scopedKeyRef.current;
+    valueRef.current = value;
     clearTimeout(timerRef.current);
     if (!value) {
       // If empty, remove the draft
       localStorage.removeItem(currentKey);
       if (mountedRef.current) setHasDraft(false);
+      // WEB-FO-021: nothing to flush on unload anymore for this instance.
+      if (pendingRef.current) {
+        pendingDrafts.delete(pendingRef.current);
+        pendingRef.current = null;
+      }
       return;
+    }
+    // WEB-FO-021: register a pending-flush entry pointing at the LATEST value
+    // ref so a `beforeunload` between schedule and fire still persists the
+    // current text. Re-uses the same registration object on subsequent
+    // keystrokes — Set semantics dedupe.
+    if (!pendingRef.current) {
+      pendingRef.current = { key: currentKey, getValue: () => valueRef.current };
+      pendingDrafts.add(pendingRef.current);
+    } else {
+      // Key may have changed (re-mount under new tenant prefix).
+      pendingRef.current.key = currentKey;
     }
     timerRef.current = setTimeout(() => {
       timerRef.current = undefined;
+      // Timer fired — drop pending registration; localStorage now has the
+      // latest value, so unload no longer needs us.
+      if (pendingRef.current) {
+        pendingDrafts.delete(pendingRef.current);
+        pendingRef.current = null;
+      }
       // Skip persist if the draft exceeds the quota cap. The in-memory value
       // stays live for the active editing session; we just don't survive a
       // reload if the user typed >100 KB of text into one field.

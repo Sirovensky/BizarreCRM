@@ -66,6 +66,25 @@ const TYPES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'custom', label: 'Custom' },
 ];
 
+// WEB-FK-007 / FIXED-by-Fixer-A9 2026-04-25 — TCPA/CAN-SPAM client-side guard.
+// SMS bodies must contain a recognizable opt-out phrase; email bodies must
+// reference the {{unsubscribe_url}} merge token so the dispatcher can render
+// a real link. Mirrors what the server should also enforce (defense in depth)
+// but stops the most common operator mistake — a clean-looking promo with
+// zero opt-out path — at draft time, before a Run-now click sends thousands.
+function templateBodyIsCompliant(body: string, channel: 'sms' | 'email' | 'both'): boolean {
+  if (!body.trim()) return false;
+  const needsSms = channel === 'sms' || channel === 'both';
+  const needsEmail = channel === 'email' || channel === 'both';
+  if (needsSms && !/(reply\s+stop|text\s+stop|stop\s+to\s+(opt\s*out|unsubscribe))/i.test(body)) {
+    return false;
+  }
+  if (needsEmail && !body.includes('{{unsubscribe_url}}')) {
+    return false;
+  }
+  return true;
+}
+
 const STATUS_STYLES: Record<Campaign['status'], string> = {
   draft: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300',
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
@@ -505,9 +524,41 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
             value={form.template_body}
             onChange={(e) => setForm({ ...form, template_body: e.target.value })}
             rows={4}
-            placeholder="Hi {{first_name}}, we miss you! Come visit for 15% off."
+            placeholder={
+              form.channel === 'email'
+                ? 'Hi {{first_name}}, we miss you! Come visit for 15% off.\n\nUnsubscribe: {{unsubscribe_url}}'
+                : 'Hi {{first_name}}, 15% off this week. Reply STOP to opt out.'
+            }
             className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm font-mono"
           />
+          {/* WEB-FK-007 / FIXED-by-Fixer-A9 2026-04-25 — block save when the
+              template lacks the channel-specific opt-out path. Server still
+              validates, but a missing footer should never even *attempt* a
+              send: TCPA fines run $500–$1500/text and CAN-SPAM is $51,744/email,
+              so we fail fast in-modal with explicit helper text rather than
+              hoping operators read the placeholder. */}
+          {(() => {
+            const body = form.template_body;
+            if (!body.trim()) return null;
+            const errors: string[] = [];
+            const needsSms = form.channel === 'sms' || form.channel === 'both';
+            const needsEmail = form.channel === 'email' || form.channel === 'both';
+            if (needsSms && !/(reply\s+stop|text\s+stop|stop\s+to\s+(opt\s*out|unsubscribe))/i.test(body)) {
+              errors.push('SMS templates must include "Reply STOP" (TCPA opt-out instructions).');
+            }
+            if (needsEmail && !body.includes('{{unsubscribe_url}}')) {
+              errors.push('Email templates must include the {{unsubscribe_url}} merge token (CAN-SPAM).');
+            }
+            if (errors.length === 0) return null;
+            return (
+              <ul className="mt-2 text-xs text-amber-700 dark:text-amber-300 list-disc pl-5 space-y-0.5">
+                {errors.map((err) => <li key={err}>{err}</li>)}
+              </ul>
+            );
+          })()}
+          <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+            Required tokens: {form.channel === 'sms' ? '"Reply STOP"' : form.channel === 'email' ? '{{unsubscribe_url}}' : '"Reply STOP" (SMS) and {{unsubscribe_url}} (email)'}.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -519,7 +570,7 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
           </button>
           <button
             onClick={() => create.mutate()}
-            disabled={create.isPending || !form.name.trim() || !form.template_body.trim()}
+            disabled={create.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
             className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
           >
             Create
