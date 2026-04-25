@@ -15,7 +15,7 @@ import DesignSystem
 /// | ⌘ N      | New sale / clear cart |
 /// | ⌘ B      | Open barcode scanner |
 /// | ⌘ P      | Tender / charge |
-/// | ⌘ K      | Hold cart        |
+/// | ⌘ H      | Hold cart        |
 /// | ⌘ ⇧ R    | Recall holds     |
 ///
 /// These match the menu items already wired in `PosView.posToolbar` so
@@ -101,7 +101,7 @@ public struct PosKeyboardShortcutsModifier: ViewModifier {
         }) {
             EmptyView()
         }
-        .keyboardShortcut("k", modifiers: .command)
+        .keyboardShortcut("h", modifiers: .command)
         .hidden()
         .accessibilityLabel("Hold cart")
         .accessibilityIdentifier("pos.keyboard.hold")
@@ -166,7 +166,7 @@ public enum PosKeyboardShortcut: CaseIterable, Sendable {
         case .newSale: return "n"
         case .barcode: return "b"
         case .tender:  return "p"
-        case .hold:    return "k"
+        case .hold:    return "h"
         case .recall:  return "r"
         }
     }
@@ -174,7 +174,7 @@ public enum PosKeyboardShortcut: CaseIterable, Sendable {
     public var modifiers: EventModifiers {
         switch self {
         case .newSale, .barcode, .tender, .hold: return .command
-        case .recall: return [.command, .shift]
+        case .recall:                             return [.command, .shift]
         }
     }
 
