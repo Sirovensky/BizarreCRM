@@ -50,6 +50,7 @@ type: project
 ## NEW 2026-04-16 (from live Android verify)
 
 
+- [x] **POS-SALES-001. Android `pos/sales` endpoint shipped 2026-04-24.** `router.post('/sales', idempotent, ...)` lives in `packages/server/src/routes/pos.routes.ts` (after `/transaction`). Accepts the Android `PosCartLineDto`-shaped cents-based payload natively: customer + walk-in fallback, mixed inventory + misc lines (POS1 server-priced for inventory_item_id, client-priced for misc), tax-class lookup OR client `tax_rate` fallback, optional `linked_ticket_id` for Ready-for-pickup attaches, optional `payments[]` split-tender (max 20, payment_method whitelist), $0.005 underpay tolerance, atomic `adb.transaction` writing `invoices + invoice_line_items + stock_movements + pos_transactions + payments` with guarded stock decrements. Returns `{ invoice_id, order_id, change_cents, approval_code, last_four }`. Android `PosTenderViewModel.finalizeSale` updated to send `payments[]` from the AppliedTender list + `linked_ticket_id` from the coordinator session so split-tender + ready-for-pickup sales link correctly. Server tsc + Android `:app:compileDebugKotlin` clean. Closes the POS finalize 404 path; cart sales now persist end-to-end.
 
 ## DEBUG / SECURITY BYPASSES — must harden or remove before production
 

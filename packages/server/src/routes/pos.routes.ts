@@ -891,6 +891,405 @@ router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
   });
 }));
 
+// ---------------------------------------------------------------------------
+// POST /pos/sales — Android POS cart-finalize endpoint (POS-SALES-001).
+//
+// Why a separate route from /pos/transaction: the Android client speaks a
+// cents-based, lines-array schema (see PosApi.kt + PosCartLineDto) that
+// supports BOTH inventory items AND misc/custom items in the same cart, plus
+// optional split tender via `payments[]`. /pos/transaction declines custom
+// items (line 384 throws "inventory_item_id is required") and accepts dollar
+// amounts. Rather than retrofit /transaction, /sales accepts the Android
+// payload natively and translates internally to the same DB schema.
+//
+// Server-authoritative pricing for inventory lines (POS1) is preserved: any
+// line carrying a non-null `item_id` looks up `inventory_items.retail_price`
+// and ignores the client's unit_price_cents. Only misc lines (item_id == null)
+// honor the client price — those are the freeform "+ Misc item" rows from
+// CartLineBottomSheet that the cashier types in by hand.
+//
+// Atomic: invoice + invoice_line_items + stock decrements + payments queued
+// into a single adb.transaction(). On any failure (insufficient stock,
+// invalid payment method, etc.) the whole sale rolls back. Idempotency-Key
+// header dedupes retries (middleware.idempotent).
+// ---------------------------------------------------------------------------
+router.post('/sales', idempotent, asyncHandler(async (req, res) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const cashierId = req.user!.id;
+  const {
+    customer_id,
+    lines = [],
+    cart_discount_cents = 0,
+    tip_cents = 0,
+    payment_method = 'cash',
+    payment_amount_cents,
+    payments: splitPayments,
+    notes,
+    linked_ticket_id,
+  } = req.body || {};
+
+  if (!Array.isArray(lines) || lines.length === 0) {
+    throw new AppError('No items in cart', 400);
+  }
+  if (lines.length > 500) {
+    throw new AppError('Too many line items (max 500)', 400);
+  }
+
+  const cartDiscount = roundCents((Number(cart_discount_cents) || 0) / 100);
+  if (cartDiscount < 0) throw new AppError('Negative cart discount not allowed', 400);
+  const tipAmount = roundCents((Number(tip_cents) || 0) / 100);
+  if (tipAmount < 0) throw new AppError('Negative tip not allowed', 400);
+
+  // Resolve customer (walk-in fallback for null).
+  let resolvedCustomerId: number;
+  if (customer_id) {
+    const customerRow = await adb.get<{ id: number }>(
+      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
+      customer_id,
+    );
+    if (!customerRow) throw new AppError('Customer not found', 404);
+    resolvedCustomerId = customerRow.id;
+  } else {
+    resolvedCustomerId = await getOrCreateWalkInCustomerId(adb);
+  }
+
+  // Resolve linked ticket (Android sets this when finalizing a Ready-for-pickup
+  // sale; the invoice gets associated with the ticket so it appears in ticket
+  // history + the receipt screen can render "Parts reserved to Ticket #N").
+  let resolvedTicketId: number | null = null;
+  if (linked_ticket_id) {
+    const t = await adb.get<{ id: number }>(
+      'SELECT id FROM tickets WHERE id = ? AND is_deleted = 0',
+      linked_ticket_id,
+    );
+    if (!t) throw new AppError('Linked ticket not found', 404);
+    resolvedTicketId = t.id;
+  }
+
+  // ---- Resolve lines: inventory (server-priced) OR misc (client-priced) ----
+  interface ResolvedLine {
+    inventory_item_id: number | null;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    line_discount: number;
+    tax_class_id: number | null;
+    is_service: boolean;
+    lineNet: number;
+    lineTax: number;
+    lineTotal: number;
+    notes: string | null;
+  }
+  const resolvedLines: ResolvedLine[] = [];
+  let subtotal = 0;
+  let total_tax = 0;
+
+  for (const ln of lines) {
+    const qty = validateIntegerQuantity(ln?.qty ?? 1, 'line qty');
+    if (qty < 1) throw new AppError('line qty must be at least 1', 400);
+
+    const lineDiscountCents = Number(ln?.discount_cents) || 0;
+    if (lineDiscountCents < 0) throw new AppError('Negative line discount not allowed', 400);
+    const lineDiscount = roundCents(lineDiscountCents / 100);
+
+    let lineNote: string | null = null;
+    if (ln?.notes != null) {
+      const raw = String(ln.notes).trim();
+      if (raw.length > 1000) throw new AppError('line note exceeds 1000 characters', 400);
+      if (raw.length > 0) lineNote = raw;
+    }
+
+    const itemId = ln?.item_id != null ? Number(ln.item_id) : NaN;
+    let unitPrice: number;
+    let description: string;
+    let taxClassId: number | null = null;
+    let isService = false;
+    let resolvedItemId: number | null = null;
+
+    if (Number.isFinite(itemId) && itemId > 0) {
+      // Inventory line — POS1: server forces unit_price from retail_price.
+      const inv = await adb.get<{
+        id: number;
+        name: string;
+        retail_price: number;
+        item_type: string;
+        tax_class_id: number | null;
+        tax_inclusive: number;
+      }>(
+        `SELECT id, name, retail_price, item_type, tax_class_id, tax_inclusive
+           FROM inventory_items WHERE id = ? AND is_active = 1`,
+        itemId,
+      );
+      if (!inv) throw new AppError(`Item ${itemId} not found`, 404);
+      unitPrice = validatePrice(inv.retail_price ?? 0, 'retail_price');
+      description = String(ln?.name || inv.name).slice(0, 200);
+      taxClassId = inv.tax_class_id;
+      isService = inv.item_type === 'service';
+      resolvedItemId = inv.id;
+    } else {
+      // Misc / custom / labor line — client-supplied price honored. We still
+      // round to cents and reject negatives.
+      const unitCents = Number(ln?.unit_price_cents);
+      if (!Number.isFinite(unitCents) || unitCents < 0) {
+        throw new AppError('Invalid unit_price_cents on misc line', 400);
+      }
+      unitPrice = roundCents(unitCents / 100);
+      const rawName = (ln?.name != null ? String(ln.name) : 'Item').trim();
+      description = (rawName || 'Item').slice(0, 200);
+      const tcid = Number(ln?.tax_class_id);
+      taxClassId = Number.isFinite(tcid) && tcid > 0 ? tcid : null;
+      // Misc lines never decrement stock; treat as services for the txn loop.
+      isService = true;
+    }
+
+    const gross = roundCents(qty * unitPrice);
+    if (lineDiscount > gross) {
+      throw new AppError(`Line discount exceeds line total for ${description}`, 400);
+    }
+    const lineNet = roundCents(gross - lineDiscount);
+
+    let lineTax = 0;
+    if (taxClassId) {
+      const tc = await adb.get<{ rate: number }>(
+        'SELECT rate FROM tax_classes WHERE id = ?',
+        taxClassId,
+      );
+      const rate = tc ? Number(tc.rate) / 100 : 0;
+      lineTax = roundCents(lineNet * rate);
+    } else {
+      // No tax class on the inventory item OR misc line: honor client tax_rate
+      // (already a fraction 0..1 from PosCartLineDto.tax_rate). Server-side
+      // rounding still applies.
+      const cliRate = Number(ln?.tax_rate);
+      if (Number.isFinite(cliRate) && cliRate > 0 && cliRate < 1) {
+        lineTax = roundCents(lineNet * cliRate);
+      }
+    }
+    const lineTotal = roundCents(lineNet + lineTax);
+
+    subtotal = roundCents(subtotal + lineNet);
+    total_tax = roundCents(total_tax + lineTax);
+
+    resolvedLines.push({
+      inventory_item_id: resolvedItemId,
+      description,
+      quantity: qty,
+      unit_price: unitPrice,
+      line_discount: lineDiscount,
+      tax_class_id: taxClassId,
+      is_service: isService,
+      lineNet,
+      lineTax,
+      lineTotal,
+      notes: lineNote,
+    });
+  }
+
+  if (cartDiscount > roundCents(subtotal + total_tax)) {
+    throw new AppError('Cart discount cannot exceed subtotal + tax', 400);
+  }
+
+  const total = roundCents(subtotal + total_tax - cartDiscount + tipAmount);
+  if (total < 0) throw new AppError('Total cannot be negative', 400);
+
+  // ---- Normalize payments ------------------------------------------------
+  interface NormalizedPayment {
+    method: string;
+    amount: number;
+    processor: string | null;
+    reference: string | null;
+    transaction_id: string | null;
+  }
+  const normalizedPayments: NormalizedPayment[] = [];
+
+  if (Array.isArray(splitPayments) && splitPayments.length > 0) {
+    if (splitPayments.length > 20) throw new AppError('Too many split payments (max 20)', 400);
+    for (const sp of splitPayments) {
+      if (!sp?.method || typeof sp.method !== 'string') {
+        throw new AppError('Each payment must have a method', 400);
+      }
+      const amtCents = Number(sp?.amount_cents);
+      if (!Number.isFinite(amtCents) || amtCents <= 0) {
+        throw new AppError('payment amount_cents must be positive', 400);
+      }
+      const validSplitMethod = await adb.get<{ id: number }>(
+        'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
+        sp.method,
+      );
+      if (!validSplitMethod) throw new AppError(`Invalid payment method: ${sp.method}`, 400);
+      normalizedPayments.push({
+        method: sp.method,
+        amount: roundCents(amtCents / 100),
+        processor: validateOptionalRefString(sp.processor, 'processor', 64),
+        reference: validateOptionalRefString(sp.reference, 'reference', 128),
+        transaction_id: validateOptionalRefString(sp.transaction_id, 'transaction_id', 128),
+      });
+    }
+  } else {
+    const validMethod = await adb.get<{ id: number }>(
+      'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
+      payment_method,
+    );
+    if (!validMethod) throw new AppError(`Invalid payment method: ${payment_method}`, 400);
+    const amtCents = Number(payment_amount_cents);
+    if (!Number.isFinite(amtCents) || amtCents < 0) {
+      throw new AppError('payment_amount_cents required', 400);
+    }
+    normalizedPayments.push({
+      method: payment_method,
+      amount: roundCents(amtCents / 100),
+      processor: null,
+      reference: null,
+      transaction_id: null,
+    });
+  }
+
+  const amountPaid = normalizedPayments.reduce((s, p) => roundCents(s + p.amount), 0);
+  // Allow $0.01 rounding tolerance — paid >= total - 0.01.
+  if (amountPaid + 0.005 < total) {
+    throw new AppError(`Underpaid: paid ${amountPaid.toFixed(2)}, total ${total.toFixed(2)}`, 400);
+  }
+  const change = roundCents(amountPaid - total);
+  const amountDue = roundCents(Math.max(0, total - amountPaid));
+
+  // ---- Allocate invoice order id (atomic counter, MAX fallback) ----------
+  let invoiceOrderId: string;
+  try {
+    const seq = allocateCounter(db, 'invoice_order_id');
+    invoiceOrderId = formatInvoiceOrderId(seq);
+  } catch {
+    const row = await adb.get<{ next_num: number }>(
+      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 3) AS INTEGER)), 0) + 1 as next_num FROM invoices",
+    );
+    invoiceOrderId = generateOrderId('I', row!.next_num);
+  }
+
+  // ---- Build atomic transaction queue ------------------------------------
+  const txQueries: TxQuery[] = [];
+
+  txQueries.push({
+    sql: `INSERT INTO invoices
+            (order_id, customer_id, ticket_id, subtotal, discount, total_tax, total,
+             amount_paid, amount_due, status, notes, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
+      invoiceOrderId,
+      resolvedCustomerId,
+      resolvedTicketId,
+      subtotal,
+      cartDiscount,
+      total_tax,
+      total,
+      amountPaid,
+      amountDue,
+      amountDue > 0 ? 'partial' : 'paid',
+      typeof notes === 'string' ? notes.slice(0, 5000) : null,
+      cashierId,
+    ],
+  });
+
+  for (const line of resolvedLines) {
+    txQueries.push({
+      sql: `INSERT INTO invoice_line_items
+              (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total, notes)
+            VALUES (
+              (SELECT id FROM invoices WHERE order_id = ?),
+              ?, ?, ?, ?, ?, ?, ?
+            )`,
+      params: [
+        invoiceOrderId,
+        line.inventory_item_id,
+        line.description,
+        line.quantity,
+        line.unit_price,
+        line.lineTax,
+        line.lineTotal,
+        line.notes,
+      ],
+    });
+
+    if (line.inventory_item_id !== null && !line.is_service) {
+      // Guarded atomic decrement (S1 / POS2 pattern).
+      txQueries.push({
+        sql: `UPDATE inventory_items
+                 SET in_stock = in_stock - ?,
+                     updated_at = datetime('now')
+               WHERE id = ? AND in_stock >= ?`,
+        params: [line.quantity, line.inventory_item_id, line.quantity],
+        expectChanges: true,
+        expectChangesError: `Insufficient stock for ${line.description}`,
+      });
+      txQueries.push({
+        sql: `INSERT INTO stock_movements
+                (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
+              VALUES (?, 'sale', ?, 'invoice', (SELECT id FROM invoices WHERE order_id = ?), 'POS Sale', ?)`,
+        params: [line.inventory_item_id, -line.quantity, invoiceOrderId, cashierId],
+      });
+    }
+  }
+
+  // pos_transactions summary (multi-method label = methods joined with '+').
+  const methodLabel = normalizedPayments.map(p => p.method).join('+');
+  txQueries.push({
+    sql: `INSERT INTO pos_transactions
+            (invoice_id, customer_id, total, payment_method, user_id, tip)
+          VALUES (
+            (SELECT id FROM invoices WHERE order_id = ?),
+            ?, ?, ?, ?, ?
+          )`,
+    params: [invoiceOrderId, resolvedCustomerId, total, methodLabel, cashierId, tipAmount],
+  });
+
+  for (const p of normalizedPayments) {
+    txQueries.push({
+      sql: `INSERT INTO payments
+              (invoice_id, amount, method, transaction_id, processor, reference, user_id)
+            VALUES (
+              (SELECT id FROM invoices WHERE order_id = ?),
+              ?, ?, ?, ?, ?, ?
+            )`,
+      params: [
+        invoiceOrderId,
+        p.amount,
+        p.method,
+        p.transaction_id,
+        p.processor,
+        p.reference,
+        cashierId,
+      ],
+    });
+  }
+
+  await adb.transaction(txQueries);
+
+  const inv = await adb.get<{ id: number }>(
+    'SELECT id FROM invoices WHERE order_id = ?',
+    invoiceOrderId,
+  );
+
+  audit(db, 'pos_sale_completed', cashierId, req.ip || 'unknown', {
+    invoice_id: inv?.id,
+    order_id: invoiceOrderId,
+    customer_id: resolvedCustomerId,
+    ticket_id: resolvedTicketId,
+    total,
+    amount_paid: amountPaid,
+    method: methodLabel,
+  });
+
+  res.status(201).json({
+    success: true,
+    data: {
+      invoice_id: inv?.id,
+      order_id: invoiceOrderId,
+      change_cents: Math.round(change * 100),
+      approval_code: null,
+      last_four: null,
+    },
+  });
+}));
+
 // GET /pos/transactions - recent POS transactions
 router.get('/transactions', asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
@@ -2326,422 +2725,6 @@ router.post('/workstations/:id/set-default', asyncHandler(async (req, res) => {
 
   audit(req.db, 'workstation_set_default', req.user?.id ?? null, req.ip || '', { id });
   res.json({ success: true, data: { id, is_default: true } });
-}));
-
-// ---------------------------------------------------------------------------
-// POST /pos/sales — POS-SALES-001
-// ---------------------------------------------------------------------------
-// Accepts the Android PosApi.completeSale payload:
-//   { lines: PosCartLineDto[], cart_discount_cents, payment_amount_cents,
-//     payment_method, payments?: [{method, amount_cents}] }
-//
-// Supports:
-//   - inventory lines (inventory_id present) — server-authoritative price
-//   - misc/custom lines (no inventory_id) — client price trusted
-//   - multi-tender payments[] array (preferred)
-//   - single-tender payment_amount_cents / payment_method (legacy fallback)
-//
-// All cent values from Android are divided by 100 (roundCents) for storage
-// in REAL columns.  The SEC-H34 money refactor has NOT landed yet, so we
-// store dollars like every other handler.
-// ---------------------------------------------------------------------------
-
-interface SalesLineInput {
-  inventory_id?: number | null;
-  name?: string;
-  qty?: number;
-  quantity?: number;
-  unit_price_cents?: number;
-  line_discount_cents?: number;
-}
-
-interface SalesTenderInput {
-  method: string;
-  amount_cents: number;
-}
-
-interface ResolvedSaleLine {
-  inventory_item_id: number | null;
-  description: string;
-  quantity: number;
-  unit_price: number;
-  line_discount: number;
-  lineNet: number;
-  lineTax: number;
-  lineTotal: number;
-  is_service: boolean;
-}
-
-/**
- * Resolve a single POS-SALES line.  Returns dollars for storage.
- * For inventory lines the server forces retail_price (POS1 rule).
- * For misc lines the client-supplied unit_price_cents is trusted.
- */
-async function resolveSaleLine(
-  adb: AsyncDb,
-  raw: SalesLineInput,
-  idx: number,
-): Promise<ResolvedSaleLine> {
-  const qty = validateIntegerQuantity(raw?.qty ?? raw?.quantity ?? 1, `line[${idx}].qty`);
-  if (qty < 1) throw new AppError(`line[${idx}].qty must be >= 1`, 400);
-
-  const hasInvId = raw?.inventory_id != null && raw.inventory_id !== 0;
-
-  if (hasInvId) {
-    const invId = Number(raw.inventory_id);
-    if (!Number.isFinite(invId) || invId <= 0) {
-      throw new AppError(`line[${idx}].inventory_id must be a positive integer`, 400);
-    }
-    const inv = await adb.get<{
-      id: number;
-      name: string;
-      retail_price: number;
-      item_type: string;
-      in_stock: number;
-      tax_class_id: number | null;
-      tax_inclusive: number;
-    }>(
-      `SELECT id, name, retail_price, item_type, in_stock, tax_class_id, tax_inclusive
-         FROM inventory_items WHERE id = ? AND is_active = 1`,
-      invId,
-    );
-    if (!inv) throw new AppError(`line[${idx}]: inventory item ${invId} not found`, 404);
-
-    const isService = inv.item_type === 'service';
-    if (!isService && inv.in_stock < qty) {
-      throw new AppError(`line[${idx}]: insufficient stock for "${inv.name}"`, 422);
-    }
-
-    const unitPrice = validatePrice(inv.retail_price ?? 0, `line[${idx}].retail_price`);
-    const lineDiscountCents = Number(raw?.line_discount_cents ?? 0);
-    const lineDiscount = roundCents(lineDiscountCents / 100);
-
-    const gross = roundCents(qty * unitPrice);
-    if (lineDiscount > gross) {
-      throw new AppError(`line[${idx}]: line_discount_cents exceeds line total`, 400);
-    }
-    const lineNet = roundCents(gross - lineDiscount);
-
-    let lineTax = 0;
-    if (inv.tax_class_id && !inv.tax_inclusive) {
-      const taxClass = await adb.get<{ rate: number }>(
-        'SELECT rate FROM tax_classes WHERE id = ?',
-        inv.tax_class_id,
-      );
-      const rate = taxClass ? Number(taxClass.rate) / 100 : 0;
-      lineTax = roundCents(lineNet * rate);
-    }
-
-    return {
-      inventory_item_id: invId,
-      description: inv.name,
-      quantity: qty,
-      unit_price: unitPrice,
-      line_discount: lineDiscount,
-      lineNet,
-      lineTax,
-      lineTotal: roundCents(lineNet + lineTax),
-      is_service: isService,
-    };
-  }
-
-  // Misc / custom line — no inventory_id
-  const rawName = typeof raw?.name === 'string' ? raw.name.trim() : '';
-  if (!rawName) throw new AppError(`line[${idx}]: name is required when inventory_id is absent`, 400);
-
-  const unitPriceCents = Number(raw?.unit_price_cents ?? 0);
-  if (!Number.isFinite(unitPriceCents) || unitPriceCents < 0) {
-    throw new AppError(`line[${idx}].unit_price_cents must be >= 0`, 400);
-  }
-  const unitPrice = validatePrice(unitPriceCents / 100, `line[${idx}].unit_price`);
-  const lineDiscountCents = Number(raw?.line_discount_cents ?? 0);
-  const lineDiscount = roundCents(lineDiscountCents / 100);
-
-  const gross = roundCents(qty * unitPrice);
-  if (lineDiscount > gross) {
-    throw new AppError(`line[${idx}]: line_discount_cents exceeds line total`, 400);
-  }
-  const lineNet = roundCents(gross - lineDiscount);
-
-  return {
-    inventory_item_id: null,
-    description: rawName,
-    quantity: qty,
-    unit_price: unitPrice,
-    line_discount: lineDiscount,
-    lineNet,
-    lineTax: 0,
-    lineTotal: lineNet,
-    is_service: true, // no stock to decrement
-  };
-}
-
-router.post('/sales', idempotent, asyncHandler(async (req, res) => {
-  const adb = req.asyncDb;
-  const db = req.db;
-  const cashierId = req.user!.id;
-
-  const {
-    lines,
-    cart_discount_cents: rawCartDiscountCents = 0,
-    payment_amount_cents: rawPaymentAmountCents,
-    payment_method: singleMethod = 'cash',
-    payments: rawTenders,
-    customer_id,
-  } = req.body as {
-    lines?: SalesLineInput[];
-    cart_discount_cents?: number;
-    payment_amount_cents?: number;
-    payment_method?: string;
-    payments?: SalesTenderInput[];
-    customer_id?: number | null;
-  };
-
-  if (!Array.isArray(lines) || lines.length === 0) {
-    throw new AppError('lines must be a non-empty array', 400);
-  }
-  if (lines.length > 500) throw new AppError('Too many line items (max 500)', 400);
-
-  const cartDiscountCents = Number(rawCartDiscountCents ?? 0);
-  if (!Number.isFinite(cartDiscountCents) || cartDiscountCents < 0) {
-    throw new AppError('cart_discount_cents must be >= 0', 400);
-  }
-  const cartDiscount = roundCents(cartDiscountCents / 100);
-
-  // POS7: walk-in sentinel
-  let resolvedCustomerId: number;
-  if (customer_id) {
-    const customerRow = await adb.get<{ id: number }>(
-      'SELECT id FROM customers WHERE id = ? AND is_deleted = 0',
-      customer_id,
-    );
-    if (!customerRow) throw new AppError('Customer not found', 404);
-    resolvedCustomerId = customerRow.id;
-  } else {
-    resolvedCustomerId = await getOrCreateWalkInCustomerId(adb);
-  }
-
-  // Resolve all lines (async reads + validation)
-  const resolvedLines: ResolvedSaleLine[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    resolvedLines.push(await resolveSaleLine(adb, lines[i], i));
-  }
-
-  let subtotal = 0;
-  let totalTax = 0;
-  for (const line of resolvedLines) {
-    subtotal = roundCents(subtotal + line.lineNet);
-    totalTax = roundCents(totalTax + line.lineTax);
-  }
-
-  if (cartDiscount > roundCents(subtotal + totalTax)) {
-    throw new AppError('cart_discount_cents cannot exceed subtotal + tax', 400);
-  }
-
-  const total = roundCents(subtotal + totalTax - cartDiscount);
-  if (total < 0) throw new AppError('Total cannot be negative after discount', 400);
-
-  // Normalize tenders: multi-tender array OR legacy single-tender
-  interface NormalizedTender { method: string; amount: number; }
-  const normalizedTenders: NormalizedTender[] = [];
-
-  if (Array.isArray(rawTenders) && rawTenders.length > 0) {
-    if (rawTenders.length > 20) throw new AppError('Too many tenders (max 20)', 400);
-    for (const t of rawTenders) {
-      if (!t?.method || typeof t.method !== 'string') {
-        throw new AppError('Each tender must have a method', 400);
-      }
-      const amtCents = Number(t.amount_cents ?? 0);
-      if (!Number.isFinite(amtCents) || amtCents <= 0) {
-        throw new AppError(`tender.amount_cents must be > 0 for method ${t.method}`, 400);
-      }
-      const validMethod = await adb.get<{ id: number }>(
-        'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
-        t.method,
-      );
-      if (!validMethod) throw new AppError(`Invalid payment method: ${t.method}`, 400);
-      normalizedTenders.push({ method: t.method, amount: roundCents(amtCents / 100) });
-    }
-  } else {
-    // Legacy single-tender fallback
-    const validMethod = await adb.get<{ id: number }>(
-      'SELECT id FROM payment_methods WHERE name = ? AND is_active = 1',
-      singleMethod,
-    );
-    if (!validMethod) throw new AppError(`Invalid payment method: ${singleMethod}`, 400);
-    const amtCents = rawPaymentAmountCents != null ? Number(rawPaymentAmountCents) : null;
-    const amount = amtCents != null
-      ? roundCents(validatePrice(amtCents / 100, 'payment_amount_cents'))
-      : total;
-    normalizedTenders.push({ method: singleMethod, amount });
-  }
-
-  const paidAmount = roundCents(normalizedTenders.reduce((s, t) => s + t.amount, 0));
-  if (paidAmount < total) {
-    throw new AppError(
-      `Insufficient payment: paid ${paidAmount.toFixed(2)}, total ${total.toFixed(2)}`,
-      400,
-    );
-  }
-  const changeDue = roundCents(Math.max(0, paidAmount - total));
-
-  // Allocate order_id atomically
-  let orderId: string;
-  try {
-    const nextSeq = allocateCounter(db, 'invoice_order_id');
-    orderId = formatInvoiceOrderId(nextSeq);
-  } catch {
-    const seqRow = await adb.get<{ next_num: number }>(
-      "SELECT COALESCE(MAX(CAST(SUBSTR(order_id, 5) AS INTEGER)), 0) + 1 AS next_num FROM invoices",
-    );
-    orderId = generateOrderId('INV', seqRow!.next_num);
-  }
-
-  // Build atomic write plan
-  const txQueries: TxQuery[] = [];
-  const amountDue = roundCents(Math.max(0, total - paidAmount));
-  const invoiceStatus = paidAmount >= total ? 'paid' : 'partial';
-
-  // 1. Invoice row
-  txQueries.push({
-    sql: `INSERT INTO invoices
-            (order_id, customer_id, subtotal, discount, total_tax, total,
-             amount_paid, amount_due, status, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    params: [
-      orderId,
-      resolvedCustomerId,
-      subtotal,
-      cartDiscount,
-      totalTax,
-      total,
-      Math.min(paidAmount, total),
-      amountDue,
-      invoiceStatus,
-      cashierId,
-    ],
-  });
-  const INVOICE_RESULT_INDEX = 0;
-
-  // 2. Line items + stock decrements
-  for (const line of resolvedLines) {
-    txQueries.push({
-      sql: `INSERT INTO invoice_line_items
-              (invoice_id, inventory_item_id, description, quantity, unit_price, tax_amount, total)
-            VALUES (
-              (SELECT id FROM invoices WHERE order_id = ?),
-              ?, ?, ?, ?, ?, ?
-            )`,
-      params: [
-        orderId,
-        line.inventory_item_id,
-        line.description,
-        line.quantity,
-        line.unit_price,
-        line.lineTax,
-        line.lineTotal,
-      ],
-    });
-
-    if (!line.is_service && line.inventory_item_id !== null) {
-      txQueries.push({
-        sql: `UPDATE inventory_items
-                 SET in_stock = in_stock - ?,
-                     updated_at = datetime('now')
-               WHERE id = ? AND in_stock >= ?`,
-        params: [line.quantity, line.inventory_item_id, line.quantity],
-        expectChanges: true,
-        expectChangesError: `Insufficient stock for "${line.description}"`,
-      });
-      txQueries.push({
-        sql: `INSERT INTO stock_movements
-                (inventory_item_id, type, quantity, reference_type, reference_id, notes, user_id)
-              VALUES (?, 'sale', ?, 'invoice',
-                      (SELECT id FROM invoices WHERE order_id = ?),
-                      'POS Sale', ?)`,
-        params: [line.inventory_item_id, -line.quantity, orderId, cashierId],
-      });
-    }
-  }
-
-  // 3. pos_transactions summary row
-  const methodLabel = normalizedTenders.map(t => t.method).join('+');
-  txQueries.push({
-    sql: `INSERT INTO pos_transactions
-            (invoice_id, customer_id, total, payment_method, user_id)
-          VALUES (
-            (SELECT id FROM invoices WHERE order_id = ?),
-            ?, ?, ?, ?
-          )`,
-    params: [orderId, resolvedCustomerId, total, methodLabel, cashierId],
-  });
-
-  // 4. Payment rows — one per tender
-  for (const t of normalizedTenders) {
-    txQueries.push({
-      sql: `INSERT INTO payments
-              (invoice_id, amount, method, user_id)
-            VALUES (
-              (SELECT id FROM invoices WHERE order_id = ?),
-              ?, ?, ?
-            )`,
-      params: [orderId, t.amount, t.method, cashierId],
-    });
-  }
-
-  // Execute atomically
-  let txResults;
-  try {
-    txResults = await adb.transaction(txQueries);
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (
-      (err as { code?: string } | undefined)?.code === 'E_EXPECT_CHANGES' ||
-      /Guarded update failed/.test(message) ||
-      /^Insufficient stock/.test(message)
-    ) {
-      throw new AppError(message, 422);
-    }
-    throw err;
-  }
-
-  const invoiceId = txResults[INVOICE_RESULT_INDEX].lastInsertRowid;
-
-  // Best-effort: loyalty points accrual (non-blocking)
-  try {
-    await accruePaymentPoints({
-      adb,
-      customerId: resolvedCustomerId,
-      invoiceId: Number(invoiceId),
-      paymentAmount: total,
-    });
-  } catch (err: unknown) {
-    logger.error('pos_sales_loyalty_accrual_failed', {
-      customer_id: resolvedCustomerId,
-      invoice_id: invoiceId,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  }
-
-  // Best-effort: broadcast WebSocket event
-  try {
-    broadcast(WS_EVENTS.INVOICE_CREATED, { invoice_id: invoiceId, order_id: orderId });
-  } catch (_) {
-    // non-fatal
-  }
-
-  logger.info('pos_sale_completed', { order_id: orderId, invoice_id: invoiceId, total, cashier_id: cashierId });
-
-  res.status(201).json({
-    success: true,
-    data: {
-      invoice_id: Number(invoiceId),
-      order_id: orderId,
-      invoice_total: total,
-      change_due: changeDue,
-      payments: normalizedTenders.map(t => ({ method: t.method, amount: t.amount })),
-    },
-  });
 }));
 
 export default router;
