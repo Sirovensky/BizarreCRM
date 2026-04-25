@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { X, Printer, TrendingUp, TrendingDown, Minus, AlertTriangle } from 'lucide-react';
 import { api } from '@/api/client';
-import { formatCents } from '@/utils/format';
+import { formatCents, formatDateTime } from '@/utils/format';
 
 /**
  * Z-report modal (audit §43.4, §43.8).
@@ -110,8 +110,8 @@ function ZReportBody({ report }: ZReportBodyProps) {
   return (
     <>
       <div className="space-y-1 text-xs text-surface-500 dark:text-surface-400">
-        <div>Opened: {new Date(report.opened_at).toLocaleString()}</div>
-        <div>Closed: {new Date(report.closed_at).toLocaleString()}</div>
+        <div>Opened: {formatDateTime(report.opened_at)}</div>
+        <div>Closed: {formatDateTime(report.closed_at)}</div>
       </div>
 
       <div className="space-y-2 rounded-lg border border-surface-200 p-3 dark:border-surface-700">

@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { automationsApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 // -- Types ------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
       onClick={() => onChange(!checked)}
       disabled={disabled}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1',
         checked ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
         disabled && 'opacity-50 cursor-not-allowed'
       )}
@@ -430,7 +431,7 @@ function AutomationModal({
               onChange={(e) => setName(e.target.value)}
               maxLength={255}
               placeholder="e.g. Notify customer on status change"
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
           </div>
 
@@ -440,7 +441,7 @@ function AutomationModal({
             <select
               value={triggerType}
               onChange={(e) => { setTriggerType(e.target.value); setTriggerConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             >
               {TRIGGER_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -460,7 +461,7 @@ function AutomationModal({
             <select
               value={actionType}
               onChange={(e) => { setActionType(e.target.value); setActionConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             >
               {ACTION_TYPES.map((a) => (
                 <option key={a.value} value={a.value}>{a.label}</option>
@@ -806,9 +807,9 @@ export function AutomationsTab() {
                     </div>
                     <div className="flex items-center justify-between pt-1">
                       <div className="text-surface-400">
-                        Created: {new Date(rule.created_at.replace(' ', 'T')).toLocaleString()}
+                        Created: {formatDateTime(rule.created_at.replace(' ', 'T'))}
                         {rule.updated_at !== rule.created_at && (
-                          <> | Updated: {new Date(rule.updated_at.replace(' ', 'T')).toLocaleString()}</>
+                          <> | Updated: {formatDateTime(rule.updated_at.replace(' ', 'T'))}</>
                         )}
                       </div>
                       <button

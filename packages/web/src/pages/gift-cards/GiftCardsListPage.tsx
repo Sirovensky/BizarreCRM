@@ -123,9 +123,20 @@ function IssueModal({ onClose }: IssueModalProps) {
 
   if (issuedCode) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        onClick={onClose}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        role="presentation"
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift-card-issued-title"
+          className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 id="gift-card-issued-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
           <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
             Save this code now — it will not be shown again.
           </p>
@@ -144,10 +155,21 @@ function IssueModal({ onClose }: IssueModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="issue-gift-card-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Issue gift card</h2>
+          <h2 id="issue-gift-card-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Issue gift card</h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
             <X className="h-5 w-5" />
           </button>

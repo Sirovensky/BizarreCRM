@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
 import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 interface AuditLog {
   id: number;
@@ -55,8 +56,8 @@ export function AuditLogsTab() {
 
   function formatDate(iso: string): string {
     try {
-      const d = new Date(iso.replace(' ', 'T'));
-      return d.toLocaleString();
+      // Server emits "YYYY-MM-DD HH:MM:SS"; normalise to ISO for the helper.
+      return formatDateTime(iso.replace(' ', 'T'));
     } catch {
       return iso;
     }

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 interface StocktakeSession {
   id: number;
@@ -261,7 +262,7 @@ export function StocktakePage() {
               </div>
               {s.location && <div className="text-xs text-surface-500">{s.location}</div>}
               <div className="text-xs text-surface-400 mt-1">
-                {new Date(s.opened_at).toLocaleString()}
+                {formatDateTime(s.opened_at)}
               </div>
             </button>
           ))}

@@ -29,6 +29,11 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
+// WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
+// component for the Settings dropdown entry so at least one ad-hoc role
+// literal is funneled through the shared gate. Other ad-hoc sites still
+// pending a follow-up sweep.
+import { PermissionBoundary } from '@/components/shared/PermissionBoundary';
 
 // Module-level constant — moved up from below the component definitions so
 // the file reads top-down without an inline surprise between two functions.
@@ -433,16 +438,17 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   onClick={() => { setUserMenuOpen(false); navigate('/settings/users'); }}
                 />
                 {/* SCAN-1145: managers have settings.edit server-side — let
-                    them see the Settings link too. Kept as explicit role
-                    check rather than a perm derivation to keep the dropdown
-                    pure (no extra auth-store reads). */}
-                {(user?.role === 'admin' || user?.role === 'manager') && (
+                    them see the Settings link too. WEB-FAE-001: routed
+                    through the canonical `PermissionBoundary` so the role
+                    list is shared with the rest of the app and a future
+                    `useHasRole` migration only has to touch one component. */}
+                <PermissionBoundary roles={['admin', 'manager']}>
                   <DropdownItem
                     icon={<Settings className="h-4 w-4" />}
                     label="Settings"
                     onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
                   />
-                )}
+                </PermissionBoundary>
                 <DropdownItem
                   icon={<ArrowLeftRight className="h-4 w-4" />}
                   label="Switch User"
@@ -577,6 +583,15 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  // Esc closes the dialog. The page-wide Esc handler elsewhere in this file
+  // targets dropdown menus only; without this listener the modal would only
+  // close via the X / Cancel buttons.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pin.trim() || loading) return;
@@ -597,12 +612,22 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="switch-user-title"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4 text-surface-500" />
-            <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
+            <h2 id="switch-user-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
           </div>
           <button aria-label="Close" onClick={onCancel} className="inline-flex items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-1">
             <X className="h-5 w-5" />

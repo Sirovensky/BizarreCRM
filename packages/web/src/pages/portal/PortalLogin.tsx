@@ -134,7 +134,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
 
           <div className="p-5">
             {error && (
-              <div className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+              <div id="portal-login-error" role="alert" className="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 {error}
               </div>
             )}
@@ -142,30 +142,34 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
             {tab === 'track' ? (
               <form onSubmit={handleQuickTrack} className="space-y-4">
                 <div>
-                  <label htmlFor="orderId" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-order-id" className="block text-sm font-medium text-gray-700 mb-1">
                     Ticket ID
                   </label>
                   <input
-                    id="orderId"
+                    id="portal-order-id"
                     type="text"
                     placeholder="e.g. T-1042 or 1042"
                     value={orderId}
                     onChange={e => setOrderId(e.target.value)}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
                 </div>
                 <div>
-                  <label htmlFor="phoneLast4" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-phone-last4" className="block text-sm font-medium text-gray-700 mb-1">
                     Last 4 digits of your phone
                   </label>
                   <input
-                    id="phoneLast4"
+                    id="portal-phone-last4"
                     type="tel"
                     placeholder="e.g. 1234"
                     maxLength={4}
                     value={phoneLast4}
                     onChange={e => setPhoneLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />
@@ -181,25 +185,27 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
             ) : (
               <form onSubmit={handleSignIn} className="space-y-4">
                 <div>
-                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-phone" className="block text-sm font-medium text-gray-700 mb-1">
                     Phone Number
                   </label>
                   <input
-                    id="phone"
+                    id="portal-phone"
                     type="tel"
                     placeholder="(303) 555-1234"
                     value={phone}
                     onChange={e => setPhone(e.target.value)}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="tel"
                   />
                 </div>
                 <div>
-                  <label htmlFor="pin" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="portal-pin" className="block text-sm font-medium text-gray-700 mb-1">
                     4-Digit PIN
                   </label>
                   <input
-                    id="pin"
+                    id="portal-pin"
                     type="password"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -207,6 +213,8 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     maxLength={4}
                     value={pin}
                     onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 tracking-widest focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
                     autoComplete="off"
                   />

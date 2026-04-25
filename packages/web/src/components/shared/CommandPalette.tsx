@@ -332,9 +332,13 @@ export function CommandPalette() {
       {/* Modal */}
       <div className="fixed inset-0 z-[101] flex items-start justify-center px-4 pt-[15vh]">
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="command-palette-title"
           className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
           onClick={(e) => e.stopPropagation()}
         >
+          <h2 id="command-palette-title" className="sr-only">Command palette</h2>
           {/* Search Input */}
           <div className="flex items-center gap-3 border-b border-surface-100 px-4 dark:border-surface-800">
             {loading ? (

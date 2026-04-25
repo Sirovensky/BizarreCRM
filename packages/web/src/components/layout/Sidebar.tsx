@@ -250,13 +250,42 @@ export function Sidebar() {
   );
 }
 
+// WEB-FAE-003: namespace `recent_views` per user.id so logging out User A and
+// signing in User B on the same browser doesn't leak A's last 20 customers /
+// tickets into B's sidebar. The User type has no `tenant_id` field
+// (packages/shared/src/types/employee.ts:1), so per-user is the strongest
+// scope we can express client-side; cross-tenant leak follows for free since
+// a single user.id can't span tenants. The `auth-cleared` listener below
+// also wipes any persisted `recent_views:*` keys + the legacy unscoped key.
+export function recentViewsKey(userId: number | null | undefined): string {
+  return userId ? `recent_views:u${userId}` : 'recent_views';
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try {
+      // Drop the legacy unscoped key (pre-fix data) and every per-user
+      // namespaced entry so a kiosk handoff doesn't expose the previous
+      // user's recent customer/ticket labels.
+      localStorage.removeItem('recent_views');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('recent_views:')) localStorage.removeItem(k);
+      }
+    } catch (err) {
+      console.warn('[Sidebar] recent_views auth-cleared wipe failed', err);
+    }
+  });
+}
+
 function RecentViews({ collapsed }: { collapsed: boolean }) {
   const location = useLocation();
+  const userId = useAuthStore((s) => s.user?.id);
   const [items, setItems] = useState<{ type: string; id: number; label: string; path: string }[]>([]);
 
   useEffect(() => {
     try {
-      const stored: unknown = JSON.parse(localStorage.getItem('recent_views') || '[]');
+      const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
       if (!Array.isArray(stored)) return;
       // Validate each entry — without this, a corrupted or XSS-injected
       // `path` field would flow straight into <NavLink to={item.path}>.
@@ -278,7 +307,7 @@ function RecentViews({ collapsed }: { collapsed: boolean }) {
       // Corrupted recent_views JSON or storage unavailable — clear list silently.
       console.warn('[Sidebar] recent_views parse failed', err);
     }
-  }, [location.pathname]);
+  }, [location.pathname, userId]);
 
   if (items.length === 0) return null;
 

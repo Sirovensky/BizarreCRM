@@ -81,7 +81,7 @@ export function PayNowButton({
         type="button"
         onClick={handlePay}
         disabled={loading}
-        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium py-2.5 text-sm disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-primary-400"
+        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium py-2.5 text-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         {loading ? '...' : t('pay.button')}
       </button>

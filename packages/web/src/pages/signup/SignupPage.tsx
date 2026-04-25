@@ -297,8 +297,9 @@ export function SignupPage() {
           )}
 
           {/* Shop Name */}
-          <FieldGroup label="Shop Name" error={fieldErrors.shop_name}>
+          <FieldGroup htmlFor="signup-shop-name" label="Shop Name" error={fieldErrors.shop_name} errorId="signup-shop-name-error">
             <input
+              id="signup-shop-name"
               type="text"
               value={shopName}
               onChange={e => handleShopNameChange(e.target.value)}
@@ -306,20 +307,29 @@ export function SignupPage() {
               maxLength={100}
               autoFocus
               aria-invalid={!!fieldErrors.shop_name}
+              aria-describedby={fieldErrors.shop_name ? 'signup-shop-name-error' : undefined}
               style={inputStyle(!!fieldErrors.shop_name)}
             />
           </FieldGroup>
 
           {/* Slug */}
-          <FieldGroup label="Shop URL" error={fieldErrors.slug}>
+          <FieldGroup htmlFor="signup-slug" label="Shop URL" error={fieldErrors.slug} errorId="signup-slug-error">
             <div style={{ display: 'flex' }}>
               <input
+                id="signup-slug"
                 type="text"
                 value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 placeholder="your-shop"
                 maxLength={30}
                 aria-invalid={!!fieldErrors.slug}
+                aria-describedby={
+                  fieldErrors.slug
+                    ? 'signup-slug-error'
+                    : slugStatus !== 'idle'
+                      ? 'signup-slug-status'
+                      : undefined
+                }
                 style={{ ...inputStyle(!!fieldErrors.slug), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
               />
               <span style={{
@@ -329,35 +339,39 @@ export function SignupPage() {
               }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
             </div>
             {slugStatus !== 'idle' && (
-              <div style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
+              <div id="signup-slug-status" style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
                 {slugStatus === 'checking' ? 'Checking...' : slugMessage}
               </div>
             )}
           </FieldGroup>
 
           {/* Email */}
-          <FieldGroup label="Email" error={fieldErrors.admin_email}>
+          <FieldGroup htmlFor="signup-email" label="Email" error={fieldErrors.admin_email} errorId="signup-email-error">
             <input
+              id="signup-email"
               type="email"
               value={email}
               onChange={e => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, admin_email: undefined })); }}
               placeholder="you@example.com"
               maxLength={254}
               aria-invalid={!!fieldErrors.admin_email}
+              aria-describedby={fieldErrors.admin_email ? 'signup-email-error' : undefined}
               style={inputStyle(!!fieldErrors.admin_email)}
             />
           </FieldGroup>
 
           {/* Password */}
-          <FieldGroup label="Password" error={fieldErrors.admin_password}>
+          <FieldGroup htmlFor="signup-password" label="Password" error={fieldErrors.admin_password} errorId="signup-password-error">
             <div style={{ position: 'relative' }}>
               <input
+                id="signup-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, admin_password: undefined })); }}
                 placeholder="Min 8 characters"
                 maxLength={128}
                 aria-invalid={!!fieldErrors.admin_password}
+                aria-describedby={fieldErrors.admin_password ? 'signup-password-error' : undefined}
                 style={{ ...inputStyle(!!fieldErrors.admin_password), paddingRight: 44 }}
               />
               <button type="button" onClick={() => setShowPassword(!showPassword)}
@@ -370,21 +384,23 @@ export function SignupPage() {
           </FieldGroup>
 
           {/* Confirm Password */}
-          <FieldGroup label="Confirm Password" error={fieldErrors.confirm_password}>
+          <FieldGroup htmlFor="signup-confirm-password" label="Confirm Password" error={fieldErrors.confirm_password} errorId="signup-confirm-password-error">
             <input
+              id="signup-confirm-password"
               type={showPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirm_password: undefined })); }}
               placeholder="Repeat password"
               maxLength={128}
               aria-invalid={!!fieldErrors.confirm_password}
+              aria-describedby={fieldErrors.confirm_password ? 'signup-confirm-password-error' : undefined}
               style={inputStyle(!!fieldErrors.confirm_password)}
             />
           </FieldGroup>
 
 
           {captchaSiteKey && (
-            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError}>
+            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError} errorId="signup-captcha-error">
               <div ref={captchaContainerRef} style={{ minHeight: 78 }} />
               {!captchaReady && !captchaError && (
                 <div style={{ marginTop: 4, fontSize: 13, color: '#666' }}>Loading verification...</div>
@@ -432,14 +448,14 @@ function inputStyle(hasError: boolean): React.CSSProperties {
   };
 }
 
-function FieldGroup({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function FieldGroup({ label, error, errorId, htmlFor, children }: { label: string; error?: string; errorId?: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, fontFamily: "'League Spartan', sans-serif", color: '#333' }}>
+      <label htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, fontFamily: "'League Spartan', sans-serif", color: '#333' }}>
         {label}
       </label>
       {children}
-      {error && <div style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+      {error && <div id={errorId} style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
     </div>
   );
 }

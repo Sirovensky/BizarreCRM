@@ -586,7 +586,7 @@ export function CustomerListPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <input type="text" placeholder="Search customers..." value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors" />
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
           className={cn(
@@ -661,7 +661,7 @@ export function CustomerListPage() {
                       setTagValue('');
                     }
                   }}
-                  className="w-40 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+                  className="w-40 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
                 />
                 <button
                   onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
@@ -767,7 +767,7 @@ export function CustomerListPage() {
                         p.set('page', '1');
                         setSearchParams(p, { replace: true });
                       }}
-                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                     >
                       {[10, 25, 50, 100, 250].map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -800,10 +800,21 @@ export function CustomerListPage() {
 
       {/* Import CSV Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setShowImportModal(false); setImportText(''); setImportPreview([]); } }}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-csv-title"
+            className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
+              <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
               <button aria-label="Close" onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
             </div>
             <p className="text-sm text-surface-500 mb-2">

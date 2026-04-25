@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { formatDateTime } from '@/utils/format';
 
 /**
  * CampaignsPage — marketing automation dashboard.
@@ -218,7 +219,7 @@ export function CampaignsPage() {
                       <span><strong>{campaign.replied_count}</strong> replied</span>
                       <span><strong>{campaign.converted_count}</strong> converted</span>
                       {campaign.last_run_at && (
-                        <span>last run {new Date(campaign.last_run_at).toLocaleString()}</span>
+                        <span>last run {formatDateTime(campaign.last_run_at)}</span>
                       )}
                     </div>
                   </div>

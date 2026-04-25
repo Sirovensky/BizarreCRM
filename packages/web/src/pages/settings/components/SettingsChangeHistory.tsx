@@ -9,6 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import { History, Loader2, User } from 'lucide-react';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 interface AuditLogRow {
   id: number;
@@ -101,7 +102,7 @@ export function SettingsChangeHistory({
               <span className="ml-1 font-normal text-surface-500">{row.event}</span>
             </p>
             <p className="text-[10px] text-surface-400">
-              {new Date(row.created_at).toLocaleString()}
+              {formatDateTime(row.created_at)}
             </p>
           </div>
         </div>

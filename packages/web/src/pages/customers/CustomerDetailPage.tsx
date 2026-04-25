@@ -37,6 +37,10 @@ import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+// WEB-FAE-003: write recent_views under a per-user key so signing in as a
+// different user on the same browser can't read another user's recent
+// customer labels (PII). Reader is `Sidebar.RecentViews`.
+import { recentViewsKey } from '@/components/layout/Sidebar';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
@@ -88,6 +92,7 @@ export function CustomerDetailPage() {
   // Hide the actions from other roles so non-privileged staff aren't shown
   // buttons that would just 403.
   const userRole = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.id);
   const canUseEnrichmentActions = userRole === 'admin' || userRole === 'manager';
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
@@ -117,12 +122,12 @@ export function CustomerDetailPage() {
   // re-writes the stored label. Bounded at 20 entries (W7 fix) with the oldest
   // entries sliced off, so the localStorage quota can't grow unbounded as users
   // browse hundreds of customers.
-  const RECENT_VIEWS_KEY = 'recent_views';
   const RECENT_VIEWS_MAX = 20;
   useEffect(() => {
     if (!customer) return;
     try {
-      const raw = localStorage.getItem(RECENT_VIEWS_KEY);
+      const key = recentViewsKey(userId);
+      const raw = localStorage.getItem(key);
       const existing: { type: string; id: number; label: string; path: string }[] = raw
         ? JSON.parse(raw)
         : [];
@@ -130,11 +135,11 @@ export function CustomerDetailPage() {
       const entry = { type: 'customer', id: customer.id, label, path: `/customers/${customer.id}` };
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
-      localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+      localStorage.setItem(key, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
     } catch (err) {
       console.warn('Failed to update recent views:', err);
     }
-  }, [customer?.id, customer?.first_name, customer?.last_name]);
+  }, [customer?.id, customer?.first_name, customer?.last_name, userId]);
 
   // Delete mutation
   const deleteMutation = useMutation({

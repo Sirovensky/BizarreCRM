@@ -8,6 +8,10 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { BackButton } from '@/components/shared/BackButton';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
 import { useAuthStore } from '@/stores/authStore';
+// WEB-FAE-003: per-user namespacing for `recent_views` so a kiosk handoff
+// doesn't bleed the previous user's recent ticket numbers into the next
+// user's sidebar. Reader is `Sidebar.RecentViews`.
+import { recentViewsKey } from '@/components/layout/Sidebar';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
@@ -108,11 +112,22 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="merge-ticket-title"
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center gap-2">
           <GitMerge className="h-5 w-5 text-primary-500" />
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h2 id="merge-ticket-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             Merge Ticket {formatTicketId(orderId)}
           </h2>
         </div>
@@ -359,7 +374,7 @@ export function TicketDetailPage() {
   // ─── Track recent views ───────────────────────────────────────────
   useEffect(() => {
     if (!ticket) return;
-    const key = 'recent_views';
+    const key = recentViewsKey(currentUser?.id);
     try {
       const existing: { type: string; id: number; label: string; path: string }[] = JSON.parse(localStorage.getItem(key) || '[]');
       const entry = { type: 'ticket', id: ticket.id, label: formatTicketId(ticket.order_id || ticket.id), path: `/tickets/${ticket.id}` };
@@ -367,7 +382,7 @@ export function TicketDetailPage() {
       filtered.unshift(entry);
       localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
     } catch { /* ignore */ }
-  }, [ticket?.id]);
+  }, [ticket?.id, currentUser?.id]);
 
   // ─── Derived data ─────────────────────────────────────────────────
   const customer = ticket?.customer;

@@ -117,7 +117,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           onChange={(e) => setAmount(e.target.value)}
           placeholder="25.00"
           autoFocus
-          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-5"
+          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 mb-5"
         />
         <div className="flex justify-end gap-3">
           <button
