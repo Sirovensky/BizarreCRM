@@ -553,18 +553,17 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  // SEC-H94 / BH-0002: Email-verification gate — provisioning only happens
-  // AFTER the admin clicks the link sent to their address. This prevents
-  // unauthenticated callers from creating CF DNS records and tenant directories
-  // by simply POSTing to /signup (even if captcha passes, the subdomain does
-  // not exist until the email owner confirms).
-  //
-  // Dev bypass: ONLY when SKIP_EMAIL_VERIFICATION=1 is explicitly set AND
-  // nodeEnv is not 'production'. Both conditions must hold to prevent accidental
-  // bypass if nodeEnv is misconfigured in production.
-  const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
+  // TEMP-NO-EMAIL-VERIF (2026-04-24): email verification fully disabled
+  // because outbound SMTP is not yet configured / send-failed reports from
+  // production. Restore the SEC-H94 / BH-0002 gate by flipping the constant
+  // back to the env-flag expression once SMTP is healthy:
+  //   const skipEmailVerification = process.env.SKIP_EMAIL_VERIFICATION === '1' && config.nodeEnv !== 'production';
+  // While this is `true`, /signup provisions tenants synchronously without
+  // proving control of the email — re-enable before opening signup to the
+  // public internet.
+  const skipEmailVerification = true;
   if (skipEmailVerification) {
-    logger.warn('signup: skipping email verification (SKIP_EMAIL_VERIFICATION=1 in non-production)', { slug: normalizedSlug, email: normalizedEmail });
+    logger.warn('signup: TEMP-NO-EMAIL-VERIF — email verification disabled', { slug: normalizedSlug, email: normalizedEmail });
     const result = await provisionTenant({
       slug: normalizedSlug,
       name: String(shop_name).trim(),
