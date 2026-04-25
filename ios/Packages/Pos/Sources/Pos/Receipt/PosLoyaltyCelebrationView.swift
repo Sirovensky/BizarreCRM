@@ -44,7 +44,7 @@ public struct PosLoyaltyCelebrationView: View {
                 starGlow
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                     HStack(spacing: BrandSpacing.xs) {
-                        Text("+\(pointsDelta) pts earned")
+                        Text("+\(pointsDelta) pts earned · \(tierLabel(tierAfter ?? tierBefore)) tier \(didTierUp ? "up" : "held")")
                             .font(.brandTitleSmall())
                             .foregroundStyle(.bizarreOnSurface)
                         if didTierUp {
@@ -55,11 +55,11 @@ public struct PosLoyaltyCelebrationView: View {
                         }
                     }
                     if didTierUp, let after = tierAfter {
-                        Text("Welcome to \(after)!")
+                        Text("Welcome to \(tierLabel(after))!")
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreWarning)
                     } else if let tier = tierAfter ?? tierBefore {
-                        Text(tier)
+                        Text(tierLabel(tier))
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                     }
@@ -109,7 +109,7 @@ public struct PosLoyaltyCelebrationView: View {
 
             if let before = tierBefore, let after = tierAfter, before == after {
                 HStack {
-                    Text(before)
+                    Text(tierLabel(before))
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     Spacer()
@@ -122,14 +122,21 @@ public struct PosLoyaltyCelebrationView: View {
         .accessibilityHidden(true)
     }
 
+    // MARK: - Helpers
+
+    /// Mockup law: tier labels always UPPERCASE (e.g. "GOLD", "PLATINUM").
+    private func tierLabel(_ tier: String?) -> String {
+        (tier ?? "").uppercased()
+    }
+
     // MARK: - Accessibility
 
     private var accessibilityDescription: String {
         var parts: [String] = ["+\(pointsDelta) loyalty points earned"]
         if didTierUp, let after = tierAfter {
-            parts.append("Tier upgrade to \(after)")
+            parts.append("Tier upgrade to \(tierLabel(after))")
         } else if let tier = tierAfter ?? tierBefore {
-            parts.append("Current tier: \(tier)")
+            parts.append("Current tier: \(tierLabel(tier))")
         }
         return parts.joined(separator: ". ")
     }
