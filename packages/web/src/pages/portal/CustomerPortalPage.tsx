@@ -115,7 +115,7 @@ export function CustomerPortalPage() {
 
   if (auth.isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
         <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
@@ -266,31 +266,31 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   // Search form
   if (!ticket) {
     return (
-      <div className="bg-white p-5">
+      <div className="bg-white dark:bg-gray-900 p-5">
         <div className="text-center mb-4">
-          <h2 className="text-base font-bold text-gray-900">{storeName}</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Check your repair status</p>
+          <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">{storeName}</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Check your repair status</p>
         </div>
 
         {error && (
-          <div className="mb-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</div>
+          <div className="mb-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-3 py-2 text-xs text-red-700 dark:text-red-300">{error}</div>
         )}
 
         <form onSubmit={handleTrack} className="space-y-3">
           <div>
-            <label htmlFor="w-order" className="block text-xs font-medium text-gray-600 mb-1">Ticket ID</label>
+            <label htmlFor="w-order" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Ticket ID</label>
             <input
               id="w-order"
               type="text"
               placeholder="e.g. T-1042"
               value={orderId}
               onChange={e => setOrderId(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
               autoComplete="off"
             />
           </div>
           <div>
-            <label htmlFor="w-phone" className="block text-xs font-medium text-gray-600 mb-1">Last 4 digits of phone</label>
+            <label htmlFor="w-phone" className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Last 4 digits of phone</label>
             <input
               id="w-phone"
               type="tel"
@@ -298,7 +298,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
               maxLength={4}
               value={phoneLast4}
               onChange={e => setPhoneLast4(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
               autoComplete="off"
             />
           </div>
@@ -311,7 +311,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
           </button>
         </form>
 
-        <p className="mt-3 text-center text-[10px] text-gray-400">
+        <p className="mt-3 text-center text-[10px] text-gray-400 dark:text-gray-500">
           Your ticket ID is on your receipt or check-in confirmation
         </p>
       </div>
@@ -323,16 +323,16 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
   const latestUpdate = ticket.timeline.length > 0 ? ticket.timeline[ticket.timeline.length - 1] : null;
 
   return (
-    <div className="bg-white p-5">
+    <div className="bg-white dark:bg-gray-900 p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <button onClick={handleReset} className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1">
+        <button onClick={handleReset} className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center gap-1">
           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
           </svg>
           New search
         </button>
-        <span className="text-xs font-medium text-gray-500">{ticket.order_id}</span>
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{ticket.order_id}</span>
       </div>
 
       {/* Status */}
@@ -347,7 +347,7 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
 
       {/* Progress bar */}
       <div className="mb-4">
-        <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-500"
             style={{
@@ -356,47 +356,47 @@ function WidgetTracker({ storeName, portalUrl }: { storeName: string; portalUrl:
             }}
           />
         </div>
-        <div className="flex justify-between mt-1 text-[10px] text-gray-400">
+        <div className="flex justify-between mt-1 text-[10px] text-gray-400 dark:text-gray-500">
           <span>Received</span><span>In Progress</span><span>Ready</span><span>Complete</span>
         </div>
       </div>
 
       {/* Device */}
       {ticket.devices.length > 0 && (
-        <div className="text-sm text-gray-700 mb-3">
+        <div className="text-sm text-gray-700 dark:text-gray-300 mb-3">
           {ticket.devices.map(d => d.name || d.type).join(', ')}
         </div>
       )}
 
       {/* Latest update */}
       {latestUpdate && (
-        <div className="bg-gray-50 rounded-lg p-3 mb-3">
-          <div className="text-xs font-medium text-gray-500 mb-1">Latest Update</div>
-          <div className="text-sm text-gray-700">{latestUpdate.description}</div>
-          <div className="text-[10px] text-gray-400 mt-1">{formatWidgetDate(latestUpdate.created_at)}</div>
+        <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-3 mb-3">
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Latest Update</div>
+          <div className="text-sm text-gray-700 dark:text-gray-300">{latestUpdate.description}</div>
+          <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">{formatWidgetDate(latestUpdate.created_at)}</div>
         </div>
       )}
 
       {/* Invoice summary (if exists) */}
       {ticket.invoice && (
-        <div className="bg-gray-50 rounded-lg p-3 mb-3">
+        <div className="bg-gray-50 dark:bg-gray-800/60 rounded-lg p-3 mb-3">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">Total</span>
-            <span className="font-semibold text-gray-900">${ticket.invoice.total.toFixed(2)}</span>
+            <span className="text-gray-600 dark:text-gray-300">Total</span>
+            <span className="font-semibold text-gray-900 dark:text-gray-100">${ticket.invoice.total.toFixed(2)}</span>
           </div>
           {ticket.invoice.amount_due > 0 ? (
             <div className="flex justify-between text-sm mt-1">
-              <span className="text-gray-600">Balance due</span>
-              <span className="font-semibold text-red-600">${ticket.invoice.amount_due.toFixed(2)}</span>
+              <span className="text-gray-600 dark:text-gray-300">Balance due</span>
+              <span className="font-semibold text-red-600 dark:text-red-400">${ticket.invoice.amount_due.toFixed(2)}</span>
             </div>
           ) : (
-            <div className="text-xs text-green-600 mt-1 font-medium">Paid in full</div>
+            <div className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">Paid in full</div>
           )}
         </div>
       )}
 
       {/* Link to full portal */}
-      <div className="pt-2 border-t border-gray-100 text-center">
+      <div className="pt-2 border-t border-gray-100 dark:border-gray-800 text-center">
         <a
           href={portalUrl}
           target="_blank"

@@ -67,7 +67,10 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
     queryKey: ['bench-timer-current'],
     queryFn: () => benchApi.timer.current(),
     enabled,
-    refetchOnWindowFocus: true,
+    // WEB-FAD-010 (Fixer-C3 2026-04-25): drop the per-component override of
+    // the global refetchOnWindowFocus:false. Bench timer state is derived
+    // from started_at + clientside seconds tick; the WS `ticket:` event
+    // already invalidates ['tickets'] when another user pauses/closes.
   });
   const currentTimer: TimerData | null = currentData?.data?.data ?? null;
 

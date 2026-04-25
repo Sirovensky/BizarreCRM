@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
@@ -113,11 +113,30 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
 }) {
   const [pin, setPin] = useState('');
 
+  // WEB-FG-012 fix: kiosk-cashiers were losing in-progress PINs when their hand
+  // grazed the dim outside the inner card — backdrop-click closed the modal
+  // mid-typing. Close on Escape only; the explicit Cancel/Close button and the
+  // header X icon already cover the dismiss path. Also adds a11y-correct
+  // role + aria-modal + aria-labelledby (modal previously had no semantic
+  // dialog role, screen readers announced it as plain-text content).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pin-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    >
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
           </h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">

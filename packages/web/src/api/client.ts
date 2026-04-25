@@ -175,7 +175,19 @@ const logoutClient = axios.create({ baseURL: API_BASE, withCredentials: true });
 function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   if (isLoggingOut) return;
   isLoggingOut = true;
-  const token = localStorage.getItem('accessToken');
+  // WEB-FD-004 (FIXED-by-Fixer-A3 2026-04-25): previously this read the
+  // access token, removed it, then sent the *captured* token in the
+  // Authorization header asynchronously. Two failure modes:
+  //   (1) a parallel tab refreshed between read and post → we hit
+  //       /auth/logout with an already-rotated token, server 401s, and
+  //       the actually-current token in localStorage stays valid in the
+  //       sibling tab.
+  //   (2) the captured token sat in this closure (and on the wire) for
+  //       the lifetime of the request — extra exposure window.
+  // Fix: invalidate the access token in localStorage atomically, then call
+  // /auth/logout with `withCredentials` only. The server identifies the
+  // session via the refresh-token httpOnly cookie + CSRF double-submit,
+  // which is the canonical mechanism for logout already.
   localStorage.removeItem('accessToken');
   // @audit-fixed: drop any pending proactive-refresh promise so the next login
   // can re-arm scheduling cleanly. Without this, `refreshScheduled` and a stale
@@ -183,10 +195,13 @@ function forceLogout(reason: LogoutRequiredDetail['reason'] = 'forced') {
   // skip its first proactive refresh window.
   refreshScheduled = false;
   sharedRefreshPromise = null;
+  // Forward the CSRF double-submit token so the server accepts the
+  // unauthenticated logout call.
+  const csrfToken = getCsrfTokenCookie();
   // Use logoutClient (no interceptors) to avoid 401 loop
   logoutClient
     .post('/auth/logout', {}, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
     })
     .catch((err) => {
       // Logout endpoint failure is non-fatal — local state will still clear

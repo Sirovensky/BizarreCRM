@@ -56,62 +56,62 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
         <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <button aria-label="Go back" onClick={onBack} className="text-gray-400 hover:text-gray-600">
+          <button aria-label="Go back" onClick={onBack} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Your Invoices</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Your Invoices</h1>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-3">
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
         )}
         {invoices.length === 0 && !error ? (
-          <div className="rounded-xl bg-white border border-gray-200 p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-8 text-center text-sm text-gray-400 dark:text-gray-500">
             No invoices found
           </div>
         ) : (
           invoices.map(inv => (
-            <div key={inv.id} className="rounded-xl bg-white border border-gray-200 overflow-hidden">
+            <div key={inv.id} className="rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 overflow-hidden">
               <button
                 onClick={() => toggleExpand(inv.id)}
-                className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
+                className="w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-sm font-semibold text-gray-900">{inv.order_id}</span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{inv.order_id}</span>
                       <StatusBadge status={inv.status} />
                     </div>
-                    <div className="text-xs text-gray-400">
+                    <div className="text-xs text-gray-400 dark:text-gray-500">
                       {formatDate(inv.created_at, locale)}
                       {inv.ticket_order_id && ` — Ticket ${inv.ticket_order_id}`}
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-semibold text-gray-900">{formatCurrency(inv.total, currency, locale)}</div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{formatCurrency(inv.total, currency, locale)}</div>
                     {inv.amount_due > 0 && (
-                      <div className="text-xs text-red-600">Due: {formatCurrency(inv.amount_due, currency, locale)}</div>
+                      <div className="text-xs text-red-600 dark:text-red-400">Due: {formatCurrency(inv.amount_due, currency, locale)}</div>
                     )}
                   </div>
                 </div>
               </button>
 
               {expandedId === inv.id && (
-                <div className="border-t border-gray-100">
+                <div className="border-t border-gray-100 dark:border-gray-800">
                   {detailLoading ? (
                     <div className="p-4 flex justify-center">
                       <div className="h-5 w-5 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
@@ -119,7 +119,7 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                   ) : expandError ? (
                     <button
                       onClick={() => retryDetail(inv.id)}
-                      className="w-full p-4 text-center text-sm text-red-600 hover:bg-red-50 transition-colors"
+                      className="w-full p-4 text-center text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
                     >
                       {expandError}
                     </button>
@@ -131,9 +131,9 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                           <tbody>
                             {detailData.line_items.map((item, i) => (
                               <tr key={i} className={i > 0 ? 'border-t border-gray-50 dark:border-gray-700' : ''}>
-                                <td className="px-4 py-2 text-gray-700">{item.description}</td>
-                                <td className="px-4 py-2 text-right text-gray-500">x{item.quantity}</td>
-                                <td className="px-4 py-2 text-right text-gray-700">{formatCurrency(item.total, currency, locale)}</td>
+                                <td className="px-4 py-2 text-gray-700 dark:text-gray-300">{item.description}</td>
+                                <td className="px-4 py-2 text-right text-gray-500 dark:text-gray-400">x{item.quantity}</td>
+                                <td className="px-4 py-2 text-right text-gray-700 dark:text-gray-300">{formatCurrency(item.total, currency, locale)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -141,28 +141,28 @@ export function PortalInvoicesView({ onBack }: PortalInvoicesViewProps) {
                         </div>
                       )}
 
-                      <div className="p-4 border-t border-gray-100 space-y-1 text-sm">
-                        <div className="flex justify-between text-gray-500">
+                      <div className="p-4 border-t border-gray-100 dark:border-gray-800 space-y-1 text-sm">
+                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
                           <span>Subtotal</span><span>{formatCurrency(detailData.subtotal, currency, locale)}</span>
                         </div>
                         {detailData.discount > 0 && (
-                          <div className="flex justify-between text-green-600">
+                          <div className="flex justify-between text-green-600 dark:text-green-400">
                             <span>Discount</span><span>-{formatCurrency(detailData.discount, currency, locale)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between text-gray-500">
+                        <div className="flex justify-between text-gray-500 dark:text-gray-400">
                           <span>Tax</span><span>{formatCurrency(detailData.tax, currency, locale)}</span>
                         </div>
-                        <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t border-gray-200">
+                        <div className="flex justify-between font-semibold text-gray-900 dark:text-gray-100 pt-1 border-t border-gray-200 dark:border-gray-800">
                           <span>Total</span><span>{formatCurrency(detailData.total, currency, locale)}</span>
                         </div>
                       </div>
 
                       {detailData.payments.length > 0 && (
-                        <div className="p-4 border-t border-gray-100">
-                          <h4 className="text-xs font-semibold text-gray-500 mb-2">PAYMENTS</h4>
+                        <div className="p-4 border-t border-gray-100 dark:border-gray-800">
+                          <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">PAYMENTS</h4>
                           {detailData.payments.map((p, i) => (
-                            <div key={i} className="flex justify-between text-sm text-gray-600">
+                            <div key={i} className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
                               <span>{p.method} — {formatDate(p.date, locale)}</span>
                               <span>{formatCurrency(p.amount, currency, locale)}</span>
                             </div>

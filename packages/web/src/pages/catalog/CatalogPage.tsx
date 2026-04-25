@@ -309,6 +309,20 @@ export function CatalogPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to import'),
   });
 
+  // WEB-FH-016 fix: rapid double-click on "Add to Inventory" was creating
+  // duplicate SKU rows because React batches the `isPending` flip on the next
+  // tick, so a synchronous double-click landed two `mutate()` calls before the
+  // disabled prop applied. Guard at the click site with a per-id timestamp ref
+  // — second click within 1500 ms for the same catalog id is a no-op.
+  const lastImportClickRef = useRef<{ id: number | null; t: number }>({ id: null, t: 0 });
+  const handleImportClick = (id: number, markup: number) => {
+    const now = Date.now();
+    const last = lastImportClickRef.current;
+    if (last.id === id && now - last.t < 1500) return;
+    lastImportClickRef.current = { id, t: now };
+    importMutation.mutate({ id, markup });
+  };
+
   const runningJobs = jobs.filter((j) => j.status === 'running');
 
   return (
@@ -713,7 +727,7 @@ export function CatalogPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setImportModal(null)} className="btn-outline">Cancel</button>
               <button
-                onClick={() => importMutation.mutate({ id: importModal.id, markup: markupPct })}
+                onClick={() => handleImportClick(importModal.id, markupPct)}
                 disabled={importMutation.isPending}
                 className="btn-primary">
                 {importMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing…</> : <><Download className="h-4 w-4" /> Add to Inventory</>}

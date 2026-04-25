@@ -70,6 +70,16 @@
     outline-color: #a66d1f; /* primary-600 caramel — AA contrast on cream + light surfaces */
   }
 
+  /* WEB-FAC-010 — soften the focus-ring pop so rapid tab-through doesn't
+   * strobe the caramel ring across a row of buttons. Gated behind
+   * prefers-reduced-motion so motion-sensitive users still get an instant
+   * indicator. */
+  @media (prefers-reduced-motion: no-preference) {
+    *:focus-visible {
+      transition: outline-color 100ms ease, outline-offset 100ms ease;
+    }
+  }
+
   /* WEB-FE-006 / FIXED-by-Fixer-JJJ 2026-04-25 — 197 sites apply Tailwind's
    * `outline-none` / `focus:outline-none` on buttons/links/inputs without a
    * `focus-visible:ring-*` replacement, leaving keyboard nav invisible

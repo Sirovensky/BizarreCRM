@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
 import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck } from 'lucide-react';
@@ -21,14 +21,29 @@ export function AuditLogsTab() {
   const [eventFilter, setEventFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  // WEB-FG-015 fix: typing into a <input type="date"> emits onChange on every
+  // numeric cycle (10 keystrokes for "2026-04-24"), and the audit endpoint is
+  // paginated + join-heavy. Debounce the date filters so we only refetch
+  // 250 ms after the user stops typing. Event-type select is single-change so
+  // it stays bound directly. The debounced values feed the queryKey.
+  const [debouncedFrom, setDebouncedFrom] = useState('');
+  const [debouncedTo, setDebouncedTo] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFrom(fromDate), 250);
+    return () => clearTimeout(t);
+  }, [fromDate]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTo(toDate), 250);
+    return () => clearTimeout(t);
+  }, [toDate]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page, eventFilter, fromDate, toDate],
+    queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, pagesize: 50 };
       if (eventFilter) params.event = eventFilter;
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
+      if (debouncedFrom) params.from_date = debouncedFrom;
+      if (debouncedTo) params.to_date = debouncedTo;
       const res = await settingsApi.getAuditLogs(params as any);
       return res.data.data as {
         logs: AuditLog[];
@@ -94,7 +109,7 @@ export function AuditLogsTab() {
         </div>
         {(eventFilter || fromDate || toDate) && (
           <button
-            onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setPage(1); }}
+            onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setDebouncedFrom(''); setDebouncedTo(''); setPage(1); }}
             className="text-xs text-orange-400 hover:text-orange-300 pb-1.5"
           >
             Clear filters

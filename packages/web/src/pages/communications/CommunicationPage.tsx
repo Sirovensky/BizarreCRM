@@ -1091,10 +1091,39 @@ export function CommunicationPage() {
   ) ?? [];
 
   // Reminder helpers
+  // WEB-FO-005 (FIXED-by-Fixer-A3 2026-04-25): two tabs setting reminders
+  // concurrently used to lose one of them via read-modify-write race —
+  // tab A reads `[r1]`, tab B reads `[r1]`, A writes `[r1, r2]`, B writes
+  // `[r1, r3]`, r2 vanishes. Wrap the RMW in `navigator.locks.request`
+  // when available so cross-tab access is serialized; fall back to a
+  // best-effort retry-on-mismatch CAS that re-reads after writing and
+  // re-applies the append if storage shifted underneath us.
   const handleSetReminder = useCallback((phone: string, label: string, ms: number) => {
-    const reminders = JSON.parse(localStorage.getItem('sms_reminders') || '[]');
-    reminders.push({ phone, label, due: Date.now() + ms, created: Date.now() });
-    localStorage.setItem('sms_reminders', JSON.stringify(reminders));
+    const newEntry = { phone, label, due: Date.now() + ms, created: Date.now() };
+    const apply = () => {
+      const raw = localStorage.getItem('sms_reminders') || '[]';
+      let list: Array<typeof newEntry> = [];
+      try { list = JSON.parse(raw); } catch { list = []; }
+      if (!Array.isArray(list)) list = [];
+      list.push(newEntry);
+      localStorage.setItem('sms_reminders', JSON.stringify(list));
+    };
+    const locks = (navigator as Navigator & {
+      locks?: { request: (name: string, cb: () => void | Promise<void>) => Promise<void> };
+    }).locks;
+    if (locks?.request) {
+      void locks.request('sms_reminders', () => { apply(); });
+    } else {
+      // Fallback: CAS-style — write, then re-read; if we don't see our entry
+      // (another tab raced), re-apply once.
+      apply();
+      try {
+        const verify = JSON.parse(localStorage.getItem('sms_reminders') || '[]');
+        const seen = Array.isArray(verify)
+          && verify.some((e: typeof newEntry) => e?.created === newEntry.created && e?.phone === newEntry.phone);
+        if (!seen) apply();
+      } catch { /* ignore */ }
+    }
     toast.success(`Reminder set: ${label}`);
     setShowReminder(false);
   }, []);

@@ -372,16 +372,41 @@ export function TicketDetailPage() {
   const [showQcSignOff, setShowQcSignOff] = useState(false);
 
   // ─── Track recent views ───────────────────────────────────────────
+  // WEB-FO-005 (FIXED-by-Fixer-A3 2026-04-25): same RMW race as
+  // sms_reminders — two tabs viewing different tickets concurrently each
+  // read the same `recent_views`, push their own entry, write back, and
+  // one entry vanishes. Serialize via `navigator.locks` when available;
+  // otherwise apply a best-effort CAS verification + retry.
   useEffect(() => {
     if (!ticket) return;
     const key = recentViewsKey(currentUser?.id);
-    try {
-      const existing: { type: string; id: number; label: string; path: string }[] = JSON.parse(localStorage.getItem(key) || '[]');
-      const entry = { type: 'ticket', id: ticket.id, label: formatTicketId(ticket.order_id || ticket.id), path: `/tickets/${ticket.id}` };
-      const filtered = existing.filter((e) => !(e.type === 'ticket' && e.id === ticket.id));
-      filtered.unshift(entry);
-      localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
-    } catch { /* ignore */ }
+    type RecentEntry = { type: string; id: number; label: string; path: string };
+    const entry: RecentEntry = { type: 'ticket', id: ticket.id, label: formatTicketId(ticket.order_id || ticket.id), path: `/tickets/${ticket.id}` };
+    const apply = () => {
+      try {
+        const existing: RecentEntry[] = JSON.parse(localStorage.getItem(key) || '[]');
+        const list = Array.isArray(existing) ? existing : [];
+        const filtered = list.filter((e) => !(e?.type === 'ticket' && e?.id === ticket.id));
+        filtered.unshift(entry);
+        localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
+      } catch { /* ignore */ }
+    };
+    const locks = (navigator as Navigator & {
+      locks?: { request: (name: string, cb: () => void | Promise<void>) => Promise<void> };
+    }).locks;
+    if (locks?.request) {
+      void locks.request(`recent_views:${currentUser?.id ?? 'anon'}`, () => { apply(); });
+    } else {
+      apply();
+      try {
+        const verify = JSON.parse(localStorage.getItem(key) || '[]');
+        const seen = Array.isArray(verify) && verify[0]?.type === 'ticket' && verify[0]?.id === ticket.id;
+        if (!seen) apply();
+      } catch { /* ignore */ }
+    }
+    // Only depend on the IDs — re-running on every ticket-object reswap
+    // would spam localStorage on each refetch tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticket?.id, currentUser?.id]);
 
   // ─── Derived data ─────────────────────────────────────────────────

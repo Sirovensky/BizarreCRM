@@ -129,7 +129,15 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [recentSearches] = useState(getRecentSearches);
+  // WEB-FD-008 fix: previously this was a one-shot lazy initializer
+  // (`useState(getRecentSearches)`) so a search saved during the same session
+  // never appeared under "Recent" until a full page reload. Re-read from
+  // sessionStorage every time the palette opens so the user sees their just-
+  // executed search the next time they hit Cmd-K.
+  const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches);
+  useEffect(() => {
+    if (commandPaletteOpen) setRecentSearches(getRecentSearches());
+  }, [commandPaletteOpen]);
 
   // Flatten results into a single ordered list for keyboard navigation (memoized)
   const flatResults = useMemo<SearchResult[]>(() =>

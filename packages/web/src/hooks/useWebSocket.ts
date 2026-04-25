@@ -300,6 +300,15 @@ export function useWebSocket() {
             pingTimerRef.current = setInterval(() => {
               const sock = wsRef.current;
               if (!sock || sock.readyState !== WebSocket.OPEN) return;
+              // WEB-FAD-009 (Fixer-C3 2026-04-25): skip heartbeat while tab
+              // is hidden — incoming events are throttled by the browser
+              // anyway and the outgoing ping wastes battery on phones.
+              // Reset lastMessageAtRef so the watchdog doesn't trip the
+              // moment the tab becomes visible again.
+              if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                lastMessageAtRef.current = Date.now();
+                return;
+              }
               // Watchdog: if the socket has been silent past PONG_TIMEOUT_MS
               // the connection is half-open. Force-close so onclose fires
               // and scheduleReconnect kicks in.
