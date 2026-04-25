@@ -49,6 +49,22 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// occurred. `nil` when no account.
     public let loyaltyTierAfter: String?
 
+    // MARK: - Loyalty progress
+
+    /// Total loyalty points after this sale. Drives the left-side tier label
+    /// "GOLD 285 pts" in `PosLoyaltyCelebrationView`.
+    public let loyaltyPointsTotal: Int?
+
+    /// Points threshold for the next tier. Drives the right-side label
+    /// "PLATINUM 500 pts". Nil when the customer is already at the top tier.
+    public let loyaltyNextTierPoints: Int?
+
+    // MARK: - Cash detail
+
+    /// Actual cash tendered (before change). Non-nil for cash transactions.
+    /// Used by the hero subtitle "Cash · $300 received · $25.49 change".
+    public let cashReceivedCents: Int?
+
     // MARK: - iPad Pencil signature
 
     /// Ticket identifier to which a Pencil-captured signature was archived.
@@ -63,23 +79,29 @@ public struct PosReceiptPayload: Equatable, Sendable {
         invoiceId: Int64,
         amountPaidCents: Int,
         changeGivenCents: Int? = nil,
+        cashReceivedCents: Int? = nil,
         methodLabel: String,
         customerPhone: String? = nil,
         customerEmail: String? = nil,
         loyaltyDelta: Int? = nil,
         loyaltyTierBefore: String? = nil,
         loyaltyTierAfter: String? = nil,
+        loyaltyPointsTotal: Int? = nil,
+        loyaltyNextTierPoints: Int? = nil,
         signedTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
         self.changeGivenCents = changeGivenCents
+        self.cashReceivedCents = cashReceivedCents
         self.methodLabel = methodLabel
         self.customerPhone = customerPhone
         self.customerEmail = customerEmail
         self.loyaltyDelta = loyaltyDelta
         self.loyaltyTierBefore = loyaltyTierBefore
         self.loyaltyTierAfter = loyaltyTierAfter
+        self.loyaltyPointsTotal = loyaltyPointsTotal
+        self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
     }
 }
