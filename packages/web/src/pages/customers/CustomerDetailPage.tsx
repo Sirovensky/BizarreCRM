@@ -37,6 +37,7 @@ import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { getImpersonationSession } from '@/components/ImpersonationBanner';
 // WEB-FAE-003: write recent_views under a per-user key so signing in as a
 // different user on the same browser can't read another user's recent
 // customer labels (PII). Reader is `Sidebar.RecentViews`.
@@ -283,7 +284,12 @@ export function CustomerDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      // WEB-FJ-011: include tenant_slug (when impersonating) in the filename so
+      // super-admins exporting from multiple tenants on the same day don't get
+      // colliding filenames in their Downloads folder.
+      const impersonation = getImpersonationSession();
+      const tenantPart = impersonation?.tenant_slug ? `${impersonation.tenant_slug}-` : '';
+      a.download = `${tenantPart}customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Customer data exported successfully');

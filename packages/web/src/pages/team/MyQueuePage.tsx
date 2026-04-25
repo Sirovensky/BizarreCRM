@@ -63,8 +63,8 @@ export function MyQueuePage() {
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">My Queue</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100">My Queue</h1>
+        <p className="text-sm text-gray-500 dark:text-surface-400">
           Tickets assigned to you, sorted by due date and age. Updates every 30 seconds.
         </p>
       </header>
@@ -83,19 +83,19 @@ export function MyQueuePage() {
       )}
 
       {!isLoading && tickets.length === 0 && (
-        <div className="bg-white border rounded-lg p-12 text-center">
+        <div className="bg-white dark:bg-surface-900 border dark:border-surface-700 rounded-lg p-12 text-center">
           <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto mb-3" />
-          <h2 className="text-lg font-semibold text-gray-800">All caught up</h2>
-          <p className="text-sm text-gray-500 mt-1">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-surface-100">All caught up</h2>
+          <p className="text-sm text-gray-500 dark:text-surface-400 mt-1">
             You have no open tickets assigned to you right now.
           </p>
         </div>
       )}
 
       {tickets.length > 0 && (
-        <div className="bg-white rounded-lg shadow border overflow-x-auto">
+        <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600 text-left text-xs uppercase">
+            <thead className="bg-gray-50 dark:bg-surface-800 text-gray-600 dark:text-surface-300 text-left text-xs uppercase">
               <tr>
                 <th className="px-4 py-3">Order</th>
                 <th className="px-4 py-3">Customer</th>
@@ -111,7 +111,7 @@ export function MyQueuePage() {
                 const age = ageBadge(t.created_at);
                 const due = dueBadge(t.due_on);
                 return (
-                  <tr key={t.id} className="hover:bg-gray-50">
+                  <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-surface-800/50">
                     <td className="px-4 py-3 font-mono text-xs text-primary-600">{t.order_id}</td>
                     <td className="px-4 py-3">
                       {t.first_name || ''} {t.last_name || ''}

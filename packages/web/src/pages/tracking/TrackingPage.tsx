@@ -309,6 +309,21 @@ export function TrackingPage() {
       {/* Main */}
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-8">
 
+        {/* WEB-FL-020: deprecation notice for the legacy /track/:orderId
+            deep-link without a token. Old SMS receipts hit this URL; we
+            need to nudge customers toward the tokenized link before the
+            server route can be retired. */}
+        {routeOrderId && !tokenParam && !portalData && (
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <p className="text-sm">
+              This older tracking link is being retired. Please look for a newer
+              tracking link in your most recent receipt or SMS, or use the
+              phone-number lookup below to find your repair.
+            </p>
+          </div>
+        )}
+
         {/* Portal view — when we have full portal data */}
         {portalData ? (
           <div className="space-y-4">

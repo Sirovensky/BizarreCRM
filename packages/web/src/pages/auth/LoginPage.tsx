@@ -149,6 +149,12 @@ export function LoginPage() {
     const match = window.location.pathname.match(/^\/setup\/([a-f0-9]{64})$/);
     if (!match) return;
     setSetupToken(match[1]);
+    // WEB-FG-007: scrub the 64-char setup token out of `window.location` BEFORE
+    // any network request. Previously the strip happened after `setupStatus()`
+    // resolved, so the GET (and any preconnect/prefetch/image) on this page
+    // shipped the full `/setup/<token>` URL via the Referer header. By
+    // replaceState'ing first, subsequent requests see Referer=/login.
+    window.history.replaceState(null, '', '/login');
     let cancelled = false;
     authApi.setupStatus()
       .then(res => {
@@ -157,8 +163,7 @@ export function LoginPage() {
           setStep('firstTimeSetup');
           setAutoChecking(false);
         } else {
-          // Shop already set up — redirect to login
-          window.history.replaceState(null, '', '/login');
+          // Shop already set up — already on /login from the pre-flight strip
           setAutoChecking(false);
         }
       })

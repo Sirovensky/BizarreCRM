@@ -179,16 +179,10 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
         piece.style.cssText =
           `position:absolute;top:-10px;left:${left}%;width:8px;height:14px;background:${bg};` +
           `transform:rotate(${rot}deg);border-radius:2px;` +
-          `animation:gsw-confetti ${dur}s linear ${delay}s forwards`;
+          `animation:onboarding-confetti-fall ${dur}s linear ${delay}s forwards`;
         host.appendChild(piece);
       }
-      const styleEl = document.createElement('style');
-      styleEl.textContent =
-        '@keyframes gsw-confetti {' +
-        '  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }' +
-        '  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }' +
-        '}';
-      host.appendChild(styleEl);
+      // WEB-FD-015: keyframes live in globals.css; no per-burst <style> node.
       document.body.appendChild(host);
       window.setTimeout(() => host.remove(), 4000);
     }

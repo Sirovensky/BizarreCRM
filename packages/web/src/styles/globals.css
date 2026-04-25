@@ -322,3 +322,13 @@
     color: #71717a;
   }
   .dark .section-eyebrow { color: #a1a1aa; }
+
+/* WEB-FD-015: shared confetti keyframes consolidated from three onboarding
+ * surfaces (SuccessCelebration, useMilestoneToasts, GettingStartedWidget) that
+ * each used to inject their own near-identical <style> block on every burst.
+ * Stack the keyframes here once so concurrent milestones don't pile up
+ * `<style>` nodes in <body>. */
+@keyframes onboarding-confetti-fall {
+  0%   { transform: translateY(-20px) rotate(0deg);   opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }
+}

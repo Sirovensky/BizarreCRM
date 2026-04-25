@@ -116,7 +116,7 @@ export function LanguageSwitcher(): React.ReactElement {
             className={`rounded px-2 py-1 font-medium ${
               locale === code
                 ? 'bg-primary-600 text-white'
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+                : 'bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-200 dark:hover:bg-surface-600'
             }`}
           >
             {code.toUpperCase()}
@@ -128,7 +128,7 @@ export function LanguageSwitcher(): React.ReactElement {
         type="button"
         onClick={() => adjustFont(-0.05)}
         aria-label={t('a11y.font_decrease')}
-        className="rounded w-7 h-7 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold hover:bg-gray-200 dark:hover:bg-gray-600"
+        className="rounded w-7 h-7 bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-200 font-bold hover:bg-surface-200 dark:hover:bg-surface-600"
       >
         A-
       </button>
@@ -136,7 +136,7 @@ export function LanguageSwitcher(): React.ReactElement {
         type="button"
         onClick={() => adjustFont(0.05)}
         aria-label={t('a11y.font_increase')}
-        className="rounded w-7 h-7 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-bold hover:bg-gray-200 dark:hover:bg-gray-600"
+        className="rounded w-7 h-7 bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-200 font-bold hover:bg-surface-200 dark:hover:bg-surface-600"
       >
         A+
       </button>
@@ -149,7 +149,7 @@ export function LanguageSwitcher(): React.ReactElement {
         className={`rounded w-7 h-7 font-bold ${
           contrast === 'high'
             ? 'bg-yellow-300 text-black'
-            : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600'
+            : 'bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-200 dark:hover:bg-surface-600'
         }`}
       >
         {'\u25D1'}
@@ -160,7 +160,7 @@ export function LanguageSwitcher(): React.ReactElement {
         onClick={() => setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'))}
         aria-label={t('a11y.dark_toggle')}
         aria-pressed={theme === 'dark'}
-        className="rounded w-7 h-7 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600"
+        className="rounded w-7 h-7 bg-surface-100 dark:bg-surface-700 text-surface-700 dark:text-surface-200 hover:bg-surface-200 dark:hover:bg-surface-600"
       >
         {theme === 'dark' ? '\u2600' : '\u263E'}
       </button>

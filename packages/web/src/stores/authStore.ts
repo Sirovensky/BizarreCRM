@@ -212,8 +212,17 @@ if (typeof window !== 'undefined') {
     if (e.newValue && e.newValue !== e.oldValue) {
       // Wipe per-user caches in this tab before /auth/me lands so a
       // tenant-switch doesn't bleed state across tabs.
+      // WEB-FAE-004: also pre-emptively flip auth state to "loading"
+      // so any in-flight TanStack queries keyed off the old tenant
+      // don't keep their hydrated payloads visible while /auth/me
+      // races to resolve. Defer checkAuth one microtask so the cache
+      // clear (sync listener in main.tsx) plus the React state flush
+      // both settle before the network request fires.
+      useAuthStore.setState({ isLoading: true });
       emitAuthCleared();
-      useAuthStore.getState().checkAuth();
+      queueMicrotask(() => {
+        useAuthStore.getState().checkAuth();
+      });
     }
   });
 }

@@ -38,7 +38,7 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
   return (
     <section
       aria-label={t('tech.title')}
-      className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-3"
+      className="rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4 flex items-center gap-3"
     >
       {tech.avatar_url ? (
         <img
@@ -55,10 +55,10 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
         </div>
       )}
       <div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        <div className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">
           {t('tech.title')}
         </div>
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <div className="text-sm font-medium text-surface-900 dark:text-surface-100">
           {t('tech.handling', { name: tech.first_name })}
         </div>
       </div>

@@ -117,10 +117,10 @@ export function GoalsPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100 inline-flex items-center">
             <Target className="w-6 h-6 mr-2 text-green-500" /> Goals
           </h1>
-          <p className="text-sm text-gray-500">Per-tech weekly targets with live progress.</p>
+          <p className="text-sm text-gray-500 dark:text-surface-400">Per-tech weekly targets with live progress.</p>
         </div>
         <button
           className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 inline-flex items-center"
@@ -131,7 +131,7 @@ export function GoalsPage() {
       </header>
 
       {goals.length === 0 && (
-        <div className="bg-white border rounded-lg p-12 text-center text-gray-500">
+        <div className="bg-white dark:bg-surface-900 border dark:border-surface-700 rounded-lg p-12 text-center text-gray-500 dark:text-surface-400">
           No goals yet. Add your first one with the button above.
         </div>
       )}
@@ -152,13 +152,13 @@ export function GoalsPage() {
           const pct = Number.isFinite(ratio) ? Math.max(0, Math.min(100, ratio)) : 0;
           const done = pct >= 100;
           return (
-            <div key={g.id} className="bg-white rounded-lg shadow border p-4">
+            <div key={g.id} className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 p-4">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-semibold text-gray-800">
+                  <div className="font-semibold text-gray-800 dark:text-surface-100">
                     {g.first_name} {g.last_name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-surface-400">
                     {METRIC_LABELS[g.metric] || g.metric} · {g.period_start} → {g.period_end}
                   </div>
                 </div>

@@ -70,15 +70,15 @@ export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElemen
   return (
     <section
       aria-label={t('photos.title')}
-      className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4"
+      className="rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4"
     >
-      <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
+      <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
         {t('photos.title')}
       </h3>
 
       {beforePhotos.length > 0 ? (
         <div className="mb-3">
-          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+          <div className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide mb-2">
             {t('photos.before')}
           </div>
           <PhotoRow photos={beforePhotos} />
@@ -87,7 +87,7 @@ export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElemen
 
       {afterPhotos.length > 0 ? (
         <div>
-          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+          <div className="text-xs font-medium text-surface-500 dark:text-surface-400 uppercase tracking-wide mb-2">
             {t('photos.after')}
           </div>
           <PhotoRow
@@ -97,7 +97,7 @@ export function PhotoGallery({ ticketId }: PhotoGalleryProps): React.ReactElemen
             deleteLabel={t('photos.delete')}
           />
           {deleteWindowHours > 0 ? (
-            <div className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">
+            <div className="text-[11px] text-surface-400 dark:text-surface-500 mt-2">
               {t('photos.delete_window', { hours: deleteWindowHours })}
             </div>
           ) : null}
@@ -130,7 +130,7 @@ function PhotoRow({
         <div
           key={photo.path}
           role="listitem"
-          className="relative flex-shrink-0 w-24 h-24 rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900"
+          className="relative flex-shrink-0 w-24 h-24 rounded-md overflow-hidden border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-900"
         >
           {isSafePhotoPath(photo.path) ? (
             <img
@@ -140,7 +140,7 @@ function PhotoRow({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-600">
+            <div className="w-full h-full flex items-center justify-center text-surface-400 dark:text-surface-600">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-label="Photo unavailable">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>

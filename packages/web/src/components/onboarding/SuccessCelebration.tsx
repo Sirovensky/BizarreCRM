@@ -94,19 +94,13 @@ function fireConfetti(): void {
     piece.style.cssText =
       `position:absolute;top:-10px;left:${left}%;width:8px;height:12px;background:${bg};` +
       `transform:rotate(${rot}deg);border-radius:2px;` +
-      `animation:onboarding-confetti ${dur}s linear ${delay}s forwards`;
+      `animation:onboarding-confetti-fall ${dur}s linear ${delay}s forwards`;
     host.appendChild(piece);
   }
 
-  // Keyframes injected once per host so multiple bursts don't duplicate them.
-  const styleEl = document.createElement('style');
-  styleEl.textContent =
-    '@keyframes onboarding-confetti {' +
-    '  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }' +
-    '  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }' +
-    '}';
-  host.appendChild(styleEl);
-
+  // WEB-FD-015: keyframes live in globals.css under
+  // `@keyframes onboarding-confetti-fall` and are reused by useMilestoneToasts +
+  // GettingStartedWidget so concurrent milestones never stack <style> nodes.
   document.body.appendChild(host);
   window.setTimeout(() => {
     host.remove();

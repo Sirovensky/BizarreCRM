@@ -70,30 +70,30 @@ export function TeamLeaderboardPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100 inline-flex items-center">
           <Trophy className="w-6 h-6 mr-2 text-amber-500" /> Team Leaderboard
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-surface-400">
           Tickets closed and revenue by tech. Refreshes when you reload.
         </p>
       </header>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-12 text-gray-500">
+        <div className="flex items-center justify-center py-12 text-gray-500 dark:text-surface-400">
           <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading leaderboard...
         </div>
       )}
 
       {!isLoading && sorted.length === 0 && (
-        <div className="bg-white border rounded-lg p-12 text-center text-gray-500">
+        <div className="bg-white dark:bg-surface-900 border dark:border-surface-700 rounded-lg p-12 text-center text-gray-500 dark:text-surface-400">
           No data yet — close some tickets to populate the leaderboard.
         </div>
       )}
 
       {sorted.length > 0 && (
-        <div className="bg-white rounded-lg shadow border overflow-x-auto">
+        <div className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-600 text-left text-xs uppercase">
+            <thead className="bg-gray-50 dark:bg-surface-800 text-gray-600 dark:text-surface-300 text-left text-xs uppercase">
               <tr>
                 <th className="px-4 py-3 w-12">#</th>
                 <th className="px-4 py-3">Name</th>
@@ -104,14 +104,14 @@ export function TeamLeaderboardPage() {
             </thead>
             <tbody className="divide-y">
               {sorted.map((r, i) => (
-                <tr key={rowKey(r)} className={i < 3 ? 'bg-amber-50/40' : ''}>
-                  <td className="px-4 py-3 font-bold text-gray-500">
+                <tr key={rowKey(r)} className={i < 3 ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}>
+                  <td className="px-4 py-3 font-bold text-gray-500 dark:text-surface-400">
                     {i === 0 && <span className="text-2xl">🥇</span>}
                     {i === 1 && <span className="text-2xl">🥈</span>}
                     {i === 2 && <span className="text-2xl">🥉</span>}
                     {i > 2 && <span>{i + 1}</span>}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">
+                  <td className="px-4 py-3 font-semibold text-gray-800 dark:text-surface-100">
                     {r.first_name} {r.last_name}
                   </td>
                   <td className="px-4 py-3 text-right font-mono">{ticketsClosed(r)}</td>
