@@ -24,12 +24,13 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     }
 
     /// SF Symbol name for the tile icon.
+    /// Mockup screen 5a: 💳 card, 💵 cash, 🎁 gift card, 💸 store credit.
     public var systemImage: String {
         switch self {
-        case .card:        return "creditcard"
-        case .cash:        return "banknote"
-        case .giftCard:    return "giftcard"
-        case .storeCredit: return "person.badge.clock"
+        case .card:        return "creditcard.fill"
+        case .cash:        return "banknote.fill"
+        case .giftCard:    return "giftcard.fill"
+        case .storeCredit: return "dollarsign.circle.fill"
         }
     }
 
