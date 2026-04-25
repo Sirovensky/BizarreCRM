@@ -47,6 +47,11 @@ interface AuthApi {
     @POST("auth/login/2fa-verify")
     suspend fun verify2FA(@Body request: TwoFactorRequest): ApiResponse<TwoFactorResponse>
 
+    // §2.4 — backup-code login. Uses challengeToken + backup code instead of TOTP.
+    // 401 with data.challengeToken → wrong code, fresh token issued for retry.
+    @POST("auth/login/2fa-backup")
+    suspend fun verify2FABackup(@Body body: Map<String, String>): ApiResponse<TwoFactorResponse>
+
     // §2.4 L298 — 2FA enroll. Returns QR data URL, raw secret, manualEntry key,
     // and a (possibly refreshed) challengeToken. Response shape: TwoFaSetupResponse.
     @POST("auth/login/2fa-setup")

@@ -5,6 +5,10 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -768,7 +772,10 @@ class LoginViewModel @Inject constructor(
                     val body = response.body?.string() ?: throw Exception("Empty response")
                     val rJson = JSONObject(body)
                     if (!response.isSuccessful || !rJson.optBoolean("success", false)) {
-                        throw Exception(rJson.optString("message", "Registration failed"))
+                        // LOGIN-MOCK-175: preserve HTTP status code by encoding it in the
+                        // exception message so the catch block can detect 409 conflicts.
+                        val serverMsg = rJson.optString("message", "Registration failed")
+                        throw Exception("HTTP_${response.code}:$serverMsg")
                     }
                     rJson
                 }
@@ -822,9 +829,26 @@ class LoginViewModel @Inject constructor(
                     )
                 }
             } catch (e: Exception) {
+                // LOGIN-MOCK-175: distinguish slug conflict (409) from network timeout.
+                val rawMsg = e.message ?: "Registration failed"
+                val errorMsg = when {
+                    rawMsg.startsWith("HTTP_409:") -> {
+                        val detail = rawMsg.removePrefix("HTTP_409:")
+                        if (detail.isNotBlank()) detail else "That shop URL is already taken. Please choose another."
+                    }
+                    rawMsg.startsWith("HTTP_") -> {
+                        rawMsg.substringAfter(":")
+                            .takeIf { it.isNotBlank() } ?: "Registration failed. Please try again."
+                    }
+                    e is java.net.SocketTimeoutException ||
+                    e is java.net.ConnectException ||
+                    e is java.net.UnknownHostException ->
+                        "Network error. Check your connection and try again."
+                    else -> rawMsg
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = e.message ?: "Registration failed",
+                    error = errorMsg,
                 )
             }
         }
@@ -1023,6 +1047,8 @@ class LoginViewModel @Inject constructor(
      * has an updated token).
      */
     private fun setup2FA(challengeToken: String, inheritedExpiresAt: Long? = null) {
+        // LOGIN-MOCK-168: mark loading immediately so the UI shows a spinner
+        _state.value = _state.value.copy(isLoading = true, error = null)
         viewModelScope.launch {
             try {
                 val response = authApi.setup2FA(mapOf("challengeToken" to challengeToken))
@@ -1105,6 +1131,23 @@ class LoginViewModel @Inject constructor(
                     onSuccess()
                 }
             } catch (e: Exception) {
+                // LOGIN-MOCK-173: on 401 the server returns a fresh challengeToken in the body
+                // so the user can retry without restarting login.
+                if (e is retrofit2.HttpException && e.code() == 401) {
+                    val retryToken = try {
+                        val body = e.response()?.errorBody()?.string()
+                        if (body != null) JSONObject(body).optJSONObject("data")?.optString("challengeToken", "") else null
+                    } catch (_: Exception) { null }
+                    if (!retryToken.isNullOrBlank()) {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            totpCode = "",
+                            challengeToken = retryToken,
+                            error = extractErrorMessage(e),
+                        )
+                        return@launch
+                    }
+                }
                 _state.value = _state.value.copy(
                     isLoading = false,
                     totpCode = "",
@@ -1118,9 +1161,114 @@ class LoginViewModel @Inject constructor(
         _state.value = _state.value.copy(showBackupCodes = null)
     }
 
+    /**
+     * LOGIN-MOCK-174 — Verify a backup code during the 2FA login challenge.
+     *
+     * Calls POST /auth/login/2fa-backup with the current challengeToken + backup code.
+     * On 401 the server issues a fresh challengeToken in the response body so the user
+     * can correct the code without restarting login — same retry-token pattern as verify2FA.
+     */
+    fun verifyBackupCode(onSuccess: () -> Unit) {
+        val s = _state.value
+        if (s.totpCode.isBlank()) { _state.value = s.copy(error = "Enter your backup code"); return }
+
+        _state.value = s.copy(isLoading = true, error = null)
+        viewModelScope.launch {
+            try {
+                val response = authApi.verify2FABackup(
+                    mapOf("challengeToken" to s.challengeToken, "code" to s.totpCode.trim())
+                )
+                val data = response.data ?: throw Exception(response.message ?: "Verification failed")
+
+                val user = data.user
+                authPreferences.storeName = _state.value.storeName
+                authPreferences.saveUser(
+                    token = data.accessToken,
+                    refreshToken = data.refreshToken,
+                    id = user.id,
+                    username = user.username,
+                    firstName = user.firstName,
+                    lastName = user.lastName,
+                    role = user.role,
+                )
+
+                val codes = data.backupCodes
+                val s2 = _state.value
+                val shouldStash = s2.rememberMeChecked && s2.biometricEnabled
+                if (!codes.isNullOrEmpty()) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        showBackupCodes = codes,
+                        pendingBiometricStash = shouldStash,
+                        pendingStashUsername = if (shouldStash) s2.username.trim() else "",
+                        pendingStashPassword = if (shouldStash) s2.password else "",
+                    )
+                } else if (shouldStash) {
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        pendingBiometricStash = true,
+                        pendingStashUsername = s2.username.trim(),
+                        pendingStashPassword = s2.password,
+                    )
+                } else {
+                    onSuccess()
+                }
+            } catch (e: Exception) {
+                // LOGIN-MOCK-174: on 401 preserve fresh challengeToken for retry
+                if (e is retrofit2.HttpException && e.code() == 401) {
+                    val retryToken = try {
+                        val body = e.response()?.errorBody()?.string()
+                        if (body != null) JSONObject(body).optJSONObject("data")?.optString("challengeToken", "") else null
+                    } catch (_: Exception) { null }
+                    if (!retryToken.isNullOrBlank()) {
+                        _state.value = _state.value.copy(
+                            isLoading = false,
+                            totpCode = "",
+                            challengeToken = retryToken,
+                            error = extractErrorMessage(e),
+                        )
+                        return@launch
+                    }
+                }
+                _state.value = _state.value.copy(
+                    isLoading = false,
+                    totpCode = "",
+                    error = extractErrorMessage(e),
+                )
+            }
+        }
+    }
+
     /** §2.12-L357 — called by the UI countdown LaunchedEffect when the timer reaches zero. */
     fun clearRateLimit() {
         _state.value = _state.value.copy(rateLimited = false, rateLimitResetMs = null, rateLimitScope = null)
+    }
+
+    /**
+     * LOGIN-MOCK-169 — called by the QR-spinner LaunchedEffect after the 10-second
+     * timeout. Re-checks state before firing so a successful load that arrived just
+     * before the delay expired does not incorrectly surface the error.
+     */
+    fun timeoutQrSetupIfStillBlank() {
+        val s = _state.value
+        if (s.qrCodeDataUrl.isBlank() && s.twoFaSecret.isBlank()) {
+            _state.value = s.copy(
+                isLoading = false,
+                error = "QR code failed to load. Try again or use the manual key below.",
+            )
+        }
+    }
+
+    /**
+     * LOGIN-MOCK-169 — re-triggers the 2FA QR setup call (clears error + calls setup2FA).
+     * Invoked by the Retry button in TwoFaSetupStep when a timeout has occurred.
+     */
+    fun retryQrSetup() {
+        val s = _state.value
+        // Clear error and re-enter loading state so the spinner appears again,
+        // then re-invoke setup2FA with the current challengeToken.
+        _state.value = s.copy(error = null, qrCodeDataUrl = "", twoFaSecret = "", twoFaManualEntry = "")
+        setup2FA(s.challengeToken, s.challengeTokenExpiresAtMs)
     }
 
     /**
@@ -1710,12 +1858,26 @@ class LoginViewModel @Inject constructor(
             val body = e.response()?.errorBody()?.string()
             if (body != null) {
                 try {
-                    return JSONObject(body).optString("message", e.message ?: "Request failed")
+                    val serverMsg = JSONObject(body).optString("message", e.message ?: "Request failed")
+                    return friendlyErrorMessage(serverMsg)
                 } catch (_: Exception) {}
             }
             return "Server error (${e.code()})"
         }
-        return e.message ?: "An error occurred"
+        return friendlyErrorMessage(e.message ?: "An error occurred")
+    }
+
+    // LOGIN-MOCK-167 — maps raw server error strings to brand-friendly copy.
+    private fun friendlyErrorMessage(serverMsg: String): String = when (serverMsg) {
+        "Origin header required"    -> "Connection blocked. Restart the app or contact support."
+        "Invalid credentials"       -> "Username or password incorrect."
+        "Challenge expired"         -> "Sign-in timed out. Please start again."
+        "TOTP not configured"       -> "Two-factor auth is not set up on this account."
+        "Invalid code"              -> "That code is incorrect. Please try again."
+        "No backup codes available" -> "No backup codes left. Contact your admin."
+        "Invalid backup code"       -> "That backup code is incorrect."
+        "Account locked"            -> "This account is locked. Contact your admin."
+        else                        -> "Sign-in error: $serverMsg"
     }
 }
 
@@ -1742,6 +1904,8 @@ fun LoginScreen(
     val context = LocalContext.current
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    // LOGIN-MOCK-148: haptic for biometric auth events in this scope.
+    val haptic = LocalHapticFeedback.current
 
     // §2.7 L330 — when an invite token arrives via deep link, jump to the
     // Register step and store the token once. Keyed on setupToken identity so
@@ -1794,6 +1958,8 @@ fun LoginScreen(
                 )
             }
             viewModel.clearPendingBiometricStash()
+            // LOGIN-MOCK-148: success haptic after biometric stash resolves.
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
             onLoginSuccess()
         }
     }
@@ -1802,7 +1968,11 @@ fun LoginScreen(
     LaunchedEffect(Unit) {
         val activity = (context as? FragmentActivity)
         if (activity != null) {
-            viewModel.attemptBiometricAutoLogin(activity, onLoginSuccess)
+            // LOGIN-MOCK-148: success haptic on biometric auto-login.
+            viewModel.attemptBiometricAutoLogin(activity, onSuccess = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onLoginSuccess()
+            })
         }
     }
 
@@ -2022,16 +2192,16 @@ fun LoginScreen(
             AnimatedContent(
                 targetState = state.step,
                 transitionSpec = {
-                    // LOGIN-MOCK-058: slide direction reflects navigation direction.
-                    // Forward (higher ordinal) → slide in from right, slide out to left.
-                    // Back (lower ordinal)    → slide in from left, slide out to right.
-                    if (targetState.ordinal > initialState.ordinal) {
-                        slideInHorizontally { it } + fadeIn() togetherWith
-                                slideOutHorizontally { -it } + fadeOut()
-                    } else {
-                        slideInHorizontally { -it } + fadeIn() togetherWith
-                                slideOutHorizontally { it } + fadeOut()
-                    }
+                    // LOGIN-MOCK-141: explicit tween specs eliminate the transparent-frame
+                    // artifact caused by default 300ms simultaneous fade+slide. The 100ms
+                    // delay on fadeIn ensures the incoming card begins appearing only after
+                    // the outgoing card is nearly gone.
+                    val isForward = targetState.ordinal > initialState.ordinal
+                    val direction = if (isForward) 1 else -1
+                    (slideInHorizontally(animationSpec = tween(300)) { it * direction } +
+                        fadeIn(animationSpec = tween(300, delayMillis = 100))) togetherWith
+                    (slideOutHorizontally(animationSpec = tween(300)) { -it * direction } +
+                        fadeOut(animationSpec = tween(150)))
                 },
                 // AND-038: contentKey ensures AnimatedContent remeasures correctly
                 // when transitioning between enum values with the same ordinal index.
@@ -2054,7 +2224,12 @@ fun LoginScreen(
                     // crowd the top edge; horizontal stays at 20dp for side gutters.
                     // LOGIN-MOCK-107: reduce vertical from 24dp → 20dp; card bottom gap
                     // was ~8dp over the mockup's ~16dp visual gap when card ends with a TextButton.
-                    Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp)) {
+                    // LOGIN-MOCK-142: animateContentSize lets the card height interpolate
+                    // smoothly when transitioning between steps of different heights,
+                    // preventing a jarring snap to the new height mid-slide.
+                    Column(modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 20.dp)
+                        .animateContentSize(animationSpec = tween(300))) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
@@ -2098,15 +2273,26 @@ private fun LoginTabBar(currentStep: SetupStep) {
         modifier = Modifier.fillMaxWidth(),
         containerColor = Color.Transparent,
         indicator = { tabPositions ->
-            // M3 Expressive removed Modifier.tabIndicatorOffset. Inline the
-            // offset+width math instead (parity with the deleted helper).
+            // LOGIN-MOCK-143: M3 Expressive removed Modifier.tabIndicatorOffset.
+            // Animate pos.left and pos.width via animateDpAsState so the indicator
+            // slides smoothly between tabs instead of hard-cutting.
             val pos = tabPositions[selectedIndex]
+            val animatedLeft by animateDpAsState(
+                targetValue = pos.left,
+                animationSpec = tween(durationMillis = 300),
+                label = "tab_indicator_left",
+            )
+            val animatedWidth by animateDpAsState(
+                targetValue = pos.width,
+                animationSpec = tween(durationMillis = 300),
+                label = "tab_indicator_width",
+            )
             Box(Modifier.fillMaxSize()) {
                 TabRowDefaults.SecondaryIndicator(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .offset(x = pos.left)
-                        .width(pos.width),
+                        .offset(x = animatedLeft)
+                        .width(animatedWidth),
                     height = 3.dp, // LOGIN-MOCK-103: match mockup ~3dp indicator weight
                     color = activeColor,
                 )
@@ -2145,16 +2331,25 @@ private fun LoginTabBar(currentStep: SetupStep) {
 
 @Composable
 private fun ErrorMessage(error: String?) {
-    if (error != null) {
-        Spacer(Modifier.height(12.dp))
-        // LOGIN-MOCK-091: liveRegion=Polite ensures TalkBack announces the error
-        // when it first appears without interrupting ongoing speech.
-        Text(
-            error,
-            color = MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
+    // LOGIN-MOCK-144: AnimatedVisibility gives the error a fade+expand entrance so
+    // validation failures draw attention without a jarring instant-appear.
+    // Spacer is outside AnimatedVisibility to prevent layout jump when error appears.
+    AnimatedVisibility(
+        visible = error != null,
+        enter = fadeIn(animationSpec = tween(150)) + expandVertically(animationSpec = tween(200)),
+        exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150)),
+    ) {
+        Column {
+            Spacer(Modifier.height(12.dp))
+            // LOGIN-MOCK-091: liveRegion=Polite ensures TalkBack announces the error
+            // when it first appears without interrupting ongoing speech.
+            Text(
+                error ?: "",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
     }
 }
 
@@ -2335,6 +2530,14 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     val shopUrlFocusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { shopUrlFocusRequester.requestFocus() }
 
+    // LOGIN-MOCK-176: per-field validation state (only shown after the field is touched)
+    val shopSlugError = state.shopSlug.isNotBlank() &&
+        (state.shopSlug.length < 3 || state.shopSlug.length > 30 ||
+         !state.shopSlug.matches(Regex("^[a-z0-9-]+$")))
+    val emailRegex = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
+    val emailError = state.registerEmail.isNotBlank() && !emailRegex.matches(state.registerEmail.trim())
+    val passwordError = state.registerPassword.isNotBlank() && state.registerPassword.length < 8
+
     // Header row: back arrow + title
     // LOGIN-MOCK-098/055: title + subtitle merged into one heading stop; back arrow
     // sits outside the merged Column so it remains independently focusable.
@@ -2369,6 +2572,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         // LOGIN-MOCK-094: shopUrlFocusRequester for auto-focus on card entry.
         modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester),
         leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
+        isError = shopSlugError,
         suffix = {
             // LOGIN-MOCK-108: bodyLarge (16sp) matches OutlinedTextField value text size.
             // LOGIN-MOCK-133: LTR override prevents domain suffix from mirroring in RTL.
@@ -2380,7 +2584,11 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
                 )
             }
         },
-        supportingText = { Text("3–30 characters: letters, numbers, hyphens") },
+        // LOGIN-MOCK-176: show error message when invalid, helper copy otherwise
+        supportingText = {
+            if (shopSlugError) Text("Lowercase letters, numbers, hyphens only")
+            else Text("3-30 characters: letters, numbers, hyphens")
+        },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
@@ -2406,7 +2614,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         label = { Text("Admin Email") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
+        isError = emailError,
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+        // LOGIN-MOCK-176: inline email validation
+        supportingText = { if (emailError) Text("Enter a valid email address") },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
@@ -2419,6 +2630,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         label = { Text("Admin Password") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
+        isError = passwordError,
         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
@@ -2431,7 +2643,11 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
                 )
             }
         },
-        supportingText = { Text("Minimum 8 characters") },
+        // LOGIN-MOCK-176: show error when too short, helper copy otherwise
+        supportingText = {
+            if (passwordError) Text("Password must be at least 8 characters")
+            else Text("Minimum 8 characters")
+        },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         // LOGIN-MOCK-090(F): onDone was calling clearFocus() only — hardware-keyboard
         // Enter did nothing. Now submits if the form is valid, else clears focus.
@@ -2448,9 +2664,14 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
 
     // Error shown between password helper and Create Shop button
     // LOGIN-MOCK-091: liveRegion=Polite so TalkBack announces this error on appearance.
-    if (state.error != null) {
+    // LOGIN-MOCK-144: AnimatedVisibility gives the inline error a fade+expand entrance.
+    AnimatedVisibility(
+        visible = state.error != null,
+        enter = fadeIn(animationSpec = tween(150)) + expandVertically(animationSpec = tween(200)),
+        exit = fadeOut(animationSpec = tween(150)) + shrinkVertically(animationSpec = tween(150)),
+    ) {
         Text(
-            text = state.error,
+            text = state.error ?: "",
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.fillMaxWidth().semantics { liveRegion = LiveRegionMode.Polite },
@@ -2484,6 +2705,10 @@ private fun CredentialsStep(
 ) {
     val focusManager = LocalFocusManager.current
     var showPassword by remember { mutableStateOf(false) }
+
+    // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
+    val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
+    val credPasswordError = state.password.isNotBlank() && state.password.length < 1
 
     // §2.1 — fire the setup-status probe once on first render of this step.
     // Non-blocking: login form renders immediately; probe result overlays or
@@ -2708,7 +2933,10 @@ private fun CredentialsStep(
         label = { Text("Username") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
+        isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
+        // LOGIN-MOCK-177: inline username validation
+        supportingText = { if (usernameError) Text("Username must be at least 2 characters") },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         // D5-6: IME Next advances focus to the password field instead of sitting
         // inert under the visible "Next" glyph on the native keyboard.
@@ -2766,6 +2994,7 @@ private fun CredentialsStep(
                 label = { Text("Password") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
+                isError = credPasswordError,
                 leadingIcon = { Icon(Icons.Default.Lock, null) },
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
@@ -2777,6 +3006,8 @@ private fun CredentialsStep(
                         )
                     }
                 },
+                // LOGIN-MOCK-177: inline password validation
+                supportingText = { if (credPasswordError) Text("Password cannot be empty") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus(); viewModel.login() }),
             )
@@ -3283,6 +3514,17 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
         }
     }
 
+    // LOGIN-MOCK-169: 10-second QR load timeout — fires timeoutQrSetupIfStillBlank()
+    // when qrCodeDataUrl and twoFaSecret are still blank after 10 seconds.
+    val qrLoadKey = state.qrCodeDataUrl + state.twoFaSecret
+    LaunchedEffect(qrLoadKey) {
+        if (state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank()) {
+            delay(10_000L)
+            // VM re-reads current state so we avoid stale closure capture
+            viewModel.timeoutQrSetupIfStillBlank()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -3304,6 +3546,22 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                         .size(172.dp),  // LOGIN-MOCK-109: 200dp → 172dp proportional
                 )
             }
+            // LOGIN-MOCK-169: show Retry button when timed out (error is set by timeoutQrSetup)
+            state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() && state.error != null ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        state.error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = {
+                        viewModel.retryQrSetup()
+                    }) {
+                        Text("Retry")
+                    }
+                }
             state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() ->
                 CircularProgressIndicator()
             else -> Text(
@@ -3512,15 +3770,34 @@ private fun TotpCodeInputContent(
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
 
+    // LOGIN-MOCK-147: haptic feedback at key 2FA events — must stay in composition
+    // context because LocalHapticFeedback is not accessible from the ViewModel.
+    val haptic = LocalHapticFeedback.current
+
     // LOGIN-MOCK-092: gate auto-focus behind the parameter so Setup step doesn't
     // force keyboard open before the user has scanned the QR code.
     if (autoFocusOnEntry) {
         LaunchedEffect(Unit) { focusRequester.requestFocus() }
     }
 
+    // LOGIN-MOCK-147: fire haptic when a wrong-code error appears.
+    val previousError = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(state.error) {
+        if (state.error != null && previousError.value != state.error) {
+            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        }
+        previousError.value = state.error
+    }
+
     OutlinedTextField(
         value = state.totpCode,
-        onValueChange = viewModel::updateTotpCode,
+        onValueChange = { code ->
+            viewModel.updateTotpCode(code)
+            // LOGIN-MOCK-147: haptic on 6th-digit entry — signals code is complete.
+            if (code.length == 6) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            }
+        },
         label = { Text("6-digit code") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
@@ -3545,7 +3822,13 @@ private fun TotpCodeInputContent(
     Spacer(Modifier.height(16.dp))
 
     LoginPillButton(
-        onClick = { viewModel.verify2FA(onSuccess) },
+        onClick = {
+            // LOGIN-MOCK-147: wrap onSuccess to fire success haptic in composition context.
+            viewModel.verify2FA(onSuccess = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onSuccess()
+            })
+        },
         enabled = state.totpCode.length == 6 && !state.isLoading,
         isLoading = state.isLoading,
         label = "Continue",
