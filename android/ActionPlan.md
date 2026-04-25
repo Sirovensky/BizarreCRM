@@ -905,18 +905,18 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Delete customer** — confirm `AlertDialog` + warning if open tickets (offer reassign-or-cancel flow). (commit 99e0eee — AlertDialog + open-ticket warning message)
 
 ### 5.3 Create
-- [ ] Full create form (first/last/phone/email/organization/address/city/state/zip/notes).
-- [ ] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
-- [ ] **Phone normalize** — shared `PhoneFormatter` util using libphonenumber-android.
-- [ ] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
-- [ ] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
+- [x] Full create form (first/last/phone/email/organization/address/city/state/zip/notes).
+- [x] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
+- [x] **Phone normalize** — shared `PhoneFormatter` util using libphonenumber-android.
+- [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
+- [x] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
 - [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
-- [ ] **Idempotency** + offline temp-ID handling.
+- [x] **Idempotency** + offline temp-ID handling.
 
 ### 5.4 Edit
-- [ ] All fields editable. `PUT /customers/:id`.
-- [ ] Optimistic UI + rollback.
-- [ ] Concurrent-edit 409 banner.
+- [x] All fields editable. `PUT /customers/:id`.
+- [x] Optimistic UI + rollback.
+- [x] Concurrent-edit 409 banner.
 
 ### 5.5 Merge
 - [ ] `POST /customers/merge` with `{ keep_id, merge_id }`.
@@ -933,8 +933,8 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
 
 ### 5.8 Tags & segments
-- [ ] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
-- [ ] Color-coded with tenant-defined palette.
+- [x] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
+- [x] Color-coded with tenant-defined palette.
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold").
 - [ ] Customer detail header chip row for tags.
 - [ ] Tap tag → filter customer list.

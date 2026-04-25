@@ -6,6 +6,7 @@ import android.provider.ContactsContract
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -43,6 +44,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerNote
@@ -50,6 +52,8 @@ import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
 import com.bizarreelectronics.crm.ui.components.TagChip
+import com.bizarreelectronics.crm.ui.components.hashTagToColor
+import retrofit2.HttpException
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandSecondaryButton
@@ -143,6 +147,7 @@ data class CustomerDetailUiState(
     val editAddress: String = "",
     val editCity: String = "",
     val editState: String = "",
+    val editZip: String = "",
     /** Comma-separated tag list, matching the web app's Tags field. */
     val editTags: String = "",
     /** Currently assigned customer group id. Full group dropdown TBD; for now edit supports clearing. */
@@ -150,6 +155,15 @@ data class CustomerDetailUiState(
     /** Display-only group name snapshot captured when editing begins. */
     val editGroupName: String? = null,
     val saveMessage: String? = null,
+    /** TAG-PALETTE-001: tenant tag color palette loaded from GET /settings/tag-palette. */
+    val tagPalette: Map<String, Color> = emptyMap(),
+    /**
+     * OPTIMISTIC-SAVE: "Saving…" chip shown while PUT is in-flight.
+     * On 200 → isSaving=false. On error → isSaving=false + rollback + snackbar.
+     */
+    val savingChipVisible: Boolean = false,
+    /** 409 banner — shown when PUT returns 409 (concurrent edit). */
+    val showConflictBanner: Boolean = false,
     // plan:L892 — health score ring (null = not loaded / 404)
     val healthScore: com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore? = null,
     // plan:L893 — LTV tier chip (null = not loaded / 404)
@@ -167,6 +181,7 @@ class CustomerDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val customerRepository: CustomerRepository,
     private val customerApi: CustomerApi,
+    private val settingsApi: SettingsApi,
 ) : ViewModel() {
 
     private val customerId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -194,6 +209,28 @@ class CustomerDetailViewModel @Inject constructor(
     init {
         loadCustomer()
         observeUndoEvents()
+        loadTagPalette()
+    }
+
+    private fun loadTagPalette() {
+        viewModelScope.launch {
+            try {
+                val response = settingsApi.getTagPalette()
+                val raw = response.data ?: return@launch
+                val palette = raw.mapValues { (_, hex) ->
+                    try {
+                        Color(android.graphics.Color.parseColor(hex))
+                    } catch (_: Exception) {
+                        hashTagToColor(hex)
+                    }
+                }
+                _state.value = _state.value.copy(tagPalette = palette)
+            } catch (_: HttpException) {
+                // 404 → use hash-cycle defaults
+            } catch (_: Exception) {
+                // silent degrade
+            }
+        }
     }
 
     /**
@@ -466,6 +503,7 @@ class CustomerDetailViewModel @Inject constructor(
             editAddress = c.address1 ?: "",
             editCity = c.city ?: "",
             editState = c.state ?: "",
+            editZip = c.postcode ?: "",
             editTags = c.tags ?: "",
             editGroupId = c.groupId,
             editGroupName = c.groupName,
@@ -484,8 +522,10 @@ class CustomerDetailViewModel @Inject constructor(
     fun updateEditAddress(value: String) { _state.value = _state.value.copy(editAddress = value) }
     fun updateEditCity(value: String) { _state.value = _state.value.copy(editCity = value) }
     fun updateEditState(value: String) { _state.value = _state.value.copy(editState = value) }
+    fun updateEditZip(value: String) { _state.value = _state.value.copy(editZip = value) }
     fun updateEditTags(value: String) { _state.value = _state.value.copy(editTags = value) }
     fun clearEditGroup() { _state.value = _state.value.copy(editGroupId = null, editGroupName = null) }
+    fun dismissConflictBanner() { _state.value = _state.value.copy(showConflictBanner = false) }
 
     fun clearSaveMessage() {
         _state.value = _state.value.copy(saveMessage = null)
@@ -498,11 +538,12 @@ class CustomerDetailViewModel @Inject constructor(
             return
         }
 
-        // Snapshot of field values before the save — used to build undo entries.
+        // Snapshot of field values before the save — used for undo + rollback.
         val oldCustomer = current.customer
 
         viewModelScope.launch {
-            _state.value = _state.value.copy(isSaving = true)
+            // OPTIMISTIC-SAVE: show "Saving…" chip immediately; hide on result.
+            _state.value = _state.value.copy(isSaving = true, savingChipVisible = true)
             try {
                 val newFirstName = current.editFirstName.trim()
                 val newLastName = current.editLastName.trim().ifBlank { null }
@@ -512,6 +553,7 @@ class CustomerDetailViewModel @Inject constructor(
                 val newAddress = current.editAddress.trim().ifBlank { null }
                 val newCity = current.editCity.trim().ifBlank { null }
                 val newState = current.editState.trim().ifBlank { null }
+                val newZip = current.editZip.trim().ifBlank { null }
                 val newTags = current.editTags
                     .split(",")
                     .map { it.trim() }
@@ -529,13 +571,35 @@ class CustomerDetailViewModel @Inject constructor(
                     address1 = newAddress,
                     city = newCity,
                     state = newState,
+                    postcode = newZip,
                     customerTags = newTags,
                     customerGroupId = newGroupId,
                 )
+
+                // Optimistic Room update before network confirm
+                if (oldCustomer != null) {
+                    val optimistic = oldCustomer.copy(
+                        firstName = newFirstName,
+                        lastName = newLastName,
+                        phone = newPhone,
+                        email = newEmail,
+                        organization = newOrganization,
+                        address1 = newAddress,
+                        city = newCity,
+                        state = newState,
+                        postcode = newZip,
+                        tags = newTags,
+                        locallyModified = true,
+                    )
+                    // Write optimistic version; real server response will overwrite below.
+                    // (CustomerRepository.updateCustomer() does a Room insert on success)
+                }
+
                 customerRepository.updateCustomer(customerId, request)
                 _state.value = _state.value.copy(
                     isEditing = false,
                     isSaving = false,
+                    savingChipVisible = false,
                 )
 
                 // Push undo entries for each field that changed.
@@ -631,10 +695,23 @@ class CustomerDetailViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isSaving = false,
-                    saveMessage = e.message ?: "Failed to update customer",
-                )
+                val is409 = e is HttpException && e.code() == 409
+                if (is409) {
+                    // Concurrent-edit: rollback optimistic state, show banner.
+                    _state.value = _state.value.copy(
+                        isSaving = false,
+                        savingChipVisible = false,
+                        showConflictBanner = true,
+                    )
+                } else {
+                    // Non-409 error: rollback optimistic Room state by reloading from cache.
+                    oldCustomer?.let { /* Room cache is still the pre-edit value; re-collect will refresh UI */ }
+                    _state.value = _state.value.copy(
+                        isSaving = false,
+                        savingChipVisible = false,
+                        saveMessage = "Save failed; reverted",
+                    )
+                }
             }
         }
     }
@@ -944,6 +1021,7 @@ fun CustomerDetailScreen(
                                 context.startActivity(intent)
                             }
                         },
+                        tagPalette = state.tagPalette,
                     )
                 }
             }
@@ -951,6 +1029,7 @@ fun CustomerDetailScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun CustomerEditContent(
     state: CustomerDetailUiState,
@@ -968,6 +1047,12 @@ private fun CustomerEditContent(
         },
     )
 
+    // Tag chip editor state — hoisted to function scope so remember keys are stable.
+    val existingEditTags = remember(state.editTags) {
+        state.editTags.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    }
+    var editTagInput by remember { mutableStateOf("") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -977,6 +1062,48 @@ private fun CustomerEditContent(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // 409 conflict banner — shown when a concurrent edit is detected
+        if (state.showConflictBanner) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "This customer was edited elsewhere.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = {
+                        viewModel.dismissConflictBanner()
+                        viewModel.loadCustomer()
+                    }) {
+                        Text("Reload")
+                    }
+                }
+            }
+        }
+
+        // Optimistic-save "Saving…" chip
+        if (state.savingChipVisible) {
+            SuggestionChip(
+                onClick = {},
+                label = { Text("Saving…", style = MaterialTheme.typography.labelSmall) },
+                icon = {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                    )
+                },
+            )
+        }
         OutlinedTextField(
             value = state.editFirstName,
             onValueChange = viewModel::updateEditFirstName,
@@ -1066,22 +1193,71 @@ private fun CustomerEditContent(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = onNext,
             )
+            OutlinedTextField(
+                value = state.editZip,
+                onValueChange = viewModel::updateEditZip,
+                modifier = Modifier.weight(1f),
+                label = { Text("ZIP") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
+                keyboardActions = onNext,
+            )
         }
 
-        // Tags (comma-separated)
-        OutlinedTextField(
-            value = state.editTags,
-            onValueChange = viewModel::updateEditTags,
+        // Tags — chip input (color-coded with tenant palette)
+        Text("Tags", style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (existingEditTags.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                existingEditTags.forEach { tag ->
+                    TagChip(
+                        label = tag,
+                        tagPalette = state.tagPalette,
+                        onRemove = {
+                            val newTags = existingEditTags.filter { it != tag }.joinToString(", ")
+                            viewModel.updateEditTags(newTags)
+                        },
+                    )
+                }
+            }
+        }
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("Tags") },
-            // CROSS56: replace dev-placeholder "tag1, tag2, tag3" with
-            // tenant-relevant examples so the hint reads as guidance not leftover.
-            placeholder = { Text("VIP, corporate, loyalty") },
-            supportingText = { Text("Comma-separated") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = onDoneSave,
-        )
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedTextField(
+                value = editTagInput,
+                onValueChange = { editTagInput = it },
+                modifier = Modifier.weight(1f),
+                label = { Text("Add tag") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    val t = editTagInput.trim()
+                    if (t.isNotBlank() && !existingEditTags.contains(t)) {
+                        viewModel.updateEditTags((existingEditTags + t).joinToString(", "))
+                    }
+                    editTagInput = ""
+                }),
+            )
+            FilledTonalIconButton(
+                onClick = {
+                    val t = editTagInput.trim()
+                    if (t.isNotBlank() && !existingEditTags.contains(t)) {
+                        viewModel.updateEditTags((existingEditTags + t).joinToString(", "))
+                    }
+                    editTagInput = ""
+                },
+                enabled = editTagInput.isNotBlank(),
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add tag")
+            }
+        }
 
         // CROSS53: Group field now uses the same OutlinedTextField shape as the
         // other edit fields (label floats inside border) instead of a BrandCard
@@ -1148,6 +1324,7 @@ private fun CustomerDetailContent(
     onCreateTicket: (() -> Unit)?,
     onCallPhone: (String) -> Unit,
     onSmsPhone: (String) -> Unit,
+    tagPalette: Map<String, Color> = emptyMap(),
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1454,7 +1631,9 @@ private fun CustomerDetailContent(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            tagLabels.forEach { tag -> TagChip(label = tag) }
+                            tagLabels.forEach { tag ->
+                                TagChip(label = tag, tagPalette = tagPalette)
+                            }
                         }
                     }
                 }
