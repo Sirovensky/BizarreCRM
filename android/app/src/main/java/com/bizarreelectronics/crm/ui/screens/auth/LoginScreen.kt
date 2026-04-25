@@ -1854,7 +1854,7 @@ fun LoginScreen(
     ) { innerPadding ->
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding).statusBarsPadding().imePadding(),
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.TopCenter,
     ) {
         Column(
             modifier = Modifier
@@ -1864,23 +1864,22 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Logo / App name
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(80.dp))
             Text(
                 "Bizarre CRM",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold,
                 ),
                 color = MaterialTheme.colorScheme.onBackground,
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "Electronics Repair Management",
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             // Sanctioned WaveDivider placement — one branded moment under wordmark
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             WaveDivider()
             Spacer(Modifier.height(24.dp))
 
@@ -2040,7 +2039,7 @@ private fun LoginTabBar(currentStep: SetupStep) {
         SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
     }
 
-    val activePurple = Color(0xFF8B5CF6)
+    val activeColor = MaterialTheme.colorScheme.primary
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
     val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
 
@@ -2048,19 +2047,21 @@ private fun LoginTabBar(currentStep: SetupStep) {
         selectedTabIndex = selectedIndex,
         modifier = Modifier.fillMaxWidth(),
         containerColor = Color.Transparent,
-        contentColor = activePurple,
+        contentColor = activeColor,
         indicator = { tabPositions ->
             // M3 Expressive removed Modifier.tabIndicatorOffset. Inline the
             // offset+width math instead (parity with the deleted helper).
             val pos = tabPositions[selectedIndex]
-            TabRowDefaults.SecondaryIndicator(
-                modifier = Modifier
-                    .wrapContentSize(Alignment.BottomStart)
-                    .offset(x = pos.left)
-                    .width(pos.width),
-                height = 2.dp,
-                color = activePurple,
-            )
+            Box(Modifier.fillMaxSize()) {
+                TabRowDefaults.SecondaryIndicator(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset(x = pos.left)
+                        .width(pos.width),
+                    height = 2.dp,
+                    color = activeColor,
+                )
+            }
         },
         divider = {
             HorizontalDivider(color = dividerColor, thickness = 1.dp)
@@ -2075,10 +2076,10 @@ private fun LoginTabBar(currentStep: SetupStep) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (isSelected) activePurple else inactiveColor,
+                        color = if (isSelected) activeColor else inactiveColor,
                     )
                 },
-                selectedContentColor = activePurple,
+                selectedContentColor = activeColor,
                 unselectedContentColor = inactiveColor,
             )
         }
@@ -2251,12 +2252,12 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         TextButton(onClick = viewModel::toggleCustomServer) {
             Text(
                 if (state.useCustomServer) "Use BizarreCRM Cloud" else "Self-hosted?",
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.bodyMedium,
             )
         }
         if (!state.useCustomServer) {
             TextButton(onClick = viewModel::goToRegister) {
-                Text("Register new shop", style = MaterialTheme.typography.labelSmall)
+                Text("Register new shop", style = MaterialTheme.typography.bodyMedium)
             }
         }
     }
@@ -2311,7 +2312,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(16.dp))
 
     // Field 2: Shop Display Name
     OutlinedTextField(
@@ -2324,7 +2325,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(16.dp))
 
     // Field 3: Admin Email
     OutlinedTextField(
@@ -2337,7 +2338,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(8.dp))
+    Spacer(Modifier.height(16.dp))
 
     // Field 4: Admin Password
     OutlinedTextField(
@@ -2642,7 +2643,7 @@ private fun CredentialsStep(
         // inert under the visible "Next" glyph on the native keyboard.
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(12.dp))
+    Spacer(Modifier.height(16.dp))
 
     // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
     // While check is in flight (domainSsoChecking), show a small spinner below the
@@ -2720,7 +2721,7 @@ private fun CredentialsStep(
             onClick = viewModel::login,
             enabled = state.username.isNotBlank() && state.password.isNotBlank()
                     && !state.isLoading && !state.networkOffline && !state.rateLimited,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(56.dp),
         ) {
             if (state.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.onPrimary)
