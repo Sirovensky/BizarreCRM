@@ -340,7 +340,7 @@ fun AppointmentListScreen(
                 weekStart = weekStart,
                 onWeekPrev = { weekStart = weekStart.minusWeeks(1) },
                 onWeekNext = { weekStart = weekStart.plusWeeks(1) },
-                onAppointmentClick = { appt -> onAppointmentClick(appt.id) },
+                onAppointmentClick = onAppointmentClick,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding),

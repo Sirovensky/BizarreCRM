@@ -132,7 +132,7 @@ class CustomerCreateViewModel @Inject constructor(
     private val gson: Gson,
 ) : ViewModel() {
 
-    private companion object {
+    companion object {
         const val KEY_FIRST_NAME = "cust_create_first_name"
         const val KEY_LAST_NAME  = "cust_create_last_name"
         const val KEY_PHONE      = "cust_create_phone"
@@ -147,8 +147,8 @@ class CustomerCreateViewModel @Inject constructor(
         const val KEY_REFERRAL   = "cust_create_referral"
 
         val REFERRAL_OPTIONS = listOf("", "Web", "Phone", "Referral", "Walk-in", "Other")
-        val PHONE_LABELS = listOf("Mobile", "Home", "Work", "Other")
-        val EMAIL_LABELS = listOf("Home", "Work", "Other")
+        val PHONE_LABELS     = listOf("Mobile", "Home", "Work", "Other")
+        val EMAIL_LABELS     = listOf("Home", "Work", "Other")
     }
 
     private val _state = MutableStateFlow(
@@ -652,11 +652,6 @@ class CustomerCreateViewModel @Inject constructor(
         }
     }
 
-    companion object {
-        val REFERRAL_OPTIONS = listOf("", "Web", "Phone", "Referral", "Walk-in", "Other")
-        val PHONE_LABELS     = listOf("Mobile", "Home", "Work", "Other")
-        val EMAIL_LABELS     = listOf("Home", "Work", "Other")
-    }
 }
 
 // ── Phone formatting helper ───────────────────────────────────────────────────
