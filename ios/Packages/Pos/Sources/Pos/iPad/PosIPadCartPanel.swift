@@ -390,22 +390,23 @@ public struct PosIPadCartPanel: View {
                     .padding(.vertical, 14)
                     .padding(.horizontal, 16)
                     .foregroundStyle(Color.bizarreOnOrange)
-                    .background(
-                        ZStack {
-                            LinearGradient(
+                    .background {
+                        RoundedRectangle(cornerRadius: 14)
+                            .fill(LinearGradient(
                                 colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
                                 startPoint: .top,
                                 endPoint: .bottom
-                            )
-                            RadialGradient(
-                                colors: [Color.white.opacity(0.45), Color.clear],
-                                center: .init(x: 0.5, y: 0),
-                                startRadius: 0,
-                                endRadius: 100
-                            )
-                        },
-                        in: RoundedRectangle(cornerRadius: 14)
-                    )
+                            ))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(RadialGradient(
+                                        colors: [Color.white.opacity(0.45), Color.clear],
+                                        center: .init(x: 0.5, y: 0),
+                                        startRadius: 0,
+                                        endRadius: 100
+                                    ))
+                            }
+                    }
                     .overlay(
                         RoundedRectangle(cornerRadius: 14)
                             .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
