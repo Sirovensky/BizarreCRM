@@ -23,6 +23,11 @@ struct PosSearchPanel: View {
     @State private var pendingScanCode: String?
     @State private var showingScanSheet: Bool = false
 
+    /// iPad only: active filter chip. `nil` = "All" (no filter).
+    @State private var activeFilter: String? = nil
+
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
     var body: some View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
@@ -31,6 +36,10 @@ struct PosSearchPanel: View {
                     .padding(.horizontal, BrandSpacing.base)
                     .padding(.top, BrandSpacing.sm)
                     .padding(.bottom, BrandSpacing.xs)
+                // iPad screen 2: filter chip row above catalog when results exist.
+                if hSizeClass == .regular, !search.results.isEmpty {
+                    filterChipRow
+                }
                 resultsContent
             }
         }
@@ -198,6 +207,48 @@ struct PosSearchPanel: View {
         }
     }
 
+    // MARK: - iPad filter chip row
+
+    /// Horizontal scrollable category filter chips above the catalog grid.
+    /// Matches iPad mockup screen 2: "Matches · N / Screens / Batteries / …"
+    /// Categories are derived from distinct `category` values in current results.
+    private var filterChipRow: some View {
+        let categories = distinctCategories
+        return ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                // "Matches · N" all-results chip
+                FilterChip(
+                    label: "Matches · \(search.results.count)",
+                    isActive: activeFilter == nil
+                ) {
+                    BrandHaptics.tap()
+                    activeFilter = nil
+                }
+
+                ForEach(categories, id: \.self) { cat in
+                    FilterChip(label: cat, isActive: activeFilter == cat) {
+                        BrandHaptics.tap()
+                        activeFilter = activeFilter == cat ? nil : cat
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+        }
+        .accessibilityIdentifier("pos.catalogFilterChips")
+    }
+
+    /// Unique item-type labels from the current result set, preserving order
+    /// of first appearance. Nil / empty item types are dropped.
+    private var distinctCategories: [String] {
+        var seen = Set<String>()
+        return search.results.compactMap { item -> String? in
+            guard let type_ = item.itemType, !type_.isEmpty else { return nil }
+            let label = type_.capitalized
+            return seen.insert(label).inserted ? label : nil
+        }
+    }
+
     /// Three-button customer-attach stack shown on the POS home screen
     /// when no customer is attached yet. Matches desktop's walk-in /
     /// find / create workflow so staff have an obvious starting point.
@@ -269,6 +320,41 @@ struct PosSearchPanel: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title). \(subtitle).")
         .accessibilityIdentifier(identifier)
+    }
+}
+
+// MARK: - FilterChip
+
+/// Pill-shaped filter chip for the iPad catalog filter row (mockup screen 2).
+private struct FilterChip: View {
+    let label: String
+    let isActive: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(isActive ? Color.bizarreOnOrange : .bizarreOnSurface)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xs)
+                .background(
+                    isActive
+                        ? Color.bizarreOrange
+                        : Color.bizarreSurface1.opacity(0.6),
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule().strokeBorder(
+                        isActive ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.5),
+                        lineWidth: isActive ? 0 : 0.5
+                    )
+                )
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("\(label) filter\(isActive ? ", selected" : "")")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
 
