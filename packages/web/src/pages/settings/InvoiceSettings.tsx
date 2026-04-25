@@ -25,7 +25,7 @@ function TextRow({ label, description, value, onChange, placeholder }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || label}
-        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       />
     </div>
   );
@@ -49,7 +49,7 @@ function TextareaRow({ label, description, value, onChange, placeholder }: {
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder || label}
         rows={3}
-        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 resize-y"
+        className="w-80 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y"
       />
     </div>
   );
@@ -71,7 +71,7 @@ function SelectRow({ label, description, value, options, onChange }: {
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        className="px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
@@ -187,7 +187,7 @@ function NumberRow({ label, description, value, onChange, min, max, suffix }: {
           onChange={(e) => onChange(parseInt(e.target.value) || 0)}
           min={min}
           max={max}
-          className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 text-center"
+          className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 text-center"
         />
         {suffix && <span className="text-sm text-surface-500 dark:text-surface-400">{suffix}</span>}
       </div>

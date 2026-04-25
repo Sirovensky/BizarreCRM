@@ -60,7 +60,7 @@ function NumberRow({ label, description, value, onChange }: NumberRowProps) {
           step="1"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-24 px-3 py-1.5 text-sm text-right border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-24 px-3 py-1.5 text-sm text-right border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
         <span className="text-sm text-surface-500 dark:text-surface-400 w-14">months</span>
       </div>

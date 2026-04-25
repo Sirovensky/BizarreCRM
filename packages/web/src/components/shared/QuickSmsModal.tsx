@@ -102,9 +102,13 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
     // SCAN-1164: backdrop click closes; inner card stops propagation.
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      role="presentation"
       onClick={onClose}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="quick-sms-title"
         className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-lg"
         onClick={(e) => e.stopPropagation()}
       >
@@ -115,7 +119,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
               <MessageSquare className="h-4 w-4 text-primary-600 dark:text-primary-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-surface-900 dark:text-surface-100">Send SMS</h2>
+              <h2 id="quick-sms-title" className="font-semibold text-surface-900 dark:text-surface-100">Send SMS</h2>
               <p className="text-xs text-surface-400">{customer.first_name} {customer.last_name}{ticket && ` · ${ticket.order_id}`}</p>
             </div>
           </div>

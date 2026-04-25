@@ -197,7 +197,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             <input
               value={form.name}
               onChange={(e) => handleChange('name', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               placeholder="e.g. VIP"
             />
           </div>
@@ -209,7 +209,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               min="0"
               value={form.monthly_price}
               onChange={(e) => handleChange('monthly_price', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               placeholder="29.99"
             />
           </div>
@@ -226,7 +226,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               max="100"
               value={form.discount_pct}
               onChange={(e) => handleChange('discount_pct', e.target.value)}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               placeholder="10"
             />
           </div>
@@ -235,7 +235,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
             <select
               value={form.discount_applies_to}
               onChange={(e) => handleChange('discount_applies_to', e.target.value as 'labor' | 'all' | 'parts')}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             >
               {APPLIES_TO_OPTIONS.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -277,7 +277,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               value={newBenefit}
               onChange={(e) => setNewBenefit(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addBenefit(); } }}
-              className="flex-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="flex-1 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               placeholder="Add a benefit..."
             />
             <button

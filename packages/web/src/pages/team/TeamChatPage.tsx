@@ -4,8 +4,14 @@
  * Polling-based MVP. Channels list on the left, messages on the right. New
  * message input at the bottom uses the MentionPicker to insert @username.
  *
- * Polling interval: 5 seconds, only while the page is visible. The endpoint
+ * Polling interval: 15 seconds, only while the page is visible. The endpoint
  * supports `?after=<lastId>` so each tick is incremental, not a full reload.
+ *
+ * @audit-fixed (WEB-FAD-003): the original 5s tick had no visibility gate,
+ * so background tabs hammered `/team-chat/channels/:id/messages?limit=200`
+ * at 720 reqs/hr. Now: 15s tick + `refetchIntervalInBackground: false` +
+ * a visibilitychange listener that triggers an immediate refetch when the
+ * tab comes forward (so chat doesn't look frozen on tab switch).
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -60,10 +66,19 @@ export function TeamChatPage() {
   });
   const channels: Channel[] = channelsData || [];
 
-  const { data: messagesData } = useQuery({
+  const { data: messagesData, refetch: refetchMessages } = useQuery({
     queryKey: ['team-chat', 'messages', selectedChannelId],
     enabled: !!selectedChannelId,
-    refetchInterval: 5_000,
+    // 15s tick + skip-when-hidden. TanStack respects
+    // refetchIntervalInBackground:false by suspending the timer on
+    // visibilitychange, but we still gate refetchInterval below as a
+    // belt-and-braces guard for browsers that fire the timer anyway.
+    refetchInterval: () =>
+      typeof document !== 'undefined' && document.visibilityState !== 'visible'
+        ? false
+        : 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 4_000,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Message[] }>(
         `/team-chat/channels/${selectedChannelId}/messages?limit=200`,
@@ -72,6 +87,19 @@ export function TeamChatPage() {
     },
   });
   const messages: Message[] = messagesData || [];
+
+  // Resume immediately when the tab comes back to the foreground so users
+  // don't stare at a stale chat for up to 15s after switching tabs.
+  useEffect(() => {
+    if (!selectedChannelId) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        refetchMessages();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selectedChannelId, refetchMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

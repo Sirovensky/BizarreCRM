@@ -75,7 +75,12 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
 
-  // Fetch unread count on mount + poll every 30s
+  // Fetch unread count on mount + poll every 60s (visibility-gated)
+  // @audit-fixed (WEB-FAD-002): bumped 30s→60s, gated on
+  // document.visibilityState so background tabs don't fire requests; the
+  // visibilitychange listener forces an immediate refresh on focus so the
+  // badge isn't stale once the tab comes forward. WS already pushes
+  // NOTIFICATION_NEW + sms_received — this poll is the disconnect fallback.
   const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await notificationApi.unreadCount();
@@ -105,7 +110,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
       }
     };
 
-    const interval = setInterval(pollIfVisible, 30_000);
+    const interval = setInterval(pollIfVisible, 60_000);
 
     // Resume polling immediately when tab becomes visible again
     const handleVisibilityChange = () => {

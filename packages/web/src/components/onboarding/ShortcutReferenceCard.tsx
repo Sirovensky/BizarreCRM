@@ -80,13 +80,14 @@ export function ShortcutReferenceCard({ open, onClose }: ShortcutReferenceCardPr
       <div
         ref={panelRef}
         role="dialog"
-        aria-label="Keyboard shortcuts"
+        aria-modal="true"
+        aria-labelledby="shortcut-card-title"
         className="w-full max-w-md overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-900"
       >
         <div className="flex items-center justify-between border-b border-surface-100 px-5 py-4 dark:border-surface-800">
           <div className="flex items-center gap-2">
             <Keyboard className="h-4.5 w-4.5 text-primary-500" />
-            <h2 className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+            <h2 id="shortcut-card-title" className="text-sm font-semibold text-surface-900 dark:text-surface-100">
               Keyboard shortcuts
             </h2>
           </div>

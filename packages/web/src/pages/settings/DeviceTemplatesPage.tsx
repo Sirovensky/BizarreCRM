@@ -13,7 +13,7 @@
  * to be 100% correct when they are.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -73,6 +73,14 @@ export function DeviceTemplatesPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<TemplateForm | null>(null);
   const [partSearch, setPartSearch] = useState('');
+
+  // WEB-FX-003: Esc closes the editor modal so keyboard users aren't trapped.
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setEditing(null); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [editing]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['device-templates-admin'],
@@ -286,13 +294,16 @@ export function DeviceTemplatesPage() {
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditing(null)}>
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="device-tpl-edit-title"
             className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+              <h2 id="device-tpl-edit-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
                 {editing.id ? 'Edit template' : 'New template'}
               </h2>
               <button onClick={() => setEditing(null)} className="p-1 text-surface-400 hover:text-surface-600">

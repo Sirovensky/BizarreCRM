@@ -482,8 +482,9 @@ export function LoginPage() {
               {isSingleTenantSetup && (
                 <>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Shop name</label>
+                    <label htmlFor="setup-store-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Shop name</label>
                     <input
+                      id="setup-store-name"
                       type="text"
                       value={setupStoreName}
                       onChange={(e) => setSetupStoreName(e.target.value)}
@@ -496,8 +497,9 @@ export function LoginPage() {
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First name</label>
+                      <label htmlFor="setup-first-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First name</label>
                       <input
+                        id="setup-first-name"
                         type="text"
                         value={setupFirstName}
                         onChange={(e) => setSetupFirstName(e.target.value)}
@@ -507,8 +509,9 @@ export function LoginPage() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last name</label>
+                      <label htmlFor="setup-last-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last name</label>
                       <input
+                        id="setup-last-name"
                         type="text"
                         value={setupLastName}
                         onChange={(e) => setSetupLastName(e.target.value)}
@@ -521,8 +524,9 @@ export function LoginPage() {
                 </>
               )}
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
+                <label htmlFor="setup-username" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
                 <input
+                  id="setup-username"
                   type="text"
                   value={setupUsername}
                   onChange={(e) => setSetupUsername(e.target.value)}
@@ -533,10 +537,11 @@ export function LoginPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                <label htmlFor="setup-email" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
                   Email {isSingleTenantSetup ? '' : '(optional)'}
                 </label>
                 <input
+                  id="setup-email"
                   type="email"
                   value={setupEmail}
                   onChange={(e) => setSetupEmail(e.target.value)}
@@ -546,8 +551,9 @@ export function LoginPage() {
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
+                <label htmlFor="setup-password" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
                 <input
+                  id="setup-password"
                   type="password"
                   value={setupPassword}
                   onChange={(e) => setSetupPassword(e.target.value)}
@@ -570,23 +576,27 @@ export function LoginPage() {
           {step === 'password' && (
             <form onSubmit={handlePassword} className="space-y-4" noValidate>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username or email</label>
-                <input type="text" value={username} onChange={(e) => { setUsername(e.target.value); setFieldErrors(prev => ({ ...prev, username: undefined })); }} autoFocus autoComplete="username"
+                <label htmlFor="login-username" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username or email</label>
+                <input id="login-username" type="text" value={username} onChange={(e) => { setUsername(e.target.value); setFieldErrors(prev => ({ ...prev, username: undefined })); }} autoFocus autoComplete="username"
                   placeholder="admin or admin@yourshop.com"
+                  aria-invalid={!!fieldErrors.username}
+                  aria-describedby={fieldErrors.username ? 'login-username-error' : undefined}
                   className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
-                {fieldErrors.username && <p className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
+                {fieldErrors.username && <p id="login-username-error" className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
+                <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }} autoComplete="current-password"
+                  <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }} autoComplete="current-password"
+                    aria-invalid={!!fieldErrors.password}
+                    aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
                     className={`w-full rounded-lg border bg-surface-50 px-4 py-3 pr-11 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.password ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
                     {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                   </button>
                 </div>
-                {fieldErrors.password && <p className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
+                {fieldErrors.password && <p id="login-password-error" className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
               </div>
               <div className="flex justify-end">
                 <button type="button" onClick={() => setShowForgot(!showForgot)} className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
@@ -608,7 +618,9 @@ export function LoginPage() {
                         Enter your email to receive a password reset link.
                       </p>
                       <div className="flex gap-2">
+                        <label htmlFor="forgot-email" className="sr-only">Email for password reset</label>
                         <input
+                          id="forgot-email"
                           type="email"
                           value={forgotEmail}
                           onChange={(e) => setForgotEmail(e.target.value)}
@@ -656,13 +668,13 @@ export function LoginPage() {
                 </p>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
-                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={8}
+                <label htmlFor="new-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
+                <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={8} autoComplete="new-password"
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8}
+                <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
+                <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} autoComplete="new-password"
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
@@ -697,8 +709,8 @@ export function LoginPage() {
                 </div>
               </div>
               <form onSubmit={handleVerify} className="space-y-3">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
-                <input ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+                <label htmlFor="2fa-setup-code" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
+                <input id="2fa-setup-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                   value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
@@ -719,13 +731,15 @@ export function LoginPage() {
                   Open your authenticator app and enter the 6-digit code.
                 </p>
               </div>
-              <input ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+              <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
+              <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                 value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="000000" autoFocus
                 className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
                 <input
+                  id="trust-device"
                   type="checkbox"
                   checked={trustDevice}
                   onChange={(e) => setTrustDevice(e.target.checked)}

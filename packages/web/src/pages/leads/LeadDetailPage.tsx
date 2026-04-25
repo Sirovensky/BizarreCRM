@@ -5,7 +5,7 @@ import {
   MapPin, User, Wrench, Calendar, X, Bell, Plus, Clock, Activity,
   AlertTriangle,
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
@@ -84,13 +84,31 @@ function LostReasonModal({
 }) {
   const [reason, setReason] = useState('');
 
+  // WEB-FX-003: Esc closes the modal so keyboard users aren't trapped.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lead-lost-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+          <h3 id="lead-lost-title" className="font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500" />
             Mark as Lost
           </h3>

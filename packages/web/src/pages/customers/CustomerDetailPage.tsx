@@ -595,7 +595,7 @@ function CustomerMergeModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by name, phone, or email..."
-                  className="w-full rounded-lg border border-surface-300 bg-white py-2.5 pl-10 pr-4 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white py-2.5 pl-10 pr-4 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
