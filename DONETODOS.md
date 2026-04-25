@@ -1,4 +1,26 @@
 
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 4 / Fix I (S7 P0 security + P1 correctness)
+
+- [x] WEB-S7-001. **TicketListPage: isError absent** CLOSED 2026-04-24 — `ee85b57e` — destructured isError; error state rendered in mobile card layout and desktop table body.
+- [x] WEB-S7-002. **InventoryListPage: isError absent** CLOSED 2026-04-24 — `ee85b57e` — destructured isError; error state above loading spinner.
+- [x] WEB-S7-003. **InvoiceListPage: isError absent** CLOSED 2026-04-24 — `ee85b57e` — destructured isError; error state above loading spinner.
+- [x] WEB-S7-004. **InvoiceDetailPage: isError absent** CLOSED 2026-04-24 — `ee85b57e` — destructured isError; error page rendered before "not found" guard.
+- [x] WEB-S7-006. **GET /inventory missing asyncHandler** CLOSED 2026-04-24 — `ee85b57e` — imported asyncHandler; wrapped bare async handler so uncaught rejections route to global 500 middleware instead of crashing process.
+- [x] WEB-S7-007. **Settings tabs open to any authed user** CLOSED 2026-04-24 — `ee85b57e` — ADMIN_ONLY_TABS set (danger-zone, audit-logs, data-retention, data-import, users, payment-terminal, billing); redirect useEffect + content guards gate to admin+manager role.
+- [x] WEB-S7-008. **SuperAdminRoute expired-token bypass** CLOSED 2026-04-24 — `ee85b57e` — isSaTokenValid() decodes JWT payload; checks exp*1000 > Date.now() before rendering super-admin UI.
+- [x] WEB-S7-010. **Hardcoded $ + toFixed in Dashboard + CustomerDetailPage** CLOSED 2026-04-24 — `19ecf363` — 3 DashboardPage spots + 3 CustomerDetailPage spots replaced with formatCurrency().
+- [x] WEB-S7-011. **CheckoutModal hardcoded $ + toFixed** CLOSED 2026-04-24 — `19ecf363` — imported formatCurrency; 4 order-summary lines replaced.
+- [x] WEB-S7-012. **InvoiceDetailPage credit note label hardcoded $** CLOSED 2026-04-24 — `ee85b57e` — replaced `$${invoice.total.toFixed(2)}` with formatCurrency(invoice.total) in max-amount label.
+- [x] WEB-S7-013. **Ticket date filter no ISO validation** CLOSED 2026-04-24 — `19ecf363` — YYYY-MM-DD regex + Date.parse guard; returns 400 on invalid format.
+- [x] WEB-S7-014. **Customer date filter no ISO validation** CLOSED 2026-04-24 — `19ecf363` — same guard in customers.routes.ts.
+- [x] WEB-S7-018. **SMS toast swallows server message** CLOSED 2026-04-24 — `19ecf363` — catch (e: any) { toast.error(e?.response?.data?.message || …) }.
+- [x] WEB-S7-019. **Bulk price adjust: no negative validation** CLOSED 2026-04-24 — `19ecf363` — added -99% lower bound guard + 0% no-op guard (covers S7-033 too).
+- [x] WEB-S7-021. **InvoiceListPage stats stale cache key** CLOSED 2026-04-24 — `19ecf363` — fixed queryKey to stable ['invoice-stats'] + staleTime 60s; misleading filter-keyed refetch removed.
+- [x] WEB-S7-027. **ReportsPage DST-broken date arithmetic** CLOSED 2026-04-24 — `19ecf363` — introduced localYmd(); all date presets (yesterday, last_7, last_30, defaultFrom) use calendar arithmetic new Date(y,m,d-N).
+- [x] WEB-S7-030. **CSV download blob revoke race** CLOSED 2026-04-24 — `19ecf363` — appendChild+click+removeChild + setTimeout revokeObjectURL(100ms).
+- [x] WEB-S7-031. **todayStr() returns UTC date** CLOSED 2026-04-24 — `19ecf363` — todayStr() now calls localYmd(new Date()) (fixed alongside S7-027).
+- [x] WEB-S7-033. **Bulk price zero pct fires no-op audit** CLOSED 2026-04-24 — `19ecf363` — zero pct guard added (closed as part of S7-019 fix).
+
 ### Web Audit Wave-WEB-2026-04-24 — Fix Wave 4 / Fix H (entity create flows + employee)
 
 - [x] WEB-S6-001. **TicketCreatePage: no signature capture** CLOSED 2026-04-24 — `badca4db` — Step 4 HTML5 canvas widget; POST base64 to /tickets/:id/signatures after creation; skip option.
