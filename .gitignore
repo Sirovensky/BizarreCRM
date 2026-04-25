@@ -98,13 +98,8 @@ coverage/
 !docs/**/*.md
 !.github/
 !.github/**/*.md
-!.claude/
-!.claude/**/*.md
-# Claude session/runtime state — never commit
-.claude/scheduled_tasks.lock
-.claude/scheduled_tasks.json
-.claude/projects/
-.claude/worktrees/
+# Claude harness — never commit (settings, hooks, skills, runtime state, worktrees)
+.claude/
 !ios/ActionPlan.md
 !ios/agent-ownership.md
 !ios/CLAUDE.md
