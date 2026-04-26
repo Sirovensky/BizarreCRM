@@ -11,6 +11,47 @@ import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
 import { computePosTotals } from './totals';
 import type { CartItem, RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
+// ─── Local payload shapes ──────────────────────────────────────────
+// WEB-FB-003 (FIXED-by-Fixer-A23 2026-04-25): replace the four `any`
+// casts in this file (parts mapper x2, customer search row, product
+// search row, barcode lookup) with narrow local types. These mirror the
+// fields the file actually reads from the API response so a server
+// rename (e.g. `is_default` -> `default`, `item_sku` -> `sku`) becomes
+// a TypeScript error instead of a silent runtime undefined.
+interface ApiTicketPart {
+  inventory_item_id: number;
+  item_name?: string | null;
+  item_sku?: string | null;
+  quantity: number;
+  price: number;
+  status?: string | null;
+}
+
+interface ApiCustomerRow {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  organization?: string | null;
+  group_name?: string | null;
+  group_discount_pct?: number | null;
+  group_discount_type?: string | null;
+  group_auto_apply?: boolean | null;
+}
+
+interface ApiProductRow {
+  id: number;
+  name: string;
+  sku?: string | null;
+  retail_price?: number | null;
+  price?: number | null;
+  in_stock?: number | null;
+  item_type?: string | null;
+  tax_inclusive?: boolean | null;
+}
+
 // ─── Unified Search Bar ────────────────────────────────────────────
 
 function UnifiedSearchBar() {
@@ -71,7 +112,7 @@ function UnifiedSearchBar() {
                 });
               }
               for (const device of ticket.devices ?? []) {
-                const parts = (device.parts ?? []).map((p: any) => ({
+                const parts = ((device.parts ?? []) as ApiTicketPart[]).map((p) => ({
                   _key: genId(),
                   inventory_item_id: p.inventory_item_id,
                   name: p.item_name || `Part #${p.inventory_item_id}`,
@@ -125,7 +166,7 @@ function UnifiedSearchBar() {
         const custRes = await customerApi.search(q);
         if (isCancelled) return;
         const customers = custRes.data?.data?.customers || custRes.data?.data || [];
-        for (const c of (customers as any[]).slice(0, 3)) {
+        for (const c of (customers as ApiCustomerRow[]).slice(0, 3)) {
           items.push({
             type: 'customer',
             label: `${c.first_name} ${c.last_name}`,
@@ -146,7 +187,7 @@ function UnifiedSearchBar() {
         const prodRes = await posApi.products({ keyword: q });
         if (isCancelled) return;
         const prods = prodRes.data?.data?.items || [];
-        for (const p of (prods as any[]).slice(0, 3)) {
+        for (const p of (prods as ApiProductRow[]).slice(0, 3)) {
           items.push({
             type: 'product',
             label: p.name,
@@ -311,7 +352,7 @@ function TicketSearch() {
 
       // Add each device as a repair cart item
       for (const device of ticket.devices ?? []) {
-        const parts = (device.parts ?? []).map((p: any) => ({
+        const parts = ((device.parts ?? []) as ApiTicketPart[]).map((p) => ({
           _key: genId(),
           inventory_item_id: p.inventory_item_id,
           name: p.item_name || `Part #${p.inventory_item_id}`,
@@ -398,11 +439,11 @@ function BarcodeSearch() {
 
     try {
       const res = await posApi.products({ keyword: code });
-      const found = res.data?.data?.items?.[0];
+      const found = res.data?.data?.items?.[0] as ApiProductRow | undefined;
       if (found) {
         // WEB-FH-004: clamp at available stock for non-service items.
-        const isService = (found as any).item_type === 'service';
-        const stockCap = isService ? undefined : Number((found as any).in_stock ?? 0);
+        const isService = found.item_type === 'service';
+        const stockCap = isService ? undefined : Number(found.in_stock ?? 0);
         if (stockCap === 0 && !isService) {
           toast.error(`${found.name} is out of stock`);
         } else {

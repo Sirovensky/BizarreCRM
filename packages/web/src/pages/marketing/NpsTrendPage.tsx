@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, TrendingUp, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { AlertTriangle, BarChart3, TrendingUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { api } from '@/api/client';
 
 /**
@@ -33,22 +33,16 @@ interface NpsTrendResponse {
 }
 
 export function NpsTrendPage() {
-  const { data, isLoading } = useQuery<NpsTrendResponse>({
+  // WEB-FC-011 (Fixer-B23 2026-04-25): stop swallowing query errors into a
+  // synthetic empty payload. Owners need to distinguish "no responses yet"
+  // (200 OK + empty arrays) from "session expired / server bug / CORS"
+  // (network or 4xx/5xx). Let react-query expose `isError` + `error` so
+  // the error banner surfaces below.
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<NpsTrendResponse>({
     queryKey: ['reports', 'nps-trend'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/reports/nps-trend');
-        return res.data as NpsTrendResponse;
-      } catch {
-        return {
-          success: true,
-          data: {
-            overall: { promoters: 0, passives: 0, detractors: 0, nps: 0 },
-            monthly: [],
-            recent: [],
-          },
-        };
-      }
+      const res = await api.get('/reports/nps-trend');
+      return res.data as NpsTrendResponse;
     },
   });
 
@@ -73,6 +67,28 @@ export function NpsTrendPage() {
 
       {isLoading ? (
         <div className="text-center py-12 text-surface-500">Loading NPS data...</div>
+      ) : isError ? (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 p-6 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="flex-1">
+            <div className="font-semibold text-red-700 dark:text-red-300">Failed to load NPS data</div>
+            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+              {error instanceof Error ? error.message : 'An unexpected error occurred. Your session may have expired or the server is unreachable.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="mt-3 px-3 py-1.5 rounded-md text-sm font-medium border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50"
+            >
+              {isFetching ? 'Retrying...' : 'Retry'}
+            </button>
+          </div>
+        </div>
       ) : (
         <>
           <section className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">

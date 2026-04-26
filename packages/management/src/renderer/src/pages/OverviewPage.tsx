@@ -100,6 +100,15 @@ interface DrawGraphParams {
   activeIdx: number | null;
 }
 
+// DASH-ELEC-073: resolve theme tokens at draw time so the canvas tracks the
+// active palette (light/custom/operator-overridden). We read the canvas's own
+// computed style once per draw and fall back to the dark-theme literals only
+// when a CSS var isn't defined (e.g. tokens still pending on first paint).
+function readToken(canvas: HTMLCanvasElement, name: string, fallback: string): string {
+  const v = getComputedStyle(canvas).getPropertyValue(name).trim();
+  return v.length > 0 ? v : fallback;
+}
+
 function drawGraphFn(params: DrawGraphParams): void {
   const { canvas, liveData, histData, range, loading, current, avg, activeIdx } = params;
   const ctx = canvas.getContext('2d');
@@ -111,6 +120,15 @@ function drawGraphFn(params: DrawGraphParams): void {
   const pad = { top: 12, bottom: 28, left: 44, right: 12 };
   const gW = w - pad.left - pad.right;
   const gH = h - pad.top - pad.bottom;
+
+  // DASH-ELEC-073: cache token reads once per draw call (cheap but non-zero).
+  const accent = readToken(canvas, '--color-accent-500', '#3b82f6');
+  const accentLight = readToken(canvas, '--color-accent-400', '#60a5fa');
+  const gridLine = readToken(canvas, '--color-surface-800', '#1e1e22');
+  const labelMuted = readToken(canvas, '--color-surface-500', '#71717a');
+  const labelDim = readToken(canvas, '--color-surface-600', '#52525b');
+  const bgDeep = readToken(canvas, '--color-surface-950', '#09090b');
+  const danger = readToken(canvas, '--color-red-500', '#ef4444');
 
   // Resolve data source
   let points: { value: number; label: string }[];
@@ -139,17 +157,17 @@ function drawGraphFn(params: DrawGraphParams): void {
   for (let i = 0; i <= 4; i++) {
     const val = max - (max * i) / 4;
     const y = pad.top + (gH * i) / 4;
-    ctx.strokeStyle = '#1e1e22';
+    ctx.strokeStyle = gridLine;
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(pad.left, y); ctx.lineTo(w - pad.right, y); ctx.stroke();
-    ctx.fillStyle = '#71717a';
+    ctx.fillStyle = labelMuted;
     ctx.fillText(val >= 1000 ? `${(val / 1000).toFixed(1)}k` : Math.round(val).toString(), pad.left - 6, y);
   }
 
   // X-axis labels
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillStyle = '#52525b';
+  ctx.fillStyle = labelDim;
   if (range === 'Live') {
     // Previous implementation assumed every Live point was exactly 5s apart
     // (LIVE_POINTS * LIVE_POLL_SEC = 5 minutes). That's true for values
@@ -191,7 +209,7 @@ function drawGraphFn(params: DrawGraphParams): void {
   }
 
   if (points.length === 0) {
-    ctx.fillStyle = '#52525b';
+    ctx.fillStyle = labelDim;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = '12px Inter, system-ui, sans-serif';
@@ -207,9 +225,9 @@ function drawGraphFn(params: DrawGraphParams): void {
     const x = toX(maxPoints - 1);
     const y = toY(points[0].value);
     ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = '#3b82f6'; ctx.fill();
-    ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
-    ctx.fillStyle = '#a1a1aa'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+    ctx.fillStyle = accent; ctx.fill();
+    ctx.strokeStyle = bgDeep; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = readToken(canvas, '--color-surface-400', '#a1a1aa'); ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
     ctx.font = '11px Inter, system-ui, sans-serif';
     ctx.fillText(`${formatDecimal(points[0].value)} req/s`, x - 10, y - 8);
     ctx.restore();
@@ -256,7 +274,7 @@ function drawGraphFn(params: DrawGraphParams): void {
 
   // Line
   ctx.beginPath();
-  ctx.strokeStyle = '#3b82f6';
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 2;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
@@ -284,19 +302,19 @@ function drawGraphFn(params: DrawGraphParams): void {
     } else {
       ctx.arc(lx, ly, 4, 0, Math.PI * 2);
     }
-    ctx.fillStyle = isSpike ? '#ef4444' : '#3b82f6';
-    ctx.fill(); ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = isSpike ? danger : accent;
+    ctx.fill(); ctx.strokeStyle = bgDeep; ctx.lineWidth = 2; ctx.stroke();
   }
 
   // Hover crosshair
   if (activeIdx !== null && activeIdx >= 0 && activeIdx < points.length) {
     const hx = toX(startIdx + activeIdx), hy = toY(points[activeIdx].value);
-    ctx.setLineDash([4, 3]); ctx.strokeStyle = '#52525b'; ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = labelDim; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(hx, pad.top); ctx.lineTo(hx, h - pad.bottom); ctx.stroke();
     ctx.setLineDash([]);
     ctx.beginPath(); ctx.arc(hx, hy, 6, 0, Math.PI * 2); ctx.fillStyle = 'rgba(59, 130, 246, 0.3)'; ctx.fill();
-    ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#60a5fa'; ctx.fill();
-    ctx.strokeStyle = '#09090b'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(hx, hy, 3.5, 0, Math.PI * 2); ctx.fillStyle = accentLight; ctx.fill();
+    ctx.strokeStyle = bgDeep; ctx.lineWidth = 1.5; ctx.stroke();
   }
 
   ctx.restore();
@@ -354,6 +372,7 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
   const liveRef = useRef<DataPoint[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
 
@@ -594,11 +613,21 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
         </p>
         {hoverIdx !== null && tooltipPos && hoveredTime && (
           <div
+            ref={tooltipRef}
             className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"
-            style={{
-              left: Math.min(tooltipPos.x + 12, (containerRef.current?.clientWidth ?? 300) - 160),
-              top: Math.max(tooltipPos.y - 60, 0),
-            }}
+            style={(() => {
+              // DASH-ELEC-290: clamp both axes against the actual rendered
+              // tooltip size (measured via ref) so it never overflows top or
+              // bottom of the chart container. First-frame fallback uses the
+              // old 60px estimate before the ref attaches.
+              const tipW = tooltipRef.current?.offsetWidth ?? 160;
+              const tipH = tooltipRef.current?.offsetHeight ?? 60;
+              const containerW = containerRef.current?.clientWidth ?? 300;
+              const containerH = containerRef.current?.clientHeight ?? 170;
+              const left = Math.max(0, Math.min(tooltipPos.x + 12, containerW - tipW));
+              const top = Math.max(0, Math.min(tooltipPos.y - tipH - 4, containerH - tipH));
+              return { left, top };
+            })()}
           >
             <div className="text-surface-400 mb-1">{formatHoverTime(hoveredTime, range)}</div>
             <div className="text-surface-100 font-bold text-sm">{formatDecimal(hoveredValue)} <span className="text-surface-500 font-normal">req/s</span></div>

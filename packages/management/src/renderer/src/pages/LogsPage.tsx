@@ -36,7 +36,28 @@ function colorize(line: string): string {
  * substring matches (case-insensitive). Returns the original line as a
  * single text node when the filter is empty so there's no DOM cost.
  */
-function renderWithHighlight(line: string, filter: string): React.ReactNode {
+function renderWithHighlight(line: string, filter: string, regex: RegExp | null): React.ReactNode {
+  // DASH-ELEC-216: regex mode segments via RegExp.exec instead of substring
+  // indexOf so highlight spans align with actual match windows.
+  if (regex) {
+    const nodes: React.ReactNode[] = [];
+    const re = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : `${regex.flags}g`);
+    let pos = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      if (m.index > pos) nodes.push(line.slice(pos, m.index));
+      nodes.push(
+        <mark key={m.index} className="bg-amber-500/30 text-amber-100 rounded px-0.5">
+          {m[0]}
+        </mark>
+      );
+      pos = m.index + m[0].length;
+      // Guard against zero-width matches that would otherwise infinite-loop.
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (pos < line.length) nodes.push(line.slice(pos));
+    return nodes.length === 0 ? line : nodes;
+  }
   const q = filter.trim();
   if (!q) return line || '\u00A0';
   const needle = q.toLowerCase();
@@ -65,6 +86,9 @@ export function LogsPage() {
   const [selected, setSelected] = useState<string>('bizarre-crm.err.log');
   const [tailLines, setTailLines] = useState(500);
   const [filter, setFilter] = useState('');
+  // DASH-ELEC-216: regex toggle. Falls back gracefully to substring on
+  // invalid pattern so a half-typed `(` doesn't throw and blank the view.
+  const [regexMode, setRegexMode] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [content, setContent] = useState('');
   const [meta, setMeta] = useState<{ size: number; mtime: string | null; truncated: boolean } | null>(null);
@@ -131,11 +155,28 @@ export function LogsPage() {
   // eslint-disable-next-line no-control-regex
   const allLines = useMemo(() => content.replace(/\x1b\[[0-9;]*m/g, '').split('\n'), [content]);
 
+  // DASH-ELEC-216: compile filter into a RegExp when regexMode is on. Bad
+  // patterns (mid-typing) fall back to null so the substring path runs and
+  // the view never blanks out from a SyntaxError.
+  const compiledRegex = useMemo<RegExp | null>(() => {
+    if (!regexMode) return null;
+    const q = filter.trim();
+    if (!q) return null;
+    try {
+      return new RegExp(q, 'i');
+    } catch {
+      return null;
+    }
+  }, [regexMode, filter]);
+
   const filteredLines = useMemo(() => {
+    if (compiledRegex) {
+      return allLines.filter((l) => compiledRegex.test(l));
+    }
     if (!filter.trim()) return allLines;
     const needle = filter.toLowerCase();
     return allLines.filter((l) => l.toLowerCase().includes(needle));
-  }, [allLines, filter]);
+  }, [allLines, filter, compiledRegex]);
 
   // Extract ERR_* codes that appear in the current tail so operators can
   // spot patterns at a glance ("everything is ERR_ORIGIN_MISSING right now")
@@ -246,9 +287,28 @@ export function LogsPage() {
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter (substring match, case-insensitive)"
-            className="flex-1 px-2 py-1 bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
+            placeholder={regexMode ? 'Filter (regex, case-insensitive)' : 'Filter (substring match, case-insensitive)'}
+            className={`flex-1 px-2 py-1 bg-surface-950 border rounded text-surface-200 placeholder:text-surface-600 font-mono ${
+              regexMode && filter.trim() && !compiledRegex
+                ? 'border-red-700/70'
+                : 'border-surface-700'
+            }`}
           />
+          {/* DASH-ELEC-216: regex mode toggle. Aria-pressed announces the
+              current mode; invalid regex highlights the input border red but
+              keeps the substring fallback active so the tail still renders. */}
+          <button
+            onClick={() => setRegexMode((v) => !v)}
+            aria-pressed={regexMode}
+            title={regexMode ? 'Regex mode (click to disable)' : 'Substring mode (click to enable regex)'}
+            className={`px-1.5 py-0.5 text-[10px] font-mono rounded border transition-colors ${
+              regexMode
+                ? 'bg-accent-950/40 border-accent-800 text-accent-300'
+                : 'bg-surface-900 border-surface-700 text-surface-500 hover:text-surface-300'
+            }`}
+          >
+            .*
+          </button>
           {filter && (
             <button
               onClick={() => setFilter('')}
@@ -317,7 +377,7 @@ export function LogsPage() {
             // that haven't changed on the 2-second tail refresh rather than
             // diffing the entire list by position.
             <div key={`${i}-${line.slice(0, 20)}`} className={`whitespace-pre-wrap break-all ${colorize(line)}`}>
-              {renderWithHighlight(line, filter)}
+              {renderWithHighlight(line, filter, compiledRegex)}
             </div>
           ))
         )}

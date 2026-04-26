@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { Gift, Users, TrendingUp, Share2 } from 'lucide-react';
+import { AlertTriangle, Gift, Users, TrendingUp, Share2 } from 'lucide-react';
+import axios from 'axios';
 import { api } from '@/api/client';
 
 /**
@@ -77,28 +78,61 @@ function computeLeaderboard(rows: ReferralRow[]): LeaderboardRow[] {
 interface ReferralsQueryResult {
   rows: ReferralRow[];
   unavailable: boolean;
+  /**
+   * WEB-FC-012 (Fixer-B23 2026-04-25): server-reported total row count if
+   * the API exposes it (e.g. via `meta.total` or `X-Total-Count` header).
+   * Falls back to `null` when unavailable so the UI can show
+   * "Showing N of N+" honestly instead of pretending the first page is the
+   * whole dataset.
+   */
+  serverTotal: number | null;
 }
 
 export function ReferralsDashboard() {
-  const { data, isLoading } = useQuery<ReferralsQueryResult>({
+  // WEB-FC-011 (Fixer-B23 2026-04-25): only swallow the *expected* "endpoint
+  // gone / forbidden" cases (404 + 403/401) into the friendly empty state.
+  // 5xx + network errors now surface a real error banner so admins can tell
+  // "no referrals yet" from "the server is broken".
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery<ReferralsQueryResult>({
     queryKey: ['reports', 'referrals'],
     queryFn: async () => {
       try {
         const res = await api.get('/reports/referrals');
         const rows = (res.data?.data as ReferralRow[] | undefined) ?? [];
-        return { rows, unavailable: false };
-      } catch {
-        // FA-M15: endpoint missing (older server) or role-denied — render
-        // a friendly "Not available" state rather than loop-retrying.
-        return { rows: [], unavailable: true };
+        const meta = res.data?.meta as { total?: number } | undefined;
+        const headerTotal = res.headers?.['x-total-count'];
+        const serverTotal =
+          typeof meta?.total === 'number'
+            ? meta.total
+            : typeof headerTotal === 'string' && /^\d+$/.test(headerTotal)
+              ? Number(headerTotal)
+              : null;
+        return { rows, unavailable: false, serverTotal };
+      } catch (err) {
+        // FA-M15: missing endpoint or role-denied are *expected* on older
+        // servers / non-admin tenants and render the friendly "Not
+        // available" panel. Anything else (5xx, network, CORS) re-throws
+        // so react-query exposes isError to the banner below.
+        if (axios.isAxiosError(err)) {
+          const status = err.response?.status;
+          if (status === 404 || status === 403 || status === 401) {
+            return { rows: [], unavailable: true, serverTotal: null };
+          }
+        }
+        throw err;
       }
     },
   });
 
   const rows = data?.rows ?? [];
   const unavailable = data?.unavailable ?? false;
+  const serverTotal = data?.serverTotal ?? null;
   const stats = computeStats(rows);
   const leaderboard = computeLeaderboard(rows);
+  // WEB-FC-012: when server returns a total > the rows we have, show a
+  // truthful "Showing X of Y" hint and warn that the leaderboard / totals
+  // are computed from the loaded slice only.
+  const isPartialPage = serverTotal !== null && serverTotal > rows.length;
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -112,6 +146,28 @@ export function ReferralsDashboard() {
 
       {isLoading ? (
         <div className="text-center py-12 text-surface-500">Loading referrals...</div>
+      ) : isError ? (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 p-6 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+          <div className="flex-1">
+            <div className="font-semibold text-red-700 dark:text-red-300">Failed to load referrals</div>
+            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+              {error instanceof Error ? error.message : 'An unexpected error occurred. Try again or contact support if it persists.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="mt-3 px-3 py-1.5 rounded-md text-sm font-medium border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50"
+            >
+              {isFetching ? 'Retrying...' : 'Retry'}
+            </button>
+          </div>
+        </div>
       ) : unavailable ? (
         <div className="rounded-xl border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-10 text-center">
           <Gift className="h-10 w-10 text-surface-400 mx-auto mb-3" />
@@ -126,11 +182,26 @@ export function ReferralsDashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            <StatCard icon={Share2} label="Total referrals" value={stats.total} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-2">
+            <StatCard
+              icon={Share2}
+              label="Total referrals"
+              value={isPartialPage ? `${stats.total}+` : stats.total}
+            />
             <StatCard icon={Users} label="Converted" value={stats.converted} />
             <StatCard icon={TrendingUp} label="Conversion rate" value={`${stats.conversion_rate}%`} />
           </div>
+
+          {isPartialPage && (
+            <div
+              role="note"
+              className="mb-6 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-md px-3 py-2"
+            >
+              Showing {rows.length.toLocaleString()} of {serverTotal!.toLocaleString()} referrals.
+              Totals, conversion rate, and the top-referrers leaderboard are computed from the loaded
+              page only.
+            </div>
+          )}
 
           <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div className="bg-white dark:bg-surface-900 rounded-xl border border-surface-200 dark:border-surface-700 p-4">

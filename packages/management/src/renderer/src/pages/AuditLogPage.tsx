@@ -81,14 +81,33 @@ export function AuditLogPage() {
         </h1>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
+            onClick={async () => {
               if (filtered.length === 0) { toast('Nothing to export'); return; }
               const csv = toCsv(
                 ['created_at', 'admin_username', 'action', 'details', 'ip_address'],
                 filtered,
               );
+              // DASH-ELEC-221: append a SHA-256 integrity hash as a CSV
+              // comment row so a downstream verifier can detect tampering
+              // between export and ingestion. The `#` prefix keeps standard
+              // RFC-4180 readers happy (most ignore comment lines or treat
+              // them as a first-column value); pinning the hash inside the
+              // file is enough for the operator-to-auditor handoff.
+              let signed = csv;
+              try {
+                const enc = new TextEncoder().encode(csv);
+                const buf = await crypto.subtle.digest('SHA-256', enc);
+                const hex = Array.from(new Uint8Array(buf))
+                  .map((b) => b.toString(16).padStart(2, '0'))
+                  .join('');
+                signed = `${csv}\n# sha256=${hex} rows=${filtered.length}\n`;
+              } catch (err) {
+                // crypto.subtle missing (older Electron, file://) — fall back
+                // to unsigned export rather than blocking the operator.
+                console.warn('[AuditLog] SHA-256 digest unavailable', err);
+              }
               const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-              downloadCsv(`audit-log-${stamp}.csv`, csv);
+              downloadCsv(`audit-log-${stamp}.csv`, signed);
               toast.success(`Exported ${filtered.length} rows`);
             }}
             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-surface-400 border border-surface-700 rounded hover:bg-surface-800"

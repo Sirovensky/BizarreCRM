@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -65,6 +65,33 @@ export function ExpensesPage() {
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [searchInput, setSearchInput] = useState('');
+
+  // WEB-FC-018 (FIXED-by-Fixer-A23 2026-04-25): the form now renders as a
+  // dimmed-backdrop modal overlay instead of an inline panel above the
+  // table. Editing a row on page 3 no longer scrolls the user to the top
+  // and loses the row context; on mobile the dim overlay makes the form
+  // a clear focused affordance instead of full-viewport with no chrome.
+  // First field is autofocused on open for keyboard users + Esc closes.
+  const firstFieldRef = useRef<HTMLSelectElement | null>(null);
+  useEffect(() => {
+    if (!showAdd) return;
+    const t = setTimeout(() => {
+      firstFieldRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [showAdd, editingId]);
+  // Esc closes the modal — matches CheckoutModal / ConfirmDialog pattern.
+  useEffect(() => {
+    if (!showAdd) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAdd(false);
+        setEditingId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showAdd]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', page, keyword, catFilter],
@@ -184,15 +211,39 @@ export function ExpensesPage() {
         </div>
       </div>
 
-      {/* Add/Edit form */}
+      {/* Add/Edit form — modal overlay (WEB-FC-018) */}
       {showAdd && (
-        <div className="card mb-4 p-5">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
-            {editingId ? 'Edit Expense' : 'New Expense'}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingId ? 'Edit expense form' : 'New expense form'}
+          onMouseDown={(e) => {
+            // Click-outside (on backdrop only) closes — do not fire when
+            // dragging/clicking inside the form.
+            if (e.target === e.currentTarget) {
+              setShowAdd(false);
+              setEditingId(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 shadow-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+              {editingId ? 'Edit Expense' : 'New Expense'}
+            </h3>
+            <button
+              type="button"
+              onClick={() => { setShowAdd(false); setEditingId(null); }}
+              aria-label="Close"
+              className="p-1 rounded-md text-surface-400 hover:text-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <select value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined })); }}
+              <select ref={firstFieldRef} value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined })); }}
                 aria-invalid={fieldErrors.category ? true : undefined}
                 aria-describedby={fieldErrors.category ? 'expense-category-error' : undefined}
                 className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.category ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`}>
@@ -223,13 +274,14 @@ export function ExpensesPage() {
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-4 justify-end">
+            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
             <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
               {editingId ? 'Update' : 'Add Expense'}
             </button>
-            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+          </div>
           </div>
         </div>
       )}
