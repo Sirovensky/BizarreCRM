@@ -2169,8 +2169,28 @@ function SettingsPageInner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, planHasFetched, planFeatures]);
 
-  // All tabs are always shown; SettingsSearch handles per-setting search.
-  const filteredTabs = TABS;
+  // WEB-FAE-005 (Fixer-B21 2026-04-25): hide the Audit Logs tab from
+  // non-admin roles. Sidebar.tsx exposes /settings to both admins AND
+  // managers, but audit logs leak PII (usernames, IPs, action history)
+  // and the server-side `requirePermission('settings.audit_logs.read')`
+  // gate only protects the GET — the tab nav was still rendered, the
+  // tab still mounted on click, and the 403 toast was the user's first
+  // signal that they were not supposed to see it. Filter at the nav
+  // layer plus guard the render path below for defense-in-depth.
+  const currentUserRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = currentUserRole === 'admin';
+  const filteredTabs = TABS.filter((t) => (t.key === 'audit-logs' ? isAdmin : true));
+
+  // WEB-FAE-005 (Fixer-B21 2026-04-25): if a non-admin deep-links to
+  // /settings/audit-logs (bookmark, shared URL), redirect to the default
+  // tab instead of letting AuditLogsTab mount and 403 on its server query.
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'audit-logs') {
+      setActiveTabState('setup-progress');
+      navigate('/settings/setup-progress', { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, activeTab]);
 
   const checkScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -2335,7 +2355,7 @@ function SettingsPageInner() {
       {activeTab === 'automations' && <AutomationsTab />}
       {activeTab === 'membership' && <MembershipSettings />}
       {activeTab === 'data-import' && <DataImportTab />}
-      {activeTab === 'audit-logs' && <AuditLogsTab />}
+      {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
       {activeTab === 'danger-zone' && <DangerZoneTab />}
       {activeTab === 'data-retention' && <DataRetentionTab />}
     </div>

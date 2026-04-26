@@ -74,13 +74,10 @@ export function TenantsPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  async function toggleExpand(slug: string) {
-    if (expandedSlug === slug) {
-      setExpandedSlug(null);
-      return;
-    }
-    setExpandedSlug(slug);
-    if (detailCache[slug] && detailCache[slug] !== 'error') return;
+  // DASH-ELEC-278: extracted so the inline error <p> can offer a Retry button
+  // — without this, once detailCache[slug]==='error' the toggleExpand short-
+  // circuit (line below) means re-clicking the row never re-fetches.
+  async function loadDetail(slug: string) {
     setDetailCache((c) => ({ ...c, [slug]: 'loading' }));
     try {
       const res = await getAPI().superAdmin.getTenant(slug);
@@ -102,6 +99,16 @@ export function TenantsPage() {
     } catch {
       setDetailCache((c) => ({ ...c, [slug]: 'error' }));
     }
+  }
+
+  async function toggleExpand(slug: string) {
+    if (expandedSlug === slug) {
+      setExpandedSlug(null);
+      return;
+    }
+    setExpandedSlug(slug);
+    if (detailCache[slug] && detailCache[slug] !== 'error') return;
+    await loadDetail(slug);
   }
 
   const filteredTenants = tenants.filter(
@@ -528,7 +535,19 @@ export function TenantsPage() {
                       {detail === 'loading' || detail === undefined ? (
                         <p className="text-xs text-surface-500">Loading tenant metrics…</p>
                       ) : detail === 'error' ? (
-                        <p className="text-xs text-red-400">Failed to load tenant metrics.</p>
+                        // DASH-ELEC-278: surface a Retry so a transient
+                        // failure isn't permanently sticky in detailCache.
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-red-400">Failed to load tenant metrics.</p>
+                          <button
+                            type="button"
+                            onClick={() => loadDetail(t.slug)}
+                            className="px-2 py-0.5 text-[11px] font-semibold text-red-300 hover:text-red-100 border border-red-900/60 hover:border-red-700 rounded transition-colors"
+                            aria-label={`Retry loading metrics for ${t.name}`}
+                          >
+                            Retry
+                          </button>
+                        </div>
                       ) : (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                           <DetailMetric label="Active users" value={detail.user_count} />

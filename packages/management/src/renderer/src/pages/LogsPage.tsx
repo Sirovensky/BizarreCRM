@@ -74,6 +74,9 @@ export function LogsPage() {
   const refreshFileList = useCallback(async () => {
     try {
       const res = await getAPI().admin.listLogs();
+      // DASH-ELEC-281: detect 401 and trigger global auto-logout instead of
+      // silently leaving the file dropdown empty when the JWT has expired.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setFiles(res.data.files);
       } else if (res.message) {

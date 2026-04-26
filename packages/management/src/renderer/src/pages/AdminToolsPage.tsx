@@ -99,9 +99,11 @@ export function AdminToolsPage() {
       });
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
-        const details = res.data.results.map((r) => ({
+        // DASH-ELEC-272: ternary already narrows to the literal union; the
+        // explicit `as` cast was redundant noise. TS infers correctly.
+        const details = res.data.results.map((r): { label: string; status: 'ok' | 'warn' | 'error'; message: string } => ({
           label: r.dbLabel,
-          status: (r.error ? 'error' : r.skipped ? 'warn' : 'ok') as 'ok' | 'warn' | 'error',
+          status: r.error ? 'error' : r.skipped ? 'warn' : 'ok',
           message: r.error
             ? r.error
             : r.skipped
@@ -171,9 +173,10 @@ export function AdminToolsPage() {
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const { summary, rows } = res.data;
-        const details = rows.map((r) => ({
+        // DASH-ELEC-272: drop redundant `as` cast — return-type annotation pins the union.
+        const details = rows.map((r): { label: string; status: 'ok' | 'warn' | 'error'; message: string } => ({
           label: r.slug,
-          status: (r.status === 'error' ? 'error' : r.status === 'created' ? 'ok' : 'warn') as 'ok' | 'warn' | 'error',
+          status: r.status === 'error' ? 'error' : r.status === 'created' ? 'ok' : 'warn',
           message: r.message ?? (r.recordId ? `record_id ${r.recordId.slice(0, 12)}…` : r.status),
         }));
         setDnsResult({

@@ -27,6 +27,12 @@ export function LoginPage() {
   // password against an OS-level password manager can verify before submit.
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  // FIXED-by-Fixer-A21 (DASH-ELEC-247): surface server-issued TOTP recovery
+  // codes during first-run 2FA setup so a lost authenticator device doesn't
+  // permanently lock out the sole super-admin. Backwards-compatible: if the
+  // server response omits `recoveryCodes`, the UI block is hidden.
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [codesAck, setCodesAck] = useState(false);
 
   // Check setup status on mount
   useEffect(() => {
@@ -76,7 +82,10 @@ export function LoginPage() {
   const handleSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim() || username.trim().length < 3) { setError('Username must be at least 3 characters'); return; }
-    if (!password || password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    // FIXED-by-Fixer-A21 (DASH-ELEC-055): align first-run setup with set-password
+    // policy (min 10 chars). Prevents inconsistent password strength between
+    // setup and forced-change flows.
+    if (!password || password.length < 10) { setError('Password must be at least 10 characters'); return; }
 
     setLoading(true);
     setError('');
@@ -136,9 +145,11 @@ export function LoginPage() {
           // Auto-trigger 2FA setup
           const setupRes = await api.superAdmin.setup2fa(data.challengeToken);
           if (setupRes.success && setupRes.data) {
-            const setupData = setupRes.data as { qr?: string; challengeToken?: string };
+            const setupData = setupRes.data as { qr?: string; challengeToken?: string; recoveryCodes?: string[] };
             setQrCode(setupData.qr ?? '');
             if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
+            // FIXED-by-Fixer-A21 (DASH-ELEC-247)
+            if (Array.isArray(setupData.recoveryCodes)) setRecoveryCodes(setupData.recoveryCodes);
           }
           setStep('2fa-setup');
         } else if (data.totpEnabled) {
@@ -175,9 +186,11 @@ export function LoginPage() {
         // Now set up 2FA
         const setupRes = await getAPI().superAdmin.setup2fa(data.challengeToken ?? challengeToken);
         if (setupRes.success && setupRes.data) {
-          const setupData = setupRes.data as { qr?: string; challengeToken?: string };
+          const setupData = setupRes.data as { qr?: string; challengeToken?: string; recoveryCodes?: string[] };
           setQrCode(setupData.qr ?? '');
           if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
+          // FIXED-by-Fixer-A21 (DASH-ELEC-247)
+          if (Array.isArray(setupData.recoveryCodes)) setRecoveryCodes(setupData.recoveryCodes);
         }
         setStep('2fa-setup');
       } else {
@@ -215,6 +228,11 @@ export function LoginPage() {
         setTotpCode('');
         setChallengeToken('');
         setQrCode('');
+        // FIXED-by-Fixer-A21 (DASH-ELEC-247): wipe recovery codes from React
+        // state on success — if the operator failed to copy them, that's on
+        // them; we won't keep secrets in memory after the dashboard is in.
+        setRecoveryCodes([]);
+        setCodesAck(false);
         loginSuccess('super-admin', trimmedUsername);
         navigate('/', { replace: true });
       } else {
@@ -321,15 +339,15 @@ export function LoginPage() {
               />
               <input
                 type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                placeholder="Choose a password (min 8 chars)"
+                placeholder="Choose a password (min 10 chars)"
                 maxLength={1024}
                 autoComplete="new-password"
-                aria-label="Choose a password (minimum 8 characters)"
+                aria-label="Choose a password (minimum 10 characters)"
                 className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
               />
             </div>
             <button
-              type="submit" disabled={loading || username.trim().length < 3 || password.length < 8}
+              type="submit" disabled={loading || username.trim().length < 3 || password.length < 10}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-600 text-white text-sm font-semibold rounded-lg hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <UserPlus className="w-4 h-4" />
@@ -433,6 +451,48 @@ export function LoginPage() {
             <p className="text-xs text-surface-400 mb-4 text-center">
               Scan the QR code with Google Authenticator, then enter the 6-digit code below.
             </p>
+            {/* FIXED-by-Fixer-A21 (DASH-ELEC-247): one-time recovery codes for
+                lost-device fallback. Renders only when server response carries
+                `recoveryCodes`; otherwise this block stays hidden and the flow
+                is unchanged. Operator must check the ack box before verify is
+                enabled. */}
+            {recoveryCodes.length > 0 && (
+              <div className="mb-4 p-3 rounded-lg bg-amber-950/40 border border-amber-800/40">
+                <div className="flex items-center gap-2 mb-2 text-amber-300 text-xs font-semibold">
+                  <Shield className="w-3.5 h-3.5" />
+                  Save these recovery codes — shown only once
+                </div>
+                <p className="text-[11px] text-amber-200/80 mb-2 leading-snug">
+                  Store them in a password manager or print them. Each can be used
+                  exactly once if you lose your authenticator device.
+                </p>
+                <div className="grid grid-cols-2 gap-1.5 mb-2 font-mono text-[11px] text-surface-100 bg-surface-950 rounded-md p-2 border border-surface-800">
+                  {recoveryCodes.map((c) => (
+                    <div key={c} className="select-all tracking-wider">{c}</div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(recoveryCodes.join('\n'));
+                    }}
+                    className="text-[11px] text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                  >
+                    Copy all
+                  </button>
+                  <label className="flex items-center gap-1.5 text-[11px] text-amber-200 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={codesAck}
+                      onChange={(e) => setCodesAck(e.target.checked)}
+                      className="accent-amber-500"
+                    />
+                    I have saved them
+                  </label>
+                </div>
+              </div>
+            )}
             <input
               type="text" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="6-digit code" autoFocus maxLength={6}
@@ -441,7 +501,8 @@ export function LoginPage() {
               className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 text-center tracking-[0.3em] font-mono placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors mb-4"
             />
             <button
-              type="submit" disabled={loading || totpCode.length !== 6}
+              type="submit"
+              disabled={loading || totpCode.length !== 6 || (recoveryCodes.length > 0 && !codesAck)}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-600 text-white text-sm font-semibold rounded-lg hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <KeyRound className="w-4 h-4" />

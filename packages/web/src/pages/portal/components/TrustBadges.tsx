@@ -6,6 +6,9 @@
 import React, { useEffect, useState } from 'react';
 import { getPortalConfig, type PortalConfig } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+// WEB-FV-008 (Fixer-B21 2026-04-25): record a breadcrumb when the portal
+// config endpoint fails so ops aren't blind to portal enrichment outages.
+import { safeRun } from '@/utils/safeRun';
 
 export function TrustBadges(): React.ReactElement | null {
   const { t } = usePortalI18n();
@@ -17,8 +20,10 @@ export function TrustBadges(): React.ReactElement | null {
       .then((data) => {
         if (!cancelled) setConfig(data);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) setConfig({});
+        // WEB-FV-008: degrade silently for the customer, breadcrumb for ops.
+        safeRun(() => { throw err; }, { tag: 'portal:trustBadges' });
       });
     return () => {
       cancelled = true;

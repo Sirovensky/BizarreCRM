@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 interface UpdateStatus {
   available: boolean;
@@ -33,6 +34,9 @@ export function UpdatesPage() {
     // DASH-ELEC-034: explicit loading + error states so the page never renders nothing.
     getAPI().management.getUpdateStatus()
       .then((res) => {
+        // DASH-ELEC-280: detect 401 → global auto-logout instead of silently
+        // leaving the page in a "Could not fetch" placeholder.
+        if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setStatus(res.data as UpdateStatus);
         } else {
@@ -52,6 +56,8 @@ export function UpdatesPage() {
     // getUpdateStatus (if the server responds, the new build is running).
     getAPI().management.getRollbackInfo()
       .then(async (res) => {
+        // DASH-ELEC-280: detect 401 before any audit/clear side-effects.
+        if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setRollback(res.data);
           // MGT-028: snapshot present → update was launched. Audit the result.

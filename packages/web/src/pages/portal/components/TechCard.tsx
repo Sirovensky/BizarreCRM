@@ -8,6 +8,9 @@
 import React, { useEffect, useState } from 'react';
 import { getTech, type TechData } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+// WEB-FV-008 (Fixer-B21 2026-04-25): record a breadcrumb when the per-ticket
+// tech-card endpoint fails so ops aren't blind to portal enrichment outages.
+import { safeRun } from '@/utils/safeRun';
 
 interface TechCardProps {
   ticketId: number;
@@ -23,8 +26,10 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
       .then((data) => {
         if (!cancelled) setTech(data);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) setTech({ visible: false });
+        // WEB-FV-008: degrade silently for the customer, breadcrumb for ops.
+        safeRun(() => { throw err; }, { tag: 'portal:techCard', data: { ticketId } });
       });
     return () => {
       cancelled = true;

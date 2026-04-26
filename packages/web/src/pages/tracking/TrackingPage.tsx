@@ -11,6 +11,13 @@ import { safeColor } from '../../utils/safeColor';
 // hardcoded `en-US` and was actually shaped as date+time) with the shared
 // `formatDateTime` helper from `utils/format`. Same shape, locale-aware.
 import { formatDateTime } from '@/utils/format';
+// WEB-FV-006 (Fixer-B21 2026-04-25): the embed-config fetch is best-effort
+// (fallback values render fine), but the previous `.catch(() => {})` lost
+// every signal that the public tracking surface was failing. Route through
+// `safeRunAsync` so a Sentry breadcrumb is attached when the customer-facing
+// endpoint goes down — ops still get the alert, the user still sees the
+// fallback header copy.
+import { safeRunAsync } from '@/utils/safeRun';
 
 // ---------- Types ----------
 interface TrackingTicket {
@@ -116,19 +123,22 @@ export function TrackingPage() {
 
   // Load store config on mount (public endpoint, no auth needed)
   useEffect(() => {
-    axios.get('/api/v1/portal/embed/config')
-      .then(res => {
-        const cfg = res.data?.data;
-        if (cfg) {
-          setStoreConfig({
-            store_name: cfg.name || '',
-            store_phone: cfg.phone || '',
-            store_address: cfg.address || '',
-            store_hours: cfg.hours || '',
-          });
-        }
-      })
-      .catch(() => { /* non-critical, fallback values will be used */ });
+    // WEB-FV-006 (Fixer-B21 2026-04-25): swap the silent `.catch(() => {})` for
+    // `safeRunAsync` so a breadcrumb fires when the public embed-config call
+    // is down. Tracking is the unauthenticated customer surface; previously
+    // a degraded `/portal/embed/config` was invisible to ops.
+    void safeRunAsync(async () => {
+      const res = await axios.get('/api/v1/portal/embed/config');
+      const cfg = res.data?.data;
+      if (cfg) {
+        setStoreConfig({
+          store_name: cfg.name || '',
+          store_phone: cfg.phone || '',
+          store_address: cfg.address || '',
+          store_hours: cfg.hours || '',
+        });
+      }
+    }, { tag: 'tracking:embedConfig', level: 'warning' });
   }, []);
 
   // Auto-search if URL has orderId+token or just token.

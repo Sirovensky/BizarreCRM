@@ -11,6 +11,7 @@ import type {
 import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 // @audit-fixed: removed unused `theme` / `setTheme` zustand selectors and the
 // `Sun` icon import — the dashboard is dark-mode only and the toggle was never
@@ -92,6 +93,9 @@ export function SettingsPage() {
     setEnvLoading(true);
     try {
       const res = await getAPI().admin.getEnvSettings();
+      // DASH-ELEC-279: detect 401 → global auto-logout instead of silently
+      // leaving envFields empty when the JWT has expired.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setEnvFields(res.data.fields);
         setPending({});
@@ -113,6 +117,10 @@ export function SettingsPage() {
         getAPI().superAdmin.getConfigSchema(),
         getAPI().superAdmin.getConfig(),
       ]);
+      // DASH-ELEC-279: detect 401 on either response — short-circuit before
+      // the !success branches silently leave pcSchema/pcValues stale.
+      if (handleApiResponse(schemaRes)) return;
+      if (handleApiResponse(valuesRes)) return;
       if (schemaRes.success && schemaRes.data) {
         setPcSchema(schemaRes.data.fields);
       }
