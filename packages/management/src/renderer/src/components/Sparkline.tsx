@@ -10,6 +10,12 @@ interface SparklineProps {
   fill?: boolean;
   /** Optional className for the SVG. */
   className?: string;
+  /**
+   * DASH-ELEC-288: floor for the y-axis range. Defaults to 0 so a constant
+   * series like [0.5, 0.5, 0.5] doesn't get normalised against `min = 0.5`
+   * and exaggerated to fill the full height.
+   */
+  baseline?: number;
 }
 
 /**
@@ -20,17 +26,27 @@ interface SparklineProps {
  * series fills in after a few stat polls.
  */
 export function Sparkline({
-  data, width = 64, height = 20, color = 'currentColor', fill = false, className,
+  data, width = 64, height = 20, color = 'currentColor', fill = false, className, baseline = 0,
 }: SparklineProps) {
   if (data.length < 2) {
     return (
-      <svg width={width} height={height} className={className} aria-hidden>
-        <line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke={color} strokeWidth={1} strokeOpacity={0.2} strokeDasharray="2 3" />
-      </svg>
+      // DASH-ELEC-292: explicit aria-hidden value + sr-only fallback so the
+      // dashed empty-state isn't a black hole to AT users.
+      <>
+        <svg width={width} height={height} className={className} aria-hidden={true}>
+          <line x1={0} y1={height / 2} x2={width} y2={height / 2} stroke={color} strokeWidth={1} strokeOpacity={0.2} strokeDasharray="2 3" />
+        </svg>
+        <span className="sr-only">trend data loading</span>
+      </>
     );
   }
-  const max = Math.max(...data);
-  const min = Math.min(...data);
+  const observedMax = Math.max(...data);
+  const observedMin = Math.min(...data);
+  // DASH-ELEC-288: floor at baseline (default 0) so a flat line doesn't
+  // stretch to full height. Cap baseline at observedMin so the chart
+  // doesn't try to render below 0% if data dips negative.
+  const min = Math.min(observedMin, baseline);
+  const max = observedMax;
   const range = max - min || 1;
   const stepX = data.length > 1 ? width / (data.length - 1) : width;
   const points = data
@@ -38,7 +54,7 @@ export function Sparkline({
     .join(' ');
 
   return (
-    <svg width={width} height={height} className={className} aria-hidden>
+    <svg width={width} height={height} className={className} aria-hidden={true}>
       {fill && (
         <polygon
           points={`0,${height} ${points} ${width},${height}`}

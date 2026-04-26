@@ -379,7 +379,7 @@ function ImpersonateConfirmModal({
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
             />
             {!reasonValid && reason.length > 0 && (
-              <p className="mt-1 text-xs text-red-500">
+              <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">
                 Reason must be at least 8 characters.
               </p>
             )}

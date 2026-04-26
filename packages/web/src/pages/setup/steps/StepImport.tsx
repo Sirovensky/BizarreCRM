@@ -135,6 +135,15 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
       const pollSource = source;
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 5;
+      // WEB-FO-017: clear any stacked poller from a prior `startImport()`
+      // before re-arming. The button is disabled during `phase === 'running'`,
+      // but a rapid double-click can race the API call (the second `startImport`
+      // begins before the first one's `setPhase('running')` has rendered) and
+      // overwrite `pollRef.current` without stopping the previous interval.
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       pollRef.current = setInterval(async () => {
         try {
           let statusRes: any;

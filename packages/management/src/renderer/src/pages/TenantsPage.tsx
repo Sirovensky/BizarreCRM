@@ -343,7 +343,7 @@ export function TenantsPage() {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-semibold">Tenant created: {lastCreated.slug}</p>
-              <p className="mt-1 text-green-200">Send this setup link to the shop admin so they can set their password.</p>
+              <p className="mt-1 text-green-200">Send this setup link to the tenant admin so they can set their password.</p>
               <p className="mt-2 break-all font-mono text-xs text-green-100">{lastCreated.setup_url}</p>
             </div>
             <button
@@ -365,9 +365,9 @@ export function TenantsPage() {
             <Users className="w-8 h-8 text-surface-600 mx-auto mb-2" />
             <p className="text-sm text-surface-200">No tenants yet</p>
             <p className="text-xs text-surface-500 mt-1 max-w-sm mx-auto leading-relaxed">
-              Every shop that uses this server is a tenant. Create one now to
-              get a slug, an admin setup link, and (if Cloudflare is configured)
-              a DNS record.
+              Every tenant that uses this server gets its own DB. Create one
+              now to get a slug, an admin setup link, and (if Cloudflare is
+              configured) a DNS record.
             </p>
             <button
               onClick={() => setShowCreate(true)}
@@ -386,14 +386,16 @@ export function TenantsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
+              {/* DASH-ELEC-239: scope="col" so AT pairs each cell with its
+                  header when the row is announced. */}
               <tr className="border-b border-surface-800">
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Slug</th>
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Name</th>
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Status</th>
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Plan</th>
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">DB size</th>
-                <th className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Created</th>
-                <th className="text-right py-2 px-3 text-xs text-surface-500 font-medium">Actions</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Slug</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Name</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Status</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Plan</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">DB size</th>
+                <th scope="col" className="text-left py-2 px-3 text-xs text-surface-500 font-medium">Created</th>
+                <th scope="col" className="text-right py-2 px-3 text-xs text-surface-500 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -414,10 +416,17 @@ export function TenantsPage() {
                   </td>
                   <td className="py-2.5 px-3 text-surface-200">{t.name}</td>
                   <td className="py-2.5 px-3">
-                    <span className={cn(
-                      'px-2 py-0.5 rounded-full text-xs font-medium',
-                      t.status === 'active' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
-                    )}>
+                    {/* DASH-ELEC-239: aria-label spells the badge value out so
+                        AT users hear "active" / "suspended" instead of just
+                        the visual chip color cue. */}
+                    <span
+                      role="status"
+                      aria-label={`Status: ${t.status}`}
+                      className={cn(
+                        'px-2 py-0.5 rounded-full text-xs font-medium',
+                        t.status === 'active' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                      )}
+                    >
                       {t.status}
                     </span>
                   </td>

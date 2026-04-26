@@ -19,6 +19,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
 import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
+import { safeColor } from '@/utils/safeColor';
 
 // ─── Optional column definitions ──────────────────────────────────
 type OptionalColumn = 'internal_note' | 'diagnostic_note' | 'ticket_items' | 'assigned_to';
@@ -60,10 +61,11 @@ function formatTicketId(orderId: string | number) {
 
 
 // ─── Hex color validation ────────────────────────────────────────────
-const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-function safeColor(color?: string | null): string {
-  return color && HEX_RE.test(color) ? color : '#6b7280';
-}
+// WEB-FM-007: routes through the canonical `utils/safeColor` so a brand-recolor
+// of the global fallback ('#6b7280') flows here. The shared helper accepts
+// 4- + 8-digit hex (alpha channel) too, which is a strict superset of the
+// previous local regex — no callers here pass alpha but the wider grammar
+// is harmless and prevents silent grey on a future "#aabbcc80" status color.
 
 
 // ─── Urgency config ─────────────────────────────────────────────────

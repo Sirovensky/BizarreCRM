@@ -90,7 +90,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               }`}
             />
             {!phoneLooksValid && (
-              <p className="mt-1 text-xs text-red-500">Please enter a valid 10-digit phone number.</p>
+              <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid 10-digit phone number.</p>
             )}
           </div>
           <div>
@@ -110,7 +110,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               }`}
             />
             {!emailLooksValid && (
-              <p className="mt-1 text-xs text-red-500">Please enter a valid email address.</p>
+              <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid email address.</p>
             )}
           </div>
         </div>

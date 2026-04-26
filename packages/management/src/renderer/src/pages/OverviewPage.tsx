@@ -195,7 +195,9 @@ function drawGraphFn(params: DrawGraphParams): void {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = '12px Inter, system-ui, sans-serif';
-    ctx.fillText(loading ? 'Loading...' : 'No data for this range yet', w / 2, h / 2);
+    // DASH-ELEC-294: Unicode `…` matches the rest of the dashboard
+    // (RecentActivityWidget, AdminTools, NotificationsPanel, etc.).
+    ctx.fillText(loading ? 'Loading…' : 'No data for this range yet', w / 2, h / 2);
     ctx.restore();
     return;
   }
@@ -265,10 +267,24 @@ function drawGraphFn(params: DrawGraphParams): void {
   ctx.stroke();
 
   // Current dot (live only)
+  // DASH-ELEC-289: pair color with shape so red/blue colorblind users still
+  // pick up the spike signal — circle at baseline, upward triangle when
+  // current load is more than 2× the average. The aria-live summary in the
+  // page repeats the spike state in plain text.
   if (range === 'Live' && points.length > 0) {
     const lx = toX(startIdx + points.length - 1), ly = toY(points[points.length - 1].value);
-    ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
-    ctx.fillStyle = current > avg * 2 ? '#ef4444' : '#3b82f6';
+    const isSpike = current > avg * 2;
+    ctx.beginPath();
+    if (isSpike) {
+      const r = 5;
+      ctx.moveTo(lx, ly - r);
+      ctx.lineTo(lx + r, ly + r);
+      ctx.lineTo(lx - r, ly + r);
+      ctx.closePath();
+    } else {
+      ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+    }
+    ctx.fillStyle = isSpike ? '#ef4444' : '#3b82f6';
     ctx.fill(); ctx.strokeStyle = '#09090b'; ctx.lineWidth = 2; ctx.stroke();
   }
 
@@ -556,12 +572,25 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
       </div>
 
       <div ref={containerRef} className="relative w-full h-[170px]">
+        {/* DASH-ELEC-287: AT-visible label + live numeric summary so the
+            canvas isn't a black hole to screen readers. The sparkline-style
+            chart's headline current/avg numbers are repeated as a sr-only
+            paragraph that updates as new samples land. */}
         <canvas
           ref={canvasRef}
           className="w-full h-full cursor-crosshair"
+          role="img"
+          aria-label="Request rate over time"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />
+        <p className="sr-only" aria-live="polite">
+          {(() => {
+            const sampleCount = range === 'Live' ? liveRef.current.length : (histData?.length ?? 0);
+            if (sampleCount === 0) return loading ? 'Loading request rate' : 'No request data yet for the selected range';
+            return `Current ${formatDecimal(current)} requests per second, average ${formatDecimal(avg)} requests per second over ${sampleCount} samples`;
+          })()}
+        </p>
         {hoverIdx !== null && tooltipPos && hoveredTime && (
           <div
             className="absolute pointer-events-none z-10 bg-surface-900 border border-surface-700 rounded-lg px-3 py-2 shadow-xl text-xs"

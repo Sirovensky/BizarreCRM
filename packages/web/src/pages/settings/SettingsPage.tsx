@@ -3240,8 +3240,10 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
         </div>
         <div className="space-y-3 max-w-md">
           <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)}
+            aria-label='Type "NUCLEAR" to confirm destructive reset'
             placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
           <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            aria-label="Your password (required to confirm nuclear reset)"
             placeholder="Your password" className="input w-full" />
           <button
             onClick={() => nuclearMut.mutate()}
@@ -3370,8 +3372,10 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
         </div>
         <div className="space-y-3 max-w-md">
           <input type="text" value={confirmText} onChange={(e) => setConfirmText(e.target.value)}
+            aria-label='Type "NUCLEAR" to confirm destructive reset'
             placeholder='Type "NUCLEAR" to confirm' className="input w-full" />
           <input type="password" value={nuclearPassword} onChange={(e) => setNuclearPassword(e.target.value)}
+            aria-label="Your password (required to confirm nuclear reset)"
             placeholder="Your password" className="input w-full" />
           <button
             onClick={() => nuclearMut.mutate()}
