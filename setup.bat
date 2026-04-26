@@ -124,6 +124,13 @@ if not exist "%ROOT%.env" (
         echo  WARNING: Could not verify .env sections. Continuing anyway.
     )
 )
+node packages\server\scripts\ensure-env-secrets.cjs
+if !errorlevel! neq 0 (
+    color 0C
+    echo  ERROR: Failed to generate secure .env auth secrets
+    pause
+    exit /b 1
+)
 echo.
 
 :: ── Step 6: Generate SSL certificates ────────────────────────────
