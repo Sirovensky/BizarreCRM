@@ -255,7 +255,14 @@ interface ElectronAPI {
     getDashboard(): Promise<ApiResponse>;
     listTenants(): Promise<ApiResponse<{ tenants: Tenant[] }>>;
     createTenant(data: unknown): Promise<ApiResponse<TenantCreateResult>>;
-    getTenant(slug: string): Promise<ApiResponse<Tenant>>;
+    /** DASH-ELEC-189: server returns Tenant + denormalised counts/db_size_mb;
+     *  consumers (TenantsPage drill-in) need both. */
+    getTenant(slug: string): Promise<ApiResponse<Tenant & {
+      user_count?: number;
+      ticket_count?: number;
+      customer_count?: number;
+      db_size_mb?: number;
+    }>>;
     suspendTenant(slug: string): Promise<ApiResponse>;
     activateTenant(slug: string): Promise<ApiResponse>;
     deleteTenant(slug: string): Promise<ApiResponse>;

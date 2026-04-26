@@ -83,7 +83,9 @@ export function TenantsPage() {
       const res = await getAPI().superAdmin.getTenant(slug);
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
-        const d = res.data as unknown as TenantDetail;
+        // DASH-ELEC-189: bridge.ts now types getTenant result with the
+        // denormalised counts directly — no more `as unknown as` double cast.
+        const d = res.data;
         setDetailCache((c) => ({
           ...c,
           [slug]: {

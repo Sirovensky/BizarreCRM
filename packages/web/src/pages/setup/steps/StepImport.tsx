@@ -334,7 +334,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             );
           })}
         </div>
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" aria-live="polite" className="mt-3 text-sm text-red-500">{error}</p>}
         <div className="mt-6 flex items-center justify-between">
           <button type="button" onClick={() => setPhase('enter-creds')} className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100">
             &larr; Back

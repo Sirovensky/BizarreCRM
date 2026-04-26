@@ -144,7 +144,7 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
           </div>
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
       </div>
 
       <SubStepFooter onCancel={onCancel} onComplete={onComplete} completeLabel="Save branding" />

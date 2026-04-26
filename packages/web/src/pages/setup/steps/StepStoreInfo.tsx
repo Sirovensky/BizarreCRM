@@ -57,11 +57,12 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
 
       <div className="space-y-5 rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
         <div>
-          <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+          <label htmlFor="setup-store-address" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
             <MapPin className="h-4 w-4 text-surface-400" />
             Address <span className="text-red-500">*</span>
           </label>
           <input
+            id="setup-store-address"
             type="text"
             value={address}
             onChange={(e) => onUpdate({ store_address: e.target.value })}
@@ -72,17 +73,20 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+            <label htmlFor="setup-store-phone" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
               <Phone className="h-4 w-4 text-surface-400" />
               Phone <span className="text-red-500">*</span>
             </label>
             <input
+              id="setup-store-phone"
               type="tel"
               value={phone}
               onChange={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
               placeholder="+1 (555)-123-4567"
               inputMode="tel"
               autoComplete="tel"
+              aria-invalid={!phoneLooksValid}
+              aria-describedby={!phoneLooksValid ? 'setup-store-phone-error' : undefined}
               className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
                 !phoneLooksValid
                   ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60'
@@ -90,19 +94,22 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               }`}
             />
             {!phoneLooksValid && (
-              <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid 10-digit phone number.</p>
+              <p id="setup-store-phone-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid 10-digit phone number.</p>
             )}
           </div>
           <div>
-            <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+            <label htmlFor="setup-store-email" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
               <Mail className="h-4 w-4 text-surface-400" />
               Email <span className="text-red-500">*</span>
             </label>
             <input
+              id="setup-store-email"
               type="email"
               value={email}
               onChange={(e) => onUpdate({ store_email: e.target.value })}
               placeholder="shop@example.com"
+              aria-invalid={!emailLooksValid}
+              aria-describedby={!emailLooksValid ? 'setup-store-email-error' : undefined}
               className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-2 dark:bg-surface-700 dark:text-surface-100 ${
                 !emailLooksValid
                   ? 'border-red-400 focus:border-red-500 focus:ring-red-500/20 dark:border-red-500/60'
@@ -110,18 +117,19 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               }`}
             />
             {!emailLooksValid && (
-              <p role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid email address.</p>
+              <p id="setup-store-email-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">Please enter a valid email address.</p>
             )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+            <label htmlFor="setup-store-timezone" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
               <Clock className="h-4 w-4 text-surface-400" />
               Timezone
             </label>
             <select
+              id="setup-store-timezone"
               value={timezone}
               onChange={(e) => onUpdate({ store_timezone: e.target.value })}
               className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
@@ -132,11 +140,12 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             </select>
           </div>
           <div>
-            <label className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
+            <label htmlFor="setup-store-currency" className="mb-1.5 flex items-center gap-2 text-sm font-medium text-surface-700 dark:text-surface-300">
               <DollarSign className="h-4 w-4 text-surface-400" />
               Currency
             </label>
             <select
+              id="setup-store-currency"
               value={currency}
               onChange={(e) => onUpdate({ store_currency: e.target.value })}
               className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"

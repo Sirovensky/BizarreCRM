@@ -467,8 +467,9 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
       canvas.height = Math.round(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      const ctx = canvas.getContext('2d');
-      if (ctx) ctx.scale(dpr, dpr);
+      // DASH-ELEC-291: drawGraphFn calls setTransform/scale itself — the
+      // pre-draw scale here was a redundant second context grab that left
+      // the matrix doubly-scaled until drawGraphFn reset it on next frame.
       // AUDIT-MGT-012: draw() reads live params via ref — no stale closure.
       draw(null);
     });

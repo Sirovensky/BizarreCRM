@@ -53,14 +53,24 @@ interface Commission {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
+// @audit-fixed (WEB-FM-008 / Fixer-B22 2026-04-25): dropped the hardcoded
+// `'en-US'` locale on these three helpers. The shared `utils/format.ts`
+// helpers all derive the active locale from `initCurrencyFromSettings`
+// (defaults to navigator.language) so `formatShortDateTime` already
+// formats clock-in entries in the visitor's locale. Recent-commission
+// rows still need a *short* date (month+day, no year) which the shared
+// helper doesn't expose, so we keep tiny local helpers but read the
+// browser locale at format-time instead of pinning to en-US.
+const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
+  return new Date(iso).toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
   });
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', {
+  return new Date(iso).toLocaleTimeString(_employeeLocale, {
     hour: 'numeric', minute: '2-digit',
   });
 }

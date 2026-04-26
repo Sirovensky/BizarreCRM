@@ -562,7 +562,7 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {exporting ? 'Exporting...' : 'Export'}
           </button>
@@ -664,7 +664,7 @@ export function CustomerListPage() {
                 <button
                   onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
                   disabled={!tagValue.trim() || bulkTagMut.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkTagMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Apply
@@ -862,7 +862,7 @@ export function CustomerListPage() {
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">Cancel</button>
               <button onClick={() => importMutation.mutate(importPreview)} disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} customers
               </button>
@@ -1024,7 +1024,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
           type="button"
           onClick={() => sampleMutation.mutate()}
           disabled={sampleMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="h-4 w-4" />
           {sampleMutation.isPending ? 'Loading…' : 'Load 5 sample customers'}

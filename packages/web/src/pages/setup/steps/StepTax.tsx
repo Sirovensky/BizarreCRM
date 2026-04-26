@@ -79,7 +79,7 @@ export function StepTax({ onComplete, onCancel }: SubStepProps) {
           </p>
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
       </div>
 
       <SubStepFooter

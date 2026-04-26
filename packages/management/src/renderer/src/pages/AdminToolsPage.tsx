@@ -308,6 +308,15 @@ export function AdminToolsPage() {
                 <span className="font-mono">{rlSummary.dbsTouched}</span>
                 <span className="text-surface-500 ml-1">DBs</span>
               </span>
+              {/* DASH-ELEC-137: server caps results at 200; surface this so the
+                  operator knows the table isn't the whole picture when the
+                  summary total exceeds what's actually rendered. */}
+              {rlRows.length < rlSummary.total && (
+                <span className="px-2 py-0.5 rounded border border-amber-900/60 bg-amber-950/30 text-amber-300">
+                  Showing <span className="font-mono">{rlRows.length}</span> of{' '}
+                  <span className="font-mono">{rlSummary.total}</span> — narrow filter to see more
+                </span>
+              )}
             </div>
           )}
 

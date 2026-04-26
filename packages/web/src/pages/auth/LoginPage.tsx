@@ -515,7 +515,7 @@ export function LoginPage() {
                       autoFocus
                       maxLength={200}
                       placeholder="Acme Phone Repair"
-                      className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     />
                     <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Used on receipts and the dashboard header.</p>
                   </div>
@@ -529,7 +529,7 @@ export function LoginPage() {
                         onChange={(e) => setSetupFirstName(e.target.value)}
                         maxLength={100}
                         placeholder="John"
-                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                     <div>
@@ -541,7 +541,7 @@ export function LoginPage() {
                         onChange={(e) => setSetupLastName(e.target.value)}
                         maxLength={100}
                         placeholder="Smith"
-                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                   </div>
@@ -566,7 +566,7 @@ export function LoginPage() {
                   placeholder="Choose a username"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
@@ -582,7 +582,7 @@ export function LoginPage() {
                   autoComplete="email"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
@@ -596,7 +596,7 @@ export function LoginPage() {
                   placeholder="Min 8 characters"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'setup-form-error' : undefined}
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               {error && <p id="setup-form-error" role="alert" aria-live="polite" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -604,7 +604,7 @@ export function LoginPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 {isSingleTenantSetup ? 'Create shop & continue' : 'Create Account & Continue'}
@@ -717,7 +717,7 @@ export function LoginPage() {
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
               <button type="submit" disabled={loading || newPassword.length < 8} aria-busy={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Set Password & Continue'}
@@ -754,7 +754,7 @@ export function LoginPage() {
                   value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
-                {error && <p className="text-sm text-red-500">{error}</p>}
+                {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
                 <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
                   className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
@@ -777,7 +777,7 @@ export function LoginPage() {
                 value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="000000" autoFocus
                 className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
               <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
                 <input
                   id="trust-device"
