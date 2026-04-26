@@ -203,7 +203,7 @@ export function CampaignsPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium shadow-sm"
         >
           <Plus className="h-4 w-4" /> New campaign
         </button>
@@ -287,7 +287,7 @@ export function CampaignsPage() {
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-40"
                     >
                       <Play className="h-3 w-3" /> Run now
                     </button>
@@ -571,7 +571,7 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
           <button
             onClick={() => create.mutate()}
             disabled={create.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50"
           >
             Create
           </button>
@@ -627,7 +627,7 @@ function PreviewModal({ data, onClose }: PreviewProps) {
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950"
           >
             Close
           </button>

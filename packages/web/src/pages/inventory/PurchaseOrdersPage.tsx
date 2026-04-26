@@ -112,7 +112,7 @@ export function PurchaseOrdersPage() {
         </div>
         <button
           onClick={() => setShowCreate(!showCreate)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> New Purchase Order
         </button>
@@ -209,7 +209,7 @@ export function PurchaseOrdersPage() {
               <button
                 onClick={() => createMut.mutate()}
                 disabled={!canSubmit || createMut.isPending}
-                className="px-4 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50"
               >
                 {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin inline" /> : 'Create PO'}
               </button>

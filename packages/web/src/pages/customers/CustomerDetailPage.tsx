@@ -318,7 +318,7 @@ export function CustomerDetailPage() {
         </p>
         <Link
           to="/customers"
-          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Customers
@@ -1036,7 +1036,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
             Enroll in Membership
@@ -1074,7 +1074,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <button
               onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
               disabled={!selectedTier || subscribeMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership
@@ -1473,7 +1473,7 @@ function InfoTab({
         <button
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1708,7 +1708,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',
             msg.direction === 'outbound'
-              ? 'bg-primary-600 text-white rounded-br-none'
+              ? 'bg-primary-600 text-primary-950 rounded-br-none'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-bl-none'
           )}>
             {msg.comm_type && msg.comm_type !== 'sms' && (
@@ -1867,7 +1867,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             resetForm();
             setShowForm(true);
           }}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
         >
           <Plus className="h-4 w-4" />
           Add Asset
@@ -1976,7 +1976,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             <button
               onClick={handleSubmitAsset}
               disabled={addMutation.isPending || updateAssetMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {(addMutation.isPending || updateAssetMutation.isPending) && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

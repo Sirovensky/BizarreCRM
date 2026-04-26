@@ -639,7 +639,7 @@ export function CatalogPage() {
                     })()}
                     <button
                       onClick={() => { setImportModal(item); setMarkupPct(30); }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors">
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg transition-colors">
                       <Download className="h-3 w-3" /> Import
                     </button>
                   </div>

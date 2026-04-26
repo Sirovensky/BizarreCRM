@@ -191,7 +191,7 @@ export function ExtrasHub({ completedCards, onOpenCard, onFinish, onBack }: Extr
           className={`flex items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-semibold shadow-lg transition-colors ${
             completedCount === TOTAL_COUNT
               ? 'bg-green-600 text-white hover:bg-green-700'
-              : 'bg-primary-600 text-white hover:bg-primary-700'
+              : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
           }`}
         >
           {finishLabel}

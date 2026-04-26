@@ -122,7 +122,7 @@ export function BillingTab() {
               <button
                 onClick={handleUpgrade}
                 disabled={checkoutLoading}
-                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:shadow-lg disabled:opacity-50"
+                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-primary-950 shadow transition-all hover:shadow-lg disabled:opacity-50"
               >
                 {checkoutLoading ? 'Loading…' : 'Upgrade to Pro'}
               </button>
@@ -195,7 +195,7 @@ export function BillingTab() {
           <button
             onClick={handleUpgrade}
             disabled={checkoutLoading}
-            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
+            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
           >
             {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — $${(proDef.priceCents / 100).toFixed(0)}/mo`}
           </button>

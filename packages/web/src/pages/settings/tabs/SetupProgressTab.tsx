@@ -312,7 +312,7 @@ function SetupItem({
           'inline-flex flex-shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
           item.completed
             ? 'text-surface-500 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-800'
-            : 'bg-primary-600 text-white hover:bg-primary-700'
+            : 'bg-primary-600 text-primary-950 hover:bg-primary-700'
         )}
       >
         {item.completed ? 'Review' : 'Go'}

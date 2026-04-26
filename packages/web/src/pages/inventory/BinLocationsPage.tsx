@@ -143,7 +143,7 @@ export function BinLocationsPage() {
             <h2 className="font-semibold">Bins ({bins.length})</h2>
             <button
               onClick={() => setShowNew(true)}
-              className="inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1 text-xs font-semibold text-white"
+              className="inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1 text-xs font-semibold text-primary-950"
             >
               <Plus className="h-3 w-3" /> Add
             </button>
@@ -187,7 +187,7 @@ export function BinLocationsPage() {
                 <button
                   onClick={() => createMut.mutate()}
                   disabled={!newCode.trim() || createMut.isPending}
-                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-primary-950 disabled:opacity-50"
                 >
                   {createMut.isPending && <Loader2 className="inline h-3 w-3 animate-spin mr-1" />}
                   Create

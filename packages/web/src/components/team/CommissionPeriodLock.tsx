@@ -229,7 +229,7 @@ export function CommissionPeriodLock() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
+                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
                 disabled={!newName || !newStart || !newEnd || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

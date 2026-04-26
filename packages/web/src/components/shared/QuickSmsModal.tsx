@@ -203,7 +203,7 @@ export function QuickSmsModal({ onClose, customer, ticket, device, toPhone }: Qu
             type="button"
             onClick={handleSend}
             disabled={!message.trim() || !recipient.trim() || sendMutation.isPending}
-            className="inline-flex items-center gap-2 px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-5 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50"
           >
             {sendMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Send SMS

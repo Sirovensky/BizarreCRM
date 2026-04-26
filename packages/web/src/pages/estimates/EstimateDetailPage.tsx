@@ -290,7 +290,7 @@ export function EstimateDetailPage() {
                 />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50">
                     <Save className="h-3 w-3" /> Save
                   </button>
                   <button onClick={() => setEditing(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>

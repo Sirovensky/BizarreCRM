@@ -236,7 +236,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             <button
               type="submit"
               disabled={!pin.trim() || verifying || isLocked}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50"
             >
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
             </button>

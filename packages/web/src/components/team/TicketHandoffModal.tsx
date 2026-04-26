@@ -141,7 +141,7 @@ export function TicketHandoffModal({
             Cancel
           </button>
           <button
-            className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50"
+            className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center disabled:opacity-50"
             disabled={!canSubmit}
             onClick={() => handoffMut.mutate()}
           >

@@ -425,7 +425,7 @@ export function InventoryListPage() {
           </button>
           <Link
             to="/inventory/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm"
           >
             <Plus className="h-4 w-4" />
             New Item
@@ -578,7 +578,7 @@ export function InventoryListPage() {
             </label>
           </div>
           <div className="col-span-full flex gap-2 mt-1">
-            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors">
+            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-primary-950 hover:bg-primary-700 transition-colors">
               Apply
             </button>
             <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
@@ -979,7 +979,7 @@ export function InventoryListPage() {
               <button
                 onClick={handlePriceUpdate}
                 disabled={!priceAdjustPct || priceAdjustReason.trim().length < 3}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
               >
                 Apply to {selectedIds.size} items
               </button>
@@ -1059,7 +1059,7 @@ export function InventoryListPage() {
               <button
                 onClick={() => importMutation.mutate(importPreview)}
                 disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5"
               >
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} items
@@ -1482,7 +1482,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
             <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.created} new items created</p>
           )}
           <button onClick={onComplete}
-            className="mt-6 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">
+            className="mt-6 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors">
             Done
           </button>
         </div>
@@ -1535,7 +1535,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
               {scanning && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary-500" />}
             </div>
             <button onClick={() => handleScan(barcodeInput)} disabled={!barcodeInput.trim() || scanning}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+              className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
               Add
             </button>
           </div>
@@ -1643,7 +1643,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                 Cancel
               </button>
               <button onClick={handleReceiveAll} disabled={submitting || readyCount === 0}
-                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Receive {readyCount} Items
               </button>
@@ -1898,7 +1898,7 @@ function InventoryEmptyState({ activeFilterCount, keyword }: InventoryEmptyState
       <div className="mt-5 flex items-center gap-3">
         <Link
           to="/inventory/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add an item
         </Link>

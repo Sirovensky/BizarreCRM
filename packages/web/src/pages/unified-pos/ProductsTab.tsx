@@ -101,7 +101,7 @@ export function ProductsTab() {
               className={cn(
                 'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 !category
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 text-primary-950'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
               )}
             >
@@ -114,7 +114,7 @@ export function ProductsTab() {
                 className={cn(
                   'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
                   category === cat
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
                 )}
               >

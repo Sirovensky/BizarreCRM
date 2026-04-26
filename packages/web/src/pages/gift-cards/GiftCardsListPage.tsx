@@ -144,7 +144,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           </div>
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
           >
             Done
           </button>
@@ -236,7 +236,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           <button
             onClick={() => issueMutation.mutate()}
             disabled={issueMutation.isPending || !form.amount}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Issue gift card
@@ -299,7 +299,7 @@ export function GiftCardsListPage() {
         </div>
         <button
           onClick={() => setShowIssueModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
           Issue gift card
@@ -344,7 +344,7 @@ export function GiftCardsListPage() {
           <p className="text-base font-medium text-surface-600 dark:text-surface-400">No gift cards yet &mdash; issue one to get started</p>
           <button
             onClick={() => setShowIssueModal(true)}
-            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
             Issue gift card

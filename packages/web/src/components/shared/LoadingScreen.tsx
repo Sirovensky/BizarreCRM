@@ -39,7 +39,7 @@ export function NotFoundPage() {
       <p className="text-lg text-surface-600 dark:text-surface-400 mb-6">Page not found</p>
       <Link
         to="/"
-        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+        className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
       >
         Back to Dashboard
       </Link>
@@ -87,7 +87,7 @@ export function SetupFailedScreen({ error, onRetry }: { error: unknown; onRetry:
         <div className="flex items-center gap-2 mt-2">
           <button
             onClick={onRetry}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded"
+            className="px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded"
           >
             Retry
           </button>

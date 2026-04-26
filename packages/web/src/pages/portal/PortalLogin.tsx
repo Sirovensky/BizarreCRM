@@ -97,7 +97,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
           {storeLogo ? (
             <img src={storeLogo} alt={storeName} className="mx-auto mb-3 h-16 object-contain" />
           ) : (
-            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary-600 text-white text-2xl font-bold">
+            <div className="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-primary-600 text-primary-950 text-2xl font-bold">
               {storeName.charAt(0)}
             </div>
           )}
@@ -177,7 +177,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? 'Looking up...' : 'Track My Repair'}
                 </button>
@@ -230,7 +230,7 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                  className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
                 >
                   {loading ? 'Signing in...' : 'Sign In'}
                 </button>

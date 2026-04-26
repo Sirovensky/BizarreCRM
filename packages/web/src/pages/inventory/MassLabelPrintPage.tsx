@@ -142,7 +142,7 @@ export function MassLabelPrintPage() {
           <button
             onClick={() => printMut.mutate()}
             disabled={selected.size === 0 || printMut.isPending}
-            className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-1 text-sm font-semibold text-white disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-1 text-sm font-semibold text-primary-950 disabled:opacity-50"
           >
             {printMut.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

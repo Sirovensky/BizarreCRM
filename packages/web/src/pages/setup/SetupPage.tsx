@@ -295,7 +295,7 @@ function PhaseIndicator({ phase }: { phase: WizardPhase }) {
             <div
               className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold ${
                 active
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 text-primary-950'
                   : done
                   ? 'bg-green-500 text-white'
                   : 'bg-surface-200 text-surface-500 dark:bg-surface-700 dark:text-surface-400'

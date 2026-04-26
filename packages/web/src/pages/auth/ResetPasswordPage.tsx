@@ -164,7 +164,7 @@ export function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || password.length < 8}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Reset Password'}
               </button>

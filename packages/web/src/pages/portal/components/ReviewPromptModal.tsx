@@ -132,7 +132,7 @@ export function ReviewPromptModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={rating < 1 || submitting}
-                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium disabled:opacity-50"
+                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {t('review.submit')}
               </button>
@@ -151,7 +151,7 @@ export function ReviewPromptModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium"
+              className="rounded bg-primary-600 hover:bg-primary-700 text-primary-950 px-4 py-2 text-sm font-medium"
             >
               Close
             </button>
@@ -171,7 +171,7 @@ export function ReviewPromptModal({
                 href={googleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium"
+                className="rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium"
                 onClick={onClose}
               >
                 {t('review.google_button')}

@@ -405,7 +405,7 @@ function DeviceStep({ category, onSelect }: {
               setOtherName('');
             }}
             disabled={!otherName.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50"
           >
             Add
           </button>
@@ -681,7 +681,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
         <button
           onClick={handleAdd}
           disabled={!hasPricing && !manualPrice && deviceModelId > 0}
-          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue to Details
         </button>
@@ -1304,7 +1304,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             <button
               onClick={handleCreateCustomer}
               disabled={creating}
-              className="flex-1 rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
             >
               {creating ? 'Creating...' : 'Create & Continue'}
             </button>
@@ -1362,7 +1362,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
                     </span>
                     <button
                       onClick={() => navigate(`/pos?ticket=${t.id}`)}
-                      className="flex-shrink-0 rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-700"
+                      className="flex-shrink-0 rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-primary-950 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-700"
                     >
                       Checkout
                     </button>

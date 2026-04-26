@@ -273,7 +273,7 @@ export function InvoiceSettings() {
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
             dirty
-              ? 'bg-primary-600 text-white hover:bg-primary-700'
+              ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
           )}
         >

@@ -291,7 +291,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
               type="button"
               onClick={addBenefit}
               disabled={!newBenefit.trim()}
-              className="px-3 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="px-3 py-2 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               <Plus className="h-4 w-4" />
             </button>
@@ -329,7 +329,7 @@ function TierForm({ initial, onSave, onCancel, saving }: {
         <button
           type="submit"
           disabled={saving}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {initial.name ? 'Update Tier' : 'Create Tier'}
@@ -482,7 +482,7 @@ export function MembershipSettings() {
           {!showForm && (
             <button
               onClick={() => { setEditingTier(null); setShowForm(true); }}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-4 w-4" />
               Add Tier
