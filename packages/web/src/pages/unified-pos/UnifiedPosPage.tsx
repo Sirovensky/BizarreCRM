@@ -14,7 +14,7 @@ import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { X, Keyboard } from 'lucide-react';
+import { X } from 'lucide-react';
 
 // ─── DeviceTemplateNudge ──────────────────────────────────────────────────────
 
@@ -90,73 +90,6 @@ type ApiTicketDevicePart = {
   price?: number | null;
   status?: string | null;
 };
-
-// ─── FKeyLegend ───────────────────────────────────────────────────────────────
-// WEB-W3-029 (FIXED-by-Fixer-A23 2026-04-25): the unified POS binds F1-F4,
-// Shift+F5, F6 to tab/customer-search/checkout/returns shortcuts but
-// nothing on screen ever told the cashier they exist. New hires had to
-// be told verbally. Keep it light: a small "?" / keyboard chip in the
-// page corner that toggles a popover listing each shortcut + its action.
-// State lives only in this component so it doesn't pollute the POS store.
-
-const F_KEY_BINDINGS: ReadonlyArray<{ keys: string; action: string }> = [
-  { keys: 'F1', action: 'Repairs tab' },
-  { keys: 'F2', action: 'Products tab' },
-  { keys: 'F3', action: 'Misc tab' },
-  { keys: 'F4', action: 'Customer search' },
-  { keys: 'Shift+F5', action: 'Complete sale' },
-  { keys: 'F6', action: 'Returns hotkey' },
-];
-
-function FKeyLegend() {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="absolute bottom-3 right-3 z-40">
-      {open && (
-        <div
-          role="dialog"
-          aria-label="Keyboard shortcuts"
-          className="mb-2 w-64 rounded-lg border border-surface-200 bg-white p-3 shadow-lg dark:border-surface-700 dark:bg-surface-900"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-surface-500">
-              Keyboard shortcuts
-            </h2>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded p-0.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200"
-              aria-label="Close shortcuts"
-            >
-              <X className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </div>
-          <ul className="space-y-1.5">
-            {F_KEY_BINDINGS.map((b) => (
-              <li key={b.keys} className="flex items-center justify-between gap-3 text-xs">
-                <kbd className="rounded border border-surface-300 bg-surface-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-surface-700 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200">
-                  {b.keys}
-                </kbd>
-                <span className="text-surface-700 dark:text-surface-300">{b.action}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-full border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 shadow-sm hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-200 dark:hover:bg-surface-800"
-        aria-expanded={open}
-        aria-label="Show keyboard shortcuts"
-        title="Keyboard shortcuts (F1-F6)"
-      >
-        <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
-        Shortcuts
-      </button>
-    </div>
-  );
-}
 
 // ─── UnifiedPosPage ─────────────────────────────────────────────────
 
@@ -439,8 +372,6 @@ export function UnifiedPosPage() {
     <div className="relative flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Phase D2: device template nudge — dismissed per-session via localStorage */}
       <DeviceTemplateNudge />
-      {/* WEB-W3-029: F-key shortcut legend (toggles a small popover) */}
-      <FKeyLegend />
       {/* Barcode scan flash indicator */}
       {scanFlash && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white shadow-lg animate-pulse">

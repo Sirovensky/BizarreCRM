@@ -30,11 +30,22 @@ const SHORTCUTS: ReadonlyArray<{ section: string; items: ReadonlyArray<ShortcutE
     ],
   },
   {
-    section: 'Quick jump',
+    section: 'Quick jump (outside POS)',
     items: [
       { keys: ['F2'], description: 'Point of sale' },
       { keys: ['F3'], description: 'New customer' },
       { keys: ['F4'], description: 'Tickets list' },
+    ],
+  },
+  {
+    section: 'Point of Sale',
+    items: [
+      { keys: ['F1'], description: 'Repairs tab' },
+      { keys: ['F2'], description: 'Products tab' },
+      { keys: ['F3'], description: 'Misc tab' },
+      { keys: ['F4'], description: 'Customer search' },
+      { keys: ['Shift', 'F5'], description: 'Complete sale' },
+      { keys: ['F6'], description: 'Returns' },
     ],
   },
   {
