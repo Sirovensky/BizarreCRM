@@ -266,10 +266,15 @@ export function SettingsPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* DASH-ELEC-172: cap input length so MB-large pastes don't sail through to
+              the IPC layer (which fails with a generic error). 512 covers the longest
+              real-world secret (e.g. Cloudflare API tokens ~40, Stripe keys ~100); 2048
+              for plain text fields like CORS_ORIGINS that may list multiple URLs. */}
           <input
             id={`env-${f.key}`}
             type={f.kind === 'secret' && !isRevealed ? 'password' : 'text'}
             value={value}
+            maxLength={f.kind === 'secret' ? 512 : 2048}
             placeholder={f.placeholder ?? (f.kind === 'secret' && f.hasValue ? '(leave blank to keep current)' : '')}
             onChange={(e) => setPendingValue(f.key, e.target.value)}
             className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400 focus:border-accent-600 focus:outline-none font-mono"

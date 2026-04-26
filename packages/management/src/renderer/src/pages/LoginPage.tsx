@@ -395,7 +395,10 @@ export function LoginPage() {
         {step === '2fa-setup' && (
           <form onSubmit={handleVerify2fa}>
             {/* DASH-ELEC-094: bg-white scoped to <img> only — outer card uses surface token */}
-            {qrCode && (
+            {/* DASH-ELEC-061: validate qrCode is a data:image URI before rendering — a
+                compromised server returning `javascript:` or `data:text/html` would
+                otherwise execute in the renderer's origin via <img src=…>. */}
+            {qrCode && qrCode.startsWith('data:image/') && (
               <div className="flex justify-center mb-4 p-4 bg-surface-800 rounded-lg">
                 <img src={qrCode} alt="2FA QR Code" className="w-48 h-48 bg-white p-1 rounded" />
               </div>

@@ -546,14 +546,26 @@ export function TenantsPage() {
               {/* DASH-ELEC-236: cap slug input at 30 chars to match handleCreate's
                   client-side validation (the IPC schema accepts 64 but we reject
                   anything over 30 with a toast — let the input prevent it). */}
+              {/* DASH-ELEC-167: aria-label per input so SR users hear field names instead of placeholders only.
+                  DASH-ELEC-135: typing the shop name auto-populates slug while it's still untouched. */}
               <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="Slug (e.g. my-shop)"
                 maxLength={30}
+                aria-label="Tenant slug (URL identifier, lowercase letters, digits, hyphens)"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Shop name"
+              <input type="text" value={newName} onChange={(e) => {
+                const next = e.target.value;
+                setNewName(next);
+                if (!newSlug.trim()) {
+                  setNewSlug(next.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30));
+                }
+              }} placeholder="Shop name"
+                aria-label="Shop name (display name shown to staff and customers)"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
               <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (required)"
+                aria-label="Admin email address (recipient of initial credentials)"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
               <select value={newPlan} onChange={(e) => setNewPlan(e.target.value as TenantPlan)}
+                aria-label="Subscription plan"
                 className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none">
                 {PLAN_OPTIONS.map((plan) => (
                   <option key={plan.name} value={plan.name}>{plan.displayName}</option>

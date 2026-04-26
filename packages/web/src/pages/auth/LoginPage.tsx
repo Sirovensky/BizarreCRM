@@ -547,6 +547,13 @@ export function LoginPage() {
                   </div>
                 </>
               )}
+              {/* WEB-FG-016 (Fixer-B17 2026-04-25): error block is a single
+                  `<p>` for the whole form — link inputs to it via
+                  `aria-describedby` whenever an error is set, mark them
+                  `aria-invalid`, and promote the error to `role="alert"` +
+                  `aria-live="polite"` so screen readers announce it on
+                  submit instead of going silent. Same a11y gap as FE-014
+                  but specific to the first surface every shop owner sees. */}
               <div>
                 <label htmlFor="setup-username" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
                 <input
@@ -557,6 +564,8 @@ export function LoginPage() {
                   autoFocus={!isSingleTenantSetup}
                   autoComplete="username"
                   placeholder="Choose a username"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
                   className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
@@ -571,6 +580,8 @@ export function LoginPage() {
                   onChange={(e) => setSetupEmail(e.target.value)}
                   placeholder="admin@yourshop.com"
                   autoComplete="email"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
                   className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
@@ -583,10 +594,12 @@ export function LoginPage() {
                   onChange={(e) => setSetupPassword(e.target.value)}
                   autoComplete="new-password"
                   placeholder="Min 8 characters"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
                   className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
-              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+              {error && <p id="setup-form-error" role="alert" aria-live="polite" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button
                 type="submit"
                 disabled={loading}

@@ -319,7 +319,7 @@ export function SignupPage() {
         {/* Form card */}
         <form onSubmit={handleSubmit} noValidate style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
           {apiError && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
+            <div role="alert" aria-live="assertive" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
               {apiError}
             </div>
           )}
@@ -483,7 +483,7 @@ function FieldGroup({ label, error, errorId, htmlFor, children }: { label: strin
         {label}
       </label>
       {children}
-      {error && <div id={errorId} style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+      {error && <div id={errorId} role="alert" aria-live="polite" style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
     </div>
   );
 }

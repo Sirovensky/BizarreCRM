@@ -526,7 +526,12 @@ interface TechWorkloadItem {
 const WORKLOAD_COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899'];
 
 function TechWorkloadChart() {
-  const { data, isLoading } = useQuery({
+  // WEB-FF-015 (Fixer-B17 2026-04-25): query previously destructured only
+  // `{ data, isLoading }` — a 401 / 500 quietly fell through to the
+  // "No technician workload data" empty-state, indistinguishable from a
+  // shop with zero techs. Wire `isError` so a failed fetch surfaces as a
+  // real ErrorState and managers know to refresh / re-auth.
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'tech-workload'],
     queryFn: async () => {
       const res = await reportApi.techWorkload();
@@ -536,6 +541,7 @@ function TechWorkloadChart() {
   });
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState message="Failed to load technician workload" />;
   if (!data || data.length === 0) return <EmptyState message="No technician workload data" />;
 
   const chartData = data.map((t) => ({

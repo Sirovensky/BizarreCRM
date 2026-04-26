@@ -19,11 +19,43 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
+  // WEB-FG-014 (Fixer-B17 2026-04-25): the `accept=` attr is a hint, not a
+  // guard — a `.svg` (XSS via inline <script>) or a renamed `evil.exe` will
+  // still post through. Match the server-side allow-list (jpeg/png/webp/gif)
+  // by both `file.type` AND a magic-byte sniff, so a renamed binary that
+  // claims `image/png` via the OS shell is rejected before we POST it.
+  const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
+  type AllowedMime = (typeof ALLOWED_MIME)[number];
+  const sniffImageMime = async (file: File): Promise<AllowedMime | null> => {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    // PNG: 89 50 4E 47 0D 0A 1A 0A
+    if (head[0] === 0x89 && head[1] === 0x50 && head[2] === 0x4e && head[3] === 0x47) return 'image/png';
+    // JPEG: FF D8 FF
+    if (head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff) return 'image/jpeg';
+    // GIF: "GIF87a" or "GIF89a"
+    if (head[0] === 0x47 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x38) return 'image/gif';
+    // WEBP: "RIFF" .... "WEBP"
+    if (
+      head[0] === 0x52 && head[1] === 0x49 && head[2] === 0x46 && head[3] === 0x46 &&
+      head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50
+    ) return 'image/webp';
+    return null;
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       setError('Logo must be under 2 MB.');
+      return;
+    }
+    if (!ALLOWED_MIME.includes(file.type as AllowedMime)) {
+      setError('Logo must be a PNG, JPEG, WebP, or GIF image.');
+      return;
+    }
+    const sniffed = await sniffImageMime(file);
+    if (!sniffed || sniffed !== file.type) {
+      setError('File contents do not match the image type. Please upload a real PNG, JPEG, WebP, or GIF.');
       return;
     }
     setUploading(true);

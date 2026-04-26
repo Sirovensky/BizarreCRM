@@ -193,16 +193,22 @@ function _ConfirmDialogInner({
         <p id={msgId} className="text-sm text-surface-400 mb-4">{message}</p>
 
         {/* Type to confirm */}
+        {/* DASH-ELEC-169: explicit id + aria-describedby so screen readers
+            announce the instruction (which value the operator must type)
+            instead of just the placeholder. */}
         {requireTyping && (
           <div className="mb-4">
-            <p className="text-xs text-surface-500 mb-2">
+            <p id="confirm-typing-instruction" className="text-xs text-surface-500 mb-2">
               Type <span className="font-mono font-bold text-red-400">{requireTyping}</span> to confirm:
             </p>
             <input
+              id="confirm-typing-input"
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               autoFocus
+              aria-label={`Type ${requireTyping} to confirm`}
+              aria-describedby="confirm-typing-instruction"
               className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-red-500 focus:outline-none"
               placeholder={requireTyping}
             />

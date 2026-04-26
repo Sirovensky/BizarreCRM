@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { KeyRound, RefreshCw, XCircle, Clock, User } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -133,7 +134,15 @@ export function SessionsPage() {
       </div>
 
       {sessions.length === 0 ? (
-        <div className="text-center py-12 text-sm text-surface-500">No active sessions</div>
+        // DASH-ELEC-132: empty-state recovery cue — operator may have just revoked
+        // their own session (no server-side self-revoke guard), and we don't want
+        // them stuck on this page with no link back to the auth flow.
+        <div className="text-center py-12 text-sm text-surface-500 space-y-2">
+          <div>No active sessions</div>
+          <Link to="/login" className="inline-block text-xs text-accent-400 hover:text-accent-300 underline">
+            Back to Login
+          </Link>
+        </div>
       ) : (
         <div className="space-y-2">
           {sessions.map((s) => {
