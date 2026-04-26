@@ -394,7 +394,6 @@ export function UnifiedPosPage() {
           <LeftPanel
             collapsed={cartCollapsed}
             onToggle={toggleCart}
-            onNewCustomer={() => navigate('/customers/new')}
           />
         </div>
 
