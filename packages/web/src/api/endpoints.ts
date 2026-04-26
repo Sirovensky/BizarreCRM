@@ -520,6 +520,17 @@ export const reportApi = {
     api.get('/reports/churn', { params: { days_inactive } }),
   overstaffing: (days?: number) =>
     api.get('/reports/overstaffing', { params: { days } }),
+  // WEB-FI-025 (Fixer-C15 2026-04-25): these URL builders return raw `/api/v1/...`
+  // strings the caller passes to `window.open(url, '_blank')`. The new tab carries
+  // the httpOnly auth cookie (axios `withCredentials: true` in client.ts; same
+  // origin so cookie auto-attaches), but the request DOES NOT carry the
+  // `Authorization: Bearer …` header that the request interceptor adds for
+  // tenant access tokens. Cookie auth is currently the canonical path so this
+  // works today; if any tenant flips to bearer-only auth (no cookie) these tabs
+  // will get 401s. Long-term fix: replace with a blob fetch through the axios
+  // `client` (same pattern as `dataExportApi.downloadAll`) and trigger an
+  // `<a download>` programmatically. Same caveat applies to
+  // `voiceApi.recordingPath` below.
   taxReportPdfUrl: (from: string, to: string, jurisdiction?: string) =>
     `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
   partnerReportPdfUrl: (year: string | number) =>

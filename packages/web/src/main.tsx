@@ -318,6 +318,20 @@ createRoot(document.getElementById('root')!).render(
             className="sr-only"
             id="toast-live-region"
           />
+          {/*
+            WEB-FQ-020 (Fixer-C15 2026-04-25): toast vs inline-banner policy.
+            Codebase has 599 toast() calls AND scattered inline banners on the
+            same flows (login + signup show inline errors, settings prefer
+            toasts, estimates use both). To stop users scanning two surfaces:
+              - Form-submit FAILURES (login, signup, save-settings, checkout):
+                inline banner near the submit button — keeps the field error
+                local to the form. Use <LoginError/>, <FormBanner/>, role="alert".
+              - Background async results (mutations not tied to a visible form,
+                queries that errored, broadcast channel signals, file-export
+                completion, post-checkout receipt): toast.error/success.
+            Both surfaces should call utils/apiError.formatApiError() so the
+            ERR_* code + request_id is shown to the user for support tickets.
+          */}
           <Toaster
             position="top-right"
             toastOptions={{

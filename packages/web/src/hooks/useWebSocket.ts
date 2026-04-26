@@ -21,6 +21,19 @@ export const useWsStore = create<WsState>((set) => ({
   setLastMessage: (msg) => set({ lastMessage: msg }),
 }));
 
+// WEB-FO-016 (Fixer-B15 2026-04-25): wipe the module-scoped `lastMessage`
+// snapshot whenever auth is cleared (logout, switchUser). The Zustand
+// store persists across the auth lifecycle, so any future subscriber
+// would briefly read the prior user's last WS payload — a cross-tenant
+// leak shape even if no current consumer reads it. Belt-and-suspenders
+// against future regressions; mirrors the queryClient.clear() that
+// main.tsx already runs on the same event.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    useWsStore.setState({ lastMessage: null, isConnected: false });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Resolve the WebSocket URL
 // ---------------------------------------------------------------------------
@@ -236,7 +249,14 @@ export function useWebSocket() {
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
-    const token = getToken();
+    // WEB-FJ-003 (Fixer-A15 2026-04-25): hold the bootstrap token in a
+    // mutable local so we can null it out after onopen. Previously the
+    // `const token` was captured inside the onopen closure and the closure
+    // (kept alive by the WebSocket instance) retained the JWT for the full
+    // socket lifetime — so a refresh that rotated the access token still
+    // left the original (now-stale) JWT reachable from the closure heap
+    // until the socket finally closed.
+    let token: string | null = getToken();
     if (!token) return; // Not authenticated
 
     // WEB-FD-003 (Fixer-A5 2026-04-25): refuse to ship the access-token as
@@ -289,7 +309,20 @@ export function useWebSocket() {
         try { ws.close(); } catch { /* ignore */ }
         return;
       }
+      // WEB-FO-015 (Fixer-B15 2026-04-25): reset reconnect backoff at TCP
+      // open rather than waiting for `auth.success`. A server that closes
+      // the socket immediately after handshake WITHOUT sending a 4001/4003
+      // (e.g. an upstream proxy that drops the conn mid-auth) would
+      // otherwise keep escalating backoff to the 30s ceiling on every
+      // connect even though TCP itself succeeds. `isConnected` still
+      // requires auth.success — only the backoff anchor moves earlier.
+      backoffRef.current = INITIAL_BACKOFF;
       ws.send(JSON.stringify({ type: 'auth', token: freshToken }));
+      // WEB-FJ-003 (Fixer-A15 2026-04-25): release the captured bootstrap
+      // token so it isn't pinned in this closure for the lifetime of the
+      // socket. Re-auth after a 401-bounce will re-read localStorage via
+      // getToken(), so we don't need the stale value here anymore.
+      token = null;
     };
 
     ws.onmessage = (event) => {

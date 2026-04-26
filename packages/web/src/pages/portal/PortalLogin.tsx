@@ -216,7 +216,15 @@ export function PortalLogin({ onQuickTrack, onFullLogin, onRegister, storeName, 
                     aria-invalid={!!error}
                     aria-describedby={error ? 'portal-login-error' : undefined}
                     className="w-full rounded-lg border border-surface-300 dark:border-surface-600 dark:bg-surface-800 px-4 py-2.5 text-sm text-surface-900 dark:text-surface-100 placeholder-surface-400 dark:placeholder-surface-500 tracking-widest focus:border-primary-500 focus:ring-1 focus:ring-primary-500 outline-none"
-                    autoComplete="off"
+                    /* WEB-FK-008 (Fixer-A15 2026-04-25): tag PIN as
+                       current-password so OS/browser password managers
+                       can store + autofill it. With a 4-digit PIN, manual
+                       entry is the worst case — every typed PIN is a
+                       shoulder-surf chance. Letting 1Password/iCloud
+                       Keychain fill it eliminates that vector and lets
+                       users pick a unique 4-digit per-shop PIN instead
+                       of reusing 1234/0000 across portals. */
+                    autoComplete="current-password"
                   />
                 </div>
                 <button

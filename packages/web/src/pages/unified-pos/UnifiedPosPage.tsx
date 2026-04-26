@@ -294,7 +294,12 @@ export function UnifiedPosPage() {
         laborPrice: device.price || 0,
         lineDiscount: device.line_discount || 0,
         parts,
-        taxable: false, // labor is non-taxable by default
+        // WEB-FB-025 (Fixer-C15 2026-04-25): default labor non-taxable. Cashiers in
+        // jurisdictions that DO tax labor must flip the per-line toggle in
+        // LeftPanel.tsx (the `$X.XX / No tax` button next to the labor price input)
+        // — that UI control is the per-line override and is the visible indicator.
+        // Long-term fix is a tenant-wide "default labor taxable" preference.
+        taxable: false,
         sourceTicketId: Number(ticketParam),
         sourceTicketOrderId: ticket.order_id || `T-${ticketParam}`,
       };

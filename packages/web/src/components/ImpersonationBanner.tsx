@@ -62,11 +62,25 @@ export function ImpersonationBanner() {
     function onChanged() {
       setSession(getImpersonationSession());
     }
+    // WEB-FJ-012 (Fixer-B15 2026-04-25): hard-clear the impersonation
+    // marker whenever auth is cleared (logout, switchUser, refresh-fail).
+    // Previously the marker survived everything except the explicit
+    // "Exit" button click, so a stale `impersonation_session` blob in
+    // localStorage could mislead the next staff member on the device into
+    // thinking they were impersonating an arbitrary tenant_slug. The
+    // banner trusted the localStorage value without verifying an active
+    // SA session — the auth-cleared signal is the right tear-down hook.
+    function onAuthCleared() {
+      clearImpersonationSession();
+      setSession(null);
+    }
     window.addEventListener('storage', onStorage);
     window.addEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+    window.addEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+      window.removeEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     };
   }, []);
 

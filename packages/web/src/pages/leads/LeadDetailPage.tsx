@@ -396,7 +396,19 @@ export function LeadDetailPage() {
         <div className="flex items-center gap-2">
           {lead.status !== 'converted' && (
             <button
-              onClick={async () => { if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) convertMut.mutate(); }}
+              onClick={async () => {
+                // WEB-FM-020 (Fixer-C15 2026-04-25): wrap async click handler so a
+                // rejected promise from `confirm()` (modal teardown race, etc.) is
+                // surfaced via toast instead of silently bubbling to
+                // window.onunhandledrejection where ErrorBoundary cannot catch it.
+                try {
+                  if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
+                    convertMut.mutate();
+                  }
+                } catch {
+                  /* user cancelled or modal closed — no toast needed */
+                }
+              }}
               disabled={convertMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >

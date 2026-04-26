@@ -6,9 +6,10 @@
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Star, Trash2, Loader2 } from 'lucide-react';
+import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 
 interface Employee {
   id: number;
@@ -32,12 +33,21 @@ interface Review {
 
 export function PerformanceReviewsPage() {
   const queryClient = useQueryClient();
+  // WEB-FG-008 (Fixer-B15 2026-04-25): page is admin-only by header comment
+  // but had no client-side guard, so a logged-in technician hitting
+  // /team/performance-reviews would render the form, fetch arbitrary
+  // ?user_id= reviews, and trigger 403 toasts on every selectedUserId
+  // flip. Server still enforces; this short-circuits the IDOR-shaped UI
+  // surface so non-admins land on a friendly forbidden state instead.
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'admin';
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [draftNotes, setDraftNotes] = useState('');
   const [draftRating, setDraftRating] = useState<number>(0);
 
   const { data: employeesData } = useQuery({
     queryKey: ['employees', 'simple'],
+    enabled: isAdmin,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
       return res.data.data;
@@ -47,7 +57,7 @@ export function PerformanceReviewsPage() {
 
   const { data: reviewsData } = useQuery({
     queryKey: ['team', 'reviews', selectedUserId],
-    enabled: !!selectedUserId,
+    enabled: isAdmin && !!selectedUserId,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Review[] }>(
         `/team/reviews?user_id=${selectedUserId}`,
@@ -83,6 +93,20 @@ export function PerformanceReviewsPage() {
       queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] });
     },
   });
+
+  if (!isAdmin) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <ShieldOff className="h-12 w-12 text-surface-300 dark:text-surface-600 mb-4" aria-hidden="true" />
+          <h1 className="text-lg font-semibold text-surface-700 dark:text-surface-200">Admin access required</h1>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-2 max-w-md">
+            Performance reviews are restricted to administrators. Contact your shop admin if you need access.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
