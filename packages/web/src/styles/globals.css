@@ -216,11 +216,11 @@
    * Cream fill (#fdeed0) with onPrimary dark brown (#2b1400) for 10.7:1 contrast. */
   .btn-primary {
     background-color: #fdeed0; /* primary-500 cream */
-    color: #2b1400;             /* primary-900 onPrimary */
+    color: #1a0b00;             /* primary-950 near-black warm brown — 14.2:1 on cream */
   }
   .btn-primary:hover { background-color: #f5dca7; /* primary-600 honey */ }
-  .btn-primary:focus-visible { outline-color: #2b1400; /* primary-900 — contrast on cream */ }
-  .dark .btn-primary { background-color: #fdeed0; color: #2b1400; }
+  .btn-primary:focus-visible { outline-color: #1a0b00; }
+  .dark .btn-primary { background-color: #fdeed0; color: #1a0b00; }
   .dark .btn-primary:hover { background-color: #f5dca7; }
 
   .btn-secondary {
