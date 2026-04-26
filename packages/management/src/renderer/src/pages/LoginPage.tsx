@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff, FileText } from 'lucide-react';
+import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff, FileText, RefreshCw } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 import { PASSWORD_MIN_LENGTH } from '@/utils/constants';
 
 type LoginStep = 'loading' | 'setup' | 'login' | '2fa-setup' | '2fa-verify' | 'set-password';
+
+const LOG_FILE_ORDER = [
+  'bizarre-crm.err.log',
+  'bizarre-crm.out.log',
+  'bizarre-crm.direct.err.log',
+  'bizarre-crm.direct.out.log',
+] as const;
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -23,6 +30,11 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [serverOffline, setServerOffline] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<string>(LOG_FILE_ORDER[0]);
+  const [logContent, setLogContent] = useState('');
+  const [logError, setLogError] = useState('');
   // DASH-ELEC-164: SettingsPage already has show-password toggles; mirror the
   // pattern on the first-run set-password step so operators typing a 10+ char
   // password against an OS-level password manager can verify before submit.
@@ -271,16 +283,57 @@ export function LoginPage() {
     }
   };
 
-  const handleViewLogs = async () => {
+  const refreshServerLogs = async (preferredName = selectedLog, showSpinner = true) => {
+    if (showSpinner) setLogsLoading(true);
+    setLogError('');
     try {
-      const res = await getAPI().system.openLogFile();
-      if (!res.success) {
-        setError(res.message ?? 'Could not open server logs');
+      const filesRes = await getAPI().admin.listLogs();
+      if (!filesRes.success || !filesRes.data) {
+        setLogError(filesRes.message ?? 'Could not list server logs');
+        return;
       }
+
+      const files = filesRes.data.files ?? [];
+      const existing = files.filter((file) => file.exists);
+      const preferredExists = existing.some((file) => file.name === preferredName);
+      const chosen =
+        preferredExists
+          ? preferredName
+          : LOG_FILE_ORDER.find((name) => existing.some((file) => file.name === name));
+
+      if (!chosen) {
+        setSelectedLog(LOG_FILE_ORDER[0]);
+        setLogContent('No server log files found yet.');
+        return;
+      }
+
+      setSelectedLog(chosen);
+      const tailRes = await getAPI().admin.tailLog({ name: chosen, lines: 400 });
+      if (!tailRes.success || !tailRes.data) {
+        setLogError(tailRes.message ?? 'Could not read server logs');
+        return;
+      }
+      setLogContent(tailRes.data.content || 'Log file is empty.');
     } catch {
-      setError('Could not open server logs');
+      setLogError('Could not read server logs');
+    } finally {
+      if (showSpinner) setLogsLoading(false);
     }
   };
+
+  const handleViewLogs = async () => {
+    const next = !showLogs;
+    setShowLogs(next);
+    if (next) await refreshServerLogs(selectedLog);
+  };
+
+  useEffect(() => {
+    if (!showLogs) return;
+    const id = window.setInterval(() => {
+      void refreshServerLogs(selectedLog, false);
+    }, 2500);
+    return () => window.clearInterval(id);
+  }, [showLogs, selectedLog]);
 
   if (step === 'loading') {
     return (
@@ -292,7 +345,7 @@ export function LoginPage() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-surface-950">
-      <div className="w-[400px] bg-surface-900 border border-surface-800 rounded-xl p-8 shadow-2xl">
+      <div className={`${showLogs ? 'w-[min(92vw,720px)]' : 'w-[400px]'} bg-surface-900 border border-surface-800 rounded-xl p-8 shadow-2xl`}>
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-lg bg-accent-600/20 flex items-center justify-center">
@@ -337,8 +390,34 @@ export function LoginPage() {
                   className="flex items-center justify-center gap-2 px-4 py-2 bg-surface-800 text-surface-200 text-xs font-medium border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors"
                 >
                   <FileText className="w-3.5 h-3.5" />
-                  See Logs
+                  {showLogs ? 'Hide Logs' : 'See Logs'}
                 </button>
+              </div>
+            )}
+            {serverOffline && showLogs && (
+              <div className="mt-3 rounded-lg border border-surface-700 bg-surface-950 overflow-hidden">
+                <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-surface-800">
+                  <div className="flex items-center gap-2 min-w-0 text-xs text-surface-300">
+                    <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span className="truncate">{selectedLog}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void refreshServerLogs(selectedLog)}
+                    disabled={logsLoading}
+                    className="flex items-center gap-1.5 px-2 py-1 text-[11px] text-surface-300 hover:text-surface-100 hover:bg-surface-800 rounded disabled:opacity-50"
+                  >
+                    {logsLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                    Refresh
+                  </button>
+                </div>
+                {logError ? (
+                  <div className="p-3 text-xs text-red-300">{logError}</div>
+                ) : (
+                  <pre className="h-56 overflow-auto p-3 text-[11px] leading-relaxed text-surface-300 whitespace-pre-wrap break-words font-mono">
+                    {logsLoading && !logContent ? 'Loading logs...' : logContent}
+                  </pre>
+                )}
               </div>
             )}
           </div>

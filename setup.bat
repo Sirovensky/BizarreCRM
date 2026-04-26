@@ -65,11 +65,11 @@ echo.
 :: npm global command shims such as pm2.cmd usually live in %APPDATA%\npm,
 :: but npm config get prefix is the source of truth if the user changed it.
 set "NPM_GLOBAL_PREFIX="
-if exist "%APPDATA%\npm" call :EnsureUserPath "%APPDATA%\npm"
+if defined APPDATA call :EnsureUserPath "%APPDATA%\npm"
 for /f "delims=" %%P in ('npm config get prefix 2^>nul') do (
     if not defined NPM_GLOBAL_PREFIX set "NPM_GLOBAL_PREFIX=%%P"
 )
-if defined NPM_GLOBAL_PREFIX if exist "!NPM_GLOBAL_PREFIX!" call :EnsureUserPath "!NPM_GLOBAL_PREFIX!"
+if defined NPM_GLOBAL_PREFIX if /I not "!NPM_GLOBAL_PREFIX!"=="undefined" call :EnsureUserPath "!NPM_GLOBAL_PREFIX!"
 echo.
 
 :: ── Step 4: Install dependencies ─────────────────────────────────
