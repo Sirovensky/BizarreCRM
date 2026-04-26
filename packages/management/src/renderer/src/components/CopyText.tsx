@@ -46,7 +46,7 @@ export function CopyText({
       if (resetTimerRef.current !== null) clearTimeout(resetTimerRef.current);
       resetTimerRef.current = setTimeout(() => setJust(false), 1400);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Clipboard write failed');
+      toast.error(err instanceof Error ? err.message : 'Copy failed');
     }
   }
 

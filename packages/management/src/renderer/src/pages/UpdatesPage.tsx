@@ -94,7 +94,7 @@ export function UpdatesPage() {
         toast.error(formatApiError(res));
       }
     } catch {
-      toast.error('Failed to check for updates');
+      toast.error('Update check failed');
     } finally {
       setChecking(false);
     }

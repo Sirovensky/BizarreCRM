@@ -265,7 +265,7 @@ export function BackupPage() {
                   <button
                     onClick={() => setDeleteTarget(b.filename)}
                     className="p-1.5 rounded text-surface-500 hover:text-red-400 hover:bg-surface-700 transition-colors"
-                    title="Delete backup"
+                    title="Delete Backup"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

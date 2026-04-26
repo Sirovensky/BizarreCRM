@@ -87,7 +87,7 @@ export function CommandPalette() {
               message: 'Active tenant sessions will briefly disconnect while the CRM server restarts.',
               onConfirm: async () => {
                 const res = await getAPI().service.restart();
-                if (res.success) toast.success('Server restart requested');
+                if (res.success) toast.success('Server restart requested. May take up to a minute to come back online.');
                 else toast.error(res.message ?? 'Restart failed');
                 resolve();
               },

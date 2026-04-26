@@ -17,6 +17,7 @@ import { SuccessCelebration } from '@/components/onboarding/SuccessCelebration';
 import { DailyNudge } from '@/components/onboarding/DailyNudge';
 import { useMilestoneToasts } from '@/components/onboarding/useMilestoneToasts';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 // Business Intelligence layer (audit 47)
@@ -1659,7 +1660,9 @@ function AdminOrManagerDashboard() {
   // admin and manager see the full dashboard (technician is routed away at
   // the DashboardPage level, so no early return here — keeps the hook list
   // stable across every render of this body).
-  const showFinancials = role === 'admin' || role === 'manager';
+  // FIXED-by-Fixer-A20 — WEB-FAE-001: routed through `useHasRole` so role-source
+  // authority lives in one hook (matches `<PermissionBoundary>` semantics).
+  const showFinancials = useHasRole(['admin', 'manager']);
 
   // Fetch KPIs
   const { data: kpiData, isLoading: kpiLoading } = useQuery({

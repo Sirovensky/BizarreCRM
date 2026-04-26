@@ -7,6 +7,10 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { safeColor } from '../../utils/safeColor';
+// WEB-FM-008 (Fixer-B20 2026-04-25): replace the local `formatDate(iso)` (which
+// hardcoded `en-US` and was actually shaped as date+time) with the shared
+// `formatDateTime` helper from `utils/format`. Same shape, locale-aware.
+import { formatDateTime } from '@/utils/format';
 
 // ---------- Types ----------
 interface TrackingTicket {
@@ -279,15 +283,6 @@ export function TrackingPage() {
     }
   }
 
-  function formatDate(iso: string): string {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    } catch {
-      return iso;
-    }
-  }
-
   const storeName = portalData?.store?.store_name || storeConfig?.store_name || 'Repair Shop';
   const storePhone = portalData?.store?.store_phone || storeConfig?.store_phone || '';
   const storeAddress = portalData?.store?.store_address || storeConfig?.store_address || '';
@@ -367,7 +362,7 @@ export function TrackingPage() {
                 <div className="px-5 py-3 border-b border-slate-100 dark:border-surface-800 bg-primary-50/50 dark:bg-primary-900/20">
                   <p className="text-sm text-primary-700 dark:text-primary-300 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Estimated completion: <strong>{formatDate(portalData.due_on)}</strong>
+                    Estimated completion: <strong>{formatDateTime(portalData.due_on)}</strong>
                   </p>
                 </div>
               )}
@@ -417,7 +412,7 @@ export function TrackingPage() {
                               )}
                             </div>
                             {d.type && <p className="text-xs text-slate-500 mt-1">Type: {d.type}</p>}
-                            {d.due_on && <p className="text-xs text-slate-500 mt-1">Due: {formatDate(d.due_on)}</p>}
+                            {d.due_on && <p className="text-xs text-slate-500 mt-1">Due: {formatDateTime(d.due_on)}</p>}
                             {d.notes && <p className="text-sm text-slate-600 mt-2">{d.notes}</p>}
                           </div>
                         ))}
@@ -431,14 +426,14 @@ export function TrackingPage() {
                       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Checked In</h3>
                       <p className="text-sm text-slate-700 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(portalData.created_at)}
+                        {formatDateTime(portalData.created_at)}
                       </p>
                     </div>
                     <div>
                       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Updated</h3>
                       <p className="text-sm text-slate-700 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(portalData.updated_at)}
+                        {formatDateTime(portalData.updated_at)}
                       </p>
                     </div>
                   </div>
@@ -468,7 +463,7 @@ export function TrackingPage() {
                               <p className="text-sm text-slate-800 font-medium">
                                 {formatAction(h)}
                               </p>
-                              <p className="text-xs text-slate-400 mt-0.5">{formatDate(h.created_at)}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(h.created_at)}</p>
                             </div>
                           </li>
                         ))}
@@ -576,7 +571,7 @@ export function TrackingPage() {
                       {portalData.messages.map(m => (
                         <div key={m.id} className="bg-primary-50 rounded-lg p-3">
                           <p className="text-sm text-slate-700">{m.content}</p>
-                          <p className="text-xs text-slate-400 mt-1">{formatDate(m.created_at)}</p>
+                          <p className="text-xs text-slate-400 mt-1">{formatDateTime(m.created_at)}</p>
                         </div>
                       ))}
                     </div>

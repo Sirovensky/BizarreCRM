@@ -114,7 +114,7 @@ export function DiagnosticsPage() {
       {tenantsLoading ? (
         <p className="text-xs text-surface-500">Loading tenants…</p>
       ) : tenants.length === 0 ? (
-        <p className="text-xs text-surface-500">No tenants found.</p>
+        <p className="text-xs text-surface-500">No tenants found</p>
       ) : !selectedSlug ? (
         <p className="text-xs text-surface-500">Select a tenant above to start diagnosing.</p>
       ) : (

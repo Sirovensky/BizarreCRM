@@ -193,8 +193,8 @@ export function SecurityAlertsPage() {
       ) : alerts.length === 0 ? (
         <div className="text-center py-12 text-sm text-surface-500">
           {ackFilter === 'unacknowledged'
-            ? 'No unacknowledged alerts. You are all caught up.'
-            : 'No alerts match the current filter.'}
+            ? 'No unacknowledged alerts — you are all caught up'
+            : 'No alerts match the current filter'}
         </div>
       ) : (
         <div className="space-y-2">

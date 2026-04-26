@@ -183,7 +183,7 @@ function _ConfirmDialogInner({
           <button
             onClick={handleCancel}
             className="p-1 rounded hover:bg-surface-800 text-surface-500 hover:text-surface-300"
-            aria-label="Cancel"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>

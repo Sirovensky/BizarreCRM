@@ -79,7 +79,7 @@ export function SessionsPage() {
         setSessions(list as Session[]);
       }
     } catch {
-      toast.error('Failed to load sessions');
+      toast.error('Sessions load failed');
     } finally {
       setLoading(false);
     }

@@ -192,7 +192,7 @@ export function LogsPage() {
                 await navigator.clipboard.writeText(text);
                 toast.success(`Copied ${filteredLines.length} lines`);
               } catch (err) {
-                toast.error(err instanceof Error ? err.message : 'Clipboard write failed');
+                toast.error(err instanceof Error ? err.message : 'Copy failed');
               }
             }}
             className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800"

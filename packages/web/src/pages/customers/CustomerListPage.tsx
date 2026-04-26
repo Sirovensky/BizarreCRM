@@ -596,12 +596,15 @@ export function CustomerListPage() {
       </div>
 
       {/* Advanced Filters Panel */}
+      {/* WEB-FQ-008 (Fixer-B20 2026-04-25): unify radii — was `rounded-md` on
+          filter selects/buttons next to a `rounded-lg` panel + search bar.
+          Snapped everything to `rounded-lg` to match the page baseline. */}
       {showFilters && (
         <div className="mb-3 p-4 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Customer Group</label>
             <select value={groupId} onChange={e => setGroupId(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All Groups</option>
               {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
@@ -609,25 +612,25 @@ export function CustomerListPage() {
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
             <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
             <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Open Tickets</label>
             <select value={hasOpenTickets} onChange={e => setHasOpenTickets(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All</option>
               <option value="1">Has Open Tickets</option>
               <option value="0">No Open Tickets</option>
             </select>
           </div>
           <div className="col-span-full flex gap-2 mt-1">
-            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors">Apply</button>
-            <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Clear</button>
+            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">Apply</button>
+            <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Clear</button>
           </div>
         </div>
       )}

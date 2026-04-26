@@ -15,7 +15,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle, Loader2, ShieldAlert } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
+import { formatDateTime } from '@/utils/format';
 import { tenantTerminationApi } from '@/api/endpoints';
 
 const TERMINATION_PHRASE = 'DELETE ALL DATA PERMANENTLY';
@@ -29,10 +30,10 @@ interface DoneState {
 }
 
 export function DangerZoneTab() {
-  const user = useAuthStore((s) => s.user);
+  // FIXED-by-Fixer-A20 — WEB-FAE-001: replaced ad-hoc `user?.role === 'admin'`
+  // literal with the shared `useHasRole` hook (matches `<PermissionBoundary>`).
+  const isAdmin = useHasRole('admin');
   const [open, setOpen] = useState(false);
-
-  const isAdmin = user?.role === 'admin';
 
   return (
     <div className="max-w-3xl">
@@ -363,7 +364,7 @@ function StepConfirmSlug({
       </p>
       {tokenExpiresAt && (
         <p className="text-xs text-surface-500">
-          Token expires at {new Date(tokenExpiresAt).toLocaleString()}.
+          Token expires at {formatDateTime(tokenExpiresAt)}.
         </p>
       )}
       <input
@@ -470,13 +471,13 @@ function StepDone({ data, onClose }: { data: DoneState; onClose: () => void }) {
         <div className="flex items-center justify-between">
           <dt className="text-surface-500">Scheduled at</dt>
           <dd className="font-mono text-xs text-surface-900 dark:text-surface-100">
-            {new Date(data.deletionScheduledAt).toLocaleString()}
+            {formatDateTime(data.deletionScheduledAt)}
           </dd>
         </div>
         <div className="flex items-center justify-between">
           <dt className="text-surface-500">Permanent delete on</dt>
           <dd className="font-mono text-xs text-red-600 dark:text-red-400">
-            {new Date(data.permanentDeleteAt).toLocaleString()}
+            {formatDateTime(data.permanentDeleteAt)}
           </dd>
         </div>
       </dl>

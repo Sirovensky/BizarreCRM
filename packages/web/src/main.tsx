@@ -203,6 +203,18 @@ if (typeof window !== 'undefined') {
         }
       }
       draftKeys.forEach((k) => window.localStorage.removeItem(k));
+      // WEB-FAE-003 / FIXED-by-Fixer-A20 2026-04-25 — `tutorial.all.dismissed`
+      // and `tutorial.<flowId>.dismissed` flags (set by SpotlightCoach +
+      // dismissAllTutorials) are NOT user-scoped, so a previous user's
+      // "skip all" decision suppresses tutorials for the next sign-in on the
+      // same browser. Sweep every `tutorial.*` localStorage key on auth-cleared
+      // so each user sees their own onboarding flow on first login.
+      const tutorialKeys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith('tutorial.')) tutorialKeys.push(k);
+      }
+      tutorialKeys.forEach((k) => window.localStorage.removeItem(k));
     } catch { /* quota / privacy mode — best-effort only */ }
   });
 

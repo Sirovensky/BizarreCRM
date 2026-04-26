@@ -429,6 +429,17 @@ function TemplatePicker({
 }
 
 // ─── Call Log Panel (ENR-V) ─────────────────────────────────────────
+// FM-015: hoisted out of CallLogPanel so React identity is stable across parent
+// re-renders (was being re-created every render, defeating reconciler).
+function DirectionIcon({ direction, status }: { direction: string; status: string }) {
+  if (status === 'failed' || status === 'no-answer' || status === 'busy') {
+    return <PhoneMissed className="h-4 w-4 text-red-500" />;
+  }
+  return direction === 'inbound'
+    ? <PhoneIncoming className="h-4 w-4 text-blue-500" />
+    : <PhoneOutgoing className="h-4 w-4 text-green-500" />;
+}
+
 function CallLogPanel() {
   const [page, setPage] = useState(1);
   const [expandedCall, setExpandedCall] = useState<number | null>(null);
@@ -457,15 +468,6 @@ function CallLogPanel() {
       case 'failed': case 'busy': case 'no-answer': return 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20';
       default: return 'text-surface-600 bg-surface-100 dark:text-surface-400 dark:bg-surface-700';
     }
-  }
-
-  function DirectionIcon({ direction, status }: { direction: string; status: string }) {
-    if (status === 'failed' || status === 'no-answer' || status === 'busy') {
-      return <PhoneMissed className="h-4 w-4 text-red-500" />;
-    }
-    return direction === 'inbound'
-      ? <PhoneIncoming className="h-4 w-4 text-blue-500" />
-      : <PhoneOutgoing className="h-4 w-4 text-green-500" />;
   }
 
   return (
