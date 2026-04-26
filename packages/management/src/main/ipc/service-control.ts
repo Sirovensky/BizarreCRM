@@ -7,10 +7,10 @@
  * paths or arguments. All commands are built from hard-coded constants
  * and the resolved trusted project root. Everything goes through
  * `spawnSync` with an explicit `argv` array — no shell interpolation,
- * no `execSync(string)`. The project root is resolved from trusted
- * Electron anchors (app.getAppPath / process.resourcesPath) rather
- * than walking up from process.execPath, so an attacker who drops a
- * rogue ecosystem.config.js in a parent directory can't redirect us.
+ * no `execSync(string)`. The project root is resolved from deterministic
+ * Electron/setup.bat anchors rather than an upward filesystem search, so
+ * an attacker who drops a rogue ecosystem.config.js in a parent directory
+ * can't redirect us.
  */
 import { ipcMain, app } from 'electron';
 import { spawn, spawnSync } from 'node:child_process';
@@ -54,13 +54,17 @@ function isProjectRoot(dir: string): boolean {
  * letting a misplaced install silently run from anywhere with no
  * integrity gate.
  *
- * This implementation uses deterministic, layout-specific candidates and
- * requires the resolved root to sit INSIDE the trusted anchor itself:
+ * This implementation uses deterministic, layout-specific candidates:
  *
- *   - Packaged: only `<process.resourcesPath>/crm-source` is trusted
- *     (populated by electron-builder `extraResources`). If resourcesPath
- *     is missing or crm-source doesn't exist we throw an installation-
- *     integrity error rather than hunting elsewhere.
+ *   - Packaged setup.bat layout: `<repo>/dashboard/<exe>` accepts exactly
+ *     `<repo>` when the full marker set and `.env` are present. This is the
+ *     live repo root that setup.bat prepares and the only place production
+ *     secrets are written.
+ *
+ *   - Packaged fallback: `<process.resourcesPath>/crm-source` is trusted
+ *     (populated by electron-builder `extraResources`). If neither packaged
+ *     candidate exists we throw an installation-integrity error rather than
+ *     hunting elsewhere.
  *
  *   - Dev: the monorepo repo root is `app.getAppPath()/../..` (where
  *     `app.getAppPath()` resolves to `packages/management`). No walking.
@@ -81,9 +85,27 @@ function hasFullProjectRootMarkers(dir: string): boolean {
   );
 }
 
+function resolveSetupProjectRootFromPackagedExe(): string | null {
+  if (!app.isPackaged) return null;
+  const execPath = typeof process.execPath === 'string' ? process.execPath : null;
+  if (!execPath) return null;
+
+  const exeDir = path.resolve(path.dirname(execPath));
+  if (path.basename(exeDir).toLowerCase() !== 'dashboard') return null;
+
+  const candidate = path.resolve(exeDir, '..');
+  if (!isPathUnder(exeDir, candidate)) return null;
+  if (!hasFullProjectRootMarkers(candidate)) return null;
+  if (!fs.existsSync(path.join(candidate, '.env'))) return null;
+  return candidate;
+}
+
 function resolveTrustedProjectRoot(): string | null {
-  // Packaged build: the only accepted root is <resourcesPath>/crm-source.
+  // Packaged build from setup.bat: dashboard EXE lives in <repo>/dashboard.
   if (app.isPackaged) {
+    const setupRoot = resolveSetupProjectRootFromPackagedExe();
+    if (setupRoot) return setupRoot;
+
     const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : null;
     if (!resourcesPath || !fs.existsSync(resourcesPath)) {
       throw new Error(

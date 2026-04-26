@@ -636,13 +636,16 @@ function sanitizeErrorMessage(msg: string, root: string): string {
  * same drive would be accepted, letting a misplaced install silently run
  * from arbitrary locations with no integrity gate.
  *
- * This implementation uses deterministic, layout-specific candidates and
- * requires the resolved root to sit INSIDE the trusted anchor itself:
+ * This implementation uses deterministic, layout-specific candidates:
  *
- *   - Packaged (`app.isPackaged === true`): the only accepted root is
- *     `<process.resourcesPath>/crm-source`, populated by electron-builder
- *     `extraResources` (see electron-builder.yml). If resourcesPath is
- *     missing or crm-source doesn't exist, we fail loudly with an
+ *   - Packaged setup.bat layout: `<repo>/dashboard/<exe>` accepts exactly
+ *     `<repo>` when the full marker set and `.env` are present. This is the
+ *     live repo root that setup.bat prepares and the only place production
+ *     secrets are written.
+ *
+ *   - Packaged fallback: `<process.resourcesPath>/crm-source`, populated by
+ *     electron-builder `extraResources` (see electron-builder.yml). If
+ *     neither packaged candidate exists, we fail loudly with an
  *     installation-integrity error rather than walking the filesystem.
  *
  *   - Dev (`app.isPackaged === false`): the repo root is reached by
@@ -668,9 +671,27 @@ function hasProjectRootMarkers(dir: string): boolean {
   return auxMarker;
 }
 
+function resolveSetupProjectRootFromPackagedExe(): string | null {
+  if (!app.isPackaged) return null;
+  const execPath = typeof process.execPath === 'string' ? process.execPath : null;
+  if (!execPath) return null;
+
+  const exeDir = path.resolve(path.dirname(execPath));
+  if (path.basename(exeDir).toLowerCase() !== 'dashboard') return null;
+
+  const candidate = path.resolve(exeDir, '..');
+  if (!isPathUnder(exeDir, candidate)) return null;
+  if (!hasProjectRootMarkers(candidate)) return null;
+  if (!fs.existsSync(path.join(candidate, '.env'))) return null;
+  return candidate;
+}
+
 function resolveTrustedProjectRoot(): string | null {
-  // Packaged build: only the bundled crm-source directory is trusted.
+  // Packaged build from setup.bat: dashboard EXE lives in <repo>/dashboard.
   if (app.isPackaged) {
+    const setupRoot = resolveSetupProjectRootFromPackagedExe();
+    if (setupRoot) return setupRoot;
+
     const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : null;
     if (!resourcesPath || !fs.existsSync(resourcesPath)) {
       throw new Error(

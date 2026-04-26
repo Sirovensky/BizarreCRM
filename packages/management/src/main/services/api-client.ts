@@ -58,6 +58,32 @@ function isLoopbackHost(hostname: string): boolean {
   return LOOPBACK_HOSTS.has(normalized);
 }
 
+function hasProjectRootMarkers(dir: string): boolean {
+  const coreMarkers =
+    fs.existsSync(path.join(dir, 'package.json')) &&
+    fs.existsSync(path.join(dir, 'packages', 'server', 'package.json'));
+  if (!coreMarkers) return false;
+  return (
+    fs.existsSync(path.join(dir, 'ecosystem.config.js')) ||
+    fs.existsSync(path.join(dir, 'install.bat')) ||
+    fs.existsSync(path.join(dir, 'setup.bat'))
+  );
+}
+
+function resolveSetupProjectRootFromPackagedExe(): string | null {
+  if (!app.isPackaged) return null;
+  const execPath = typeof process.execPath === 'string' ? process.execPath : null;
+  if (!execPath) return null;
+
+  const exeDir = path.resolve(path.dirname(execPath));
+  if (path.basename(exeDir).toLowerCase() !== 'dashboard') return null;
+
+  const candidate = path.resolve(exeDir, '..');
+  if (!hasProjectRootMarkers(candidate)) return null;
+  if (!fs.existsSync(path.join(candidate, '.env'))) return null;
+  return candidate;
+}
+
 // ---------------------------------------------------------------------------
 // SEC-H98: TLS cert fingerprint pinning
 // ---------------------------------------------------------------------------
@@ -89,9 +115,9 @@ function computePemFingerprint(pemContent: string): string {
  * __dirname resolves inside the asar archive and walking up 5 levels only
  * reaches resources/, not resources/crm-source/.
  *
- * Fix: mirror the same packaged/dev split used by resolveTrustedProjectRoot()
- * in management-api.ts:
- *   - Packaged: <process.resourcesPath>/crm-source/packages/server/certs/server.cert
+ * Fix: mirror the same packaged/dev split used by resolveTrustedProjectRoot():
+ *   - Packaged setup.bat: <repo>/packages/server/certs/server.cert
+ *   - Packaged fallback: <process.resourcesPath>/crm-source/packages/server/certs/server.cert
  *   - Dev:      <app.getAppPath()>/../../packages/server/certs/server.cert
  *               (monorepo layout: app lives in packages/management)
  *
@@ -102,6 +128,12 @@ function computePemFingerprint(pemContent: string): string {
 function resolveCertPath(): string | null {
   let crmSource: string;
   if (app.isPackaged) {
+    const setupRoot = resolveSetupProjectRootFromPackagedExe();
+    if (setupRoot) {
+      const setupCandidate = path.join(setupRoot, 'packages', 'server', 'certs', 'server.cert');
+      if (fs.existsSync(setupCandidate)) return setupCandidate;
+    }
+
     // Packaged build: electron-builder copies crm-source into resourcesPath
     // via the extraResources rule in electron-builder.yml.
     crmSource = path.join(process.resourcesPath, 'crm-source');
