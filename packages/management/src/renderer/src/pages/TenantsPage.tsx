@@ -43,6 +43,9 @@ export function TenantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
   const [activateTarget, setActivateTarget] = useState<Tenant | null>(null);
+  // DASH-ELEC-133: gate Repair behind a ConfirmDialog so a stray click can't
+  // recreate setup tokens / DB tables silently.
+  const [repairTarget, setRepairTarget] = useState<Tenant | null>(null);
   const [lastCreated, setLastCreated] = useState<LastCreatedTenant | null>(null);
   const [expandedSlug, setExpandedSlug] = useState<string | null>(null);
   const [detailCache, setDetailCache] = useState<Record<string, TenantDetail | 'loading' | 'error'>>({});
@@ -515,7 +518,7 @@ export function TenantsPage() {
                           `status !== 'active'` gate so the button matches the
                           server's actual capability. */}
                       <button
-                        onClick={() => handleRepair(t.slug)}
+                        onClick={() => setRepairTarget(t)}
                         className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
                         title="Repair (additive — creates missing pieces, never deletes)"
                         aria-label={`Repair ${t.name}`}
@@ -647,6 +650,29 @@ export function TenantsPage() {
         confirmLabel="Activate Tenant"
         onConfirm={handleActivate}
         onCancel={() => setActivateTarget(null)}
+      />
+
+      {/* DASH-ELEC-133: Repair confirm — additive (creates missing DB tables
+          and re-issues a setup token if the tenant has zero users). Spell out
+          the side-effects so an operator doesn't trigger a token reissue
+          accidentally. */}
+      <ConfirmDialog
+        open={repairTarget !== null}
+        title="Repair Tenant"
+        message={
+          `Repair "${repairTarget?.name}" (${repairTarget?.slug})?\n\n` +
+          `This is additive — nothing is deleted. It re-creates any missing ` +
+          `database tables, and if the tenant has zero users it re-generates ` +
+          `the one-time setup URL (the previous URL becomes invalid).`
+        }
+        confirmLabel="Repair Tenant"
+        onConfirm={async () => {
+          if (!repairTarget) return;
+          const slug = repairTarget.slug;
+          setRepairTarget(null);
+          await handleRepair(slug);
+        }}
+        onCancel={() => setRepairTarget(null)}
       />
     </div>
   );

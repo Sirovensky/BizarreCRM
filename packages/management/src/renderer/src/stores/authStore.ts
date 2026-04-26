@@ -10,6 +10,7 @@
  */
 import { create } from 'zustand';
 import toast from 'react-hot-toast';
+import { useServerStore } from '@/stores/serverStore';
 
 type AuthMode = 'management' | 'super-admin' | null;
 
@@ -31,8 +32,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   loginSuccess: (mode, username) =>
     set({ isAuthenticated: true, authMode: mode, username }),
 
-  logout: () =>
-    set({ isAuthenticated: false, authMode: null, username: null }),
+  logout: () => {
+    set({ isAuthenticated: false, authMode: null, username: null });
+    // DASH-ELEC-054: drop cached server stats/tenant counts so a post-logout
+    // tab can't render the previous operator's data while the redirect to
+    // /login is in flight.
+    try {
+      useServerStore.getState().reset();
+    } catch {
+      /* serverStore not yet initialised — safe to ignore */
+    }
+  },
 }));
 
 // AUDIT-MGT-010: Subscribe once at module load. When any page detects a

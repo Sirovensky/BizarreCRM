@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ListChecks } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ListChecks, HelpCircle } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { EnvSettingField } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -17,6 +17,15 @@ interface CheckItem {
   to?: string;
   /** Hash/query for the link target (e.g. ?tab=alerts). */
   toHash?: string;
+  /**
+   * DASH-ELEC-253 (Fixer-C25 2026-04-25): optional documentation link
+   * opened externally (rendered as a `?` icon-button next to the Fix
+   * link). Use absolute https URLs only — they are passed through the
+   * preload `system.openExternal` bridge which validates the protocol
+   * before invoking shell.openExternal. Items without a docsUrl simply
+   * omit the icon, so this is fully backward-compatible.
+   */
+  docsUrl?: string;
 }
 
 interface ChecklistProps {
@@ -260,6 +269,24 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
                   <div className="text-xs font-medium text-surface-200">{c.label}</div>
                   <div className="text-[11px] text-surface-400 mt-0.5 leading-relaxed">{c.detail}</div>
                 </div>
+                {c.docsUrl && (
+                  // DASH-ELEC-253 (Fixer-C25 2026-04-25): per-item docs link.
+                  // Rendered as a small `?` icon-button so the row stays
+                  // visually compact when most items don't have docs.
+                  // openExternal is the only safe path — preload validates
+                  // the URL scheme before forwarding to shell.openExternal.
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void getAPI().system.openExternal(c.docsUrl!);
+                    }}
+                    title="Open documentation"
+                    aria-label={`Open documentation for ${c.label}`}
+                    className="text-[11px] text-surface-400 hover:text-surface-200 flex-shrink-0 p-0.5 rounded transition-colors"
+                  >
+                    <HelpCircle className="w-3.5 h-3.5" />
+                  </button>
+                )}
                 {target && (
                   <Link
                     to={target}

@@ -165,12 +165,29 @@ export function ServerControlPage() {
             <span className="text-xs text-surface-500">Auto-start:</span>
             <button
               onClick={async () => {
+                // DASH-ELEC-129: capture previous state and roll back the
+                // optimistic toggle if the IPC call fails. doAction toasts the
+                // error itself but the icon would otherwise stay stuck on the
+                // wrong value until the next 10s status poll. Mirrors the
+                // rate-limit-bypass rollback pattern below.
+                const prev = autoStart;
                 const newState = !autoStart;
                 setAutoStart(newState);
-                await doAction(
-                  newState ? 'Enable auto-start' : 'Disable auto-start',
-                  () => getAPI().service.setAutoStart(newState)
-                );
+                try {
+                  const res = (await getAPI().service.setAutoStart(newState)) as
+                    | { success?: boolean; output?: string; message?: string }
+                    | undefined;
+                  if (res && res.success === false) {
+                    setAutoStart(prev);
+                    toast.error(`Auto-start failed: ${res.message ?? res.output ?? 'unknown error'}`);
+                  } else {
+                    toast.success(newState ? 'Auto-start enabled' : 'Auto-start disabled');
+                    await refreshStatus();
+                  }
+                } catch (err) {
+                  setAutoStart(prev);
+                  toast.error(err instanceof Error ? err.message : 'Auto-start failed');
+                }
               }}
               className="text-surface-400 hover:text-surface-200"
               title={`Auto-start is ${autoStart ? 'enabled' : 'disabled'}`}

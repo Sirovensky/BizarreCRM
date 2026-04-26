@@ -6,6 +6,17 @@ import type { SecurityAlert } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { useServerStore } from '@/stores/serverStore';
+import { cn } from '@/utils/cn';
+
+// DASH-ELEC-151 (Fixer-C25 2026-04-25): Tailwind-purge-safe explicit color
+// map. Keys matched to SecurityAlert.severity union; unknown values fall
+// back to the warning amber tone. Static class-name strings live here so
+// the JIT scanner picks them all up at build time.
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: 'text-red-400',
+  warning: 'text-amber-400',
+  info: 'text-sky-400',
+};
 
 interface AuditEntry {
   id: number;
@@ -126,7 +137,7 @@ export function RecentActivityWidget() {
                 {alerts.map((a) => (
                   <li key={a.id} className="text-[11px] leading-tight">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <AlertTriangle className={`w-3 h-3 ${a.severity === 'critical' ? 'text-red-400' : a.severity === 'warning' ? 'text-amber-400' : 'text-sky-400'}`} />
+                      <AlertTriangle className={cn('w-3 h-3', SEVERITY_COLOR[a.severity] ?? SEVERITY_COLOR.warning)} />
                       <span className="font-mono text-surface-200">{a.type}</span>
                       {a.tenant_slug && <span className="text-surface-500">· {a.tenant_slug}</span>}
                     </div>

@@ -903,6 +903,15 @@ function wrapHandler(fn: (...args: any[]) => Promise<any>) {
     try {
       return await fn(...args);
     } catch (err: unknown) {
+      // DASH-ELEC-205: Origin-rejection is a security boundary failure, not a
+      // recoverable handler error. Surfacing it as `{success:false}` lets a
+      // hostile renderer probe IPC handlers without anyone noticing the
+      // sandbox breach. Re-throw so Electron logs an uncaught handler error
+      // and the renderer's `ipcRenderer.invoke` rejects loudly.
+      const eMsg = (err as { message?: string } | null)?.message ?? '';
+      if (eMsg.startsWith('IPC_ORIGIN_REJECTED')) {
+        throw err;
+      }
       // MGT-021: Differentiate network errors from generic handler failures.
       // Callers can inspect `offline: true` to show a "server offline" state
       // rather than a generic error toast.

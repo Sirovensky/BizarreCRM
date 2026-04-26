@@ -16,6 +16,52 @@ import { useUnifiedPosStore } from './store';
 import { genId } from './types';
 import type { RepairDrillState, PartEntry, DeviceData } from './types';
 
+// ─── API payload shapes ─────────────────────────────────────────────
+// EXTENDED-by-Fixer-A25 2026-04-25 (WEB-FB-003): narrow the device/service/
+// grade/condition payloads from `any[]` to local interfaces. These mirror what
+// the back-end actually serialises; a server rename (e.g. `is_default` → `default`)
+// will now surface as a TS error rather than silently dropping the default-grade
+// auto-selection at runtime.
+
+interface ApiDeviceModel {
+  id: number;
+  name: string;
+  category?: string;
+  manufacturer_name?: string | null;
+}
+
+interface ApiRepairService {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
+interface ApiRepairPriceRow {
+  repair_service_id: number;
+  labor_price: number;
+}
+
+interface ApiRepairGrade {
+  id: number;
+  grade_label: string;
+  is_default?: boolean;
+  effective_labor_price?: number | null;
+  part_inventory_item_id?: number | null;
+  inventory_item_name?: string | null;
+  part_price?: number | null;
+  inventory_in_stock?: number;
+}
+
+interface ApiRepairPricingLookup {
+  labor_price?: number | null;
+  grades?: ApiRepairGrade[];
+}
+
+interface ApiConditionCheck {
+  id?: number;
+  label: string;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────
 
 const CATEGORY_TILES = [
@@ -73,7 +119,7 @@ function CategoryStep({ onSelect }: { onSelect: (category: string) => void }) {
     queryFn: () => catalogApi.searchDevices({ limit: 1000 }),
     staleTime: 300_000,
   });
-  const models: any[] = (modelsData?.data as any)?.data ?? [];
+  const models: ApiDeviceModel[] = ((modelsData?.data as { data?: ApiDeviceModel[] } | undefined)?.data) ?? [];
   const countByCategory = models.reduce<Record<string, number>>((acc, m) => {
     const cat = m.category || 'other';
     acc[cat] = (acc[cat] || 0) + 1;
@@ -181,7 +227,7 @@ function DeviceStep({ category, onSelect }: {
     queryKey: ['popular-devices', category],
     queryFn: () => catalogApi.searchDevices({ popular: true, category, limit: 12 }),
   });
-  const popularDevices: any[] = popularData?.data?.data || [];
+  const popularDevices: ApiDeviceModel[] = popularData?.data?.data || [];
 
   // When manufacturer filter is active, search by manufacturer name (show all)
   const effectiveQuery = mfgFilter || debouncedQuery;
@@ -193,7 +239,7 @@ function DeviceStep({ category, onSelect }: {
     queryFn: () => catalogApi.searchDevices({ q: effectiveQuery, category, limit: isMfgFilter ? 100 : 20 }),
     enabled: searchEnabled,
   });
-  const searchResults: any[] = searchData?.data?.data || [];
+  const searchResults: ApiDeviceModel[] = searchData?.data?.data || [];
 
   const showSearch = searchEnabled;
   const shortcuts = MANUFACTURER_SHORTCUTS[category] || [];
@@ -248,7 +294,7 @@ function DeviceStep({ category, onSelect }: {
           {searchResults.length === 0 && !searching ? (
             <p className="p-3 text-sm text-surface-400">No devices found</p>
           ) : (
-            searchResults.map((d: any) => {
+            searchResults.map((d) => {
               const displayName = mfgFilter && d.name.startsWith(mfgFilter)
                 ? d.name.slice(mfgFilter.length).trim()
                 : d.name;
@@ -278,7 +324,7 @@ function DeviceStep({ category, onSelect }: {
         <>
           <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Popular</p>
           <div className="flex flex-wrap gap-1.5">
-            {popularDevices.map((d: any) => {
+            {popularDevices.map((d) => {
               const displayName = mfgFilter && d.name.startsWith(mfgFilter)
                 ? d.name.slice(mfgFilter.length).trim()
                 : d.name;
@@ -346,7 +392,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     queryKey: ['repair-services', category],
     queryFn: () => repairPricingApi.getServices({ category }),
   });
-  const services: any[] = servicesData?.data?.data || [];
+  const services: ApiRepairService[] = servicesData?.data?.data || [];
 
   // Price map for quick preview
   const { data: allPricesData } = useQuery({
@@ -356,7 +402,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
   });
   const priceMap = new Map<number, number>();
   if (allPricesData?.data?.data) {
-    for (const p of allPricesData.data.data as any[]) {
+    for (const p of allPricesData.data.data as ApiRepairPriceRow[]) {
       priceMap.set(p.repair_service_id, p.labor_price);
     }
   }
@@ -370,21 +416,21 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     }),
     enabled: !!deviceModelId && !!selectedServiceId,
   });
-  const pricingData = lookupData?.data?.data;
-  const grades: any[] = pricingData?.grades || [];
+  const pricingData = lookupData?.data?.data as ApiRepairPricingLookup | undefined;
+  const grades: ApiRepairGrade[] = pricingData?.grades || [];
 
   // Auto-select default grade
   useEffect(() => {
     if (!pricingData || selectedGradeId) return;
     if (grades.length > 0) {
-      const defaultGrade = grades.find((g: any) => g.is_default) || grades[0];
+      const defaultGrade = grades.find((g) => g.is_default) || grades[0];
       setSelectedGradeId(defaultGrade.id);
     }
   }, [pricingData]); // intentional: auto-select default grade only when pricing data arrives
 
   const handleAdd = () => {
     if (!selectedServiceId) return;
-    const service = services.find((s: any) => s.id === selectedServiceId);
+    const service = services.find((s) => s.id === selectedServiceId);
     if (!service) return;
 
     let laborPrice = 0;
@@ -392,7 +438,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     const gradeParts: PartEntry[] = [];
 
     if (pricingData && grades.length > 0 && selectedGradeId) {
-      const grade = grades.find((g: any) => g.id === selectedGradeId);
+      const grade = grades.find((g) => g.id === selectedGradeId);
       if (grade) {
         gradeId = grade.id;
         laborPrice = grade.effective_labor_price ?? pricingData.labor_price ?? 0;
@@ -405,7 +451,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
             quantity: 1,
             price: grade.part_price ?? 0,
             taxable: true,
-            status: grade.inventory_in_stock > 0 ? 'available' : 'missing',
+            status: (grade.inventory_in_stock ?? 0) > 0 ? 'available' : 'missing',
           });
         }
       }
@@ -437,7 +483,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     );
   }
 
-  const selectedGrade = grades.find((g: any) => g.id === selectedGradeId);
+  const selectedGrade = grades.find((g) => g.id === selectedGradeId);
   const hasPricing = !!pricingData;
   const showManualPrice = selectedServiceId && !loadingLookup && !hasPricing && deviceModelId > 0;
 
@@ -450,7 +496,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <span className="text-sm font-semibold text-surface-700 dark:text-surface-300">Select Service</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {services.filter((s: any) => s.is_active).map((service: any) => {
+          {services.filter((s) => s.is_active).map((service) => {
             const isSelected = selectedServiceId === service.id;
             const previewPrice = priceMap.get(service.id);
             const hasPriceForDevice = previewPrice !== undefined;
@@ -498,7 +544,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
         <div>
           <p className="mb-2 text-xs font-semibold uppercase text-surface-400">Select Grade</p>
           <div className="space-y-1.5">
-            {grades.map((grade: any) => {
+            {grades.map((grade) => {
               const isGradeSelected = selectedGradeId === grade.id;
               const effectiveLabor = grade.effective_labor_price ?? pricingData?.labor_price ?? 0;
               return (
@@ -527,7 +573,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   <span className="text-sm font-semibold text-surface-700 dark:text-surface-200">
                     {formatCurrency(effectiveLabor)}
                   </span>
-                  {grade.part_price > 0 && (
+                  {grade.part_price != null && grade.part_price > 0 && (
                     <span className="text-xs text-surface-400">
                       +Part: {formatCurrency(grade.part_price)}
                     </span>
@@ -535,11 +581,11 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   {grade.part_inventory_item_id && (
                     <span className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-medium',
-                      grade.inventory_in_stock > 0
+                      (grade.inventory_in_stock ?? 0) > 0
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
                         : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
                     )}>
-                      {grade.inventory_in_stock > 0 ? 'In Stock' : 'Out of Stock'}
+                      {(grade.inventory_in_stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'}
                     </span>
                   )}
                 </button>
@@ -645,7 +691,7 @@ function DetailsStep({ drillState, onDone }: {
     queryKey: ['condition-checks', drillState.category],
     queryFn: () => settingsApi.getConditionChecks(drillState.category),
   });
-  const conditionChecks: any[] = checksData?.data?.data || [];
+  const conditionChecks: ApiConditionCheck[] = checksData?.data?.data || [];
 
   // Fallback conditions if no templates configured
   const fallbackConditions = [
@@ -654,7 +700,7 @@ function DetailsStep({ drillState, onDone }: {
     'Buttons not working', 'Overheating', "Won't turn on",
   ];
   const conditions = conditionChecks.length > 0
-    ? conditionChecks.map((c: any) => c.label)
+    ? conditionChecks.map((c) => c.label)
     : fallbackConditions;
 
   // CK19: Auto-populate notes with issue macro matching the selected service

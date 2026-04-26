@@ -140,9 +140,18 @@ export function LogsPage() {
     return () => clearInterval(id);
   }, [autoRefresh, loadTail]);
 
-  // Auto-scroll to bottom on new content while in tail mode
+  // DASH-ELEC-127: auto-scroll only when the operator is already pinned to the
+  // bottom. If they've scrolled up to investigate an earlier line, the 2-second
+  // poll must NOT yank them back. The 50px slack absorbs sub-pixel rounding +
+  // a row-height of fresh paint.
+  const userScrolledRef = useRef(false);
+  const onScrollContainer = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    userScrolledRef.current = el.scrollTop < el.scrollHeight - el.clientHeight - 50;
+  }, []);
   useEffect(() => {
-    if (autoRefresh && scrollRef.current) {
+    if (autoRefresh && scrollRef.current && !userScrolledRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [content, autoRefresh]);
@@ -245,7 +254,14 @@ export function LogsPage() {
             <Copy className="w-4 h-4" />
           </button>
           <button
-            onClick={() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }}
+            onClick={() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+                // DASH-ELEC-127: explicit "scroll to bottom" re-pins, so
+                // subsequent auto-scroll ticks resume.
+                userScrolledRef.current = false;
+              }
+            }}
             className="p-2 rounded text-surface-400 hover:text-surface-200 hover:bg-surface-800"
             title="Scroll to bottom"
           >
@@ -361,6 +377,7 @@ export function LogsPage() {
 
       <div
         ref={scrollRef}
+        onScroll={onScrollContainer}
         className="flex-1 min-h-[400px] overflow-auto bg-surface-950 border border-surface-800 rounded p-3 font-mono text-[11px] leading-relaxed"
       >
         {!selectedFile?.exists ? (

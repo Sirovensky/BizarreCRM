@@ -16,6 +16,13 @@ interface ServerState {
   setStats: (stats: ServerStats) => void;
   setOffline: (error: string) => void;
   setServiceStatus: (status: ServiceStatus) => void;
+  /**
+   * DASH-ELEC-054: clear stats/serviceStatus/multiTenant flag on logout so
+   * post-logout components don't read leftover tenant counts. setOffline by
+   * itself preserves last-known stats for graceful degradation, which is
+   * wrong on logout (different security posture).
+   */
+  reset: () => void;
 }
 
 export const useServerStore = create<ServerState>((set) => ({
@@ -43,4 +50,14 @@ export const useServerStore = create<ServerState>((set) => ({
 
   setServiceStatus: (status) =>
     set({ serviceStatus: status }),
+
+  // DASH-ELEC-054
+  reset: () =>
+    set({
+      isOnline: false,
+      stats: null,
+      serviceStatus: null,
+      lastError: null,
+      lastUpdated: null,
+    }),
 }));
