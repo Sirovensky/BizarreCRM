@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
-  ResponsiveContainer, BarChart, Bar,
+  ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
 } from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -461,152 +461,186 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
 type ChartMetric = 'sale' | 'net_profit' | 'cogs' | 'tax' | 'margin';
 type ChartMode = 'area' | 'bar';
 
-const METRIC_OPTIONS: { key: ChartMetric; label: string; currency: boolean }[] = [
-  { key: 'sale',       label: 'Revenue',    currency: true  },
-  { key: 'net_profit', label: 'Net Profit', currency: true  },
-  { key: 'cogs',       label: 'COGS',       currency: true  },
-  { key: 'tax',        label: 'Tax',        currency: true  },
-  { key: 'margin',     label: 'Margin %',   currency: false },
+interface ChartMetricDef {
+  key: ChartMetric;
+  label: string;
+  currency: boolean;
+  color: string;
+  gradientId: string;
+}
+
+const CHART_METRICS: ChartMetricDef[] = [
+  { key: 'sale',       label: 'Revenue',    currency: true,  color: '#d6a54b', gradientId: 'g-sale'   },
+  { key: 'net_profit', label: 'Net Profit', currency: true,  color: '#4ade80', gradientId: 'g-profit' },
+  { key: 'cogs',       label: 'COGS',       currency: true,  color: '#fb923c', gradientId: 'g-cogs'   },
+  { key: 'tax',        label: 'Tax',        currency: true,  color: '#60a5fa', gradientId: 'g-tax'    },
+  { key: 'margin',     label: 'Margin %',   currency: false, color: '#c084fc', gradientId: 'g-margin' },
 ];
+
+// Maps KPI card labels to chart metric keys (only the ones daily_sales tracks)
+const KPI_LABEL_TO_METRIC: Partial<Record<string, ChartMetric>> = {
+  'Total Sales': 'sale',
+  'Net Profit':  'net_profit',
+  'COGS':        'cogs',
+  'Tax':         'tax',
+};
 
 function DashboardMetricChart({
   dailySales,
   loading,
+  activeMetrics,
+  mode,
+  onModeChange,
 }: {
   dailySales: DashboardKpis['daily_sales'];
   loading: boolean;
+  activeMetrics: Set<ChartMetric>;
+  mode: ChartMode;
+  onModeChange: (m: ChartMode) => void;
 }) {
-  const [metric, setMetric] = useState<ChartMetric>('sale');
-  const [mode, setMode] = useState<ChartMode>('area');
   const isDark = document.documentElement.classList.contains('dark');
+  const gridColor = isDark ? '#27272a' : '#f4f4f5';
+  const tooltipStyle = {
+    borderRadius: 8,
+    border: `1px solid ${isDark ? '#3f3f46' : '#e4e4e7'}`,
+    backgroundColor: isDark ? '#18181b' : '#fff',
+    color: isDark ? '#f4f4f5' : '#18181b',
+    fontSize: 12,
+  };
 
-  const metaForMetric = METRIC_OPTIONS.find((m) => m.key === metric)!;
+  const activeList = CHART_METRICS.filter((m) => activeMetrics.has(m.key));
+  const hasCurrency = activeList.some((m) => m.currency);
+  const hasMargin   = activeMetrics.has('margin');
 
   const data = useMemo(
     () =>
       dailySales.map((d) => ({
-        date: d.date,
-        value: metric === 'margin' ? Math.round(d.margin * 10) / 10 : d[metric],
         label: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        sale:       d.sale,
+        net_profit: d.net_profit,
+        cogs:       d.cogs,
+        tax:        d.tax,
+        margin:     Math.round(d.margin * 10) / 10,
       })),
-    [dailySales, metric],
+    [dailySales],
   );
 
   const isEmpty = !loading && data.length === 0;
 
-  const stroke = '#d6a54b';
-  const fill   = '#fdeed0';
+  const formatLeftTick  = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`;
+  const formatRightTick = (v: number) => `${v}%`;
 
-  const formatTick = (v: number) =>
-    metaForMetric.currency
-      ? v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`
-      : `${v}%`;
-
-  const formatTooltipValue = (v: number) =>
-    metaForMetric.currency ? formatCurrency(v) : `${v}%`;
+  const tooltipFormatter = (value: number, name: string) => {
+    const meta = CHART_METRICS.find((m) => m.key === name);
+    if (!meta) return [value, name];
+    return [meta.currency ? formatCurrency(value) : `${value}%`, meta.label];
+  };
 
   return (
     <div className="card mb-4 p-4">
-      {/* Header row */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1">
-          {METRIC_OPTIONS.map((m) => (
+      {/* Mode toggle only — metrics are toggled via KPI chips above */}
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs text-surface-400 dark:text-surface-500">
+          {activeList.length === 0
+            ? 'Select metrics from the cards below'
+            : activeList.map((m) => (
+                <span key={m.key} className="inline-flex items-center gap-1 mr-2">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: m.color }} />
+                  {m.label}
+                </span>
+              ))}
+        </p>
+        <div className="flex gap-1">
+          {(['area', 'bar'] as ChartMode[]).map((m) => (
             <button
-              key={m.key}
+              key={m}
               type="button"
-              onClick={() => setMetric(m.key)}
+              onClick={() => onModeChange(m)}
               className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                metric === m.key
+                'rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors',
+                mode === m
                   ? 'bg-primary-600 text-primary-950'
                   : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
               )}
             >
-              {m.label}
+              {m}
             </button>
           ))}
         </div>
-        <div className="flex gap-1">
-          <button
-            type="button"
-            title="Area chart"
-            onClick={() => setMode('area')}
-            className={cn(
-              'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
-              mode === 'area'
-                ? 'bg-primary-600 text-primary-950'
-                : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
-            )}
-          >
-            Area
-          </button>
-          <button
-            type="button"
-            title="Bar chart"
-            onClick={() => setMode('bar')}
-            className={cn(
-              'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
-              mode === 'bar'
-                ? 'bg-primary-600 text-primary-950'
-                : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
-            )}
-          >
-            Bar
-          </button>
-        </div>
       </div>
 
-      {/* Chart */}
       <div className="h-52">
         {loading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
           </div>
-        ) : isEmpty ? (
+        ) : isEmpty || activeList.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-surface-400 dark:text-surface-600">
             <TrendingUp className="h-8 w-8" />
-            <p className="text-sm">No data for this period</p>
+            <p className="text-sm">{isEmpty ? 'No data for this period' : 'Toggle a metric below to display it'}</p>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            {mode === 'bar' ? (
-              <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#27272a' : '#f4f4f5'} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={formatTick} tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} width={48} />
-                <RechartsTooltip
-                  formatter={(v: number) => [formatTooltipValue(v), metaForMetric.label]}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
-                  cursor={{ fill: 'rgba(214,165,75,0.08)' }}
-                />
-                <Bar dataKey="value" fill={stroke} radius={[4, 4, 0, 0]} maxBarSize={40} />
-              </BarChart>
-            ) : (
-              <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%"  stopColor={fill}  stopOpacity={0.7} />
-                    <stop offset="95%" stopColor={fill}  stopOpacity={0.05} />
+            <ComposedChart data={data} margin={{ top: 4, right: hasMargin ? 40 : 8, left: 0, bottom: 0 }}>
+              <defs>
+                {CHART_METRICS.map((m) => (
+                  <linearGradient key={m.gradientId} id={m.gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={m.color} stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={m.color} stopOpacity={0.02} />
                   </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#27272a' : '#f4f4f5'} vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
-                <YAxis tickFormatter={formatTick} tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} width={48} />
-                <RechartsTooltip
-                  formatter={(v: number) => [formatTooltipValue(v), metaForMetric.label]}
-                  contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
+              {hasCurrency && (
+                <YAxis
+                  yAxisId="left"
+                  tickFormatter={formatLeftTick}
+                  tick={{ fontSize: 11, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
                 />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  stroke={stroke}
-                  strokeWidth={2}
-                  fill="url(#chartFill)"
-                  dot={data.length <= 14 ? { r: 3, fill: stroke, strokeWidth: 0 } : false}
-                  activeDot={{ r: 5, fill: stroke, strokeWidth: 0 }}
+              )}
+              {hasMargin && (
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tickFormatter={formatRightTick}
+                  tick={{ fontSize: 11, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  domain={[0, 100]}
                 />
-              </AreaChart>
-            )}
+              )}
+              <RechartsTooltip formatter={tooltipFormatter} contentStyle={tooltipStyle} cursor={{ fill: 'rgba(214,165,75,0.06)' }} />
+              {activeList.map((m) =>
+                mode === 'bar' ? (
+                  <Bar
+                    key={m.key}
+                    yAxisId={m.currency ? 'left' : 'right'}
+                    dataKey={m.key}
+                    fill={m.color}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={32}
+                    opacity={0.85}
+                  />
+                ) : (
+                  <Area
+                    key={m.key}
+                    yAxisId={m.currency ? 'left' : 'right'}
+                    type="monotone"
+                    dataKey={m.key}
+                    stroke={m.color}
+                    strokeWidth={2}
+                    fill={`url(#${m.gradientId})`}
+                    dot={data.length <= 14 ? { r: 3, fill: m.color, strokeWidth: 0 } : false}
+                    activeDot={{ r: 5, fill: m.color, strokeWidth: 0 }}
+                  />
+                ),
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
@@ -1725,6 +1759,16 @@ function AdminOrManagerDashboard() {
   const [datePreset, setDatePreset] = useState<DatePreset>('thisMonth');
   const [employeeId, setEmployeeId] = useState<number | undefined>(undefined);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [activeMetrics, setActiveMetrics] = useState<Set<ChartMetric>>(new Set(['sale']));
+  const [chartMode, setChartMode] = useState<ChartMode>('area');
+  const toggleMetric = useCallback((m: ChartMetric) => {
+    setActiveMetrics((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) { if (next.size > 1) next.delete(m); }
+      else next.add(m);
+      return next;
+    });
+  }, []);
   const queryClient = useQueryClient();
 
   // Widget config
@@ -1982,11 +2026,14 @@ function AdminOrManagerDashboard() {
         </div>
       </div>
 
-      {/* Metric chart — Revenue / Net Profit / COGS / Tax / Margin */}
+      {/* Metric chart — driven by KPI chip toggles below */}
       {showFinancials && (
         <DashboardMetricChart
           dailySales={kpis?.daily_sales ?? []}
           loading={kpiLoading}
+          activeMetrics={activeMetrics}
+          mode={chartMode}
+          onModeChange={setChartMode}
         />
       )}
 
@@ -2049,26 +2096,48 @@ function AdminOrManagerDashboard() {
               <div key={w.id} className="mb-4">
                 {nonZero.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {nonZero.map(c => (
-                      <KpiCard key={c.label} label={c.label} value={kpis ? formatCurrency(c.value) : '--'} tooltip={c.tooltip} loading={kpiLoading} href={c.href} />
-                    ))}
+                    {nonZero.map(c => {
+                      const metricKey = KPI_LABEL_TO_METRIC[c.label];
+                      const metricDef = metricKey ? CHART_METRICS.find(m => m.key === metricKey) : undefined;
+                      const isActive = metricKey ? activeMetrics.has(metricKey) : false;
+                      return (
+                        <div
+                          key={c.label}
+                          onClick={metricKey ? () => toggleMetric(metricKey) : undefined}
+                          style={isActive && metricDef ? { boxShadow: `0 0 0 2px ${metricDef.color}` } : undefined}
+                          className={cn(metricKey && 'cursor-pointer')}
+                        >
+                          <KpiCard label={c.label} value={kpis ? formatCurrency(c.value) : '--'} tooltip={c.tooltip} loading={kpiLoading} href={metricKey ? undefined : c.href} />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {zeroCards.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {zeroCards.map(c => (
-                      <span
-                        key={c.label}
-                        onClick={c.href ? () => navigate(c.href!) : undefined}
-                        className={cn(
-                          'text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-800/50 px-2 py-1 rounded',
-                          c.href && 'cursor-pointer hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors'
-                        )}
-                        title={c.tooltip}
-                      >
-                        {c.label}: $0.00
-                      </span>
-                    ))}
+                    {zeroCards.map(c => {
+                      const metricKey = KPI_LABEL_TO_METRIC[c.label];
+                      const metricDef = metricKey ? CHART_METRICS.find(m => m.key === metricKey) : undefined;
+                      const isActive = metricKey ? activeMetrics.has(metricKey) : false;
+                      return (
+                        <button
+                          key={c.label}
+                          type="button"
+                          onClick={metricKey ? () => toggleMetric(metricKey) : (c.href ? () => navigate(c.href!) : undefined)}
+                          style={isActive && metricDef ? { boxShadow: `0 0 0 2px ${metricDef.color}`, color: metricDef.color } : undefined}
+                          className={cn(
+                            'text-xs bg-surface-50 dark:bg-surface-800/50 px-2 py-1 rounded transition-colors',
+                            isActive
+                              ? 'text-surface-700 dark:text-surface-200'
+                              : 'text-surface-400 dark:text-surface-500',
+                            (metricKey || c.href) && 'cursor-pointer hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700',
+                          )}
+                          title={c.tooltip}
+                        >
+                          {c.label}: $0.00
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 <CogsInfoBanner kpis={kpis} />

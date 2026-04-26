@@ -1250,9 +1250,9 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         <>
           <button
             onClick={() => setShowNew(true)}
-            className="w-full rounded-lg border-2 border-dashed border-surface-300 py-4 text-sm font-medium text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500 dark:hover:text-primary-400"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 active:bg-primary-800"
           >
-            <Plus className="mr-2 inline h-4 w-4" />
+            <Plus className="h-4 w-4" />
             New Customer
           </button>
           {/* CROSS4: walk-in ghost button. No border/fill — signals "allowed but
