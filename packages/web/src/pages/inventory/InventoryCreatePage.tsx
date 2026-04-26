@@ -11,7 +11,8 @@ import { formatApiError } from '@/utils/apiError';
 // classes only need {id, name, rate} for the <option>; mutation arg accepts
 // the form shape after coerce-to-numbers; success returns the created item id.
 type TaxClassOption = { id: number; name: string; rate: number };
-type InventoryCreatePayload = Omit<typeof initialForm, 'cost_price' | 'retail_price' | 'in_stock' | 'reorder_level' | 'stock_warning' | 'tax_class_id' | 'tax_inclusive' | 'is_serialized'> & {
+type InventoryCreatePayload = Omit<typeof initialForm, 'cost_price' | 'retail_price' | 'in_stock' | 'reorder_level' | 'stock_warning' | 'tax_class_id' | 'tax_inclusive' | 'is_serialized' | 'item_type'> & {
+  item_type: 'product' | 'part' | 'service';
   cost_price: number;
   retail_price: number;
   in_stock: number;
@@ -72,6 +73,7 @@ export function InventoryCreatePage() {
     if (!form.retail_price) return toast.error('Retail price is required');
     mutation.mutate({
       ...form,
+      item_type: form.item_type as 'product' | 'part' | 'service',
       cost_price: parseFloat(form.cost_price) || 0,
       retail_price: parseFloat(form.retail_price) || 0,
       in_stock: parseInt(form.in_stock) || 0,
