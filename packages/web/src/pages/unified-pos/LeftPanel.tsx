@@ -894,7 +894,7 @@ export function LeftPanel({ collapsed, onToggle }: { collapsed?: boolean; onTogg
       )}
 
       {/* Cart header */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50">
         {onToggle && (
           <button onClick={onToggle} className="p-0.5 rounded hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors" title="Collapse cart">
             <ChevronLeft className="h-3.5 w-3.5 text-surface-400" />

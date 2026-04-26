@@ -11,7 +11,6 @@ import { useSettings } from '@/hooks/useSettings';
 import { useQuery } from '@tanstack/react-query';
 import { PinModal } from '@/components/shared/PinModal';
 import { CashDrawerWidget } from './CashDrawerWidget';
-import { TrainingModeBanner, useIsTraining } from './TrainingModeBanner';
 import type { RepairCartItem } from './types';
 
 // ─── Cash In/Out Modal ──────────────────────────────────────────────
@@ -241,7 +240,6 @@ export function BottomActions() {
   // If the cart grows past this amount, re-approval is required.
   const approvedAtCentsRef = useRef<number>(0);
   const { getSetting } = useSettings();
-  const isTraining = useIsTraining();
 
   // Audit §43.12: manager PIN on high-value sales. Threshold is cents,
   // stored in store_config.pos_manager_pin_threshold. 0 / null disables.
@@ -439,8 +437,6 @@ export function BottomActions() {
           </button>
           {/* Audit §43.4/§43.8: cash drawer shift controls + Z-report */}
           <CashDrawerWidget />
-          {/* Audit §43.15: training/sandbox mode toggle */}
-          <TrainingModeBanner />
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -475,7 +471,7 @@ export function BottomActions() {
               setShowCheckout(true);
             }}
             disabled={!hasItems}
-            title={isTraining ? 'Training mode — sale will not be recorded' : needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
+            title={needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
               'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
               hasItems

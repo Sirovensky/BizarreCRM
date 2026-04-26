@@ -35,6 +35,7 @@ import {
   ArrowRight,
   X,
   Sparkles,
+  FlaskConical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { onboardingApi, type OnboardingState } from '@/api/endpoints';
@@ -43,7 +44,7 @@ import { cn } from '@/utils/cn';
 import type { AxiosResponse } from 'axios';
 
 interface ChecklistStep {
-  id: 'settings' | 'ticket' | 'checkout';
+  id: 'settings' | 'ticket' | 'checkout' | 'sandbox';
   title: string;
   description: string;
   icon: typeof Settings;
@@ -52,6 +53,7 @@ interface ChecklistStep {
     OnboardingState,
     'first_ticket_at' | 'first_invoice_at' | 'first_payment_at' | 'advanced_settings_unlocked'
   > | null;
+  comingSoon?: boolean;
 }
 
 // STEPS is built inside the component (see buildSteps()) so that firstStepKey()
@@ -111,6 +113,15 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
       icon: ShoppingCart,
       route: `/pos?tutorial=checkout&step=${firstStepKey('checkout')}`,
       doneKey: 'first_payment_at',
+    },
+    {
+      id: 'sandbox',
+      title: 'Try sandbox mode',
+      description: 'Run a fake sale end-to-end — no inventory impact, nothing recorded.',
+      icon: FlaskConical,
+      route: '',
+      doneKey: null,
+      comingSoon: true,
     },
   ], []);
 
@@ -310,19 +321,25 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                 <p className="text-xs text-surface-500 dark:text-surface-400">{step.description}</p>
               </div>
               {!done && (
-                <button
-                  type="button"
-                  onClick={() => navigate(step.route)}
-                  className={cn(
-                    'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-                    isNext
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
-                  )}
-                >
-                  {isNext ? 'Start now' : 'Open'}
-                  <ArrowRight className="h-3 w-3" />
-                </button>
+                step.comingSoon ? (
+                  <span className="rounded-md px-3 py-1.5 text-xs font-medium text-surface-400 dark:text-surface-500">
+                    Coming soon
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate(step.route)}
+                    className={cn(
+                      'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                      isNext
+                        ? 'bg-primary-600 text-white hover:bg-primary-700'
+                        : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
+                    )}
+                  >
+                    {isNext ? 'Start now' : 'Open'}
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                )
               )}
             </li>
           );
