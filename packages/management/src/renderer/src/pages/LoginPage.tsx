@@ -129,14 +129,11 @@ export function LoginPage() {
         return;
       }
 
-      const data = res.data as {
-        challengeToken?: string;
-        requiresPasswordSetup?: boolean;
-        requires2faSetup?: boolean;
-        totpEnabled?: boolean;
-      };
+      // DASH-ELEC-267 (Fixer-C24 2026-04-25): bridge.ts now parameterises
+      // login + setup2fa response shapes, so the cast is no longer needed.
+      const data = res.data;
 
-      if (data.challengeToken) {
+      if (data?.challengeToken) {
         setChallengeToken(data.challengeToken);
 
         if (data.requiresPasswordSetup) {
@@ -145,7 +142,7 @@ export function LoginPage() {
           // Auto-trigger 2FA setup
           const setupRes = await api.superAdmin.setup2fa(data.challengeToken);
           if (setupRes.success && setupRes.data) {
-            const setupData = setupRes.data as { qr?: string; challengeToken?: string; recoveryCodes?: string[] };
+            const setupData = setupRes.data;
             setQrCode(setupData.qr ?? '');
             if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
             // FIXED-by-Fixer-A21 (DASH-ELEC-247)
@@ -181,12 +178,14 @@ export function LoginPage() {
     try {
       const res = await getAPI().superAdmin.setPassword(challengeToken, newPassword);
       if (res.success) {
-        const data = res.data as { challengeToken?: string };
-        if (data.challengeToken) setChallengeToken(data.challengeToken);
+        // DASH-ELEC-267 (Fixer-C24 2026-04-25): bridge typings now carry these
+        // optional fields directly — drop the cast.
+        const data = res.data;
+        if (data?.challengeToken) setChallengeToken(data.challengeToken);
         // Now set up 2FA
-        const setupRes = await getAPI().superAdmin.setup2fa(data.challengeToken ?? challengeToken);
+        const setupRes = await getAPI().superAdmin.setup2fa(data?.challengeToken ?? challengeToken);
         if (setupRes.success && setupRes.data) {
-          const setupData = setupRes.data as { qr?: string; challengeToken?: string; recoveryCodes?: string[] };
+          const setupData = setupRes.data;
           setQrCode(setupData.qr ?? '');
           if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
           // FIXED-by-Fixer-A21 (DASH-ELEC-247)

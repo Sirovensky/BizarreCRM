@@ -23,6 +23,12 @@ function loadHttpsConfig(): { key: Buffer; cert: Buffer } | undefined {
 
 export default defineConfig({
   root: path.resolve(__dirname),
+  // WEB-FW-005 (Fixer-B24 2026-04-25): explicit `base` so a future sub-path
+  // deploy (e.g. behind `crm.example.com/web/`) works without rebuilding.
+  // Default is already `/` but making it env-driven means
+  // `VITE_BASE=/web/ npm run build` produces correct asset URLs in
+  // `index.html` instead of root-absolute 404s on chunked JS.
+  base: process.env.VITE_BASE ?? '/',
   plugins: [react()],
   resolve: {
     alias: {
@@ -32,11 +38,18 @@ export default defineConfig({
   server: {
     port: 5173, // Dev-only HMR server (production uses port 443 directly)
     https: loadHttpsConfig(),
+    // WEB-FW-008 (Fixer-B24 2026-04-25): set `xfwd: true` on every proxy block
+    // so http-proxy injects `X-Forwarded-For` / `X-Forwarded-Proto` /
+    // `X-Forwarded-Host` headers. Server-side rate-limiter and audit-log code
+    // that reads these headers in dev otherwise sees `localhost` as origin
+    // and `http` as protocol, blocking debugging of origin-guard /
+    // rate-limit edge cases.
     proxy: {
       '/api': {
         target: 'https://localhost:443',
         changeOrigin: false, // Preserve original Host header for multi-tenant subdomain routing
         secure: false,
+        xfwd: true,
         // Override Host in dev so "localhost" requests route to a specific tenant.
         // Tenant slug is chosen via VITE_DEV_TENANT env var (defaults to bizarreelectronics).
         headers: process.env.VITE_DEV_TENANT !== undefined
@@ -47,6 +60,7 @@ export default defineConfig({
         target: 'https://localhost:443',
         changeOrigin: false,
         secure: false,
+        xfwd: true,
         headers: process.env.VITE_DEV_TENANT !== undefined
           ? { Host: `${process.env.VITE_DEV_TENANT}.bizarrecrm.com` }
           : { Host: 'bizarreelectronics.bizarrecrm.com' },
@@ -55,11 +69,13 @@ export default defineConfig({
         target: 'https://localhost:443',
         changeOrigin: false,
         secure: false,
+        xfwd: true,
       },
       '/portal/api': {
         target: 'https://localhost:443',
         changeOrigin: false,
         secure: false,
+        xfwd: true,
       },
     },
   },

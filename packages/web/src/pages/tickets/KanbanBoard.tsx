@@ -125,10 +125,18 @@ export default function KanbanBoard() {
   const [showEmpty, setShowEmpty] = useState(false);
   const [showClosed, setShowClosed] = useState(false);
 
+  // WEB-FAD-006 (Fixer-B24 2026-04-25): renamed key from `['tickets-kanban']`
+  // → `['tickets', 'kanban']` so WS prefix-match on TICKET_CREATED/UPDATED/
+  // STATUS_CHANGED/NOTE_ADDED/DELETED (all invalidate `['tickets']`) catches
+  // this query. The 30s `refetchInterval` poll is now redundant when the WS
+  // is connected; left in as a fallback bounded to once-per-minute when WS is
+  // down (see useWsStore for the connection signal — keeping the poll cheap
+  // here rather than wiring it conditionally to avoid a remount churn).
   const { data: kanbanData, isLoading } = useQuery({
-    queryKey: ['tickets-kanban'],
+    queryKey: ['tickets', 'kanban'],
     queryFn: () => ticketApi.kanban(),
-    refetchInterval: 30000,
+    refetchInterval: 60000,
+    staleTime: 10000,
   });
 
   const allColumns: KanbanColumn[] = kanbanData?.data?.data?.columns || [];
@@ -150,9 +158,9 @@ export default function KanbanBoard() {
     mutationFn: ({ id, statusId }: { id: number; statusId: number }) =>
       ticketApi.changeStatus(id, statusId),
     onMutate: async ({ id, statusId }) => {
-      await queryClient.cancelQueries({ queryKey: ['tickets-kanban'] });
-      const prev = queryClient.getQueryData(['tickets-kanban']);
-      queryClient.setQueryData(['tickets-kanban'], (old: unknown) => {
+      await queryClient.cancelQueries({ queryKey: ['tickets', 'kanban'] });
+      const prev = queryClient.getQueryData(['tickets', 'kanban']);
+      queryClient.setQueryData(['tickets', 'kanban'], (old: unknown) => {
         if (!old) return old;
         // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone preserves Date /
         // Map / undefined values that JSON.parse(JSON.stringify(...)) silently
@@ -178,11 +186,11 @@ export default function KanbanBoard() {
       return { prev };
     },
     onError: (_err, _vars, ctx: { prev: unknown } | undefined) => {
-      if (ctx?.prev) queryClient.setQueryData(['tickets-kanban'], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(['tickets', 'kanban'], ctx.prev);
       toast.error('Failed to update ticket status');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tickets-kanban'] });
+      queryClient.invalidateQueries({ queryKey: ['tickets', 'kanban'] });
       queryClient.invalidateQueries({ queryKey: ['tickets'] });
     },
   });

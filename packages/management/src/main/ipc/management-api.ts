@@ -44,17 +44,26 @@ const SchemaSetPassword = z.object({
 // DASH-ELEC-246, DASH-ELEC-254: Enforce min lengths at the IPC layer so devtools
 // cannot bypass the renderer's UI guards and set a trivially-weak password or
 // a one-character username during first-run setup.
+// DASH-ELEC-055 FIXED-by-Fixer-A24 2026-04-25: aligned setup password min to 10
+// chars to match SchemaSetPassword and the renderer-side LoginPage handleSetup
+// guard (also 10). Previously a devtools caller could create a sole super-admin
+// with an 8-char password while forced-change required 10 — inconsistent policy.
 const SchemaSetup = z.object({
   username: z.string().min(3).max(256),
-  password: z.string().min(8).max(1024),
+  password: z.string().min(10).max(1024),
 });
 
 const SchemaRange = z.object({
   range: z.enum(['1h', '6h', '24h', '7d', '30d']),
 });
 
+// DASH-ELEC-078 FIXED-by-Fixer-A24 2026-04-25: tightened slug pattern to match
+// SchemaCreateTenant (^[a-z0-9-]{3,64}$). Previously SchemaSlug accepted
+// uppercase letters, underscores, and lengths up to 256, allowing renderer
+// callers (delete/suspend/activate/repair/get-tenant) to target slugs that
+// could never have been created via the UI flow (e.g. `ADMIN_TENANT`).
 const SchemaSlug = z.object({
-  slug: z.string().min(1).max(256).regex(/^[a-zA-Z0-9_-]+$/),
+  slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
 });
 
 const SchemaId = z.object({

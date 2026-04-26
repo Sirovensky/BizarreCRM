@@ -5,6 +5,7 @@ import {
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
@@ -39,6 +40,11 @@ export function AdminToolsPage() {
   const [jwtAccess, setJwtAccess] = useState<string | null>(null);
   const [jwtRefresh, setJwtRefresh] = useState<string | null>(null);
   const [jwtInstructions, setJwtInstructions] = useState<string[] | null>(null);
+
+  // DASH-ELEC-173 (Fixer-C24 2026-04-25): replace window.confirm() with
+  // ConfirmDialog for visual + a11y consistency with Tenants/Sessions pages.
+  // confirmTarget tracks which destructive action's dialog is open.
+  const [confirmTarget, setConfirmTarget] = useState<null | 'reset' | 'rotateJwt' | 'backfillDns'>(null);
 
   // Rate-limit inspector
   const [rlRows, setRlRows] = useState<RateLimitRow[]>([]);
@@ -75,21 +81,16 @@ export function AdminToolsPage() {
     return () => clearInterval(id);
   }, []);
 
-  async function handleReset() {
+  function handleReset() {
     if (resetScope === 'single' && !/^[a-z0-9-]{1,64}$/.test(resetTenant)) {
       toast.error('Enter a valid tenant slug (lowercase, hyphens only).');
       return;
     }
-    const proceed = window.confirm(
-      resetScope === 'all'
-        ? `Clear rate-limit rows from the master DB and EVERY tenant DB? ${
-            resetCategoriesAll ? 'ALL categories will be wiped.' : 'Only auth categories (login, totp, pin, etc).'
-          }`
-        : `Clear rate-limit rows for tenant "${resetTenant}"? ${
-            resetCategoriesAll ? 'ALL categories.' : 'Only auth categories.'
-          }`
-    );
-    if (!proceed) return;
+    setConfirmTarget('reset');
+  }
+
+  async function performReset() {
+    setConfirmTarget(null);
     setResetBusy(true);
     setResetResult(null);
     try {
@@ -131,16 +132,12 @@ export function AdminToolsPage() {
     }
   }
 
-  async function handleRotateJwt() {
-    const proceed = window.confirm(
-      `Generate a new JWT ${jwtPurpose === 'both' ? 'access + refresh' : jwtPurpose} secret?
+  function handleRotateJwt() {
+    setConfirmTarget('rotateJwt');
+  }
 
-` +
-        'The new value is shown ONCE on this screen — copy it before closing. ' +
-        'Paste into .env as the new primary and keep the old value as ' +
-        '{JWT,JWT_REFRESH}_SECRET_PREVIOUS until existing sessions expire.'
-    );
-    if (!proceed) return;
+  async function performRotateJwt() {
+    setConfirmTarget(null);
     setJwtBusy(true);
     try {
       const res = await getAPI().superAdmin.rotateJwtSecret(jwtPurpose);
@@ -160,12 +157,12 @@ export function AdminToolsPage() {
     }
   }
 
-  async function handleBackfillDns() {
-    const proceed = window.confirm(
-      'Re-create Cloudflare DNS records for every active tenant that is missing one? ' +
-        'Idempotent — tenants that already have a record_id are skipped.'
-    );
-    if (!proceed) return;
+  function handleBackfillDns() {
+    setConfirmTarget('backfillDns');
+  }
+
+  async function performBackfillDns() {
+    setConfirmTarget(null);
     setDnsBusy(true);
     setDnsResult(null);
     try {
@@ -431,6 +428,52 @@ export function AdminToolsPage() {
         <ActionButton onClick={handleBackfillDns} busy={dnsBusy} label="Run backfill" busyLabel="Running…" />
         <ResultPanel result={dnsResult} />
       </ToolCard>
+
+      {/* DASH-ELEC-173 (Fixer-C24 2026-04-25): ConfirmDialog instances for the
+          three destructive operations. window.confirm was OS-modal which froze
+          the renderer focus and bypassed the app's a11y/focus-trap pattern. */}
+      <ConfirmDialog
+        open={confirmTarget === 'reset'}
+        title="Clear rate-limit rows?"
+        message={
+          resetScope === 'all'
+            ? `This will clear rate-limit rows from the master DB and EVERY tenant DB. ${
+                resetCategoriesAll ? 'ALL categories will be wiped.' : 'Only auth categories (login, totp, pin, etc).'
+              }`
+            : `Clear rate-limit rows for tenant "${resetTenant}"? ${
+                resetCategoriesAll ? 'ALL categories.' : 'Only auth categories.'
+              }`
+        }
+        confirmLabel="Clear rate limits"
+        danger
+        onConfirm={performReset}
+        onCancel={() => setConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        open={confirmTarget === 'rotateJwt'}
+        title="Generate a new JWT secret?"
+        message={
+          `Generate a new JWT ${jwtPurpose === 'both' ? 'access + refresh' : jwtPurpose} secret. ` +
+          'The new value is shown ONCE on this screen — copy it before closing. ' +
+          'Paste into .env as the new primary and keep the old value as ' +
+          '{JWT,JWT_REFRESH}_SECRET_PREVIOUS until existing sessions expire.'
+        }
+        confirmLabel="Generate secret"
+        danger
+        onConfirm={performRotateJwt}
+        onCancel={() => setConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        open={confirmTarget === 'backfillDns'}
+        title="Backfill Cloudflare DNS records?"
+        message={
+          'Re-create Cloudflare DNS records for every active tenant that is missing one. ' +
+          'Idempotent — tenants that already have a record_id are skipped.'
+        }
+        confirmLabel="Run backfill"
+        onConfirm={performBackfillDns}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

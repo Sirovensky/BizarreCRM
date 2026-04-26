@@ -106,6 +106,18 @@ export interface TenantCreateResult {
   setup_url: string;
 }
 
+/**
+ * DASH-ELEC-268 (Fixer-C24 2026-04-25): payload shape for `superAdmin.createTenant`.
+ * Mirrors the form fields collected on TenantsPage. Parameterised so the call
+ * site doesn't have to fall back to `unknown` + cast on the response.
+ */
+export interface TenantCreatePayload {
+  slug: string;
+  shop_name: string;
+  admin_email: string;
+  plan: string;
+}
+
 // ── Metrics types ─────────────────────────────────────────────────
 
 export interface MetricsDataPoint {
@@ -248,13 +260,31 @@ interface ElectronAPI {
     stopServer(): Promise<ApiResponse>;
   };
   superAdmin: {
-    login(username: string, password: string): Promise<ApiResponse>;
+    /** DASH-ELEC-267 (Fixer-C24 2026-04-25): parameterise the success shapes
+     *  so LoginPage doesn't need `as { … }` casts. The server may return any
+     *  of these depending on whether password setup or 2FA setup is required. */
+    login(username: string, password: string): Promise<ApiResponse<{
+      challengeToken?: string;
+      requiresPasswordSetup?: boolean;
+      requires2faSetup?: boolean;
+      totpEnabled?: boolean;
+    }>>;
     verify2fa(challengeToken: string, code: string): Promise<ApiResponse<{ token: string }>>;
-    setup2fa(challengeToken: string): Promise<ApiResponse>;
-    setPassword(challengeToken: string, password: string): Promise<ApiResponse>;
+    /** DASH-ELEC-267: parameterise — server returns the QR data URL,
+     *  next-step challenge token, and (after first setup) recovery codes. */
+    setup2fa(challengeToken: string): Promise<ApiResponse<{
+      qr?: string;
+      challengeToken?: string;
+      recoveryCodes?: string[];
+    }>>;
+    /** DASH-ELEC-267: server returns next-step challengeToken once the
+     *  password is accepted (so the flow can roll into 2FA setup/verify). */
+    setPassword(challengeToken: string, password: string): Promise<ApiResponse<{
+      challengeToken?: string;
+    }>>;
     getDashboard(): Promise<ApiResponse>;
     listTenants(): Promise<ApiResponse<{ tenants: Tenant[] }>>;
-    createTenant(data: unknown): Promise<ApiResponse<TenantCreateResult>>;
+    createTenant(data: TenantCreatePayload): Promise<ApiResponse<TenantCreateResult>>;
     /** DASH-ELEC-189: server returns Tenant + denormalised counts/db_size_mb;
      *  consumers (TenantsPage drill-in) need both. */
     getTenant(slug: string): Promise<ApiResponse<Tenant & {

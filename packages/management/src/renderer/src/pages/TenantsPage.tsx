@@ -1,7 +1,7 @@
 import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
-import type { Tenant, TenantCreateResult } from '@/api/bridge';
+import type { Tenant } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { CopyText } from '@/components/CopyText';
@@ -156,7 +156,9 @@ export function TenantsPage() {
         plan: newPlan,
       });
       if (res.success) {
-        const created = res.data as TenantCreateResult | undefined;
+        // DASH-ELEC-268 (Fixer-C24 2026-04-25): bridge.ts now parameterises
+        // createTenant return shape, so the cast is no longer needed.
+        const created = res.data;
         setLastCreated({
           slug: created?.slug ?? slug,
           setup_url: created?.setup_url,
