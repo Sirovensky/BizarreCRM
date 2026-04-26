@@ -27,11 +27,14 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
   const { locale } = usePortalI18n();
   const [ticket, setTicket] = useState<api.TicketDetail | null>(initialData || null);
   const [loading, setLoading] = useState(!initialData);
+  // WEB-FV-005 (Fixer-B19 2026-04-25): track fetch errors so a failure
+  // doesn't strand the customer on an infinite spinner.
+  const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (initialData) return;
     api.getTicketDetail(ticketId)
-      .then(setTicket)
-      .catch(() => { /* handled by loading state */ })
+      .then((t) => { setTicket(t); setError(null); })
+      .catch(() => setError('Could not load ticket. Please try again.'))
       .finally(() => setLoading(false));
   }, [ticketId, initialData]);
 
@@ -39,6 +42,14 @@ export function PortalTicketDetail({ ticketId, initialData, onBack, scope, hasAc
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-950">
         <div className="h-8 w-8 border-4 border-blue-200 border-t-primary-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-950">
+        <p role="alert" className="text-surface-500 dark:text-surface-400">{error}</p>
       </div>
     );
   }

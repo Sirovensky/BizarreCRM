@@ -603,6 +603,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
+                aria-busy={loading}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
@@ -689,9 +690,10 @@ export function LoginPage() {
                 </div>
               )}
               {error && <LoginError message={error} kind={errorKind} />}
-              <button type="submit" disabled={loading}
+              <button type="submit" disabled={loading} aria-busy={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Sign In'}
+                <span className="sr-only" aria-live="polite">{loading ? 'Submitting' : ''}</span>
               </button>
             </form>
           )}
@@ -716,7 +718,7 @@ export function LoginPage() {
               </div>
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
               {error && <p className="text-sm text-red-500">{error}</p>}
-              <button type="submit" disabled={loading || newPassword.length < 8}
+              <button type="submit" disabled={loading || newPassword.length < 8} aria-busy={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Set Password & Continue'}
               </button>
@@ -753,7 +755,7 @@ export function LoginPage() {
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
                 {error && <p className="text-sm text-red-500">{error}</p>}
-                <button type="submit" disabled={loading || totpCode.length !== 6}
+                <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
                   className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
@@ -786,7 +788,7 @@ export function LoginPage() {
                 />
                 <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
               </label>
-              <button type="submit" disabled={loading || totpCode.length !== 6}
+              <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
               </button>

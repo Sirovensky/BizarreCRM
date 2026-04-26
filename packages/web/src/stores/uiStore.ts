@@ -124,6 +124,23 @@ if (typeof window !== 'undefined') {
       themeMqAttached = true;
       mql.__bizarreThemeAttached = true;
     }
+    // WEB-S5-025 (FIXED-by-Fixer-A19 2026-04-25): under Vite HMR this module
+    // re-evaluates per edit. The hoisted `themeMqAttached` flag resets to
+    // false but the previous module's listener is still attached to the live
+    // MediaQueryList — `__bizarreThemeAttached` keeps the new instance from
+    // re-attaching, but the OLD instance's listener (and its closure over the
+    // OLD `useUiStore`) keeps firing forever. Dispose it explicitly so the
+    // matchMedia listener stays exactly one across HMR reloads.
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => {
+        try {
+          mql.removeEventListener('change', handleSystemThemeChange);
+          mql.__bizarreThemeAttached = false;
+        } catch (e) {
+          console.warn('[uiStore] HMR dispose: matchMedia detach failed', e);
+        }
+      });
+    }
   } catch (err) {
     // No-op: legacy environments without addEventListener on MediaQueryList.
     console.warn('[uiStore] system theme listener attach failed', err);

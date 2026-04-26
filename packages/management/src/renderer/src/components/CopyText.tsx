@@ -57,6 +57,10 @@ export function CopyText({
         type="button"
         onClick={doCopy}
         aria-label={just ? 'Copied' : 'Copy to clipboard'}
+        // DASH-ELEC-032: pair aria-label with a native title so sighted
+        // mouse users (who don't get focus-visible) still see a hover hint;
+        // focus-visible already lights the outline + opacity for keyboard.
+        title={just ? 'Copied' : 'Copy to clipboard'}
         className={cn(
           'p-0.5 rounded text-surface-500 hover:text-surface-200 transition-opacity',
           'focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent-500',

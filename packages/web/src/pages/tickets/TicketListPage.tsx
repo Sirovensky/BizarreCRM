@@ -852,18 +852,29 @@ export function TicketListPage() {
     placeholderData: (prev) => prev,
   });
 
-  // D4-3: only show the skeleton if loading persists past 150ms. Local SQLite
+  // D4-3: only show the skeleton if loading persists past 150ms WHEN we have
+  // a previous render to keep on screen (placeholderData hit). Local SQLite
   // responses often resolve in <80ms; flashing the skeleton makes the whole
-  // table jitter as it paints over. Defer the visual loading state.
+  // table jitter as it paints over.
+  // WEB-S7-035 (FIXED-by-Fixer-A19 2026-04-25): on the FIRST load there is no
+  // placeholderData — the user sees a blank-area-then-rows FOUT-style flicker
+  // for fast responses, and a 150ms blank pause before any feedback for slow
+  // ones. When `ticketData` is undefined we have nothing to keep on screen,
+  // so render the skeleton immediately. When we already have prior data
+  // (placeholderData hit) keep the 150ms debounce so the table doesn't jitter.
   const [showSkeleton, setShowSkeleton] = useState(false);
   useEffect(() => {
     if (!isLoading) {
       setShowSkeleton(false);
       return;
     }
+    if (!ticketData) {
+      setShowSkeleton(true);
+      return;
+    }
     const timer = setTimeout(() => setShowSkeleton(true), 150);
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [isLoading, ticketData]);
 
   const rawTickets: Ticket[] = ticketData?.data?.data?.tickets || ticketData?.data?.tickets || [];
   const pagination = ticketData?.data?.data?.pagination || ticketData?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 25 };
