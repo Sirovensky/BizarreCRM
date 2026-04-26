@@ -19,8 +19,8 @@ type InventoryCreatePayload = Omit<typeof initialForm, 'cost_price' | 'retail_pr
   reorder_level: number;
   stock_warning: number;
   tax_class_id: number | undefined;
-  tax_inclusive: 0 | 1;
-  is_serialized: 0 | 1;
+  tax_inclusive: boolean;
+  is_serialized: boolean;
 };
 type InventoryCreateResponse = { data: { data: { id: number } } };
 
@@ -80,8 +80,8 @@ export function InventoryCreatePage() {
       reorder_level: parseInt(form.reorder_level) || 0,
       stock_warning: parseInt(form.stock_warning) || 5,
       tax_class_id: form.tax_class_id ? parseInt(form.tax_class_id) : undefined,
-      tax_inclusive: form.tax_inclusive ? 1 : 0,
-      is_serialized: form.is_serialized ? 1 : 0,
+      tax_inclusive: form.tax_inclusive,
+      is_serialized: form.is_serialized,
     });
   };
 
