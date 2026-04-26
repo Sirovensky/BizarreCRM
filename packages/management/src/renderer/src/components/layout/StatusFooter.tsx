@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useServerStore } from '@/stores/serverStore';
 import { formatUptime } from '@/utils/format';
+import { cn } from '@/utils/cn';
 
 /**
  * One-line footer strip showing core server state that operators want
@@ -74,7 +75,11 @@ export function StatusFooter() {
       {pieces.map((p, i) => (
         <span key={i} className="inline-flex items-center gap-1">
           <span className="text-surface-600">{p.label}</span>
-          <span className={`font-mono ${p.className ?? 'text-surface-400'}`}>{p.value}</span>
+          {/* DASH-ELEC-151 (Fixer-C26 2026-04-25): cn() instead of template
+              literal so the JIT scanner sees `font-mono` as a literal token
+              and the override class arrives intact (no whitespace surprise
+              if a future contributor forgets the leading space). */}
+          <span className={cn('font-mono', p.className ?? 'text-surface-400')}>{p.value}</span>
           {i < pieces.length - 1 && <span className="text-surface-700">·</span>}
         </span>
       ))}

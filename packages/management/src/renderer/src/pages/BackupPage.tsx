@@ -285,6 +285,15 @@ export function BackupPage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
+      {/*
+        DASH-ELEC-130 (Fixer-B26 2026-04-25): suppress onCancel while a
+        restore is in flight so the operator can't dismiss the dialog
+        (Cancel/Escape/X) and re-trigger another concurrent DB swap from
+        the underlying list. ConfirmDialog has no `loading`/`disabled`
+        prop, but no-op'ing onCancel keeps the dialog mounted and locked
+        until handleRestore's finally block clears `restoring` and the
+        success path nulls out restoreTarget.
+      */}
       <ConfirmDialog
         open={restoreTarget !== null}
         title="Restore backup"
@@ -298,7 +307,7 @@ export function BackupPage() {
         requireTyping={restoreTarget ?? undefined}
         confirmLabel={restoring ? 'Restoring…' : 'Restore'}
         onConfirm={handleRestore}
-        onCancel={() => setRestoreTarget(null)}
+        onCancel={() => { if (!restoring) setRestoreTarget(null); }}
       />
     </div>
   );

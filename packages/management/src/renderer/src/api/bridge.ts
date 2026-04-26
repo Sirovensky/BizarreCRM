@@ -212,6 +212,11 @@ export interface PlatformConfigField {
 // ── Env settings editor ──────────────────────────────────────────
 
 export type EnvFieldKind = 'flag' | 'value' | 'secret';
+// DASH-ELEC-269 (Fixer-C26 2026-04-25): mirrored in
+// packages/management/src/main/ipc/management-api.ts — Electron main+renderer
+// build to separate bundles with no shared types folder yet, so this union
+// is intentionally duplicated. Edit BOTH files in the same commit when adding
+// or removing a category. See the parallel comment in management-api.ts.
 export type EnvFieldCategory = 'killswitch' | 'captcha' | 'stripe' | 'cloudflare' | 'cors';
 
 export interface EnvSettingField {

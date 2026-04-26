@@ -10,6 +10,7 @@ import { estimateApi, customerApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Status config ───────────────────────────────────────────────
 const ESTIMATE_STATUSES = [
@@ -597,10 +598,18 @@ export function EstimateListPage() {
                           {(est.status === 'draft' || est.status === 'sent') && (
                             <button
                               type="button"
+                              // WEB-FM-020 (Fixer-C26 2026-04-25): wrap async
+                              // handler in try/catch so a `confirm()` modal-
+                              // teardown rejection doesn't surface as an
+                              // uncaught promise on window.onunhandledrejection.
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
-                                  sendMut.mutate(est.id);
+                                try {
+                                  if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
+                                    sendMut.mutate(est.id);
+                                  }
+                                } catch (err) {
+                                  toast.error(formatApiError(err));
                                 }
                               }}
                               // Mutually disable all row actions while any mutation is in flight —
@@ -617,10 +626,15 @@ export function EstimateListPage() {
                           {est.status !== 'converted' && est.status !== 'rejected' && (
                             <button
                               type="button"
+                              // WEB-FM-020 (Fixer-C26 2026-04-25): see Send button above.
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (await confirm('Convert this estimate to a ticket?')) {
-                                  convertMut.mutate(est.id);
+                                try {
+                                  if (await confirm('Convert this estimate to a ticket?')) {
+                                    convertMut.mutate(est.id);
+                                  }
+                                } catch (err) {
+                                  toast.error(formatApiError(err));
                                 }
                               }}
                               disabled={anyMutationPending}
@@ -633,10 +647,15 @@ export function EstimateListPage() {
                           )}
                           <button
                             type="button"
+                            // WEB-FM-020 (Fixer-C26 2026-04-25): see Send button above.
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (await confirm('Delete this estimate?', { danger: true })) {
-                                deleteMut.mutate(est.id);
+                              try {
+                                if (await confirm('Delete this estimate?', { danger: true })) {
+                                  deleteMut.mutate(est.id);
+                                }
+                              } catch (err) {
+                                toast.error(formatApiError(err));
                               }
                             }}
                             disabled={anyMutationPending}

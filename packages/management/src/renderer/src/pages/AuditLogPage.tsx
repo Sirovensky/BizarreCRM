@@ -137,6 +137,12 @@ export function AuditLogPage() {
           value={textFilter}
           onChange={(e) => setTextFilter(e.target.value)}
           placeholder="Filter admin / IP / details…"
+          // DASH-ELEC-220 (Fixer-C26 2026-04-25): make the client-side-only
+          // nature of this filter discoverable. Server already truncates to
+          // limit=200, so a search for a name not in the most-recent 200
+          // returns nothing — confusing without this hint. Server-side
+          // username param is still TODO; tracked in TODO.md.
+          title="Searches the most recent 200 entries client-side; older matches won't appear until server-side filtering ships."
           className="flex-1 min-w-[180px] max-w-sm px-2 py-1 bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-600"
         />
         {(actionFilter || textFilter) && (
@@ -149,6 +155,11 @@ export function AuditLogPage() {
           </button>
         )}
       </div>
+      {textFilter && entries.length >= 200 && (
+        <div className="text-[11px] text-amber-500/80 -mt-2">
+          Showing matches in the most recent 200 entries only. Use the action dropdown to widen the server-side query.
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="text-center py-12 text-sm text-surface-500">

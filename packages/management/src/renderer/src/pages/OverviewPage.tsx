@@ -122,11 +122,17 @@ function drawGraphFn(params: DrawGraphParams): void {
   const gH = h - pad.top - pad.bottom;
 
   // DASH-ELEC-073: cache token reads once per draw call (cheap but non-zero).
+  // DASH-ELEC-140 (Fixer-B26 2026-04-25): bump axis label contrast — Y was
+  // surface-500 (#71717a, ~3.1:1 on bg) and X was surface-600 (#52525b,
+  // ~2.2:1), both below WCAG AA non-text 3:1 against surface-950. Promote
+  // Y to surface-400 (#a1a1aa, ~6.4:1) and X to surface-500 (#71717a,
+  // ~3.1:1 — meets minimum). Same CSS-var indirection so dark/light token
+  // swaps still work.
   const accent = readToken(canvas, '--color-accent-500', '#3b82f6');
   const accentLight = readToken(canvas, '--color-accent-400', '#60a5fa');
   const gridLine = readToken(canvas, '--color-surface-800', '#1e1e22');
-  const labelMuted = readToken(canvas, '--color-surface-500', '#71717a');
-  const labelDim = readToken(canvas, '--color-surface-600', '#52525b');
+  const labelMuted = readToken(canvas, '--color-surface-400', '#a1a1aa');
+  const labelDim = readToken(canvas, '--color-surface-500', '#71717a');
   const bgDeep = readToken(canvas, '--color-surface-950', '#09090b');
   const danger = readToken(canvas, '--color-red-500', '#ef4444');
 

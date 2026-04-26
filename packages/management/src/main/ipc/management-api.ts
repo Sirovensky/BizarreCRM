@@ -157,6 +157,13 @@ const SchemaBackupSettings = z.object({
 // classified so the renderer knows how to render the field and whether
 // to mask the value when reading back.
 type EnvFieldKind = 'flag' | 'value' | 'secret';
+// DASH-ELEC-269 (Fixer-C26 2026-04-25): this union is intentionally duplicated
+// in packages/management/src/renderer/src/api/bridge.ts because Electron's
+// main and renderer processes cannot share a TS type at runtime via import
+// (they build to separate bundles, no `shared/` folder yet). When adding or
+// removing a category, update BOTH files in the same commit; future cleanup
+// path is a `packages/management/src/shared/types.ts` brought in by both
+// tsconfigs. Order must match the renderer side for diff readability.
 type EnvFieldCategory = 'killswitch' | 'captcha' | 'stripe' | 'cloudflare' | 'cors';
 
 interface EnvFieldDef {

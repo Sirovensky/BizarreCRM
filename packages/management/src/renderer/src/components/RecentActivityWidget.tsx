@@ -47,13 +47,19 @@ export function RecentActivityWidget() {
 
   useEffect(() => {
     if (!isMultiTenant) { setLoading(false); return; }
-    let cancelled = false;
+    // DASH-ELEC-011 (Fixer-B26 2026-04-25): swap ad-hoc `cancelled` boolean
+    // for an AbortController. The IPC bridge doesn't accept a signal yet,
+    // but `signal.aborted` is the same gating semantics as the boolean and
+    // promotes us to the standard primitive — when the bridge gains signal
+    // support, we just thread `controller.signal` through getAPI() calls.
+    const controller = new AbortController();
+    const { signal } = controller;
     Promise.all([
       getAPI().superAdmin.getAuditLog({ limit: 5 }),
       getAPI().superAdmin.listSecurityAlerts({ acknowledged: 0, limit: 3 }),
     ])
       .then(([auditRes, alertsRes]) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         if (handleApiResponse(auditRes) || handleApiResponse(alertsRes)) return;
         if (auditRes.success && auditRes.data) {
           const list = Array.isArray(auditRes.data)
@@ -65,9 +71,9 @@ export function RecentActivityWidget() {
           setAlerts(alertsRes.data.alerts.slice(0, 3));
         }
       })
-      .catch((err) => console.warn('[RecentActivity] fetch failed', err))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
+      .catch((err) => { if (!signal.aborted) console.warn('[RecentActivity] fetch failed', err); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
+    return () => { controller.abort(); };
   }, [isMultiTenant]);
 
   if (!isMultiTenant) return null;

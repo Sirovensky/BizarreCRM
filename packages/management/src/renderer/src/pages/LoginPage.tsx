@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
+import { PASSWORD_MIN_LENGTH } from '@/utils/constants';
 
 type LoginStep = 'loading' | 'setup' | 'login' | '2fa-setup' | '2fa-verify' | 'set-password';
 
@@ -85,7 +86,7 @@ export function LoginPage() {
     // FIXED-by-Fixer-A21 (DASH-ELEC-055): align first-run setup with set-password
     // policy (min 10 chars). Prevents inconsistent password strength between
     // setup and forced-change flows.
-    if (!password || password.length < 10) { setError('Password must be at least 10 characters'); return; }
+    if (!password || password.length < PASSWORD_MIN_LENGTH) { setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`); return; }
 
     setLoading(true);
     setError('');
@@ -163,8 +164,8 @@ export function LoginPage() {
 
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (newPassword.length < 10) {
-      setError('Password must be at least 10 characters');
+    if (newPassword.length < PASSWORD_MIN_LENGTH) {
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -346,7 +347,7 @@ export function LoginPage() {
               />
             </div>
             <button
-              type="submit" disabled={loading || username.trim().length < 3 || password.length < 10}
+              type="submit" disabled={loading || username.trim().length < 3 || password.length < PASSWORD_MIN_LENGTH}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-600 text-white text-sm font-semibold rounded-lg hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <UserPlus className="w-4 h-4" />
@@ -427,7 +428,7 @@ export function LoginPage() {
               </div>
             </div>
             <button
-              type="submit" disabled={loading || newPassword.length < 10 || newPassword !== confirmPassword}
+              type="submit" disabled={loading || newPassword.length < PASSWORD_MIN_LENGTH || newPassword !== confirmPassword}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-accent-600 text-white text-sm font-semibold rounded-lg hover:bg-accent-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? 'Setting password...' : 'Set Password & Continue'}

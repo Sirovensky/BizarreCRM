@@ -62,6 +62,45 @@ interface ApiConditionCheck {
   label: string;
 }
 
+// EXTENDED-by-Fixer-A26 2026-04-25 (WEB-FB-003): narrow Customer/CustomerSearch/
+// recent-tickets payloads. CustomerStep + CustomerContextBar were the last
+// `any`-soup pockets in this file. A server rename of e.g. `first_device` →
+// `firstDevice` or `customer.phone` → `customer.phone_number` will now hard-fail
+// at build instead of silently erasing the recent-tickets sidebar.
+interface ApiCustomerSearchHit {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  organization?: string | null;
+}
+
+interface ApiTicketDeviceLite {
+  device_name?: string | null;
+  device_model_id?: number | null;
+  device_type?: string | null;
+  service?: { name?: string | null } | null;
+}
+
+interface ApiTicketStatusLite {
+  name?: string | null;
+  color?: string | null;
+}
+
+interface ApiTicketRow {
+  id: number;
+  order_id: string | number;
+  created_at?: string | null;
+  total?: number | null;
+  status_name?: string | null;
+  status?: ApiTicketStatusLite | null;
+  customer?: ApiCustomerSearchHit | null;
+  first_device?: ApiTicketDeviceLite | null;
+  devices?: ApiTicketDeviceLite[] | null;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────
 
 const CATEGORY_TILES = [
@@ -968,8 +1007,8 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
     queryFn: () => customerApi.getTickets(customerId, { page: 1 }),
     staleTime: 60000,
   });
-  const tickets = (data?.data?.data?.tickets || []).slice(0, 3);
-  const lastTicket = tickets[0] as any | undefined;
+  const tickets: ApiTicketRow[] = (data?.data?.data?.tickets || []).slice(0, 3);
+  const lastTicket: ApiTicketRow | undefined = tickets[0];
   const lastDevice = lastTicket?.first_device || lastTicket?.devices?.[0];
   const lastDate = lastTicket?.created_at
     ? new Date(lastTicket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -984,7 +1023,7 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
         </div>
         {tickets.length > 0 && (
           <span className="text-[10px] text-surface-400">
-            Recent: {tickets.map((t: any) => `${t.first_device?.device_name || t.order_id}`).join(', ')}
+            Recent: {tickets.map((t) => `${t.first_device?.device_name || t.order_id}`).join(', ')}
           </span>
         )}
       </div>
@@ -993,7 +1032,7 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
           <span>Last visit: {lastDate} - {lastDevice.device_name || 'Unknown'} - {lastDevice.service?.name || lastTicket.status_name || 'Repair'}</span>
           {lastDevice.device_model_id && onSameDevice && (
             <button
-              onClick={() => onSameDevice(lastDevice.device_model_id, lastDevice.device_name, lastDevice.device_type?.toLowerCase() || 'phone')}
+              onClick={() => onSameDevice(lastDevice.device_model_id as number, lastDevice.device_name || 'Unknown', lastDevice.device_type?.toLowerCase() || 'phone')}
               className="ml-auto shrink-0 rounded bg-primary-100 dark:bg-primary-900/30 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors"
             >
               Same device?
@@ -1009,7 +1048,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate();
   const { setCustomer } = useUnifiedPosStore();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<ApiCustomerSearchHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -1033,11 +1072,11 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     queryFn: () => ticketApi.list({ page: 1, pagesize: 10, sort_by: 'created_at', sort_order: 'desc' }),
     staleTime: 60000,
   });
-  const recentCustomers = useMemo(() => {
-    const tickets = recentTicketsData?.data?.data?.tickets || recentTicketsData?.data?.data || [];
+  const recentCustomers = useMemo<ApiCustomerSearchHit[]>(() => {
+    const tickets: ApiTicketRow[] = recentTicketsData?.data?.data?.tickets || recentTicketsData?.data?.data || [];
     const seen = new Set<number>();
-    const result: any[] = [];
-    for (const t of tickets as any[]) {
+    const result: ApiCustomerSearchHit[] = [];
+    for (const t of tickets) {
       const c = t.customer;
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
@@ -1070,8 +1109,18 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     return () => clearTimeout(debounceRef.current);
   }, [query]);
 
-  const selectCustomer = (c: any) => {
-    setCustomer(c);
+  const selectCustomer = (c: ApiCustomerSearchHit) => {
+    // setCustomer expects CustomerResult which has stricter null-vs-undefined
+    // contracts than the API search payload — coerce missing fields to null.
+    setCustomer({
+      id: c.id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      phone: c.phone ?? null,
+      mobile: c.mobile ?? null,
+      email: c.email ?? null,
+      organization: c.organization ?? null,
+    });
     onDone();
   };
 
@@ -1086,7 +1135,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         phone: stripPhone(newForm.phone) || undefined,
         email: newForm.email.trim() || undefined,
         referred_by: newForm.referred_by || undefined,
-      } as any);
+      });
       const created = res.data?.data;
       if (created) {
         setCustomer(created);
@@ -1122,7 +1171,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     queryFn: () => ticketApi.list({ pagesize: 30, sort_by: 'created_at', sort_order: 'desc', status_group: 'active' }),
     staleTime: 30000,
   });
-  const openTicketsList: any[] = ticketsData?.data?.data?.tickets || ticketsData?.data?.tickets || [];
+  const openTicketsList: ApiTicketRow[] = ticketsData?.data?.data?.tickets || ticketsData?.data?.tickets || [];
 
   const formatTicketId = (oid: string | number) => {
     const s = String(oid);
@@ -1155,7 +1204,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
       {/* Results */}
       {query.length >= 2 && results.length > 0 && (
         <div className="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
-          {results.map((c: any) => (
+          {results.map((c) => (
             <button
               key={c.id}
               onClick={() => selectCustomer(c)}
@@ -1280,7 +1329,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
           </div>
           <div className="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
             <div className="max-h-64 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-800">
-              {openTicketsList.map((t: any) => {
+              {openTicketsList.map((t) => {
                 const device = t.first_device;
                 const custName = t.customer
                   ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim()

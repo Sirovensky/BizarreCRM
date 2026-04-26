@@ -5,6 +5,23 @@ import { getAPI } from '@/api/bridge';
 import type { EnvSettingField } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { useServerStore } from '@/stores/serverStore';
+import { cn } from '@/utils/cn';
+
+// DASH-ELEC-151 (Fixer-C26 2026-04-25): module-scoped lookup tables so the
+// Tailwind JIT scanner can see every class as an unambiguous literal token.
+// Inline ternaries can theoretically still be picked up because the strings
+// are present in the source, but a flat map keeps the contract obvious and
+// makes "add a new status color" a one-line change.
+const HEADER_COLOR: Record<'fail' | 'warn' | 'pass', string> = {
+  fail: 'border-red-900/60 bg-red-950/30 text-red-300',
+  warn: 'border-amber-900/60 bg-amber-950/30 text-amber-300',
+  pass: 'border-emerald-900/60 bg-emerald-950/30 text-emerald-300',
+};
+const ITEM_COLOR: Record<'pass' | 'fail' | 'warn', string> = {
+  pass: 'text-emerald-400',
+  fail: 'text-red-400',
+  warn: 'text-amber-400',
+};
 
 type CheckStatus = 'pass' | 'warn' | 'fail';
 
@@ -233,14 +250,11 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
 
   if (!envFields || checks.length === 0) return null;
 
-  const headerColor = failCount > 0
-    ? 'border-red-900/60 bg-red-950/30 text-red-300'
-    : warnCount > 0
-      ? 'border-amber-900/60 bg-amber-950/30 text-amber-300'
-      : 'border-emerald-900/60 bg-emerald-950/30 text-emerald-300';
+  const headerKey: 'fail' | 'warn' | 'pass' =
+    failCount > 0 ? 'fail' : warnCount > 0 ? 'warn' : 'pass';
 
   return (
-    <div className={`rounded-lg border ${headerColor}`}>
+    <div className={cn('rounded-lg border', HEADER_COLOR[headerKey])}>
       <button
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between p-3 hover:bg-surface-800/30 transition-colors rounded-lg"
@@ -260,11 +274,11 @@ export function SetupChecklist({ collapsedWhenComplete = true }: ChecklistProps)
         <div className="px-3 pb-3 space-y-2">
           {checks.map((c) => {
             const Icon = c.status === 'pass' ? CheckCircle2 : c.status === 'fail' ? XCircle : AlertTriangle;
-            const colorCls = c.status === 'pass' ? 'text-emerald-400' : c.status === 'fail' ? 'text-red-400' : 'text-amber-400';
+            const colorCls = ITEM_COLOR[c.status] ?? ITEM_COLOR.warn;
             const target = c.to ? c.to + (c.toHash ?? '') : null;
             return (
               <div key={c.id} className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-surface-900/40">
-                <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${colorCls}`} />
+                <Icon className={cn('w-4 h-4 mt-0.5 flex-shrink-0', colorCls)} />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-medium text-surface-200">{c.label}</div>
                   <div className="text-[11px] text-surface-400 mt-0.5 leading-relaxed">{c.detail}</div>

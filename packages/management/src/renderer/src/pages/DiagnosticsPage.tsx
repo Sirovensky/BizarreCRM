@@ -37,10 +37,15 @@ export function DiagnosticsPage() {
   }, [requested, active, params, setParams]);
 
   useEffect(() => {
-    let cancelled = false;
+    // DASH-ELEC-011 (Fixer-B26 2026-04-25): swap ad-hoc `cancelled` boolean
+    // for AbortController. signal.aborted gates state-setters identically;
+    // when the IPC bridge supports it, we can pass `controller.signal`
+    // through to actually terminate the in-flight request.
+    const controller = new AbortController();
+    const { signal } = controller;
     getAPI().superAdmin.listTenants()
       .then((res) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setTenants(res.data.tenants);
@@ -48,9 +53,9 @@ export function DiagnosticsPage() {
           if (first) setSelectedSlug(first.slug);
         }
       })
-      .catch((err) => console.warn('[Diagnostics] listTenants failed', err))
-      .finally(() => !cancelled && setTenantsLoading(false));
-    return () => { cancelled = true; };
+      .catch((err) => { if (!signal.aborted) console.warn('[Diagnostics] listTenants failed', err); })
+      .finally(() => { if (!signal.aborted) setTenantsLoading(false); });
+    return () => { controller.abort(); };
   }, []);
 
   function setTab(id: TabId) {
