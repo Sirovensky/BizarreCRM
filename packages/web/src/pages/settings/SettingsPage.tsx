@@ -6,15 +6,15 @@ import {
   Save, Plus, Trash2, Pencil, X, Check, Loader2,
   AlertCircle, Eye, EyeOff, Shield, ChevronDown, ChevronLeft, ChevronRight, Tag, Wrench,
   ShoppingCart, FileText, Printer, ClipboardCheck, Bell, Database, Upload, Image, MessageSquare, Download, AlertTriangle,
-  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket,
+  ScrollText, Zap, Palette, Globe, FolderDown, FolderUp, Crown, Lock, Sparkles, Rocket, FlaskConical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi } from '@/api/endpoints';
+import { settingsApi, rdImportApi, rsImportApi, mraImportApi, factoryWipeApi, catalogApi, dataExportApi, customerApi, ticketApi, invoiceApi, expenseApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): bare `n.toLocaleString()` ignored tenant locale — use shared formatNumber.
-import { formatNumber } from '@/utils/format';
+import { formatNumber, formatCurrency } from '@/utils/format';
 import { RepairPricingTab } from './RepairPricingTab';
 import { TicketsRepairsSettings } from './TicketsRepairsSettings';
 import { PosSettings } from './PosSettings';
@@ -2797,6 +2797,9 @@ function DataImportTab() {
       {/* PROD58 — GDPR/CCPA "Download all my data" */}
       <DownloadAllDataSection />
 
+      {/* Seed test data */}
+      <SeedTestDataSection />
+
       {/* Factory Wipe — always visible, outside source tabs */}
       <div className="mt-8 rounded-lg border-2 border-red-300 dark:border-red-800 bg-white dark:bg-surface-900 p-3 shadow-sm">
         <div className="flex items-start gap-2 mb-3">
@@ -3489,6 +3492,271 @@ function DataToolsTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Seed Test Data ───────────────────────────────────────────────────────────
+
+const SEED_CUSTOMERS = [
+  { first_name: 'James',   last_name: 'Murphy',    phone: '555-0101', email: 'james.murphy@example.com' },
+  { first_name: 'Maria',   last_name: 'Garcia',    phone: '555-0102', email: 'maria.garcia@example.com' },
+  { first_name: 'David',   last_name: 'Lee',       phone: '555-0103', email: 'david.lee@example.com' },
+  { first_name: 'Sarah',   last_name: 'Johnson',   phone: '555-0104', email: 'sarah.j@example.com' },
+  { first_name: 'Michael', last_name: 'Chen',      phone: '555-0105', email: 'm.chen@example.com' },
+  { first_name: 'Emily',   last_name: 'Watson',    phone: '555-0106', email: 'emily.w@example.com' },
+  { first_name: 'Robert',  last_name: 'Kim',       phone: '555-0107', email: 'rkim@example.com' },
+  { first_name: 'Linda',   last_name: 'Patel',     phone: '555-0108', email: 'lpatel@example.com' },
+  { first_name: 'Kevin',   last_name: 'Brooks',    phone: '555-0109', email: 'kbrooks@example.com' },
+  { first_name: 'Aisha',   last_name: 'Williams',  phone: '555-0110', email: 'aisha.w@example.com' },
+  { first_name: 'Thomas',  last_name: 'Nakamura',  phone: '555-0111', email: 'tnaka@example.com' },
+  { first_name: 'Sofia',   last_name: 'Reyes',     phone: '555-0112', email: 'sreyes@example.com' },
+];
+
+const SEED_TICKETS: {
+  device: string; service: string; price: number; cogsRatio: number;
+  daysAgo: number; paid: boolean; partial?: number;
+}[] = [
+  { device: 'iPhone 15 Pro',         service: 'Screen replacement',      price: 249, cogsRatio: 0.42, daysAgo: 2,  paid: true  },
+  { device: 'Samsung Galaxy S24',    service: 'Battery replacement',     price: 89,  cogsRatio: 0.38, daysAgo: 4,  paid: true  },
+  { device: 'MacBook Air M2',        service: 'Keyboard repair',         price: 195, cogsRatio: 0.31, daysAgo: 6,  paid: true  },
+  { device: 'iPad Air 5th Gen',      service: 'Screen replacement',      price: 189, cogsRatio: 0.44, daysAgo: 8,  paid: false },
+  { device: 'iPhone 14',             service: 'Water damage diagnostic', price: 75,  cogsRatio: 0.20, daysAgo: 10, paid: true  },
+  { device: 'Google Pixel 8',        service: 'Battery replacement',     price: 79,  cogsRatio: 0.35, daysAgo: 12, paid: true  },
+  { device: 'MacBook Pro 14"',       service: 'Logic board repair',      price: 450, cogsRatio: 0.55, daysAgo: 14, paid: true  },
+  { device: 'iPhone 13 Mini',        service: 'Screen replacement',      price: 159, cogsRatio: 0.40, daysAgo: 16, paid: true, partial: 80 },
+  { device: 'OnePlus 12',            service: 'Charging port repair',    price: 65,  cogsRatio: 0.30, daysAgo: 18, paid: true  },
+  { device: 'iPad Pro 12.9"',        service: 'Battery replacement',     price: 149, cogsRatio: 0.36, daysAgo: 20, paid: false },
+  { device: 'iPhone 15',             service: 'Back glass replacement',  price: 129, cogsRatio: 0.33, daysAgo: 22, paid: true  },
+  { device: 'Samsung Galaxy Tab S8', service: 'Screen replacement',      price: 229, cogsRatio: 0.45, daysAgo: 24, paid: true  },
+  { device: 'MacBook Pro 16"',       service: 'Fan cleaning + thermal',  price: 120, cogsRatio: 0.18, daysAgo: 26, paid: true  },
+  { device: 'iPhone 12 Pro Max',     service: 'Screen replacement',      price: 179, cogsRatio: 0.41, daysAgo: 28, paid: true  },
+  { device: 'Google Pixel 7a',       service: 'Screen replacement',      price: 139, cogsRatio: 0.39, daysAgo: 30, paid: false },
+  { device: 'iPhone 14 Pro Max',     service: 'Battery replacement',     price: 99,  cogsRatio: 0.34, daysAgo: 33, paid: true  },
+  { device: 'MacBook Air 13"',       service: 'SSD upgrade 512 GB',      price: 280, cogsRatio: 0.64, daysAgo: 36, paid: true  },
+  { device: 'Samsung Galaxy S23+',   service: 'Charging port repair',    price: 70,  cogsRatio: 0.29, daysAgo: 39, paid: true  },
+  { device: 'iPad Mini 6',           service: 'Battery replacement',     price: 99,  cogsRatio: 0.33, daysAgo: 42, paid: true, partial: 50 },
+  { device: 'iPhone 13 Pro',         service: 'Camera lens replacement', price: 109, cogsRatio: 0.37, daysAgo: 45, paid: true  },
+  { device: 'MacBook Pro 13" M1',    service: 'Keyboard repair',         price: 175, cogsRatio: 0.30, daysAgo: 48, paid: false },
+  { device: 'Google Pixel 6 Pro',    service: 'Water damage diagnostic', price: 75,  cogsRatio: 0.20, daysAgo: 51, paid: true  },
+  { device: 'iPhone SE 3rd Gen',     service: 'Screen replacement',      price: 119, cogsRatio: 0.38, daysAgo: 54, paid: true  },
+  { device: 'Samsung Galaxy A54',    service: 'Battery replacement',     price: 69,  cogsRatio: 0.36, daysAgo: 57, paid: true  },
+  { device: 'iPad 10th Gen',         service: 'Screen replacement',      price: 199, cogsRatio: 0.43, daysAgo: 60, paid: true  },
+  { device: 'iPhone 11',             service: 'Battery replacement',     price: 69,  cogsRatio: 0.32, daysAgo: 63, paid: false },
+  { device: 'MacBook Air M1',        service: 'Fan cleaning',            price: 85,  cogsRatio: 0.16, daysAgo: 66, paid: true  },
+  { device: 'Samsung Galaxy S22',    service: 'Screen replacement',      price: 189, cogsRatio: 0.42, daysAgo: 70, paid: true  },
+  { device: 'iPhone 12',             service: 'Charging port repair',    price: 65,  cogsRatio: 0.28, daysAgo: 75, paid: true  },
+  { device: 'iPad Air 4th Gen',      service: 'Battery replacement',     price: 119, cogsRatio: 0.35, daysAgo: 80, paid: false },
+];
+
+const SEED_EXPENSES = [
+  { category: 'Rent',     amount: 1200, description: 'Monthly shop rent',          daysAgo: 5  },
+  { category: 'Supplies', amount: 185,  description: 'Repair tools and supplies',  daysAgo: 10 },
+  { category: 'Utilities',amount: 220,  description: 'Electricity and internet',   daysAgo: 15 },
+  { category: 'Marketing',amount: 95,   description: 'Social media ads',           daysAgo: 20 },
+  { category: 'Insurance',amount: 150,  description: 'Business liability policy',  daysAgo: 30 },
+  { category: 'Supplies', amount: 340,  description: 'Screen and battery stock',   daysAgo: 40 },
+  { category: 'Utilities',amount: 210,  description: 'Electricity and internet',   daysAgo: 50 },
+  { category: 'Rent',     amount: 1200, description: 'Monthly shop rent',          daysAgo: 65 },
+  { category: 'Marketing',amount: 75,   description: 'Google Ads',                daysAgo: 72 },
+  { category: 'Supplies', amount: 260,  description: 'Display parts restock',      daysAgo: 78 },
+];
+
+function seedDaysAgoToIso(n: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+interface SeedProgress {
+  phase: string;
+  step: number;
+  total: number;
+  done: boolean;
+  error: string | null;
+  summary: {
+    customers: number; tickets: number; invoices: number;
+    payments: number; expenses: number; revenue: number; totalExpenses: number;
+  } | null;
+}
+
+function SeedTestDataSection() {
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const [progress, setProgress] = useState<SeedProgress | null>(null);
+
+  const seedDelay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const runSeed = useCallback(async () => {
+    setConfirming(false);
+    const total = SEED_CUSTOMERS.length + SEED_TICKETS.length + SEED_EXPENSES.length;
+    const prog: SeedProgress = { phase: 'Creating customers…', step: 0, total, done: false, error: null, summary: null };
+    setProgress({ ...prog });
+
+    const customerIds: number[] = [];
+    let invoiceCount = 0;
+    let paymentCount = 0;
+    let totalRevenue = 0;
+    let totalExpenses = 0;
+
+    try {
+      for (const c of SEED_CUSTOMERS) {
+        const res = await customerApi.create(c);
+        const id = (res.data?.data as any)?.id ?? (res.data as any)?.id;
+        if (id) customerIds.push(id);
+        prog.step++;
+        setProgress({ ...prog });
+        await seedDelay(40);
+      }
+
+      prog.phase = 'Creating tickets and invoices…';
+      setProgress({ ...prog });
+
+      for (let i = 0; i < SEED_TICKETS.length; i++) {
+        const t = SEED_TICKETS[i];
+        const customerId = customerIds[i % customerIds.length];
+        const dateStr = seedDaysAgoToIso(t.daysAgo);
+
+        const tRes = await ticketApi.create({
+          customer_id: customerId,
+          due_on: dateStr,
+          devices: [{ device_name: t.device, price: t.price }],
+        });
+        const ticketId = (tRes.data?.data as any)?.id ?? (tRes.data as any)?.id;
+        prog.step++;
+        setProgress({ ...prog });
+        await seedDelay(40);
+
+        if (!t.paid && !t.partial) continue;
+
+        const cogsAmount = Math.round(t.price * t.cogsRatio);
+        const serviceAmount = t.price - cogsAmount;
+        try {
+          const invRes = await invoiceApi.create({
+            ticket_id: ticketId,
+            customer_id: customerId,
+            due_date: dateStr,
+            line_items: [
+              { description: t.service,            quantity: 1, unit_price: serviceAmount },
+              { description: 'Parts / components', quantity: 1, unit_price: cogsAmount    },
+            ],
+          });
+          const invoiceId = (invRes.data?.data as any)?.id ?? (invRes.data as any)?.id;
+          invoiceCount++;
+          const payAmount = t.partial ?? t.price;
+          const methods = ['cash', 'card', 'card', 'cash', 'transfer'];
+          await invoiceApi.recordPayment(invoiceId, { amount: payAmount, method: methods[i % methods.length] });
+          paymentCount++;
+          totalRevenue += payAmount;
+        } catch {
+          // skip individual invoice failures silently
+        }
+        await seedDelay(40);
+      }
+
+      prog.phase = 'Creating expenses…';
+      setProgress({ ...prog });
+
+      for (const e of SEED_EXPENSES) {
+        await expenseApi.create({ category: e.category, amount: e.amount, description: e.description, date: seedDaysAgoToIso(e.daysAgo) });
+        totalExpenses += e.amount;
+        prog.step++;
+        setProgress({ ...prog });
+        await seedDelay(40);
+      }
+
+      prog.done = true;
+      prog.phase = 'Complete';
+      prog.summary = { customers: customerIds.length, tickets: SEED_TICKETS.length, invoices: invoiceCount, payments: paymentCount, expenses: SEED_EXPENSES.length, revenue: totalRevenue, totalExpenses };
+      setProgress({ ...prog });
+      queryClient.invalidateQueries();
+      toast.success('Test data seeded.');
+    } catch (err: any) {
+      prog.error = err?.response?.data?.message || err?.message || 'Unknown error';
+      setProgress({ ...prog });
+    }
+  }, [queryClient]);
+
+  const pct = progress ? Math.round((progress.step / progress.total) * 100) : 0;
+
+  return (
+    <div className="mt-8 rounded-lg border border-primary-300 dark:border-primary-700/50 bg-primary-50/50 dark:bg-primary-900/10 p-3 shadow-sm">
+      <div className="flex items-start gap-2 mb-3">
+        <FlaskConical className="h-5 w-5 text-primary-600 dark:text-primary-400 flex-shrink-0 mt-0.5" />
+        <div>
+          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Seed test data</h3>
+          <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+            Creates {SEED_CUSTOMERS.length} customers, {SEED_TICKETS.length} repair tickets with invoices and payments, and {SEED_EXPENSES.length} expenses spread over 80 days.
+            Revenue and profit will differ so charts show realistic data.
+          </p>
+        </div>
+      </div>
+
+      {!progress && !confirming && (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700"
+        >
+          <FlaskConical className="h-4 w-4" />
+          Seed test data
+        </button>
+      )}
+
+      {confirming && (
+        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm">
+          <p className="font-medium text-amber-800 dark:text-amber-300 mb-2">
+            This creates real records in your account. Use Factory Wipe afterwards to clean up.
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={runSeed}
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 hover:bg-primary-700">
+              Yes, seed it
+            </button>
+            <button type="button" onClick={() => setConfirming(false)}
+              className="rounded-lg bg-surface-100 dark:bg-surface-800 px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700">
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {progress && !progress.done && !progress.error && (
+        <div>
+          <div className="mb-1 flex items-center justify-between text-xs text-surface-500 dark:text-surface-400">
+            <span>{progress.phase}</span>
+            <span>{progress.step}/{progress.total}</span>
+          </div>
+          <div className="h-2 w-full overflow-hidden rounded-full bg-primary-100 dark:bg-primary-900/40">
+            <div className="h-full rounded-full bg-primary-500 transition-all duration-300" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+
+      {progress?.error && (
+        <p className="mt-1 text-xs text-red-600 dark:text-red-400">Error at step {progress.step}: {progress.error}</p>
+      )}
+
+      {progress?.done && progress.summary && (
+        <div className="rounded-lg border border-green-200 dark:border-green-800/50 bg-green-50 dark:bg-green-900/10 p-3 text-xs">
+          <p className="font-semibold text-green-700 dark:text-green-400 mb-1">Seeded successfully</p>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-surface-600 dark:text-surface-400">
+            <span>{progress.summary.customers} customers</span>
+            <span>{progress.summary.tickets} tickets</span>
+            <span>{progress.summary.invoices} invoices</span>
+            <span>{progress.summary.payments} payments recorded</span>
+            <span className="text-green-700 dark:text-green-400 font-medium">Revenue: {formatCurrency(progress.summary.revenue)}</span>
+            <span className="text-red-600 dark:text-red-400 font-medium">Expenses: {formatCurrency(progress.summary.totalExpenses)}</span>
+            <span className="font-semibold text-surface-900 dark:text-surface-100 col-span-2">
+              Est. profit: {formatCurrency(progress.summary.revenue - progress.summary.totalExpenses)}
+            </span>
+          </div>
+          <button type="button" onClick={() => setProgress(null)}
+            className="mt-2 text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+            Dismiss
+          </button>
+        </div>
+      )}
     </div>
   );
 }
