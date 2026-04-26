@@ -3499,18 +3499,18 @@ function DataToolsTab() {
 // ─── Seed Test Data ───────────────────────────────────────────────────────────
 
 const SEED_CUSTOMERS = [
-  { first_name: 'James',   last_name: 'Murphy',    phone: '555-0101', email: 'james.murphy@example.com' },
-  { first_name: 'Maria',   last_name: 'Garcia',    phone: '555-0102', email: 'maria.garcia@example.com' },
-  { first_name: 'David',   last_name: 'Lee',       phone: '555-0103', email: 'david.lee@example.com' },
-  { first_name: 'Sarah',   last_name: 'Johnson',   phone: '555-0104', email: 'sarah.j@example.com' },
-  { first_name: 'Michael', last_name: 'Chen',      phone: '555-0105', email: 'm.chen@example.com' },
-  { first_name: 'Emily',   last_name: 'Watson',    phone: '555-0106', email: 'emily.w@example.com' },
-  { first_name: 'Robert',  last_name: 'Kim',       phone: '555-0107', email: 'rkim@example.com' },
-  { first_name: 'Linda',   last_name: 'Patel',     phone: '555-0108', email: 'lpatel@example.com' },
-  { first_name: 'Kevin',   last_name: 'Brooks',    phone: '555-0109', email: 'kbrooks@example.com' },
-  { first_name: 'Aisha',   last_name: 'Williams',  phone: '555-0110', email: 'aisha.w@example.com' },
-  { first_name: 'Thomas',  last_name: 'Nakamura',  phone: '555-0111', email: 'tnaka@example.com' },
-  { first_name: 'Sofia',   last_name: 'Reyes',     phone: '555-0112', email: 'sreyes@example.com' },
+  { first_name: 'James',   last_name: 'Murphy',    phone: '5550100101', email: 'james.murphy@example.com' },
+  { first_name: 'Maria',   last_name: 'Garcia',    phone: '5550100102', email: 'maria.garcia@example.com' },
+  { first_name: 'David',   last_name: 'Lee',       phone: '5550100103', email: 'david.lee@example.com' },
+  { first_name: 'Sarah',   last_name: 'Johnson',   phone: '5550100104', email: 'sarah.j@example.com' },
+  { first_name: 'Michael', last_name: 'Chen',      phone: '5550100105', email: 'm.chen@example.com' },
+  { first_name: 'Emily',   last_name: 'Watson',    phone: '5550100106', email: 'emily.w@example.com' },
+  { first_name: 'Robert',  last_name: 'Kim',       phone: '5550100107', email: 'rkim@example.com' },
+  { first_name: 'Linda',   last_name: 'Patel',     phone: '5550100108', email: 'lpatel@example.com' },
+  { first_name: 'Kevin',   last_name: 'Brooks',    phone: '5550100109', email: 'kbrooks@example.com' },
+  { first_name: 'Aisha',   last_name: 'Williams',  phone: '5550100110', email: 'aisha.w@example.com' },
+  { first_name: 'Thomas',  last_name: 'Nakamura',  phone: '5550100111', email: 'tnaka@example.com' },
+  { first_name: 'Sofia',   last_name: 'Reyes',     phone: '5550100112', email: 'sreyes@example.com' },
 ];
 
 const SEED_TICKETS: {
