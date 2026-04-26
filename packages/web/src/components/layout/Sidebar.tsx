@@ -24,7 +24,6 @@ import {
   ChevronsRight,
   ChevronDown,
   ChevronRight,
-  Zap,
   Receipt,
   Store,
   ListTodo,
@@ -180,20 +179,20 @@ export function Sidebar() {
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
-      {/* Logo / App Name */}
+      {/* App Name */}
       <div
         className={cn(
           'flex h-16 shrink-0 items-center border-b border-surface-200 dark:border-surface-800',
-          sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5'
+          sidebarCollapsed ? 'justify-center px-2' : 'px-5'
         )}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 shadow-sm">
-          <Zap className="h-4.5 w-4.5 text-white" strokeWidth={2.5} />
-        </div>
         {!sidebarCollapsed && (
-          <span className="truncate text-lg font-bold tracking-tight text-surface-900 dark:text-surface-50">
+          <NavLink
+            to="/"
+            className="truncate text-lg font-bold tracking-tight text-surface-900 hover:text-primary-500 dark:text-surface-50 dark:hover:text-primary-500 transition-colors"
+          >
             Bizarre CRM
-          </span>
+          </NavLink>
         )}
       </div>
 
