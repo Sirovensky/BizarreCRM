@@ -180,7 +180,7 @@ export function BillingTab() {
             {Object.entries(FEATURE_NAMES).map(([key, label]) => (
               <li key={key} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
                 <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
-                <span>{label}</span>
+                <span>{label as string}</span>
               </li>
             ))}
             <li className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">

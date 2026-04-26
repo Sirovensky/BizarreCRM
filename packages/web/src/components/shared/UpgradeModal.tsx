@@ -119,7 +119,7 @@ export function UpgradeModal() {
           </h3>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {proFeatures.map((f) => (
-              <li key={f.key} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
+              <li key={f.key as string} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
                 <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
                 <span>{f.label}</span>
               </li>

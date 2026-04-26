@@ -1299,7 +1299,7 @@ function InfoTab({
                   Additional Phones
                 </label>
                 <div className="space-y-1">
-                  {customer.phones.map((p) => (
+                  {customer.phones.map((p: any) => (
                     <div
                       key={p.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1326,7 +1326,7 @@ function InfoTab({
                   Additional Emails
                 </label>
                 <div className="space-y-1">
-                  {customer.emails.map((em) => (
+                  {customer.emails.map((em: any) => (
                     <div
                       key={em.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"

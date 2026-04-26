@@ -1347,7 +1347,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
                           <span
                             className="inline-block h-2 w-2 rounded-full flex-shrink-0"
                             style={{ backgroundColor: t.status.color || '#6b7280' }}
-                            title={t.status.name}
+                            title={t.status.name ?? undefined}
                           />
                         )}
                         <span className="text-xs text-surface-500 truncate">{device?.device_name || 'No device'}</span>

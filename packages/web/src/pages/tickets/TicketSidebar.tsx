@@ -645,7 +645,7 @@ export function TicketSidebar({
             <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">Labels</h3>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {ticket.labels.map((label) => (
+            {ticket.labels.map((label: string) => (
               <span key={label}
                 className="inline-flex items-center rounded-full bg-surface-100 px-2.5 py-0.5 text-xs font-medium text-surface-700 dark:bg-surface-700 dark:text-surface-300">
                 {label}
