@@ -120,7 +120,7 @@ function UnifiedSearchBar() {
                   quantity: p.quantity,
                   price: p.price,
                   taxable: true,
-                  status: p.status || 'available',
+                  status: (['available', 'missing', 'ordered'] as string[]).includes(p.status ?? '') ? (p.status as 'available' | 'missing' | 'ordered') : 'available',
                 }));
                 addRepair({
                   type: 'repair',
@@ -170,9 +170,19 @@ function UnifiedSearchBar() {
           items.push({
             type: 'customer',
             label: `${c.first_name} ${c.last_name}`,
-            sub: c.mobile || c.phone || c.email,
+            sub: c.mobile ?? c.phone ?? c.email ?? undefined,
             action: () => {
-              setCustomer(c);
+              setCustomer({
+                ...c,
+                phone: c.phone ?? null,
+                mobile: c.mobile ?? null,
+                email: c.email ?? null,
+                organization: c.organization ?? null,
+                group_name: c.group_name ?? undefined,
+                group_discount_pct: c.group_discount_pct ?? undefined,
+                group_discount_type: c.group_discount_type ?? undefined,
+                group_auto_apply: c.group_auto_apply ?? undefined,
+              });
               if (!isCancelled) { setInput(''); setResults([]); }
             },
           });
@@ -360,7 +370,7 @@ function TicketSearch() {
           quantity: p.quantity,
           price: p.price,
           taxable: true,
-          status: p.status || 'available',
+          status: (['available', 'missing', 'ordered'] as string[]).includes(p.status ?? '') ? (p.status as 'available' | 'missing' | 'ordered') : 'available',
         }));
 
         addRepair({
