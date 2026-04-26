@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus } from 'lucide-react';
+import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -22,6 +22,11 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [serverOffline, setServerOffline] = useState(false);
   const [starting, setStarting] = useState(false);
+  // DASH-ELEC-164: SettingsPage already has show-password toggles; mirror the
+  // pattern on the first-run set-password step so operators typing a 10+ char
+  // password against an OS-level password manager can verify before submit.
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Check setup status on mount
   useEffect(() => {
@@ -367,20 +372,42 @@ export function LoginPage() {
         {step === 'set-password' && (
           <form onSubmit={handleSetPassword}>
             <div className="space-y-3 mb-5">
-              <input
-                type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="New password (min 10 characters)" autoFocus
-                autoComplete="new-password"
-                aria-label="New password (minimum 10 characters)"
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
-              />
-              <input
-                type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm password"
-                autoComplete="new-password"
-                aria-label="Confirm password"
-                className="w-full px-3.5 py-2.5 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
-              />
+              <div className="relative">
+                <input
+                  type={showNew ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="New password (min 10 characters)" autoFocus
+                  autoComplete="new-password"
+                  aria-label="New password (minimum 10 characters)"
+                  className="w-full px-3.5 py-2.5 pr-10 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew((v) => !v)}
+                  aria-label={showNew ? 'Hide password' : 'Show password'}
+                  aria-pressed={showNew}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-surface-500 hover:text-surface-200"
+                >
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showConfirm ? 'text' : 'password'} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  aria-label="Confirm password"
+                  className="w-full px-3.5 py-2.5 pr-10 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-accent-500 focus:outline-none transition-colors"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm((v) => !v)}
+                  aria-label={showConfirm ? 'Hide password' : 'Show password'}
+                  aria-pressed={showConfirm}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-surface-500 hover:text-surface-200"
+                >
+                  {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
             <button
               type="submit" disabled={loading || newPassword.length < 10 || newPassword !== confirmPassword}

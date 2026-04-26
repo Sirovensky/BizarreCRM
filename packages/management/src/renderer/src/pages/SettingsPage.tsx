@@ -454,14 +454,30 @@ export function SettingsPage() {
                 {saving ? 'Saving…' : 'Save to .env'}
               </button>
             ) : (
-              <button
-                onClick={handleRestartServer}
-                disabled={restarting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-100 bg-amber-900/60 border border-amber-700 rounded hover:bg-amber-900/80 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${restarting ? 'animate-spin' : ''}`} />
-                {restarting ? 'Restarting…' : 'Restart Server'}
-              </button>
+              <>
+                <button
+                  onClick={handleRestartServer}
+                  disabled={restarting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-100 bg-amber-900/60 border border-amber-700 rounded hover:bg-amber-900/80 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${restarting ? 'animate-spin' : ''}`} />
+                  {restarting ? 'Restarting…' : 'Restart Server'}
+                </button>
+                {/* DASH-ELEC-203: when the operator restarts the server out-of-band
+                    (Server Control page, OS-level service restart), the in-app
+                    `restartPending` flag has no auto-clear path and the banner
+                    sticks forever. A manual Dismiss covers that case until a
+                    boot-token poll lands. */}
+                <button
+                  onClick={() => setRestartPending(false)}
+                  disabled={restarting}
+                  aria-label="Dismiss restart-pending banner"
+                  title="Dismiss (server already restarted out-of-band)"
+                  className="px-3 py-1.5 text-xs font-medium text-surface-400 bg-surface-900 border border-surface-700 rounded hover:bg-surface-800 hover:text-surface-200 disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+              </>
             )}
           </div>
         </div>

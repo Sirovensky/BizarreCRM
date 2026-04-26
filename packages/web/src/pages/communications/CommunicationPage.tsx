@@ -1027,24 +1027,29 @@ export function CommunicationPage() {
 
   // Fetch conversations (include archived when that tab is active)
   const includeArchived = activeTab === 'archived';
+  // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 15s `refetchInterval`.
+  // WS handlers for `sms:received` + `sms:status_updated` already invalidate
+  // `['sms-conversations']` in `useWebSocket` (event-driven refresh), so the
+  // poll was duplicating the same work plus burning a steady request/min on
+  // every open Communications tab. WS reconnect on visibilitychange picks up
+  // any messages missed while hidden.
   const { data: convData, isLoading: convLoading } = useQuery({
     queryKey: ['sms-conversations', includeArchived],
     queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
-    refetchInterval: 15000,
-    // just under the 15s interval — a remount during the same polling cycle
-    // reuses cached data instead of firing a redundant network request.
-    staleTime: 14_000,
+    staleTime: 30_000,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
 
-  // Fetch messages for selected conversation
+  // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 10s `refetchInterval`.
+  // WS now invalidates `['sms-messages']` on `sms:received` +
+  // `sms:status_updated` (see useWebSocket invalidation map), so the open
+  // thread refreshes event-driven instead of every 10s poll-tick.
   const { data: msgData, isLoading: msgLoading } = useQuery({
     queryKey: ['sms-messages', selectedPhone],
     queryFn: () => smsApi.messages(selectedPhone!),
     enabled: !!selectedPhone,
-    refetchInterval: 10000,
-    staleTime: 9_000, // just under the 10s interval
+    staleTime: 30_000,
   });
 
   // Mark conversation as read when selected.

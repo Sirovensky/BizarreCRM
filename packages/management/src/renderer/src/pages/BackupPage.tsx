@@ -111,7 +111,13 @@ export function BackupPage() {
           { duration: 8000 },
         );
         setRestoreTarget(null);
-        refresh();
+        // DASH-ELEC-138: restore swaps the master DB file and bounces the
+        // server process; calling refresh() immediately races against the
+        // bounce and shows the previous (now stale) backup list. Defer the
+        // refresh by 2 s so the new server is up and the backup table has
+        // been reopened against the restored DB. Operators see the toast
+        // duration (8 s) cover the gap.
+        setTimeout(() => { refresh(); }, 2000);
       } else {
         toast.error(formatApiError(res));
       }

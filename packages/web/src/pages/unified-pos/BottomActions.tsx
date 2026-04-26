@@ -616,7 +616,7 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
             placeholder="Manager PIN"
             className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
           />
-          {error && <p className="text-center text-xs text-red-500">{error}</p>}
+          {error && <p role="alert" aria-live="polite" className="text-center text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button
               type="button"

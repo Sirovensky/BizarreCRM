@@ -614,7 +614,13 @@ export const voiceApi = {
 
 // ==================== POS ====================
 export const posApi = {
-  products: (params?: { keyword?: string; category?: string; item_type?: string }) =>
+  // WEB-FN-006 (Fixer-B18 2026-04-25): dropped `item_type` from the typed
+  // wrapper. Server (`pos.routes.ts:102`) hard-codes `item_type IN
+  // ('product','part')` and silently ignores any client-supplied value, so
+  // the field misled callers into thinking they could query the service
+  // catalog from POS. If/when the server supports a `service` filter, add
+  // it back as a real param.
+  products: (params?: { keyword?: string; category?: string }) =>
     api.get('/pos/products', { params }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer

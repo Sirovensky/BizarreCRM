@@ -115,9 +115,15 @@ function UnifiedSearchBar() {
         });
       }
 
+      // WEB-FH-017 (Fixer-B18 2026-04-25): bail out after each await if a
+      // newer debounced tick has run. Without these checks tick N's slow
+      // customer-search Promise resolves AFTER tick N+1's products call, and
+      // both branches push into the SAME `items` array — the dropdown ends
+      // up showing customers from "John" alongside products from "Johnsten".
       // Search customers
       try {
         const custRes = await customerApi.search(q);
+        if (isCancelled) return;
         const customers = custRes.data?.data?.customers || custRes.data?.data || [];
         for (const c of (customers as any[]).slice(0, 3)) {
           items.push({
@@ -133,10 +139,12 @@ function UnifiedSearchBar() {
       } catch {
         // Search failed — handled by empty results
       }
+      if (isCancelled) return;
 
       // Search products/inventory by name or SKU
       try {
         const prodRes = await posApi.products({ keyword: q });
+        if (isCancelled) return;
         const prods = prodRes.data?.data?.items || [];
         for (const p of (prods as any[]).slice(0, 3)) {
           items.push({

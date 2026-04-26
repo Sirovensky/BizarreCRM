@@ -106,7 +106,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
               required
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
-            {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" aria-live="polite" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
             <button
               type="submit"
               disabled={submitting}
@@ -130,7 +130,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
               required
               className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 px-3 py-2 text-sm text-center tracking-widest font-mono focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
-            {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" aria-live="polite" className="text-xs text-red-600 dark:text-red-400">{error}</p>}
             <button
               type="submit"
               disabled={submitting || code.length !== 6}

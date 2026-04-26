@@ -31,6 +31,14 @@ export function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  // DASH-ELEC-242: debounce keystrokes so we don't re-filter the (potentially
+  // 200-row) tenant list on every keypress. 150 ms is below human-perception
+  // latency for typing flow but coalesces fast typists.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), 150);
+    return () => clearTimeout(id);
+  }, [search]);
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Tenant | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<Tenant | null>(null);
@@ -100,7 +108,7 @@ export function TenantsPage() {
     (t) => {
       if (statusFilter !== 'all' && t.status !== statusFilter) return false;
       if (planFilter && t.plan !== planFilter) return false;
-      const q = search.toLowerCase();
+      const q = debouncedSearch.toLowerCase();
       if (!q) return true;
       return (
         t.slug.toLowerCase().includes(q) ||
@@ -490,16 +498,19 @@ export function TenantsPage() {
                           <Play className="w-3.5 h-3.5" aria-hidden="true" />
                         </button>
                       )}
-                      {t.status !== 'active' && (
-                        <button
-                          onClick={() => handleRepair(t.slug)}
-                          className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
-                          title="Repair (additive — creates missing pieces, never deletes)"
-                          aria-label={`Repair ${t.name}`}
-                        >
-                          <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      )}
+                      {/* DASH-ELEC-134: server `repairTenant` (management-api.ts)
+                          carries no status restriction — an active tenant with a
+                          missing DB table needs Repair too. Drop the
+                          `status !== 'active'` gate so the button matches the
+                          server's actual capability. */}
+                      <button
+                        onClick={() => handleRepair(t.slug)}
+                        className="p-1.5 rounded text-blue-500 hover:text-blue-300 hover:bg-surface-700"
+                        title="Repair (additive — creates missing pieces, never deletes)"
+                        aria-label={`Repair ${t.name}`}
+                      >
+                        <Wrench className="w-3.5 h-3.5" aria-hidden="true" />
+                      </button>
                       <button
                         onClick={() => setDeleteTarget(t)}
                         className="p-1.5 rounded text-red-500 hover:text-red-300 hover:bg-surface-700"

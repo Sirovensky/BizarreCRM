@@ -256,7 +256,7 @@ export function GoalsPage() {
                 </label>
               </div>
               {newStart && newEnd && newStart > newEnd && (
-                <p className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
+                <p role="alert" aria-live="polite" className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
               )}
             </div>
             <div className="flex gap-2 mt-5">

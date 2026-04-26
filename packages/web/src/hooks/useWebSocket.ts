@@ -92,8 +92,13 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     // literal subscription. Server only ever broadcasts the colon-form
     // `WS_EVENTS.SMS_RECEIVED` (`sms:received`); the snake_case literal
     // never fired. Keep the canonical handler below as the single source.
+    // WEB-FO-008 (Fixer-B18 2026-04-25): also invalidate `['sms-messages']`
+    // (any phone) so the open thread refreshes on inbound + status updates
+    // without needing a 10s `refetchInterval` poll. Generic key invalidation
+    // covers every cached phone — the only one currently rendered is the
+    // selected conversation, which is exactly what we want to refresh.
     [WS_EVENTS.SMS_RECEIVED]: {
-      queryKeys: [['sms-conversations']],
+      queryKeys: [['sms-conversations'], ['sms-messages']],
       toast: (data: unknown) => {
         const d = data as { from?: string; customer?: { first_name?: string } } | null;
         return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
@@ -101,7 +106,7 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     },
     // sms:status_updated — server emits when an outbound SMS delivery status changes
     'sms:status_updated': {
-      queryKeys: [['sms-conversations']],
+      queryKeys: [['sms-conversations'], ['sms-messages']],
       toast: undefined,
     },
     [WS_EVENTS.NOTIFICATION_NEW]: {
