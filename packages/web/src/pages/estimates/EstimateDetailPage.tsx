@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { useState } from 'react';
@@ -158,8 +159,10 @@ export function EstimateDetailPage() {
           {(estimate.status === 'draft' || estimate.status === 'sent') && (
             <button
               onClick={async () => {
-                const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
-                if (await confirm(msg)) sendMut.mutate();
+                try {
+                  const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
+                  if (await confirm(msg)) sendMut.mutate();
+                } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:opacity-50"
@@ -170,7 +173,10 @@ export function EstimateDetailPage() {
           )}
           {(estimate.status === 'sent' || estimate.status === 'draft') && (
             <button
-              onClick={async () => { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }}
+              onClick={async () => {
+                try { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }
+                catch (err) { toast.error(formatApiError(err)); }
+              }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:opacity-50"
             >
@@ -180,7 +186,10 @@ export function EstimateDetailPage() {
           )}
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
-              onClick={async () => { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }}
+              onClick={async () => {
+                try { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }
+                catch (err) { toast.error(formatApiError(err)); }
+              }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:opacity-50"
             >

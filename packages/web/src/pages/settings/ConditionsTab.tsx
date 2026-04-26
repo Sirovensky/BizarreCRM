@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -512,7 +513,10 @@ function ChecklistTemplatesSection() {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button aria-label="Edit" onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Delete" onClick={async () => {
+                    try { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }
+                    catch (err) { toast.error(formatApiError(err)); }
+                  }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             );

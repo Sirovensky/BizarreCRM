@@ -72,6 +72,25 @@ function DeviceTemplateNudge() {
 import { genId } from './types';
 import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 
+// FIXED-by-Fixer-A27 2026-04-25 (WEB-FB-003): kill the last `(p: any)` in this
+// file. The hydrate-from-ticket effect previously coerced each part payload to
+// `any` and silently swallowed any server field rename (e.g.
+// `inventory_item_id` → `inventory_id`). This narrow shape mirrors what
+// /tickets/:id returns for `device.parts[*]` and matches the LeftPanel /
+// RepairsTab field set already typed by Fixer-A23/25/26. All optionality is
+// from the server's nullable columns; the `|| ...` defaults below remain the
+// runtime safety net.
+type ApiTicketDevicePart = {
+  inventory_item_id?: number | null;
+  name?: string | null;
+  item_name?: string | null;
+  item_sku?: string | null;
+  sku?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  status?: string | null;
+};
+
 // ─── FKeyLegend ───────────────────────────────────────────────────────────────
 // WEB-W3-029 (FIXED-by-Fixer-A23 2026-04-25): the unified POS binds F1-F4,
 // Shift+F5, F6 to tab/customer-search/checkout/returns shortcuts but
@@ -326,7 +345,7 @@ export function UnifiedPosPage() {
 
     // Add devices as repair cart items
     for (const device of (ticket.devices || [])) {
-      const parts: PartEntry[] = (device.parts || []).map((p: any) => ({
+      const parts: PartEntry[] = (device.parts || []).map((p: ApiTicketDevicePart) => ({
         _key: genId(),
         inventory_item_id: p.inventory_item_id || 0,
         name: p.name || p.item_name || 'Part',

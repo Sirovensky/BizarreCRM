@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Users, Plus, RefreshCw, Search, Pause, Play, Trash2, ExternalLink, Wrench, ChevronDown, ChevronRight } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { Tenant } from '@/api/bridge';
@@ -575,49 +575,35 @@ export function TenantsPage() {
       )}
 
       {/* Create Modal */}
+      {/*
+        DASH-ELEC-120 + DASH-ELEC-166 (Fixer-B27 2026-04-25):
+         - Wrapped the body in a `<form onSubmit>` so Enter from any input
+           submits via handleCreate (was: Enter did nothing, every field had
+           to be tabbed to and the Create button clicked manually).
+         - Added `role="dialog"`, `aria-modal="true"`, `aria-labelledby` so
+           assistive tech announces this as a modal dialog (parity with
+           ConfirmDialog / KeyboardShortcutsHelp).
+         - Added Escape-to-close + a Tab focus trap mirroring ConfirmDialog
+           — without these, Tab walked off the modal into the underlying
+           tenants table and Escape did nothing.
+        Cancel still uses `closeCreate` so the body-state reset happens in
+        one place regardless of how the modal is dismissed (Esc / Cancel /
+        successful submit all reset the same way).
+      */}
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-[420px] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6">
-            <h3 className="text-sm font-semibold text-surface-100 mb-4">Create New Tenant</h3>
-            <div className="space-y-3 mb-5">
-              {/* DASH-ELEC-236: cap slug input at 30 chars to match handleCreate's
-                  client-side validation (the IPC schema accepts 64 but we reject
-                  anything over 30 with a toast — let the input prevent it). */}
-              {/* DASH-ELEC-167: aria-label per input so SR users hear field names instead of placeholders only.
-                  DASH-ELEC-135: typing the shop name auto-populates slug while it's still untouched. */}
-              <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="Slug (e.g. my-shop)"
-                maxLength={30}
-                aria-label="Tenant slug (URL identifier, lowercase letters, digits, hyphens)"
-                className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <input type="text" value={newName} onChange={(e) => {
-                const next = e.target.value;
-                setNewName(next);
-                if (!newSlug.trim()) {
-                  setNewSlug(next.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30));
-                }
-              }} placeholder="Shop name"
-                aria-label="Shop name (display name shown to staff and customers)"
-                className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (required)"
-                aria-label="Admin email address (recipient of initial credentials)"
-                className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
-              <select value={newPlan} onChange={(e) => setNewPlan(e.target.value as TenantPlan)}
-                aria-label="Subscription plan"
-                className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none">
-                {PLAN_OPTIONS.map((plan) => (
-                  <option key={plan.name} value={plan.name}>{plan.displayName}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => { setShowCreate(false); setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free'); }} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
-              <button onClick={handleCreate} disabled={creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()}
-                className="px-4 py-2 text-sm font-semibold bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-40">
-                {creating ? 'Creating...' : 'Create'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateTenantModal
+          newSlug={newSlug}
+          newName={newName}
+          newEmail={newEmail}
+          newPlan={newPlan}
+          creating={creating}
+          setNewSlug={setNewSlug}
+          setNewName={setNewName}
+          setNewEmail={setNewEmail}
+          setNewPlan={setNewPlan}
+          onSubmit={handleCreate}
+          onCancel={() => { setShowCreate(false); setNewSlug(''); setNewName(''); setNewEmail(''); setNewPlan('free'); }}
+        />
       )}
 
       {/* Delete confirm */}
@@ -683,6 +669,138 @@ function DetailMetric({ label, value }: { label: string; value: string | number 
     <div className="rounded border border-surface-800 bg-surface-950/60 px-2.5 py-1.5">
       <div className="text-[10px] text-surface-500 uppercase tracking-wider">{label}</div>
       <div className="text-sm font-bold text-surface-100 mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+/**
+ * DASH-ELEC-120 + DASH-ELEC-166 (Fixer-B27 2026-04-25): the Create-Tenant
+ * modal extracted into its own component so Escape / focus-trap effects can
+ * be attached unconditionally — the parent renders this only when
+ * `showCreate` is true, so mount === open and a single useEffect owns the
+ * keydown listener for the dialog's lifetime.
+ */
+interface CreateTenantModalProps {
+  newSlug: string;
+  newName: string;
+  newEmail: string;
+  newPlan: TenantPlan;
+  creating: boolean;
+  setNewSlug: (v: string) => void;
+  setNewName: (v: string) => void;
+  setNewEmail: (v: string) => void;
+  setNewPlan: (v: TenantPlan) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}
+
+function CreateTenantModal({
+  newSlug, newName, newEmail, newPlan, creating,
+  setNewSlug, setNewName, setNewEmail, setNewPlan,
+  onSubmit, onCancel,
+}: CreateTenantModalProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Focus the first focusable element on open + Escape-to-cancel listener.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const first = el.querySelector<HTMLElement>(
+      'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])'
+    );
+    first?.focus();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onCancel();
+      return;
+    }
+    if (e.key === 'Tab') {
+      const el = containerRef.current;
+      if (!el) return;
+      const focusable = Array.from(
+        el.querySelectorAll<HTMLElement>(
+          'input, select, textarea, button, [href], [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((n) => !n.hasAttribute('disabled'));
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        }
+      } else {
+        if (document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-tenant-title"
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        className="w-[420px] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
+      >
+        <h3 id="create-tenant-title" className="text-sm font-semibold text-surface-100 mb-4">Create New Tenant</h3>
+        {/* DASH-ELEC-166: real <form> wrapper so Enter from any input submits. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()) return;
+            onSubmit();
+          }}
+        >
+          <div className="space-y-3 mb-5">
+            {/* DASH-ELEC-236: cap slug input at 30 chars to match handleCreate's
+                client-side validation (the IPC schema accepts 64 but we reject
+                anything over 30 with a toast — let the input prevent it). */}
+            {/* DASH-ELEC-167: aria-label per input so SR users hear field names instead of placeholders only.
+                DASH-ELEC-135: typing the shop name auto-populates slug while it's still untouched. */}
+            <input type="text" value={newSlug} onChange={(e) => setNewSlug(e.target.value)} placeholder="Slug (e.g. my-shop)"
+              maxLength={30}
+              aria-label="Tenant slug (URL identifier, lowercase letters, digits, hyphens)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <input type="text" value={newName} onChange={(e) => {
+              const next = e.target.value;
+              setNewName(next);
+              if (!newSlug.trim()) {
+                setNewSlug(next.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 30));
+              }
+            }} placeholder="Shop name"
+              aria-label="Shop name (display name shown to staff and customers)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="Admin email (required)"
+              aria-label="Admin email address (recipient of initial credentials)"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none" />
+            <select value={newPlan} onChange={(e) => setNewPlan(e.target.value as TenantPlan)}
+              aria-label="Subscription plan"
+              className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 focus:border-accent-500 focus:outline-none">
+              {PLAN_OPTIONS.map((plan) => (
+                <option key={plan.name} value={plan.name}>{plan.displayName}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={onCancel} className="px-4 py-2 text-sm text-surface-300 bg-surface-800 border border-surface-700 rounded-lg hover:bg-surface-700">Cancel</button>
+            <button type="submit" disabled={creating || !newSlug.trim() || !newName.trim() || !newEmail.trim()}
+              className="px-4 py-2 text-sm font-semibold bg-accent-600 text-white rounded-lg hover:bg-accent-700 disabled:opacity-40">
+              {creating ? 'Creating...' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

@@ -289,10 +289,17 @@ export function BackupPage() {
         DASH-ELEC-130 (Fixer-B26 2026-04-25): suppress onCancel while a
         restore is in flight so the operator can't dismiss the dialog
         (Cancel/Escape/X) and re-trigger another concurrent DB swap from
-        the underlying list. ConfirmDialog has no `loading`/`disabled`
-        prop, but no-op'ing onCancel keeps the dialog mounted and locked
-        until handleRestore's finally block clears `restoring` and the
-        success path nulls out restoreTarget.
+        the underlying list.
+
+        DASH-ELEC-174 (Fixer-B27 2026-04-25): pair the cancel-suppression
+        above with the new `disabled` prop on ConfirmDialog so the primary
+        Confirm button is also locked while `restoring` is true. Previously
+        the button only de-activated when typing-mismatched, so a mid-
+        restore re-click of "Restore" (the typing field still matches the
+        filename) would fire `handleRestore` a second time and stack
+        concurrent DB swaps. Now `disabled={restoring}` flips `canConfirm`
+        false, the button paints with `disabled:cursor-not-allowed`, and
+        the click is a no-op until the finally-block clears the flag.
       */}
       <ConfirmDialog
         open={restoreTarget !== null}
@@ -306,6 +313,7 @@ export function BackupPage() {
         danger
         requireTyping={restoreTarget ?? undefined}
         confirmLabel={restoring ? 'Restoring…' : 'Restore'}
+        disabled={restoring}
         onConfirm={handleRestore}
         onCancel={() => { if (!restoring) setRestoreTarget(null); }}
       />

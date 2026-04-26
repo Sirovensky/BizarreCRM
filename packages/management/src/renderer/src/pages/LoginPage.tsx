@@ -472,15 +472,55 @@ export function LoginPage() {
                   ))}
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard?.writeText(recoveryCodes.join('\n'));
-                    }}
-                    className="text-[11px] text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
-                  >
-                    Copy all
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(recoveryCodes.join('\n'));
+                      }}
+                      className="text-[11px] text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                    >
+                      Copy all
+                    </button>
+                    {/* FIXED-by-Fixer-A27 2026-04-25 (DASH-ELEC-247): Copy-all
+                        alone fails when clipboard is denied (locked-down kiosks
+                        often disable it) and leaves no offline artifact when the
+                        super-admin can't reach a password manager. Download
+                        emits a plain-text file the operator can drop on a USB
+                        stick / print, satisfying the "print them" guidance in
+                        the help line above. Filename includes ISO date so
+                        multiple resets don't overwrite each other. Object URL
+                        is revoked synchronously after the click to avoid
+                        retaining the codes in the renderer's blob store. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const stamp = new Date().toISOString().slice(0, 10);
+                        const blob = new Blob(
+                          [
+                            `BizarreCRM super-admin 2FA recovery codes\n`,
+                            `Generated: ${new Date().toISOString()}\n`,
+                            `Each code can be used exactly once if you lose your authenticator.\n`,
+                            `Store this file securely — anyone with these codes can bypass 2FA.\n\n`,
+                            recoveryCodes.join('\n'),
+                            '\n',
+                          ],
+                          { type: 'text/plain;charset=utf-8' },
+                        );
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `bizarrecrm-recovery-codes-${stamp}.txt`;
+                        document.body.appendChild(a);
+                        a.click();
+                        a.remove();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="text-[11px] text-amber-300 hover:text-amber-200 underline-offset-2 hover:underline"
+                    >
+                      Download .txt
+                    </button>
+                  </div>
                   <label className="flex items-center gap-1.5 text-[11px] text-amber-200 cursor-pointer">
                     <input
                       type="checkbox"

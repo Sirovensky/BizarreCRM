@@ -17,6 +17,13 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   danger?: boolean;
   requireTyping?: string;
+  /**
+   * DASH-ELEC-174 (Fixer-B27 2026-04-25): force-disable the confirm button
+   * (and gate Confirm-via-keyboard) while a parent action is in flight, so
+   * a mid-restore re-click can't fire a second concurrent action even
+   * though `requireTyping` would otherwise allow it.
+   */
+  disabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -30,6 +37,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   danger = false,
   requireTyping,
+  disabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -46,7 +54,9 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const canConfirm = requireTyping ? typed === requireTyping : true;
+  // DASH-ELEC-174 (Fixer-B27): an in-flight parent action wins over the
+  // typing gate — both predicates must pass for the button to fire.
+  const canConfirm = (requireTyping ? typed === requireTyping : true) && !disabled;
 
   const handleConfirm = () => {
     if (!canConfirm) return;

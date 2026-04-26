@@ -393,12 +393,22 @@ export function AdminToolsPage() {
                 className="cursor-pointer"
               />
               <span>Single tenant</span>
+              {/* DASH-ELEC-170 (Fixer-B27 2026-04-25): the previous handler ran
+                  `.toLowerCase().trim()` on every keystroke. `.trim()` strips
+                  any whitespace the user just typed, which causes the caret
+                  to jump to the front of the field if they paste a value with
+                  a leading space, and silently discards trailing whitespace
+                  mid-edit before the user is finished. Whitespace handling is
+                  now performed once at submit (`handleReset` already enforces
+                  the `^[a-z0-9-]{1,64}$` regex). For per-keystroke normalisation
+                  we only lowercase + strip internal whitespace, matching what
+                  the slug regex permits without yanking the cursor. */}
               <input
                 type="text"
                 placeholder="tenant-slug"
                 value={resetTenant}
                 disabled={resetScope !== 'single'}
-                onChange={(e) => setResetTenant(e.target.value.toLowerCase().trim())}
+                onChange={(e) => setResetTenant(e.target.value.toLowerCase().replace(/\s/g, ''))}
                 className="ml-2 px-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200 disabled:opacity-40 font-mono w-48"
               />
             </label>

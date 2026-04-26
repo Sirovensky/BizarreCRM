@@ -501,6 +501,12 @@ export function SettingsPage() {
           <p className="text-xs text-surface-500 mb-3 leading-relaxed">
             Database-backed toggles applied immediately, no server restart required.
           </p>
+          {/* DASH-ELEC-171 — explicit warning that text/number fields commit on blur (Tab/click-away)
+              with no undo button. Env-settings section above uses pending/discard, but platform-config
+              is direct-write; surface that asymmetry to operators so a stray Tab doesn't permanent-write. */}
+          <p className="text-[11px] text-amber-400/80 mb-3 leading-relaxed pl-1" role="note">
+            Heads-up: text and number fields save on blur (Tab or click away). Press Esc before leaving the field to revert.
+          </p>
           <div className="space-y-4 pl-6">
             {pcSchema
               .filter((f) => matchesFilter(`${f.key} ${f.label} ${f.description}`))
@@ -547,6 +553,13 @@ export function SettingsPage() {
                     onBlur={(e) => {
                       const next = e.target.value;
                       if (next !== current) handlePlatformConfigToggle(f, next);
+                    }}
+                    onKeyDown={(e) => {
+                      // DASH-ELEC-171 — Esc reverts in-flight edit before the onBlur save fires.
+                      if (e.key === 'Escape') {
+                        e.currentTarget.value = current;
+                        e.currentTarget.blur();
+                      }
                     }}
                     className="w-full px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 focus:border-accent-600 focus:outline-none font-mono disabled:opacity-50"
                   />
