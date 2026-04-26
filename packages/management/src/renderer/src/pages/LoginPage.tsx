@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff } from 'lucide-react';
+import { Server, AlertCircle, Play, Loader2, Shield, KeyRound, X, UserPlus, Eye, EyeOff, FileText } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { useAuthStore } from '@/stores/authStore';
 import { PASSWORD_MIN_LENGTH } from '@/utils/constants';
@@ -271,6 +271,17 @@ export function LoginPage() {
     }
   };
 
+  const handleViewLogs = async () => {
+    try {
+      const res = await getAPI().system.openLogFile();
+      if (!res.success) {
+        setError(res.message ?? 'Could not open server logs');
+      }
+    } catch {
+      setError('Could not open server logs');
+    }
+  };
+
   if (step === 'loading') {
     return (
       <div className="flex items-center justify-center min-h-screen bg-surface-950">
@@ -307,18 +318,28 @@ export function LoginPage() {
               <span>{error}</span>
             </div>
             {serverOffline && (
-              <button
-                type="button"
-                onClick={handleStartServer}
-                disabled={starting}
-                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 bg-green-600/20 text-green-400 text-xs font-medium border border-green-800/50 rounded-lg hover:bg-green-600/30 disabled:opacity-50 transition-colors"
-              >
-                {starting ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting server...</>
-                ) : (
-                  <><Play className="w-3.5 h-3.5" /> Start Server</>
-                )}
-              </button>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleStartServer}
+                  disabled={starting}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-green-600/20 text-green-400 text-xs font-medium border border-green-800/50 rounded-lg hover:bg-green-600/30 disabled:opacity-50 transition-colors"
+                >
+                  {starting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Starting...</>
+                  ) : (
+                    <><Play className="w-3.5 h-3.5" /> Start Server</>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleViewLogs}
+                  className="flex items-center justify-center gap-2 px-4 py-2 bg-surface-800 text-surface-200 text-xs font-medium border border-surface-700 rounded-lg hover:bg-surface-700 transition-colors"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  See Logs
+                </button>
+              </div>
             )}
           </div>
         )}

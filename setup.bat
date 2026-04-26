@@ -64,21 +64,12 @@ echo.
 :: ── Ensure npm global tools are available on PATH ─────────────────
 :: npm global command shims such as pm2.cmd usually live in %APPDATA%\npm,
 :: but npm config get prefix is the source of truth if the user changed it.
-set "NPM_GLOBAL_DIR="
 set "NPM_GLOBAL_PREFIX="
+if exist "%APPDATA%\npm" call :EnsureUserPath "%APPDATA%\npm"
 for /f "delims=" %%P in ('npm config get prefix 2^>nul') do (
     if not defined NPM_GLOBAL_PREFIX set "NPM_GLOBAL_PREFIX=%%P"
 )
-if defined NPM_GLOBAL_PREFIX if exist "!NPM_GLOBAL_PREFIX!" set "NPM_GLOBAL_DIR=!NPM_GLOBAL_PREFIX!"
-if not defined NPM_GLOBAL_DIR if exist "%APPDATA%\npm" set "NPM_GLOBAL_DIR=%APPDATA%\npm"
-if defined NPM_GLOBAL_DIR (
-    echo ;!PATH!; | find /I ";!NPM_GLOBAL_DIR!;" >nul
-    if !errorlevel! neq 0 (
-        echo  Adding npm global tools to PATH: !NPM_GLOBAL_DIR!
-        set "PATH=!PATH!;!NPM_GLOBAL_DIR!"
-        powershell -NoProfile -ExecutionPolicy Bypass -Command "$dir = '!NPM_GLOBAL_DIR!'.TrimEnd('\'); $userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); $parts = @(); if ($userPath) { $parts = $userPath -split ';' | ForEach-Object { $_.Trim().TrimEnd('\') } }; if ($parts -notcontains $dir) { $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $dir } else { $userPath.TrimEnd(';') + ';' + $dir }; [Environment]::SetEnvironmentVariable('Path', $newPath, 'User') }" >nul 2>&1
-    )
-)
+if defined NPM_GLOBAL_PREFIX if exist "!NPM_GLOBAL_PREFIX!" call :EnsureUserPath "!NPM_GLOBAL_PREFIX!"
 echo.
 
 :: ── Step 4: Install dependencies ─────────────────────────────────
@@ -288,4 +279,15 @@ if defined DASHBOARD (
 )
 
 endlocal
-exit
+exit /b 0
+
+:EnsureUserPath
+set "PATH_DIR=%~1"
+if not defined PATH_DIR exit /b 0
+echo ;!PATH!; | find /I ";!PATH_DIR!;" >nul
+if !errorlevel! neq 0 (
+    echo  Adding npm global tools to PATH: !PATH_DIR!
+    set "PATH=!PATH!;!PATH_DIR!"
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$dir = '%PATH_DIR%'.TrimEnd('\'); $userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); $parts = @(); if ($userPath) { $parts = $userPath -split ';' | ForEach-Object { $_.Trim().TrimEnd('\') } }; if ($parts -notcontains $dir) { $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $dir } else { $userPath.TrimEnd(';') + ';' + $dir }; [Environment]::SetEnvironmentVariable('Path', $newPath, 'User') }" >nul 2>&1
+exit /b 0
