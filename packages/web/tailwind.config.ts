@@ -16,16 +16,16 @@ export default {
         // project-wide primary (replacing previous orange). Dark end of the
         // ramp pairs with `onPrimary #2b1400` for AA on light backgrounds.
         primary: {
-          50:  '#fffdf8',
-          100: '#fdf5e1',
-          200: '#fdeed0',   // ← brand cream (the canonical primary)
-          300: '#f5dca7',
-          400: '#e9c477',
-          500: '#d6a54b',   // mid-tone, AA on light surfaces
-          600: '#a66d1f',   // caramel — Android LightColorScheme parity
-          700: '#7d4e14',
-          800: '#56330b',
-          900: '#2b1400',   // onPrimary dark brown for cream fills
+          50:  '#fffefb',
+          100: '#fefcf4',
+          200: '#fdf8e8',
+          300: '#fdf4d6',
+          400: '#fdf0c8',
+          500: '#fdeed0',   // ← brand cream (canonical primary — matches iOS/Android dark accent)
+          600: '#f5dca7',   // warm honey (hover on dark surfaces)
+          700: '#e9c477',   // golden (active/focus on dark)
+          800: '#d6a54b',   // amber (light-mode accent, AA on white at 2.8:1 with dark text)
+          900: '#2b1400',   // onPrimary dark brown (AA on cream fills — 10.7:1)
           950: '#1a0b00',
         },
         // @audit-fixed (WEB-FM-002 / Fixer-K 2026-04-24): `bg-brand-*` /
@@ -38,15 +38,15 @@ export default {
         // 21-site rename. If a distinct brand ramp is ever introduced, swap
         // these values; the keys are stable.
         brand: {
-          50:  '#fffdf8',
-          100: '#fdf5e1',
-          200: '#fdeed0',
-          300: '#f5dca7',
-          400: '#e9c477',
-          500: '#d6a54b',
-          600: '#a66d1f',
-          700: '#7d4e14',
-          800: '#56330b',
+          50:  '#fffefb',
+          100: '#fefcf4',
+          200: '#fdf8e8',
+          300: '#fdf4d6',
+          400: '#fdf0c8',
+          500: '#fdeed0',
+          600: '#f5dca7',
+          700: '#e9c477',
+          800: '#d6a54b',
           900: '#2b1400',
           950: '#1a0b00',
         },
