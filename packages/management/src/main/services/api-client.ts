@@ -202,12 +202,33 @@ export interface ApiResult<T = unknown> {
 }
 
 let superAdminToken: string | null = null;
+// FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): track when the in-memory token
+// was set so we can hard-cap its lifetime even when the renderer never calls
+// logout (e.g. process is force-quit and respawned, then resumes IPC use of a
+// stale module). A signed JWT carries its own `exp`, but the server-side check
+// only fires on a request — until then the token sits in main-process memory
+// indefinitely. The cap below evicts it from RAM on next access regardless.
+let superAdminTokenSetAt: number | null = null;
+// 12h hard-cap: longer than the typical operator session, shorter than a JWT
+// that an attacker could pull from a core-dump weeks later.
+const SUPER_ADMIN_TOKEN_MAX_AGE_MS = 12 * 60 * 60 * 1000;
 
 export function setSuperAdminToken(token: string | null): void {
   superAdminToken = token;
+  superAdminTokenSetAt = token ? Date.now() : null;
 }
 
 export function getSuperAdminToken(): string | null {
+  // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): self-evict on TTL so a
+  // long-idle main process can never hand back a token older than the cap.
+  if (
+    superAdminToken !== null &&
+    superAdminTokenSetAt !== null &&
+    Date.now() - superAdminTokenSetAt > SUPER_ADMIN_TOKEN_MAX_AGE_MS
+  ) {
+    superAdminToken = null;
+    superAdminTokenSetAt = null;
+  }
   return superAdminToken;
 }
 
@@ -228,9 +249,15 @@ export function apiRequest<T = unknown>(
       'Origin': base,
     };
 
-    // All authenticated requests use the super admin JWT
-    if (authType === 'authenticated' && superAdminToken) {
-      headers['Authorization'] = `Bearer ${superAdminToken}`;
+    // All authenticated requests use the super admin JWT.
+    // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): route through the getter
+    // so the TTL cap is enforced on every outbound authenticated request, not
+    // just on explicit reads. A request fired exactly at the cap boundary now
+    // goes out unauthenticated (server returns 401, renderer auto-logout
+    // path handles the 401 and clears renderer state).
+    const activeToken = getSuperAdminToken();
+    if (authType === 'authenticated' && activeToken) {
+      headers['Authorization'] = `Bearer ${activeToken}`;
     }
 
     // Only accept self-signed certs for loopback. Anything else MUST validate.

@@ -11,6 +11,7 @@ import { confirm } from '@/stores/confirmStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 // WEB-FK-004 / FIXED-by-Fixer-A12 2026-04-25 — normalize lead.source to a
 // canonical channel set so attribution roll-ups aren't fragmented by
@@ -594,9 +595,14 @@ export function LeadListPage() {
                         {lead.status !== 'converted' && (
                           <button
                             onClick={async (e) => {
+                              // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
-                              if (await confirm('Convert this lead to a ticket?')) {
-                                convertMut.mutate(lead.id);
+                              try {
+                                if (await confirm('Convert this lead to a ticket?')) {
+                                  convertMut.mutate(lead.id);
+                                }
+                              } catch (err) {
+                                toast.error(formatApiError(err));
                               }
                             }}
                             disabled={convertMut.isPending}
@@ -608,9 +614,14 @@ export function LeadListPage() {
                         )}
                         <button
                           onClick={async (e) => {
+                            // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal promise
                             e.stopPropagation();
-                            if (await confirm('Delete this lead?', { danger: true })) {
-                              scheduleLeadDelete(lead.id, lead.name);
+                            try {
+                              if (await confirm('Delete this lead?', { danger: true })) {
+                                scheduleLeadDelete(lead.id, lead.name);
+                              }
+                            } catch (err) {
+                              toast.error(formatApiError(err));
                             }
                           }}
                           className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"

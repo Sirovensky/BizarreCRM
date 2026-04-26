@@ -209,14 +209,19 @@ export function InvoiceListPage() {
   // @audit-fixed: confirm before destructive bulk actions (was firing on single click)
   // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
   const handleBulkAction = async (action: string, label: string) => {
+    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
     if (bulkMut.isPending) return;
-    const ok = await confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`, {
-      title: `${label} invoices`,
-      confirmLabel: label,
-      danger: true,
-    });
-    if (!ok) return;
-    bulkMut.mutate({ action });
+    try {
+      const ok = await confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`, {
+        title: `${label} invoices`,
+        confirmLabel: label,
+        danger: true,
+      });
+      if (!ok) return;
+      bulkMut.mutate({ action });
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   };
 
   function toggleSelectAll() {

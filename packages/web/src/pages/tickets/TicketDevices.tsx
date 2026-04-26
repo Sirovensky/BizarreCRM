@@ -11,6 +11,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 // FA-M9: DefectReporterButton lets techs report a bad part directly from the
 // ticket. Only rendered for parts that have an inventory_item_id (defect
@@ -899,7 +900,7 @@ export function TicketDevices({
                             </div>
                           ) : null}
                           <button
-                            onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
+                            onClick={async () => { try { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                             title="Remove part"
                           >
@@ -962,7 +963,7 @@ export function TicketDevices({
                               referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -983,7 +984,7 @@ export function TicketDevices({
                               referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -1061,7 +1062,7 @@ export function TicketDevices({
                               referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -1082,7 +1083,7 @@ export function TicketDevices({
                               referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>

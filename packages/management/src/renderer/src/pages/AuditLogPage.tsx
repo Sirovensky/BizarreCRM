@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { ScrollText, RefreshCw, Filter, Trash2, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
@@ -19,8 +20,27 @@ interface AuditEntry {
 export function AuditLogPage() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState('');
-  const [textFilter, setTextFilter] = useState('');
+  // DASH-ELEC-063 (Fixer-B28 2026-04-25): mirror DiagnosticsPage and persist
+  // filters in the URL search params so back-button + reload + shared deep
+  // links restore the same view (e.g. ?action=login_failed&q=192.168). State
+  // setters retain the prior useState ergonomics so call-sites need no churn.
+  const [params, setParams] = useSearchParams();
+  const actionFilter = params.get('action') ?? '';
+  const textFilter = params.get('q') ?? '';
+  const setActionFilter = useCallback((value: string) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('action', value); else next.delete('action');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
+  const setTextFilter = useCallback((value: string) => {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set('q', value); else next.delete('q');
+      return next;
+    }, { replace: true });
+  }, [setParams]);
 
   const refresh = useCallback(async () => {
     try {
@@ -147,7 +167,15 @@ export function AuditLogPage() {
         />
         {(actionFilter || textFilter) && (
           <button
-            onClick={() => { setActionFilter(''); setTextFilter(''); }}
+            onClick={() => {
+              // Single setParams call so the back-stack records one entry.
+              setParams((prev) => {
+                const next = new URLSearchParams(prev);
+                next.delete('action');
+                next.delete('q');
+                return next;
+              }, { replace: true });
+            }}
             className="inline-flex items-center gap-1 px-2 py-1 text-surface-500 hover:text-surface-300 border border-surface-800 rounded"
           >
             <Trash2 className="w-3 h-3" />

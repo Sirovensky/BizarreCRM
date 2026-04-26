@@ -6,6 +6,7 @@ import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -115,13 +116,18 @@ export function SubscriptionsListPage() {
   });
 
   async function handleCancel(sub: Subscription): Promise<void> {
-    const ok = await confirm(
-      `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership immediately?`,
-      { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
-    );
-    if (!ok) return;
-    setCancellingId(sub.id);
-    cancelMutation.mutate(sub.id);
+    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
+    try {
+      const ok = await confirm(
+        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership immediately?`,
+        { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
+      );
+      if (!ok) return;
+      setCancellingId(sub.id);
+      cancelMutation.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   }
 
   const subs = data ?? [];

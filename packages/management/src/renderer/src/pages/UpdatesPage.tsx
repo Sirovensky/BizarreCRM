@@ -19,6 +19,24 @@ interface RollbackInfo {
   sha?: string;
 }
 
+// DASH-ELEC-111 (Fixer-B28 2026-04-25): scrub absolute filesystem paths +
+// likely env-var leakage from raw subprocess output before it lands in the
+// renderer DevTools console. Main process IPC log is the canonical sink; this
+// is just enough redaction so a screenshare or user-shared screenshot doesn't
+// expose repo root / home dir / API tokens. Conservative — leaves repo-relative
+// paths and short tokens alone.
+function redactPaths(s: string): string {
+  return s
+    // POSIX absolute paths: /Users/foo, /home/foo, /opt/..., /var/..., /tmp/...
+    .replace(/\/(?:Users|home|opt|var|tmp|root|usr|etc|private)\/[^\s:'"]*/g, '<path>')
+    // Windows absolute paths: C:\Users\foo, D:\...
+    .replace(/[A-Za-z]:\\[^\s:'"]*/g, '<path>')
+    // file:// URIs
+    .replace(/file:\/\/[^\s:'"]*/g, '<path>')
+    // Common env-var leak shape: `FOO_TOKEN=...` / `FOO_KEY=...` / `FOO_SECRET=...`
+    .replace(/\b([A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASS|PWD))=\S+/g, '$1=<redacted>');
+}
+
 export function UpdatesPage() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -121,10 +139,10 @@ export function UpdatesPage() {
       if (result?.success) {
         toast.success('Update started. Dashboard will reopen after rebuild.');
         setStatus((prev) => (prev ? { ...prev, available: false } : null));
-        if (result.output) console.log('[Update output]\n' + result.output);
+        if (result.output) console.log('[Update output]\n' + redactPaths(result.output));
       } else {
         toast.error('Update failed - check logs');
-        if (result?.output) console.error('[Update output]\n' + result.output);
+        if (result?.output) console.error('[Update output]\n' + redactPaths(result.output));
       }
     } catch (err) {
       toast.error('Update failed: ' + (err instanceof Error ? err.message : 'Unknown error'));

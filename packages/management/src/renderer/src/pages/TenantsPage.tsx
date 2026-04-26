@@ -751,7 +751,7 @@ function CreateTenantModal({
         aria-labelledby="create-tenant-title"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
-        className="w-[420px] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
+        className="w-[min(420px,calc(100vw-2rem))] bg-surface-900 border border-surface-700 rounded-xl shadow-2xl p-6 outline-none"
       >
         <h3 id="create-tenant-title" className="text-sm font-semibold text-surface-100 mb-4">Create New Tenant</h3>
         {/* DASH-ELEC-166: real <form> wrapper so Enter from any input submits. */}

@@ -580,39 +580,42 @@ export function SettingsPage() {
           </h2>
           {/* DASH-ELEC-183: collapse to a single column on the narrowest panel
               widths (compact density / sidebar-expanded settings) so long
-              hostnames + version strings don't overflow the 32px gap. */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-surface-500">Platform</span>
-              <span className="text-surface-300">{systemInfo.platform} ({systemInfo.arch})</span>
+              hostnames + version strings don't overflow the 32px gap.
+              DASH-ELEC-179 (Fixer-B28 2026-04-25): tighter gap-x-4 + break-words
+              on values so a long hostname or pre-release version string wraps
+              instead of overflowing past the column edge into the neighbour. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Platform</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.platform} ({systemInfo.arch})</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Hostname</span>
-              <span className="text-surface-300">{systemInfo.hostname}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Hostname</span>
+              <span className="text-surface-300 text-right break-all min-w-0">{systemInfo.hostname}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Total Memory</span>
-              <span className="text-surface-300">{formatBytes(systemInfo.totalMemory)}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Total Memory</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{formatBytes(systemInfo.totalMemory)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">CPUs</span>
-              <span className="text-surface-300">{systemInfo.cpus} cores</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">CPUs</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.cpus} cores</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Node.js</span>
-              <span className="text-surface-300 font-mono">{systemInfo.nodeVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Node.js</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">{systemInfo.nodeVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Electron</span>
-              <span className="text-surface-300 font-mono">{systemInfo.electronVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Electron</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">{systemInfo.electronVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Dashboard</span>
-              <span className="text-surface-300 font-mono">v{systemInfo.appVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Dashboard</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">v{systemInfo.appVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Packaged</span>
-              <span className="text-surface-300">{systemInfo.isPackaged ? 'Yes' : 'No (dev)'}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Packaged</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.isPackaged ? 'Yes' : 'No (dev)'}</span>
             </div>
           </div>
 

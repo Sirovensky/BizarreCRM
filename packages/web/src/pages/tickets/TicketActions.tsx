@@ -11,6 +11,7 @@ import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { safeColor } from '@/utils/safeColor';
 import { evaluateTicketTransition } from '@/utils/ticketTransitions';
+import { formatApiError } from '@/utils/apiError';
 import { confirm } from '@/stores/confirmStore';
 import type { Ticket, TicketStatus, TicketDevice } from '@bizarre-crm/shared';
 
@@ -79,17 +80,22 @@ function HeaderStatusDropdown({
               const verdict = evaluateTicketTransition(currentStatus, s);
               const isForbidden = verdict.kind === 'forbidden';
               // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
+              // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
               const handleClick = async () => {
-                if (isForbidden) {
-                  toast.error(verdict.reason);
-                  return;
+                try {
+                  if (isForbidden) {
+                    toast.error(verdict.reason);
+                    return;
+                  }
+                  if (verdict.kind === 'confirm') {
+                    const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
+                    if (!ok) return;
+                  }
+                  onSelect(s.id);
+                  setOpen(false);
+                } catch (err) {
+                  toast.error(formatApiError(err));
                 }
-                if (verdict.kind === 'confirm') {
-                  const ok = await confirm(verdict.reason, { title: 'Confirm status change', danger: true });
-                  if (!ok) return;
-                }
-                onSelect(s.id);
-                setOpen(false);
               };
               return (
                 <button

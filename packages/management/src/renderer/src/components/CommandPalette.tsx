@@ -124,9 +124,22 @@ export function CommandPalette() {
         id: 'act-logout', group: 'Actions', label: 'Log out',
         icon: LogOut, keywords: 'sign out',
         onRun: async () => {
-          try { await getAPI().management.logout(); } catch { /* ignore — local logout still fires */ }
+          // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-053): clear renderer auth
+          // and navigate FIRST, then fire the IPC to drop the main-process
+          // token. Previously the IPC `await` blocked the redirect; if the
+          // main process was hung (e.g. health-check timeout, busy stats poll)
+          // the operator stayed on the authenticated UI after clicking logout.
+          // Doing local-first guarantees the user lands on /login immediately
+          // — the main-process token still gets cleared because the IPC fires
+          // unconditionally; we just no longer block on it.
           logout();
           navigate('/login', { replace: true });
+          // Fire-and-forget the main-process token drop. If it rejects (e.g.
+          // bridge gone during HMR teardown), the local logout already
+          // sanitised the renderer.
+          void (async () => {
+            try { await getAPI().management.logout(); } catch { /* ignore — local logout already fired */ }
+          })();
         },
       },
       {
