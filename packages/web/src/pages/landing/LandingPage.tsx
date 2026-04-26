@@ -208,7 +208,7 @@ export default function LandingPage() {
           overflow-x: hidden;
           -webkit-font-smoothing: antialiased;
         }
-        .display { font-family: 'Bebas Neue', 'Impact', 'Arial Narrow', sans-serif; letter-spacing: 2px; }
+        .display { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; letter-spacing: -0.01em; font-weight: 800; }
         .heading { font-family: 'League Spartan', sans-serif; font-weight: 600; }
 
         /* Animations */

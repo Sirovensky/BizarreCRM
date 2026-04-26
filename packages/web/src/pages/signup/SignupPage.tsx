@@ -282,7 +282,7 @@ export function SignupPage() {
       <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Roboto', sans-serif" }}>
         <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2709;&#xFE0F;</div>
-          <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
+          <h2 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
           <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
             {success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`}
           </p>
@@ -308,9 +308,9 @@ export function SignupPage() {
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Link to="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
-            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 32, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
+            <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 32, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
           </Link>
-          <h1 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 40, color: '#0891B2', letterSpacing: 2, marginTop: 8, marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 40, color: '#0891B2', letterSpacing: 2, marginTop: 8, marginBottom: 4 }}>
             Create Your Shop
           </h1>
           <p style={{ color: '#666', fontSize: 15 }}>Free to start. No credit card required.</p>
