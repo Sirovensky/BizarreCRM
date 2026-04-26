@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Ticket, DollarSign, CheckCircle2, Clock,
+  LayoutDashboard, Ticket, DollarSign, Clock,
   Activity, ShoppingCart, AlertTriangle, ExternalLink, Package,
   Plus, ArrowRight, Loader2, Info, Download, TrendingUp,
   Receipt, BadgeDollarSign, CreditCard, Wallet, FileText,
@@ -447,70 +447,6 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
             )
           ))}
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Quick Actions ────────────────────────────────────────────────────────────
-
-function QuickActions() {
-  const navigate = useNavigate();
-
-  // Fetch SMS unread count
-  const { data: smsData } = useQuery({
-    queryKey: ['sms-conversations-unread'],
-    queryFn: () => smsApi.conversations(),
-    refetchInterval: 60_000,
-    refetchIntervalInBackground: false,
-  });
-  const smsUnread = useMemo(() => {
-    const raw = smsData?.data?.data;
-    const convos: any[] = Array.isArray(raw) ? raw : (raw?.conversations ?? []);
-    return convos.reduce((sum: number, c: any) => sum + (c.unread_count ?? 0), 0);
-  }, [smsData]);
-
-  // Fetch parts to order count
-  const { data: queueData } = useQuery({
-    queryKey: ['order-queue-summary'],
-    queryFn: () => catalogApi.getOrderQueueSummary(),
-    refetchInterval: 120_000,
-    refetchIntervalInBackground: false,
-  });
-  const partsCount = queueData?.data?.data?.total_items ?? 0;
-
-  const actions: { label: string; path: string; icon: typeof Plus; bg: string; hover: string; count: number }[] = [
-    { label: 'New Check-in', path: '/pos', icon: Plus, bg: '#22c55e', hover: '#16a34a', count: 0 },
-    { label: 'New Customer', path: '/customers/new', icon: Activity, bg: '#3b82f6', hover: '#2563eb', count: 0 },
-    { label: 'Unread Messages', path: '/communications', icon: CheckCircle2, bg: '#a855f7', hover: '#9333ea', count: smsUnread },
-    { label: 'Parts to Order', path: '/catalog', icon: DollarSign, bg: '#f59e0b', hover: '#d97706', count: partsCount },
-  ];
-  return (
-    <div className="card p-4 mb-4">
-      <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">Quick Actions</h2>
-      <div className="grid grid-cols-2 gap-2">
-        {actions.map((a) => {
-          const Icon = a.icon;
-          return (
-            <button
-              key={a.label}
-              type="button"
-              onClick={() => navigate(a.path)}
-              style={{ backgroundColor: a.bg }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = a.hover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = a.bg; }}
-              className="text-white rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer relative z-10"
-            >
-              <Icon className="h-4 w-4 pointer-events-none" />
-              <span className="pointer-events-none">{a.label}</span>
-              {a.count > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-white/25 text-white text-xs font-bold pointer-events-none">
-                  {a.count > 99 ? '99+' : a.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
@@ -1046,10 +982,6 @@ function TechDashboard({ userId }: { userId: number }) {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="mt-4">
-        <QuickActions />
-      </div>
     </div>
   );
 }
@@ -1070,8 +1002,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'team-workload', label: 'Team Workload', visible: true, order: 1 },
   { id: 'needs-attention', label: 'Needs Attention', visible: true, order: 2 },
   { id: 'kpi-cards', label: 'KPI Summary Cards', visible: true, order: 3 },
-  { id: 'quick-actions', label: 'Quick Actions', visible: true, order: 4 },
-  { id: 'sales-by-type', label: 'Sales By Item Type', visible: true, order: 5 },
+  { id: 'sales-by-type', label: 'Sales By Item Type', visible: true, order: 4 },
   { id: 'tickets-and-sales', label: 'Recent Tickets & Daily Sales', visible: true, order: 6 },
   { id: 'missing-parts', label: 'Missing Parts', visible: true, order: 7 },
   { id: 'appointments', label: "Today's Appointments", visible: true, order: 8 },
@@ -1822,7 +1753,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/customers/new')}
             className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <Plus className="h-4 w-4" />
             </div>
             <div>
@@ -1974,9 +1905,6 @@ function AdminOrManagerDashboard() {
               </div>
             );
           }
-
-          case 'quick-actions':
-            return <QuickActions key={w.id} />;
 
           case 'sales-by-type': {
             if (!showFinancials || !kpis) return null;
