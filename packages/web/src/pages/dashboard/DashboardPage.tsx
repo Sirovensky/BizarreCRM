@@ -1,4 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip,
+  ResponsiveContainer, BarChart, Bar,
+} from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -447,6 +451,164 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
             )
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Metric Chart ─────────────────────────────────────────────────────────────
+
+type ChartMetric = 'sale' | 'net_profit' | 'cogs' | 'tax' | 'margin';
+type ChartMode = 'area' | 'bar';
+
+const METRIC_OPTIONS: { key: ChartMetric; label: string; currency: boolean }[] = [
+  { key: 'sale',       label: 'Revenue',    currency: true  },
+  { key: 'net_profit', label: 'Net Profit', currency: true  },
+  { key: 'cogs',       label: 'COGS',       currency: true  },
+  { key: 'tax',        label: 'Tax',        currency: true  },
+  { key: 'margin',     label: 'Margin %',   currency: false },
+];
+
+function DashboardMetricChart({
+  dailySales,
+  loading,
+}: {
+  dailySales: DashboardKpis['daily_sales'];
+  loading: boolean;
+}) {
+  const [metric, setMetric] = useState<ChartMetric>('sale');
+  const [mode, setMode] = useState<ChartMode>('area');
+  const isDark = document.documentElement.classList.contains('dark');
+
+  const metaForMetric = METRIC_OPTIONS.find((m) => m.key === metric)!;
+
+  const data = useMemo(
+    () =>
+      dailySales.map((d) => ({
+        date: d.date,
+        value: metric === 'margin' ? Math.round(d.margin * 10) / 10 : d[metric],
+        label: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      })),
+    [dailySales, metric],
+  );
+
+  const isEmpty = !loading && data.length === 0;
+
+  const stroke = '#d6a54b';
+  const fill   = '#fdeed0';
+
+  const formatTick = (v: number) =>
+    metaForMetric.currency
+      ? v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`
+      : `${v}%`;
+
+  const formatTooltipValue = (v: number) =>
+    metaForMetric.currency ? formatCurrency(v) : `${v}%`;
+
+  return (
+    <div className="card mb-4 p-4">
+      {/* Header row */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-1">
+          {METRIC_OPTIONS.map((m) => (
+            <button
+              key={m.key}
+              type="button"
+              onClick={() => setMetric(m.key)}
+              className={cn(
+                'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                metric === m.key
+                  ? 'bg-primary-600 text-primary-950'
+                  : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
+              )}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            title="Area chart"
+            onClick={() => setMode('area')}
+            className={cn(
+              'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+              mode === 'area'
+                ? 'bg-primary-600 text-primary-950'
+                : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
+            )}
+          >
+            Area
+          </button>
+          <button
+            type="button"
+            title="Bar chart"
+            onClick={() => setMode('bar')}
+            className={cn(
+              'rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors',
+              mode === 'bar'
+                ? 'bg-primary-600 text-primary-950'
+                : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
+            )}
+          >
+            Bar
+          </button>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="h-52">
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+          </div>
+        ) : isEmpty ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-surface-400 dark:text-surface-600">
+            <TrendingUp className="h-8 w-8" />
+            <p className="text-sm">No data for this period</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            {mode === 'bar' ? (
+              <BarChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#27272a' : '#f4f4f5'} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
+                <YAxis tickFormatter={formatTick} tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} width={48} />
+                <RechartsTooltip
+                  formatter={(v: number) => [formatTooltipValue(v), metaForMetric.label]}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
+                  cursor={{ fill: 'rgba(214,165,75,0.08)' }}
+                />
+                <Bar dataKey="value" fill={stroke} radius={[4, 4, 0, 0]} maxBarSize={40} />
+              </BarChart>
+            ) : (
+              <AreaChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={fill}  stopOpacity={0.7} />
+                    <stop offset="95%" stopColor={fill}  stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? '#27272a' : '#f4f4f5'} vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
+                <YAxis tickFormatter={formatTick} tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} width={48} />
+                <RechartsTooltip
+                  formatter={(v: number) => [formatTooltipValue(v), metaForMetric.label]}
+                  contentStyle={{ borderRadius: 8, border: '1px solid #e4e4e7', fontSize: 12 }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={stroke}
+                  strokeWidth={2}
+                  fill="url(#chartFill)"
+                  dot={data.length <= 14 ? { r: 3, fill: stroke, strokeWidth: 0 } : false}
+                  activeDot={{ r: 5, fill: stroke, strokeWidth: 0 }}
+                />
+              </AreaChart>
+            )}
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -1819,6 +1981,14 @@ function AdminOrManagerDashboard() {
           </select>
         </div>
       </div>
+
+      {/* Metric chart — Revenue / Net Profit / COGS / Tax / Margin */}
+      {showFinancials && (
+        <DashboardMetricChart
+          dailySales={kpis?.daily_sales ?? []}
+          loading={kpiLoading}
+        />
+      )}
 
       {/* Widgets rendered in user-configured order */}
       {widgetConfig.map((w) => {
