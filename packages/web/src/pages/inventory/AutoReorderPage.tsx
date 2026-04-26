@@ -224,7 +224,7 @@ export function AutoReorderPage() {
           <button
             onClick={() => upsertMut.mutate()}
             disabled={!itemId || !minQty || !reorderQty || upsertMut.isPending}
-            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className="mt-3 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50"
           >
             Save
           </button>

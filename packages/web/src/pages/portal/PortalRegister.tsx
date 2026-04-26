@@ -100,7 +100,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
             {(['phone', 'code', 'pin'] as Step[]).map((s, i) => (
               <div key={s} className="flex items-center gap-2">
                 <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${
-                  step === s ? 'bg-primary-600 text-white' :
+                  step === s ? 'bg-primary-600 text-primary-950' :
                   (['phone', 'code', 'pin'].indexOf(step) > i) ? 'bg-green-500 text-white' :
                   'bg-surface-200 dark:bg-surface-700 text-surface-500 dark:text-surface-400'
                 }`}>
@@ -138,7 +138,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Sending...' : 'Send Verification Code'}
               </button>
@@ -164,7 +164,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               </div>
               <button
                 type="submit"
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors"
               >
                 Verify Code
               </button>
@@ -212,7 +212,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Creating account...' : 'Create Account'}
               </button>

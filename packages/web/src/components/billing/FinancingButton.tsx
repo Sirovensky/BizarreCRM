@@ -70,7 +70,7 @@ export function FinancingButton({
       <button
         type="button"
         onClick={handleClick}
-        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700"
+        className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700"
       >
         Pay over time with {providerLabel}
       </button>

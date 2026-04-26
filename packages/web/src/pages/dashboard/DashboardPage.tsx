@@ -1195,7 +1195,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
             </button>
             <button
               onClick={() => onSave(draft)}
-              className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 font-medium"
+              className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 font-medium"
             >
               Save
             </button>
@@ -1808,7 +1808,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/pos')}
             className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <ShoppingCart className="h-4 w-4" />
             </div>
             <div>
@@ -1866,7 +1866,7 @@ function AdminOrManagerDashboard() {
                 className={cn(
                   'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
                   datePreset === dp.key
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
                 )}
               >

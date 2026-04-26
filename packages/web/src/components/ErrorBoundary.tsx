@@ -43,7 +43,7 @@ export class ErrorBoundary extends Component<Props, State> {
             <p className="text-sm text-surface-500 mb-4">This page encountered an error. Your data is safe.</p>
             <div className="flex gap-2 justify-center">
               <button onClick={() => window.location.reload()}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700">
+                className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700">
                 Reload Page
               </button>
               <button

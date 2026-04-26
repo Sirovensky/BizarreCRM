@@ -230,7 +230,7 @@ function DeviceEditForm({
           Cancel
         </button>
         <button onClick={() => onSave(form)} disabled={isPending}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50">
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save
         </button>
@@ -587,7 +587,7 @@ function PartsSearchModal({
                             quickAddMut.mutate({ name: qaName.trim(), price: Number(qaPrice), quantity: Math.max(1, parseInt(qaQty) || 1) });
                           }}
                           disabled={quickAddMut.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors disabled:opacity-50"
                         >
                           {quickAddMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                           Add to Ticket

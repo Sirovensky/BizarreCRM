@@ -569,7 +569,7 @@ export function CustomerListPage() {
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
           </button>
-          <Link to="/customers/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm">
+          <Link to="/customers/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm">
             <Plus className="h-4 w-4" /> New Customer
           </Link>
         </div>
@@ -629,7 +629,7 @@ export function CustomerListPage() {
             </select>
           </div>
           <div className="col-span-full flex gap-2 mt-1">
-            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-white hover:bg-primary-700 transition-colors">Apply</button>
+            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 transition-colors">Apply</button>
             <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Clear</button>
           </div>
         </div>
@@ -664,7 +664,7 @@ export function CustomerListPage() {
                 <button
                   onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
                   disabled={!tagValue.trim() || bulkTagMut.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkTagMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Apply
@@ -862,7 +862,7 @@ export function CustomerListPage() {
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">Cancel</button>
               <button onClick={() => importMutation.mutate(importPreview)} disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} customers
               </button>
@@ -1016,7 +1016,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
       <div className="mt-4 flex items-center gap-3">
         <Link
           to="/customers/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
         >
           <Plus className="h-4 w-4" /> Add your first customer
         </Link>

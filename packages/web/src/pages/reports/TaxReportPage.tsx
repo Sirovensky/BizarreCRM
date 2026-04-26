@@ -103,7 +103,7 @@ export function TaxReportPage() {
       <button
         type="button"
         onClick={openReport}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 transition-colors"
       >
         <Download size={16} /> Generate Tax Report
       </button>

@@ -242,7 +242,7 @@ export function DeviceTemplatesPage() {
         </div>
         <button
           onClick={() => setEditing({ ...EMPTY_FORM })}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> New template
         </button>
@@ -549,7 +549,7 @@ export function DeviceTemplatesPage() {
               <button
                 onClick={() => saveMut.mutate(editing)}
                 disabled={!editing.name || saveMut.isPending}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
               >
                 {saveMut.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

@@ -194,7 +194,7 @@ export function StocktakePage() {
         </div>
         <button
           onClick={() => setShowNew(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> New Stocktake
         </button>
@@ -221,7 +221,7 @@ export function StocktakePage() {
             <button
               onClick={() => createMut.mutate({ name: newName, location: newLocation })}
               disabled={!newName.trim() || createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Open
             </button>
@@ -326,7 +326,7 @@ export function StocktakePage() {
                     />
                     <button
                       type="submit"
-                      className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white"
+                      className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950"
                     >
                       Count
                     </button>

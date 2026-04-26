@@ -108,7 +108,7 @@ export function DeviceTemplatePicker({
         {!open && (
           <button
             onClick={() => setOpen(true)}
-            className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-primary-700"
+            className="rounded-lg bg-primary-600 px-2.5 py-1 text-xs font-semibold text-primary-950 hover:bg-primary-700"
           >
             Browse
           </button>
@@ -170,7 +170,7 @@ export function DeviceTemplatePicker({
                     <button
                       onClick={() => applyMut.mutate(t.id)}
                       disabled={applyMut.isPending}
-                      className="flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                      className="flex shrink-0 items-center gap-1 rounded-lg bg-primary-600 px-2 py-1 text-[11px] font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
                     >
                       <Check className="h-3 w-3" /> Apply
                     </button>

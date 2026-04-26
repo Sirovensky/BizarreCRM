@@ -100,7 +100,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryStat
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700"
+            className="rounded-lg bg-primary-600 px-6 py-2.5 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
           >
             Reload Page
           </button>

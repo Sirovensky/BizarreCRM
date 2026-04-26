@@ -207,7 +207,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <button
               onClick={() => previewMut.mutate()}
               disabled={!templateId || previewMut.isPending}
-              className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
             >
               {previewMut.isPending ? 'Previewing…' : 'Preview'}
             </button>

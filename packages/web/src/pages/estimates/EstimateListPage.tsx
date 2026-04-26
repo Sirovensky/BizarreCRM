@@ -329,7 +329,7 @@ function CreateEstimateModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Estimate
@@ -447,7 +447,7 @@ export function EstimateListPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" />
           New Estimate
@@ -732,7 +732,7 @@ export function EstimateListPage() {
                     className={cn(
                       'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-primary-950'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
                   >

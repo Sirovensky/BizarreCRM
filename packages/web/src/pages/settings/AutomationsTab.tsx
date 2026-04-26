@@ -488,7 +488,7 @@ function AutomationModal({
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {rule ? 'Update Rule' : 'Create Rule'}
@@ -693,7 +693,7 @@ export function AutomationsTab() {
         </div>
         <button
           onClick={() => { setEditingRule(null); setShowModal(true); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> New Rule
         </button>
@@ -710,7 +710,7 @@ export function AutomationsTab() {
             </p>
             <button
               onClick={() => { setEditingRule(null); setShowModal(true); }}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-4 w-4" /> Create First Rule
             </button>

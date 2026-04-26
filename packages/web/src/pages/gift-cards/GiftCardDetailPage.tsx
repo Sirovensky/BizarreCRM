@@ -143,7 +143,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           <button
             onClick={() => reloadMutation.mutate()}
             disabled={reloadMutation.isPending || !amount}
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
           >
             {reloadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Reload

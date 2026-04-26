@@ -110,7 +110,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60 transition-colors"
+              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Continue'}
             </button>
@@ -134,7 +134,7 @@ function SuperAdminLoginForm({ onSuccess }: LoginFormProps) {
             <button
               type="submit"
               disabled={submitting || code.length !== 6}
-              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-60 transition-colors"
+              className="w-full rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
             >
               {submitting ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Verify'}
             </button>

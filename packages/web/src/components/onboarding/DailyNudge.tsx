@@ -116,7 +116,7 @@ export function DailyNudge({ preloadedState }: DailyNudgeProps) {
       <button
         type="button"
         onClick={handleCta}
-        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-primary-700"
+        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-primary-950 transition-colors hover:bg-primary-700"
       >
         {nudge.ctaLabel}
         <ArrowRight className="h-3 w-3" />

@@ -170,7 +170,7 @@ export function PerformanceReviewsPage() {
                 onChange={(e) => setDraftNotes(e.target.value)}
               />
               <button
-                className="mt-2 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
+                className="mt-2 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
                 disabled={!draftNotes.trim() || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

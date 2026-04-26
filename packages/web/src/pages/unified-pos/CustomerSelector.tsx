@@ -259,7 +259,7 @@ export function CustomerSelector({ onNewCustomer, inline = false }: CustomerSele
           <button
             type="button"
             onClick={onNewCustomer}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 active:bg-primary-800"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 active:bg-primary-800"
           >
             <UserPlus className="h-4 w-4" />
             New Customer

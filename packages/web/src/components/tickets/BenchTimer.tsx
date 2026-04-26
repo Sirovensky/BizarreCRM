@@ -194,7 +194,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
         <button
           onClick={() => startMut.mutate()}
           disabled={startMut.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
         >
           <Play className="h-4 w-4" />
           Start work

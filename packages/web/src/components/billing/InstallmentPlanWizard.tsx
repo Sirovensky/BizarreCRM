@@ -187,7 +187,7 @@ export function InstallmentPlanWizard({
         <button
           type="button"
           disabled={!acceptanceReady}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={handleSubmit}
         >
           Create plan
