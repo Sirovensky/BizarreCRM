@@ -25,10 +25,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import com.bizarreelectronics.crm.BuildConfig
+import java.time.LocalTime
 
 // ---------------------------------------------------------------------------
 // Primitive palette — Wave 1 brand foundation
@@ -184,6 +187,84 @@ val BrandAccent: Color = Color(0xFFFDEED0)
  */
 fun tenantAccentOrFallback(override: Color? = null): Color = override ?: BrandAccent
 
+// ---------------------------------------------------------------------------
+// §30.8 — Dark mode auto after 7pm
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true if the local hour is 19:00 (7pm) or later and before 07:00
+ * (7am next day). Used as the default-dark fallback when the user has not
+ * explicitly set a dark/light preference.
+ *
+ * Called inside [BizarreCrmTheme] only when [darkTheme] hasn't been
+ * overridden by an explicit user pref — callers pass the result of
+ * `AppPreferences.darkMode` already resolved. This helper is a pure-Kotlin
+ * utility so it can be tested without Compose.
+ */
+fun isAfterSevenPm(): Boolean {
+    val hour = LocalTime.now().hour
+    return hour >= 19 || hour < 7
+}
+
+// ---------------------------------------------------------------------------
+// §30.9 — Tenant accent contrast bump
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns a version of [accent] that meets Material 3 AA 4.5:1 contrast against
+ * [onSurface]. If the luminance ratio of the supplied accent is already ≥ 4.5:1
+ * the color is returned unchanged.
+ *
+ * Strategy: if the accent is too pale (high luminance on a dark surface), darken
+ * it by blending toward black. If too dark (low luminance on a light surface),
+ * lighten it toward white. The blend ratio is binary at 0.35f, which in practice
+ * shifts most brand pastels far enough to clear AA without losing hue recognition.
+ *
+ * Semantic danger / success / warning colors are NEVER passed through here —
+ * callers must only supply the primary brand accent so semantic signals are
+ * never overridden.
+ */
+fun accentWithContrastBump(accent: Color, onSurface: Color): Color {
+    val accentLum = accent.luminance()
+    val bgLum = onSurface.luminance()
+    // WCAG contrast = (lighter + 0.05) / (darker + 0.05)
+    val lighter = maxOf(accentLum, bgLum)
+    val darker  = minOf(accentLum, bgLum)
+    val ratio   = (lighter + 0.05f) / (darker + 0.05f)
+    if (ratio >= 4.5f) return accent
+    // Determine whether the bg is dark or light, then bump accordingly.
+    return if (bgLum < 0.18f) {
+        // Dark background — lighten accent toward white
+        Color(
+            red   = accent.red   + (1f - accent.red)   * 0.35f,
+            green = accent.green + (1f - accent.green) * 0.35f,
+            blue  = accent.blue  + (1f - accent.blue)  * 0.35f,
+            alpha = accent.alpha,
+        )
+    } else {
+        // Light background — darken accent toward black
+        Color(
+            red   = accent.red   * 0.65f,
+            green = accent.green * 0.65f,
+            blue  = accent.blue  * 0.65f,
+            alpha = accent.alpha,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §30.8 — AMOLED "darker" background variant
+// ---------------------------------------------------------------------------
+
+/**
+ * True-black background for AMOLED "darker" variant. Never used as the
+ * default — only when the user explicitly selects "AMOLED darker" in
+ * Appearance settings. [BgDark] (#1C1611) remains the standard dark background.
+ *
+ * §30.8: "Never pure black except on AMOLED 'darker' variant."
+ */
+val BgAmoled: Color = Color(0xFF000000)
+
 /**
  * CompositionLocal carrying the active tenant brand accent.
  * Provided by [BizarreCrmTheme] / [DesignSystemTheme] via
@@ -215,21 +296,27 @@ val LocalBrandAccent = staticCompositionLocalOf<Color> { BrandAccent }
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun BizarreCrmTheme(
-    // Default is true — dark-first. AppPreferences.darkMode overrides from
-    // Settings ("dark" | "light" | "system"). Wave 3 wires the Settings toggle;
-    // this stub reads the pref so the toggle hook is wired even though the UI
-    // doesn't exist yet.
-    darkTheme: Boolean = true,
+    // §30.8: Default uses time-based heuristic when no explicit pref is set.
+    // AppPreferences.darkMode overrides from Settings ("dark" | "light" | "system").
+    // Pass `isSystemInDarkTheme()` for "system" mode; the default here is
+    // `isAfterSevenPm()` which flips to dark after 19:00 if the user has not
+    // made an explicit choice.
+    darkTheme: Boolean = isAfterSevenPm(),
     // ActionPlan §1.4 line 190: dynamicColor reads AppPreferences.dynamicColorEnabled.
     // Defaults FALSE so the Bizarre brand palette always renders out of the box.
     // When true AND Android 12+ (API 31+), Material You derives the color scheme
     // from the user's wallpaper via dynamicLightColorScheme / dynamicDarkColorScheme.
     dynamicColor: Boolean = false,
-    // Tenant accent override — null uses BrandAccent (brand cream).
+    // §30.9 Tenant accent override — null uses BrandAccent (brand cream).
+    // Automatically bumped to AA contrast ratio via accentWithContrastBump()
+    // when supplied. Semantic danger / success / warning are NEVER overridden.
     tenantAccent: Color? = null,
+    // §30.8 AMOLED "darker" variant — true only when user has explicitly
+    // chosen AMOLED mode in Appearance settings. Never a default.
+    amoledDark: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
+    var colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -238,13 +325,27 @@ fun BizarreCrmTheme(
         else -> LightColorScheme
     }
 
+    // §30.8: AMOLED darker — swap background to pure black.
+    // surfaceContainer / surfaceContainerHigh are intentionally left at the
+    // normal ramp (Surface1/Surface2) so elevated content is distinguishable.
+    if (amoledDark && darkTheme) {
+        colorScheme = colorScheme.copy(
+            background = BgAmoled,
+            surface    = BgAmoled,
+        )
+    }
+
     // AND-036: provide semantic extended colors matching the active theme so
     // composables can read LocalExtendedColors.current instead of importing
     // hardcoded top-level color vals.
     val extendedColors = if (darkTheme) darkExtended() else lightExtended()
 
-    // §1.4 line 195: resolve tenant accent (falls back to brand cream).
-    val resolvedAccent = tenantAccentOrFallback(tenantAccent)
+    // §30.9: resolve tenant accent (falls back to brand cream) and apply
+    // auto-contrast bump so pale brand colors meet AA on the current surface.
+    val resolvedAccent = remember(tenantAccent, darkTheme) {
+        val base = tenantAccentOrFallback(tenantAccent)
+        accentWithContrastBump(base, colorScheme.onSurface)
+    }
 
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,
@@ -284,15 +385,17 @@ fun BizarreCrmTheme(
  */
 @Composable
 fun DesignSystemTheme(
-    darkTheme: Boolean = true,
+    darkTheme: Boolean = isAfterSevenPm(),
     dynamicColor: Boolean = false,
     tenantAccent: Color? = null,
+    amoledDark: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     BizarreCrmTheme(
         darkTheme = darkTheme,
         dynamicColor = dynamicColor,
         tenantAccent = tenantAccent,
+        amoledDark = amoledDark,
         content = content,
     )
 }

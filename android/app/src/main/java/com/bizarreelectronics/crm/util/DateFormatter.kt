@@ -29,6 +29,9 @@ object DateFormatter {
     private val isoParserT = DateTimeFormatter.ISO_LOCAL_DATE_TIME // handles "2026-04-04T17:30:00"
 
     // CROSS46 canonical formats.
+    // §27.3: pattern uses Locale.getDefault() so it adapts when the per-app
+    // language changes (LanguageManager triggers an activity recreate, so
+    // the next recomposition picks up the new default locale automatically).
     private val absoluteFormat: DateTimeFormatter
         get() = DateTimeFormatter.ofPattern("LLLL d, yyyy", Locale.getDefault())
 
@@ -56,11 +59,17 @@ object DateFormatter {
      * Pattern `LLLL d, yyyy` with locale default. Used wherever a specific
      * date must be displayed (dashboard header line, appointment detail,
      * backup timestamp, etc.).
+     *
+     * §27.3: pass [timezoneOverride] (from [AppPreferences.timezoneOverride])
+     * to respect the user's in-app timezone override. Null → device default.
      */
-    fun formatAbsolute(timestampMs: Long): String {
+    fun formatAbsolute(timestampMs: Long, timezoneOverride: String? = null): String {
         if (timestampMs <= 0L) return ""
+        val zone = timezoneOverride?.let {
+            runCatching { ZoneId.of(it) }.getOrElse { ZoneId.systemDefault() }
+        } ?: ZoneId.systemDefault()
         return Instant.ofEpochMilli(timestampMs)
-            .atZone(ZoneId.systemDefault())
+            .atZone(zone)
             .toLocalDateTime()
             .format(absoluteFormat)
     }
@@ -86,11 +95,17 @@ object DateFormatter {
      *
      * Call together when both date and time must render on separate lines
      * (e.g. Settings "Last backup: April 16, 2026 at 9:17 PM").
+     *
+     * §27.3: pass [timezoneOverride] (from [AppPreferences.timezoneOverride])
+     * to respect the user's in-app timezone override. Null → device default.
      */
-    fun formatTimeOfDay(timestampMs: Long): String {
+    fun formatTimeOfDay(timestampMs: Long, timezoneOverride: String? = null): String {
         if (timestampMs <= 0L) return ""
+        val zone = timezoneOverride?.let {
+            runCatching { ZoneId.of(it) }.getOrElse { ZoneId.systemDefault() }
+        } ?: ZoneId.systemDefault()
         return Instant.ofEpochMilli(timestampMs)
-            .atZone(ZoneId.systemDefault())
+            .atZone(zone)
             .toLocalDateTime()
             .format(displayTime)
     }

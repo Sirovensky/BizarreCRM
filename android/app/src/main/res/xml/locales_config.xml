@@ -6,9 +6,26 @@
     Adding a locale here does NOT require translated string resources — the app
     falls back to "en" (the authoritative locale) via normal Android locale
     resolution when no translated strings are present for a given locale.
+
+    Phase-1 locales (§27.2): en, es (+ region variants), fr (+ fr-CA).
+    Phase-2 locales (§27.2): pt-BR, de-DE, hi-IN — stubs present, not translated.
 -->
 <locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Phase-1: authoritative (English) -->
     <locale android:name="en" />
+    <locale android:name="en-US" />
+
+    <!-- Phase-1: Spanish -->
     <locale android:name="es" />
+    <locale android:name="es-US" />
+    <locale android:name="es-MX" />
+
+    <!-- Phase-1: French -->
     <locale android:name="fr" />
+    <locale android:name="fr-CA" />
+
+    <!-- Phase-2 stubs (untranslated; fall back to en until translator populates) -->
+    <locale android:name="pt-BR" />
+    <locale android:name="de" />
+    <locale android:name="hi" />
 </locale-config>

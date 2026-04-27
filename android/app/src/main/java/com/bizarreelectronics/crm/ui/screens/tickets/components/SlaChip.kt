@@ -7,6 +7,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.util.SlaCalculator.SlaTier
@@ -34,8 +36,17 @@ fun SlaChip(
     modifier: Modifier = Modifier,
 ) {
     val (container, text) = slaChipColors(tier)
+    // §26.1 — announce the SLA tier alongside the label so blind users hear
+    // "SLA remaining: Overdue" rather than colour-coded "Overdue" which loses
+    // the urgency tier context.
+    val tierLabel = when (tier) {
+        SlaTier.Green -> "on track"
+        SlaTier.Amber -> "approaching deadline"
+        SlaTier.Red   -> "breached"
+    }
+    val a11yLabel = "SLA $tierLabel: $label"
     Surface(
-        modifier = modifier,
+        modifier = modifier.clearAndSetSemantics { contentDescription = a11yLabel },
         shape = MaterialTheme.shapes.small,
         color = container,
     ) {

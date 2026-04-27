@@ -49,7 +49,7 @@
     <string name="banner_rate_limit">Slow down — too many requests queued.</string>
 
     <!-- Process-death restore hint (§1.8) -->
-    <string name="restored_search_query">Search restored: “%1$s”</string>
+    <string name="restored_search_query">Search restored: "%1$s"</string>
 
     <!-- Ticket list / detail labels -->
     <string name="tickets_empty_title">No tickets yet</string>
@@ -83,4 +83,139 @@
     <string name="settings_section_notifications">Notifications</string>
     <string name="settings_section_advanced">Advanced</string>
     <string name="settings_section_diagnostics">Diagnostics</string>
+
+    <!-- §27 — Language &amp; Region screen strings -->
+    <string name="settings_language_title">Language &amp; Region</string>
+    <string name="settings_language_picker_label">App language</string>
+    <string name="settings_language_system_default">System default</string>
+    <string name="settings_timezone_label">Timezone override</string>
+    <string name="settings_timezone_device_default">Device default</string>
+    <string name="settings_currency_label">Currency</string>
+    <string name="settings_currency_locale_default">Locale default</string>
+
+    <!-- §27.5 — Glossary defaults (tenant can override via GET /settings/glossary;
+         these strings are the fallback used when the app is offline or the server
+         has not configured custom terminology). -->
+    <string name="glossary_ticket">Ticket</string>
+    <string name="glossary_ticket_plural">Tickets</string>
+    <string name="glossary_customer">Customer</string>
+    <string name="glossary_customer_plural">Customers</string>
+    <string name="glossary_work_order">Work Order</string>
+
+    <!-- Clock-in QS tile label (§24.4) — kept here rather than hard-coded in tile -->
+    <string name="tile_clock_in_label">Clock In/Out</string>
+
+    <!-- §27.2 — Plurals (quantity strings).
+         Usage: resources.getQuantityString(R.plurals.ticket_count, n, n)
+         Rules follow CLDR. Add per-locale quantity rules (zero/one/two/few/many/other)
+         in the matching values-{lang}/strings.xml scaffold files. -->
+
+    <!-- Pending sync change count — preferred plural replacement for banner_pending_sync. -->
+    <plurals name="pending_sync_count">
+        <item quantity="one">%1$d change pending sync</item>
+        <item quantity="other">%1$d changes pending sync</item>
+    </plurals>
+
+    <!-- Generic ticket counter -->
+    <plurals name="ticket_count">
+        <item quantity="one">%1$d ticket</item>
+        <item quantity="other">%1$d tickets</item>
+    </plurals>
+
+    <!-- Generic item counter (inventory, search hits, etc.) -->
+    <plurals name="item_count">
+        <item quantity="one">%1$d item</item>
+        <item quantity="other">%1$d items</item>
+    </plurals>
+
+    <!-- Relative-time fallback counters (used when DateUtils is unavailable) -->
+    <plurals name="day_count_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+
+    <plurals name="hour_count_ago">
+        <item quantity="one">%1$d hour ago</item>
+        <item quantity="other">%1$d hours ago</item>
+    </plurals>
+
+    <plurals name="minute_count_ago">
+        <item quantity="one">%1$d minute ago</item>
+        <item quantity="other">%1$d minutes ago</item>
+    </plurals>
+
+    <!-- §26.9 — Accessibility content descriptions (a11y_* namespace).
+         All TalkBack-facing strings live here so they can be reviewed by copy
+         editors and translated alongside display strings. DO NOT use raw string
+         literals for a11y descriptions in Kotlin — always refer to R.string.a11y_*. -->
+
+    <!-- Navigation icons -->
+    <string name="a11y_nav_back">Back</string>
+    <string name="a11y_nav_close">Close</string>
+    <string name="a11y_nav_menu">Open navigation menu</string>
+
+    <!-- Common action icons -->
+    <string name="a11y_action_refresh">Refresh</string>
+    <string name="a11y_action_search">Search</string>
+    <string name="a11y_action_search_clear">Clear search</string>
+    <string name="a11y_action_filter">Filter</string>
+    <string name="a11y_action_sort">Sort</string>
+    <string name="a11y_action_more_options">More options</string>
+    <string name="a11y_action_create">Create new</string>
+    <string name="a11y_action_edit">Edit</string>
+    <string name="a11y_action_delete">Delete</string>
+    <string name="a11y_action_share">Share</string>
+    <string name="a11y_action_print">Print</string>
+
+    <!-- Customer / ticket entity descriptions -->
+    <string name="a11y_customer_avatar">Customer avatar: %1$s</string>
+    <string name="a11y_ticket_status">Ticket status: %1$s</string>
+    <string name="a11y_sla_remaining">SLA remaining: %1$s</string>
+
+    <!-- Sync status badge -->
+    <string name="a11y_sync_syncing">Syncing in progress</string>
+    <string name="a11y_sync_pending">%1$d changes pending sync. Tap to view issues.</string>
+    <string name="a11y_sync_offline">Offline — no server connection</string>
+    <string name="a11y_sync_done">Synced %1$s ago</string>
+
+    <!-- PIN keypad -->
+    <string name="a11y_pin_digit_entered">%1$d of %2$d digits entered</string>
+    <string name="a11y_pin_wrong">Wrong PIN entered</string>
+    <string name="a11y_pin_locked">Too many wrong attempts. Locked for %1$s.</string>
+    <string name="a11y_pin_backspace">Backspace</string>
+
+    <!-- Toggle rows (state descriptions, used with toggleRowSemantics) -->
+    <string name="a11y_toggle_on">%1$s, on</string>
+    <string name="a11y_toggle_off">%1$s, off</string>
+
+    <!-- Dashboard FAB -->
+    <string name="a11y_fab_open">Open quick-action menu</string>
+    <string name="a11y_fab_close">Close quick-action menu</string>
+    <string name="a11y_fab_new_ticket">New ticket</string>
+    <string name="a11y_fab_new_customer">New customer</string>
+    <string name="a11y_fab_log_sale">Log sale</string>
+    <string name="a11y_fab_scan_barcode">Scan barcode</string>
+
+    <!-- Error surfaces -->
+    <string name="a11y_error_generic">Error: %1$s</string>
+    <string name="a11y_error_network">No connection — check your network and try again.</string>
+    <string name="a11y_error_auth">Your session expired. Please sign in again.</string>
+
+    <!-- Photo / image descriptions -->
+    <string name="a11y_photo_thumbnail">Device photo, tap to enlarge</string>
+    <string name="a11y_qr_code">QR code for ticket %1$s</string>
+
+    <!-- Signature pad -->
+    <string name="a11y_signature_pad">Signature area — draw your signature</string>
+    <string name="a11y_signature_clear">Clear signature</string>
+
+    <string name="widget_clock_in_description">Clock in or out directly from the home screen</string>
+    <string name="widget_low_stock_description">See how many inventory items are below reorder level</string>
+    <string name="widget_unread_sms_description">Count of unread SMS conversations</string>
+    <string name="shortcut_recent_customer_short">Recent customer</string>
+    <string name="shortcut_recent_customer_long">Open recent customer record</string>
+    <string name="shortcut_clock_in_short">Clock in</string>
+    <string name="shortcut_clock_in_long">Clock in or out of your shift</string>
+    <string name="shortcut_create_ticket_voice">Create ticket</string>
+    <string name="shortcut_clock_in_voice">Clock me in</string>
 </resources>

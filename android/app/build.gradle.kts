@@ -298,6 +298,12 @@ dependencies {
     // §28 L2532 — Play Integrity API (device attestation, non-blocking on non-GMS)
     implementation(libs.play.integrity)
 
+    // §29 — Profile Installer: ships baseline-prof.txt inside the APK so ART
+    // pre-compiles hot paths at install time (no Play cloud profile required).
+    // Must be in `implementation`, not `androidTestImplementation`, so the
+    // ProfileVerifier can be called from the production app if needed.
+    implementation(libs.androidx.profileinstaller)
+
     // Phase 4 — BlockChyp Android SDK decision:
     // BlockChyp does not publish a standalone Android AAR on Maven Central.
     // The Java SDK (com.blockchyp:blockchyp-java) is a pure-Java library that

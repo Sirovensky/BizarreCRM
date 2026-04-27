@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.LockScreenBlurHelper
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
@@ -401,6 +402,34 @@ class MainActivity : FragmentActivity() {
         if (shouldLockNow) {
             lockedState.value = true
         }
+    }
+
+    /**
+     * §28.3 — Lock-screen blur: apply Gaussian blur to the decorView when the
+     * app moves to the background so that the Recents thumbnail and the lock-screen
+     * "preview" (Android 12+ `View.setRenderEffect`) do not expose customer PII.
+     *
+     * [LockScreenBlurHelper.applyBlur] is a no-op on API < 31; FLAG_SECURE already
+     * prevents screenshots on those devices. On API 31+ the blur is applied before
+     * the system captures the Recents thumbnail, making PII illegible even when
+     * FLAG_SECURE is not enabled (e.g. debug builds with screen-capture allowed).
+     *
+     * The decorView is the root of the entire window tree — blurring it covers all
+     * Compose content including overlays. It is safe to call on the main thread from
+     * this lifecycle hook.
+     */
+    override fun onStop() {
+        super.onStop()
+        LockScreenBlurHelper.applyBlur(window.decorView)
+    }
+
+    /**
+     * §28.3 — Remove the lock-screen blur when the app returns to the foreground.
+     * [LockScreenBlurHelper.clearBlur] is a no-op on API < 31.
+     */
+    override fun onStart() {
+        super.onStart()
+        LockScreenBlurHelper.clearBlur(window.decorView)
     }
 
     /**

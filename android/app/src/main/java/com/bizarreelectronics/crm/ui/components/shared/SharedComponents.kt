@@ -21,6 +21,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.components.WaveDivider
@@ -112,6 +120,12 @@ fun brandStatusColor(status: String): Color {
  * On-brand status pill. Uses surfaceVariant bg + single-hue text colour from
  * the 5-hue discipline. Replaces the full-saturation [StatusBadge].
  *
+ * §26.3 — Pass [statusIcon] to ensure the badge conveys status via icon + text,
+ * not by colour alone (colour-blind safe). When non-null, the icon is rendered
+ * at 10dp before the label text and the parent Surface announces both via
+ * `clearAndSetSemantics { contentDescription = label }` so TalkBack reads the
+ * label once rather than icon + label separately.
+ *
  * Wave 3: migrate all [StatusBadge] call sites to this.
  */
 @Composable
@@ -119,6 +133,8 @@ fun BrandStatusBadge(
     label: String,
     tone: StatusTone,
     modifier: Modifier = Modifier,
+    /** §26.3 — optional status icon so the badge is not colour-only. */
+    statusIcon: ImageVector? = null,
 ) {
     val extColors = LocalExtendedColors.current
     val textColor: Color = when (tone) {
@@ -129,18 +145,33 @@ fun BrandStatusBadge(
         StatusTone.Error   -> MaterialTheme.colorScheme.error
         StatusTone.Muted   -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    // §26.3 — merge icon + label into a single accessible node so TalkBack
+    // announces "In Repair" not "icon In Repair".
     Surface(
-        modifier = modifier,
+        modifier = modifier.clearAndSetSemantics { contentDescription = label },
         shape = MaterialTheme.shapes.small,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
-        Text(
-            label,
+        Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = textColor,
-            fontWeight = FontWeight.Medium,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (statusIcon != null) {
+                Icon(
+                    imageVector = statusIcon,
+                    contentDescription = null, // §26.3 — merged via clearAndSetSemantics above
+                    tint = textColor,
+                    modifier = Modifier.size(10.dp),
+                )
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor,
+                fontWeight = FontWeight.Medium,
+            )
+        }
     }
 }
 
@@ -152,8 +183,9 @@ fun BrandStatusBadge(
     label: String,
     status: String,
     modifier: Modifier = Modifier,
+    statusIcon: ImageVector? = null,
 ) {
-    BrandStatusBadge(label = label, tone = statusToneFor(status), modifier = modifier)
+    BrandStatusBadge(label = label, tone = statusToneFor(status), modifier = modifier, statusIcon = statusIcon)
 }
 
 /**
@@ -420,6 +452,11 @@ fun ErrorState(message: String, onRetry: (() -> Unit)? = null) {
  * Confirm = purple primary; destructive confirm = error.
  * Cancel = teal TextButton.
  *
+ * §26.1 — Focus management: on dialog open, focus is automatically moved to
+ * the Confirm button via [FocusRequester]. This satisfies the "focus sets
+ * first-responder on screen open" requirement without relying on Material3's
+ * default traversal order (which varies across M3 versions).
+ *
  * Existing callers already pass [isDestructive] (param already present);
  * signature unchanged.
  */
@@ -432,6 +469,12 @@ fun ConfirmDialog(
     onDismiss: () -> Unit,
     isDestructive: Boolean = false,
 ) {
+    // §26.1 — move focus to Confirm button when the dialog enters composition.
+    val confirmFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        try { confirmFocusRequester.requestFocus() } catch (_: Exception) { /* safe to ignore */ }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -445,6 +488,7 @@ fun ConfirmDialog(
                 } else {
                     ButtonDefaults.buttonColors()
                 },
+                modifier = Modifier.focusRequester(confirmFocusRequester),
             ) {
                 Text(confirmLabel)
             }
@@ -525,3 +569,33 @@ fun SearchBar(
         ),
     )
 }
+
+// ---------------------------------------------------------------------------
+// §26.1 Accessibility — toggle-row stateDescription helper
+// ---------------------------------------------------------------------------
+
+/**
+ * §26.1 — Returns a [Modifier] that attaches [stateDescription] and [Role.Switch]
+ * semantics to a composable that acts as a toggle row (a Row with a label + Switch).
+ *
+ * Use on the clickable wrapper of any settings row that houses a [Switch] to ensure
+ * TalkBack announces "On / Off" after the label, and Switch Access maps the row
+ * correctly.
+ *
+ * ```kotlin
+ * Row(
+ *     modifier = Modifier
+ *         .fillMaxWidth()
+ *         .toggleRowSemantics("Keep screen on", checked = keepScreenOn)
+ *         .clickable { viewModel.toggle() },
+ * ) { … }
+ * ```
+ */
+fun Modifier.toggleRowSemantics(label: String, checked: Boolean): Modifier =
+    this.semantics(mergeDescendants = true) {
+        // §26.1 — stateDescription replaces the default "on" / "off" announcement
+        // with a phrase that includes the setting name so blind users never hear
+        // a context-free "Switch, off" when focus lands on the row.
+        stateDescription = if (checked) "$label, on" else "$label, off"
+        role = Role.Switch
+    }

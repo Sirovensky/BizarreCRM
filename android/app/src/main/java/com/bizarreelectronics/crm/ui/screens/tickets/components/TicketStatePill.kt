@@ -9,6 +9,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.toColorInt
@@ -61,7 +63,13 @@ fun TicketStatePill(
         shape = RoundedCornerShape(50),
         color = containerColor ?: MaterialTheme.colorScheme.secondaryContainer,
         contentColor = onContainerColor ?: MaterialTheme.colorScheme.onSecondaryContainer,
-        modifier = modifier,
+        // §26.1 — announce the status name as "Ticket status: <name>" so TalkBack
+        // users hear context even when focus lands directly on the chip rather than
+        // the parent list row. When the pill is inside a BrandListItem (mergeDescendants=true)
+        // the chip text is still read as part of the merged announcement.
+        modifier = modifier.clearAndSetSemantics {
+            contentDescription = "Ticket status: $statusName"
+        },
     ) {
         Text(
             text = statusName,

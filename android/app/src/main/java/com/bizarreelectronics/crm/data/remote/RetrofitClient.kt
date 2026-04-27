@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.data.remote
 
+import android.content.Context
 import android.util.Log
 import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -17,7 +18,9 @@ import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.Cache
 import okhttp3.CertificatePinner
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -25,6 +28,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.File
 import java.io.IOException
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -371,6 +375,43 @@ object RetrofitClient {
     private const val SYNC_WRITE_TIMEOUT_SECONDS = 60L
     private const val SYNC_CALL_TIMEOUT_SECONDS = 90L
 
+    // §29.6 — OkHttp disk cache for GET responses.
+    // Caches server responses that include Cache-Control headers (e.g., the
+    // server can set "max-age=30" on dashboard KPI GETs to absorb repeated
+    // pulls within the same session without a network round-trip).  Responses
+    // without Cache-Control are cached in "conditional" mode — the client
+    // sends an If-None-Match / If-Modified-Since revalidation and the server
+    // returns 304 Not Modified at minimal bandwidth cost.
+    //
+    // The sync client does NOT share this cache to avoid evicting fresh data
+    // loaded by a background sync before the UI reads it.
+    //
+    // 10 MB is intentionally modest.  The CRM mostly returns JSON; binary
+    // assets go through Coil's own 100 MB disk cache.  Raise if profiling
+    // shows frequent cache eviction of large responses.
+    private const val HTTP_CACHE_SIZE_BYTES = 10L * 1024 * 1024  // 10 MB
+    private const val HTTP_CACHE_DIR_NAME = "okhttp_cache"
+
+    /**
+     * §29.6 — OkHttp response cache.
+     *
+     * Stored in [Context.cacheDir]/okhttp_cache (10 MB cap).  The cache dir is
+     * in cacheDir (not noBackupFilesDir) because HTTP response bodies may be
+     * large but are always reconstructible from the server — no need to keep
+     * them out of Auto-Backup (they are excluded from backup by the OS default
+     * cache exclusion rule anyway).
+     *
+     * Injected only into the normal OkHttpClient; the sync client gets no cache
+     * so bulk sync pulls never pollute the per-screen response cache.
+     */
+    @Provides
+    @Singleton
+    fun provideOkHttpCache(@ApplicationContext context: Context): Cache =
+        Cache(
+            directory = File(context.cacheDir, HTTP_CACHE_DIR_NAME),
+            maxSize = HTTP_CACHE_SIZE_BYTES,
+        )
+
     @Provides
     @Singleton
     fun provideGson(): Gson = GsonBuilder()
@@ -461,6 +502,7 @@ object RetrofitClient {
         clockDriftInterceptor: ClockDriftInterceptor,
         retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
+        httpCache: Cache,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
@@ -473,6 +515,7 @@ object RetrofitClient {
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
         callTimeoutSeconds = NORMAL_CALL_TIMEOUT_SECONDS,
+        cache = httpCache,
     )
 
     /**
@@ -522,8 +565,10 @@ object RetrofitClient {
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
         callTimeoutSeconds: Long,
+        cache: Cache? = null,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .also { if (cache != null) it.cache(cache) }  // §29.6 — GET response cache
             .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(originHeaderInterceptor)
             .addInterceptor(authInterceptor)

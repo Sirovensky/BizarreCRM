@@ -3,25 +3,43 @@ package com.bizarreelectronics.crm.ui.theme
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 
 /**
- * Bizarre CRM motion tokens — ActionPlan §1.4 line 193.
+ * Bizarre CRM motion tokens — ActionPlan §30.4 / §1.4 line 193.
  *
- * Two spring presets cover the vast majority of UI transitions:
+ * ## Spring presets
  *
- *   [BizarreMotion.expressive] — bouncy, personality-driven. Use for
- *     high-delight moments: FAB entry, success checkmarks, onboarding steps.
- *     dampingRatio=0.6 (underdamped → slight overshoot) + StiffnessMediumLow
- *     (slower settle) gives a springy feel without being distracting.
+ * [BizarreMotion.expressive] — bouncy, personality-driven. Use for
+ *   high-delight moments: FAB entry, success checkmarks, onboarding steps.
+ *   dampingRatio=0.6 (underdamped → slight overshoot) + StiffnessMediumLow
+ *   gives a springy feel without being distracting.
  *
- *   [BizarreMotion.standard] — utility-first. Use for routine navigation,
- *     list-item expand/collapse, bottom-sheet presentation.
- *     dampingRatio=0.9 (critically near-damped → minimal overshoot) +
- *     StiffnessMedium (responsive) feels snappy and purposeful.
+ * [BizarreMotion.standard] — utility-first. Use for routine navigation,
+ *   list-item expand/collapse, bottom-sheet presentation.
+ *   dampingRatio=0.9 (near-critically damped) + StiffnessMedium feels snappy.
  *
- * Reduce-motion: call [motionSpec] with the current reduceMotion flag instead
- * of using the presets directly. When [reduceMotion]=true the helper returns
- * a near-zero-duration spring that is perceptually identical to a snap().
+ * ## Timing tokens (§30.10 / §70)
+ *
+ * Duration and easing constants for tween-based animations (shared-element
+ * enter/exit, page transitions, alpha fades):
+ *
+ *   [BizarreMotion.DURATION_SHORT]  — 150ms  snappy micro-interactions
+ *   [BizarreMotion.DURATION_MEDIUM] — 300ms  standard page/content transitions
+ *   [BizarreMotion.DURATION_LONG]   — 500ms  hero / shared-element transitions
+ *
+ * ## MotionScheme.expressive()
+ *
+ * Theme.kt wires `MotionScheme.expressive()` into [MaterialExpressiveTheme]
+ * when `BuildConfig.USE_EXPRESSIVE_THEME=true`. The BOM-overridden
+ * `material3 1.5.0-alpha18` includes this API; it is still alpha-gated via
+ * `@ExperimentalMaterial3ExpressiveApi` in Theme.kt.
+ *
+ * ## Reduce-Motion
+ *
+ * Call [motionSpec] with the current reduceMotion flag. When true, returns a
+ * near-zero-duration spring (perceptually identical to a snap). All spring
+ * call sites should route through this helper.
  *
  * Integration with [com.bizarreelectronics.crm.util.ReduceMotion]:
  * ```kotlin
@@ -30,6 +48,19 @@ import androidx.compose.animation.core.spring
  * ```
  */
 object BizarreMotion {
+
+    // ---- Timing constants ------------------------------------------------
+
+    /** 150ms — micro-interactions (chip press, icon swap, badge count change). */
+    const val DURATION_SHORT = 150
+
+    /** 300ms — standard screen/content transitions, bottom-sheet enter/exit. */
+    const val DURATION_MEDIUM = 300
+
+    /** 500ms — hero animations, shared-element row→detail on tablet. */
+    const val DURATION_LONG = 500
+
+    // ---- Spring presets --------------------------------------------------
 
     /**
      * Expressive spring — slight overshoot, personality-driven delight.
@@ -48,6 +79,14 @@ object BizarreMotion {
         dampingRatio = 0.9f,
         stiffness    = Spring.StiffnessMedium,
     )
+
+    // ---- Tween convenience specs -----------------------------------------
+
+    /** Tween for fade/alpha transitions. Uses [DURATION_MEDIUM]. */
+    fun tweenMedium() = tween<Float>(durationMillis = DURATION_MEDIUM)
+
+    /** Tween for page-level enter/exit. Uses [DURATION_LONG]. */
+    fun tweenLong() = tween<Float>(durationMillis = DURATION_LONG)
 }
 
 /**

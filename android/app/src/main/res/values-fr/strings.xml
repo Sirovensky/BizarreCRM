@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    French (fr) — Phase-1 locale scaffold (§27.2).
+
+    TRANSLATION STATUS: SCAFFOLD ONLY. Each string is marked with a
+    "TODO translate" comment and must be reviewed / replaced by a human
+    translator before shipping. Do NOT remove the TODO comments until
+    a qualified translator has approved each string.
+
+    Region variant:
+      values-fr-rCA/ - Canadian French (fr-CA)
+    Untranslated strings fall through to this file, then to values/ (English).
+
+    Plural rules for French follow CLDR "one / other":
+      quantity="one"  - 0 and 1 (French treats 0 as singular)
+      quantity="other" - 2 and above
+-->
+<resources>
+
+    <!-- App name — keep untranslated; brand identity must not change. -->
+    <string name="app_name">Bizarre CRM</string>
+
+    <!-- Navigation labels -->
+    <!-- TODO translate -->
+    <string name="nav_dashboard">Tableau de bord</string>
+    <!-- TODO translate -->
+    <string name="nav_tickets">Tickets</string>
+    <!-- TODO translate -->
+    <string name="nav_pos">PDV</string>
+    <!-- TODO translate -->
+    <string name="nav_messages">Messages</string>
+    <!-- TODO translate -->
+    <string name="nav_more">Plus</string>
+
+    <!-- Generic actions -->
+    <!-- TODO translate -->
+    <string name="action_retry">Réessayer</string>
+    <!-- TODO translate -->
+    <string name="action_dismiss">Ignorer</string>
+    <!-- TODO translate -->
+    <string name="action_cancel">Annuler</string>
+    <!-- TODO translate -->
+    <string name="action_save">Enregistrer</string>
+    <!-- TODO translate -->
+    <string name="action_delete">Supprimer</string>
+    <!-- TODO translate -->
+    <string name="action_undo">Annuler l\'action</string>
+    <!-- TODO translate -->
+    <string name="action_open_settings">Ouvrir les paramètres</string>
+    <!-- TODO translate -->
+    <string name="action_contact_support">Contacter le support</string>
+
+    <!-- Error messages -->
+    <!-- TODO translate -->
+    <string name="error_network">Pas de connexion — vérifiez votre réseau et réessayez.</string>
+    <!-- TODO translate -->
+    <string name="error_server">Erreur serveur — notre équipe a été notifiée.</string>
+    <!-- TODO translate -->
+    <string name="error_not_found">Cet enregistrement n\'existe plus.</string>
+    <!-- TODO translate -->
+    <string name="error_permission_denied">Vous n\'avez pas la permission de faire cela.</string>
+    <!-- TODO translate -->
+    <string name="error_auth_expired">Votre session a expiré — veuillez vous reconnecter.</string>
+    <!-- TODO translate -->
+    <string name="error_conflict">Cet enregistrement a été modifié par quelqu\'un d\'autre. Rechargez pour voir la dernière version.</string>
+    <!-- TODO translate -->
+    <string name="error_unknown">Une erreur s\'est produite. Veuillez réessayer.</string>
+    <!-- TODO translate -->
+    <string name="error_offline_cached">Hors ligne — affichage des données en cache.</string>
+
+    <!-- Sync banner -->
+    <!-- TODO translate -->
+    <string name="banner_offline">Hors ligne — affichage des données en cache</string>
+    <!-- TODO translate -->
+    <string name="banner_pending_sync">%1$d modification(s) en attente de synchronisation</string>
+    <!-- TODO translate -->
+    <string name="banner_clock_drift">L\'horloge du device est décalée de %1$s — peut causer des problèmes de connexion.</string>
+
+    <!-- Ticket labels -->
+    <!-- TODO translate -->
+    <string name="tickets_empty_title">Aucun ticket pour l\'instant</string>
+    <!-- TODO translate -->
+    <string name="tickets_empty_subtitle">Créez un ticket de réparation pour commencer.</string>
+    <!-- TODO translate -->
+    <string name="ticket_search_hint">Rechercher des tickets…</string>
+
+    <!-- Customer labels -->
+    <!-- TODO translate -->
+    <string name="customers_empty_title">Aucun client pour l\'instant</string>
+    <!-- TODO translate -->
+    <string name="customers_empty_subtitle">Ajoutez un client pour commencer.</string>
+    <!-- TODO translate -->
+    <string name="customer_search_hint">Rechercher des clients…</string>
+
+    <!-- Biometric / PIN -->
+    <!-- TODO translate -->
+    <string name="biometric_prompt_title">Vérifiez votre identité</string>
+    <!-- TODO translate -->
+    <string name="biometric_prompt_subtitle">Utilisez la biométrie pour déverrouiller Bizarre CRM</string>
+    <!-- TODO translate -->
+    <string name="biometric_prompt_cancel">Utiliser le code PIN</string>
+    <!-- TODO translate -->
+    <string name="pin_lock_title">Entrer le code PIN</string>
+    <!-- TODO translate -->
+    <string name="pin_lock_forgot">Code PIN oublié ?</string>
+    <!-- TODO translate -->
+    <string name="pin_lock_sign_out">Se déconnecter</string>
+
+    <!-- Settings section titles -->
+    <!-- TODO translate -->
+    <string name="settings_section_account">Compte</string>
+    <!-- TODO translate -->
+    <string name="settings_section_security">Sécurité</string>
+    <!-- TODO translate -->
+    <string name="settings_section_appearance">Apparence</string>
+    <!-- TODO translate -->
+    <string name="settings_section_notifications">Notifications</string>
+    <!-- TODO translate -->
+    <string name="settings_section_advanced">Avancé</string>
+    <!-- TODO translate -->
+    <string name="settings_section_diagnostics">Diagnostics</string>
+
+    <!-- Language &amp; Region screen -->
+    <!-- TODO translate -->
+    <string name="settings_language_title">Langue et région</string>
+    <!-- TODO translate -->
+    <string name="settings_language_picker_label">Langue de l\'application</string>
+    <!-- TODO translate -->
+    <string name="settings_language_system_default">Par défaut du système</string>
+    <!-- TODO translate -->
+    <string name="settings_timezone_label">Fuseau horaire</string>
+    <!-- TODO translate -->
+    <string name="settings_timezone_device_default">Par défaut de l\'appareil</string>
+    <!-- TODO translate -->
+    <string name="settings_currency_label">Devise</string>
+    <!-- TODO translate -->
+    <string name="settings_currency_locale_default">Par défaut de la région</string>
+
+    <!-- Glossary defaults -->
+    <!-- TODO translate -->
+    <string name="glossary_ticket">Ticket</string>
+    <!-- TODO translate -->
+    <string name="glossary_ticket_plural">Tickets</string>
+    <!-- TODO translate -->
+    <string name="glossary_customer">Client</string>
+    <!-- TODO translate -->
+    <string name="glossary_customer_plural">Clients</string>
+    <!-- TODO translate -->
+    <string name="glossary_work_order">Bon de travail</string>
+
+    <!-- §27.2 — Plurals for French (one / other).
+         French CLDR: 0 and 1 → "one", 2+ → "other". -->
+
+    <!-- TODO translate -->
+    <plurals name="pending_sync_count">
+        <item quantity="one">%1$d modification en attente de synchronisation</item>
+        <item quantity="other">%1$d modifications en attente de synchronisation</item>
+    </plurals>
+
+    <!-- TODO translate -->
+    <plurals name="ticket_count">
+        <item quantity="one">%1$d ticket</item>
+        <item quantity="other">%1$d tickets</item>
+    </plurals>
+
+    <!-- TODO translate -->
+    <plurals name="item_count">
+        <item quantity="one">%1$d article</item>
+        <item quantity="other">%1$d articles</item>
+    </plurals>
+
+    <!-- TODO translate -->
+    <plurals name="day_count_ago">
+        <item quantity="one">il y a %1$d jour</item>
+        <item quantity="other">il y a %1$d jours</item>
+    </plurals>
+
+    <!-- TODO translate -->
+    <plurals name="hour_count_ago">
+        <item quantity="one">il y a %1$d heure</item>
+        <item quantity="other">il y a %1$d heures</item>
+    </plurals>
+
+    <!-- TODO translate -->
+    <plurals name="minute_count_ago">
+        <item quantity="one">il y a %1$d minute</item>
+        <item quantity="other">il y a %1$d minutes</item>
+    </plurals>
+
+</resources>

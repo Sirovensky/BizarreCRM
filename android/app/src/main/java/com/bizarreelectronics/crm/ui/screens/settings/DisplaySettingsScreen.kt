@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.bizarreelectronics.crm.ui.components.shared.toggleRowSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -174,7 +175,11 @@ fun DisplaySettingsScreen(
                         )
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            // §26.1 — stateDescription + Role.Switch so TalkBack reads
+                            // "Keep screen on, on" / "Keep screen on, off" correctly.
+                            .toggleRowSemantics("Keep screen on", checked = keepScreenOn),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -191,10 +196,6 @@ fun DisplaySettingsScreen(
                         Switch(
                             checked = keepScreenOn,
                             onCheckedChange = { viewModel.setKeepScreenOn(it) },
-                            modifier = Modifier.semantics {
-                                contentDescription =
-                                    if (keepScreenOn) "Keep screen on, enabled" else "Keep screen on, disabled"
-                            },
                         )
                     }
                 }
