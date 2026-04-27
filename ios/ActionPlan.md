@@ -821,19 +821,19 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.1 List
 - [x] Base list + search — shipped.
-- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. List reads from GRDB via `ValueObservation`; `loadMoreIfNeeded` kicks `GET /customers?cursor=&limit=50` online only; offline no-op. Footer states: loading / more-available / end-of-list / offline-with-cached-count.
-- [ ] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit.
-- [ ] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state.
-- [ ] **Swipe actions** — leading: SMS / Call; trailing: Mark VIP / Archive.
-- [ ] **Context menu** — Open, Copy phone, Copy email, FaceTime, New ticket, New invoice, Send SMS, Merge.
-- [ ] **A–Z section index** (iPhone): right-edge scrubber jumps by letter (`SectionIndexTitles` via `UICollectionViewListSection`).
-- [ ] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV.
-- [ ] **Preview popover** (iPad/Mac hover) — quick stats (spent / tickets / last visit).
-- [ ] **Bulk select + tag** — BulkActionBar; `POST /customers/bulk-tag` with `{ customer_ids, tag }`.
-- [ ] **Bulk delete** with undo toast (5s window).
-- [ ] **Export CSV** via `.fileExporter` (iPad/Mac).
-- [ ] **Empty state** — "No customers yet. Create one or import from Contacts." + two CTAs.
-- [ ] **Import from Contacts** — `CNContactPickerViewController` multi-select → create each.
+- [x] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. List reads from GRDB via `ValueObservation`; `loadMoreIfNeeded` kicks `GET /customers?cursor=&limit=50` online only; offline no-op. Footer states: loading / more-available / end-of-list / offline-with-cached-count. (01ca89ee)
+- [x] **Sort** — most recent / A–Z / Z–A / most tickets / most revenue / last visit. (01ca89ee)
+- [x] **Filter** — tag(s) / LTV tier (VIP / Regular / At-risk) / health-score band / balance > 0 / has-open-tickets / city-state. (01ca89ee)
+- [x] **Swipe actions** — leading: SMS / Call; trailing: Mark VIP / Archive. (01ca89ee)
+- [x] **Context menu** — Open, Copy phone, Copy email, FaceTime, New ticket, New invoice, Send SMS, Merge. (01ca89ee)
+- [x] **A–Z section index** (iPhone): right-edge scrubber jumps by letter (`SectionIndexTitles` via `UICollectionViewListSection`). (01ca89ee)
+- [x] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV. (01ca89ee)
+- [x] **Preview popover** (iPad/Mac hover) — quick stats (spent / tickets / last visit). (01ca89ee)
+- [x] **Bulk select + tag** — BulkActionBar; `POST /customers/bulk-tag` with `{ customer_ids, tag }`. (01ca89ee)
+- [x] **Bulk delete** with undo toast (5s window). (01ca89ee)
+- [x] **Export CSV** via `.fileExporter` (iPad/Mac). (01ca89ee)
+- [x] **Empty state** — "No customers yet. Create one or import from Contacts." + two CTAs. (01ca89ee)
+- [x] **Import from Contacts** — `CNContactPickerViewController` multi-select → create each. (01ca89ee)
 
 ### 5.2 Detail
 - [x] Base (analytics / recent tickets / notes) — shipped.
@@ -866,7 +866,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 ### 5.4 Edit
 - [x] All fields editable. `PUT /customers/:id` — see `Customers/CustomerEditView`.
 - [x] Offline enqueue on network failure with `entityServerId`; `CustomerSyncHandlers` replays on reconnect.
-- [ ] Concurrent-edit 409 banner.
+- [x] Concurrent-edit 409 banner. (01ca89ee)
 
 ### 5.5 Merge
 - [x] `POST /customers/merge` with `{ keep_id, merge_id }`.
@@ -1364,7 +1364,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Cards** show — name + phone + score chip + next-action date. (`LeadKanbanCard` — feat(ios post-phase §9))
 - [x] **iPad/Mac** — horizontal scroll all columns visible. **iPhone** — stage picker + single column. (`LeadPipelineView` `iPhoneLayout`/`iPadLayout` — feat(ios post-phase §9))
 - [x] **Filter by source**. (`LeadPipelineViewModel.setSourceFilter` — feat(ios post-phase §9))
-- [ ] **Bulk archive won/lost**.
+- [x] **Bulk archive won/lost**. (01ca89ee)
 
 ### 9.3 Detail
 - [x] **Header** — name + phone + email + score ring + status chip. (`Leads/LeadDetailView.swift` `headerCard` — name, score badge, status chip, source.)
