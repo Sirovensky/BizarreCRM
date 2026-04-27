@@ -37,6 +37,21 @@ final class TicketStatusTransitionViewModel {
     var errorMessage: String?
     var committedTransition: TicketTransition?
 
+    // MARK: — §4.6 Prerequisite state
+    /// Set of prerequisite IDs that are currently met on this ticket.
+    /// The host view populates this from the ticket detail (photos count, checklist, notes count).
+    var metPrerequisites: Set<String> = []
+
+    /// §4.6 — Returns the first unmet prerequisite message for the currently selected transition.
+    /// Nil when all prerequisites are met or no transition is selected.
+    var unmetPrerequisiteMessage: String? {
+        guard let transition = selectedTransition else { return nil }
+        if case .failure(let err) = TicketStateMachine.checkPrerequisites(transition, met: metPrerequisites) {
+            return err.errorDescription
+        }
+        return nil
+    }
+
     @ObservationIgnored private let api: APIClient
 
     init(ticketId: Int64, currentStatus: TicketDetail.Status?, api: APIClient) {
@@ -74,11 +89,19 @@ final class TicketStatusTransitionViewModel {
 
     var canConfirm: Bool {
         guard let transition = selectedTransition else { return false }
-        return allowedTransitions.contains(transition) && resolveTargetStatusId(for: transition) != nil
+        guard allowedTransitions.contains(transition) else { return false }
+        guard resolveTargetStatusId(for: transition) != nil else { return false }
+        // §4.6 — Block if prerequisites unmet
+        return unmetPrerequisiteMessage == nil
     }
 
     func confirm() async {
         guard let transition = selectedTransition else { return }
+        // §4.6 — Check prerequisites before calling server
+        if let msg = unmetPrerequisiteMessage {
+            errorMessage = msg
+            return
+        }
         // Validate with state machine (belt-and-suspenders).
         if let name = currentStatus?.name {
             let matched = TicketStatus.allCases.first {
@@ -169,13 +192,18 @@ struct TicketStatusTransitionSheet: View {
         ticketId: Int64,
         currentStatus: TicketDetail.Status?,
         api: APIClient,
+        /// §4.6 — Prerequisite IDs that are met on this ticket.
+        /// Pass `.checklistSigned`, `.photoTaken`, etc. from the detail.
+        metPrerequisites: Set<String> = [],
         onCommitted: @escaping () -> Void
     ) {
-        _vm = State(wrappedValue: TicketStatusTransitionViewModel(
+        var vmInstance = TicketStatusTransitionViewModel(
             ticketId: ticketId,
             currentStatus: currentStatus,
             api: api
-        ))
+        )
+        vmInstance.metPrerequisites = metPrerequisites
+        _vm = State(wrappedValue: vmInstance)
         self.onCommitted = onCommitted
     }
 

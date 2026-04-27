@@ -195,7 +195,8 @@ public struct TicketDetailView: View {
                 TicketStatusTransitionSheet(
                     ticketId: detail.id,
                     currentStatus: detail.status,
-                    api: api
+                    api: api,
+                    metPrerequisites: metPrerequisites(for: detail)
                 ) { Task { await vm.load() } }
             }
         }
@@ -324,6 +325,35 @@ public struct TicketDetailView: View {
     private var navTitle: String {
         if case let .loaded(detail) = vm.state { return detail.orderId }
         return "Ticket"
+    }
+
+    // MARK: — §4.6 Prerequisite computation
+
+    /// Computes the set of transition prerequisite IDs that are currently met,
+    /// based on the loaded ticket detail's photos, notes, checklist state.
+    private func metPrerequisites(for detail: TicketDetail) -> Set<String> {
+        var met: Set<String> = []
+        // Photo taken: at least one photo attached to the ticket.
+        if !detail.photos.isEmpty {
+            met.insert(TransitionPrerequisite.photoTaken)
+        }
+        // Note added: at least one staff note.
+        if !detail.notes.isEmpty {
+            met.insert(TransitionPrerequisite.noteAdded)
+        }
+        // Checklist signed: any device has a non-empty signed checklist recorded in history.
+        // We use a heuristic — if a "checklist" event appears in history the checklist was signed.
+        let checklistSigned = detail.history.contains { event in
+            (event.description ?? "").lowercased().contains("checklist")
+        }
+        if checklistSigned { met.insert(TransitionPrerequisite.checklistSigned) }
+        // QC sign-off: sign-off event in history.
+        let hasSignOff = detail.history.contains { event in
+            let d = (event.description ?? "").lowercased()
+            return d.contains("sign-off") || d.contains("signed off") || d.contains("qc")
+        }
+        if hasSignOff { met.insert(TransitionPrerequisite.qcSignOff) }
+        return met
     }
 
     // MARK: — Toolbar
