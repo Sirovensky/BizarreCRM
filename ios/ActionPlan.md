@@ -1857,15 +1857,15 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **CSAT** — `CSATScoreCard` gauge + trend badge; `CSATDetailView` score distribution bar chart + free-text comments list. `GET /reports/csat`. (feat(ios phase-8 §15))
 - [x] **NPS** — `NPSScoreCard` gauge + promoter/passive/detractor split bar + theme chips; `NPSDetailView` per-tech breakdown anonymized per §37. `GET /reports/nps`. (feat(ios phase-8 §15))
 - [x] **Avg Ticket Value** — `AvgTicketValueCard` single-metric + delta badge + trend arrow. `GET /reports/avg-ticket-value`. (feat(ios phase-8 §15))
-- [ ] Warranty claims trend.
-- [ ] Device-models repaired distribution.
-- [ ] Parts usage analysis.
-- [ ] Technician hours worked.
-- [ ] Stalled / overdue tickets.
-- [ ] Customer acquisition + churn.
+- [x] Warranty claims trend. ([actionplan agent-6 b6] cd6a4df7)
+- [x] Device-models repaired distribution. ([actionplan agent-6 b6] cd6a4df7)
+- [x] Parts usage analysis. ([actionplan agent-6 b6] cd6a4df7)
+- [x] Technician hours worked. ([actionplan agent-6 b6] cd6a4df7)
+- [x] Stalled / overdue tickets. ([actionplan agent-6 b6] cd6a4df7)
+- [x] Customer acquisition + churn. ([actionplan agent-6 b6] cd6a4df7)
 
 ### 15.8 Custom reports
-- [ ] Pick series + bucket + range; save as favorite per user.
+- [x] Pick series + bucket + range; save as favorite per user. ([actionplan agent-6 b6] 6df21885)
 
 ### 15.9 Export / schedule
 - [x] PDF export — `ReportExportService` actor with `generatePDF(report:)` using `UIGraphicsPDFRenderer` (iOS) / CoreGraphics (macOS); returns non-empty URL. (feat(ios phase-8 §15))
@@ -1876,19 +1876,19 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Sovereignty: all compute on tenant server; no external BI tool — single network peer via `APIClient.baseURL`. (feat(ios phase-8 §15))
 - [x] CSV / PDF export per report. CSV: `ReportCSVService.generateSnapshotCSV` covers revenue/tickets/employees/turnover/CSAT/NPS sections; `exportCSV()` in `ReportsView` calls it and presents `ShareLink`. PDF already wired via `ReportExportService`. ([actionplan agent-6 b5] 98fb3559)
 - [x] "BI" sub-tab in Reports for deeper analysis — `ReportSubTab` enum (6 cases) + chip picker in `ReportsView`; switch drives per-tab card rendering. ([actionplan agent-6 b4] c0cb747c)
-- [ ] Built-in reports: revenue/margin by category/tech/customer segment
-- [ ] Built-in reports: repeat customer rate, time-to-repeat
-- [ ] Built-in reports: average ticket value trend
-- [ ] Built-in reports: conversion funnel (lead → estimate → ticket → invoice → paid)
-- [ ] Built-in reports: labor utilization by tech
-- [ ] Visual query builder (no SQL): entity + filters + group + measure + timeframe
-- [ ] Save custom query as widget
+- [x] Built-in reports: revenue/margin by category/tech/customer segment ([actionplan agent-6 b6] 1a6c05bf)
+- [x] Built-in reports: repeat customer rate, time-to-repeat ([actionplan agent-6 b6] 1a6c05bf)
+- [x] Built-in reports: average ticket value trend ([actionplan agent-6 b6] 1a6c05bf)
+- [x] Built-in reports: conversion funnel (lead → estimate → ticket → invoice → paid) ([actionplan agent-6 b6] 1a6c05bf)
+- [x] Built-in reports: labor utilization by tech ([actionplan agent-6 b6] 1a6c05bf)
+- [x] Visual query builder (no SQL): entity + filters + group + measure + timeframe ([actionplan agent-6 b6] 6df21885)
+- [x] Save custom query as widget ([actionplan agent-6 b6] 6df21885)
 - [ ] Swift Charts with zoom / pan / compare periods
-- [ ] Export chart as PNG / CSV
-- [ ] Breadcrumb drill: tap chart segment → filtered records list; trail "Total revenue → October → Services → iPhone repair"; each crumb tappable to step back.
-- [ ] Context panel layout: filters narrowed-by-drill (left), records list (right).
-- [ ] Export at any level: share current filtered view as PDF / CSV.
-- [ ] "Save this drill as dashboard tile" saves with query.
+- [x] Export chart as PNG / CSV ([actionplan agent-6 b6] ef704dd0)
+- [x] Breadcrumb drill: tap chart segment → filtered records list; trail "Total revenue → October → Services → iPhone repair"; each crumb tappable to step back. ([actionplan agent-6 b6] ef704dd0)
+- [x] Context panel layout: filters narrowed-by-drill (left), records list (right). ([actionplan agent-6 b6] ef704dd0)
+- [x] Export at any level: share current filtered view as PDF / CSV. ([actionplan agent-6 b6] ef704dd0)
+- [x] "Save this drill as dashboard tile" saves with query. ([actionplan agent-6 b6] ef704dd0)
 - [ ] Cross-report drilling: jump into related report with same filters applied.
 - [ ] Perf budget: server query index hints, p95 < 2s.
 - [ ] See §39 for the full list.
