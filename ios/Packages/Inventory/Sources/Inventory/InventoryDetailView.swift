@@ -20,6 +20,8 @@ public struct InventoryDetailView: View {
     @State private var showingDraftPO: Bool = false
     // §6.2 Full movement history sheet
     @State private var showingMovementHistory: Bool = false
+    // §6.4 Move between locations
+    @State private var showingMoveToLocation: Bool = false
     private let api: APIClient?
     /// Called after delete so parent can pop.
     private let onDeleted: (() -> Void)?
@@ -118,6 +120,18 @@ public struct InventoryDetailView: View {
                 InventoryMovementHistoryView(itemId: resp.item.id, api: api)
             }
         }
+        // §6.4 Move between locations
+        .sheet(isPresented: $showingMoveToLocation) {
+            if let api, case let .loaded(resp) = vm.state {
+                MoveToLocationSheet(
+                    itemId: resp.item.id,
+                    itemName: resp.item.displayName,
+                    currentStock: resp.item.inStock ?? 0,
+                    sourceLocationId: 1,  // default; LocationContext (§60) owns active location
+                    api: api
+                )
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -149,6 +163,15 @@ public struct InventoryDetailView: View {
                 .keyboardShortcut("R", modifiers: [.command, .shift])
                 .accessibilityLabel("Restock: record stock-in or draft purchase order")
                 .accessibilityIdentifier("inventory.detail.restock")
+            }
+            // §6.4 Move between locations
+            ToolbarItem(placement: .secondaryAction) {
+                Button { showingMoveToLocation = true } label: {
+                    Label("Move to location", systemImage: "arrow.left.arrow.right")
+                }
+                .keyboardShortcut("M", modifiers: [.command, .shift])
+                .accessibilityLabel("Move stock to another location")
+                .accessibilityIdentifier("inventory.detail.moveLocation")
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
