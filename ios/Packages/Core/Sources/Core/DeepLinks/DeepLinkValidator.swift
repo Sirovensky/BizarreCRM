@@ -75,8 +75,8 @@ public enum DeepLinkValidator {
             return .invalid(reason: "URL exceeds maximum length of \(maxURLLength) characters")
         }
 
-        // 2. Null-byte injection guard
-        guard !raw.contains("\0") else {
+        // 2. Null-byte injection guard (check both literal null and percent-encoded forms)
+        guard !raw.contains("\0") && !raw.contains("%00") && !raw.contains("%2500") else {
             return .invalid(reason: "URL contains null bytes")
         }
 

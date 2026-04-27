@@ -102,17 +102,18 @@ public enum AnalyticsPIIGuard {
     ///
     /// This mirrors `TelemetryRedactor.blockedKeys` and serves as the compile-time
     /// documentation of which fields callers must NEVER construct `SafeValue`s from.
+    /// Stored in lowercase for case-insensitive membership tests via `isForbiddenField`.
     public static let forbiddenFieldNames: Set<String> = [
         "email",
         "phone",
         "address",
-        "firstName",
-        "lastName",
-        "fullName",
-        "customerName",
+        "firstname",
+        "lastname",
+        "fullname",
+        "customername",
         "ssn",
-        "creditCard",
-        "cardNumber",
+        "creditcard",
+        "cardnumber",
     ]
 
     /// Returns `true` if `fieldName` (case-insensitive) is a known PII field.

@@ -34,10 +34,11 @@ public enum SensitiveFieldRedactor {
         let placeholder: String
         let regex: NSRegularExpression
 
-        init(_ pattern: String, _ placeholder: String) {
+        init(_ pattern: String, _ placeholder: String,
+             options: NSRegularExpression.Options = [.caseInsensitive]) {
             // Force-try: compile-time constant patterns; a typo is a programmer error.
             // swiftlint:disable:next force_try
-            self.regex       = try! NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+            self.regex       = try! NSRegularExpression(pattern: pattern, options: options)
             self.pattern     = pattern
             self.placeholder = placeholder
         }
@@ -60,9 +61,11 @@ public enum SensitiveFieldRedactor {
         ]
 
         map[.name] = [
-            // Match "First Last" pairs of title-cased words (heuristic — low false-positive
-            // approach suitable for form-field display redaction, not general NLP).
-            Rule(#"\b[A-Z][a-z]{1,20}\s[A-Z][a-z]{1,20}\b"#, "<name>"),
+            // Match "First Last" pairs of strictly title-cased words (heuristic — low
+            // false-positive approach suitable for form-field display redaction, not general
+            // NLP). Case-sensitive so that lowercase words ("in at", "checked in") are not
+            // falsely flagged; `.caseInsensitive` is intentionally omitted here.
+            Rule(#"\b[A-Z][a-z]{1,20}\s[A-Z][a-z]{1,20}\b"#, "<name>", options: []),
         ]
 
         map[.address] = [

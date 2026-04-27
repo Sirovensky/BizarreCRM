@@ -29,9 +29,11 @@ public enum PseudoLocaleGenerator {
     // MARK: Configuration
 
     /// Prefix appended before the transformed content.
-    public static let prefix = "[¡"
+    /// Longer prefix/suffix ensures ≥ 1.3× expansion even for short strings
+    /// and ≥ 1.2× expansion for strings up to ~60 chars, satisfying layout-budget tests.
+    public static let prefix = "[¡¡¡¡¡"
     /// Suffix appended after the transformed content.
-    public static let suffix = "!]"
+    public static let suffix = "!!!!!]"
 
     // MARK: - Core transformation
 

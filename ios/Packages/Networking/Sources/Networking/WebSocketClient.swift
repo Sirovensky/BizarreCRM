@@ -110,6 +110,8 @@ public enum WSEvent: Decodable, Sendable {
     case ticketCreated(TicketDTO)
     case ticketUpdated(TicketDTO)
     case smsReceived(SmsDTO)
+    /// §12.2 Typing indicator — `String` is the phone number of the person currently typing.
+    case smsTyping(String)
     case invoicePaid(InvoiceDTO)
     case notification(NotificationDTO)
     case unknown(String)
@@ -123,6 +125,7 @@ public enum WSEvent: Decodable, Sendable {
         case "ticket.created": self = .ticketCreated(try c.decode(TicketDTO.self, forKey: .data))
         case "ticket.updated": self = .ticketUpdated(try c.decode(TicketDTO.self, forKey: .data))
         case "sms.received":   self = .smsReceived(try c.decode(SmsDTO.self, forKey: .data))
+        case "sms.typing":     self = .smsTyping(try c.decode(String.self, forKey: .data))
         case "invoice.paid":   self = .invoicePaid(try c.decode(InvoiceDTO.self, forKey: .data))
         case "notification":   self = .notification(try c.decode(NotificationDTO.self, forKey: .data))
         default:               self = .unknown(type)

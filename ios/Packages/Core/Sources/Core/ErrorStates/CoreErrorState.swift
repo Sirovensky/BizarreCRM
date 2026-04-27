@@ -108,9 +108,10 @@ extension CoreErrorState {
             return "You appear to be offline. Some features require a connection."
         case .validation(let fields):
             if fields.isEmpty {
-                return "Please check the form for errors."
+                return "Fix all form inputs."
             }
-            return "Please check the highlighted fields: \(fields.prefix(3).joined(separator: ", "))."
+            let shown = fields.prefix(3).joined(separator: ", ")
+            return "Fix: \(shown)."
         case .rateLimited(let seconds):
             if let s = seconds {
                 return "Too many requests. Try again in \(s) second\(s == 1 ? "" : "s")."
