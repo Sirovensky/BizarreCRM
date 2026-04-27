@@ -35,6 +35,15 @@ public enum RateLimiterError: Error, Sendable, LocalizedError {
 /// // TODO(§1): Before every perform(...), call:
 /// //   try await RateLimiters.perHost.acquire(host: baseURL?.host ?? "")
 /// ```
+/// §1 — notification name posted on MainActor when the rate-limiter queue
+/// exceeds 10 concurrent waiters ("Slow down" banner trigger).
+public extension Notification.Name {
+    /// Payload: `["host": String, "queueSize": Int]`
+    static let rateLimiterSlowDownWarning = Notification.Name("com.bizarrecrm.rateLimiter.slowDown")
+    /// Posted when queue drops back below threshold (banner dismiss signal).
+    static let rateLimiterSlowDownCleared = Notification.Name("com.bizarrecrm.rateLimiter.slowDownCleared")
+}
+
 public actor RateLimiter {
 
     // MARK: - State
@@ -44,6 +53,12 @@ public actor RateLimiter {
     private let refillPerSecond: Double
     private var lastRefill: Date
     private var retryAfterUntil: Date?
+
+    /// §1 — current count of callers waiting for a token.
+    private var queuedWaiters: Int = 0
+    /// Threshold above which the "Slow down" banner fires.
+    private static let slowDownThreshold: Int = 10
+    private var slowDownWarningFired: Bool = false
 
     /// Maximum time to wait for a token before throwing `.timeout`.
     private static let maxWaitSeconds: Double = 30
@@ -64,10 +79,20 @@ public actor RateLimiter {
 
     // MARK: - Public API
 
+    /// Returns the current number of callers waiting for a token.
+    public var currentQueueSize: Int { queuedWaiters }
+
     /// Acquires one token, waiting if the bucket is empty.
     ///
     /// - Throws: `RateLimiterError.timeout` if the wait exceeds 30 seconds.
     public func acquire() async throws {
+        queuedWaiters += 1
+        checkSlowDownThreshold(host: "_default")
+        defer {
+            queuedWaiters -= 1
+            checkSlowDownCleared(host: "_default")
+        }
+
         let deadline = Date().addingTimeInterval(Self.maxWaitSeconds)
 
         while true {
@@ -120,6 +145,34 @@ public actor RateLimiter {
     }
 
     // MARK: - Internal
+
+    // MARK: - Slow-down warning (§1)
+    // Actor-isolated; called from within `acquire()` after mutating `queuedWaiters`.
+
+    private func checkSlowDownThreshold(host: String) {
+        guard queuedWaiters >= Self.slowDownThreshold, !slowDownWarningFired else { return }
+        slowDownWarningFired = true
+        let size = queuedWaiters
+        Task { @MainActor in
+            NotificationCenter.default.post(
+                name: .rateLimiterSlowDownWarning,
+                object: nil,
+                userInfo: ["host": host, "queueSize": size]
+            )
+        }
+    }
+
+    private func checkSlowDownCleared(host: String) {
+        guard queuedWaiters < Self.slowDownThreshold, slowDownWarningFired else { return }
+        slowDownWarningFired = false
+        Task { @MainActor in
+            NotificationCenter.default.post(
+                name: .rateLimiterSlowDownCleared,
+                object: nil,
+                userInfo: ["host": host]
+            )
+        }
+    }
 
     private func refill() {
         let now = Date()
