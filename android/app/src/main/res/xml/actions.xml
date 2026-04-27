@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<actions>
+    <action intentName="actions.intent.CREATE_TASK">
+        <fulfillment urlTemplate="bizarrecrm://tickets/new" />
+    </action>
+    <action intentName="actions.intent.GET_RESERVATION">
+        <fulfillment urlTemplate="bizarrecrm://appointments" />
+    </action>
+    <action intentName="actions.intent.RECORD_ACTIVITY">
+        <fulfillment urlTemplate="bizarrecrm://timeclock/clock-in" />
+    </action>
+</actions>

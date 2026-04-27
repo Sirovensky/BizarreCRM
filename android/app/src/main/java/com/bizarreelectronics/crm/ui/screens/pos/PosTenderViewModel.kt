@@ -387,9 +387,10 @@ class PosTenderViewModel @Inject constructor(
                         notes = line.note,
                     )
                 },
-                cartDiscountCents = session.cartDiscountCents,
+                discount = session.cartDiscountCents / 100.0,
+                tip = 0.0,
                 paymentMethod = session.appliedTenders.firstOrNull()?.method ?: "card",
-                paymentAmountCents = session.paidCents,
+                paymentAmount = session.paidCents / 100.0,
                 // Server prefers `payments[]` when non-empty so split-tender
                 // sales preserve the per-method breakdown on the receipt.
                 payments = session.appliedTenders.map { t ->
