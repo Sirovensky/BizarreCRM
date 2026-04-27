@@ -94,7 +94,8 @@ import kotlinx.coroutines.withContext
     // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
     // Plan §20.2 L2108: bumped from 9 to 10 to add depends_on_queue_id to sync_queue.
     // Phase 3 check-in: bumped from 10 to 11 to add checkin_drafts table.
-    version = 11,
+    // Section 11 filters: bumped from 11 to 12 to add approval_status + index to expenses.
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -130,7 +131,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 11
+        const val SCHEMA_VERSION = 12
     }
 }
 

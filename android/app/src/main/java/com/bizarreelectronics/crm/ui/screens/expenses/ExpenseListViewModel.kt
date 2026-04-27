@@ -20,6 +20,14 @@ import javax.inject.Inject
 /** Pending-approval tab pseudo-category constant — never a real DB category. */
 internal const val FILTER_PENDING_APPROVAL = "__pending_approval__"
 
+/** Approval status values used in filter sheet + DAO. */
+internal object ApprovalStatus {
+    const val ALL = ""
+    const val PENDING = "pending"
+    const val APPROVED = "approved"
+    const val DENIED = "denied"
+}
+
 @HiltViewModel
 class ExpenseListViewModel @Inject constructor(
     private val expenseRepository: ExpenseRepository,
@@ -39,27 +47,54 @@ class ExpenseListViewModel @Inject constructor(
         collectJob?.cancel()
         collectJob = viewModelScope.launch {
             _state.value = _state.value.copy(isLoading = _state.value.expenses.isEmpty(), error = null)
-            val query = _state.value.searchQuery.trim()
-            val categoryFilter = _state.value.selectedCategory
+            val current = _state.value
+            val query = current.searchQuery.trim()
+            val categoryFilter = current.selectedCategory
 
+            // Resolve effective approval status: the quick-tab "pending" pseudo-category
+            // maps to the "pending" approval status filter; the advanced filter sheet
+            // value overrides otherwise.
+            val effectiveApprovalStatus = when {
+                categoryFilter == FILTER_PENDING_APPROVAL -> ApprovalStatus.PENDING
+                current.approvalStatusFilter.isNotBlank() -> current.approvalStatusFilter
+                else -> ApprovalStatus.ALL
+            }
+
+            val effectiveCategory = when {
+                categoryFilter == "All" || categoryFilter == FILTER_PENDING_APPROVAL -> ""
+                else -> categoryFilter
+            }
+
+            // Use getFiltered when any advanced filter is active OR when any category/
+            // status filter is needed. Fall back to search-only flow for search-only case.
             val flow = when {
-                query.isNotEmpty() -> expenseRepository.searchExpenses(query)
-                categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL ->
-                    expenseRepository.getByCategory(categoryFilter)
-                else -> expenseRepository.getExpenses()
+                query.isNotEmpty() && effectiveCategory.isEmpty() &&
+                    effectiveApprovalStatus.isEmpty() && current.dateFrom.isEmpty() &&
+                    current.dateTo.isEmpty() && current.employeeNameFilter.isEmpty() ->
+                    expenseRepository.searchExpenses(query)
+
+                else -> expenseRepository.getFiltered(
+                    category = effectiveCategory,
+                    dateFrom = current.dateFrom,
+                    dateTo = current.dateTo,
+                    approvalStatus = effectiveApprovalStatus,
+                    employeeName = current.employeeNameFilter,
+                )
             }
 
             flow
                 .map { expenses ->
-                    var result = expenses
-                    // Narrow by category if both search + category active
-                    if (query.isNotEmpty() && categoryFilter != "All" && categoryFilter != FILTER_PENDING_APPROVAL) {
-                        result = result.filter { it.category.equals(categoryFilter, ignoreCase = true) }
+                    // If search is active alongside other filters, narrow by text locally
+                    if (query.isNotEmpty() && (effectiveCategory.isNotEmpty() ||
+                            effectiveApprovalStatus.isNotEmpty() || current.dateFrom.isNotEmpty() ||
+                            current.dateTo.isNotEmpty() || current.employeeNameFilter.isNotEmpty())) {
+                        expenses.filter { e ->
+                            e.description?.contains(query, ignoreCase = true) == true ||
+                                e.category.contains(query, ignoreCase = true)
+                        }
+                    } else {
+                        expenses
                     }
-                    // Pending approval filter: stub — no status column in entity yet,
-                    // so we show all for now (placeholder for when status is wired)
-                    // This keeps the tab visible without crashing.
-                    result
                 }
                 .catch {
                     _state.value = _state.value.copy(
@@ -74,7 +109,7 @@ class ExpenseListViewModel @Inject constructor(
                         expenses = sorted,
                         totalAmount = sorted.sumOf { it.amount },
                         categorySlices = buildCategorySlices(sorted),
-                        reimbursablePendingAmount = 0L, // stub: no reimbursable column yet
+                        pendingApprovalCount = sorted.count { it.approvalStatus == ApprovalStatus.PENDING },
                         isLoading = false,
                         isRefreshing = false,
                     )
@@ -100,6 +135,56 @@ class ExpenseListViewModel @Inject constructor(
         _state.value = _state.value.copy(selectedCategory = category)
         loadExpenses()
     }
+
+    fun onDateFromChanged(date: String) {
+        _state.value = _state.value.copy(dateFrom = date)
+        loadExpenses()
+    }
+
+    fun onDateToChanged(date: String) {
+        _state.value = _state.value.copy(dateTo = date)
+        loadExpenses()
+    }
+
+    fun onApprovalStatusFilterChanged(status: String) {
+        _state.value = _state.value.copy(approvalStatusFilter = status)
+        loadExpenses()
+    }
+
+    fun onEmployeeNameFilterChanged(name: String) {
+        _state.value = _state.value.copy(employeeNameFilter = name)
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            delay(300)
+            loadExpenses()
+        }
+    }
+
+    fun openFilterSheet() {
+        _state.value = _state.value.copy(isFilterSheetOpen = true)
+    }
+
+    fun closeFilterSheet() {
+        _state.value = _state.value.copy(isFilterSheetOpen = false)
+    }
+
+    fun clearAdvancedFilters() {
+        _state.value = _state.value.copy(
+            dateFrom = "",
+            dateTo = "",
+            approvalStatusFilter = "",
+            employeeNameFilter = "",
+            isFilterSheetOpen = false,
+        )
+        loadExpenses()
+    }
+
+    /** True when any advanced filter (date/status/employee) is active. */
+    val hasAdvancedFilters: Boolean
+        get() = _state.value.let {
+            it.dateFrom.isNotBlank() || it.dateTo.isNotBlank() ||
+                it.approvalStatusFilter.isNotBlank() || it.employeeNameFilter.isNotBlank()
+        }
 
     fun onSortChanged(sort: ExpenseSort) {
         val sorted = sortExpenses(_state.value.expenses, sort)

@@ -1,7 +1,9 @@
 package com.bizarreelectronics.crm.ui.screens.communications
 
 import android.content.Context
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +22,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -28,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -38,7 +42,9 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
+import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
+import com.bizarreelectronics.crm.data.remote.dto.CreateCustomerRequest
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsMessageItem
 import com.bizarreelectronics.crm.data.remote.dto.SmsTemplateDto
@@ -46,6 +52,7 @@ import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.ui.components.DraftRecoveryPrompt
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.screens.communications.components.ScheduleSendSheet
@@ -95,6 +102,10 @@ data class SmsThreadUiState(
     val isRemoteTyping: Boolean = false,
     /** L1533 — true when server is in off-hours auto-reply mode */
     val isOffHours: Boolean = false,
+    /** L1530 — true while create-customer POST is in flight */
+    val isCreatingCustomer: Boolean = false,
+    /** L1530 — set after successful customer creation; shown in snackbar */
+    val customerCreated: Boolean = false,
 )
 
 @HiltViewModel
@@ -102,6 +113,7 @@ class SmsThreadViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val smsApi: SmsApi,
     private val smsRepository: SmsRepository,
+    private val customerApi: CustomerApi,
     private val serverMonitor: ServerReachabilityMonitor,
     private val draftStore: DraftStore,
     private val gson: Gson,
@@ -296,6 +308,53 @@ class SmsThreadViewModel @Inject constructor(
             false
         }
     }
+
+    // ── L1530 — create customer from thread ──────────────────────────
+
+    /**
+     * POST /customers with first name + phone pre-filled from this thread.
+     * Only fires if the thread has no associated customer yet.
+     */
+    fun createCustomerFromThread(firstName: String, lastName: String?) {
+        if (_state.value.isCreatingCustomer) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isCreatingCustomer = true)
+            try {
+                customerApi.createCustomer(
+                    CreateCustomerRequest(
+                        firstName = firstName.trim(),
+                        lastName = lastName?.trim(),
+                        mobile = phone,
+                    )
+                )
+                _state.value = _state.value.copy(
+                    isCreatingCustomer = false,
+                    customerCreated = true,
+                    actionMessage = "Customer created",
+                )
+                // Reload to pick up the new customer association.
+                loadOnlineDetails()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isCreatingCustomer = false,
+                    actionMessage = "Failed to create customer: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun clearCustomerCreated() {
+        _state.value = _state.value.copy(customerCreated = false)
+    }
+
+    // ── L1529 — delete a local message (optimistic; server DELETE is
+    //    optional and 404-tolerant since server may not expose it) ──────
+
+    fun deleteLocalMessage(messageId: Long) {
+        _state.value = _state.value.copy(
+            messages = _state.value.messages.filter { it.id != messageId },
+        )
+    }
 }
 
 private fun SmsMessageEntity.toSmsMessageItem() = SmsMessageItem(
@@ -329,6 +388,10 @@ fun SmsThreadScreen(
     var showTemplateSheet by remember { mutableStateOf(false) }
     var showEmojiSheet by remember { mutableStateOf(false) }
     var showScheduleSheet by remember { mutableStateOf(false) }
+    // L1530 — create customer from thread
+    var showCreateCustomerDialog by remember { mutableStateOf(false) }
+    // L1529 — confirm before delete
+    var pendingDeleteMessageId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
@@ -342,6 +405,14 @@ fun SmsThreadScreen(
         state.actionMessage?.let { message ->
             snackbarHostState.showSnackbar(message)
             viewModel.clearActionMessage()
+        }
+    }
+
+    // L1530 — acknowledge customer-created success
+    LaunchedEffect(state.customerCreated) {
+        if (state.customerCreated) {
+            snackbarHostState.showSnackbar("Customer created successfully")
+            viewModel.clearCustomerCreated()
         }
     }
 
@@ -436,6 +507,34 @@ fun SmsThreadScreen(
         )
     }
 
+    // L1529 — confirm delete message
+    pendingDeleteMessageId?.let { msgId ->
+        ConfirmDialog(
+            title = "Delete message",
+            message = "Remove this message from your local view? This cannot be undone.",
+            confirmLabel = "Delete",
+            isDestructive = true,
+            onConfirm = {
+                viewModel.deleteLocalMessage(msgId)
+                pendingDeleteMessageId = null
+            },
+            onDismiss = { pendingDeleteMessageId = null },
+        )
+    }
+
+    // L1530 — create customer from this thread
+    if (showCreateCustomerDialog) {
+        CreateCustomerFromThreadDialog(
+            phone = phone,
+            isCreating = state.isCreatingCustomer,
+            onConfirm = { firstName, lastName ->
+                viewModel.createCustomerFromThread(firstName, lastName)
+                showCreateCustomerDialog = false
+            },
+            onDismiss = { showCreateCustomerDialog = false },
+        )
+    }
+
     Scaffold(
         modifier = Modifier.imePadding(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -452,6 +551,16 @@ fun SmsThreadScreen(
                     }
                 },
                 actions = {
+                    // L1530 — show "add person" button when no customer is linked yet
+                    if (state.customer == null && !state.isLoading) {
+                        IconButton(onClick = { showCreateCustomerDialog = true }) {
+                            Icon(
+                                Icons.Default.PersonAdd,
+                                contentDescription = "Create customer from this thread",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     if (onNavigateToTemplates != null) {
                         IconButton(onClick = onNavigateToTemplates) {
                             Icon(
@@ -602,7 +711,21 @@ fun SmsThreadScreen(
                             }
                         }
                         items(state.messages.reversed(), key = { it.id }) { message ->
-                            MessageBubble(message = message)
+                            MessageBubble(
+                                message = message,
+                                onDelete = { pendingDeleteMessageId = message.id },
+                                onReply = { quoted ->
+                                    // Prepend quoted text to compose field
+                                    val prefix = "> ${quoted.take(60)}\n"
+                                    val cur = messageText.text
+                                    val newText = if (cur.isBlank()) prefix else "$prefix$cur"
+                                    messageText = TextFieldValue(newText, TextRange(newText.length))
+                                },
+                                onRetry = { failedBody ->
+                                    // Re-fill the compose field with the failed message body
+                                    messageText = TextFieldValue(failedBody, TextRange(failedBody.length))
+                                },
+                            )
                         }
                     }
                 }
@@ -764,11 +887,20 @@ private fun ComposeBar(
 
 // ---------------------------------------------------------------------------
 // Message bubble with L1519 delivery status + L1520 read receipt
+// L1529 — long-press DropdownMenu: Copy, Reply (quote), Delete
 // ---------------------------------------------------------------------------
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: SmsMessageItem) {
+private fun MessageBubble(
+    message: SmsMessageItem,
+    onDelete: () -> Unit,
+    onReply: (String) -> Unit,
+    onRetry: ((String) -> Unit)? = null,
+) {
     val isOutbound = message.direction == "outbound"
+    var showMenu by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
 
     val bubbleShape = RoundedCornerShape(
         topStart = 14.dp,
@@ -798,51 +930,183 @@ private fun MessageBubble(message: SmsMessageItem) {
             "failed" -> ", failed"
             else -> ""
         }
-        "Sent at $timeDisplay$statusSuffix: $messageBody"
+        "Sent at $timeDisplay$statusSuffix: $messageBody. Long press for options."
     } else {
-        "Received at $timeDisplay: $messageBody"
+        "Received at $timeDisplay: $messageBody. Long press for options."
     }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isOutbound) Arrangement.End else Arrangement.Start,
     ) {
-        Box(
-            modifier = Modifier
-                .widthIn(max = 280.dp)
-                .clip(bubbleShape)
-                .background(bubbleBg)
-                .padding(12.dp)
-                .clearAndSetSemantics { contentDescription = bubbleContentDescription },
-        ) {
-            Column {
-                Text(
-                    messageBody,
-                    color = textColor,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Timestamp
-                    Text(
-                        timeDisplay,
-                        style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
-                        color = timestampColor,
+        Box {
+            Box(
+                modifier = Modifier
+                    .widthIn(max = 280.dp)
+                    .clip(bubbleShape)
+                    .background(bubbleBg)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = { showMenu = true },
                     )
-                    // L1519 — delivery status dot (outbound only)
-                    if (isOutbound) {
-                        SmsDeliveryStatusDot(
-                            status = message.status,
-                            readAt = null, // readAt not in SmsMessageItem yet — stub null
+                    .padding(12.dp)
+                    .clearAndSetSemantics { contentDescription = bubbleContentDescription },
+            ) {
+                Column {
+                    Text(
+                        messageBody,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // Timestamp
+                        Text(
+                            timeDisplay,
+                            style = BrandMono.copy(fontSize = MaterialTheme.typography.labelSmall.fontSize),
+                            color = timestampColor,
+                        )
+                        // L1519 — delivery status dot (outbound only)
+                        if (isOutbound) {
+                            SmsDeliveryStatusDot(
+                                status = message.status,
+                                readAt = null, // readAt not in SmsMessageItem yet — stub null
+                            )
+                        }
+                    }
+                    // L1779 — failed send: inline Retry chip re-fills composer
+                    if (message.status == "failed" && isOutbound) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        SuggestionChip(
+                            onClick = { onRetry?.invoke(messageBody) ?: onReply(messageBody) },
+                            label = {
+                                Text(
+                                    "Retry",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            },
+                            colors = SuggestionChipDefaults.suggestionChipColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                            ),
+                            modifier = Modifier.height(24.dp),
                         )
                     }
                 }
             }
+
+            // L1529 — long-press context menu
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Copy") },
+                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                    onClick = {
+                        showMenu = false
+                        clipboardManager.setText(AnnotatedString(messageBody))
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Reply") },
+                    leadingIcon = { Icon(Icons.Default.Reply, contentDescription = null) },
+                    onClick = {
+                        showMenu = false
+                        onReply(messageBody)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete", color = MaterialTheme.colorScheme.error) },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    },
+                    onClick = {
+                        showMenu = false
+                        onDelete()
+                    },
+                )
+            }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// L1530 — Create customer from thread dialog
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun CreateCustomerFromThreadDialog(
+    phone: String,
+    isCreating: Boolean,
+    onConfirm: (firstName: String, lastName: String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = { if (!isCreating) onDismiss() },
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        title = { Text("Create customer", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Create a new customer record linked to $phone",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = firstName,
+                    onValueChange = { firstName = it },
+                    label = { Text("First name *") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = lastName,
+                    onValueChange = { lastName = it },
+                    label = { Text("Last name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (firstName.trim().isNotBlank()) {
+                        onConfirm(firstName.trim(), lastName.trim().ifBlank { null })
+                    }
+                },
+                enabled = firstName.trim().isNotBlank() && !isCreating,
+            ) {
+                if (isCreating) {
+                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                } else {
+                    Text("Create")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isCreating,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.secondary,
+                ),
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
 
 // ---------------------------------------------------------------------------

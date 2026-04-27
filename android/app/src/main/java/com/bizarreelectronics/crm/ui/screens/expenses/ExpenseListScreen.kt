@@ -43,6 +43,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseFilterSheet
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSort
 import com.bizarreelectronics.crm.ui.screens.expenses.components.ExpenseSortDropdown
 import com.bizarreelectronics.crm.util.formatAsMoney
@@ -69,8 +70,8 @@ data class ExpenseListUiState(
     val expenses: List<ExpenseEntity> = emptyList(),
     /** Total of all expenses shown in the list, in **cents**. */
     val totalAmount: Long = 0L,
-    /** Sum of reimbursable=true + status=pending expenses, in **cents** (stub — 0 until column exists). */
-    val reimbursablePendingAmount: Long = 0L,
+    /** Count of expenses with approvalStatus == "pending". */
+    val pendingApprovalCount: Int = 0,
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
     val error: String? = null,
@@ -79,6 +80,17 @@ data class ExpenseListUiState(
     val currentSort: ExpenseSort = ExpenseSort.DATE,
     /** Pre-grouped slices for the pie chart; empty = no data for this period. */
     val categorySlices: List<ExpenseSlice> = emptyList(),
+    // ── Advanced filters (shown in ExpenseFilterSheet) ──
+    /** ISO date string lower bound, e.g. "2025-01-01". Empty = no lower bound. */
+    val dateFrom: String = "",
+    /** ISO date string upper bound, e.g. "2025-12-31". Empty = no upper bound. */
+    val dateTo: String = "",
+    /** Approval status filter: "", "pending", "approved", or "denied". */
+    val approvalStatusFilter: String = "",
+    /** Partial employee name to filter by. Empty = no filter. */
+    val employeeNameFilter: String = "",
+    /** Whether the filter sheet is currently open. */
+    val isFilterSheetOpen: Boolean = false,
 )
 
 // TODO: cream-theme — pick token — chart-specific cycling palette; no single theme token maps to a multi-hue sequence
@@ -129,6 +141,7 @@ fun ExpenseListScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val filterSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val reduceMotion = remember(context) {
         android.provider.Settings.Global.getFloat(
@@ -166,6 +179,20 @@ fun ExpenseListScreen(
             BrandTopAppBar(
                 title = "Expenses",
                 actions = {
+                    // Advanced filter icon — badged when any filter is active
+                    BadgedBox(
+                        badge = {
+                            if (state.dateFrom.isNotBlank() || state.dateTo.isNotBlank() ||
+                                state.approvalStatusFilter.isNotBlank() || state.employeeNameFilter.isNotBlank()
+                            ) {
+                                Badge()
+                            }
+                        },
+                    ) {
+                        IconButton(onClick = { viewModel.openFilterSheet() }) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Advanced filters")
+                        }
+                    }
                     // Sort dropdown
                     ExpenseSortDropdown(
                         currentSort = state.currentSort,
@@ -282,15 +309,18 @@ fun ExpenseListScreen(
                         }
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "Reimbursable pending",
+                                "Pending approval",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                             Text(
-                                state.reimbursablePendingAmount.formatAsMoney(),
+                                "${state.pendingApprovalCount}",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.tertiary,
+                                color = if (state.pendingApprovalCount > 0)
+                                    MaterialTheme.colorScheme.tertiary
+                                else
+                                    MaterialTheme.colorScheme.onSurface,
                             )
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -435,6 +465,26 @@ fun ExpenseListScreen(
                     }
                 }
             }
+        }
+    }
+
+    // ── Advanced filter sheet ───────────────────────────────────────────────
+    if (state.isFilterSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.closeFilterSheet() },
+            sheetState = filterSheetState,
+        ) {
+            ExpenseFilterSheet(
+                dateFrom = state.dateFrom,
+                dateTo = state.dateTo,
+                approvalStatus = state.approvalStatusFilter,
+                employeeName = state.employeeNameFilter,
+                onDateFromChanged = { viewModel.onDateFromChanged(it) },
+                onDateToChanged = { viewModel.onDateToChanged(it) },
+                onApprovalStatusChanged = { viewModel.onApprovalStatusFilterChanged(it) },
+                onEmployeeNameChanged = { viewModel.onEmployeeNameFilterChanged(it) },
+                onClearAll = { viewModel.clearAdvancedFilters() },
+            )
         }
     }
 }
