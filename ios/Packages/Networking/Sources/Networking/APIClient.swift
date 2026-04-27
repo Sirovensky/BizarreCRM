@@ -36,11 +36,23 @@ public actor APIClientImpl: APIClient {
     private var session: URLSession {
         if let s = _session { return s }
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
+        // §29.7 — HTTP/2 is the default on iOS; we additionally:
+        //   • Disable URLCache for data calls (GRDB is the cache, not NSURLCache).
+        //   • Force 15s per-request + 30s per-resource timeouts.
+        //   • Allow cellular (tenant may be self-hosted, not wi-fi-only).
+        //   • Accept gzip + brotli compression.
+        cfg.timeoutIntervalForRequest = 15      // §29.7 15s default
+        cfg.timeoutIntervalForResource = 30     // keep-alive max
         cfg.waitsForConnectivity = true
+        cfg.urlCache = nil                      // GRDB owns caching — not NSURLCache
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        cfg.allowsCellularAccess = true
+        cfg.allowsConstrainedNetworkAccess = true   // cautious cellular is fine for API
+        cfg.allowsExpensiveNetworkAccess = true     // cellular is OK; uploads respect §20.6
         cfg.httpAdditionalHeaders = [
             "X-Origin": "ios",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, br"           // §29.7 compression
         ]
         let s: URLSession
         if pinnedSPKIBase64.isEmpty {
