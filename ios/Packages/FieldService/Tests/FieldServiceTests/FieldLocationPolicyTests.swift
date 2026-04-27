@@ -139,4 +139,130 @@ final class FieldLocationPolicyTests: XCTestCase {
         XCTAssertFalse(FieldLocationPolicy.isWithinCheckInRange(distanceMeters: 150))
         XCTAssertFalse(FieldLocationPolicy.isWithinCheckInRange(distanceMeters: 500))
     }
+
+    // MARK: - §57 Indoor fallback — positioningSource
+
+    func test_gpsAccuracy_under20m_returnsGPS() {
+        // CLLocation with accuracy ≤ 20 → GPS
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: 10,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .gps)
+    }
+
+    func test_gpsAccuracy_exactly20m_returnsGPS() {
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: 20,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .gps)
+    }
+
+    func test_accuracy_25m_returnsCellAndWifi() {
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: 25,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .cellAndWifi)
+    }
+
+    func test_accuracy_150m_returnsCellAndWifi() {
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: 150,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .cellAndWifi)
+    }
+
+    func test_accuracy_over200m_returnsUnavailable() {
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: 250,
+            verticalAccuracy: 10,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .unavailable)
+    }
+
+    func test_negativeAccuracy_returnsUnavailable() {
+        let loc = CLLocation(
+            coordinate: .init(latitude: 37.0, longitude: -122.0),
+            altitude: 0,
+            horizontalAccuracy: -1,
+            verticalAccuracy: -1,
+            timestamp: Date()
+        )
+        XCTAssertEqual(FieldLocationPolicy.positioningSource(from: loc), .unavailable)
+    }
+
+    // MARK: - §57 Indoor fallback — indoorBannerMessage
+
+    func test_bannerMessage_gps_returnsNil() {
+        XCTAssertNil(FieldLocationPolicy.indoorBannerMessage(source: .gps))
+    }
+
+    func test_bannerMessage_cellAndWifi_returnsBanner() {
+        let msg = FieldLocationPolicy.indoorBannerMessage(source: .cellAndWifi)
+        XCTAssertNotNil(msg)
+        XCTAssertTrue(msg!.contains("approximate"), "Should mention 'approximate' for cell/wifi fallback")
+    }
+
+    func test_bannerMessage_unavailable_returnsBanner() {
+        let msg = FieldLocationPolicy.indoorBannerMessage(source: .unavailable)
+        XCTAssertNotNil(msg)
+        XCTAssertTrue(msg!.lowercased().contains("unavailable"), "Should mention 'unavailable'")
+    }
+
+    // MARK: - §57 Privacy — FieldLocationPrivacyViewModel CSV builder
+
+    func test_csvBuilder_emptyEntries_returnsHeaderOnly() {
+        let csv = FieldLocationPrivacyViewModel.buildCSV(entries: [])
+        let lines = csv.components(separatedBy: "\n")
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertTrue(lines[0].contains("timestamp"))
+    }
+
+    func test_csvBuilder_oneEntry_returnsTwoLines() {
+        let entry = FieldLocationHistoryEntry(
+            id: 1,
+            timestamp: "2026-04-26T10:00:00Z",
+            latitude: 37.3318,
+            longitude: -122.0312,
+            accuracyMeters: 15.0,
+            jobId: 42
+        )
+        let csv = FieldLocationPrivacyViewModel.buildCSV(entries: [entry])
+        let lines = csv.components(separatedBy: "\n").filter { !$0.isEmpty }
+        XCTAssertEqual(lines.count, 2, "Header + 1 data row")
+        XCTAssertTrue(lines[1].contains("37.3318"))
+        XCTAssertTrue(lines[1].contains("42"))
+    }
+
+    func test_csvBuilder_noJobId_leavesEmptyField() {
+        let entry = FieldLocationHistoryEntry(
+            id: 2,
+            timestamp: "2026-04-26T11:00:00Z",
+            latitude: 37.0,
+            longitude: -122.0,
+            accuracyMeters: 8.0,
+            jobId: nil
+        )
+        let csv = FieldLocationPrivacyViewModel.buildCSV(entries: [entry])
+        let dataLine = csv.components(separatedBy: "\n")[1]
+        XCTAssertTrue(dataLine.hasSuffix(","), "Last field (job_id) should be empty when nil")
+    }
 }

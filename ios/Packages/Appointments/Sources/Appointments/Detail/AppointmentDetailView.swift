@@ -234,6 +234,7 @@ public struct AppointmentDetailView: View {
             VStack(spacing: BrandSpacing.lg) {
                 statusBadge
                 infoCard
+                customerContactCard  // §10.2
                 quickActionsSection
                 notesCard
             }
@@ -248,7 +249,11 @@ public struct AppointmentDetailView: View {
             VStack(spacing: BrandSpacing.lg) {
                 statusBadge
                 HStack(alignment: .top, spacing: BrandSpacing.lg) {
-                    infoCard.frame(maxWidth: 400)
+                    VStack(spacing: BrandSpacing.lg) {
+                        infoCard
+                        customerContactCard  // §10.2
+                    }
+                    .frame(maxWidth: 400)
                     VStack(spacing: BrandSpacing.lg) {
                         quickActionsSection
                         notesCard
@@ -290,10 +295,72 @@ public struct AppointmentDetailView: View {
             if let assigned = vm.appointment.assignedName {
                 infoRow(icon: "person.badge.key", label: "Technician", value: assigned)
             }
+            // §10.2 — type, location, recurrence
+            if let typeName = vm.appointment.typeDisplayName {
+                infoRow(icon: "tag", label: "Type", value: typeName)
+            }
+            if vm.appointment.locationId != nil {
+                infoRow(icon: "mappin.circle", label: "Location", value: "Location #\(vm.appointment.locationId!)")
+            }
+            if let recurrence = vm.appointment.recurrence, !recurrence.isEmpty {
+                infoRow(icon: "arrow.clockwise", label: "Repeats", value: recurrence)
+            }
         }
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - §10.2 Customer contact card (call / SMS / email)
+
+    @ViewBuilder
+    private var customerContactCard: some View {
+        let phone = vm.appointment.customerPhone
+        let email = vm.appointment.customerEmail
+        if phone != nil || email != nil {
+            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                Text("Contact Customer")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                HStack(spacing: BrandSpacing.md) {
+                    if let phone {
+                        Link(destination: URL(string: "tel:\(phone.filter { !$0.isWhitespace })")!) {
+                            Label("Call", systemImage: "phone.fill")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, BrandSpacing.md)
+                                .padding(.vertical, BrandSpacing.sm)
+                                .background(Color.bizarreSuccess, in: Capsule())
+                        }
+                        .accessibilityLabel("Call customer: \(phone)")
+
+                        Link(destination: URL(string: "sms:\(phone.filter { !$0.isWhitespace })")!) {
+                            Label("SMS", systemImage: "message.fill")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, BrandSpacing.md)
+                                .padding(.vertical, BrandSpacing.sm)
+                                .background(Color.bizarreOrange, in: Capsule())
+                        }
+                        .accessibilityLabel("Send SMS to customer: \(phone)")
+                    }
+                    if let email {
+                        Link(destination: URL(string: "mailto:\(email)")!) {
+                            Label("Email", systemImage: "envelope.fill")
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, BrandSpacing.md)
+                                .padding(.vertical, BrandSpacing.sm)
+                                .background(.bizarreOnSurfaceMuted, in: Capsule())
+                        }
+                        .accessibilityLabel("Email customer: \(email)")
+                    }
+                }
+            }
+            .padding(BrandSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+        }
     }
 
     private func infoRow(icon: String, label: String, value: String) -> some View {

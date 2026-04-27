@@ -103,6 +103,50 @@ final class AppointmentDetailViewModelTests: XCTestCase {
         _ = await (first, second)
         XCTAssertLessThanOrEqual(api.putCallCount, 1)
     }
+
+    // MARK: - §10.2 Appointment model field helpers
+
+    func test_typeDisplayName_hyphenated_capitalizes() {
+        let dict: [String: Any] = ["id": 1, "appointment_type": "on-site"]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertEqual(appt.typeDisplayName, "On Site")
+    }
+
+    func test_typeDisplayName_nilWhenMissing() {
+        let dict: [String: Any] = ["id": 1]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertNil(appt.typeDisplayName)
+    }
+
+    func test_typeDisplayName_dropOff_capitalizes() {
+        let dict: [String: Any] = ["id": 1, "appointment_type": "drop-off"]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertEqual(appt.typeDisplayName, "Drop Off")
+    }
+
+    func test_customerPhone_decodesFromModel() {
+        let dict: [String: Any] = ["id": 1, "customer_phone": "+15551234567"]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertEqual(appt.customerPhone, "+15551234567")
+    }
+
+    func test_customerEmail_decodesFromModel() {
+        let dict: [String: Any] = ["id": 1, "customer_email": "test@example.com"]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertEqual(appt.customerEmail, "test@example.com")
+    }
+
+    func test_locationId_decodesFromModel() {
+        let dict: [String: Any] = ["id": 1, "location_id": 3]
+        let data = try! JSONSerialization.data(withJSONObject: dict)
+        let appt = try! JSONDecoder().decode(Appointment.self, from: data)
+        XCTAssertEqual(appt.locationId, 3)
+    }
 }
 
 // MARK: - DetailStubAPIClient

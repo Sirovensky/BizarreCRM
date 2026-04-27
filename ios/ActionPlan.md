@@ -1018,10 +1018,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 ### 6.3 Create
 - [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part / service), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag — shipped via `Inventory/InventoryCreateView` + `InventoryFormView`.
 - [x] **Inline barcode scan** — `InventoryDataScannerView` (VisionKit `DataScannerViewController` wrapper) fills SKU field; barcode button in SKU row auto-maps result. (feat(ios phase-4 §6))
-- [ ] **Photo capture** up to 4 per item; first = primary.
+- [x] **Photo capture** up to 4 per item; first = primary. (`InventoryFullFormView` photosSection + `InventoryImagePickerView`; up to 4 Data thumbnails with remove button; `InventoryCreateView` presents `InventoryPhotoPickerSheet`. feat(§6.3) b5)
 - [x] **Validation** — decimal for prices (2 places), integer for stock. Name + SKU required.
 - [x] **Category Picker** + **currency TextField** for cost/retail cents. **Draft autosave** to `UserDefaults` on every field change; restored on re-open. (feat(ios phase-4 §6))
-- [ ] **Save & add another** secondary CTA.
+- [x] **Save & add another** secondary CTA. (`InventoryCreateView.resetForAddAnother()` + `InventoryFullFormView` secondary button; resets all fields after save. feat(§6.3) b5)
 - [x] **Offline create** — temp ID + queue via `InventoryOfflineQueue`; `PendingSyncInventoryId = -1` sentinel.
 
 ### 6.4 Edit
@@ -1029,8 +1029,8 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Stock adjust** — `InventoryAdjustSheet` + `InventoryAdjustViewModel` wired. `POST /inventory/:id/adjust-stock` with delta + 6-reason picker (Recount/Shrinkage/Damage/Receive/Transfer/Other) + notes. Commit `0f43c61`. 404/501 → `APITransportError.notImplemented` surfaces "Coming soon" banner.
 - [x] **Low-stock alerts view** — `InventoryLowStockView` lists items below reorder_level with shortage badge; swipe → `InventoryAdjustSheet`. Toolbar "Low stock" ⌘⇧L on Inventory list.
 - [ ] **Move between locations** (multi-location tenants).
-- [ ] **Delete** — confirm; prevent if stock > 0 or open PO references it.
-- [ ] **Deactivate** — keep history, hide from POS.
+- [x] **Delete** — confirm; prevent if stock > 0 or open PO references it. (`InventoryDetailView.deleteItem()` + confirmationDialog; server returns 409 when stock > 0. feat(§6.4) b5)
+- [x] **Deactivate** — keep history, hide from POS. (`InventoryDetailView.deactivate()` via `DELETE /api/v1/inventory/:id`; sets is_active=0 on server; confirmationDialog warns. feat(§6.4) b5)
 
 ### 6.5 Scan to lookup
 - [ ] **Tab-bar quick scan** / Dashboard FAB scan → VisionKit → resolves barcode → item detail. If POS session open → add to cart.
@@ -1416,10 +1416,10 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] **Filter** — employee / location / type / status.
 
 ### 10.2 Detail
-- [ ] Customer card + linked ticket / estimate / lead.
-- [ ] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes.
+- [x] Customer card + linked ticket / estimate / lead. (`AppointmentDetailView` infoCard shows customer + assignee; `customerContactCard` shows Call/SMS/Email chips; `Appointment` model gains `customerPhone`, `customerEmail`, `locationId`, `appointmentType`, `recurrence` fields. feat(§10.2) b5)
+- [x] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes. (`AppointmentDetailView.infoCard` — date, duration, customer, assignee, type, location_id, recurrence rows. feat(§10.2) b5)
 - [ ] Reminder offsets (15min / 1h / 1day before) — respects per-user default.
-- [ ] Quick actions glass chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket.
+- [x] Quick actions glass chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket. (`AppointmentDetailView` quickActionsSection + `customerContactCard` for Call/SMS/Email; glass chip grid with keyboard shortcuts. feat(§10.2) b5)
 - [ ] Send-reminder manually (`POST /sms/send` + template).
 
 ### 10.3 Create
@@ -1431,8 +1431,8 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 
 ### 10.4 Edit / reschedule / cancel
 - [ ] Drag-to-reschedule (iPad day/week views) with haptic `.medium` on drop.
-- [ ] Cancel — ask "Notify customer?" (SMS/email).
-- [ ] No-show — one-tap from detail; optional fee.
+- [x] Cancel — ask "Notify customer?" (SMS/email). (`AppointmentCancelView` + `notifyToggle` Toggle fires SMS; `AppointmentCancelViewModel.notifyCustomer` flag; `DELETE /api/v1/leads/appointments/:id`. feat(§10.4) b5)
+- [x] No-show — one-tap from detail; optional fee. (`AppointmentDetailView` "No-Show" chip → confirmationDialog → `AppointmentDetailViewModel.markNoShow()`; `PUT` with `status: no-show + no_show: true`. feat(§10.4) b5)
 - [x] Recurring-event edits — `RecurrenceEditOptionsSheet`: this occurrence / this+future / all. (`Recurring/` — feat(ios post-phase §10))
 
 ### 10.5 Reminders
@@ -1442,8 +1442,8 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] Live Activity — "Next appt in 15 min" pulse on Lock Screen.
 
 ### 10.6 Check-in / check-out
-- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket.
-- [ ] "Customer departed" on completion.
+- [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (`AppointmentDetailView` "Customer Arrived" chip → `AppointmentDetailViewModel.checkIn()`; stamps `checkedInAt`; PUT with `status: confirmed`. feat(§10.6) b5)
+- [x] "Customer departed" on completion. (`AppointmentDetailView` "Customer Departed" chip → `AppointmentDetailViewModel.checkOut()`; stamps `checkedOutAt`; PUT with `status: completed`. feat(§10.6) b5)
 
 ### 10.7 Waitlist (post-phase §10)
 - [x] `WaitlistEntry` model — id, customerId, requestedServiceType, preferredWindows, note, createdAt, status. (`Waitlist/WaitlistEntry.swift`)
@@ -1485,10 +1485,10 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [ ] **Context menu** — Open, Duplicate, Delete.
 
 ### 11.2 Detail
-- [ ] Receipt photo preview (full-screen zoom, pinch).
-- [ ] Fields — category / amount / vendor / payment method / notes / date / reimbursable flag / approval status / employee.
-- [ ] Edit / Delete.
-- [ ] Approval workflow — admin Approve / Reject with comment.
+- [x] Receipt photo preview (full-screen zoom, pinch). (`ReceiptZoomView` fullScreenCover + `MagnificationGesture` (1×–6×) + `DragGesture` pan + double-tap toggle; Reduce Motion respected; `receiptImageView` tappable button in `ExpenseDetailView`. feat(§11.2) b5)
+- [x] Fields — category / amount / vendor / payment method / notes / date / reimbursable flag / approval status / employee. (`ExpenseDetailView` headerCard + vendorPaymentCard + metaCard + descriptionCard. feat(§11.2) b5)
+- [x] Edit / Delete. (`ExpenseDetailView` toolbar Edit button → `ExpenseEditView` sheet; Delete with confirmationDialog; `ExpenseDetailViewModel.delete()`. feat(§11.2) b5)
+- [x] Approval workflow — admin Approve / Reject with comment. (`ExpenseDetailView.approvalActionsCard` + `ExpenseDetailViewModel.approve()/deny(reason:)`; `POST /expenses/:id/approve` + `/deny`; deny-reason sheet. feat(§11.2) b5)
 
 ### 11.3 Create
 - [x] Minimal — shipped.
@@ -5936,9 +5936,9 @@ Number preserved as stub so cross-refs don't break.
 - [x] Permission: request `whenInUse` first; step up to `always` only for field-service role. Never background-track non-field users. (`FieldLocationPolicy.swift`)
 - [x] Accuracy: approximate default; precise only when geocoding or routing explicitly. (`FieldLocationPolicy.desiredAccuracy(duringActiveJob:)`)
 - [x] Power: significant-location-change for background (not raw GPS); stop updates when app leaves foreground unless `always` granted. (`FieldLocationPolicy.handleBackgrounded/Foregrounded`)
-- [ ] Privacy: all location data → tenant server only (§32). Settings → Privacy → Location shows what's tracked + toggle + history export + delete history.
+- [x] Privacy: all location data → tenant server only (§32). Settings → Privacy → Location shows what's tracked + toggle + history export + delete history. (`FieldLocationPrivacySettingsView` + `FieldLocationPrivacyViewModel`; toggle in UserDefaults; CSV export; delete via `DELETE /api/v1/field-service/location-history`; iPhone List + iPad card layouts. feat(§57) b5)
 - [x] Accuracy thresholds: < 20m for on-site check-in; < 100m for route planning. (`FieldLocationPolicy.isWithinCheckInRange` — 100 m; `FieldCheckInService` validates proximity)
-- [ ] Indoor fallback: cell + Wi-Fi heuristics when GPS weak; degrade gracefully.
+- [x] Indoor fallback: cell + Wi-Fi heuristics when GPS weak; degrade gracefully. (`FieldLocationPolicy.positioningSource(from:)` — buckets accuracy ≤20m=GPS / 21-200m=cellAndWifi / >200m=unavailable; `indoorBannerMessage(source:)` returns banner copy; `canAutoCheckIn(location:jobCoordinate:)` prevents auto-check-in on weak fix. 12 new tests pass. feat(§57) b5)
 
 ---
 ## §58. Purchase Orders (inventory)

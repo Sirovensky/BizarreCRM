@@ -10,16 +10,25 @@ import Networking
 @Observable
 public final class PurchaseOrderListViewModel {
 
+    /// §58 — PO list status filter matching spec:
+    /// "status filter (draft / sent / partial / received / cancelled)"
+    /// "sent" maps to "ordered" in the server POStatus enum.
     public enum Filter: String, CaseIterable, Sendable {
-        case all      = "All"
-        case open     = "Open"
-        case received = "Received"
+        case all       = "All"
+        case draft     = "Draft"
+        case sent      = "Sent"
+        case partial   = "Partial"
+        case received  = "Received"
+        case cancelled = "Cancelled"
 
         var apiValue: String? {
             switch self {
-            case .all:      return nil
-            case .open:     return "open"
-            case .received: return "received"
+            case .all:       return nil
+            case .draft:     return "draft"
+            case .sent:      return "ordered"  // server uses "ordered" for "sent"
+            case .partial:   return "partial"
+            case .received:  return "received"
+            case .cancelled: return "cancelled"
             }
         }
     }
@@ -133,13 +142,16 @@ public struct PurchaseOrderListView: View {
             }
             .keyboardShortcut("n", modifiers: .command)
         }
+        // §58 spec: "status filter (draft / sent / partial / received / cancelled)"
+        // Use .menu picker so the 6-option list stays compact in the navbar.
         ToolbarItem(placement: .navigationBarLeading) {
-            Picker("Filter", selection: $vm.filter) {
-                ForEach(PurchaseOrderListViewModel.Filter.allCases, id: \.self) {
-                    Text($0.rawValue).tag($0)
+            Picker("Status", selection: $vm.filter) {
+                ForEach(PurchaseOrderListViewModel.Filter.allCases, id: \.self) { f in
+                    Text(f.rawValue).tag(f)
                 }
             }
             .pickerStyle(.menu)
+            .accessibilityLabel("Filter purchase orders by status: \(vm.filter.rawValue)")
         }
     }
 

@@ -57,7 +57,7 @@ final class PurchaseOrderListViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(repo.listCallCount, 1)
     }
 
-    // MARK: filter
+    // MARK: filter — §58 full status set (draft / sent / partial / received / cancelled)
 
     func test_filter_all_passesNilStatus() async {
         let repo = MockPurchaseOrderRepository()
@@ -69,14 +69,35 @@ final class PurchaseOrderListViewModelTests: XCTestCase {
         XCTAssertNil(repo.listLastStatus)
     }
 
-    func test_filter_open_passesOpenStatus() async {
+    func test_filter_draft_passesDraftStatus() async {
         let repo = MockPurchaseOrderRepository()
         let vm = PurchaseOrderListViewModel(repo: repo)
-        vm.filter = .open
+        vm.filter = .draft
 
         await vm.load()
 
-        XCTAssertEqual(repo.listLastStatus, "open")
+        XCTAssertEqual(repo.listLastStatus, "draft")
+    }
+
+    func test_filter_sent_passesOrderedStatus() async {
+        // "Sent" in UI maps to "ordered" on the server.
+        let repo = MockPurchaseOrderRepository()
+        let vm = PurchaseOrderListViewModel(repo: repo)
+        vm.filter = .sent
+
+        await vm.load()
+
+        XCTAssertEqual(repo.listLastStatus, "ordered")
+    }
+
+    func test_filter_partial_passesPartialStatus() async {
+        let repo = MockPurchaseOrderRepository()
+        let vm = PurchaseOrderListViewModel(repo: repo)
+        vm.filter = .partial
+
+        await vm.load()
+
+        XCTAssertEqual(repo.listLastStatus, "partial")
     }
 
     func test_filter_received_passesReceivedStatus() async {
@@ -87,5 +108,21 @@ final class PurchaseOrderListViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(repo.listLastStatus, "received")
+    }
+
+    func test_filter_cancelled_passesCancelledStatus() async {
+        let repo = MockPurchaseOrderRepository()
+        let vm = PurchaseOrderListViewModel(repo: repo)
+        vm.filter = .cancelled
+
+        await vm.load()
+
+        XCTAssertEqual(repo.listLastStatus, "cancelled")
+    }
+
+    func test_allFilterCasesHaveRawValue() {
+        // Verify all 6 filter cases are present (regression guard).
+        let all = PurchaseOrderListViewModel.Filter.allCases
+        XCTAssertEqual(all.count, 6, "Expected 6 filter cases: all/draft/sent/partial/received/cancelled")
     }
 }

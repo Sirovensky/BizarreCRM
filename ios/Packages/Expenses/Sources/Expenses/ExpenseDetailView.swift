@@ -108,6 +108,9 @@ public struct ExpenseDetailView: View {
     /// §11.2 Approval — deny reason sheet
     @State private var showDenySheet: Bool = false
     @State private var denyReasonText: String = ""
+    /// §11.2 — full-screen receipt zoom sheet
+    @State private var showReceiptZoom: Bool = false
+    @State private var zoomReceiptPath: String?
     private let api: APIClient
 
     public init(api: APIClient, id: Int64) {
@@ -138,6 +141,14 @@ public struct ExpenseDetailView: View {
                     Task { await vm.refreshAfterReceiptAttach() }
                 }
                 .presentationDetents([.medium, .large])
+            }
+        }
+        // §11.2 — full-screen receipt zoom with pinch
+        .fullScreenCover(isPresented: $showReceiptZoom) {
+            if let path = zoomReceiptPath {
+                ReceiptZoomView(api: api, path: path) {
+                    showReceiptZoom = false
+                }
             }
         }
         .confirmationDialog(
@@ -615,8 +626,17 @@ public struct ExpenseDetailView: View {
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
+    /// §11.2 — tap receipt thumbnail → full-screen zoom sheet.
     private func receiptImageView(path: String) -> some View {
-        ReceiptImageView(api: api, path: path)
+        Button {
+            zoomReceiptPath = path
+            showReceiptZoom = true
+        } label: {
+            ReceiptImageView(api: api, path: path)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("View receipt full screen")
+        .accessibilityHint("Double-tap to open full-screen view with pinch-to-zoom")
     }
 
     private var emptyReceiptView: some View {
