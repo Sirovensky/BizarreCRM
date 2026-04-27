@@ -77,6 +77,14 @@ public extension APIClient {
                        body: EmptyBody(),
                        as: MarkAllReadResponse.self)
     }
+
+    /// PATCH `/api/v1/notifications/:id/dismiss` — soft-delete for a
+    /// notification; server hides it from future list responses.
+    func dismissNotification(id: Int64) async throws {
+        _ = try await patch("/api/v1/notifications/\(id)/dismiss",
+                            body: EmptyBody(),
+                            as: EmptyResponse.self)
+    }
 }
 
 // ---------------------------------------------------------------------------

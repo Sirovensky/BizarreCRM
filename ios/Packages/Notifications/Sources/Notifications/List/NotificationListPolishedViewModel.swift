@@ -93,6 +93,21 @@ public final class NotificationListPolishedViewModel {
 
     // MARK: - Actions
 
+    /// Optimistic dismiss (soft-delete) for a single row.
+    /// On success the item is removed from the local list.
+    /// On failure the item is restored and an error message shown.
+    public func dismiss(id: Int64) async {
+        guard let idx = allItems.firstIndex(where: { $0.id == id }) else { return }
+        let removed = allItems[idx]
+        allItems.remove(at: idx)
+        do {
+            try await api.dismissNotification(id: id)
+        } catch {
+            allItems.insert(removed, at: min(idx, allItems.endIndex))
+            errorMessage = "Couldn't dismiss notification. Please try again."
+        }
+    }
+
     /// Optimistic mark-read for a single row. Reverts on server failure.
     public func markRead(id: Int64) async {
         guard let idx = allItems.firstIndex(where: { $0.id == id }),
