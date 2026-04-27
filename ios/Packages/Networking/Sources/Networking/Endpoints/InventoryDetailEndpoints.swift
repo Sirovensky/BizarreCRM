@@ -62,6 +62,8 @@ public struct InventoryItemDetail: Decodable, Sendable, Identifiable, Hashable {
     public let isSerialized: Int?
     public let createdAt: String?
     public let updatedAt: String?
+    /// §6.2 Tax class — editable by admin. Nil for non-admin (server gates).
+    public let taxClass: String?
 
     public var displayName: String { name?.isEmpty == false ? name! : "Unnamed" }
 
@@ -85,6 +87,7 @@ public struct InventoryItemDetail: Decodable, Sendable, Identifiable, Hashable {
         case isSerialized = "is_serialized"
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+        case taxClass = "tax_class"
     }
 }
 
