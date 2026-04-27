@@ -297,7 +297,17 @@ Most foundation work is already `[x]` done. Each agent should grep for `[ ]` in 
 
 Agents append here when work uncovers issues outside their slice.
 
-(empty)
+### Agent 9 — b5 discoveries
+
+**§65.1 Universal Links entitlement — Agent 10 action needed (§28 / entitlements / project.yml)**
+The `applinks:app.bizarrecrm.com` and `applinks:*.bizarrecrm.com` associated-domains entitlement must be added to `BizarreCRM.entitlements` (Agent 10 owns that file per the advisory-lock rule). The §65 deep-link section in `ServerConnectionPage.swift` documents the requirement and the public-path exclusion (`/public/*` must NOT be in AASA so customers see the web page). Agent 10 should add the `com.apple.developer.associated-domains` key to the entitlements file. The AASA JSON file itself is server-side (Agent 10 server work or ops).
+
+**Pre-existing Networking compile errors (Agent 10 + Agent 1 fixes needed)**
+Two classes of pre-existing errors found during b5 build gate:
+1. `APIClient+Pos.swift` lines 259+274: nested struct inside generic function causes Swift 6 error — `PatchTicketDraftBody` and `SignatureBody` must be moved out of the generic func scope. Agent 1 owns this file.
+2. `WebSocketConnection.swift` lines 40+46: `reference to property 'url' in closure requires explicit use of 'self'` — Swift 6 strict concurrency. Agent 10 owns this file.
+3. `InvoiceDetailEndpoints.swift` line 186: `invalid redeclaration of 'EmptyBody'` — private struct with same name in another file. Agent 6 owns this file.
+These errors prevent `swift test` from completing across the full package graph. Per-package tests on Agent 9's own packages (Notifications, Settings, Search) compile and pass cleanly.
 
 ---
 
