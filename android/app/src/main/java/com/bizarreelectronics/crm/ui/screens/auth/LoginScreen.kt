@@ -2076,19 +2076,15 @@ fun LoginScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
-        // 2026-04-26 audit: explicitly opt out of safeDrawing IME consumption.
-        // Default contentWindowInsets=safeDrawing folded the IME inset into
-        // innerPadding AND .imePadding() added it again, causing a visible
-        // dark gap between the form and the soft keyboard. Now Scaffold only
-        // pads for system bars; .imePadding() below handles IME exclusively.
-        contentWindowInsets = WindowInsets.systemBars,
-    ) { innerPadding ->
+        // 2026-04-26 audit: drop Scaffold inset handling entirely. Box uses
+        // safeDrawingPadding which unions status+nav+IME without double-
+        // counting the nav-bar inset that previously left a dark gap between
+        // the Sign In button and the soft keyboard.
+        contentWindowInsets = WindowInsets(0),
+    ) { _ ->
     Box(
-        modifier = Modifier.fillMaxSize().padding(innerPadding)
-            // LOGIN-MOCK-140: protect display-cutout area (notch/punch-hole) — status-bar
-            // inset is already handled by Scaffold's innerPadding (LOGIN-MOCK-102).
-            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
-            .imePadding(),
+        modifier = Modifier.fillMaxSize()
+            .safeDrawingPadding(),
         // LOGIN-MOCK-102: removed .statusBarsPadding() — Scaffold's innerPadding already
         // contains the status-bar inset on API 30+ (M3 default contentWindowInsets =
         // safeDrawing). Adding statusBarsPadding() a second time pushed the wordmark
@@ -2111,9 +2107,18 @@ fun LoginScreen(
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Logo / App name — small top breathing room replaces the old 80dp pin.
-            Spacer(Modifier.height(if (imeVisible) 4.dp else 32.dp))
-            if (!imeVisible) {
+            // Logo / App name — animate height so wordmark hide/show isn't jerky.
+            // 2026-04-26 — collapse to 4dp top + animated-out wordmark when IME visible.
+            val topSpacer by animateDpAsState(
+                targetValue = if (imeVisible) 4.dp else 32.dp,
+                label = "loginTopSpacer",
+            )
+            Spacer(Modifier.height(topSpacer))
+            AnimatedVisibility(
+                visible = !imeVisible,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
                 // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
                 Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
                     Text(
@@ -2799,6 +2804,14 @@ private fun CredentialsStep(
     val focusManager = LocalFocusManager.current
     // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
     var showPassword by rememberSaveable { mutableStateOf(false) }
+    // 2026-04-26 — when keyboard up, compress field gaps so both Username +
+    // Password + Sign In fit on smaller phones without scrolling.
+    @OptIn(ExperimentalLayoutApi::class)
+    val imeVisible = WindowInsets.isImeVisible
+    val fieldGap by animateDpAsState(
+        targetValue = if (imeVisible) 8.dp else 16.dp,
+        label = "loginFieldGap",
+    )
 
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
@@ -3050,7 +3063,7 @@ private fun CredentialsStep(
         // inert under the visible "Next" glyph on the native keyboard.
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(fieldGap))
 
     // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
     // While check is in flight (domainSsoChecking), show a small spinner below the
@@ -3123,7 +3136,7 @@ private fun CredentialsStep(
     }
 
     ErrorMessage(state.error)
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(fieldGap))
 
     // CROSS48: Sign In is the single dominant CTA on this step — route
     // through BrandPrimaryButton so every primary button in the app
