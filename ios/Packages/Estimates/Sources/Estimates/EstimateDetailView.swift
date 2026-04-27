@@ -60,6 +60,7 @@ public struct EstimateDetailView: View {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                    versionWarningBanner
                     headerCard
                     lineItemsCard
                     totalsCard
@@ -95,6 +96,7 @@ public struct EstimateDetailView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 ScrollView {
                     VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                        versionWarningBanner
                         headerCard
                         lineItemsCard
                         if let reason = estimate.rejectionReason, !reason.isEmpty {
@@ -132,6 +134,48 @@ public struct EstimateDetailView: View {
         .sheet(isPresented: $showApproveSheet) { approveSheet }
         .sheet(isPresented: $showRejectSheet) { rejectSheet }
         #endif
+    }
+
+    // MARK: - §8 Version warning banner
+
+    /// Shows an amber warning when the customer approved an earlier version
+    /// but staff has since edited to a newer draft.
+    /// Example: customer approved v2, current version is v3 → "Customer approved v2; resend?"
+    @ViewBuilder
+    private var versionWarningBanner: some View {
+        if let approved = estimate.approvedVersionNumber,
+           let current = estimate.versionNumber,
+           current > approved {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text("Customer approved v\(approved)")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Estimate was edited to v\(current). Resend for re-approval?")
+                        .font(.brandBodySmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                Spacer()
+                #if canImport(UIKit)
+                Button("Resend") { showSendSheet = true }
+                    .font(.brandLabelMedium())
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+                    .accessibilityLabel("Resend estimate to customer for re-approval")
+                #endif
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                    .stroke(Color.orange.opacity(0.35), lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Warning: Customer approved version \(approved). Estimate has been edited to version \(current). Consider resending.")
+        }
     }
 
     // MARK: - Header card (§8.2)

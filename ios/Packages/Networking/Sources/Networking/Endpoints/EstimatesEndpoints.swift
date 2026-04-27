@@ -55,6 +55,9 @@ public struct Estimate: Decodable, Sendable, Identifiable, Hashable {
     public let daysUntilExpiry: Int?
     /// Current version number (§8.2 versioning).
     public let versionNumber: Int?
+    /// Version number that the customer approved, if any.
+    /// Used to detect the "customer approved v2 but staff edited to v3" scenario (§8).
+    public let approvedVersionNumber: Int?
     /// Populated when fetching detail (`GET /estimates/:id`).
     public let lineItems: [EstimateLineItem]?
 
@@ -80,6 +83,7 @@ public struct Estimate: Decodable, Sendable, Identifiable, Hashable {
         case isExpiring = "is_expiring"
         case daysUntilExpiry = "days_until_expiry"
         case versionNumber = "version_number"
+        case approvedVersionNumber = "approved_version_number"
         case lineItems = "line_items"
     }
 }
