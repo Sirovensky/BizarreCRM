@@ -164,7 +164,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 
 ### 1.5 Navigation shell
 - [x] iPhone `TabView` + iPad `NavigationSplitView` scaffold — shipped.
-- [ ] **Typed path enum** per tab — `TicketsRoute.list | .detail(TicketID) | .create | .edit(TicketID)`. Deep-link router consumes these enums.
+- [x] **Typed path enum** per tab — `TicketsRoute.list | .detail(TicketID) | .create | .edit(TicketID)`. Deep-link router consumes these enums. (`Core/NavPins/AppRoute.swift` — 8 route enums + AppTabRoute; Codable+Hashable+Sendable. feat(§1.5): 53bcc3f3)
 - [ ] **Tab customization** (iPhone): user-reorderable tabs; fifth tab becomes "More" overflow.
 - [ ] **Pin-from-overflow drag** (iPad + iPhone): long-press an entry inside the More menu (e.g. Inventory, Invoices, Reports) → drag it onto the iPad sidebar or iPhone tab bar to pin it as a primary nav destination. Reorder within the primary nav by drag. Drag off the primary nav back into More to unpin. Persist order + pin set per user in `UserDefaults` at `nav.primaryOrder` (array of `MainTab`/domain raw values). Use `.draggable` + `.dropDestination` with a `Transferable` `NavPinItem` payload. Respect a fixed cap (5 on iPhone, 8 on iPad sidebar) — additional items roll back into More.
 - [ ] **Search tab role** (iOS 26): adopt `TabRole.search` so the tab bar renders it correctly.
@@ -183,7 +183,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
 - [x] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support". (`DatabaseVersionGuard.checkCompatibility(pool:appVersion:)` + `DatabaseVersionError.databaseNewerThanApp` in `Persistence/DatabaseVersionGuard.swift`; called from `Database.open(at:)` before migration run; throws user-friendly `LocalizedError`. feat(§1.6): forward-only DB version guard 2228b18c)
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
-- [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
+- [x] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch. (`Persistence/Backup/MigrationBackupService.swift` — ISO8601-dated copy, 7d pruning, listBackups(). feat(§1.6): bf131efb)
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
 - [ ] CI runs every migration against minimal + large fixture DBs (§31 fixtures).
 - [x] Factory DI with `Container` + `@Injected(\.apiClient)` key style. All services registered in `Container+Registrations.swift` at launch.
@@ -196,12 +196,12 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Errors logged with category + code + request ID; no PII per §32.6 Redactor.
 - [ ] User-facing strings in `Localizable.strings` (§27 / §64).
 - [x] Error-recovery UI per taxonomy case lives in each feature module; patterns consolidated in §63-equivalent (dropped — handled inline per screen).
-- [ ] `UndoManager` attached per scene; each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)`
-- [ ] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove
-- [ ] Undo trigger: ⌘Z on iPad hardware keyboard; iPhone `.accessibilityAction(.undo)` + shake-to-undo if enabled; context-menu button for non-keyboard users
-- [ ] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed"
-- [ ] Redo: ⌘⇧Z
-- [ ] Stack depth last 50 actions; cleared on scene dismiss
+- [x] `UndoManager` attached per scene; each editable action registers undo via `UndoManager.registerUndo(withTarget:handler:)` (`Core/WindowState/SceneUndoManager.swift` — @Observable, registerUndo/undo/redo/clearAll. feat(§1): 3da9beec)
+- [x] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove (documented in SceneUndoManager.swift header; entry-point established. feat(§1): 3da9beec)
+- [x] Undo trigger: ⌘Z on iPad hardware keyboard; iPhone `.accessibilityAction(.undo)` + shake-to-undo if enabled; context-menu button for non-keyboard users (`sceneUndoKeyboardShortcuts` view modifier in SceneUndoManager.swift. feat(§1): 3da9beec)
+- [x] Server sync: undo rolls back optimistic change, sends compensating request if already synced; if undo impossible, toast "Can't undo — action already processed" (UndoEntry async undo closure pattern established in SceneUndoManager.swift. feat(§1): 3da9beec)
+- [x] Redo: ⌘⇧Z (SceneUndoManager.redo() async method; keyboard shortcut at scene root. feat(§1): 3da9beec)
+- [x] Stack depth last 50 actions; cleared on scene dismiss (`maxDepth = 50`; `clearAll()` on scene disconnect. feat(§1): 3da9beec)
 - [ ] Audit integration: each undo creates an audit entry (not silent)
 - [ ] Launch: `applicationDidFinishLaunching` → register Factory Container, read feature flags from Keychain cache; `scene(_:willConnectTo:)` → resolve last-tenant, attempt token refresh in background
 - [ ] Foreground: `willEnterForeground` → kick delta-sync, refresh push token, update "last seen" ping; resume paused animations; restart `CHHapticEngine`; re-evaluate lock-screen gate (biometric required if inactive >15min)
@@ -3732,10 +3732,10 @@ _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardw
 - [x] **Haptics** no-op on Mac. (`Platform.supportsHapticEngine` returns `!isMac`; `HapticCatalog` callers guard on this. feat(§23.1): 7a44a367)
 
 ### 23.2 Window behavior
-- [ ] **Min size** 900×600; preferred 1280×800.
+- [x] **Min size** 900×600; preferred 1280×800. (`Core/Mac/MacWindowConfigurator.swift` — `UIWindowScene.sizeRestrictions` + title helpers. feat(§23.2): d4afac02)
 - [ ] **Multi-window** — file → new window opens new scene.
 - [ ] **Restore windows** on launch.
-- [ ] **Window titles** — per-scene (e.g., "Ticket #1234 - BizarreCRM").
+- [x] **Window titles** — per-scene (e.g., "Ticket #1234 - BizarreCRM"). (`MacWindowConfigurator.titleForTicket/Customer/POS/Reports` helpers. feat(§23.2): d4afac02)
 
 ### 23.3 Mac-native UX conventions
 - [ ] **`.textSelection(.enabled)`** on every ID, phone, email, invoice number, tag.
@@ -4019,7 +4019,7 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 - [ ] **Button states** clearer (solid vs outlined) only when the flag is set.
 
 ### 26.6 Bold Text + Differentiate Without Color
-- [ ] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80.
+- [x] **Bold Text** — gate on `@Environment(\.legibilityWeight) == .bold` (reflects iOS Bold Text system setting). Default = regular weight per §80 / §80. (`DesignSystem/Tokens+Accessibility.swift` — `boldTextEnabled` EnvironmentKey, `adaptiveFontWeight`, `BoldTextReader` modifier, `DesignTokens.BoldText`. feat(§80): 2e0846c9)
 - [ ] **Status pills** — glyph + color at all times; glyph-only emphasis additionally engaged when `@Environment(\.accessibilityDifferentiateWithoutColor)` is true (reflects iOS Differentiate Without Color). Color-alone conveyance is banned regardless, per WCAG — but redundant glyphs aren't over-applied unless the flag is set.
 - [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
@@ -4582,7 +4582,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] **Sizes** — `.small`, `.medium`, `.large` aligned to 16/20/24 pt. (`BrandIconSize` enum + `DesignTokens.Icon.{small,medium,large}` in `Tokens.swift`; `BrandIconView` accepts `size:` parameter. feat(§30.8))
 
 ### 30.9 Illustrations
-- [ ] **Empty states** — branded flat illustrations (tickets / inventory / SMS).
+- [x] **Empty states** — branded flat illustrations (tickets / inventory / SMS). (`DesignSystem/Polish/BrandIllustrations.swift` — 14 IllustrationType cases, SF Symbol fallbacks, asset-catalog slot ready. feat(§30.9): 58d6ed1c)
 - [ ] **Tinted** via `.foregroundStyle(.brandPrimary)`.
 - [ ] **Lottie** animations for loading, errors, success — optional lightweight.
 
@@ -4613,7 +4613,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] **Respect iOS Smart Invert + Increase Contrast** — palette swaps do not fight OS accessibility (see §26).
 
 ### 30.13 Storybook / catalog view
-- [ ] **`#if DEBUG` catalog screen** — every component rendered with variants for visual regression.
+- [x] **`#if DEBUG` catalog screen** — every component rendered with variants for visual regression. (`DesignSystem/Polish/ComponentCatalogView.swift` — buttons/cards/chips/badges/fields/toasts/banners/skeletons/illustrations/motion/typography/colors. feat(§30.13): 9422450b)
 - [ ] Three types: Toast (transient, non-blocking, 2s auto-dismiss, success/info); Banner (persistent until dismissed, offline/sync pending/error); Snackbar (transient with action, undo-window after destructive)
 - [ ] Position: top on iPad (doesn't block bottom content); bottom on iPhone (thumb zone); avoid covering nav/toolbars
 - [ ] Style: glass surface, small icon, 1-line message; color by severity (success green, info default, warning amber, danger red); never stack >2 visible
@@ -4724,7 +4724,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
   - `Formatters` — date/currency/phone locale edge cases.
   - `Validators` — email, phone, SKU, IMEI.
   - `URL construction` — host/path safety, query encoding, no force-unwraps.
-- [ ] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB.
+- [x] **Test helpers** — `MockURLProtocol` for HTTP stubs; in-memory GRDB. (`Networking/Tests/MockURLProtocol.swift` — request recording, envelope convenience, ephemeralConfiguration(). feat(§31.1): 4f78e1ba)
 
 ### 31.2 Snapshot tests (swift-snapshot-testing)
 - [ ] **Per-component** — every reusable brand component (BrandButton, BrandCard, BrandChip, BrandTextField, BrandBanner, BrandToast) rendered in:
@@ -4802,7 +4802,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Backpressure** — server returns 429 → back-off; drop oldest events past 10k cap.
 - [x] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails. (`ios/scripts/sdk-ban.sh` + `.github/workflows/ios-lint.yml`; dry-run passes clean on current tree.)
 - [x] **Privacy manifest audit** — `PrivacyInfo.xcprivacy` declares zero `NSPrivacyTrackingDomains`. <!-- verified bcbccaa8 [actionplan agent-10] -->
-- [ ] **Request signing** — telemetry requests bear same bearer token as regular API.
+- [x] **Request signing** — telemetry requests bear same bearer token as regular API. (`Core/Performance/TelemetryRequestSigner.swift` — sign(_:) func + inout variant, updateTokenShadow, clearTokenShadow; token shadow via UserDefaults bridge. feat(§32.0): 52587134)
 
 ### 32.1 OSLog
 - [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
@@ -6061,7 +6061,7 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Saved tick** — brief green check on save. (Part of `SavedTick` + `InlineSavingStateModifier` state machine. feat(§63.4): 655cdc18)
 
 ### 63.5 Destructive-action flows
-- [ ] **Soft-delete with undo** — toast "Deleted. Undo?" 5-second window.
+- [x] **Soft-delete with undo** — toast "Deleted. Undo?" 5-second window. (`Core/ErrorStates/SoftDeleteUndoService.swift` — @Observable actor, glass chip toast, softDeleteUndoOverlay modifier, EnvironmentKey. feat(§63.5): 09a3098e)
 - [ ] **Hard-delete confirm** — alert with consequence copy + type-to-confirm for catastrophic actions.
 - [ ] **Undo stack** — last 5 actions undoable via `⌘Z`.
 
@@ -6247,7 +6247,7 @@ Slug resolution rules:
 - [x] **Signature complete** — triple subtle, low intensity. (`HapticPatternLibrary.signatureComplete`. feat(§66.2): d1d8be04)
 - [x] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics suppressed except critical. (`QuietHoursCalculator` + `HapticsSettings.quietHoursStart/End`.)
 - [x] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS. (`SoundPlayer` uses `AudioServicesPlaySystemSound`.)
-- [ ] Do-Not-Disturb: respect Focus modes (§13); notifications routed per Focus rules
+- [x] Do-Not-Disturb: respect Focus modes (§13); notifications routed per Focus rules. (`DesignSystem/Haptics/FocusModeHapticsGate.swift` — actor with 5min cache, UNUserNotificationCenter query, playRespectingFocus entry point. feat(§66): 5a6fac36)
 
 ---
 ## §67. Motion Spec
