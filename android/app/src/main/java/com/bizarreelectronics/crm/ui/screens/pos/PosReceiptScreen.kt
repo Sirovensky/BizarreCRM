@@ -26,12 +26,17 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.components.shared.BrandCard
+import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import java.io.File
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,6 +199,9 @@ fun PosReceiptScreen(
                 }
             }
 
+            // ── Receipt preview card ───────────────────────────────────────────
+            ReceiptPreviewCard(state = state)
+
             // ── Send receipt section ───────────────────────────────────────────
             Text(
                 "SEND RECEIPT",
@@ -287,6 +295,142 @@ fun PosReceiptScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+// ─── Receipt preview card ─────────────────────────────────────────────────────
+
+/**
+ * Inline monospace receipt-preview card matching PHONE 6 layout from
+ * pos-phone-mockups.html. Rendered above the "SEND RECEIPT" section so the
+ * cashier can verify the sale before dispatching.
+ *
+ * State-field notes:
+ *   - shopName: NOTE — no shopName in PosReceiptUiState; hardcoded stub
+ *     "Bizarre Electronics". Add state.shopName once server returns it on
+ *     POST /api/v1/pos/checkout or via GET /api/v1/settings.
+ *   - receiptDate: NOTE — no completedAt timestamp in PosReceiptUiState or
+ *     PosSession. Using LocalDateTime.now() as a display approximation.
+ *     Add state.receiptDate (ISO-8601 String) when server provides it.
+ *   - changeCents: derived as (paidCents - totalCents); negative means
+ *     under-tendered (should not happen post-checkout but guarded with max 0).
+ */
+@Composable
+private fun ReceiptPreviewCard(state: PosReceiptUiState) {
+    // NOTE: shopName not in state — stubbed. See kdoc above.
+    val shopName = "Bizarre Electronics"
+
+    // NOTE: receiptDate not in state — approximated from device clock. See kdoc.
+    val receiptDate = remember {
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern("MMM d, yyyy  h:mm a"))
+    }
+
+    val receiptNumber = state.invoiceId?.let { "#$it" } ?: state.orderId.ifBlank { "—" }
+
+    val changeCents = (state.paidCents - state.totalCents).coerceAtLeast(0L)
+
+    val monoStyle = BrandMono.copy(color = MaterialTheme.colorScheme.onSurface)
+    val monoMuted = BrandMono.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val monoBold  = BrandMono.copy(
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+    val monoTotal = BrandMono.copy(
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.primary,
+    )
+
+    BrandCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            // ── Header ────────────────────────────────────────────────────────
+            Text(
+                shopName,
+                style = monoBold,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                receiptDate,
+                style = monoMuted,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                "Receipt $receiptNumber",
+                style = monoMuted,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.height(8.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(6.dp))
+
+            // ── Line items ────────────────────────────────────────────────────
+            if (state.receiptLines.isEmpty()) {
+                Text("  (no line items)", style = monoMuted)
+            } else {
+                state.receiptLines.forEach { line ->
+                    ReceiptLineRow(
+                        label = "${line.qty}× ${line.name}",
+                        amount = line.lineTotalCents.toDollarString(),
+                        style = monoStyle,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(4.dp))
+
+            // ── Totals breakdown ──────────────────────────────────────────────
+            ReceiptLineRow("Subtotal", state.subtotalCents.toDollarString(), monoMuted)
+
+            if (state.cartDiscountCents > 0L) {
+                ReceiptLineRow(
+                    "Discount",
+                    "-${state.cartDiscountCents.toDollarString()}",
+                    monoMuted,
+                )
+            }
+
+            ReceiptLineRow("Tax", state.taxCents.toDollarString(), monoMuted)
+
+            if (state.tipCents > 0L) {
+                ReceiptLineRow("Tip", state.tipCents.toDollarString(), monoMuted)
+            }
+
+            Spacer(Modifier.height(4.dp))
+            ReceiptLineRow("TOTAL", state.totalCents.toDollarString(), monoTotal)
+
+            Spacer(Modifier.height(6.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.height(4.dp))
+
+            // ── Tendered + Change ─────────────────────────────────────────────
+            ReceiptLineRow("Tendered", state.paidCents.toDollarString(), monoStyle)
+            ReceiptLineRow("Change",   changeCents.toDollarString(),      monoStyle)
+
+            // TODO loyalty banner — pending server data
+            // Gate on state.loyaltyPointsEarned > 0 once
+            // POST /api/v1/pos/checkout returns loyalty data (see ViewModel TODO).
+        }
+    }
+}
+
+/** Single monospace label + right-aligned amount row. */
+@Composable
+private fun ReceiptLineRow(label: String, amount: String, style: androidx.compose.ui.text.TextStyle) {
+    Row(modifier = Modifier.fillMaxWidth()) {
+        Text(label, style = style, modifier = Modifier.weight(1f))
+        Text(amount, style = style, textAlign = TextAlign.End)
     }
 }
 
