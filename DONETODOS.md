@@ -3324,3 +3324,9 @@ DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB
 ## todofixes426 — Cleanup pass 13 (2026-04-26) — WEB-FQ codemods
 
 DONE: WEB-FQ-007 (disabled state opacity codemod, 119 files, 306 substitutions), WEB-FQ-008 (border-radius scrambled, 5 sites), WEB-FQ-009 (input height/padding canonical, 11 sites), WEB-FQ-010 (modal sizes already correct, no changes), WEB-FQ-011 (heading hierarchy, 4 sites).
+
+## todofixes426 — Cleanup pass 14 (2026-04-26) — WEB-FM small items
+
+DONE: WEB-FM-013 (TicketStatus shared type import in AutomationsTab), WEB-FM-014 (ComingSoonBadge in SettingsPage permissions footer + FinancingButton), WEB-FM-019 (typecheck:watch script added; typecheck already existed), WEB-FM-020 (2 more files wrapped: TicketListPage + CampaignsPage).
+
+DONE-PREEXISTING: WEB-FM-016 (SubscriptionsListPage local formatCurrency already removed by Fixer-PP).

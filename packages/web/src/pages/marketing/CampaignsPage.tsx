@@ -19,6 +19,7 @@ import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { formatDateTime } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 /**
  * CampaignsPage — marketing automation dashboard.
@@ -283,9 +284,11 @@ export function CampaignsPage() {
                           const total = (res.data as any)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
-                        } catch (err: any) {
-                          if (ac.signal.aborted || err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+                        } catch (err: unknown) {
+                          const e = err as { name?: string };
+                          if (ac.signal.aborted || e?.name === 'CanceledError' || e?.name === 'AbortError') return;
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
+                          toast.error(formatApiError(err));
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}

@@ -54,6 +54,7 @@ import { SettingsChangeHistory } from './components/SettingsChangeHistory';
 import { SettingsGlobalSearch } from './components/SettingsGlobalSearch';
 import { SettingsTemplatePicker } from './components/SettingsTemplatePicker';
 import { getComingSoonCount, getLiveCount } from './settingsMetadata';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1789,8 +1790,9 @@ function UsersTab() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-3 text-xs text-surface-400">
-          Admin role always has full access to all modules. Granular per-action permissions coming soon.
+        <div className="px-4 py-3 flex items-center gap-2 text-xs text-surface-400">
+          Admin role always has full access to all modules. Granular per-action permissions
+          <ComingSoonBadge status="coming_soon" compact />
         </div>
       </div>
     </div>

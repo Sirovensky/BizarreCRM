@@ -19,6 +19,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
 import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 
 // ─── Optional column definitions ──────────────────────────────────
@@ -258,9 +259,13 @@ function SavedFiltersDropdown({
                 </button>
                 <button
                   onClick={async () => {
-                    await ticketApi.savedFilters.delete(sf.id);
-                    queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
-                    toast.success('Filter deleted');
+                    try {
+                      await ticketApi.savedFilters.delete(sf.id);
+                      queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                      toast.success('Filter deleted');
+                    } catch (err) {
+                      toast.error(formatApiError(err));
+                    }
                   }}
                   className="ml-2 text-surface-400 hover:text-red-500 shrink-0"
                   title="Delete filter"
@@ -276,11 +281,15 @@ function SavedFiltersDropdown({
                 onSubmit={async (e) => {
                   e.preventDefault();
                   if (!filterName.trim()) return;
-                  await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
-                  queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
-                  toast.success('Filter saved');
-                  setFilterName('');
-                  setSaving(false);
+                  try {
+                    await ticketApi.savedFilters.create({ name: filterName.trim(), filters: currentFilters });
+                    queryClient.invalidateQueries({ queryKey: ['ticket-saved-filters'] });
+                    toast.success('Filter saved');
+                    setFilterName('');
+                    setSaving(false);
+                  } catch (err) {
+                    toast.error(formatApiError(err));
+                  }
                 }}
                 className="flex gap-1.5"
               >

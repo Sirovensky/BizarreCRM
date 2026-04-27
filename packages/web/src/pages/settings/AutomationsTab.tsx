@@ -7,6 +7,7 @@ import { automationsApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
+import type { TicketStatus } from '@bizarre-crm/shared';
 
 // -- Types ------------------------------------------------------------------
 
@@ -23,11 +24,11 @@ export interface AutomationRule {
   updated_at: string;
 }
 
-export interface TicketStatus {
-  id: number;
-  name: string;
-  color: string;
-}
+// TicketStatus is imported from @bizarre-crm/shared (canonical definition).
+// AutomationsTab only reads `id`, `name`, `color`, and `sort_order` — all
+// present in the shared type. Re-export so existing importers of this module
+// that previously imported TicketStatus from here still compile.
+export type { TicketStatus };
 
 export interface UserRecord {
   id: number;
