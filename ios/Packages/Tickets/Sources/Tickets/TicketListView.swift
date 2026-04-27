@@ -19,6 +19,9 @@ public struct TicketListView: View {
     @State private var showingBulkAction: Bool = false
     @State private var bulkOutcomes: [BulkTicketOutcome] = []
     @State private var showingBulkResult: Bool = false
+    // §4.1 — Column/density picker state (iPad/Mac)
+    @State private var columnPrefs: TicketColumnPrefs = .load()
+    @State private var showingColumnPicker: Bool = false
     private let repo: TicketRepository
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
@@ -291,14 +294,15 @@ public struct TicketListView: View {
     /// §4.1 Column/density picker — iPad/Mac only.
     private var columnPickerToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .secondaryAction) {
-            Menu {
-                Text("Density")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            Button {
+                showingColumnPicker = true
             } label: {
                 Label("Columns", systemImage: "slider.horizontal.3")
             }
             .accessibilityLabel("Column and density settings")
+            .sheet(isPresented: $showingColumnPicker) {
+                TicketColumnDensityPicker(prefs: $columnPrefs)
+            }
         }
     }
 
