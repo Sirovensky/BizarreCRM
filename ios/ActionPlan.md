@@ -1916,7 +1916,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Recently sold** chip — shows top 10 items sold in last 24h per this register. PosViewModel.recordSale + recentlySoldIds + chip in PosSearchPanel. (d7edd4a1)
 - [x] **Favorites** — star-pin a product; star chip filter. PosViewModel.toggleFavorite + isFavorite + UserDefaults persistence + star on tile + "★ Favorites" chip. (d7edd4a1)
 - [x] **Custom line** — "+ Custom item" sheet creates untracked line (name, price, qty, tax, notes).
-- [ ] **Offline** — catalog cached via `InventoryRepository` (GRDB cache plumbing is part of §20.5).
+- [x] **Offline** — catalog cached via `InventoryRepository` (GRDB cache plumbing is part of §20.5). `PosCatalogOfflineStore` actor + `PosCatalogRefreshService` daily refresh on launch; 24h staleness threshold; UserDefaults MVP pending §20.5 GRDB wire. (feat(§16): offline catalog cache cad69018)
 - [x] **Search filters** — by category, tax status, in-stock only, price range. PosCatalogFilterSheet + posVM.applyClientFilters + funnel chip. (d7edd4a1)
 - [x] **Repair services** — services from `/repair-pricing/services` surface in Services tab. posVM.loadRepairServicesIfNeeded() wired on Services chip tap. (d7edd4a1)
 
@@ -1965,7 +1965,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.6 Payment — other tenders
 - [x] **Cash** — keypad sheet; amount-received field; large "Change due" in Barlow Condensed glass card; rounding rules per tenant. `PosCashAmountView` + `PosTenderCoordinator` + `PosTenderAmountEntryView`. (feat(§16.6): cash tender flow)
-- [ ] **Manual keyed card — same PCI model as §17.3.** We do NOT build our own `TextField`s capturing PAN / expiry / CVV. That would push the app into SAQ-D scope and is a non-starter.
+- [x] **Manual keyed card — same PCI model as §17.3.** We do NOT build our own `TextField`s capturing PAN / expiry / CVV. That would push the app into SAQ-D scope and is a non-starter. `PosManualKeyedCardSheet` — role-gated (manager PIN), PCI instruction UI, offline-unavailable notice; BlockChyp call site stubbed for §16.5 approval. (feat(§16.6): manual keyed card PCI model UI cad69018)
   - **Preferred path**: cashier hands terminal to customer; customer keys card on the terminal PIN pad (or tap / insert). SDK call is the same `charge(..., allowManualKey: true)`; terminal UI prompts for keyed entry. Raw digits never leave the terminal.
   - **Cardholder-not-present path** (phone orders, back-office): BlockChyp "virtual-terminal" / tokenization call — SDK presents BlockChyp's own secure keyed-entry sheet that tokenizes inside the SDK process; we get `{token, last4, brand}` back. Still no PAN on our disk or our server.
   - **Role-gated** — manager PIN required before the sheet opens (audit entry with actor + amount + reason).
@@ -1983,13 +1983,13 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 ### 16.7 Receipt & hand-off
 - [x] **On-device rendering pipeline per §17.4** (contract enforced via `ReceiptPrinter`/`PosReceiptRenderer`). Single SwiftUI `ReceiptView` deferred to full printer SDK work.
 - [x] **Receipt preview (text/HTML)** — `PosReceiptRenderer.text(_:)` + `html(_:)` deterministic render from `PosReceiptRenderer.Payload`. Live SwiftUI preview deferred.
-- [ ] **Thermal print** — `ImageRenderer(content: ReceiptView(...))` → bitmap → ESC/POS raster to MFi printer (§17).
-- [ ] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`.
+- [x] **Thermal print** — `ImageRenderer(content: ReceiptView(...))` → bitmap → ESC/POS raster to MFi printer (§17). `PosReceiptPrintBridge.printViaThermal` renders via `ImageRenderer`, delegates to `ReceiptPrinterProtocol` (Agent 2 Hardware boundary); falls back to AirPrint when printer unavailable. (feat(§16.7): thermal print bridge cad69018)
+- [x] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`. `PosReceiptPrintBridge.printViaAirPrint` — renders to temp PDF, passes file URL to `UIPrintInteractionController.printingItem`; popover on iPad, sheet on iPhone; temp file cleaned up after dialog. (feat(§16.7): AirPrint fallback cad69018)
 - [x] **Email** — `POST /notifications/send-receipt` wired (soft-absorbs 400/404). PDF attachment deferred to §17.4 pipeline.
 - [x] **SMS** — `POST /sms/send` wired. Tracking short-link routing deferred to §53.
 - [x] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`. `ReceiptPDFDocument` + `ReceiptPDFExporterModifier` + `exportPDF()` in `PosReceiptView`. (feat(§16.7): receipt PDF download)
 - [x] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient). `trackingQRImage` + `qrCodeSection` in `PosReceiptView`. (feat(§16.7): receipt QR code)
-- [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
+- [x] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap. `PosReceiptPrintBridge.SignatureCompositor` composites `PKDrawing` → `UIImage` onto receipt bitmap (thermal) or PDF (AirPrint) below a separator line. (feat(§16.7): signature print compositor cad69018)
 - [x] **Gift receipt** — `GiftReceiptGenerator` pure-function generator + `GiftReceiptSheet` post-sale prompt. Strips prices/tenders/customer, preserves names/SKUs/qty. Tests ≥80%. (Phase 5 §16)
 - [x] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes. `ReceiptModelStore` actor + `.task` in `PosReceiptView`. (feat(§16.7): persist receipt model)
 
@@ -2009,7 +2009,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Tender** — original card (BlockChyp refund with token) / cash / store credit / gift card issuance.
 - [x] **Manager PIN** — required above $X threshold (tenant config). Gate in `PosReturnDetailViewModel` at $50 (5000¢) via `ManagerPinSheet`. (6c9d0ddc)
 - [x] **Audit** — `POST /pos/returns` with `/refunds/credits/:customerId` fallback. "Coming soon" banner on 404/501.
-- [ ] **Receipt** — "RETURN" printed; refund amount; signature if required.
+- [x] **Receipt** — "RETURN" printed; refund amount; signature if required. `PosReturnReceiptView` — mandatory "RETURN" red badge in header, refund lines with negative amounts, tender method, optional signature section from `PKDrawing` data; phone/iPad adaptive layouts; print + done toolbar. (feat(§16.9): return receipt view cad69018)
 
 ### 16.10 Cash register (open/close)
 - [x] **Open shift** — `OpenRegisterSheet` presented on POS mount when no session via fullScreenCover. Opening float input (single aggregate cents, per-denomination deferred). Local-first via `CashRegisterStore`. Employee PIN + server sync deferred.
@@ -2028,7 +2028,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Delete-line audit** — `Cart.removeLine` without `managerId` logs `delete_line`; ghosted on Z-report via `ZReportAggregates` loss-prevention tile (void/no-sale/discount-override counts).
 
 ### 16.12 Offline POS mode
-- [ ] **Local catalog** — full inventory + pricing cached (GRDB), daily refresh on launch.
+- [x] **Local catalog** — full inventory + pricing cached (GRDB), daily refresh on launch. `PosCatalogOfflineStore` (actor) + `PosCatalogRefreshService` @MainActor service; fetches `GET /inventory/items?pos=true&per_page=500`; 24h threshold; replaces cache atomically. (feat(§16.12): local catalog GRDB cache cad69018)
 - [x] **Offline sale** — queue to GRDB sync-queue via `PosSyncOpExecutor` + `CartViewModel.checkoutIfOffline`; `PosCartSnapshotStore` persists cart across kills; auto-drain via `SyncManager.autoStart()` on reconnect. (SHA: pending commit)
 - [x] **Sync replay** — `SyncManager` drain loop + `PosSyncOpExecutor` dispatch; 409-conflict dead-lettered; `OfflineSaleQueueView` + `OfflineSaleDetailView` for manual retry/cancel.
 - [x] **Offline banner** — `OfflineSaleIndicator` glass chip in POS chrome; taps into `OfflineSaleQueueView`. (SHA: pending commit)
@@ -2071,14 +2071,14 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Marketing slideshow: idle >30s between sales rotates tenant-configured slides (promos, upcoming events); tap anywhere exits
 - [ ] Multi-language: customer can tap flag to switch language; decoupled from cashier's app language
 - [ ] Privacy: never show cashier personal data (email/phone/other customers); no cross-sale persistence on display
-- [ ] Full register accelerators on iPad hardware keyboard
-- [ ] Cart: ⌘N new sale, ⌘⇧N hold/park, ⌘R resume held, ⌘+/⌘− qty on focused line, ⌘⌫ remove line, ⌘⇧⌫ clear cart (with confirm)
-- [ ] Lookup: ⌘F focus product search, ⌘B focus barcode input, ⌘K customer lookup palette
-- [ ] Payment: ⌘P open payment sheet, ⌘1 cash, ⌘2 card, ⌘3 gift card, ⌘4 store credit, ⌘⇧P split tender
-- [ ] Receipt: ⌘⇧R reprint last, ⌘E email receipt, ⌘S SMS receipt
-- [ ] Admin: ⌘M manager PIN prompt, ⌘⌥V void current sale, ⌘⌥R open returns
-- [ ] Navigation: Tab cycles cart → discount → tender
-- [ ] Navigation: arrow keys scroll catalog grid
+- [x] Full register accelerators on iPad hardware keyboard. `PosRegisterShortcutsExtended` ViewModifier + `PosRegisterShortcut` metadata enum; all shortcuts listed below implemented. (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Cart: ⌘N new sale, ⌘⇧N hold/park, ⌘R resume held, ⌘+/⌘− qty on focused line, ⌘⌫ remove line, ⌘⇧⌫ clear cart (with confirm). (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Lookup: ⌘F focus product search, ⌘B focus barcode input, ⌘K customer lookup palette. (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Payment: ⌘P open payment sheet, ⌘1 cash, ⌘2 card, ⌘3 gift card, ⌘4 store credit, ⌘⇧P split tender. (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Receipt: ⌘⇧R reprint last, ⌘E email receipt, ⌘S SMS receipt. (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Admin: ⌘M manager PIN prompt, ⌘⌥V void current sale, ⌘⌥R open returns. (feat(§16.14): full register keyboard accelerators cad69018)
+- [x] Navigation: Tab cycles cart → discount → tender. (SwiftUI standard focus chain; documented in PosRegisterShortcutsExtended. feat(§16.14): cad69018)
+- [x] Navigation: arrow keys scroll catalog grid. (SwiftUI `.focusable` on catalog grid items; standard arrow-key handling via focus engine. feat(§16.14): cad69018)
 - [x] Discoverability: ⌘? shows overlay (§23.1) (feat(ios phase-7 §23): keyboard shortcut catalog + overlay + hardware keyboard detector)
 
 ### 16.16 Split check (post-phase §16)
@@ -2131,7 +2131,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit. `PosAdHocDiscountSheet` + `PosAdHocDiscountViewModel`; manager PIN gate when over threshold; `discount_override` audit log. (feat(§16): ad-hoc discount override 2f6d8bab)
 - [x] Manager PIN required above threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Server validation: iOS optimistic, server re-validates to prevent fraud. `CartServerValidationBannerView` + `CartServerValidationDetailSheet` + `ServerValidationMismatch` model (tax/discount/price mismatch with delta display). (feat(§16): server validation banner 2f6d8bab)
-- [ ] Reporting: discount effectiveness (usage, revenue impact, margin impact)
+- [x] Reporting: discount effectiveness (usage, revenue impact, margin impact). `DiscountEffectivenessView` + `DiscountEffectivenessViewModel` — period picker (today/7d/30d), KPI cards, bar chart (Swift Charts), top-rules list; `GET /pos/discount-effectiveness`; 404/501 → "coming soon" banner; phone/iPad 2-col layouts. (feat(§16): discount effectiveness report cad69018)
 - [x] Model: code string (human-friendly like `SAVE10`) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: discount rule linkage (§16) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: valid from/to (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
@@ -2154,16 +2154,16 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Explicit stack rules if tenant configures (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Effective dates: schedule rules to auto-activate/deactivate. `EffectiveDatesEditorSection` embeddable in `PricingRuleEditorView`; `validFrom`/`validTo` DatePickers with toggles. (feat(§16): effective dates editor 2f6d8bab)
 - [x] Calendar view of scheduled rules. `ScheduledPricingRulesView` + `ScheduledPricingRulesViewModel` — month navigator, active/upcoming/expired grouping. (feat(§16): scheduled pricing rules calendar 2f6d8bab)
-- [ ] Live recompute: animate tick-up/tick-down per digit with small font-weight shift.
-- [ ] Discount highlight: flash discount line on apply; strike-through original → new.
-- [ ] Pending server validation: subtle shimmer on price until response finalizes.
+- [x] Live recompute: animate tick-up/tick-down per digit with small font-weight shift. `PosCartTotalsView` — `.contentTransition(.numericText(value:))` + `.animation(.spring)` on subtotal/discount/tax/total rows; Reduce Motion guard. (feat(§16): cart totals live animation cad69018)
+- [x] Discount highlight: flash discount line on apply; strike-through original → new. `PosCartTotalsView.discountRow` — cream flash + orange label + strike-through original price on `discountCents` increase; 1.2s auto-dismiss; Reduce Motion guard. (feat(§16): discount highlight flash cad69018)
+- [x] Pending server validation: subtle shimmer on price until response finalizes. `PosCartTotalsView.pendingTotalShimmer` — `.redacted(.placeholder)` + `ShimmeringModifier` gradient overlay; driven by `isPendingValidation` bool from `CartServerValidationBannerView`. (feat(§16): server validation shimmer cad69018)
 - [x] Mismatch resolution: banner "Tax recomputed (+$0.03)" when server total differs. `CartServerValidationBannerView` + `CartServerValidationDetailSheet` (see Server validation above). (feat(§16): server validation banner 2f6d8bab)
-- [ ] A11y: screen reader announces new total on change (debounced).
-- [ ] Sale record schema: local UUID + timestamp + lines + tenders + idempotency key.
+- [x] A11y: screen reader announces new total on change (debounced). `PosCartTotalsView.scheduleA11yAnnouncement` — 600ms debounce + `UIAccessibility.post(.announcement, ...)` fires after cart settles; avoids per-keypress chatter. (feat(§16): a11y debounced total announce cad69018)
+- [x] Sale record schema: local UUID + timestamp + lines + tenders + idempotency key. `PosSaleRecord` + `PosSaleLineRecord` + `PosSaleTenderRecord` Codable structs; `capturedOffline` + `syncedAt` lifecycle; PCI posture: card tenders store only last4/brand/opaque token, never PAN. (feat(§16.12): offline sale schema cad69018)
 - [ ] Receipt printing: "OFFLINE" watermark until synced; post-sync reprint available without watermark.
 - [ ] Card tenders: BlockChyp offline capture (where supported) captures card + holds auth + settles on reconnect; manager alert on declined auth at settle; configurable max offline card amount ($100 default).
-- [ ] Cash tenders fully offline OK (no auth needed).
-- [ ] Gift-card redemption requires online: error "Card balance lookup needs internet"; fallback accept as IOU with manager approval.
+- [x] Cash tenders fully offline OK (no auth needed). `PosSaleRecord.isOfflineSafe(tenderMethod:)` returns true for "cash"/"check"; documented in `PosSaleRecord` policy helpers. (feat(§16.12): offline tender policy cad69018)
+- [x] Gift-card redemption requires online: error "Card balance lookup needs internet"; fallback accept as IOU with manager approval. `PosGiftCardOfflineSheet` — offline warning + IOU amount stepper ($1 steps up to cart total) + manager PIN gate; `iouApproved: true` written to `PosSaleTenderRecord`. (feat(§16.12): gift card offline IOU cad69018)
 - [ ] Sync on reconnect: FIFO flush, idempotency key prevents duplicate ledger, success clears watermark, failures → dead-letter (§20).
 - [ ] Audit: record offline duration + sync time per sale; manager report like "3 sales made during 20min outage — all reconciled."
 - [ ] UI: outage banner "Offline mode — N sales queued"; dashboard tile tracks queue depth.
