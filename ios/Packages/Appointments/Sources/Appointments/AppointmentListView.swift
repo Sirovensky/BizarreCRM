@@ -97,12 +97,19 @@ public enum AppointmentViewMode: String, CaseIterable, Identifiable {
 public struct AppointmentListFilter: Equatable, Sendable {
     public var assigneeId: Int64?
     public var status: String?
+    /// §10.8 multi-location: filter to a single location. Populated by §60 LocationContext
+    /// when Agent 8/9 integrate the multi-location switcher; field is ready so the
+    /// client-side filter path exists before §60 lands.
+    public var locationId: Int64?
 
-    public var isEmpty: Bool { assigneeId == nil && (status == nil || status!.isEmpty) }
+    public var isEmpty: Bool {
+        assigneeId == nil && (status == nil || status!.isEmpty) && locationId == nil
+    }
 
-    public init(assigneeId: Int64? = nil, status: String? = nil) {
+    public init(assigneeId: Int64? = nil, status: String? = nil, locationId: Int64? = nil) {
         self.assigneeId = assigneeId
         self.status = status
+        self.locationId = locationId
     }
 }
 
@@ -287,6 +294,9 @@ public struct AppointmentListView: View {
             }
             // assigneeId filter not feasible client-side without an assigned_to field on the model
             // — filtered server-side via reload when filter changes (future enhancement).
+            if let locationId = activeFilter.locationId {
+                guard appt.locationId == locationId else { return false }
+            }
             return true
         }
     }
@@ -594,18 +604,23 @@ struct PhaseEmptyView: View {
 // MARK: - §10.1 AppointmentFilterSheet
 
 /// Sheet presented by the filter button in `AppointmentListView`.
-/// Lets staff filter by status (and optionally employee — future when model carries assigned_to id).
+/// Lets staff filter by status; locationId filter is wired but the location-name picker
+/// awaits §60 LocationContext from Agent 8/9.
 public struct AppointmentFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Binding public var filter: AppointmentListFilter
 
     @State private var draftStatus: String
+    /// §10.8 multi-location: holds the draft locationId while the sheet is open.
+    /// Full location-picker UI deferred to §60 integration pass.
+    @State private var draftLocationId: Int64?
 
     private static let statuses: [String] = ["", "scheduled", "confirmed", "completed", "cancelled", "no-show"]
 
     public init(filter: Binding<AppointmentListFilter>) {
         _filter = filter
         _draftStatus = State(initialValue: filter.wrappedValue.status ?? "")
+        _draftLocationId = State(initialValue: filter.wrappedValue.locationId)
     }
 
     public var body: some View {
@@ -620,6 +635,13 @@ public struct AppointmentFilterSheet: View {
                         }
                     }
                     .accessibilityLabel("Appointment status filter")
+                }
+                .listRowBackground(Color.bizarreSurface1)
+                // §10.8 Location filter — full picker placeholder until §60 LocationContext lands
+                Section("Location") {
+                    Text("All locations")
+                        .foregroundStyle(.bizarreOnSurfaceSecondary)
+                        .accessibilityLabel("Location filter: all locations. Full location selector available after multi-location setup.")
                 }
                 .listRowBackground(Color.bizarreSurface1)
             }
@@ -637,7 +659,8 @@ public struct AppointmentFilterSheet: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
                         filter = AppointmentListFilter(
-                            status: draftStatus.isEmpty ? nil : draftStatus
+                            status: draftStatus.isEmpty ? nil : draftStatus,
+                            locationId: draftLocationId
                         )
                         dismiss()
                     }
