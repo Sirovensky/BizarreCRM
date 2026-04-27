@@ -603,16 +603,16 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Row-to-detail transition on selection: inline detail swap, no push animation.
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
-- [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
+- [x] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac. `TicketExportView` + `exportTicketsURL` in `APIClient+Tickets`. SFSafariViewController delivery. 6 export tests. (agent-3-b5)
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [x] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions. `TicketCustomerPreviewPopover` + `.ticketCustomerPreviewPopover(...)` view modifier. (agent-3-b4)
-- [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
+- [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `DueDateBadge` in `TicketListView`. (agent-3-b5)
 - [ ] **Empty state** — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
-- [ ] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder.
+- [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder. `TicketDetailTabView` + `TicketDetailTabPicker` + `TicketPaymentsTabView` + wired into `TicketDetailView`. `TicketPayment` DTO in `TicketDetailEndpoints`. (agent-3-b5)
 - [ ] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee.
 - [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
 - [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
@@ -658,7 +658,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry.
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
-- [ ] **Validation** — per-step inline glass error toasts; block next until required fields valid.
+- [x] **Validation** — per-step inline glass error toasts; block next until required fields valid. `stepValidationMessage` in `TicketCreateFlowViewModel` + `CreateFlowValidationToast` in `TicketCreateFlowView`. (agent-3-b5)
 - [ ] **Keyboard shortcuts** — ⌘↩ create, ⌘. cancel, ⌘→ / ⌘← next/prev step.
 - [ ] **Haptic** — `.success` on create; `.error` on validation fail.
 - [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
@@ -686,10 +686,10 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Star / pin** to dashboard. `APIClient.setTicketPinned(ticketId:pinned:)` + `TicketPinBody` DTO. (agent-3-b4)
 
 ### 4.6 Notes & mentions
-- [ ] **Compose** — multiline text field, type picker (internal / customer / diagnostic / sms / email), flag toggle.
-- [ ] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token.
+- [x] **Compose** — multiline text field, type picker (internal / customer / diagnostic / sms / email), flag toggle. `TicketNoteComposeView` + `TicketNoteComposeViewModel` + `POST /tickets/:id/notes`. (agent-3-b5)
+- [x] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token. `TicketNoteMentionPicker` + `MentionCandidate` + `TicketNoteMentionPickerViewModel` wired into `TicketNoteComposeView`. (agent-3-b5)
 - [ ] **Mention push** — server sends APNs to mentioned employee.
-- [ ] **Markdown-lite** — bold / italic / bullet lists / inline code render with `AttributedString`.
+- [x] **Markdown-lite** — bold / italic / bullet lists / inline code render with `AttributedString`. `TicketNoteMarkdownRenderer` (pure enum, `**bold**`, `*italic*`, `` `code` ``, `- bullet`, `@mention`). (agent-3-b5)
 - [ ] **Link detection** — phone / email / URL auto-tappable.
 - [ ] **Attachment** — add image from camera/library → inline preview; stored as note attachment.
 
@@ -701,7 +701,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
 - [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
 - [x] **QC sign-off modal** — signature capture (PencilKit `PKCanvasView`), comments, "Work complete" confirm. `TicketSignOffView` + `TicketSignOffViewModel` (GPS if allowed, base-64 PNG, ISO-8601 timestamp). `POST /tickets/:id/sign-off`. Receipt PDF download. Shown when status contains "pickup". Commit `feat(ios post-phase §4)`.
-- [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
+- [x] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview. Bell badge on notification transitions in `TicketStatusTransitionSheet` + advisory `.alert` before confirming. (agent-3-b5)
 
 ### 4.8 Photos — advanced
 - [ ] **Camera** — `AVCaptureSession` with flash toggle, flip, grid, shutter haptic.
