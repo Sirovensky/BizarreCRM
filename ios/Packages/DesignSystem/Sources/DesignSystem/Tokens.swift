@@ -152,4 +152,30 @@ public enum DesignTokens {
         public static let teal:          UInt32 = 0x4DB8C9  // --teal (dark)
         public static let tealLight:     UInt32 = 0x0B5260  // --teal (light)
     }
+
+    // MARK: - Skeleton tokens (§30.9 / §29 loading states)
+    //
+    // Used by `SkeletonShape` shimmer and `SkeletonListRow` components.
+    // Dark / light color pair — SwiftUI checks `.colorScheme` at render time.
+    // Named after their role, not their color, so they stay stable across
+    // palette updates.
+    //
+    // Usage:
+    //   Rectangle()
+    //     .fill(DesignTokens.Skeleton.base)           // base layer
+    //     .overlay(DesignTokens.Skeleton.highlight)   // shimmer gradient sweep
+    public enum Skeleton {
+        /// Base fill for skeleton placeholders.
+        /// Dark mode: warm zinc; light mode: neutral grey.
+        public static let base      = Color("SkeletonBase",      bundle: .module)
+        /// Highlight gradient for the shimmer sweep.
+        /// Slightly lighter than `base` in both color schemes.
+        public static let highlight = Color("SkeletonHighlight", bundle: .module)
+
+        // Fallback values when asset catalog entries are missing (CI / SPM preview builds).
+        public static let baseFallbackDark      = Color(white: 0.18)
+        public static let baseFallbackLight     = Color(white: 0.88)
+        public static let highlightFallbackDark = Color(white: 0.24)
+        public static let highlightFallbackLight = Color(white: 0.94)
+    }
 }
