@@ -456,10 +456,12 @@ private struct FlowCustomerPickerSheet: View {
 // MARK: - Step 2: Devices
 
 private struct ServicePickerTarget: Identifiable { let id: Int }  // wraps device index
+private struct CatalogPickerTarget: Identifiable { let id: Int }  // wraps device index
 
 private struct DevicesStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
     @State private var servicePickerTarget: ServicePickerTarget? = nil
+    @State private var catalogPickerTarget: CatalogPickerTarget? = nil
 
     var body: some View {
         Form {
@@ -469,7 +471,8 @@ private struct DevicesStepView: View {
                         device: device,
                         onUpdate: { update in vm.updateDevice(at: idx, update) },
                         onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) },
-                        onPickService: { servicePickerTarget = ServicePickerTarget(id: idx) }
+                        onPickService: { servicePickerTarget = ServicePickerTarget(id: idx) },
+                        onPickCatalogDevice: { catalogPickerTarget = CatalogPickerTarget(id: idx) }
                     )
 
                     if vm.devices.count > 1 {
@@ -517,6 +520,18 @@ private struct DevicesStepView: View {
                 servicePickerTarget = nil
             }
         }
+        .sheet(item: $catalogPickerTarget) { target in
+            // §4.3 — Device catalog hierarchical picker
+            CatalogDevicePickerSheet(api: vm.api) { catalogDevice in
+                vm.updateDevice(at: target.id) {
+                    // Pre-fill device name from catalog selection if blank
+                    if $0.deviceName.isEmpty {
+                        $0.deviceName = catalogDevice.displayName
+                    }
+                }
+                catalogPickerTarget = nil
+            }
+        }
     }
 }
 
@@ -525,15 +540,26 @@ private struct DeviceFormSection: View {
     let onUpdate: ((inout DraftDevice) -> Void) -> Void
     let onToggleChecklist: (String) -> Void
     let onPickService: () -> Void
+    let onPickCatalogDevice: () -> Void
 
     var body: some View {
         Group {
-            TextField("Device name (e.g. iPhone 14 Pro)", text: .init(
-                get: { device.deviceName },
-                set: { v in onUpdate { $0.deviceName = v } }
-            ))
-            .autocorrectionDisabled()
-            .accessibilityLabel("Device name")
+            // §4.3 — Device name with catalog lookup shortcut
+            HStack {
+                TextField("Device name (e.g. iPhone 14 Pro)", text: .init(
+                    get: { device.deviceName },
+                    set: { v in onUpdate { $0.deviceName = v } }
+                ))
+                .autocorrectionDisabled()
+                .accessibilityLabel("Device name")
+                Button {
+                    onPickCatalogDevice()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Look up device in catalog")
+            }
 
             TextField("IMEI", text: .init(
                 get: { device.imei },
@@ -711,10 +737,11 @@ private struct PricingStepView: View {
     }
 }
 
-// MARK: - Step 4: Assignee & Due Date
+// MARK: - Step 4: Assignee, Due Date, Service Type, Tags
 
 private struct ScheduleStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
+    @State private var newTag: String = ""
 
     var body: some View {
         Form {
@@ -755,15 +782,90 @@ private struct ScheduleStepView: View {
                     .accessibilityLabel("Due date in year month day format")
             }
 
+            // §4.3 — Service type picker
+            Section("Service type") {
+                Picker("Service type", selection: $vm.serviceType) {
+                    Text("None").tag(Optional<TicketServiceType>.none)
+                    ForEach(TicketServiceType.allCases, id: \.self) { t in
+                        Text(t.displayName).tag(Optional(t))
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityLabel("Ticket service type")
+            }
+
+            // §4.3 — Tags multi-chip
+            Section("Tags / labels") {
+                if !vm.tags.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: BrandSpacing.xs) {
+                            ForEach(vm.tags, id: \.self) { tag in
+                                HStack(spacing: 4) {
+                                    Text(tag)
+                                        .font(.brandLabelSmall())
+                                    Button {
+                                        vm.tags.removeAll { $0 == tag }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.system(size: 12))
+                                    }
+                                    .accessibilityLabel("Remove tag \(tag)")
+                                }
+                                .padding(.horizontal, BrandSpacing.sm)
+                                .padding(.vertical, BrandSpacing.xxs)
+                                .background(Color.bizarreOrange.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .accessibilityElement(children: .combine)
+                                .accessibilityLabel("Tag: \(tag)")
+                            }
+                        }
+                        .padding(.vertical, BrandSpacing.xs)
+                    }
+                }
+                HStack {
+                    TextField("Add tag…", text: $newTag)
+                        .submitLabel(.done)
+                        .onSubmit { addTag() }
+                        .accessibilityLabel("New tag name")
+                    if !newTag.isEmpty {
+                        Button("Add") { addTag() }
+                            .foregroundStyle(.bizarreOrange)
+                            .font(.brandLabelMedium())
+                            .accessibilityLabel("Add tag")
+                    }
+                }
+            }
+
             Section("Classification") {
                 TextField("Source (walk-in, web, referral…)", text: $vm.source)
                     .accessibilityLabel("Ticket source")
                 TextField("Referral source", text: $vm.referralSource)
                     .accessibilityLabel("Referral source")
             }
+
+            // §4.3 — Deposit
+            Section("Deposit") {
+                HStack {
+                    Text("$")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    TextField("0.00", value: $vm.depositAmount, format: .number)
+                        .keyboardType(.decimalPad)
+                        .accessibilityLabel("Deposit amount in dollars")
+                }
+            }
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+    }
+
+    private func addTag() {
+        let trimmed = newTag.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !vm.tags.contains(trimmed) else {
+            newTag = ""
+            return
+        }
+        vm.tags.append(trimmed)
+        newTag = ""
     }
 }
 

@@ -119,6 +119,26 @@ public final class TicketCreateFlowViewModel {
     public var referralSource: String = ""
     public var statusId: Int64?
 
+    // MARK: - §4.3 Service type + tags + source-ticket link
+
+    /// Service type: walk_in / mail_in / on_site / pick_up / drop_off.
+    public var serviceType: TicketServiceType? = nil
+    /// Multi-chip label tags applied to the ticket.
+    public var tags: [String] = []
+    /// Source ticket / estimate id — set when converting from an estimate.
+    public var sourceTicketId: Int64? = nil
+    /// Optional deposit amount in dollars.
+    public var depositAmount: Double? = nil
+
+    // MARK: - §4.3 Idempotency key
+
+    /// UUID generated once per create session. Reset after successful create.
+    public private(set) var idempotencyKey: String = UUID().uuidString
+
+    public func resetIdempotencyKey() {
+        idempotencyKey = UUID().uuidString
+    }
+
     // MARK: - Submit state
 
     public private(set) var isSubmitting: Bool = false
@@ -132,8 +152,9 @@ public final class TicketCreateFlowViewModel {
     // §4.3 — Exposed so DevicesStepView can pass api to service picker sheet.
     @ObservationIgnored public let api: APIClient
 
-    public init(api: APIClient) {
+    public init(api: APIClient, sourceTicketId: Int64? = nil) {
         self.api = api
+        self.sourceTicketId = sourceTicketId
     }
 
     // MARK: - Navigation
@@ -195,17 +216,20 @@ public final class TicketCreateFlowViewModel {
         queuedOffline = false
         defer { isSubmitting = false }
 
-        let req = buildCreateRequest(customerId: customer.id)
+        // §4.3 — Build full request with idempotency key, service type, tags,
+        //         source-ticket link, and deposit.
+        let req = buildFullCreateRequest(customerId: customer.id)
 
         do {
-            let created = try await api.createTicket(req)
+            let created = try await api.createTicketFull(req)
             createdTicketId = created.id
+            resetIdempotencyKey()  // New key for next create.
         } catch {
             let appError = AppError.from(error)
             if case .offline = appError {
-                await enqueueOffline(req)
+                await enqueueOfflineFull(req)
             } else if TicketOfflineQueue.isNetworkError(error) {
-                await enqueueOffline(req)
+                await enqueueOfflineFull(req)
             } else {
                 AppLog.ui.error("Full ticket create failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = appError.errorDescription ?? error.localizedDescription
@@ -262,7 +286,8 @@ public final class TicketCreateFlowViewModel {
         return all[idx - 1]
     }
 
-    private func buildCreateRequest(customerId: Int64) -> CreateTicketRequest {
+    /// §4.3 — Build full-fidelity create request with all optional fields.
+    private func buildFullCreateRequest(customerId: Int64) -> CreateTicketFullRequest {
         let newDevices = devices.map { d in
             CreateTicketRequest.NewDevice(
                 deviceName: d.deviceName.trimmingCharacters(in: .whitespaces),
@@ -272,18 +297,26 @@ public final class TicketCreateFlowViewModel {
                 price: d.price
             )
         }
-        return CreateTicketRequest(
+        return CreateTicketFullRequest(
             customerId: customerId,
             devices: newDevices,
             statusId: statusId,
-            assignedTo: assignedEmployeeId
+            assignedTo: assignedEmployeeId,
+            serviceType: serviceType?.rawValue,
+            tags: tags.isEmpty ? nil : tags,
+            howDidUFindUs: nilIfEmpty(source),
+            referralSource: nilIfEmpty(referralSource),
+            dueOn: nilIfEmpty(dueOn),
+            deposit: depositAmount,
+            idempotencyKey: idempotencyKey,
+            sourceTicketId: sourceTicketId
         )
     }
 
-    private func enqueueOffline(_ req: CreateTicketRequest) async {
+    private func enqueueOfflineFull(_ req: CreateTicketFullRequest) async {
         do {
             let payload = try TicketOfflineQueue.encode(req)
-            await TicketOfflineQueue.enqueue(op: "create", payload: payload)
+            await TicketOfflineQueue.enqueue(op: "create_full", payload: payload)
             createdTicketId = PendingSyncTicketId
             queuedOffline = true
             errorMessage = nil
