@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.*
 import com.google.gson.annotations.SerializedName
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -75,18 +76,58 @@ interface RepairPricingApi {
         @Path("id") id: Long,
         @Body body: UpsertRepairServiceRequest,
     ): ApiResponse<RepairServiceItem>
+
+    /**
+     * Delete a service from the pricing catalog (admin/manager only).
+     *
+     * 404-tolerant: callers catch [retrofit2.HttpException] with code 404 and
+     * treat the delete as a no-op (already gone).
+     * 400 returned by server when service is still referenced by repair_prices rows.
+     *
+     * @param id Service ID to delete.
+     */
+    @DELETE("repair-pricing/services/{id}")
+    suspend fun deleteService(@Path("id") id: Long): ApiResponse<Unit>
+
+    /**
+     * Apply a global bulk price adjustment to all services in the catalog.
+     *
+     * @param body [BulkPriceAdjustRequest] with flat and/or percentage delta.
+     */
+    @POST("repair-pricing/adjust")
+    suspend fun bulkAdjust(@Body body: BulkPriceAdjustRequest): ApiResponse<Unit>
 }
 
-// ─── Request DTO ─────────────────────────────────────────────────────────────
+// ─── Request DTOs ─────────────────────────────────────────────────────────────
 
 /**
  * Request body for POST/PUT repair-pricing/services.
+ *
+ * [laborPrice] is a plain Double on the wire (server stores as REAL), NOT cents.
+ * The server uses REAL for repair_services.labor_price (legacy schema).
  */
 data class UpsertRepairServiceRequest(
     val name: String,
+    val slug: String? = null,
     val category: String?,
+    val description: String? = null,
     @SerializedName("labor_price")
     val laborPrice: Double,
     @SerializedName("is_active")
     val isActive: Int = 1,
+    @SerializedName("sort_order")
+    val sortOrder: Int = 0,
+)
+
+/**
+ * Request body for POST repair-pricing/adjust (bulk price adjustment, admin only).
+ *
+ * Either [flatAdjustment] or [pctAdjustment] (or both) must be non-zero.
+ * Server applies: adjusted = base * (1 + pct/100) + flat.
+ */
+data class BulkPriceAdjustRequest(
+    @SerializedName("flat_adjustment")
+    val flatAdjustment: Double = 0.0,
+    @SerializedName("pct_adjustment")
+    val pctAdjustment: Double = 0.0,
 )

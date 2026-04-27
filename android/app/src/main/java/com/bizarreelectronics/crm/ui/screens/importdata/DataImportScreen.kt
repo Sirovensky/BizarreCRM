@@ -40,13 +40,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.R
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.screens.importdata.components.ColumnMapTable
 import com.bizarreelectronics.crm.ui.screens.importdata.components.ImportPreviewTable
 import com.bizarreelectronics.crm.ui.screens.importdata.components.SourcePickerCard
@@ -70,16 +76,16 @@ fun DataImportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    // SAF file picker
+    // Confirm-dialog visibility: "cancel import" (during PROGRESS) and
+    // "discard mapping" (during COLUMN_MAP).
+    var showCancelImportDialog by rememberSaveable { mutableStateOf(false) }
+    var showDiscardMappingDialog by rememberSaveable { mutableStateOf(false) }
+
+    // SAF file picker — GetContent with CSV MIME types per §50 constraints.
     val filePicker = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
+        ActivityResultContracts.GetContent(),
     ) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
-        // Persist read permission across process restarts
-        context.contentResolver.takePersistableUriPermission(
-            uri,
-            Intent.FLAG_GRANT_READ_URI_PERMISSION,
-        )
         val displayName = context.contentResolver.query(uri, null, null, null, null)
             ?.use { cursor ->
                 val col = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -97,6 +103,36 @@ fun DataImportScreen(
         }
     }
 
+    // Confirm dialogs — shown on top of the scaffold content.
+    if (showCancelImportDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.import_cancel_dialog_title),
+            message = stringResource(R.string.import_cancel_dialog_msg),
+            confirmLabel = stringResource(R.string.import_cancel_dialog_confirm),
+            onConfirm = {
+                showCancelImportDialog = false
+                viewModel.reset()
+                onNavigateBack()
+            },
+            onDismiss = { showCancelImportDialog = false },
+            isDestructive = true,
+        )
+    }
+
+    if (showDiscardMappingDialog) {
+        ConfirmDialog(
+            title = stringResource(R.string.import_discard_mapping_dialog_title),
+            message = stringResource(R.string.import_discard_mapping_dialog_msg),
+            confirmLabel = stringResource(R.string.import_discard_mapping_dialog_confirm),
+            onConfirm = {
+                showDiscardMappingDialog = false
+                viewModel.goBack()
+            },
+            onDismiss = { showDiscardMappingDialog = false },
+            isDestructive = true,
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -104,10 +140,17 @@ fun DataImportScreen(
                 title = { Text(importStepTitle(state.step)) },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (state.step == ImportStep.SOURCE) onNavigateBack()
-                        else viewModel.goBack()
+                        when (state.step) {
+                            ImportStep.SOURCE -> onNavigateBack()
+                            ImportStep.PROGRESS -> showCancelImportDialog = true
+                            ImportStep.COLUMN_MAP -> showDiscardMappingDialog = true
+                            else -> viewModel.goBack()
+                        }
                     }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_back),
+                        )
                     }
                 },
             )
@@ -124,7 +167,11 @@ fun DataImportScreen(
                 else -> ImportWizardContent(
                     state = state,
                     onSourceSelected = viewModel::selectSource,
-                    onPickFile = { filePicker.launch(arrayOf("text/csv", "text/comma-separated-values", "*/*")) },
+                    onPickFile = {
+                        // Launch with a combined MIME type so the system picker shows
+                        // both text/csv and text/comma-separated-values files.
+                        filePicker.launch("text/csv")
+                    },
                     onToggleScope = viewModel::toggleScope,
                     onMappingChanged = viewModel::updateMapping,
                     onPreviewConfirm = { viewModel.goToStep(ImportStep.PREVIEW) },
@@ -191,7 +238,10 @@ private fun ImportWizardContent(
                     ListItem(
                         headlineContent = { Text(state.fileName) },
                         leadingContent = {
-                            Icon(Icons.Default.Upload, contentDescription = null)
+                            Icon(
+                                Icons.Default.Upload,
+                                contentDescription = stringResource(R.string.import_cd_upload_icon),
+                            )
                         },
                     )
                 }
@@ -337,6 +387,7 @@ private fun DoneState(
     onCommit: () -> Unit,
     onReset: () -> Unit,
 ) {
+    val context = LocalContext.current
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -358,8 +409,14 @@ private fun DoneState(
             }
         }
         if (progress.errorCsvUrl != null) {
-            OutlinedButton(onClick = { /* TODO: trigger download */ }) {
-                Text("Download Error Report")
+            val errorUrl = progress.errorCsvUrl
+            OutlinedButton(onClick = {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(errorUrl)).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }) {
+                Text(stringResource(R.string.import_download_error_report))
             }
         }
         OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {

@@ -82,4 +82,11 @@ interface CustomerDao {
 
     @Query("SELECT COUNT(*) FROM customers WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
+
+    /**
+     * §45.1 — Returns all customer IDs for the daily health-score re-sync worker.
+     * Only non-deleted rows are included to avoid wasting API calls on soft-deleted records.
+     */
+    @Query("SELECT id FROM customers WHERE is_deleted = 0")
+    suspend fun getAllIds(): List<Long>
 }

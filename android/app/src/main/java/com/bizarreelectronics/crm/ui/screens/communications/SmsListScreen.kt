@@ -300,7 +300,7 @@ fun SmsListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search conversations...",
+                placeholder = "Phone, name, message…",
                 modifier = Modifier
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .semantics { contentDescription = "Search conversations" },

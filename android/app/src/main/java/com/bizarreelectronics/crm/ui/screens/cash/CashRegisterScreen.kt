@@ -1,5 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.cash
 
+import android.content.Context
+import android.print.PrintAttributes
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -11,6 +13,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -21,6 +24,7 @@ import com.bizarreelectronics.crm.data.remote.api.ZReport
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.util.formatAsMoney
 
@@ -44,6 +48,10 @@ fun CashRegisterScreen(
     var showCloseDialog by remember { mutableStateOf(false) }
     var showPayInDialog by remember { mutableStateOf(false) }
     var showPayOutDialog by remember { mutableStateOf(false) }
+    // Two-step close: form fills pendingClose, then ConfirmDialog submits.
+    var pendingClose by remember { mutableStateOf<Pair<Long, String?>?>(null) }
+    // ConfirmDialog for Z-report dismiss (after viewing).
+    var showConfirmDismissZReport by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(actionState) {
@@ -107,9 +115,11 @@ fun CashRegisterScreen(
             }
 
             is CashRegisterUiState.ZReportReady -> {
+                val ctx = LocalContext.current
                 ZReportPanel(
                     report = state.report,
-                    onDismiss = { viewModel.dismissZReport() },
+                    onPrint = { printZReport(ctx, state.report) },
+                    onDismiss = { showConfirmDismissZReport = true },
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -128,7 +138,7 @@ fun CashRegisterScreen(
         )
     }
 
-    // Close shift dialog
+    // Close shift dialog — form step
     val currentShift = (uiState as? CashRegisterUiState.ShiftOpen)?.shift
     if (showCloseDialog && currentShift != null) {
         CloseShiftDialog(
@@ -136,9 +146,40 @@ fun CashRegisterScreen(
             isLoading = actionState is ShiftActionState.Loading,
             onDismiss = { showCloseDialog = false },
             onConfirm = { closingCents, reason ->
-                viewModel.closeShift(currentShift.id, closingCents, reason)
+                // Stash values and show final ConfirmDialog before submitting.
+                pendingClose = Pair(closingCents, reason)
                 showCloseDialog = false
             },
+        )
+    }
+
+    // Close shift — ConfirmDialog (§39 constraint: wire ConfirmDialog for "Close drawer")
+    val pending = pendingClose
+    if (pending != null && currentShift != null) {
+        ConfirmDialog(
+            title = "Close drawer?",
+            message = "This will end the shift and generate the Z-report. This cannot be undone.",
+            confirmLabel = "Close & Z-Report",
+            isDestructive = true,
+            onConfirm = {
+                viewModel.closeShift(currentShift.id, pending.first, pending.second)
+                pendingClose = null
+            },
+            onDismiss = { pendingClose = null },
+        )
+    }
+
+    // Confirm dismiss Z-report (§39 constraint: wire ConfirmDialog for "Confirm Z-report")
+    if (showConfirmDismissZReport) {
+        ConfirmDialog(
+            title = "Done with Z-report?",
+            message = "Make sure you have printed or recorded the Z-report before continuing.",
+            confirmLabel = "Done",
+            onConfirm = {
+                showConfirmDismissZReport = false
+                viewModel.dismissZReport()
+            },
+            onDismiss = { showConfirmDismissZReport = false },
         )
     }
 
@@ -300,6 +341,7 @@ private fun ShiftStatRow(label: String, value: String) {
 @Composable
 private fun ZReportPanel(
     report: ZReport,
+    onPrint: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -404,11 +446,28 @@ private fun ZReportPanel(
         }
 
         item {
-            OutlinedButton(
-                onClick = onDismiss,
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Done")
+                FilledTonalButton(
+                    onClick = onPrint,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        Icons.Default.Print,
+                        contentDescription = "Print Z-report",
+                        modifier = Modifier.size(ButtonDefaults.IconSize),
+                    )
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text("Print / PDF")
+                }
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Done")
+                }
             }
         }
     }
@@ -624,6 +683,111 @@ private fun PayInOutDialog(
         },
     )
 }
+
+// ─── Z-report print / PDF ─────────────────────────────────────────────────────
+
+/**
+ * Renders the Z-report as HTML and opens the system [android.print.PrintManager].
+ *
+ * The user can save to PDF ("Save as PDF" printer) or send to a physical printer.
+ * Server-side PDF archival is deferred (no /cash-register/shift/:id/z-report.pdf
+ * endpoint on the server yet); this covers the client-side print leg of §39.1.
+ *
+ * Mirrors [printEstimate] in EstimateDetailScreen — same WebViewPrintDocumentAdapter
+ * approach; falls back gracefully if PrintManager is unavailable.
+ */
+internal fun printZReport(context: Context, report: ZReport) {
+    runCatching {
+        val printManager = context.getSystemService(Context.PRINT_SERVICE)
+            as? android.print.PrintManager ?: return
+        val html = buildZReportHtml(report)
+        val adapter = android.webkit.WebView(context).let { wv ->
+            wv.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            wv.createPrintDocumentAdapter("ZReport_Shift_${report.shiftId}")
+        }
+        printManager.print(
+            "ZReport_Shift_${report.shiftId}",
+            adapter,
+            PrintAttributes.Builder().build(),
+        )
+    }
+}
+
+/** Builds a print-friendly HTML representation of the Z-report. */
+private fun buildZReportHtml(r: ZReport): String = buildString {
+    val style = """
+        body { font-family: monospace; margin: 24px; color: #111; }
+        h1   { font-size: 18px; margin-bottom: 4px; }
+        h2   { font-size: 13px; border-bottom: 1px solid #ccc; padding-bottom: 4px; margin-top: 16px; }
+        table{ width: 100%; border-collapse: collapse; font-size: 12px; }
+        td   { padding: 3px 6px; }
+        td:last-child { text-align: right; }
+        .over  { color: green; }
+        .short { color: red; }
+    """.trimIndent()
+    append("<html><head><style>$style</style></head><body>")
+    append("<h1>Z-Report &mdash; Shift #${r.shiftId}</h1>")
+    append("<p style='font-size:11px;color:#555;'>")
+    append("Cashier: ${r.cashier ?: "—"} &nbsp;|&nbsp; Register: ${r.registerId ?: "—"}<br>")
+    append("Opened: ${r.startedAt ?: "—"} &nbsp;|&nbsp; Closed: ${r.closedAt ?: "—"}")
+    append("</p>")
+
+    // Sales summary
+    append("<h2>Sales Summary</h2><table>")
+    append("<tr><td>Sales count</td><td>${r.salesCount}</td></tr>")
+    append("<tr><td>Gross</td><td>${r.grossCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Net</td><td>${r.netCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Tips</td><td>${r.tipsCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Refunds</td><td>${r.refundsCount} &times; ${r.refundsTotalCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Voids</td><td>${r.voidsCount}</td></tr>")
+    append("</table>")
+
+    // Tender breakdown
+    if (r.tenderBreakdown.isNotEmpty()) {
+        append("<h2>By Tender</h2><table>")
+        r.tenderBreakdown.forEach { t ->
+            append("<tr><td>${t.tender.replaceFirstChar { it.uppercase() }}</td>")
+            append("<td>${t.salesCount} &times; ${t.salesTotalCents.centsToDisplay()}</td></tr>")
+        }
+        append("</table>")
+    }
+
+    // Cash reconciliation
+    val overShort = r.overShortCents
+    val overShortCls = when {
+        overShort > 0 -> "over"
+        overShort < 0 -> "short"
+        else          -> ""
+    }
+    val overShortLabel = when {
+        overShort > 0 -> "+${overShort.centsToDisplay()} (over)"
+        overShort < 0 -> "${overShort.centsToDisplay()} (short)"
+        else          -> "Balanced"
+    }
+    append("<h2>Cash Reconciliation</h2><table>")
+    append("<tr><td>Opening cash</td><td>${r.openingCashCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Expected cash</td><td>${r.expectedCashCents.centsToDisplay()}</td></tr>")
+    append("<tr><td>Counted cash</td><td>${(r.closingCashCents ?: 0L).centsToDisplay()}</td></tr>")
+    append("<tr><td>Over / short</td><td class='$overShortCls'>$overShortLabel</td></tr>")
+    append("</table>")
+
+    // Top items
+    if (r.topItems.isNotEmpty()) {
+        append("<h2>Top Items</h2><table>")
+        r.topItems.take(5).forEach { item ->
+            append("<tr><td>${item.name}</td><td>&times;${item.qty} &middot; ${item.totalCents.centsToDisplay()}</td></tr>")
+        }
+        append("</table>")
+    }
+
+    append("<p style='font-size:10px;color:#888;margin-top:24px;'>")
+    append("Generated by Bizarre Electronics CRM")
+    append("</p>")
+    append("</body></html>")
+}
+
+/** Formats cents as "\$X.XX" for HTML (avoids dependency on Android NumberFormat). */
+private fun Long.centsToDisplay(): String = "\$%.2f".format(this / 100.0)
 
 // ─── Not-available card ───────────────────────────────────────────────────────
 

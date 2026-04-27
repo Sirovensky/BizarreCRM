@@ -1895,6 +1895,7 @@ class LoginViewModel @Inject constructor(
 
 // ─── UI ─────────────────────────────────────────────────────────────
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
@@ -2051,35 +2052,53 @@ fun LoginScreen(
     }
 
     // §2.13-L366: Scaffold provides the snackbar host for challenge-expired notification.
+    // §23.5 standaloneModal: contentWindowInsets = WindowInsets(0) so the Scaffold's
+    // default safeDrawing inset does not double-count with the explicit safeDrawingPadding()
+    // below. (LoginScreen sits outside the NavHost — there is no parent Scaffold above.)
+    // The previous combo (default safeDrawing innerPadding + .imePadding()) added the IME
+    // inset twice, leaving a dark blank band masking the Connect button when the keyboard
+    // was open. See ScaffoldInsetsDefaults.standaloneModal KDoc for the full strategy.
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.standaloneModal,
     ) { innerPadding ->
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding)
-            // LOGIN-MOCK-140: protect display-cutout area (notch/punch-hole) — status-bar
-            // inset is already handled by Scaffold's innerPadding (LOGIN-MOCK-102).
-            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Top))
-            .imePadding(),
-        // LOGIN-MOCK-102: removed .statusBarsPadding() — Scaffold's innerPadding already
-        // contains the status-bar inset on API 30+ (M3 default contentWindowInsets =
-        // safeDrawing). Adding statusBarsPadding() a second time pushed the wordmark
-        // down by an extra ~24–30dp (double-inset on API 30+).
+            .safeDrawingPadding(),
         // LOGIN-MOCK-114: changed Center → TopCenter so the card is always reachable
         // by scrolling when the keyboard is up. Alignment.Center pins the column at
         // the vertical midpoint of the *remaining* Box height, which can push the
         // Connect button + footer row under the IME on shorter phones (screens 07/08).
         contentAlignment = Alignment.TopCenter,
     ) {
+        // 2026-04-27: when IME is open we collapse the wordmark + top breathing
+        // room AND auto-scroll the column to its bottom so the active form's
+        // footer (Connect / Sign In / 2FA action row + supporting links) stays
+        // above the keyboard. Compose's per-field BringIntoViewRequester only
+        // scrolls the focused TextField into view, not its sibling buttons
+        // below — leaving the CTA hidden on small-DPI / shorter screens.
+        val imeVisible = WindowInsets.isImeVisible
+        val scrollState = rememberScrollState()
+        LaunchedEffect(imeVisible, state.step) {
+            if (imeVisible) {
+                // Wait one frame for the IME-resize to propagate, then scroll
+                // the column to its new max so the bottom of the card is in
+                // view. Using animateScrollTo so the motion is smooth and
+                // tracks the IME-open animation.
+                kotlinx.coroutines.delay(50L)
+                scrollState.animateScrollTo(scrollState.maxValue)
+            }
+        }
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)
-                .padding(horizontal = 16.dp, vertical = 24.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(horizontal = 16.dp, vertical = if (imeVisible) 8.dp else 24.dp)
+                .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Logo / App name — small top breathing room replaces the old 80dp pin.
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (imeVisible) 0.dp else 32.dp))
             // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
             Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
                 Text(
@@ -2100,9 +2119,15 @@ fun LoginScreen(
             // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
             // LOGIN-MOCK-085: reduce WaveDivider height to 16dp (in WaveDivider.kt) and
             //   spacer below from 24dp → 12dp. NET = 20 + 16 + 12 = 48dp ≈ target ~40-48dp.
-            Spacer(Modifier.height(20.dp))
-            WaveDivider()
-            Spacer(Modifier.height(12.dp))
+            // 2026-04-27: collapse spacers + hide wave when IME up to give back ~36dp
+            // so footer Row inside the form card stays above the keyboard.
+            if (!imeVisible) {
+                Spacer(Modifier.height(20.dp))
+                WaveDivider()
+                Spacer(Modifier.height(12.dp))
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
 
             // §28.6 — sticky banner shown when the user landed here because
             // the server killed their session (refresh-failed / revoked).

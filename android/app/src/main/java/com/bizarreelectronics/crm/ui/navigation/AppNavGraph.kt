@@ -46,7 +46,23 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDetailScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerListScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerDetailScreen
+import com.bizarreelectronics.crm.ui.screens.customers.CustomerBarcodeLookupScreen
+import com.bizarreelectronics.crm.ui.screens.customers.CustomerNotesScreen
+import com.bizarreelectronics.crm.ui.screens.customers.healthscore.CustomerHealthScoreScreen
+import com.bizarreelectronics.crm.ui.screens.customers.healthscore.CustomerLtvTierScreen
+import com.bizarreelectronics.crm.ui.screens.warranty.DeviceHistoryScreen
+import com.bizarreelectronics.crm.ui.screens.warranty.WarrantyClaimScreen
+import com.bizarreelectronics.crm.ui.screens.warranty.WarrantyLookupScreen
+import com.bizarreelectronics.crm.ui.screens.kiosk.KioskCheckInScreen
+import com.bizarreelectronics.crm.ui.screens.kiosk.KioskDoneScreen
+import com.bizarreelectronics.crm.ui.screens.kiosk.KioskExitScreen
+import com.bizarreelectronics.crm.ui.screens.kiosk.KioskSignatureScreen
+import com.bizarreelectronics.crm.util.KioskController
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryListScreen
+import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderListScreen
+import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderDetailScreen
+import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderCreateScreen
+import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceAgingScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
@@ -68,6 +84,8 @@ import com.bizarreelectronics.crm.ui.screens.tickets.TicketDeviceEditScreen
 import com.bizarreelectronics.crm.ui.screens.camera.PhotoCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.hardware.CameraCaptureScreen
 import com.bizarreelectronics.crm.ui.screens.hardware.DocumentScanScreen
+import com.bizarreelectronics.crm.ui.screens.hardware.HardwarePairingWizardScreen
+import com.bizarreelectronics.crm.ui.screens.hardware.WeightScaleScreen
 import com.bizarreelectronics.crm.ui.screens.settings.hardware.HardwareSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.hardware.PrinterDiscoveryScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ActiveSessionsScreen
@@ -113,10 +131,34 @@ import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.ui.screens.memberships.MembershipListScreen
 import com.bizarreelectronics.crm.ui.screens.cash.CashRegisterScreen
 import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardScreen
+import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardLiabilityScreen
+import com.bizarreelectronics.crm.ui.screens.refunds.RefundScreen
 import com.bizarreelectronics.crm.ui.screens.audit.AuditLogsScreen
 import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
 import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
 import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
+import com.bizarreelectronics.crm.ui.screens.settings.AppInfoScreen
+import com.bizarreelectronics.crm.ui.screens.settings.BusinessInfoScreen
+import com.bizarreelectronics.crm.ui.screens.settings.DataSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.FullDiagnosticsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.IntegrationsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.PaymentSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TeamSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.training.TrainingModeBanner
+import com.bizarreelectronics.crm.ui.screens.training.TrainingModeScreen
+import com.bizarreelectronics.crm.data.local.prefs.TrainingPreferences
+import com.bizarreelectronics.crm.ui.screens.publictracking.PublicTrackingScreen
+import com.bizarreelectronics.crm.ui.screens.selfbooking.SelfBookingScreen
+import com.bizarreelectronics.crm.ui.screens.selfbooking.OnlineBookingSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TabOrderScreen
+import com.bizarreelectronics.crm.util.TabNavPrefs
+import com.bizarreelectronics.crm.ui.screens.help.HelpCenterScreen
+import com.bizarreelectronics.crm.ui.screens.help.ReportProblemScreen
+import com.bizarreelectronics.crm.ui.screens.locations.LocationCreateScreen
+import com.bizarreelectronics.crm.ui.screens.locations.LocationDetailScreen
+import com.bizarreelectronics.crm.ui.screens.locations.LocationListScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Locale
 import javax.inject.Inject
@@ -161,6 +203,14 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "customers/$id"
     }
     data object CustomerCreate : Screen("customer-create")
+    /**
+     * §POS — full-screen customer create variant launched from POS pre-attach.
+     * Renders the same `CustomerCreateScreen` as the standalone route but on
+     * onCreated pops back to POS and writes the new id into the previous
+     * back-stack `savedStateHandle["pos_attach_customer_id"]` so PosEntryScreen
+     * can auto-attach.
+     */
+    data object CustomerCreateForPos : Screen("customer-create-pos")
     data object Inventory : Screen("inventory")
     data object InventoryDetail : Screen("inventory/{id}") {
         fun createRoute(id: Long) = "inventory/$id"
@@ -170,6 +220,7 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "invoices/$id"
     }
     data object InvoiceCreate : Screen("invoice-create")
+    data object InvoiceAging : Screen("invoice-aging")
     data object Pos : Screen("pos")
     data object PosCart : Screen("pos/cart")
     data object PosTender : Screen("pos/tender")
@@ -264,6 +315,13 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "inventory-edit/$id"
     }
 
+    // §6.7 Purchase Orders
+    data object PurchaseOrders : Screen("purchase-orders")
+    data object PurchaseOrderDetail : Screen("purchase-orders/{id}") {
+        fun createRoute(id: Long) = "purchase-orders/$id"
+    }
+    data object PurchaseOrderCreate : Screen("purchase-order-create")
+
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
@@ -293,9 +351,27 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "employees/$id"
     }
 
+    // §14.4 — Assign role screen (admin; nav arg: id + role).
+    data object AssignRole : Screen("employees/{id}/assign-role") {
+        fun createRoute(id: Long, currentRole: String) =
+            "employees/$id/assign-role?role=${android.net.Uri.encode(currentRole)}"
+    }
+
+    // §14.4 — Custom roles management (Settings → Team → Roles).
+    data object CustomRoles : Screen("settings/team/roles")
+
+    // §14.6 — Team shift schedule (weekly grid).
+    data object ShiftSchedule : Screen("team/shift-schedule")
+
+    // §14.7 — Employee leaderboard.
+    data object Leaderboard : Screen("team/leaderboard")
+
     // §32.3 Crash reports — Settings → Diagnostics. Lists files written by
     // util/CrashReporter to filesDir/crash-reports/.
     data object CrashReports : Screen("settings/diagnostics/crash-reports")
+
+    // §32.4 — View logs (Error+Warn ring buffer from ReleaseTree).
+    data object LogViewer : Screen("settings/diagnostics/logs")
 
     // §1.3 [plan:L185] — Diagnostics (Export DB snapshot). DEBUG builds only.
     data object Diagnostics : Screen("settings/diagnostics")
@@ -378,6 +454,9 @@ sealed class Screen(val route: String) {
     // §4.9 L766 — Repair pricing catalog Settings sub-screen.
     data object RepairPricing : Screen("settings/repair-pricing")
 
+    // §44.3 — Device catalog (manufacturers + models hierarchy) Settings sub-screen.
+    data object DeviceCatalog : Screen("settings/device-catalog")
+
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
 
@@ -388,6 +467,12 @@ sealed class Screen(val route: String) {
     data object DocumentScan : Screen("hardware/document-scan")
     data object HardwareSettings : Screen("settings/hardware")
     data object PrinterDiscovery : Screen("settings/hardware/printers")
+
+    // §17.7 — Weight scale pairing + on-demand read.
+    data object WeightScale : Screen("settings/hardware/scale")
+
+    // §17.11 — Hardware pairing wizard ("Add device" walkthrough).
+    data object HardwarePairingWizard : Screen("settings/hardware/wizard")
 
     // §36 L585–L588 — Morning-open checklist (staff role, shown once per day).
     data object MorningChecklist : Screen("morning/checklist")
@@ -403,10 +488,14 @@ sealed class Screen(val route: String) {
     data object PaymentLinks : Screen("payment-links")
     data object PaymentLinkCreate : Screen("payment-links/create")
 
-    // §42 — Voice / Calls (list + detail)
+    // §42 — Voice / Calls (list + detail + voicemail + recording consent)
     data object Calls : Screen("calls")
     data object CallDetail : Screen("calls/{id}") {
         fun createRoute(id: Long) = "calls/$id"
+    }
+    data object Voicemail : Screen("calls/voicemail")
+    data object CallRecordingConsent : Screen("calls/{id}/recording-consent") {
+        fun createRoute(id: Long) = "calls/$id/recording-consent"
     }
 
     // §38 — Memberships / Loyalty list screen.
@@ -417,6 +506,10 @@ sealed class Screen(val route: String) {
 
     // §40 — Gift Cards / Store Credit screen.
     data object GiftCards : Screen("gift-cards")
+    // §40.3 — Refund lifecycle (create + approve/decline).
+    data object Refunds : Screen("refunds")
+    // §40.4 — Gift-card + store-credit liability reconciliation report.
+    data object GiftCardLiability : Screen("gift-card-liability")
 
     // §47 — Team Chat rooms list + thread screens.
     data object TeamChat : Screen("team-chat")
@@ -431,6 +524,11 @@ sealed class Screen(val route: String) {
     data object TimeOffRequest : Screen("time-off-request")
     data object TimeOffList : Screen("time-off-list")
 
+    // §49 — Permission matrix editor for a specific role (admin-only).
+    data object RolePermissions : Screen("settings/team/roles/{roleId}/permissions") {
+        fun createRoute(roleId: Long) = "settings/team/roles/$roleId/permissions"
+    }
+
     // §52 — Audit Logs (admin-only)
     data object AuditLogs : Screen("audit-logs")
 
@@ -443,6 +541,170 @@ sealed class Screen(val route: String) {
     // §54 — Command Palette (overlay; not a real nav destination, but registered
     // so Ctrl+K handling in AppNavGraph can check against it)
     data object CommandPalette : Screen("command-palette")
+
+    // §60 — Inventory Stocktake flow.
+    data object Stocktake : Screen("inventory/stocktake")
+
+    // §19.7 — Ticket settings (default due-date, IMEI required, photo required).
+    data object TicketSettings : Screen("settings/tickets")
+
+    // §19.8 — POS / payment settings (payment methods, BlockChyp, tips, cash drawer).
+    data object PaymentSettings : Screen("settings/payment")
+
+    // §19.9 — SMS settings (provider status, sender number, compliance footer, off-hours).
+    data object SmsSettings : Screen("settings/sms")
+
+    // §19.10 — Integrations hub (BlockChyp, SMS, Google Wallet, Webhooks, Zapier).
+    data object Integrations : Screen("settings/integrations")
+
+    // §19.11 — Team & Roles settings hub (deep-links to Employees + Custom Roles).
+    data object TeamSettings : Screen("settings/team")
+
+    // §19.12 — Data settings (Import, Export, Clear cache, Reset defaults).
+    data object DataSettings : Screen("settings/data")
+
+    // §19.13 — Full diagnostics (server URL, app version, logs, force sync, force crash).
+    data object FullDiagnostics : Screen("settings/full-diagnostics")
+
+    // §19.14 — App info (OSS licenses, Privacy, Terms, Rate app).
+    data object AppInfo : Screen("settings/app-info")
+
+    // §19.19 — Business info (shop name, address, phone, email, tax ID, social links).
+    data object BusinessInfo : Screen("settings/business-info")
+
+    // §45.1 — Customer health score ring + component breakdown screen.
+    data object CustomerHealthScore : Screen("customers/{id}/health-score") {
+        fun createRoute(customerId: Long) = "customers/$customerId/health-score"
+    }
+
+    // §45.2 — Customer LTV tier chip screen.
+    data object CustomerLtvTier : Screen("customers/{id}/ltv-tier") {
+        fun createRoute(customerId: Long) = "customers/$customerId/ltv-tier"
+    }
+
+    // §5.3 — Customer card barcode / QR scan quick-lookup.
+    // Scans a tenant-printed customer card and routes to the matching customer.
+    data object CustomerBarcodeLookup : Screen("customer-barcode-lookup")
+
+    // §5.14 — Customer notes timeline (quick CRUD; rich-text and pins deferred).
+    data object CustomerNotes : Screen("customers/{id}/notes") {
+        fun createRoute(customerId: Long) = "customers/$customerId/notes"
+    }
+
+    // §46 — Warranty Claim: search existing warranty records + file a claim.
+    // Entry: ticket detail toolbar / quick-action menu.
+    data object WarrantyClaim : Screen("warranty/claim")
+
+    // §46.1 — Warranty lookup: search by IMEI / serial / phone, tap to create
+    // warranty-return ticket. Accessible as a global action from ticket detail
+    // and the quick-action menu.
+    data object WarrantyLookup : Screen("warranty/lookup")
+
+    // §53 — Training Mode (sandbox) settings sub-screen.
+    data object TrainingMode : Screen("settings/training-mode")
+
+    // §59 — Field-Service / Dispatch dashboard for mobile technicians.
+    data object FieldService : Screen("field-service")
+
+    // §46.2 — Device history: all past tickets for a given IMEI or serial.
+    // Optional prefill via query params from ticket detail / customer asset tab.
+    data object DeviceHistory : Screen("warranty/device-history?imei={imei}&serial={serial}") {
+        /** Navigate with known IMEI; serial defaults to null. */
+        fun createRouteWithImei(imei: String) =
+            "warranty/device-history?imei=${Uri.encode(imei)}"
+        /** Navigate with known serial number; IMEI defaults to null. */
+        fun createRouteWithSerial(serial: String) =
+            "warranty/device-history?serial=${Uri.encode(serial)}"
+        /** Open without prefill (blank search form). */
+        const val blankRoute: String = "warranty/device-history"
+    }
+
+    // §57 Kiosk / Lock-Task Single-Task Modes
+    // §57.2 — Customer kiosk check-in start screen.
+    data object KioskCheckIn : Screen("kiosk/checkin")
+
+    // §57.3 — Customer-facing signature screen (device-flip, no back-out).
+    // customerId and customerName are passed as query params.
+    data object KioskSignature : Screen("kiosk/signature?customerId={customerId}&customerName={customerName}") {
+        fun createRoute(customerId: Long, customerName: String): String =
+            "kiosk/signature?customerId=$customerId&customerName=${Uri.encode(customerName)}"
+    }
+
+    // §57.5 — Manager-PIN exit gate (exits lock-task mode on success).
+    data object KioskExit : Screen("kiosk/exit")
+
+    // §57.2 — Kiosk done / thank-you screen (auto-resets to KioskCheckIn).
+    data object KioskDone : Screen("kiosk/done?customerName={customerName}") {
+        fun createRoute(customerName: String): String =
+            "kiosk/done?customerName=${Uri.encode(customerName)}"
+    }
+
+    // §62 — Financial Dashboard (owner-only).
+    // Role gate: server enforces 403 for non-owner; screen also renders
+    // access-denied card when isOwner=false (defense-in-depth).
+    data object FinancialDashboard : Screen("financial-dashboard")
+
+    // §55.2 — Public tracking: customer-facing read-only repair status view.
+    // Reached via App Link https://app.bizarrecrm.com/t/:orderId?token=<trackingToken>
+    // or custom scheme bizarrecrm://track/:orderId?token=<trackingToken>.
+    // Both orderId and trackingToken are required nav arguments.
+    data object PublicTracking : Screen("public-tracking/{orderId}?trackingToken={trackingToken}") {
+        fun createRoute(orderId: String, trackingToken: String): String =
+            "public-tracking/${Uri.encode(orderId)}?trackingToken=${Uri.encode(trackingToken)}"
+    }
+
+    // §1.5 line 202 — Tab Order customisation settings sub-screen.
+    // Reachable from Settings → "Tab Order". Persists order to AppPreferences.tabNavOrder
+    // which the bottom NavigationBar observes via a StateFlow so changes apply immediately.
+    data object TabOrder : Screen("settings/tab-order")
+
+    // §72.1 — Help center (bundled offline Markdown topics + client-side FTS search).
+    data object HelpCenter : Screen("settings/help")
+
+    // §72.3 — Report a problem (email composer with optional redacted diagnostic info).
+    data object ReportProblem : Screen("settings/help/report-problem")
+
+    // §58.1 — Customer-facing appointment self-booking (public, no auth).
+    // Reached via App Link https://app.bizarrecrm.com/book/:locationId or
+    // custom scheme bizarrecrm://book/:locationId.
+    // 404-tolerant: degrades to NotAvailable state when booking is disabled.
+    data object SelfBooking : Screen("self-booking/{locationId}") {
+        fun createRoute(locationId: String): String = "self-booking/${Uri.encode(locationId)}"
+    }
+
+    // §58.3 — Staff-facing online booking settings: generate link/QR per location.
+    // Reachable from Settings → Online Booking.
+    data object OnlineBookingSettings : Screen("settings/online-booking/{locationId}") {
+        fun createRoute(locationId: String): String =
+            "settings/online-booking/${Uri.encode(locationId)}"
+    }
+
+    // §63 — Multi-Location Management
+    data object Locations : Screen("locations")
+    data object LocationDetail : Screen("locations/{id}") {
+        fun createRoute(id: Long) = "locations/$id"
+    }
+    data object LocationCreate : Screen("location-create")
+
+    // §37 — Marketing & Growth
+    // Campaign list with status-tab filter (Draft / Active / Paused / Archived).
+    data object Campaigns : Screen("marketing/campaigns")
+    // Multi-step campaign builder: Audience → Message → Review.
+    data object CampaignBuilder : Screen("marketing/campaigns/new")
+    // Campaign detail / stats — tapped from the campaign list.
+    data object CampaignDetail : Screen("marketing/campaigns/{id}") {
+        fun createRoute(id: Long) = "marketing/campaigns/$id"
+    }
+    // Audience segments management.
+    data object Segments : Screen("marketing/segments")
+    // Automations: event/cron campaigns (birthday, win-back, review-request).
+    data object Automations : Screen("marketing/automations")
+    // Review solicitation: trigger review-request SMS after ticket close.
+    data object ReviewSolicitation : Screen("marketing/review-solicitation?ticketId={ticketId}") {
+        fun createRoute(ticketId: Long? = null): String =
+            if (ticketId != null) "marketing/review-solicitation?ticketId=$ticketId"
+            else "marketing/review-solicitation"
+    }
 }
 
 data class BottomNavItem(
@@ -472,6 +734,15 @@ private fun mapResolvedRoute(raw: String): String? = when {
     raw == "ticket/new"   -> Screen.CheckInEntry.route
     raw == "customer/new" -> Screen.CustomerCreate.route
     raw == "scan"         -> Screen.Scanner.route
+    // §68.2 — pos/new deep link maps to the POS entry screen route ("pos").
+    // NavCompose deep-link wires bizarrecrm://pos/new → Screen.Pos; this
+    // branch handles the case where the route string arrives via DeepLinkBus
+    // (e.g. QS tile or launcher shortcut) rather than via NavCompose directly.
+    raw == "pos/new"      -> Screen.Pos.route
+    // §68.2 — sms/{phone} deep link maps to the SmsThread route ("messages/{phone}").
+    // Translate the deep-link URI host path to the internal nav route so the
+    // NavController can find the composable.
+    raw.startsWith("sms/") -> "messages/${raw.removePrefix("sms/")}"
     // §2.7 L330 — setup invite: "login?setupToken=<encoded>" must navigate
     // to the Login composable before the user is authenticated. Returned
     // as-is; the auth gate in the collector is bypassed for this prefix.
@@ -495,6 +766,18 @@ fun AppNavGraph(
     clockDrift: ClockDrift? = null,
     rateLimiter: RateLimiter? = null,
     sessionTimeout: SessionTimeout? = null,
+    // §53.1 — optional; when provided the training-mode banner is rendered above
+    // the NavHost whenever training mode is enabled. Nullable so the graph can be
+    // composed in previews and tests without a full Hilt context.
+    trainingPreferences: TrainingPreferences? = null,
+    // §57 — optional; when provided enables startLockTask / stopLockTask wiring
+    // in the kiosk sub-graph. Nullable so the graph can be composed without a
+    // full Hilt context (previews, tests, non-kiosk entry points).
+    kioskController: KioskController? = null,
+    // §1.5 line 202 — optional; when provided the bottom NavigationBar observes
+    // AppPreferences.tabNavOrderFlow so the user's persisted tab order is applied
+    // immediately without a restart. Nullable for previews / test hosts.
+    appPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -521,6 +804,22 @@ fun AppNavGraph(
             entry.posCoordinator()
         }.getOrNull()
     }
+
+    // §1.5 line 202 — resolve AppPreferences for tab-order observation.
+    // If the caller already passed the param (production path), use it directly.
+    // Otherwise fall back to the Hilt entry-point (non-null in any real Activity /
+    // Application context). Wrapped in runCatching so composable previews and
+    // unit-test hosts that have no Hilt component don't crash.
+    val resolvedAppPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences? =
+        appPreferences ?: remember(navController) {
+            runCatching {
+                val ctx = navController.context
+                dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    ctx.applicationContext,
+                    com.bizarreelectronics.crm.ui.navigation.AppPreferencesEntryPoint::class.java,
+                ).appPreferences()
+            }.getOrNull()
+        }
 
     // §32.5 — log every nav route change so the breadcrumb tail in any
     // future crash log shows the user's path leading up to the throwable.
@@ -574,6 +873,12 @@ fun AppNavGraph(
     // §2.7 L330 — exception: setup-token routes are pre-auth; they navigate
     // to the Login composable so the invite token is passed in before the
     // user has a session. We bypass the isLoggedIn gate for this prefix only.
+    //
+    // §68.3 — Auth-required deep-link queuing: when an auth-required route
+    // arrives while the user is not logged in, queue it in DeepLinkBus rather
+    // than silently dropping it. After a successful login the second
+    // LaunchedEffect below re-publishes it so the user lands on their intended
+    // destination (intent_after_login pattern).
     LaunchedEffect(deepLinkBus, authPreferences?.isLoggedIn) {
         deepLinkBus?.pendingRoute?.collect { raw ->
             if (raw == null) return@collect
@@ -583,7 +888,15 @@ fun AppNavGraph(
             // check so the route resolves while the session is still valid but
             // the PIN gate was active.
             val isForgotPin = raw == Screen.ForgotPin.route
-            if (!isSetupToken && !isForgotPin && authPreferences?.isLoggedIn != true) return@collect
+            if (!isSetupToken && !isForgotPin && authPreferences?.isLoggedIn != true) {
+                // §68.3 — queue auth-required route for post-login replay instead of
+                // dropping it. Consume the bus entry now so rotation doesn't re-fire
+                // via this collector; the pendingRouteAfterLogin observer below
+                // replays it once isLoggedIn becomes true.
+                deepLinkBus.queueAfterLogin(raw)
+                deepLinkBus.consume()
+                return@collect
+            }
             val dest = mapResolvedRoute(raw)
             if (dest != null) {
                 navController.navigate(dest) {
@@ -598,6 +911,20 @@ fun AppNavGraph(
             // Always consume — even for unknown routes — so we don't spin
             // on a payload the app can't handle.
             deepLinkBus.consume()
+        }
+    }
+
+    // §68.3 — Replay queued post-login deep link once the user becomes authenticated.
+    // Triggered when isLoggedIn transitions to true after a successful sign-in.
+    // The queued route is resolved via mapResolvedRoute and navigated to directly —
+    // the auth gate above will pass on this run because isLoggedIn is now true.
+    LaunchedEffect(deepLinkBus, isLoggedIn) {
+        if (!isLoggedIn) return@LaunchedEffect
+        val queued = deepLinkBus?.pendingRouteAfterLogin?.value ?: return@LaunchedEffect
+        deepLinkBus.consumePendingAfterLogin()
+        val dest = mapResolvedRoute(queued)
+        if (dest != null) {
+            navController.navigate(dest)
         }
     }
 
@@ -659,6 +986,9 @@ fun AppNavGraph(
             !currentRoute.startsWith("inventory/") &&
             !currentRoute.startsWith("inventory-edit/") &&
             currentRoute != Screen.InventoryCreate.route &&
+            // §6.7 Purchase Order screens are detail/create flows; hide bottom bar.
+            !currentRoute.startsWith("purchase-orders/") &&
+            currentRoute != Screen.PurchaseOrderCreate.route &&
             !currentRoute.startsWith("messages/") &&
             !currentRoute.startsWith("leads/") &&
             currentRoute != Screen.LeadCreate.route &&
@@ -696,29 +1026,57 @@ fun AppNavGraph(
             currentRoute != Screen.HardwareSettings.route &&
             currentRoute != Screen.PrinterDiscovery.route &&
             // §4.9 L756 — bench tab and settings sub-screens hide the bottom bar
-            currentRoute != Screen.Bench.route
+            currentRoute != Screen.Bench.route &&
+            // §59 — field-service dispatch screen hides the bottom bar
+            currentRoute != Screen.FieldService.route &&
+            // §46 — warranty / device-history screens are detail flows; hide bottom bar
+            !currentRoute.startsWith("warranty/") &&
+            // §5.3 — barcode lookup is a standalone screen; CustomerNotes is under customers/{id}/…
+            // which is already excluded by the !startsWith("customers/") clause above.
+            currentRoute != Screen.CustomerBarcodeLookup.route
 
-    val bottomNavItems = listOf(
-        BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
-        BottomNavItem(Screen.Tickets, "Tickets") { Icon(Icons.Default.ConfirmationNumber, "Tickets") },
-        BottomNavItem(Screen.Pos, "POS") { Icon(Icons.Default.PointOfSale, "POS") },
-        BottomNavItem(Screen.Messages, "Messages") { Icon(Icons.Default.Chat, "Messages") },
-        BottomNavItem(Screen.More, "More") { Icon(Icons.Default.MoreHoriz, "More") },
+    // §1.5 line 202 — observe persisted tab order. Falls back to the canonical
+    // default when appPreferences is null (previews / tests) or when no order
+    // has been saved yet (empty string → decodeOrder returns the default).
+    val tabNavOrderRaw by (resolvedAppPreferences?.tabNavOrderFlow
+        ?: kotlinx.coroutines.flow.MutableStateFlow(""))
+        .collectAsStateWithLifecycle()
+    val orderedPrimaryRoutes = remember(tabNavOrderRaw) {
+        TabNavPrefs.decodeOrder(tabNavOrderRaw)
+    }
+
+    // Map route identifier → canonical BottomNavItem definition. Composable lambdas
+    // for icons are stable because they reference only material icons (no captured state).
+    val allPrimaryItems = mapOf(
+        "dashboard" to BottomNavItem(Screen.Dashboard, "Dashboard") {
+            Icon(Icons.Default.Home, "Dashboard")
+        },
+        "tickets" to BottomNavItem(Screen.Tickets, "Tickets") {
+            Icon(Icons.Default.ConfirmationNumber, "Tickets")
+        },
+        "pos" to BottomNavItem(Screen.Pos, "POS") {
+            Icon(Icons.Default.PointOfSale, "POS")
+        },
+        "messages" to BottomNavItem(Screen.Messages, "Messages") {
+            Icon(Icons.Default.Chat, "Messages")
+        },
     )
+    // Build the ordered list from persisted order, always appending "More" last.
+    val bottomNavItems = orderedPrimaryRoutes
+        .mapNotNull { route -> allPrimaryItems[route] } +
+        listOf(BottomNavItem(Screen.More, "More") { Icon(Icons.Default.MoreHoriz, "More") })
 
     Scaffold(
-        // CROSS18: zero the outer Scaffold's top inset so child screens' own
-        // TopAppBar is the sole owner of statusBars padding. Without this,
-        // `padding` below carries the status bar height, the inner NavHost's
-        // child Scaffolds re-apply it via their BrandTopAppBar, and the two
-        // stack to ~200px of dead space above the title on every wizard /
+        // CROSS18 / §23.5: use ScaffoldInsetsDefaults.rootScaffold so child
+        // screens' own TopAppBar is the sole owner of statusBars padding.
+        // Without this, `padding` below carries the status bar height, the
+        // inner NavHost child Scaffolds re-apply it via BrandTopAppBar, and
+        // the two stack to ~200px of dead space above the title on every
         // list screen (Dashboard / Customers / Messages / TicketCreate).
-        // Horizontal + Bottom stay on so the bottom navigation bar still
-        // pushes content up and side insets (gesture nav / cutouts) are
-        // honored.
-        contentWindowInsets = WindowInsets.systemBars.only(
-            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
-        ),
+        // Horizontal + Bottom are kept so the bottom navigation bar still
+        // pushes content up and side insets (gesture nav / cutouts) are honored.
+        // See ScaffoldInsetsDefaults KDoc for the three-tier inset strategy.
+        contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.rootScaffold,
         bottomBar = {
             // §22.2 — drop the bottom NavigationBar at tablet+ widths; the
             // NavigationRail rendered alongside the NavHost (below) takes
@@ -806,6 +1164,15 @@ fun AppNavGraph(
         } ?: false
 
         Column(modifier = Modifier.padding(padding)) {
+            // §53.1 — Training mode banner. Shown above all other banners when
+            // training mode is active so it is never obscured by offline / clock-drift
+            // / rate-limit banners. Gated on login state so it never appears on the
+            // pre-auth screens.
+            if (authPreferences?.isLoggedIn == true && trainingPreferences != null) {
+                val isTrainingMode by trainingPreferences.trainingModeEnabledFlow.collectAsState()
+                TrainingModeBanner(isTrainingMode = isTrainingMode)
+            }
+
             OfflineBanner(
                 isOffline = isOffline,
                 pendingSyncCount = pendingSyncCount,
@@ -866,47 +1233,76 @@ fun AppNavGraph(
                 // §54 — Ctrl+K opens the command palette overlay.
                 onCommandPalette = { showCommandPalette = true },
             ) {
-            // §22.2 — at tablet+ widths render NavigationRail alongside the
-            // NavHost in a Row. Phones fall through to single-column.
+            // §22.2 — adaptive navigation based on window width:
+            //   < 600dp    → bottom NavigationBar (phone, handled in Scaffold.bottomBar above)
+            //   600–1239dp → NavigationRail alongside NavHost in a Row (tablet)
+            //   ≥ 1240dp   → PermanentNavigationDrawer replaces rail (desktop / Chromebook XL)
             val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
+            val permanentDrawer = com.bizarreelectronics.crm.util.isPermanentDrawerWidth()
+
+            // Reusable click handler for all nav items (drawer + rail share the same logic).
+            fun navItemClick(item: BottomNavItem) {
+                if (item.screen == Screen.More) {
+                    navController.navigate(Screen.More.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = false }
+                        launchSingleTop = true
+                        restoreState = false
+                    }
+                } else {
+                    navController.navigate(item.screen.route) {
+                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            }
+
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier.weight(1f).fillMaxSize(),
             ) {
                 if (tabletNav && showBottomNav) {
-                    NavigationRail(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ) {
-                        bottomNavItems.forEach { item ->
-                            val isMoreTab = item.screen == Screen.More
-                            val isSelected = if (isMoreTab) {
-                                currentRoute == Screen.More.route || currentRoute in moreChildRoutes
-                            } else {
-                                currentRoute == item.screen.route
+                    if (permanentDrawer) {
+                        // §22.2 ≥1240dp: PermanentNavigationDrawer rendered as the left pane
+                        // of the Row. NavHost stays as the right pane (weight(1f) below).
+                        PermanentDrawerSheet(
+                            modifier = Modifier.width(240.dp),
+                        ) {
+                            Spacer(Modifier.height(16.dp))
+                            bottomNavItems.forEach { item ->
+                                val isMoreTab = item.screen == Screen.More
+                                val isSelected = if (isMoreTab) {
+                                    currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                                } else {
+                                    currentRoute == item.screen.route
+                                }
+                                NavigationDrawerItem(
+                                    selected = isSelected,
+                                    onClick = { navItemClick(item) },
+                                    icon = item.icon,
+                                    label = { Text(item.label, style = MaterialTheme.typography.labelMedium) },
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                )
                             }
-                            androidx.compose.material3.NavigationRailItem(
-                                selected = isSelected,
-                                onClick = {
-                                    if (isMoreTab) {
-                                        navController.navigate(Screen.More.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = false
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = false
-                                        }
-                                    } else {
-                                        navController.navigate(item.screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
-                                icon = item.icon,
-                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                            )
+                        }
+                    } else {
+                        // §22.2 600–1239dp: NavigationRail
+                        NavigationRail(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ) {
+                            bottomNavItems.forEach { item ->
+                                val isMoreTab = item.screen == Screen.More
+                                val isSelected = if (isMoreTab) {
+                                    currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                                } else {
+                                    currentRoute == item.screen.route
+                                }
+                                androidx.compose.material3.NavigationRailItem(
+                                    selected = isSelected,
+                                    onClick = { navItemClick(item) },
+                                    icon = item.icon,
+                                    label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                                )
+                            }
                         }
                     }
                     androidx.compose.material3.VerticalDivider(
@@ -1098,7 +1494,13 @@ fun AppNavGraph(
                     onSuccess = { navController.popBackStack() },
                 )
             }
-            composable(Screen.Dashboard.route) {
+            // §68.2 — deep link: bizarrecrm://dashboard
+            composable(
+                route = Screen.Dashboard.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://dashboard" },
+                ),
+            ) {
                 DashboardScreen(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToTickets = { navController.navigate(Screen.Tickets.route) },
@@ -1120,6 +1522,8 @@ fun AppNavGraph(
                     onNavigateToSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                     // §3.16 L593 — "Show more" on the Activity Feed card routes to the full screen.
                     onNavigateToActivityFeed = { navController.navigate(Screen.ActivityFeed.route) },
+                    // §43.1 — Bench tile tap → BenchTabScreen.
+                    onNavigateToBench = { navController.navigate(Screen.Bench.route) },
                 )
             }
             // §3.16 L592-L599 — Full-screen Activity Feed.
@@ -1129,7 +1533,13 @@ fun AppNavGraph(
                     onNavigate = { route -> navController.navigate(route) },
                 )
             }
-            composable(Screen.Tickets.route) {
+            // §68.2 — deep link: bizarrecrm://tickets
+            composable(
+                route = Screen.Tickets.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://tickets" },
+                ),
+            ) {
                 @OptIn(ExperimentalSharedTransitionApi::class)
                 TicketListScreen(
                     sharedTransitionScope = sharedTransitionScope,
@@ -1138,7 +1548,14 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.CheckInEntry.route) },
                 )
             }
-            composable(Screen.TicketDetail.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://tickets/{id}
+            composable(
+                route = Screen.TicketDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://tickets/{id}" },
+                ),
+            ) { backStackEntry ->
                 val ticketId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 @OptIn(ExperimentalSharedTransitionApi::class)
                 TicketDetailScreen(
@@ -1221,7 +1638,14 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.CustomerCreate.route) },
                 )
             }
-            composable(Screen.CustomerDetail.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://customers/{id}
+            composable(
+                route = Screen.CustomerDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://customers/{id}" },
+                ),
+            ) { backStackEntry ->
                 val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 @OptIn(ExperimentalSharedTransitionApi::class)
                 CustomerDetailScreen(
@@ -1252,8 +1676,59 @@ fun AppNavGraph(
                     },
                 )
             }
+            // §45.1 — Health score ring + component breakdown
+            composable(Screen.CustomerHealthScore.route) { backStackEntry ->
+                val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull()
+                    ?: return@composable
+                CustomerHealthScoreScreen(
+                    customerId = customerId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §45.2 — LTV tier chip
+            composable(Screen.CustomerLtvTier.route) { backStackEntry ->
+                val customerId = backStackEntry.arguments?.getString("id")?.toLongOrNull()
+                    ?: return@composable
+                CustomerLtvTierScreen(
+                    customerId = customerId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §5.3 — Customer barcode / QR scan quick-lookup.
+            composable(Screen.CustomerBarcodeLookup.route) {
+                CustomerBarcodeLookupScreen(
+                    onBack = { navController.popBackStack() },
+                    onCustomerFound = { id ->
+                        navController.navigate(Screen.CustomerDetail.createRoute(id)) {
+                            popUpTo(Screen.CustomerBarcodeLookup.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+            // §5.14 — Customer notes timeline.
+            composable(
+                route = Screen.CustomerNotes.route,
+                arguments = listOf(
+                    navArgument("id") { type = NavType.LongType },
+                ),
+            ) {
+                CustomerNotesScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
             // Phase 2: POS entry → cart → tender → receipt sub-flow
-            composable(Screen.Pos.route) {
+            // §68.2 — deep link: bizarrecrm://pos/new opens the POS entry screen.
+            composable(
+                route = Screen.Pos.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://pos/new" },
+                ),
+            ) { backStack ->
+                // §POS — receive newly-created customer id from CustomerCreateForPos
+                // via savedStateHandle. PosEntryScreen reads + clears the key in a
+                // LaunchedEffect to auto-attach.
+                val createdIdFlow = backStack.savedStateHandle
+                    .getStateFlow<Long?>("pos_attach_customer_id", null)
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
                     onNavigateToCheckin = { customerId ->
@@ -1269,6 +1744,24 @@ fun AppNavGraph(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     // AUDIT-030: wire dedicated store-credit payment screen.
                     onNavigateToStoreCreditPayment = { navController.navigate(Screen.StoreCreditPayment.route) },
+                    // §POS — full-screen customer create.
+                    onNavigateToCustomerCreate = { navController.navigate(Screen.CustomerCreateForPos.route) },
+                    createdCustomerIdFlow = createdIdFlow,
+                    onCreatedCustomerConsumed = {
+                        backStack.savedStateHandle["pos_attach_customer_id"] = null
+                    },
+                )
+            }
+            // §POS — full-screen customer create reachable from POS pre-attach tile.
+            composable(Screen.CustomerCreateForPos.route) {
+                com.bizarreelectronics.crm.ui.screens.customers.CustomerCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("pos_attach_customer_id", id)
+                        navController.popBackStack()
+                    },
                 )
             }
             // AUDIT-030: store-credit payment path tile destination (placeholder).
@@ -1277,7 +1770,17 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(Screen.PosCart.route) { backStack ->
+            // §68.2 — deep link: bizarrecrm://pos/cart opens the active cart.
+            // Note: the ActionPlan specifies bizarrecrm://pos/cart/:id but PosCart
+            // has no session-id route argument. The bare bizarrecrm://pos/cart URI
+            // is wired here; the :id variant requires a PosCart route refactor to
+            // accept a cartId arg, which is tracked as a separate follow-up.
+            composable(
+                route = Screen.PosCart.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://pos/cart" },
+                ),
+            ) { backStack ->
                 // Scanner screen hands the result back via this entry's
                 // savedStateHandle["scanned_barcode"]. Expose it as a Flow
                 // the cart screen consumes + clears after adding to cart.
@@ -1413,9 +1916,17 @@ fun AppNavGraph(
                 InvoiceListScreen(
                     onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.InvoiceCreate.route) },
+                    onAgingClick = { navController.navigate(Screen.InvoiceAging.route) },
                 )
             }
-            composable(Screen.InvoiceDetail.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://invoices/{id}
+            composable(
+                route = Screen.InvoiceDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://invoices/{id}" },
+                ),
+            ) { backStackEntry ->
                 val invoiceId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 InvoiceDetailScreen(
                     invoiceId = invoiceId,
@@ -1433,7 +1944,24 @@ fun AppNavGraph(
                     },
                 )
             }
-            composable(Screen.InventoryDetail.route) { backStackEntry ->
+            // §7.6 Aging Report
+            composable(Screen.InvoiceAging.route) {
+                InvoiceAgingScreen(
+                    onBack = { navController.popBackStack() },
+                    onRecordPayment = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
+                )
+            }
+            // §68.2 — deep link: bizarrecrm://inventory/{id}
+            // Note: ActionPlan names this ":sku" but the route arg is a numeric Long id.
+            // The InventoryDetailViewModel will eventually support lookup by SKU string;
+            // for now the URI segment is treated as a numeric item id.
+            composable(
+                route = Screen.InventoryDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://inventory/{id}" },
+                ),
+            ) { backStackEntry ->
                 val itemId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 InventoryDetailScreen(
                     itemId = itemId,
@@ -1448,7 +1976,15 @@ fun AppNavGraph(
                     onConversationClick = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
                 )
             }
-            composable(Screen.SmsThread.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://sms/{phone}
+            // The URI segment maps to the "phone" arg (URL-encoded phone number).
+            composable(
+                route = Screen.SmsThread.route,
+                arguments = listOf(navArgument("phone") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://sms/{phone}" },
+                ),
+            ) { backStackEntry ->
                 val phone = backStackEntry.arguments?.getString("phone") ?: return@composable
                 // AND-20260414-M4: expose the `sms_template_body` savedStateHandle key
                 // as a StateFlow so SmsThreadScreen can observe a template picked in
@@ -1505,7 +2041,18 @@ fun AppNavGraph(
                     },
                 )
             }
-            composable(Screen.Reports.route) {
+            // §68.2 — deep link: bizarrecrm://reports/{slug}
+            // {slug} is declared as an optional query-style param so the bare
+            // bizarrecrm://reports URI also matches. Sub-report slug values
+            // (sales / tickets / inventory / tax / custom) are forwarded to
+            // ReportsScreen; it handles segmented routing internally.
+            composable(
+                route = Screen.Reports.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://reports" },
+                    navDeepLink { uriPattern = "bizarrecrm://reports/{slug}" },
+                ),
+            ) {
                 ReportsScreen(navController = navController)
             }
             // §15 L1722 — sub-report routes (deep-link targets from SegmentedButton)
@@ -1583,7 +2130,18 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable(Screen.Settings.route) {
+            // §68.2 — deep link: bizarrecrm://settings and bizarrecrm://settings/{section}
+            // {section} is a hint only; well-known sub-sections already have their own
+            // routes wired with deepLinks (e.g. security-summary). This entry catches
+            // the bare bizarrecrm://settings URI and any unrecognised section slug,
+            // landing the user on the Settings root.
+            composable(
+                route = Screen.Settings.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://settings" },
+                    navDeepLink { uriPattern = "bizarrecrm://settings/{section}" },
+                ),
+            ) {
                 SettingsScreen(
                     onLogout = {
                         navController.navigate(Screen.Login.route) {
@@ -1605,6 +2163,8 @@ fun AppNavGraph(
                     onSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                     onPinSetup = { navController.navigate(Screen.PinSetup.route) },
                     onCrashReports = { navController.navigate(Screen.CrashReports.route) },
+                    // §32.4 — View logs (Error+Warn ring buffer from ReleaseTree).
+                    onViewLogs = { navController.navigate(Screen.LogViewer.route) },
                     onAbout = { navController.navigate(Screen.About.route) },
                     // §2.5 — Switch user (shared device): navigate to PIN entry.
                     onSwitchUser = { navController.navigate(Screen.SwitchUser.route) },
@@ -1620,6 +2180,8 @@ fun AppNavGraph(
                     onDisplay = { navController.navigate(Screen.DisplaySettings.route) },
                     // §3.19 L613–L616 — Appearance / dashboard density picker.
                     onAppearance = { navController.navigate(Screen.Appearance.route) },
+                    // §1.5 line 202 — Tab Order customisation (phone only).
+                    onTabOrder = { navController.navigate(Screen.TabOrder.route) },
                     // §17.4/17.5 — Hardware sub-screen (printers + BlockChyp terminal).
                     onHardware = { navController.navigate(Screen.HardwareSettings.route) },
                     // §38 — Memberships / Loyalty.
@@ -1628,7 +2190,44 @@ fun AppNavGraph(
                     onCashRegister = { navController.navigate(Screen.CashRegister.route) },
                     // §40 — Gift Cards / Store Credit.
                     onGiftCards = { navController.navigate(Screen.GiftCards.route) },
+                    // §19.7 — Ticket settings.
+                    onTicketSettings = { navController.navigate(Screen.TicketSettings.route) },
+                    // §19.8 — POS / payment settings.
+                    onPaymentSettings = { navController.navigate(Screen.PaymentSettings.route) },
+                    // §19.9 — SMS settings.
+                    onSmsSettings = { navController.navigate(Screen.SmsSettings.route) },
+                    // §19.10 — Integrations hub (admin-only in UI; server enforces per-endpoint).
+                    onIntegrations = { navController.navigate(Screen.Integrations.route) },
+                    // §19.11 — Team & Roles settings hub.
+                    onTeamSettings = { navController.navigate(Screen.TeamSettings.route) },
+                    // §19.12 — Data settings (import/export/cache/reset).
+                    onDataSettings = { navController.navigate(Screen.DataSettings.route) },
+                    // §19.13 — Full diagnostics.
+                    onFullDiagnostics = { navController.navigate(Screen.FullDiagnostics.route) },
+                    // §19.14 — App info.
+                    onAppInfo = { navController.navigate(Screen.AppInfo.route) },
+                    // §19.19 — Business info.
+                    onBusinessInfo = { navController.navigate(Screen.BusinessInfo.route) },
+                    // §53 — Training Mode (sandbox) sub-screen.
+                    onTrainingMode = { navController.navigate(Screen.TrainingMode.route) },
+                    // §72 — Help center (offline bundled articles + contact support).
+                    onHelp = { navController.navigate(Screen.HelpCenter.route) },
                 )
+            }
+            // §53 — Training Mode (sandbox) settings sub-screen.
+            composable(Screen.TrainingMode.route) {
+                TrainingModeScreen(onBack = { navController.popBackStack() })
+            }
+            // §72.1 — Help center.
+            composable(Screen.HelpCenter.route) {
+                HelpCenterScreen(
+                    onBack = { navController.popBackStack() },
+                    onContactSupport = { navController.navigate(Screen.ReportProblem.route) },
+                )
+            }
+            // §72.3 — Report a problem.
+            composable(Screen.ReportProblem.route) {
+                ReportProblemScreen(onBack = { navController.popBackStack() })
             }
             // §3.13 L565–L567 — Display settings sub-screen.
             composable(Screen.DisplaySettings.route) {
@@ -1642,22 +2241,20 @@ fun AppNavGraph(
             composable(Screen.Appearance.route) {
                 AppearanceScreen(onBack = { navController.popBackStack() })
             }
-            // §3.13 L565–L567 — Full-screen TV queue board.
-            // Exit: 3-finger tap → navigate to PinLockScreen with onUnlocked → popBackStack().
-            // ChromeOS Escape key is handled at the activity level and maps to popBackStack(),
-            // which lands on PinLockScreen as the next item in the back stack here.
+            // §1.5 line 202 — Tab Order customisation settings sub-screen.
+            composable(Screen.TabOrder.route) {
+                TabOrderScreen(onBack = { navController.popBackStack() })
+            }
+            // §56 — Full-screen TV queue board.
+            // Exit flow (§56.3): the board renders a PinLockScreen overlay internally when
+            // the 3-finger gesture fires; onExitRequest is called only after PIN success,
+            // so by the time we get here the user is verified. Pop back to Dashboard.
             composable(Screen.TvQueueBoard.route) {
                 TvQueueBoardScreen(
                     onExitRequest = {
-                        // Navigate to the PIN lock screen. On successful PIN entry the
-                        // PinLockScreen calls onUnlocked, which the caller here wires to
-                        // popBackStack() → returns to Dashboard (the screen beneath the board).
-                        // We use a nested route so the PIN screen covers the board without
-                        // leaving the board in the back stack after unlock.
-                        navController.navigate(Screen.PinSetup.route) {
-                            // Keep the board in the back stack so Cancel on PIN returns to it.
-                            launchSingleTop = true
-                        }
+                        // PIN was verified inside TvQueueBoardScreen. Pop the board off the
+                        // back stack to return to the screen beneath it (Dashboard).
+                        navController.popBackStack()
                     },
                 )
             }
@@ -1670,6 +2267,12 @@ fun AppNavGraph(
             }
             composable(Screen.CrashReports.route) {
                 com.bizarreelectronics.crm.ui.screens.settings.CrashReportsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §32.4 — View logs (Error+Warn ring buffer from ReleaseTree).
+            composable(Screen.LogViewer.route) {
+                com.bizarreelectronics.crm.ui.screens.settings.LogViewerScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -1913,7 +2516,14 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.LeadCreate.route) },
                 )
             }
-            composable(Screen.LeadDetail.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://leads/{id}
+            composable(
+                route = Screen.LeadDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://leads/{id}" },
+                ),
+            ) { backStackEntry ->
                 val leadId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 com.bizarreelectronics.crm.ui.screens.leads.LeadDetailScreen(
                     leadId = leadId,
@@ -1962,9 +2572,13 @@ fun AppNavGraph(
                     onCreated = { _ -> navController.popBackStack() },
                 )
             }
+            // §68.2 — deep link: bizarrecrm://appointments/{id}
             composable(
                 route = Screen.AppointmentDetail.route,
                 arguments = listOf(navArgument("appointmentId") { type = NavType.LongType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://appointments/{appointmentId}" },
+                ),
             ) {
                 com.bizarreelectronics.crm.ui.screens.appointments.AppointmentDetailScreen(
                     onBack = { navController.popBackStack() },
@@ -2002,7 +2616,14 @@ fun AppNavGraph(
                     onCreateClick = { navController.navigate(Screen.EstimateCreate.createRoute()) },
                 )
             }
-            composable(Screen.EstimateDetail.route) { backStackEntry ->
+            // §68.2 — deep link: bizarrecrm://estimates/{id}
+            composable(
+                route = Screen.EstimateDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://estimates/{id}" },
+                ),
+            ) { backStackEntry ->
                 val estimateId = backStackEntry.arguments?.getString("id")?.toLongOrNull() ?: return@composable
                 com.bizarreelectronics.crm.ui.screens.estimates.EstimateDetailScreen(
                     estimateId = estimateId,
@@ -2069,13 +2690,22 @@ fun AppNavGraph(
             }
 
             // ─── Inventory CRUD ───
-            composable(Screen.InventoryCreate.route) {
+            composable(Screen.InventoryCreate.route) { backStackEntry ->
+                // §6.3: barcode scan result delivered via savedStateHandle.
+                val scannedBarcode by backStackEntry.savedStateHandle
+                    .getStateFlow<String?>("scanned_barcode", null)
+                    .collectAsState()
                 com.bizarreelectronics.crm.ui.screens.inventory.InventoryCreateScreen(
                     onBack = { navController.popBackStack() },
                     onCreated = { id ->
                         navController.navigate(Screen.InventoryDetail.createRoute(id)) {
                             popUpTo(Screen.Inventory.route)
                         }
+                    },
+                    onScanBarcode = { navController.navigate(Screen.Scanner.route) },
+                    scannedBarcode = scannedBarcode,
+                    onBarcodeLookupConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
                     },
                 )
             }
@@ -2084,6 +2714,59 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.inventory.InventoryEditScreen(
                     onBack = { navController.popBackStack() },
                     onSaved = { navController.popBackStack() },
+                    onDeleted = {
+                        navController.navigate(Screen.Inventory.route) {
+                            popUpTo(Screen.Inventory.route) { inclusive = false }
+                        }
+                    },
+                )
+            }
+
+            // ─── §6.7 Purchase Orders ───
+            composable(Screen.PurchaseOrders.route) {
+                PurchaseOrderListScreen(
+                    onBack = { navController.popBackStack() },
+                    onPoClick = { id -> navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.PurchaseOrderCreate.route) },
+                )
+            }
+            composable(
+                route = Screen.PurchaseOrderDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                PurchaseOrderDetailScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.PurchaseOrderCreate.route) {
+                PurchaseOrderCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) {
+                            popUpTo(Screen.PurchaseOrders.route)
+                        }
+                    },
+                )
+            }
+
+            // ─── §60 Inventory Stocktake ───
+            composable(Screen.Stocktake.route) { backStackEntry ->
+                // Barcode delivered from BarcodeScanScreen via savedStateHandle.
+                val scannedBarcode by backStackEntry.savedStateHandle
+                    .getStateFlow<String?>("stocktake_barcode", null)
+                    .collectAsState()
+
+                com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeScreen(
+                    onBack = { navController.popBackStack() },
+                    onScanClick = {
+                        // Navigate to the shared scanner; it will write back to
+                        // this entry's savedStateHandle via the Scanner composable.
+                        navController.navigate(Screen.Scanner.route)
+                    },
+                    scannedBarcode = scannedBarcode,
+                    onBarcodeConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>("stocktake_barcode")
+                    },
                 )
             }
 
@@ -2123,6 +2806,8 @@ fun AppNavGraph(
                 HardwareSettingsScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToPrinters = { navController.navigate(Screen.PrinterDiscovery.route) },
+                    onNavigateToScale = { navController.navigate(Screen.WeightScale.route) },
+                    onNavigateToWizard = { navController.navigate(Screen.HardwarePairingWizard.route) },
                 )
             }
 
@@ -2133,12 +2818,69 @@ fun AppNavGraph(
                 )
             }
 
+            // §17.7 — Weight scale pairing + on-demand read.
+            composable(Screen.WeightScale.route) {
+                WeightScaleScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // §17.11 — Hardware pairing wizard.
+            composable(Screen.HardwarePairingWizard.route) {
+                HardwarePairingWizardScreen(
+                    onBack = { navController.popBackStack() },
+                    onFinished = { navController.popBackStack() },
+                )
+            }
+
             // ─── §4.9 L756 — Bench Tab ───
             composable(Screen.Bench.route) {
                 BenchTabScreen(
                     onBack = { navController.popBackStack() },
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onNavigateToTemplates = { navController.navigate(Screen.DeviceTemplates.route) },
+                )
+            }
+
+            // ─── §63 — Multi-Location Management ───
+            composable(Screen.Locations.route) {
+                LocationListScreen(
+                    onBack = { navController.popBackStack() },
+                    onLocationClick = { id -> navController.navigate(Screen.LocationDetail.createRoute(id)) },
+                    onCreateLocation = { navController.navigate(Screen.LocationCreate.route) },
+                )
+            }
+            composable(
+                route = Screen.LocationDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { backStackEntry ->
+                val id = backStackEntry.arguments?.getLong("id") ?: return@composable
+                LocationDetailScreen(
+                    locationId = id,
+                    onBack = { navController.popBackStack() },
+                    onEdit = { locId ->
+                        // §63.2 edit flow: navigate to create screen pre-filled (deferred).
+                        // For now nav back to list so the screen compiles.
+                        navController.popBackStack()
+                    },
+                )
+            }
+            composable(Screen.LocationCreate.route) {
+                LocationCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.navigate(Screen.LocationDetail.createRoute(id)) {
+                            popUpTo(Screen.Locations.route)
+                        }
+                    },
+                )
+            }
+
+            // ─── §59 — Field-Service / Dispatch ───
+            composable(Screen.FieldService.route) {
+                com.bizarreelectronics.crm.ui.screens.fieldservice.FieldServiceScreen(
+                    onBack = { navController.popBackStack() },
+                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                 )
             }
 
@@ -2152,6 +2894,13 @@ fun AppNavGraph(
             // ─── §4.9 L766 — Repair Pricing ───
             composable(Screen.RepairPricing.route) {
                 RepairPricingScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §44.3 — Device Catalog ───
+            composable(Screen.DeviceCatalog.route) {
+                com.bizarreelectronics.crm.ui.screens.settings.DeviceCatalogScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -2186,8 +2935,8 @@ fun AppNavGraph(
             composable(Screen.Calls.route) {
                 com.bizarreelectronics.crm.ui.screens.calls.CallsTabScreen(
                     onCallClick = { id -> navController.navigate(Screen.CallDetail.createRoute(id)) },
-                    // Outbound call initiation — number-picker pre-step TBD
-                    onInitiateCall = { navController.navigate(Screen.Calls.route) },
+                    // §42.5 — dial prompt replaces the stub self-navigate
+                    onInitiateCall = { /* DialPromptBottomSheet shown via CallsViewModel state */ },
                 )
             }
             composable(
@@ -2195,6 +2944,26 @@ fun AppNavGraph(
                 arguments = listOf(navArgument("id") { type = NavType.LongType }),
             ) {
                 com.bizarreelectronics.crm.ui.screens.calls.CallDetailScreen(
+                    callId = it.arguments?.getLong("id") ?: return@composable,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §42.4 — Voicemail inbox
+            composable(Screen.Voicemail.route) {
+                com.bizarreelectronics.crm.ui.screens.calls.VoicemailScreen(
+                    onBack = { navController.popBackStack() },
+                    onCallBack = { number ->
+                        // Navigate to Calls tab then open dial prompt for the number
+                        navController.navigate(Screen.Calls.route)
+                    },
+                )
+            }
+            // §42.3 — Recording consent / compliance
+            composable(
+                route = Screen.CallRecordingConsent.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.calls.CallRecordingConsentScreen(
                     callId = it.arguments?.getLong("id") ?: return@composable,
                     onBack = { navController.popBackStack() },
                 )
@@ -2224,6 +2993,70 @@ fun AppNavGraph(
                 )
             }
 
+            // ─── §40.3 Refunds ────────────────────────────────────────────────
+            composable(Screen.Refunds.route) {
+                RefundScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §40.4 Gift-card + store-credit liability report ──────────────
+            composable(Screen.GiftCardLiability.route) {
+                GiftCardLiabilityScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §37 Marketing & Growth ───────────────────────────────────────
+            composable(Screen.Campaigns.route) {
+                com.bizarreelectronics.crm.ui.screens.marketing.CampaignListScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreateCampaign = { navController.navigate(Screen.CampaignBuilder.route) },
+                    onCampaignClick = { id ->
+                        navController.navigate(Screen.CampaignDetail.createRoute(id))
+                    },
+                )
+            }
+            composable(Screen.CampaignBuilder.route) {
+                com.bizarreelectronics.crm.ui.screens.marketing.CampaignBuilderScreen(
+                    onBack = { navController.popBackStack() },
+                    onSaved = { _ -> navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.CampaignDetail.route,
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) {
+                // Campaign detail re-uses the campaign list (scrolled to item) for now;
+                // a dedicated detail screen is a future addition. Navigate to the list.
+                navController.popBackStack(Screen.Campaigns.route, inclusive = false)
+            }
+            composable(Screen.Segments.route) {
+                com.bizarreelectronics.crm.ui.screens.marketing.SegmentsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.Automations.route) {
+                com.bizarreelectronics.crm.ui.screens.marketing.AutomationsScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                route = Screen.ReviewSolicitation.route,
+                arguments = listOf(
+                    navArgument("ticketId") {
+                        type = NavType.LongType
+                        defaultValue = -1L
+                    },
+                ),
+            ) {
+                val ticketId = it.arguments?.getLong("ticketId")?.takeIf { id -> id > 0 }
+                com.bizarreelectronics.crm.ui.screens.marketing.ReviewSolicitationScreen(
+                    onBack = { navController.popBackStack() },
+                    prefilledTicketId = ticketId,
+                )
+            }
+
             // ─── §47 Team Chat ────────────────────────────────────────────────
             composable(Screen.TeamChat.route) {
                 com.bizarreelectronics.crm.ui.screens.team.TeamChatListScreen(
@@ -2244,6 +3077,11 @@ fun AppNavGraph(
             ) {
                 com.bizarreelectronics.crm.ui.screens.team.TeamChatThreadScreen(
                     onBack = { navController.popBackStack() },
+                    // §47.3: @ticket / @customer embed taps navigate directly to the entity.
+                    onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    onCustomerClick = { name ->
+                        navController.navigate(Screen.Customers.route + "?q=${android.net.Uri.encode(name)}")
+                    },
                 )
             }
 
@@ -2275,6 +3113,74 @@ fun AppNavGraph(
                 )
             }
 
+            // ─── §14.4 Assign role (admin) ────────────────────────────────────
+            composable(
+                route = Screen.AssignRole.route + "?role={role}",
+                arguments = listOf(
+                    navArgument("id") { type = NavType.LongType },
+                    navArgument("role") {
+                        type = NavType.StringType
+                        defaultValue = "technician"
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.employees.AssignRoleScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §14.4 Custom roles (admin — Settings → Team → Roles) ─────────
+            composable(Screen.CustomRoles.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.CustomRolesScreen(
+                    onBack = { navController.popBackStack() },
+                    onEditPermissions = { roleId ->
+                        navController.navigate(Screen.RolePermissions.createRoute(roleId))
+                    },
+                )
+            }
+
+            // ─── §49 Permission matrix editor (admin — per-role) ──────────────
+            composable(
+                route = Screen.RolePermissions.route,
+                arguments = listOf(
+                    androidx.navigation.navArgument("roleId") {
+                        type = androidx.navigation.NavType.LongType
+                    },
+                ),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.employees.PermissionMatrixScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §14.6 Shift schedule (week grid) ─────────────────────────────
+            composable(Screen.ShiftSchedule.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.ShiftScheduleScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §14.7 Leaderboard ────────────────────────────────────────────
+            composable(Screen.Leaderboard.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.LeaderboardScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §62 Financial Dashboard (owner-only) ─────────────────────────
+            // Role gate: isOwner passed from authPreferences; server also
+            // enforces 403 on all three financial endpoints. Screen renders an
+            // access-denied card when isOwner=false (defense-in-depth).
+            // §62.5: PIN re-prompt wired inside FinancialDashboardScreen when
+            // PinPreferences.isPinSet == true.
+            composable(Screen.FinancialDashboard.route) {
+                val isOwner = authPreferences?.userRole == "owner"
+                com.bizarreelectronics.crm.ui.screens.financial.FinancialDashboardScreen(
+                    isOwner = isOwner,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
             // ─── §52 Audit Logs (admin-only) ──────────────────────────────────
             // Role gate: AuditLogsScreen itself also renders an access-denied
             // message for defense-in-depth, but callers should prefer to only
@@ -2302,6 +3208,291 @@ fun AppNavGraph(
             composable(Screen.DataExport.route) {
                 DataExportScreen(
                     onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §19.7 Ticket settings ─────────────────────────────────────────
+            composable(Screen.TicketSettings.route) {
+                TicketSettingsScreen(onBack = { navController.popBackStack() })
+            }
+
+            // ─── §19.8 POS / payment settings ─────────────────────────────────
+            composable(Screen.PaymentSettings.route) {
+                PaymentSettingsScreen(onBack = { navController.popBackStack() })
+            }
+
+            // ─── §19.9 SMS settings ────────────────────────────────────────────
+            composable(Screen.SmsSettings.route) {
+                SmsSettingsScreen(onBack = { navController.popBackStack() })
+            }
+
+            // ─── §19.10 Integrations hub ───────────────────────────────────────
+            composable(Screen.Integrations.route) {
+                IntegrationsScreen(
+                    onBack = { navController.popBackStack() },
+                    onHardware = { navController.navigate(Screen.HardwareSettings.route) },
+                    onSms = { navController.navigate(Screen.SmsSettings.route) },
+                )
+            }
+
+            // ─── §19.11 Team & Roles settings hub ─────────────────────────────
+            composable(Screen.TeamSettings.route) {
+                val isAdmin = authPreferences?.userRole in setOf("admin", "owner")
+                TeamSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onEmployees = if (isAdmin) {
+                        { navController.navigate(Screen.Employees.route) }
+                    } else null,
+                    onCustomRoles = if (isAdmin) {
+                        { navController.navigate(Screen.CustomRoles.route) }
+                    } else null,
+                )
+            }
+
+            // ─── §19.12 Data settings (import/export/clear cache/reset) ──────
+            composable(Screen.DataSettings.route) {
+                DataSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onImport = { navController.navigate(Screen.DataImport.route) },
+                    onExport = { navController.navigate(Screen.DataExport.route) },
+                )
+            }
+
+            // ─── §19.13 Full diagnostics ───────────────────────────────────────
+            composable(Screen.FullDiagnostics.route) {
+                FullDiagnosticsScreen(
+                    onBack = { navController.popBackStack() },
+                    onExportDb = if (com.bizarreelectronics.crm.BuildConfig.DEBUG) {
+                        { navController.navigate(Screen.Diagnostics.route) }
+                    } else null,
+                )
+            }
+
+            // ─── §19.14 App info (OSS, Privacy, Terms, Rate app) ──────────────
+            composable(Screen.AppInfo.route) {
+                AppInfoScreen(
+                    onBack = { navController.popBackStack() },
+                    onDiagnostics = { navController.navigate(Screen.About.route) },
+                )
+            }
+
+            // ─── §19.19 Business info ──────────────────────────────────────────
+            composable(Screen.BusinessInfo.route) {
+                BusinessInfoScreen(onBack = { navController.popBackStack() })
+            }
+
+            // ─── §46 Warranty Claim ────────────────────────────────────────────
+            // Search existing warranty records by IMEI / receipt / name and
+            // file a claim. Server branch decision creates a follow-up ticket.
+            composable(Screen.WarrantyClaim.route) {
+                WarrantyClaimScreen(
+                    onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §46.1 Warranty Lookup ─────────────────────────────────────────
+            // Global action: search by IMEI / serial / phone; tap to create
+            // warranty-return ticket (navigates to CheckIn pre-filled).
+            composable(Screen.WarrantyLookup.route) {
+                WarrantyLookupScreen(
+                    onCreateWarrantyTicket = { sourceTicketId ->
+                        // Navigate to check-in entry; the source ticket id is for context
+                        // only (ticket lookup caller can pre-fill customer if desired).
+                        navController.navigate(Screen.CheckInEntry.route)
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §46.2 Device History ──────────────────────────────────────────
+            // Past tickets for a given IMEI or serial. Optional prefill from
+            // ticket detail (imei/serial query args). Blank form when no args.
+            composable(
+                route = Screen.DeviceHistory.route,
+                arguments = listOf(
+                    navArgument("imei") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("serial") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+            ) { backStackEntry ->
+                val imei = backStackEntry.arguments?.getString("imei")
+                val serial = backStackEntry.arguments?.getString("serial")
+                DeviceHistoryScreen(
+                    prefillImei = imei,
+                    prefillSerial = serial,
+                    onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §55.2 Public Tracking ────────────────────────────────────────
+            // Customer-facing read-only repair status view. Reached via:
+            //   - App Link: https://app.bizarrecrm.com/t/:orderId?token=<trackingToken>
+            //   - Custom scheme: bizarrecrm://track/:orderId?token=<trackingToken>
+            // No authentication required — the tracking token is the access credential.
+            composable(
+                route = Screen.PublicTracking.route,
+                arguments = listOf(
+                    navArgument("orderId") {
+                        type = NavType.StringType
+                    },
+                    navArgument("trackingToken") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                ),
+                deepLinks = listOf(
+                    // App Link: https://app.bizarrecrm.com/t/:orderId?token=<trackingToken>
+                    navDeepLink {
+                        uriPattern = "https://app.bizarrecrm.com/t/{orderId}?token={trackingToken}"
+                    },
+                    // Custom scheme: bizarrecrm://track/:orderId?token=<trackingToken>
+                    navDeepLink {
+                        uriPattern = "bizarrecrm://track/{orderId}?token={trackingToken}"
+                    },
+                ),
+            ) {
+                PublicTrackingScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §58.1 Self-Booking ────────────────────────────────────────────
+            // Customer-facing appointment self-booking (public, no auth).
+            // Reached via App Link https://app.bizarrecrm.com/book/:locationId
+            // or custom scheme bizarrecrm://book/:locationId.
+            // Endpoint 404-tolerant — degrades to NotAvailable when booking is disabled.
+            composable(
+                route = Screen.SelfBooking.route,
+                arguments = listOf(
+                    navArgument("locationId") { type = NavType.StringType },
+                ),
+                deepLinks = listOf(
+                    navDeepLink {
+                        uriPattern = "https://app.bizarrecrm.com/book/{locationId}"
+                    },
+                    navDeepLink {
+                        uriPattern = "bizarrecrm://book/{locationId}"
+                    },
+                ),
+            ) {
+                SelfBookingScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §58.3 Online Booking Settings ────────────────────────────────
+            // Staff-facing screen to generate + share the public booking link for a
+            // given location. No server read required for link generation; toggle +
+            // working-hours config deferred until server endpoint is deployed.
+            composable(
+                route = Screen.OnlineBookingSettings.route,
+                arguments = listOf(
+                    navArgument("locationId") { type = NavType.StringType },
+                ),
+            ) { backStackEntry ->
+                val locationId = backStackEntry.arguments
+                    ?.getString("locationId").orEmpty()
+                OnlineBookingSettingsScreen(
+                    locationId = locationId,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §57 Kiosk / Lock-Task Single-Task Modes ──────────────────────
+
+            // §57.1 / §57.2 — Kiosk check-in start screen.
+            // Entering this route calls startLockTask() if KioskController is
+            // available; the Activity must be in the foreground for the call to
+            // succeed.  Lock-task is exited from KioskExit (§57.5).
+            composable(Screen.KioskCheckIn.route) {
+                val activity = LocalContext.current as? android.app.Activity
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    activity?.let { kioskController?.enterLockTask(it) }
+                }
+                KioskCheckInScreen(
+                    onCustomerResolved = { customerId, customerName ->
+                        navController.navigate(
+                            Screen.KioskSignature.createRoute(customerId, customerName),
+                        )
+                    },
+                    onExitRequest = {
+                        navController.navigate(Screen.KioskExit.route)
+                    },
+                )
+            }
+
+            // §57.3 — Customer-facing signature screen (no back navigation).
+            composable(
+                route = Screen.KioskSignature.route,
+                arguments = listOf(
+                    navArgument("customerId") {
+                        type = NavType.LongType
+                        defaultValue = 0L
+                    },
+                    navArgument("customerName") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { backStackEntry ->
+                val customerName = backStackEntry.arguments?.getString("customerName") ?: ""
+                KioskSignatureScreen(
+                    customerName = customerName,
+                    onSignatureConfirmed = {
+                        navController.navigate(Screen.KioskDone.createRoute(customerName)) {
+                            // Pop the signature screen so Back from Done doesn't re-show it.
+                            popUpTo(Screen.KioskSignature.route) { inclusive = true }
+                        }
+                    },
+                    onExitRequest = {
+                        navController.navigate(Screen.KioskExit.route)
+                    },
+                )
+            }
+
+            // §57.2 — Kiosk done / thank-you screen.
+            composable(
+                route = Screen.KioskDone.route,
+                arguments = listOf(
+                    navArgument("customerName") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    },
+                ),
+            ) { backStackEntry ->
+                val customerName = backStackEntry.arguments?.getString("customerName") ?: ""
+                KioskDoneScreen(
+                    customerName = customerName,
+                    onReturnToStart = {
+                        navController.navigate(Screen.KioskCheckIn.route) {
+                            popUpTo(Screen.KioskCheckIn.route) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            // §57.5 — Manager-PIN exit gate.
+            // On success: stopLockTask() + navigate back to Dashboard.
+            composable(Screen.KioskExit.route) {
+                val activity = LocalContext.current as? android.app.Activity
+                KioskExitScreen(
+                    onExitAuthorised = {
+                        activity?.let { kioskController?.exitLockTask(it) }
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(Screen.KioskCheckIn.route) { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
                 )
             }
         }
@@ -2438,12 +3629,18 @@ fun MoreScreen(
             items = listOf(
                 MoreItem(Icons.Default.BarChart,        "Reports",       Screen.Reports.route),
                 MoreItem(Icons.Default.Group,           "Employees",     Screen.Employees.route),
+                // §37 — Marketing & Growth
+                MoreItem(Icons.Default.Campaign,        "Marketing",     Screen.Campaigns.route),
                 // §38 — Memberships / Loyalty
                 MoreItem(Icons.Default.CardMembership,  "Memberships",   Screen.Memberships.route),
                 // §39 — Cash Register / Z-Report
                 MoreItem(Icons.Default.PointOfSale,     "Cash Register", Screen.CashRegister.route),
                 // §40 — Gift Cards / Store Credit
                 MoreItem(Icons.Default.CardGiftcard,    "Gift Cards",    Screen.GiftCards.route),
+                // §40.3 — Refunds
+                MoreItem(Icons.Default.AssignmentReturn, "Refunds",      Screen.Refunds.route),
+                // §40.4 — Liability Report
+                MoreItem(Icons.Default.BarChart,         "Liability Report", Screen.GiftCardLiability.route),
                 // §47 — Team Chat internal messaging
                 MoreItem(Icons.Default.Forum,           "Team Chat",     Screen.TeamChat.route),
             ),

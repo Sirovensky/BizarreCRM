@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -330,7 +331,10 @@ private fun HighContrastSection(
                 .fillMaxWidth()
                 .padding(16.dp)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = "High contrast mode, ${if (enabled) "on" else "off"}"
+                    // §26.1 — contentDescription names the row; stateDescription announces
+                    // the state change so TalkBack reads "High contrast mode, on" after flip.
+                    contentDescription = "High contrast mode"
+                    stateDescription = if (enabled) "on" else "off"
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {

@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
+import com.bizarreelectronics.crm.ui.screens.tickets.components.ConcurrentEditBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
@@ -193,6 +194,20 @@ data class TicketDetailUiState(
     val waiverFeatureEnabled: Boolean = false,
     /** True while the waiver availability check is in-flight. */
     val waiverCheckInProgress: Boolean = false,
+    // ─── §4.13 L777 — Concurrent-edit banner (409) ───────────────────────────
+    /**
+     * True when the server returned HTTP 409 (stale `updated_at`). Drives
+     * [ConcurrentEditBanner] — user must tap Reload to re-fetch and merge.
+     * Cleared by [TicketDetailViewModel.clearConcurrentEdit] on successful reload.
+     */
+    val isConcurrentEdit: Boolean = false,
+    // ─── §4.13 L776 — Permission-denied ephemeral message ────────────────────
+    /**
+     * Non-null when a role-gated action was attempted without sufficient privileges.
+     * Shown as a one-shot Snackbar; consumed by the UI then cleared via
+     * [TicketDetailViewModel.clearPermissionDenied].
+     */
+    val permissionDeniedMessage: String? = null,
 )
 
 @HiltViewModel
@@ -1101,6 +1116,40 @@ class TicketDetailViewModel @Inject constructor(
     // -----------------------------------------------------------------------
     // Override loadTicketDetail to detect 404 (L680)
     // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // §4.13 L776-L777 — Permission-denied + concurrent-edit helpers (additive)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Signal that a role-gated action was attempted without privileges.
+     * Sets [TicketDetailUiState.permissionDeniedMessage] which drives a one-shot Snackbar.
+     * Message follows §67 tone ("Ask your admin to enable this.").
+     */
+    fun signalPermissionDenied(action: String = "") {
+        val suffix = if (action.isNotBlank()) " ($action)" else ""
+        _state.value = _state.value.copy(
+            permissionDeniedMessage = "Ask your admin to enable this$suffix.",
+        )
+    }
+
+    /** Consume the permission-denied message after it has been shown. */
+    fun clearPermissionDenied() {
+        _state.value = _state.value.copy(permissionDeniedMessage = null)
+    }
+
+    /**
+     * Surface a concurrent-edit conflict (HTTP 409).
+     * Call from any PUT/PATCH catch block when `e.code() == 409`.
+     */
+    fun signalConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = true)
+    }
+
+    /** Dismiss the concurrent-edit banner (called before reload). */
+    fun clearConcurrentEdit() {
+        _state.value = _state.value.copy(isConcurrentEdit = false)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -1175,6 +1224,16 @@ fun TicketDetailScreen(
         state.convertedInvoiceId?.let { invoiceId ->
             onNavigateToInvoice(invoiceId)
             viewModel.clearConvertedInvoiceId()
+        }
+    }
+
+    // §4.13 L776 — Permission-denied one-shot Snackbar.
+    // Shown when a role-gated action is attempted by a user without privileges.
+    LaunchedEffect(state.permissionDeniedMessage) {
+        val msg = state.permissionDeniedMessage
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearPermissionDenied()
         }
     }
 
@@ -1455,6 +1514,61 @@ fun TicketDetailScreen(
                                         }
                                     },
                                 )
+                                // §55.1 — Share tracking link (customer-facing repair status URL)
+                                val trackingUrl = state.ticketDetail?.trackingUrl()
+                                if (trackingUrl != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_label)) },
+                                        leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, trackingUrl)
+                                                putExtra(
+                                                    Intent.EXTRA_SUBJECT,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
+                                                )
+                                            }
+                                            context.startActivity(
+                                                Intent.createChooser(
+                                                    shareIntent,
+                                                    context.getString(com.bizarreelectronics.crm.R.string.public_tracking_share_chooser_title),
+                                                )
+                                            )
+                                        },
+                                    )
+                                }
+                                // §25.3 — Copy order ID (ticket #) to clipboard
+                                val orderId = ticket?.orderId ?: "T-$ticketId"
+                                DropdownMenuItem(
+                                    text = { Text("Copy order ID") },
+                                    leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
+                                    onClick = {
+                                        showOverflowMenu = false
+                                        ClipboardUtil.copy(context, "Order ID", orderId)
+                                        scope.launch {
+                                            snackbarHostState.showSnackbar("Order ID copied")
+                                        }
+                                    },
+                                )
+                                // §25.3 — Copy IMEI (PII → sensitive copy, auto-clears 30 s)
+                                val firstImei = state.devices.firstOrNull { !it.imei.isNullOrBlank() }?.imei
+                                if (firstImei != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("Copy IMEI") },
+                                        leadingIcon = { Icon(Icons.Default.PhoneAndroid, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            // IMEI is PII — use sensitive copy so Android 13+
+                                            // suppresses clipboard preview and auto-clears after 30 s.
+                                            ClipboardUtil.copySensitive(context, "IMEI", firstImei)
+                                            scope.launch {
+                                                snackbarHostState.showSnackbar("IMEI copied (auto-clears in 30 s)")
+                                            }
+                                        },
+                                    )
+                                }
                                 // L725 — Check warranty
                                 DropdownMenuItem(
                                     text = { Text("Check warranty") },
@@ -1688,6 +1802,14 @@ fun TicketDetailScreen(
             DeletedBanner(
                 visible = state.isDeletedWhileViewing,
                 onClose = onBack,
+            )
+            // §4.13 L777 — Concurrent-edit banner (HTTP 409 stale updated_at)
+            ConcurrentEditBanner(
+                visible = state.isConcurrentEdit,
+                onReload = {
+                    viewModel.clearConcurrentEdit()
+                    viewModel.loadTicketDetail()
+                },
             )
             when {
                 state.isLoading -> {

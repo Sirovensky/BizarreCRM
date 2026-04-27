@@ -15,6 +15,8 @@ import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import com.bizarreelectronics.crm.util.WindowMode
 import com.bizarreelectronics.crm.util.rememberWindowMode
 import androidx.compose.ui.Modifier
@@ -57,6 +59,8 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.ForecastCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiGrid
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.KpiTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.LeaderboardCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.CashTrappedCard
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.CashTrappedItem
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MissingPartsCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ProfitHeroCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.RepeatCustomerCard
@@ -67,6 +71,7 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttention
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.NeedsAttentionSection
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionCategory
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AttentionPriority
+import com.bizarreelectronics.crm.data.remote.api.CashTrappedData
 import com.bizarreelectronics.crm.data.remote.api.DashboardApi
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityItem
@@ -82,6 +87,7 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardTable
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardCachedBanner
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.SavedDashboardTabs
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.BenchTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.SetupChecklistCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
@@ -261,6 +267,61 @@ class DashboardViewModel @Inject constructor(
     /** §3.2 L506 — inventory items needing reorder. Null = source not connected. */
     private val _missingParts = MutableStateFlow<List<MissingPartItem>?>(null)
     val missingParts: StateFlow<List<MissingPartItem>?> = _missingParts.asStateFlow()
+
+    // -------------------------------------------------------------------------
+    // §3.2 L504 — Cash-Trapped card
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.2 L504 — Cash trapped in slow-moving inventory (total cents).
+     * Null = GET /reports/cash-trapped returned 404 or endpoint not yet live;
+     * [CashTrappedCard] shows "Connect Inventory data" stub.
+     */
+    private val _cashTrappedTotalCents = MutableStateFlow<Long?>(null)
+    val cashTrappedTotalCents: StateFlow<Long?> = _cashTrappedTotalCents.asStateFlow()
+
+    /** §3.2 L504 — count of slow-moving items. Null when [_cashTrappedTotalCents] is null. */
+    private val _cashTrappedItemCount = MutableStateFlow<Int?>(null)
+    val cashTrappedItemCount: StateFlow<Int?> = _cashTrappedItemCount.asStateFlow()
+
+    /** §3.2 L504 — top offenders for the detail rows (≤3 shown by [CashTrappedCard]). */
+    private val _cashTrappedTopItems = MutableStateFlow<List<CashTrappedItem>>(emptyList())
+    val cashTrappedTopItems: StateFlow<List<CashTrappedItem>> = _cashTrappedTopItems.asStateFlow()
+
+    /**
+     * §3.2 L504 — Load cash-trapped data from GET /reports/cash-trapped.
+     * 404-tolerant: on failure [_cashTrappedTotalCents] stays null so the card
+     * shows the stub state rather than crashing.
+     */
+    private fun loadCashTrapped() {
+        viewModelScope.launch {
+            try {
+                val data: CashTrappedData? = dashboardRepository.getCashTrapped()
+                if (data != null) {
+                    _cashTrappedTotalCents.value = (data.totalCashTrapped * 100).toLong()
+                    _cashTrappedItemCount.value = data.itemCount
+                    _cashTrappedTopItems.value = data.topOffenders.map { offender ->
+                        val daysSince = offender.lastSold?.let { iso ->
+                            runCatching {
+                                val sold = java.time.Instant.parse(iso)
+                                val now = java.time.Instant.now()
+                                java.time.Duration.between(sold, now).toDays().toInt()
+                            }.getOrNull()
+                        }
+                        CashTrappedItem(
+                            id = offender.id,
+                            name = offender.name,
+                            valueCents = (offender.value * 100).toLong(),
+                            daysSinceLastSale = daysSince,
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "loadCashTrapped failed: ${e.message}")
+                // Leave null — card degrades to stub state
+            }
+        }
+    }
 
     // -------------------------------------------------------------------------
     // §3.4 L519 — My Queue section visibility
@@ -650,6 +711,7 @@ class DashboardViewModel @Inject constructor(
         refreshSmsCount()
         refreshTeamInbox()
         loadRoleTemplate()
+        loadCashTrapped()
         startPeriodicRefresh()
     }
 
@@ -788,6 +850,18 @@ class DashboardViewModel @Inject constructor(
                 )
             }
 
+            // §45.3 — Churn-risk customer count for ChurnAlertCard.
+            // 404-tolerant: DashboardRepository returns (null, empty) when the
+            // endpoint is not yet live. _churnAtRisk stays null → card shows
+            // "Data unavailable" rather than crashing.
+            try {
+                val (count, _) = dashboardRepository.getChurnRisk()
+                _churnAtRisk.value = count
+            } catch (e: Exception) {
+                android.util.Log.w("Dashboard", "getChurnRisk failed: ${e.message}")
+                // Leave _churnAtRisk null — ChurnAlertCard shows "Data unavailable"
+            }
+
             _state.value = _state.value.copy(
                 isLoading = false,
                 isRefreshing = false,
@@ -914,6 +988,12 @@ fun DashboardScreen(
     onNavigateToSetup: (() -> Unit)? = null,
     // §3.16 L593 — "Show more" on Activity Feed card → full Activity Feed screen.
     onNavigateToActivityFeed: (() -> Unit)? = null,
+    // §3.2 L504 — Cash-Trapped card tap → Reports screen (Aging report).
+    // Nullable: card tap is inert when the route is not yet wired.
+    onNavigateToAgingReport: (() -> Unit)? = null,
+    // §43.1 — Bench tile tap → BenchTabScreen. Nullable hides the tile
+    // (e.g. for admin/non-technician roles or when server pre-dates the endpoint).
+    onNavigateToBench: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -936,12 +1016,23 @@ fun DashboardScreen(
     val unreadSmsCount by viewModel.unreadSmsCount.collectAsState()
     val teamInboxCount by viewModel.teamInboxCount.collectAsState()
 
+    // §3.2 L504 — Cash-Trapped card state.
+    val cashTrappedTotalCents by viewModel.cashTrappedTotalCents.collectAsState()
+    val cashTrappedItemCount by viewModel.cashTrappedItemCount.collectAsState()
+    val cashTrappedTopItems by viewModel.cashTrappedTopItems.collectAsState()
+
     // §3.17 L602-L610 — Layout config (role templates + customization).
     val layoutConfig by viewModel.layoutConfig.collectAsState()
     var showCustomizationSheet by remember { mutableStateOf(false) }
 
     // §3.8 L557 — Snackbar host for clock-in success toast.
     val clockSnackbarHostState = remember { SnackbarHostState() }
+
+    // §26.1 skip-nav: FocusRequester placed on the KPI section heading so the
+    // "Skip to KPI summary" anchor at the top of the list can transfer focus
+    // directly to content without requiring TalkBack to swipe through every
+    // banner, checklist row, and clock tile.
+    val kpiFocusRequester = remember { FocusRequester() }
 
     // §3.9 — avatar initials: first char of each word in the name portion of the greeting.
     // The greeting format is "Good morning, Pavel Ivanov" — name is after the comma.
@@ -1176,6 +1267,29 @@ fun DashboardScreen(
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        // §26.1 — Skip-nav anchor. TalkBack users can activate this button to
+        // jump directly to the KPI summary, bypassing banners / checklists.
+        // Rendered at 1dp height so it is invisible but focusable.
+        item {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 1.dp)
+                    .semantics {
+                        contentDescription = "Skip to KPI summary"
+                        role = Role.Button
+                    }
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        // Request focus on the KPI heading; gracefully no-ops if
+                        // the heading is not yet composed (e.g. all KPIs zero state).
+                        runCatching { kpiFocusRequester.requestFocus() }
+                    },
+            )
+        }
+
         // §3.7 L538 — Announcement banner (sticky, top-of-feed position)
         announcement?.let { ann ->
             item {
@@ -1270,6 +1384,21 @@ fun DashboardScreen(
             }
         }
 
+        // §43.1 — Bench tile. Shown when onNavigateToBench is wired (technician
+        // role or all-roles) and the server reports ≥0 active bench tickets.
+        // benchTicketCount is sourced from openTickets as a proxy until the
+        // bench-stats endpoint ships; when the dedicated endpoint exists, this
+        // should come from a separate VM field.
+        if (onNavigateToBench != null) {
+            item {
+                BenchTile(
+                    benchTicketCount = state.openTickets,
+                    onNavigateToBench = onNavigateToBench,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+            }
+        }
+
         // [P1] Date sub-line — greeting moved to top bar; only the date remains
         // here as a contextual anchor.
         // CROSS46: route through the canonical DateFormatter.formatAbsolute
@@ -1342,13 +1471,15 @@ fun DashboardScreen(
             }
         }
 
-        // KPI section heading — a11y: heading() so TalkBack announces "Today's KPIs, heading"
+        // KPI section heading — a11y: heading() so TalkBack announces "Today's KPIs, heading".
+        // focusRequester receives focus from the skip-nav anchor above.
         item {
             Text(
                 "${currentRange.label} KPIs",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier
                     .padding(horizontal = 16.dp)
+                    .focusRequester(kpiFocusRequester)
                     .semantics { heading() },
             )
         }
@@ -1516,7 +1647,15 @@ fun DashboardScreen(
                 hasPermission = state.canViewReports,
                 modifier = Modifier.padding(horizontal = 0.dp),
             ) {
-                InsightsSection(viewModel = viewModel)
+                InsightsSection(
+                    viewModel = viewModel,
+                    onSendWinBackSms = onNavigateToSms,
+                    // §3.2 L504 — Cash-Trapped card
+                    cashTrappedTotalCents = cashTrappedTotalCents,
+                    cashTrappedItemCount = cashTrappedItemCount,
+                    cashTrappedTopItems = cashTrappedTopItems,
+                    onNavigateToAgingReport = onNavigateToAgingReport,
+                )
             }
         }
     }
@@ -1770,7 +1909,17 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
  * crashes regardless of what the ViewModel emits.
  */
 @Composable
-private fun InsightsSection(viewModel: DashboardViewModel) {
+private fun InsightsSection(
+    viewModel: DashboardViewModel,
+    /** §45.3 — "Send win-back SMS" action; null hides the button. */
+    onSendWinBackSms: (() -> Unit)? = null,
+    /** §3.2 L504 — Cash-Trapped card total in cents. Null = endpoint not yet live. */
+    cashTrappedTotalCents: Long? = null,
+    cashTrappedItemCount: Int? = null,
+    cashTrappedTopItems: List<CashTrappedItem> = emptyList(),
+    /** §3.2 L504 — navigates to Aging report on card tap. Null = inert tap. */
+    onNavigateToAgingReport: (() -> Unit)? = null,
+) {
     val windowMode = rememberWindowMode()
     val isTwoCol = windowMode != WindowMode.Phone
     // §3.19 L615 — BI widgets section spacing follows LocalDashboardDensity.
@@ -1830,6 +1979,7 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
             ) {
                 ChurnAlertCard(
                     atRiskCount = churnAtRisk,
+                    onSendWinBackSms = onSendWinBackSms,
                     modifier = Modifier.weight(1f),
                 )
                 ForecastCard(
@@ -1838,17 +1988,25 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
                     modifier = Modifier.weight(1f),
                 )
             }
-            // Row 3: Leaderboard (full width)
+            // Row 3: Cash Trapped (full width)
+            CashTrappedCard(
+                totalCents = cashTrappedTotalCents,
+                itemCount = cashTrappedItemCount,
+                topItems = cashTrappedTopItems,
+                onTap = onNavigateToAgingReport,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            // Row 4: Leaderboard (full width)
             LeaderboardCard(
                 entries = leaderboard,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // Row 4: Busy Hours heatmap (full width — 24 columns need width)
+            // Row 5: Busy Hours heatmap (full width — 24 columns need width)
             BusyHoursHeatmap(
                 data = busyHours,
                 modifier = Modifier.fillMaxWidth(),
             )
-            // Row 5: Missing Parts (full width)
+            // Row 6: Missing Parts (full width)
             MissingPartsCard(
                 items = missingParts,
                 modifier = Modifier.fillMaxWidth(),
@@ -1864,10 +2022,20 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
                 repeatPercent = repeatPercent,
                 trendDelta = repeatTrendDelta,
             )
-            ChurnAlertCard(atRiskCount = churnAtRisk)
+            ChurnAlertCard(
+                atRiskCount = churnAtRisk,
+                onSendWinBackSms = onSendWinBackSms,
+            )
             ForecastCard(
                 forecastRevenue = forecastCents,
                 historyDays = forecastHistoryDays,
+            )
+            // §3.2 L504 — Cash-Trapped card (phone: full width)
+            CashTrappedCard(
+                totalCents = cashTrappedTotalCents,
+                itemCount = cashTrappedItemCount,
+                topItems = cashTrappedTopItems,
+                onTap = onNavigateToAgingReport,
             )
             LeaderboardCard(entries = leaderboard)
             BusyHoursHeatmap(data = busyHours)

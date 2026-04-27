@@ -21,6 +21,7 @@ class CrmIssueRegistry : IssueRegistry() {
     override val issues: List<Issue> = listOf(
         StatefulObjectSingletonDetector.ISSUE,
         GlobalScopeLaunchDetector.ISSUE,
+        RetrofitOutsideRemoteDetector.ISSUE,
     )
 
     override val vendor: Vendor = Vendor(

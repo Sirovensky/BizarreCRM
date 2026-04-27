@@ -75,31 +75,51 @@ data class TeamChatReactionRequest(
 
 /**
  * §47 — Team chat REST endpoints.
- * All endpoints are 404-tolerant: callers catch and degrade gracefully.
+ *
+ * Server mounts these at /api/v1/team-chat/channels (not /rooms — the server
+ * uses "channel" as the resource name; "room" is the client-facing term).
+ *
+ * All endpoints are 404-tolerant: callers catch HttpException(404) and degrade
+ * gracefully to an empty-state UI rather than showing an error.
  */
 interface TeamChatApi {
 
-    /** List all rooms the current user is a member of. */
-    @GET("team-chat/rooms")
+    /**
+     * List all channels the current user can see.
+     *
+     * Server: GET /team-chat/channels
+     * Returns channels filtered by the caller's DM membership server-side.
+     */
+    @GET("team-chat/channels")
     suspend fun getRooms(): ApiResponse<TeamChatRoomListData>
 
-    /** Cursor-paginated messages for a room, newest-first. */
-    @GET("team-chat/rooms/{id}/messages")
+    /**
+     * Paginated messages for a channel.
+     *
+     * Server: GET /team-chat/channels/{id}/messages?after=&before=&limit=
+     * Uses integer message id cursors (`after` / `before`), not opaque strings.
+     */
+    @GET("team-chat/channels/{id}/messages")
     suspend fun getMessages(
         @Path("id") roomId: String,
-        @Query("cursor") cursor: String? = null,
+        @Query("after") after: String? = null,
         @Query("limit") limit: Int = 50,
     ): ApiResponse<TeamChatMessageListData>
 
-    /** Post a new message to a room. */
-    @POST("team-chat/rooms/{id}/messages")
+    /** Post a new message to a channel. */
+    @POST("team-chat/channels/{id}/messages")
     suspend fun sendMessage(
         @Path("id") roomId: String,
         @Body request: TeamChatSendRequest,
     ): ApiResponse<TeamChatMessage>
 
-    /** Toggle a reaction on a message. */
-    @POST("team-chat/rooms/{id}/messages/{msgId}/reactions")
+    /**
+     * Toggle a reaction on a message.
+     *
+     * NOTE: reactions table / endpoint not yet implemented on the server.
+     * This declaration is a placeholder; callers must handle 404 gracefully.
+     */
+    @POST("team-chat/channels/{id}/messages/{msgId}/reactions")
     suspend fun toggleReaction(
         @Path("id") roomId: String,
         @Path("msgId") messageId: String,

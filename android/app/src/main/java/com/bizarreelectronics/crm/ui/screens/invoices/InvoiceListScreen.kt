@@ -56,6 +56,7 @@ import java.io.OutputStreamWriter
 fun InvoiceListScreen(
     onInvoiceClick: (Long) -> Unit,
     onCreateClick: (() -> Unit)? = null,
+    onAgingClick: (() -> Unit)? = null,
     viewModel: InvoiceListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -149,6 +150,14 @@ fun InvoiceListScreen(
                                 currentSort = state.currentSort,
                                 onSortSelected = { viewModel.onSortChanged(it) },
                             )
+                            if (onAgingClick != null) {
+                                IconButton(onClick = onAgingClick) {
+                                    Icon(
+                                        Icons.Default.Analytics,
+                                        contentDescription = "View aging report",
+                                    )
+                                }
+                            }
                             IconButton(onClick = { viewModel.loadInvoices() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh invoices")
                             }
@@ -185,7 +194,7 @@ fun InvoiceListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search invoices...",
+                placeholder = "Order ID, customer, status…",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 

@@ -116,6 +116,29 @@
             <action android:name="android.intent.action.INSERT" />
             <data android:mimeType="vnd.android.cursor.dir/event" />
         </intent>
+
+        <!-- §68.5 outbound ACTION_SEND targets: PDF, CSV, vCard, image share.
+             createChooser() works without these entries, but resolveActivity()
+             and queryIntentActivities() require them on API 30+ if the app ever
+             needs to verify a share target exists before opening the chooser.
+             Declaring all four MIME types here keeps the queries block consistent
+             with all MIME types the app may share outbound. -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/pdf" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/csv" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="text/x-vcard" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="image/*" />
+        </intent>
     </queries>
 
     <application
@@ -128,8 +151,19 @@
         android:theme="@style/Theme.BizarreCRM"
         android:networkSecurityConfig="@xml/network_security_config"
         android:localeConfig="@xml/locales_config"
-        android:enableOnBackInvokedCallback="true">
+        android:enableOnBackInvokedCallback="true"
+        android:extractNativeLibs="false">
 
+        <!--
+            §71.1 SplashScreen API: the dedicated Theme.BizarreCRM.Splash theme
+            exists in res/values/themes.xml but cannot be applied to MainActivity
+            until installSplashScreen() is called inside MainActivity.onCreate
+            (before super.onCreate). Without that call, Theme.SplashScreen leaves
+            the activity stuck on its launch chrome — including a title bar
+            showing the app label — covering the actual content. Until the
+            installSplashScreen() wiring lands (deferred per ActionPlan §71.1
+            "Keep-on-screen condition"), MainActivity stays on Theme.BizarreCRM.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -249,11 +283,102 @@
                 <data android:scheme="bizarrecrm" android:host="magic" />
             </intent-filter>
 
+            <!-- §55.1 — Public tracking App Link: https://app.bizarrecrm.com/t/:orderId
+                 Customer-facing repair-status deep link (SMS / email / QR code).
+                 autoVerify=true triggers /.well-known/assetlinks.json verification on
+                 app.bizarrecrm.com; falls back to browser until the domain is verified.
+                 The NavHost composable extracts orderId + token query param. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.bizarrecrm.com" android:pathPrefix="/t/" />
+            </intent-filter>
+
+            <!-- §55.1 — Public tracking custom-scheme variant: bizarrecrm://track/:orderId
+                 Used in QR labels printed for customer repair bags (§55.3). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" android:host="track" />
+            </intent-filter>
+
+            <!--
+              §25.2 Inbound share — other apps can share text, images, and
+              PDFs into BizarreCRM. The system shows our app in the chooser
+              when the sender's MIME type matches one of these filters.
+              MainActivity.resolveInboundShare() inspects the incoming intent
+              and routes it to "Attach to ticket" / "New note" picker flow.
+
+              Three separate intent-filter blocks are required because a single
+              filter with multiple <data> MIME types would require ALL types to
+              match simultaneously. One filter per type is the correct pattern.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+
             <!-- Static shortcuts + App Actions metadata. -->
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
+
+            <!-- §24.5 — App Actions (Capabilities API) declarations.
+                 Maps BIIs (actions.intent.CREATE_MESSAGE, GET_RESERVATION) to
+                 deep-link URI templates in res/xml/actions.xml.
+                 Assistant resolves these to navigate into the app. -->
+            <meta-data
+                android:name="android.app.actions"
+                android:resource="@xml/actions" />
         </activity>
+
+        <!--
+          §56.4 — Optional Android TV / Google TV launcher entry for shop big-screen
+          displays using dedicated Fire TV or Android TV sticks.
+
+          An <activity-alias> is used so the TV board launches directly into
+          MainActivity with a deep-link extra rather than declaring a separate Activity.
+          The LEANBACK_LAUNCHER category makes this icon appear in the Android TV /
+          Google TV home row. The banner drawable (@drawable/tv_banner) is required by
+          the Leanback launcher; it must be 320×180 dp as specified in the TV design
+          guidelines. The alias is exported=true so the TV launcher can start it;
+          it will only appear on Leanback-capable devices.
+
+          Note: the alias target (MainActivity) handles the bizarrecrm://tvqueue deep link
+          in resolveDeepLink() → routes to Screen.TvQueueBoard.
+        -->
+        <activity-alias
+            android:name=".TvQueueBoardActivity"
+            android:targetActivity=".MainActivity"
+            android:exported="true"
+            android:label="@string/screen_tv_queue_board"
+            android:banner="@drawable/tv_banner">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+            <!-- Deep link so MainActivity routes straight to the TV queue board. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="bizarrecrm" android:host="tvqueue" />
+            </intent-filter>
+        </activity-alias>
 
         <!-- Firebase Messaging Service -->
         <service
@@ -337,6 +462,59 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/glance_unread_sms_info" />
         </receiver>
+
+        <!-- §24.1 — Glance Clock-In/Out home-screen widget. -->
+        <receiver
+            android:name=".widget.glance.ClockInGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_clock_in_info" />
+        </receiver>
+
+        <!-- §24.1 — Glance Low-Stock home-screen widget. -->
+        <receiver
+            android:name=".widget.glance.LowStockGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_low_stock_info" />
+        </receiver>
+
+        <!-- §24.4 — Quick Settings tile: Clock In/Out.
+             BIND_QUICK_SETTINGS_TILE is the system-owned permission protecting
+             the binding — apps never declare it, only the OS grants it. -->
+        <service
+            android:name=".service.ClockInTileService"
+            android:label="@string/tile_clock_in_label"
+            android:icon="@mipmap/ic_launcher"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- §24.7 — Widget config activity launched by launcher on widget add.
+             exported=true is required so the launcher process can start it.
+             The activity sets RESULT_CANCELED immediately on create and RESULT_OK
+             only after the user confirms — this prevents widget placement if the
+             user backs out. -->
+        <activity
+            android:name=".widget.WidgetConfigActivity"
+            android:exported="true"
+            android:theme="@style/Theme.BizarreCRM"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_CONFIGURE" />
+            </intent-filter>
+        </activity>
 
         <!-- §1.7 L245 — BroadcastReceiver for notification action buttons (Reply, Mark as read). -->
         <receiver android:name=".service.NotificationActionReceiver" android:exported="false" />

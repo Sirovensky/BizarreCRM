@@ -1,11 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.checkin
 
+import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,12 +24,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.theme.stepWizardTransition
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +50,18 @@ fun CheckInHostScreen(
     }
 
     val state by viewModel.uiState.collectAsState()
+
+    // §30.4 / §26.4 — Reduce Motion: read system ANIMATOR_DURATION_SCALE once
+    // per composition. When 0 the user has disabled animations in Developer
+    // Options / Accessibility; stepWizardTransition collapses to instant swap.
+    val context = LocalContext.current
+    val reduceMotion = remember(context) {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        ) == 0f
+    }
 
     Scaffold(
         topBar = {
@@ -105,18 +116,15 @@ fun CheckInHostScreen(
                     },
             )
 
+            // §30.4 — stepWizardTransition from Motion.kt: respects Reduce Motion
+            // (instant cross-fade) and uses branded spring curves when motion is on.
             AnimatedContent(
                 targetState = state.currentStep,
                 transitionSpec = {
-                    if (targetState > initialState) {
-                        (slideInHorizontally { it } + fadeIn()).togetherWith(
-                            slideOutHorizontally { -it } + fadeOut()
-                        )
-                    } else {
-                        (slideInHorizontally { -it } + fadeIn()).togetherWith(
-                            slideOutHorizontally { it } + fadeOut()
-                        )
-                    }
+                    stepWizardTransition(
+                        direction = if (targetState > initialState) 1 else -1,
+                        reduceMotion = reduceMotion,
+                    )
                 },
                 label = "step_transition",
             ) { step ->

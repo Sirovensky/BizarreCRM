@@ -267,3 +267,99 @@ data class InventoryPhoto(
 data class PhotoListData(
     val photos: List<InventoryPhoto>,
 )
+
+// ─── §6.7 Purchase Order DTOs ────────────────────────────────────────────────
+
+data class PurchaseOrderRow(
+    val id: Long,
+    @SerializedName("order_id") val orderId: String?,
+    @SerializedName("supplier_id") val supplierId: Long?,
+    @SerializedName("supplier_name") val supplierName: String?,
+    val status: String?,
+    val subtotal: Double?,
+    val total: Double?,
+    val notes: String?,
+    @SerializedName("expected_date") val expectedDate: String?,
+    @SerializedName("created_at") val createdAt: String?,
+    @SerializedName("created_by_name") val createdByName: String?,
+)
+
+data class PurchaseOrderListData(
+    val orders: List<PurchaseOrderRow>,
+    val pagination: PoPagination?,
+)
+
+data class PoPagination(
+    val page: Int,
+    @SerializedName("per_page") val perPage: Int,
+    val total: Int,
+    @SerializedName("total_pages") val totalPages: Int,
+)
+
+data class PurchaseOrderItem(
+    val id: Long,
+    @SerializedName("inventory_item_id") val inventoryItemId: Long?,
+    @SerializedName("item_name") val itemName: String?,
+    val sku: String?,
+    @SerializedName("quantity_ordered") val quantityOrdered: Int,
+    @SerializedName("quantity_received") val quantityReceived: Int,
+    @SerializedName("cost_price") val costPrice: Double?,
+)
+
+data class PurchaseOrderDetail(
+    val id: Long,
+    @SerializedName("order_id") val orderId: String?,
+    @SerializedName("supplier_id") val supplierId: Long?,
+    @SerializedName("supplier_name") val supplierName: String?,
+    val status: String?,
+    val subtotal: Double?,
+    val total: Double?,
+    val notes: String?,
+    @SerializedName("expected_date") val expectedDate: String?,
+    @SerializedName("created_at") val createdAt: String?,
+    val items: List<PurchaseOrderItem>?,
+)
+
+data class PurchaseOrderDetailData(
+    val po: PurchaseOrderDetail?,
+    // Server may return the PO directly at the top level
+    val id: Long? = null,
+    @SerializedName("order_id") val orderId: String? = null,
+    val status: String? = null,
+)
+
+data class CreatePoLineItem(
+    @SerializedName("inventory_item_id") val inventoryItemId: Long,
+    @SerializedName("quantity_ordered") val quantityOrdered: Int,
+    @SerializedName("cost_price") val costPrice: Double?,
+)
+
+data class CreatePurchaseOrderRequest(
+    @SerializedName("supplier_id") val supplierId: Long,
+    val notes: String? = null,
+    @SerializedName("expected_date") val expectedDate: String? = null,
+    val items: List<CreatePoLineItem> = emptyList(),
+)
+
+data class UpdatePurchaseOrderRequest(
+    val status: String? = null,
+    val notes: String? = null,
+    @SerializedName("expected_date") val expectedDate: String? = null,
+)
+
+data class ReceivePoItem(
+    @SerializedName("purchase_order_item_id") val purchaseOrderItemId: Long,
+    @SerializedName("quantity_received") val quantityReceived: Int,
+)
+
+data class ReceivePurchaseOrderRequest(
+    val items: List<ReceivePoItem>,
+)
+
+data class SupplierListItem(
+    val id: Long,
+    val name: String?,
+    val email: String?,
+    val phone: String?,
+    @SerializedName("is_active") val isActive: Int?,
+)

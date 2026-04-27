@@ -12,13 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Divider
-import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -26,14 +23,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -81,11 +79,28 @@ fun CommandPaletteScreen(
     val query by viewModel.query.collectAsState()
     val results by viewModel.results.collectAsState()
 
+    // §54.3 — arrow-key selected index (-1 = none)
+    var selectedIndex by remember { mutableIntStateOf(-1) }
+
+    // Reset selection whenever the results list changes
+    LaunchedEffect(results) { selectedIndex = -1 }
+
     val focusRequester = remember { FocusRequester() }
 
     // Group results for display
     val grouped = remember(results) {
         results.groupBy { it.group }
+    }
+
+    /**
+     * Execute [cmd] — invoke its side-effect, navigate if it has a route,
+     * persist recency, and close the palette.
+     */
+    fun executeCommand(cmd: Command) {
+        cmd.action?.invoke()
+        cmd.route?.let { route -> onNavigate(route) }
+        viewModel.onCommandExecuted(cmd.id)
+        onDismiss()
     }
 
     Dialog(
@@ -124,12 +139,35 @@ fun CommandPaletteScreen(
                         onClick = { /* consume clicks so scrim dismissal doesn't fire */ },
                     )
                     .onKeyEvent { keyEvent ->
-                        if (keyEvent.type == KeyEventType.KeyDown && keyEvent.key == Key.Escape) {
-                            viewModel.clear()
-                            onDismiss()
-                            true
-                        } else {
-                            false
+                        if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
+                        when (keyEvent.key) {
+                            Key.Escape -> {
+                                viewModel.clear()
+                                onDismiss()
+                                true
+                            }
+                            Key.DirectionDown -> {
+                                if (results.isNotEmpty()) {
+                                    selectedIndex = (selectedIndex + 1).coerceAtMost(results.lastIndex)
+                                }
+                                true
+                            }
+                            Key.DirectionUp -> {
+                                if (results.isNotEmpty()) {
+                                    selectedIndex = (selectedIndex - 1).coerceAtLeast(0)
+                                }
+                                true
+                            }
+                            Key.Enter, Key.NumPadEnter -> {
+                                val target = if (selectedIndex in results.indices) {
+                                    results[selectedIndex]
+                                } else {
+                                    results.firstOrNull()
+                                }
+                                target?.let { executeCommand(it) }
+                                true
+                            }
+                            else -> false
                         }
                     }
                     .semantics { contentDescription = "Command palette" },
@@ -199,6 +237,8 @@ fun CommandPaletteScreen(
                         LazyColumn(
                             contentPadding = PaddingValues(bottom = 8.dp),
                         ) {
+                            // Flatten to a single indexed list for arrow-key selection tracking
+                            var flatIndex = 0
                             grouped.forEach { (group, cmds) ->
                                 item(key = "header:${group.name}") {
                                     Text(
@@ -211,18 +251,15 @@ fun CommandPaletteScreen(
                                         ),
                                     )
                                 }
-                                items(items = cmds, key = { it.id }) { cmd ->
-                                    CommandRow(
-                                        command = cmd,
-                                        onClick = {
-                                            cmd.action?.invoke()
-                                            cmd.route?.let { route ->
-                                                onNavigate(route)
-                                            }
-                                            viewModel.clear()
-                                            onDismiss()
-                                        },
-                                    )
+                                cmds.forEach { cmd ->
+                                    val itemIndex = flatIndex++
+                                    item(key = cmd.id) {
+                                        CommandRow(
+                                            command = cmd,
+                                            isSelected = itemIndex == selectedIndex,
+                                            onClick = { executeCommand(cmd) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -243,8 +280,17 @@ fun CommandPaletteScreen(
 @Composable
 private fun CommandRow(
     command: Command,
+    isSelected: Boolean,
     onClick: () -> Unit,
 ) {
+    // §54.3 — keyboard-selected row gets a tinted container so the user can
+    // see which command Enter will activate without leaving the search field.
+    val containerColor = if (isSelected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        Color.Transparent
+    }
+
     ListItem(
         headlineContent = {
             Text(
@@ -266,7 +312,7 @@ private fun CommandRow(
             .clickable(onClick = onClick)
             .semantics { contentDescription = command.label },
         colors = ListItemDefaults.colors(
-            containerColor = Color.Transparent,
+            containerColor = containerColor,
         ),
     )
 }

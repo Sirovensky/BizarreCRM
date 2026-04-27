@@ -69,6 +69,9 @@ import kotlinx.coroutines.withContext
         SyncStateEntity::class,
         ParkedCartEntity::class,
         CheckInDraftEntity::class,
+        CustomerFtsEntity::class,
+        TicketFtsEntity::class,
+        InventoryFtsEntity::class,
     ],
     // @audit-fixed: Section 33 / D1 — bumped from 3 to 4 to convert
     // `inventory_items.cost_price` / `retail_price` from REAL → INTEGER cents
@@ -94,7 +97,11 @@ import kotlinx.coroutines.withContext
     // Plan �16.1 L1800: bumped from 8 to 9 to add parked_carts table.
     // Plan §20.2 L2108: bumped from 9 to 10 to add depends_on_queue_id to sync_queue.
     // Phase 3 check-in: bumped from 10 to 11 to add checkin_drafts table.
-    version = 11,
+    // §18.1 search FTS: bumped from 11 to 12 to add FTS4 virtual tables
+    // (customers_fts, tickets_fts, inventory_fts) + AFTER INSERT/UPDATE/DELETE triggers.
+    // §11.1 Filters: bumped from 12 to 13 to add expenses.status column for
+    // approval-status filter (mirrors server migration 120).
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -119,6 +126,11 @@ abstract class BizarreDatabase : RoomDatabase() {
     abstract fun parkedCartDao(): ParkedCartDao
     abstract fun checkInDraftDao(): CheckInDraftDao
 
+    // §18.1 — FTS4 search DAOs
+    abstract fun customerFtsDao(): CustomerFtsDao
+    abstract fun ticketFtsDao(): TicketFtsDao
+    abstract fun inventoryFtsDao(): InventoryFtsDao
+
     companion object {
         const val DATABASE_NAME = "bizarre_crm.db"
 
@@ -130,7 +142,7 @@ abstract class BizarreDatabase : RoomDatabase() {
          * [MigrationRegistry.validateAllStepsPresent] (gap detection) in addition
          * to Room's internal version tracking.
          */
-        const val SCHEMA_VERSION = 11
+        const val SCHEMA_VERSION = 13
     }
 }
 

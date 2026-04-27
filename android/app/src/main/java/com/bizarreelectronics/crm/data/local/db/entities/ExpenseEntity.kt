@@ -36,6 +36,16 @@ data class ExpenseEntity(
     @ColumnInfo(name = "updated_at")
     val updatedAt: String,
 
+    /**
+     * Approval status synced from the server.
+     * Values: `pending` | `approved` | `denied`.
+     * Mirrors the server `expenses.status` column added in server migration 120.
+     * Room migration 12 → 13 adds this column with DEFAULT 'pending' so existing
+     * cached rows are treated as pending until the next background sync overwrites them.
+     */
+    @ColumnInfo(name = "status")
+    val status: String = "pending",
+
     @ColumnInfo(name = "locally_modified")
     val locallyModified: Boolean = false,
 )

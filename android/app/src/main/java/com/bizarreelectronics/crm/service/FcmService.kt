@@ -27,6 +27,8 @@ class FcmService : FirebaseMessagingService() {
     @Inject lateinit var deviceTokenManager: DeviceTokenManager
     @Inject lateinit var quietHours: com.bizarreelectronics.crm.util.QuietHours
     @Inject lateinit var breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs
+    // §73.8 — history ring buffer injected for audit / Recent list.
+    @Inject lateinit var notificationHistoryStore: NotificationHistoryStore
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -40,6 +42,17 @@ class FcmService : FirebaseMessagingService() {
             "ticket", "customer", "invoice", "inventory", "lead",
             "estimate", "expense", "appointment", "sms", "notification",
         )
+
+        /**
+         * §58.2 — FCM push types that originate from the self-booking flow.
+         * "new_booking" is emitted by the server when a customer completes an
+         * online reservation; entity_type is always "appointment" and entity_id
+         * is the created appointment's id. The existing ALLOWED_ENTITY_TYPES
+         * whitelist already permits "appointment", so no injection risk is added.
+         * The notification channel mapping handles "new_booking" like
+         * "appointment_reminder" (appointment channel, not synced silently).
+         */
+        private val BOOKING_PUSH_TYPES = setOf("new_booking")
     }
 
     override fun onNewToken(token: String) {
@@ -118,17 +131,39 @@ class FcmService : FirebaseMessagingService() {
             }
         }
 
-        // §13.2 quiet hours: decide silence before building so the controller stamps
-        // the right priority from the start. Re-derive channel from data to avoid
-        // inspecting the not-yet-built Notification.
+        // §13.2 / §21.9 quiet hours + system DND: decide silence before building so the
+        // controller stamps the right priority from the start. Re-derive channel from
+        // data to avoid inspecting the not-yet-built Notification.
+        //
+        // §21.9 — Pass `this` (Service context) to the 3-argument overload so that
+        // [QuietHours.shouldSilence] also checks NotificationManager.getCurrentInterruptionFilter().
+        // When system DND is active, non-critical channels are silenced even if the
+        // in-app quiet-hours window is not configured. Critical channels (SLA breach,
+        // security alerts) are exempt from both system DND and in-app quiet hours.
         val quietChannelId = when (val t = data["type"] ?: "system") {
             "sms_inbound", "sms" -> BizarreCrmApp.CH_SMS_INBOUND
             "ticket_assigned" -> BizarreCrmApp.CH_TICKET_ASSIGNED
             "ticket_updated", "customer_message" -> BizarreCrmApp.CH_TICKET_STATUS
             "appointment_reminder" -> BizarreCrmApp.CH_APPOINTMENT_REMINDER
+            // §58.2 — new online booking push routes to the appointment channel so
+            // staff receive the alert with the same priority as appointment reminders.
+            "new_booking" -> BizarreCrmApp.CH_APPOINTMENT_REMINDER
+            // §51.3 — export-ready push maps to its own channel for quiet-hour checks.
+            "export_ready" -> BizarreCrmApp.CH_EXPORT_READY
+            // §73 — new per-event matrix channels.
+            "payment_declined", "card_declined" -> BizarreCrmApp.CH_PAYMENT_DECLINED
+            "invoice_overdue" -> BizarreCrmApp.CH_INVOICE_OVERDUE
+            "estimate_approved" -> BizarreCrmApp.CH_ESTIMATE_APPROVED
+            "shift_starting" -> BizarreCrmApp.CH_SHIFT_STARTING
+            "timeoff_request", "manager_timeoff" -> BizarreCrmApp.CH_MANAGER_TIMEOFF
+            "team_mention" -> BizarreCrmApp.CH_TEAM_MENTION
+            "weekly_digest" -> BizarreCrmApp.CH_WEEKLY_DIGEST
+            "setup_wizard_incomplete" -> BizarreCrmApp.CH_SETUP_WIZARD
+            "subscription_renewal" -> BizarreCrmApp.CH_SUBSCRIPTION_RENEWAL
+            "integration_disconnected" -> BizarreCrmApp.CH_INTEGRATION_DISCONNECTED
             else -> if (t.startsWith("sla_")) BizarreCrmApp.CH_SLA_BREACH else BizarreCrmApp.CH_SYNC
         }
-        val silenced = quietHours.shouldSilence(quietChannelId)
+        val silenced = quietHours.shouldSilence(this, quietChannelId)
 
         // §13.4: launcher dot count — Samsung One UI + a few skins read setNumber.
         val activeBefore = runCatching {
@@ -152,5 +187,19 @@ class FcmService : FirebaseMessagingService() {
                 Log.w("FCM", "Notification permission not granted", e)
             }
         }
+
+        // §73.8 — record in the ring buffer regardless of SecurityException so
+        // the Recent list reflects all attempted deliveries, including those
+        // blocked by the user revoking the POST_NOTIFICATIONS permission.
+        notificationHistoryStore.record(
+            NotificationHistoryStore.Entry(
+                receivedAtMs = System.currentTimeMillis(),
+                type = type,
+                title = enriched["title"] ?: "Bizarre CRM",
+                body = enriched["body"] ?: "",
+                channelId = quietChannelId,
+                silenced = silenced,
+            ),
+        )
     }
 }

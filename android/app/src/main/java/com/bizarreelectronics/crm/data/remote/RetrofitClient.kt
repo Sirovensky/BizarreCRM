@@ -17,7 +17,9 @@ import com.google.gson.GsonBuilder
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import okhttp3.Cache
 import okhttp3.CertificatePinner
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
@@ -358,6 +360,19 @@ class DynamicBaseUrlInterceptor(private val authPreferences: AuthPreferences) : 
 @InstallIn(SingletonComponent::class)
 object RetrofitClient {
 
+    // §29.6 — OkHttp disk cache for GET responses.  5 MB cap.
+    // Short TTL (60 s) so list screens feel live: the cache only saves a
+    // round-trip when the user navigates back to the same list within 60 s or
+    // when the network is unreachable (Cache-Control: max-stale kicks in).
+    // Responses that contain Set-Cookie / Authorization are never cached by
+    // OkHttp's built-in cache; our auth token headers are already redacted by
+    // the logging interceptor and are NOT emitted as request Cache-Control
+    // no-store directives — so safe reads still benefit from the cache.
+    // The cache is stored under [Context.cacheDir] (cleared by "Clear Cache"
+    // in Settings) — never under noBackupFilesDir, because HTTP caches are
+    // reconstructible from the network and must not survive backups.
+    private const val HTTP_CACHE_SIZE_BYTES = 5L * 1024 * 1024  // 5 MB
+
     // Timeouts for regular (UI-driving) requests — must fail fast so the UI
     // can surface errors instead of spinning forever.
     private const val CONNECT_TIMEOUT_SECONDS = 15L
@@ -370,6 +385,14 @@ object RetrofitClient {
     private const val SYNC_READ_TIMEOUT_SECONDS = 60L
     private const val SYNC_WRITE_TIMEOUT_SECONDS = 60L
     private const val SYNC_CALL_TIMEOUT_SECONDS = 90L
+
+    @Provides
+    @Singleton
+    fun provideHttpCache(@ApplicationContext context: android.content.Context): Cache =
+        Cache(
+            directory = java.io.File(context.cacheDir, "okhttp_cache"),
+            maxSize = HTTP_CACHE_SIZE_BYTES,
+        )
 
     @Provides
     @Singleton
@@ -461,6 +484,7 @@ object RetrofitClient {
         clockDriftInterceptor: ClockDriftInterceptor,
         retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
+        httpCache: Cache,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
@@ -470,6 +494,7 @@ object RetrofitClient {
         clockDriftInterceptor = clockDriftInterceptor,
         retryInterceptor = retryInterceptor,
         loggingInterceptor = loggingInterceptor,
+        httpCache = httpCache,
         readTimeoutSeconds = NORMAL_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = NORMAL_WRITE_TIMEOUT_SECONDS,
         callTimeoutSeconds = NORMAL_CALL_TIMEOUT_SECONDS,
@@ -496,6 +521,7 @@ object RetrofitClient {
         clockDriftInterceptor: ClockDriftInterceptor,
         retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
+        httpCache: Cache,
     ): OkHttpClient = buildOkHttpClient(
         dynamicBaseUrlInterceptor = dynamicBaseUrlInterceptor,
         authInterceptor = authInterceptor,
@@ -505,6 +531,7 @@ object RetrofitClient {
         clockDriftInterceptor = clockDriftInterceptor,
         retryInterceptor = retryInterceptor,
         loggingInterceptor = loggingInterceptor,
+        httpCache = httpCache,
         readTimeoutSeconds = SYNC_READ_TIMEOUT_SECONDS,
         writeTimeoutSeconds = SYNC_WRITE_TIMEOUT_SECONDS,
         callTimeoutSeconds = SYNC_CALL_TIMEOUT_SECONDS,
@@ -519,11 +546,19 @@ object RetrofitClient {
         clockDriftInterceptor: ClockDriftInterceptor,
         retryInterceptor: RetryInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
+        httpCache: Cache,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
         callTimeoutSeconds: Long,
     ): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            // §29.6 — Shared 5 MB disk cache. OkHttp only uses this for
+            // responses that carry Cache-Control headers; the server must
+            // emit Cache-Control: max-age=<N> on GET list endpoints to benefit.
+            // Responses with Authorization request headers are cached only when
+            // the server includes Cache-Control: public (RFC 7234 §3.2) — our
+            // server does not, so auth-gated responses are not cached.
+            .cache(httpCache)
             .addInterceptor(dynamicBaseUrlInterceptor)
             .addInterceptor(originHeaderInterceptor)
             .addInterceptor(authInterceptor)
@@ -667,12 +702,17 @@ object RetrofitClient {
     @Provides @Singleton fun provideSetupApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SetupApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SetupApi::class.java)
     @Provides @Singleton fun provideWorkManager(@dagger.hilt.android.qualifiers.ApplicationContext context: android.content.Context): androidx.work.WorkManager = androidx.work.WorkManager.getInstance(context)
 
+    // §37 — marketing & growth; all endpoints 404-tolerant
+    @Provides @Singleton fun provideMarketingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.MarketingApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.MarketingApi::class.java)
     // §38 — memberships / loyalty; all endpoints 404-tolerant
     @Provides @Singleton fun provideMembershipApi(retrofit: Retrofit): MembershipApi = retrofit.create(MembershipApi::class.java)
     // §39 — cash register / Z-report; all endpoints 404-tolerant
     @Provides @Singleton fun provideCashRegisterApi(retrofit: Retrofit): CashRegisterApi = retrofit.create(CashRegisterApi::class.java)
     // §40 — gift cards / store credit; all endpoints 404-tolerant
     @Provides @Singleton fun provideGiftCardApi(retrofit: Retrofit): GiftCardApi = retrofit.create(GiftCardApi::class.java)
+    // §40.3 — refund lifecycle + §40.4 gift-card liability summary; 404-tolerant
+    @Provides @Singleton fun provideRefundApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RefundApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.RefundApi::class.java)
     // §41 — payment links; all endpoints 404-tolerant
     @Provides @Singleton fun providePaymentLinkApi(retrofit: Retrofit): PaymentLinkApi = retrofit.create(PaymentLinkApi::class.java)
     // §42 — voice / calls; all endpoints 404-tolerant
@@ -701,4 +741,44 @@ object RetrofitClient {
     // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).
     // BlockChypApi is provided directly in BlockChypModule to keep terminal-related
     // bindings co-located. No entry here — see di/BlockChypModule.kt.
+
+    // §14.6 — Shift schedule CRUD; all endpoints 404-tolerant
+    @Provides @Singleton fun provideShiftScheduleApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ShiftScheduleApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.ShiftScheduleApi::class.java)
+
+    // §14.4 — Custom roles CRUD; all endpoints 404-tolerant
+    @Provides @Singleton fun provideRolesApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RolesApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.RolesApi::class.java)
+
+    // §14.6 — Shifts CRUD (separate from ShiftScheduleApi which targets /schedule).
+    @Provides @Singleton fun provideShiftsApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ShiftsApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.ShiftsApi::class.java)
+
+    // §60 — Inventory Stocktake; both endpoints 404-tolerant (server routes not yet deployed)
+    @Provides @Singleton fun provideStocktakeApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.StocktakeApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.StocktakeApi::class.java)
+
+    // §12.1 — Team inbox; 404 = team inbox not enabled on this tenant
+    @Provides @Singleton fun provideInboxApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.InboxApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.InboxApi::class.java)
+
+    // §59 — Field-Service / Dispatch; all endpoints 404-tolerant (server routes not yet deployed)
+    @Provides @Singleton fun provideFieldServiceApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.FieldServiceApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.FieldServiceApi::class.java)
+
+    // §55 — Public tracking portal; unauthenticated — AuthInterceptor skips /track/ paths.
+    // Uses the same Retrofit instance; caller supplies tracking token via @Header("Authorization").
+    @Provides @Singleton fun providePublicTrackingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PublicTrackingApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.PublicTrackingApi::class.java)
+
+    // §58 — Appointment self-booking; unauthenticated — AuthInterceptor skips /public/ paths.
+    // Uses the same Retrofit instance; no bearer token is issued or consumed.
+    // Both endpoints are 404-tolerant; client degrades to NotAvailable state on 404.
+    @Provides @Singleton fun provideSelfBookingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SelfBookingApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.SelfBookingApi::class.java)
+
+    // §63 — Multi-location management; 404-tolerant (degrades to single-location mode on older
+    // self-hosted installs). CRUD endpoints require admin role (server enforces 403 for non-admin).
+    @Provides @Singleton fun provideLocationApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.LocationApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.LocationApi::class.java)
 }

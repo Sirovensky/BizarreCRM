@@ -32,4 +32,16 @@ class AppointmentRepository @Inject constructor(
     suspend fun sendReminder(id: Long): Boolean {
         return runCatching { api.sendReminder(id) }.map { it.success }.getOrDefault(false)
     }
+
+    /** §10.3 Minimal quick-create: POST /appointments with title + start_time + end_time only. */
+    suspend fun quickCreate(body: Map<String, Any?>): AppointmentItem {
+        val response = api.createAppointment(body)
+        return response.data ?: error("Quick-create returned no data")
+    }
+
+    /** §10.1 Kanban reschedule: PATCH /appointments/{id} with new employee / start time. */
+    suspend fun reschedule(id: Long, body: Map<String, Any?>): AppointmentItem {
+        val response = api.patchAppointment(id, body)
+        return response.data ?: error("Reschedule returned no data")
+    }
 }

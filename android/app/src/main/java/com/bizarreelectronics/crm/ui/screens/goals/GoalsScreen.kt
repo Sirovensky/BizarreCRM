@@ -48,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 
@@ -78,6 +79,8 @@ fun GoalsScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
+    /** Goal id pending deletion confirmation; null when no dialog is open. */
+    var pendingDeleteId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(state.toastMessage) {
         val msg = state.toastMessage
@@ -142,12 +145,28 @@ fun GoalsScreen(
                         GoalCard(
                             goal = goal,
                             canDelete = state.isManager,
-                            onDelete = { viewModel.deleteGoal(goal.id) },
+                            onDelete = { pendingDeleteId = goal.id },
                         )
                     }
                 }
             }
         }
+    }
+
+    // ── Delete-goal confirmation ──────────────────────────────────────────────
+    val deleteId = pendingDeleteId
+    if (deleteId != null) {
+        ConfirmDialog(
+            title = "Delete Goal",
+            message = "Remove this goal permanently? This cannot be undone.",
+            confirmLabel = "Delete",
+            isDestructive = true,
+            onConfirm = {
+                viewModel.deleteGoal(deleteId)
+                pendingDeleteId = null
+            },
+            onDismiss = { pendingDeleteId = null },
+        )
     }
 
     if (state.showCreateDialog) {

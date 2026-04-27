@@ -166,7 +166,7 @@ class TeamChatThreadViewModel @Inject constructor(
                 return@launch
             }
             try {
-                val response = teamChatApi.getMessages(roomId, cursor)
+                val response = teamChatApi.getMessages(roomId, after = cursor)
                 val incoming = response.data?.messages ?: emptyList()
                 val merged = if (cursor == null) incoming
                 else _state.value.messages + incoming

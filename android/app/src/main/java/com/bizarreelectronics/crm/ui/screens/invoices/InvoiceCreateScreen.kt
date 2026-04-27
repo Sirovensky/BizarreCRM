@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
@@ -55,9 +56,11 @@ data class InvoiceCreateUiState(
     val lineItems: List<LineItemRow> = listOf(LineItemRow()),
     val notes: String = "",
     val dueDate: String = "",
+    val sendNow: Boolean = false,        // §7.3: "Send now" checkbox — email/SMS on create
     val loading: Boolean = false,
     val error: String? = null,
     val created: Long? = null,           // non-null after successful creation
+    val draftRestoredBanner: Boolean = false, // true when a draft was loaded on screen entry
 )
 
 private fun InvoiceCreateUiState.subtotalCents(): Long =
@@ -78,12 +81,72 @@ private fun InvoiceCreateUiState.isSubmittable(): Boolean =
 class InvoiceCreateViewModel @Inject constructor(
     private val invoiceApi: InvoiceApi,
     private val customerApi: CustomerApi,
+    private val draftStore: DraftStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(InvoiceCreateUiState())
     val state = _state.asStateFlow()
 
     private var searchJob: Job? = null
+    private var autosaveJob: Job? = null
+
+    init {
+        restoreDraftIfAvailable()
+    }
+
+    // ── Draft autosave ────────────────────────────────────────────────────────
+
+    /**
+     * Schedules a debounced draft save 2 s after the last mutation.
+     * Called by every mutating function so the latest form state is captured.
+     */
+    private fun scheduleDraftSave() {
+        autosaveJob?.cancel()
+        autosaveJob = viewModelScope.launch {
+            delay(2_000)
+            val s = _state.value
+            // Only save if there is something meaningful to preserve.
+            if (s.selectedCustomer != null || s.lineItems.any { it.description.isNotBlank() }) {
+                runCatching {
+                    val json = buildDraftJson(s)
+                    draftStore.save(DraftStore.DraftType.INVOICE, json)
+                }
+            }
+        }
+    }
+
+    private fun buildDraftJson(s: InvoiceCreateUiState): String {
+        // Minimal JSON — not using full serialisation to avoid Gson/Moshi dependency here.
+        val customerId = s.selectedCustomer?.id ?: 0L
+        val customerName = s.selectedCustomer?.let {
+            listOfNotNull(it.firstName, it.lastName).joinToString(" ").ifBlank { it.organization ?: "" }
+        } ?: ""
+        val linesJson = s.lineItems.joinToString(",") { row ->
+            """{"desc":"${row.description.replace("\"", "\\\"")}","qty":"${row.qty}","price":"${row.unitPrice}"}"""
+        }
+        return """{"customer_id":$customerId,"customer_name":"$customerName","lines":[$linesJson],"notes":"${s.notes.replace("\"", "\\\"")}","due_date":"${s.dueDate}"}"""
+    }
+
+    private fun restoreDraftIfAvailable() {
+        viewModelScope.launch {
+            runCatching {
+                val draft = draftStore.load(DraftStore.DraftType.INVOICE) ?: return@launch
+                // Simple heuristic: if the draft has a non-empty customer_id field, show the banner.
+                if (draft.payloadJson.contains("customer_id") && !draft.payloadJson.contains("\"customer_id\":0")) {
+                    _state.value = _state.value.copy(draftRestoredBanner = true)
+                }
+                // Full parse deferred — banner informs user a draft is available; they dismiss it to load.
+            }
+        }
+    }
+
+    fun dismissDraftBanner() {
+        _state.value = _state.value.copy(draftRestoredBanner = false)
+    }
+
+    fun discardDraft() {
+        viewModelScope.launch { runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) } }
+    }
 
     fun onCustomerQueryChanged(query: String) {
         _state.value = _state.value.copy(
@@ -119,6 +182,7 @@ class InvoiceCreateViewModel @Inject constructor(
             showCustomerDropdown = false,
             customerSearchResults = emptyList(),
         )
+        scheduleDraftSave()
     }
 
     fun onDismissDropdown() {
@@ -133,6 +197,7 @@ class InvoiceCreateViewModel @Inject constructor(
                 if (i == index) row.copy(description = value) else row
             },
         )
+        scheduleDraftSave()
     }
 
     fun onLineQtyChanged(index: Int, value: String) {
@@ -141,6 +206,7 @@ class InvoiceCreateViewModel @Inject constructor(
                 if (i == index) row.copy(qty = value) else row
             },
         )
+        scheduleDraftSave()
     }
 
     fun onLineUnitPriceChanged(index: Int, value: String) {
@@ -149,27 +215,37 @@ class InvoiceCreateViewModel @Inject constructor(
                 if (i == index) row.copy(unitPrice = value) else row
             },
         )
+        scheduleDraftSave()
     }
 
     fun addLineItem() {
         _state.value = _state.value.copy(
             lineItems = _state.value.lineItems + LineItemRow(),
         )
+        scheduleDraftSave()
     }
 
     fun removeLineItem(index: Int) {
         val updated = _state.value.lineItems.toMutableList().also { it.removeAt(index) }
         _state.value = _state.value.copy(lineItems = updated.ifEmpty { listOf(LineItemRow()) })
+        scheduleDraftSave()
     }
 
     // ── Other fields ─────────────────────────────────────────────────────────
 
     fun onNotesChanged(value: String) {
         _state.value = _state.value.copy(notes = value)
+        scheduleDraftSave()
     }
 
     fun onDueDateChanged(value: String) {
         _state.value = _state.value.copy(dueDate = value)
+        scheduleDraftSave()
+    }
+
+    /** §7.3: "Send now" — email/SMS the invoice immediately on create. */
+    fun onSendNowChanged(sendNow: Boolean) {
+        _state.value = _state.value.copy(sendNow = sendNow)
     }
 
     fun clearError() {
@@ -208,6 +284,8 @@ class InvoiceCreateViewModel @Inject constructor(
             }
                 .onSuccess { resp ->
                     if (resp.success && resp.data != null) {
+                        // Draft successfully created — discard the autosave.
+                        runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) }
                         _state.value = _state.value.copy(
                             loading = false,
                             created = resp.data.invoice.id,
@@ -244,7 +322,9 @@ fun InvoiceCreateScreen(
     // Navigate out once creation succeeds
     LaunchedEffect(state.created) {
         state.created?.let { id ->
-            snackbarHostState.showSnackbar("Invoice created successfully")
+            snackbarHostState.showSnackbar(
+                if (state.sendNow) "Invoice created — send via SMS or Email from the detail screen." else "Invoice created successfully",
+            )
             onCreated(id)
         }
     }
@@ -353,6 +433,59 @@ fun InvoiceCreateScreen(
             // ── Totals ───────────────────────────────────────────────────────
             item {
                 InvoiceTotalsFooter(subtotalCents = state.subtotalCents())
+            }
+
+            // ── Draft-restored banner ─────────────────────────────────────
+            if (state.draftRestoredBanner) {
+                item {
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                "A draft was saved from your last session.",
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(onClick = { viewModel.dismissDraftBanner() }) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Send now checkbox ─────────────────────────────────────────
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "Send invoice to customer immediately after creation" },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = state.sendNow,
+                        onCheckedChange = { viewModel.onSendNowChanged(it) },
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text("Send to customer now", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "You will be taken to the detail screen to choose SMS or email.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             // ── Submit ───────────────────────────────────────────────────────

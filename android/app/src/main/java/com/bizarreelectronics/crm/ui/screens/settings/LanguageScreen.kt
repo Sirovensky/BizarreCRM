@@ -41,6 +41,7 @@ import androidx.lifecycle.ViewModel
 import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.util.LanguageManager
+import com.bizarreelectronics.crm.util.LocaleFormatInit
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,6 +62,7 @@ import javax.inject.Inject
 class LanguageViewModel @Inject constructor(
     private val languageManager: LanguageManager,
     private val appPreferences: AppPreferences,
+    private val localeFormatInit: LocaleFormatInit,
 ) : ViewModel() {
 
     /** All languages offered in the picker. Immutable. */
@@ -80,6 +82,7 @@ class LanguageViewModel @Inject constructor(
     fun setTimezoneOverride(zoneId: String?) {
         appPreferences.timezoneOverride = zoneId
         _timezoneOverride.value = zoneId
+        localeFormatInit.onTimezoneChanged(zoneId) // §27.3: propagate to DateFormatter immediately
     }
 
     // plan:L2006 — currency override
@@ -89,6 +92,7 @@ class LanguageViewModel @Inject constructor(
     fun setCurrencyOverride(code: String?) {
         appPreferences.currencyOverride = code
         _currencyOverride.value = code
+        localeFormatInit.onCurrencyChanged(code) // §27.3: propagate to CurrencyFormatter immediately
     }
 
     /** plan:L2004 — sorted list of all available zone IDs. */

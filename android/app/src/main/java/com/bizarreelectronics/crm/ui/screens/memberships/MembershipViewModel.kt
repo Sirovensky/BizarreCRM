@@ -2,16 +2,14 @@ package com.bizarreelectronics.crm.ui.screens.memberships
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.EnrollMemberRequest
 import com.bizarreelectronics.crm.data.remote.api.Membership
-import com.bizarreelectronics.crm.data.remote.api.MembershipApi
 import com.bizarreelectronics.crm.data.remote.api.MembershipTier
+import com.bizarreelectronics.crm.data.repository.MembershipRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import retrofit2.HttpException
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -34,18 +32,27 @@ sealed class EnrollState {
     data class Error(val message: String) : EnrollState()
 }
 
+sealed class CancelState {
+    data object Idle : CancelState()
+    data object Loading : CancelState()
+    data object Success : CancelState()
+    data class Error(val message: String) : CancelState()
+}
+
 // ─── ViewModel ───────────────────────────────────────────────────────────────
 
 /**
- * Drives [MembershipListScreen] and the enroll-member flow.
+ * Drives [MembershipListScreen] and the enroll-member / cancel-membership flows.
  *
- * 404-tolerant: if the server doesn't implement memberships the state
- * flips to [MembershipUiState.NotAvailable] and the screen shows a
- * graceful "Not available on this server" card. Plan §38 L2997-L3025.
+ * Uses [MembershipRepository] for all API calls. 404-tolerant: if the server
+ * doesn't implement memberships the state flips to [MembershipUiState.NotAvailable]
+ * and the screen shows a graceful "Not available on this server" card.
+ *
+ * Plan §38 L3298-L3327.
  */
 @HiltViewModel
 class MembershipViewModel @Inject constructor(
-    private val api: MembershipApi,
+    private val repo: MembershipRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<MembershipUiState>(MembershipUiState.Loading)
@@ -54,6 +61,9 @@ class MembershipViewModel @Inject constructor(
     private val _enrollState = MutableStateFlow<EnrollState>(EnrollState.Idle)
     val enrollState: StateFlow<EnrollState> = _enrollState.asStateFlow()
 
+    private val _cancelState = MutableStateFlow<CancelState>(CancelState.Idle)
+    val cancelState: StateFlow<CancelState> = _cancelState.asStateFlow()
+
     init {
         load()
     }
@@ -61,35 +71,38 @@ class MembershipViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _uiState.value = MembershipUiState.Loading
-            try {
-                val tiersResp = api.getTiers()
-                val membersResp = api.getMemberships()
-                _uiState.value = MembershipUiState.Ready(
-                    tiers = tiersResp.data?.tiers ?: emptyList(),
-                    memberships = membersResp.data?.memberships ?: emptyList(),
-                )
-            } catch (e: HttpException) {
-                if (e.code() == 404) {
-                    _uiState.value = MembershipUiState.NotAvailable
-                } else {
-                    _uiState.value = MembershipUiState.Error(
-                        e.message() ?: "Server error (${e.code()})"
+            val tiersResult = repo.getTiers()
+            val membersResult = repo.getMemberships()
+
+            tiersResult.fold(
+                onSuccess = { tiers ->
+                    membersResult.fold(
+                        onSuccess = { memberships ->
+                            _uiState.value = MembershipUiState.Ready(
+                                tiers = tiers,
+                                memberships = memberships,
+                            )
+                        },
+                        onFailure = { e -> handleLoadError(e) },
                     )
-                }
-            } catch (e: Exception) {
-                Timber.e(e, "MembershipViewModel.load")
+                },
+                onFailure = { e -> handleLoadError(e) },
+            )
+        }
+    }
+
+    private fun handleLoadError(e: Throwable) {
+        Timber.e(e, "MembershipViewModel.load")
+        when (e) {
+            is MembershipRepository.NotAvailableException ->
+                _uiState.value = MembershipUiState.NotAvailable
+            else ->
                 _uiState.value = MembershipUiState.Error(e.message ?: "Unknown error")
-            }
         }
     }
 
     /**
      * Enroll a customer into the given tier (§38.2).
-     *
-     * @param customerId  target customer
-     * @param tierId      chosen tier
-     * @param billing     "monthly" | "annual"
-     * @param paymentMethod  e.g. "cash", "card"
      */
     fun enroll(
         customerId: Long,
@@ -99,34 +112,45 @@ class MembershipViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             _enrollState.value = EnrollState.Loading
-            try {
-                val resp = api.enroll(
-                    EnrollMemberRequest(
-                        customerId = customerId,
-                        tierId = tierId,
-                        billing = billing,
-                        paymentMethod = paymentMethod,
-                    )
-                )
-                val membership = resp.data?.membership
-                if (membership != null) {
+            repo.enroll(customerId, tierId, billing, paymentMethod).fold(
+                onSuccess = { membership ->
                     _enrollState.value = EnrollState.Success(membership)
                     load()
-                } else {
-                    _enrollState.value = EnrollState.Error("Enrollment failed — empty response")
-                }
-            } catch (e: HttpException) {
-                _enrollState.value = EnrollState.Error(
-                    e.message() ?: "Server error (${e.code()})"
-                )
-            } catch (e: Exception) {
-                Timber.e(e, "MembershipViewModel.enroll")
-                _enrollState.value = EnrollState.Error(e.message ?: "Unknown error")
-            }
+                },
+                onFailure = { e ->
+                    Timber.e(e, "MembershipViewModel.enroll")
+                    _enrollState.value = EnrollState.Error(e.message ?: "Enrollment failed")
+                },
+            )
         }
     }
 
     fun clearEnrollState() {
         _enrollState.value = EnrollState.Idle
+    }
+
+    /**
+     * Cancel a membership. Caller should show a [ConfirmDialog] before invoking.
+     * [immediate] = true = cancel now; false = cancel at period end.
+     * Plan §38.2 — cancel flow with ConfirmDialog.
+     */
+    fun cancelMembership(membershipId: Long, immediate: Boolean = false) {
+        viewModelScope.launch {
+            _cancelState.value = CancelState.Loading
+            repo.cancel(membershipId, immediate).fold(
+                onSuccess = {
+                    _cancelState.value = CancelState.Success
+                    load()
+                },
+                onFailure = { e ->
+                    Timber.e(e, "MembershipViewModel.cancel")
+                    _cancelState.value = CancelState.Error(e.message ?: "Cancel failed")
+                },
+            )
+        }
+    }
+
+    fun clearCancelState() {
+        _cancelState.value = CancelState.Idle
     }
 }

@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.MorningChecklistApi
 import com.bizarreelectronics.crm.data.remote.dto.ChecklistStepDto
 import com.bizarreelectronics.crm.data.remote.dto.MorningChecklistCompleteBody
+import com.bizarreelectronics.crm.data.remote.dto.MorningChecklistSkipBody
 import com.bizarreelectronics.crm.util.HardwarePinger
 import com.bizarreelectronics.crm.util.PingResult
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -266,6 +267,45 @@ class MorningChecklistViewModel @Inject constructor(
                 Log.w(TAG, "POST /morning-checklist/complete failed: ${e.message}")
             } finally {
                 _uiState.value = _uiState.value.copy(isSubmitting = false)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Skip
+    // -------------------------------------------------------------------------
+
+    /**
+     * §3.15 L589 — Record that the user explicitly skipped today's checklist.
+     *
+     * Steps:
+     *  1. Persist the skip locally via [AppPreferences.setMorningChecklistSkipped].
+     *  2. Attempt to POST to the server so the audit log captures the event.
+     *     HTTP 404 (endpoint not yet live) is silently tolerated.
+     *
+     * The caller (MorningChecklistScreen) should navigate back after calling this
+     * (same as pressing the "back" button — but now with an audit trail).
+     */
+    fun skipChecklist() {
+        appPreferences.setMorningChecklistSkipped(todayKey)
+        val staffId = authPreferences.userId
+        viewModelScope.launch {
+            try {
+                morningChecklistApi.postSkip(
+                    MorningChecklistSkipBody(
+                        dateKey = todayKey,
+                        staffId = staffId,
+                        skippedAtMs = System.currentTimeMillis(),
+                    ),
+                )
+                Log.d(TAG, "Morning checklist skip posted for $todayKey")
+            } catch (e: HttpException) {
+                // 404 = endpoint not live yet; silently tolerated.
+                if (e.code() != 404) {
+                    Log.w(TAG, "POST /morning-checklist/skip HTTP ${e.code()}")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "POST /morning-checklist/skip failed: ${e.message}")
             }
         }
     }

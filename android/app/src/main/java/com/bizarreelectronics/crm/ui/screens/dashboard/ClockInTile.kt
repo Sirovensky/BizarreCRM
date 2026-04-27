@@ -32,9 +32,13 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import com.bizarreelectronics.crm.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -149,17 +153,35 @@ fun ClockInTile(
     val isOn = state.isClockedIn == true
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            // §26.1 — merge children so TalkBack reads "Clocked in, <name>,
-            // Button" as one labeled action instead of focusing the icon,
-            // title, subtitle, and chevron separately.
+            // §26.1 — merge children so TalkBack reads the tile as one labeled action.
+            // stateDescription announces the clocked-in/out state change when it
+            // flips so TalkBack users do not have to navigate back to the tile.
             // §22.3 — hand pointer on tablet / desktop hover.
             .semantics(mergeDescendants = true) {
                 role = Role.Button
+                // §26.1 — stateDescription for toggle-like rows
+                contentDescription = when (state.isClockedIn) {
+                    true -> context.getString(
+                        R.string.a11y_clock_in_tile_on,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                    false -> context.getString(
+                        R.string.a11y_clock_in_tile_off,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                    null -> context.getString(
+                        R.string.a11y_clock_in_tile_unknown,
+                        state.displayName.ifBlank { "employee" },
+                    )
+                }
+                stateDescription = if (isOn) context.getString(R.string.a11y_toggle_on)
+                                   else context.getString(R.string.a11y_toggle_off)
             }
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable {

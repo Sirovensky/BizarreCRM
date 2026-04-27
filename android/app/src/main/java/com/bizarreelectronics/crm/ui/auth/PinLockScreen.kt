@@ -34,6 +34,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.util.HapticEvent
+import com.bizarreelectronics.crm.util.LocalAppHapticController
 import com.bizarreelectronics.crm.util.PinBlocklist
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import kotlinx.coroutines.delay
@@ -62,6 +64,7 @@ fun PinLockScreen(
     viewModel: PinLockViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val hapticCtrl = LocalAppHapticController.current
 
     LaunchedEffect(Unit) {
         viewModel.startVerify()
@@ -69,6 +72,15 @@ fun PinLockScreen(
 
     LaunchedEffect(state.unlocked) {
         if (state.unlocked) onUnlocked()
+    }
+
+    // §69.2 — Error escalation: heavier 200ms pulse on the 3rd+ consecutive wrong PIN.
+    // wrongShakes increments on every wrong attempt; remainingAttempts ≤ 2 means
+    // at least 3 wrong entries have been made (MAX_ATTEMPTS=5, escalate at 3rd attempt).
+    LaunchedEffect(state.wrongShakes) {
+        if (state.wrongShakes > 0 && state.remainingAttempts <= 2) {
+            hapticCtrl?.fire(HapticEvent.ErrorEscalate)
+        }
     }
 
     PinGateScaffold(

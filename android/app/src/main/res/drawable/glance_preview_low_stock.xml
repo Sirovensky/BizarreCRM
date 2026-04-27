@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Minimal vector preview shown in the launcher "Add widget" gallery for
+  LowStockGlanceWidget.  Warning-triangle icon + count placeholder.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="110dp"
+    android:height="40dp"
+    android:viewportWidth="110"
+    android:viewportHeight="40">
+
+    <!-- Widget background pill -->
+    <path
+        android:pathData="M8,0 L102,0 A8,8 0 0 1 110,8 L110,32 A8,8 0 0 1 102,40 L8,40 A8,8 0 0 1 0,32 L0,8 A8,8 0 0 1 8,0 Z"
+        android:fillColor="#1C1B1F"
+        android:fillAlpha="0.08" />
+
+    <!-- Warning triangle -->
+    <path
+        android:pathData="M26,8 L38,30 L14,30 Z"
+        android:fillColor="#E65100"
+        android:fillAlpha="0.85" />
+
+    <!-- Exclamation mark in triangle -->
+    <path
+        android:pathData="M26,16 L26,24 M26,27 L26,27.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Label "Low Stock" -->
+    <path
+        android:pathData="M46,16 L86,16"
+        android:strokeColor="#1C1B1F"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+
+    <!-- Sub-label "items below reorder level" -->
+    <path
+        android:pathData="M46,26 L100,26"
+        android:strokeColor="#49454F"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

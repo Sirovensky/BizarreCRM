@@ -1,0 +1,8 @@
+{
+  "_placeholder": "Run ./gradlew :app:kspDebugKotlin to regenerate this file after bumping BizarreDatabase.version to 12.",
+  "formatVersion": 1,
+  "database": {
+    "version": 12,
+    "identityHash": "placeholder-run-ksp-to-regenerate"
+  }
+}

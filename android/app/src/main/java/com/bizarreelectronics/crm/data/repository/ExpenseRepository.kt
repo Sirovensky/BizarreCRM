@@ -64,6 +64,30 @@ class ExpenseRepository @Inject constructor(
         return expenseDao.getByCategory(category)
     }
 
+    /**
+     * Returns expenses within [fromDate]..[toDate] (ISO date strings, inclusive).
+     * Pass empty string for either bound to omit it. Triggers a background refresh.
+     */
+    fun getByDateRange(fromDate: String, toDate: String): Flow<List<ExpenseEntity>> {
+        refreshExpensesInBackground()
+        return expenseDao.getByDateRange(fromDate, toDate)
+    }
+
+    /** Returns expenses recorded by a specific employee. Triggers a background refresh. */
+    fun getByEmployee(userId: Long): Flow<List<ExpenseEntity>> {
+        refreshExpensesInBackground()
+        return expenseDao.getByEmployee(userId)
+    }
+
+    /**
+     * Returns expenses with a specific approval status (`pending` | `approved` | `denied`).
+     * Triggers a background refresh so the local cache stays current.
+     */
+    fun getByApprovalStatus(status: String): Flow<List<ExpenseEntity>> {
+        refreshExpensesInBackground()
+        return expenseDao.getByStatus(status)
+    }
+
     /** Create an expense. Online: API call. Offline: local insert + sync queue. */
     suspend fun createExpense(request: CreateExpenseRequest): Long {
         if (serverMonitor.isEffectivelyOnline.value) {
@@ -223,6 +247,7 @@ fun ExpenseListItem.toEntity() = ExpenseEntity(
     amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
+    status = status ?: "pending",
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
     createdAt = createdAt ?: "",
     updatedAt = createdAt ?: "",
@@ -234,6 +259,7 @@ fun ExpenseDetail.toEntity() = ExpenseEntity(
     amount = amount.toCentsOrZero(),
     description = description,
     date = date ?: "",
+    status = status ?: "pending",
     userName = listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null },
     userId = userId,
     createdAt = createdAt ?: "",

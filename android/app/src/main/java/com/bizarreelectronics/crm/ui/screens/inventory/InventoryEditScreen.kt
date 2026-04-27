@@ -1,12 +1,19 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -19,6 +26,8 @@ import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 // extension members in via the entity import alone.
 import com.bizarreelectronics.crm.data.local.db.entities.costPrice
 import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -66,12 +75,23 @@ data class InventoryEditUiState(
     val undoMessage: String? = null,
     /** True when the undo stack has at least one undoable action. */
     val canUndo: Boolean = false,
+    /** §6.4: true while delete confirm dialog is visible. */
+    val showDeleteDialog: Boolean = false,
+    /** §6.4: true while deactivate confirm dialog is visible. */
+    val showDeactivateDialog: Boolean = false,
+    /** §6.4: true while stock-adjust sheet is open. */
+    val showStockAdjustSheet: Boolean = false,
+    /** §6.4: set after item is deleted — signals the screen to pop back. */
+    val deleted: Boolean = false,
+    /** §6.4: set after item is deactivated — signals the screen to pop back. */
+    val deactivated: Boolean = false,
 )
 
 @HiltViewModel
 class InventoryEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val inventoryRepository: InventoryRepository,
+    private val inventoryApi: InventoryApi,
 ) : ViewModel() {
 
     private val itemId: Long = savedStateHandle.get<String>("id")?.toLongOrNull() ?: 0L
@@ -372,6 +392,86 @@ class InventoryEditViewModel @Inject constructor(
         return if (value % 1.0 == 0.0) value.toLong().toString()
         else String.format(java.util.Locale.US, "%.2f", value)
     }
+
+    // ── §6.4: Delete / Deactivate / Stock-adjust quick-actions ──────────────
+
+    fun setShowDeleteDialog(show: Boolean) {
+        _state.value = _state.value.copy(showDeleteDialog = show)
+    }
+
+    fun confirmDelete() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(showDeleteDialog = false, isSaving = true)
+            try {
+                inventoryApi.deleteItem(itemId)
+                _state.value = _state.value.copy(isSaving = false, deleted = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    saveMessage = e.message ?: "Failed to delete item",
+                )
+            }
+        }
+    }
+
+    fun setShowDeactivateDialog(show: Boolean) {
+        _state.value = _state.value.copy(showDeactivateDialog = show)
+    }
+
+    fun confirmDeactivate() {
+        // Deactivation on the server is handled by the same DELETE endpoint
+        // (it sets is_active=0 and preserves history).
+        viewModelScope.launch {
+            _state.value = _state.value.copy(showDeactivateDialog = false, isSaving = true)
+            try {
+                inventoryApi.deleteItem(itemId)
+                _state.value = _state.value.copy(isSaving = false, deactivated = true)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSaving = false,
+                    saveMessage = e.message ?: "Failed to deactivate item",
+                )
+            }
+        }
+    }
+
+    fun setShowStockAdjustSheet(show: Boolean) {
+        _state.value = _state.value.copy(showStockAdjustSheet = show)
+    }
+
+    /** §6.4: Quick stock-adjust: delta can be +1, -1, or "set to N". */
+    fun quickAdjustStock(delta: Int?, setTo: Int? = null) {
+        viewModelScope.launch {
+            val current = _state.value
+            val oldQty = current.item?.inStock ?: 0
+            val qty: Int
+            val type: String
+            if (setTo != null) {
+                qty = setTo - oldQty
+                type = "adjustment"
+            } else {
+                qty = delta ?: return@launch
+                type = if (qty > 0) "received" else "sold"
+            }
+            if (qty == 0) return@launch
+            try {
+                inventoryRepository.adjustStock(
+                    itemId,
+                    AdjustStockRequest(quantity = qty, type = type, reason = "manual"),
+                )
+                _state.value = _state.value.copy(
+                    showStockAdjustSheet = false,
+                    saveMessage = if (qty > 0) "Stock +$qty" else "Stock $qty",
+                    // Optimistically update the form field.
+                    inStock = (oldQty + qty).toString(),
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    saveMessage = e.message ?: "Stock adjust failed",
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -379,10 +479,13 @@ class InventoryEditViewModel @Inject constructor(
 fun InventoryEditScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
+    /** Called after a delete or deactivate — caller should pop back to list. */
+    onDeleted: () -> Unit = onSaved,
     viewModel: InventoryEditViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showOverflowMenu by rememberSaveable { mutableStateOf(false) }
 
     // Clear the undo stack when the screen leaves composition (nav back / replace).
     DisposableEffect(Unit) {
@@ -419,12 +522,64 @@ fun InventoryEditScreen(
         }
     }
 
+    // §6.4: pop back after delete or deactivate.
+    LaunchedEffect(state.deleted, state.deactivated) {
+        if (state.deleted || state.deactivated) {
+            onDeleted()
+        }
+    }
+
     val canSave = state.name.isNotBlank() &&
         (state.retailPrice.toDoubleOrNull() ?: 0.0) > 0.0 &&
         !state.isSaving
 
     val barTitle = state.item?.name?.ifBlank { null }
         ?: if (state.isLoading) "Loading..." else "Edit item"
+
+    // §6.4: Delete confirm dialog.
+    if (state.showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.setShowDeleteDialog(false) },
+            title = { Text("Delete item") },
+            text = { Text("Remove \"${state.name}\"? This cannot be undone. Historical records on invoices and tickets are preserved.") },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.confirmDelete() },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Delete") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.setShowDeleteDialog(false) }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // §6.4: Deactivate confirm dialog.
+    if (state.showDeactivateDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.setShowDeactivateDialog(false) },
+            title = { Text("Deactivate item") },
+            text = { Text("Deactivate \"${state.name}\"? It will be hidden from POS and lookups. Historical records are preserved and you can reactivate it later.") },
+            confirmButton = {
+                TextButton(onClick = { viewModel.confirmDeactivate() }) { Text("Deactivate") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.setShowDeactivateDialog(false) }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // §6.4: Stock adjust bottom sheet.
+    if (state.showStockAdjustSheet) {
+        StockAdjustSheet(
+            currentStock = state.item?.inStock ?: (state.inStock.toIntOrNull() ?: 0),
+            onDismiss = { viewModel.setShowStockAdjustSheet(false) },
+            onAdjust = { delta -> viewModel.quickAdjustStock(delta = delta) },
+            onSetTo = { qty -> viewModel.quickAdjustStock(delta = null, setTo = qty) },
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -449,6 +604,53 @@ fun InventoryEditScreen(
                             enabled = canSave,
                         ) {
                             Text("Save")
+                        }
+                    }
+                    // §6.4: overflow menu — stock adjust / deactivate / delete.
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Adjust stock") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.setShowStockAdjustSheet(true)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Deactivate") },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.setShowDeactivateDialog(true)
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "Delete",
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.DeleteOutline,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.setShowDeleteDialog(true)
+                                },
+                            )
                         }
                     }
                 },
@@ -505,6 +707,83 @@ fun InventoryEditScreen(
                     // the toolbar Save button does, guarded by canSave.
                     onSubmit = { if (canSave) viewModel.saveItem() },
                 )
+            }
+        }
+    }
+}
+
+/**
+ * §6.4: ModalBottomSheet for quick stock adjustment.
+ * Offers +1 / -1 shortcuts plus a "Set to…" free-entry field.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun StockAdjustSheet(
+    currentStock: Int,
+    onDismiss: () -> Unit,
+    onAdjust: (Int) -> Unit,
+    onSetTo: (Int) -> Unit,
+) {
+    var setToText by rememberSaveable { mutableStateOf("") }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                "Adjust stock",
+                style = MaterialTheme.typography.titleMedium,
+            )
+            Text(
+                "Current: $currentStock",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                FilledTonalButton(
+                    onClick = { onAdjust(-1) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Decrease stock by 1")
+                    Spacer(Modifier.width(4.dp))
+                    Text("−1")
+                }
+                FilledTonalButton(
+                    onClick = { onAdjust(1) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Increase stock by 1")
+                    Spacer(Modifier.width(4.dp))
+                    Text("+1")
+                }
+            }
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OutlinedTextField(
+                    value = setToText,
+                    onValueChange = { v -> if (v.isEmpty() || v.matches(Regex("^\\d+$"))) setToText = v },
+                    label = { Text("Set to…") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                FilledTonalButton(
+                    onClick = {
+                        val qty = setToText.toIntOrNull()
+                        if (qty != null) onSetTo(qty)
+                    },
+                    enabled = setToText.toIntOrNull() != null,
+                ) { Text("Set") }
             }
         }
     }

@@ -39,6 +39,8 @@ fun PosTenderScreen(
     var showSplitDialog by remember { mutableStateOf(false) }
     var showDrawerManualDialog by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §38.6 / §38.3 — Loyalty points redemption dialog
+    var showLoyaltyDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigate when order completes
@@ -112,6 +114,17 @@ fun PosTenderScreen(
                 viewModel.openCashDrawerManual(reason)
             },
             onDismiss = { showDrawerManualDialog = false },
+        )
+    }
+
+    // ── §38.6 / §38.3 — Loyalty points redemption dialog ─────────────────────
+    if (showLoyaltyDialog) {
+        LoyaltyPointsDialog(
+            onApply = { membershipId, points ->
+                viewModel.applyLoyaltyPoints(membershipId, points)
+                showLoyaltyDialog = false
+            },
+            onDismiss = { showLoyaltyDialog = false },
         )
     }
 
@@ -269,6 +282,7 @@ fun PosTenderScreen(
                     onStoreCredit = { viewModel.applyStoreCredit() },
                     onGiftCard = { showGiftCardDialog = true },
                     onInvoiceLater = { showInvoiceLaterConfirm = true },
+                    onLoyaltyPoints = { showLoyaltyDialog = true },
                 )
             }
         }
@@ -395,6 +409,7 @@ private fun PaymentMethodGrid(
     onStoreCredit: () -> Unit,
     onGiftCard: () -> Unit,
     onInvoiceLater: () -> Unit,
+    onLoyaltyPoints: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
@@ -465,6 +480,18 @@ private fun PaymentMethodGrid(
                 sublabel = "${attachedCustomerStoreCreditCents.toDollarString()} available",
                 isPrimary = false,
                 onClick = onStoreCredit,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        // §38.6 / §38.3 — Loyalty points redemption tile.
+        // NOTE: server-side point deduction blocked — see PosTenderViewModel.applyLoyaltyPoints.
+        if (hasAttachedCustomer) {
+            PaymentTile(
+                emoji = "⭐",
+                label = "Loyalty points",
+                sublabel = "Redeem member points",
+                isPrimary = false,
+                onClick = onLoyaltyPoints,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -651,6 +678,75 @@ private fun CashTenderDialog(
             TextButton(enabled = canApply, onClick = { onApply(receivedCents) }) {
                 Text("Apply")
             }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ─── Loyalty points redemption dialog ────────────────────────────────────────
+
+/**
+ * §38.6 / §38.3 — Dialog for redeeming loyalty points at POS.
+ *
+ * Cashier enters the customer's membership ID and the number of points to
+ * redeem. Points are converted at 1 pt = $0.01 and applied as a
+ * `loyalty_points` tender via [PosTenderViewModel.applyLoyaltyPoints].
+ *
+ * NOTE: server-side point deduction is not yet implemented — see
+ * [PosTenderViewModel.applyLoyaltyPoints] for the full rationale.
+ */
+@Composable
+private fun LoyaltyPointsDialog(
+    onApply: (membershipId: Long, pointsToRedeem: Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var membershipIdText by remember { mutableStateOf("") }
+    var pointsText by remember { mutableStateOf("") }
+    val membershipId = membershipIdText.toLongOrNull()
+    val points = pointsText.toIntOrNull()?.takeIf { it > 0 }
+    val dollarValue = points?.let { it * 1L }
+    val canApply = membershipId != null && points != null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Redeem loyalty points") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = membershipIdText,
+                    onValueChange = { membershipIdText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Membership ID") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = pointsText,
+                    onValueChange = { pointsText = it.filter { c -> c.isDigit() } },
+                    label = { Text("Points to redeem") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (dollarValue != null) {
+                    Text(
+                        "Value: ${(dollarValue).toDollarString()} (1 pt = \$0.01)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    "Note: point balance is deducted server-side when the next sync completes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = canApply,
+                onClick = { onApply(membershipId!!, points!!) },
+            ) { Text("Apply") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )

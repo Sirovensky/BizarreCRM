@@ -16,11 +16,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 /**
@@ -53,6 +55,7 @@ fun OfflineBanner(
     reduceMotion: Boolean = false,
 ) {
     val extColors = LocalExtendedColors.current
+    val context = LocalContext.current
 
     val enterAnim = if (reduceMotion) {
         fadeIn(animationSpec = tween(durationMillis = 0))
@@ -72,10 +75,11 @@ fun OfflineBanner(
         enter = enterAnim,
         exit = exitAnim,
     ) {
-        val bannerDescription = buildString {
-            append("Offline — showing cached data.")
-            if (isSyncing) append(" Syncing.")
-            else if (pendingSyncCount > 0) append(" $pendingSyncCount changes pending sync.")
+        // §26 — use a11y_* string resources; never raw literals on TalkBack-facing surfaces
+        val bannerDescription = when {
+            isSyncing -> context.getString(R.string.a11y_offline_banner_syncing)
+            pendingSyncCount > 0 -> context.getString(R.string.a11y_offline_banner_pending, pendingSyncCount)
+            else -> context.getString(R.string.a11y_offline_banner)
         }
 
         Row(

@@ -155,7 +155,7 @@ fun EstimateListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search estimates...",
+                placeholder = "Order ID, customer, status…",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 

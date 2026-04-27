@@ -183,4 +183,29 @@ class SetupWizardStepTest {
         assertEquals(1, original.stepData.size)
         assertEquals(2, updated.stepData.size)
     }
+
+    // ── (i) §36.4 — stepError vs error separation ────────────────────────────
+
+    @Test
+    fun `stepError is independent of error field`() {
+        val state = SetupWizardUiState(
+            error     = "Network error",
+            stepError = "Shop name is required.",
+        )
+        assertEquals("Network error", state.error)
+        assertEquals("Shop name is required.", state.stepError)
+    }
+
+    @Test
+    fun `stepError clears independently without touching error`() {
+        val state   = SetupWizardUiState(error = "Network error", stepError = "Validation error")
+        val cleared = state.copy(stepError = null)
+        assertEquals("Network error", cleared.error)
+        assertNull(cleared.stepError)
+    }
+
+    @Test
+    fun `SetupWizardUiState default stepError is null`() {
+        assertNull(SetupWizardUiState().stepError)
+    }
 }

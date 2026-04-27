@@ -44,6 +44,10 @@ data class EntryStep2State(
     val selectedOnFileDeviceId: Long? = null,
     /** Toggled true when cashier taps 'Add new device' tile so the text fields reveal. */
     val showManualEntry: Boolean = false,
+    /** 2026-04-26 — server-driven device-type chip-row for Add-New-Device. */
+    val deviceCategories: List<com.bizarreelectronics.crm.data.remote.api.DeviceCategoryItem> = emptyList(),
+    /** Selected category slug (e.g. "phone", "laptop"). null = no selection yet. */
+    val selectedDeviceType: String? = null,
 )
 
 data class OnFileDevice(
@@ -69,6 +73,7 @@ data class AttachedCustomerEntry(
 class CheckInEntryViewModel @Inject constructor(
     private val customerApi: CustomerApi,
     private val appPreferences: AppPreferences,
+    private val deviceCategoryRepository: com.bizarreelectronics.crm.data.repository.DeviceCategoryRepository,
 ) : ViewModel() {
 
     private val _step1 = MutableStateFlow(EntryStep1State())
@@ -85,6 +90,21 @@ class CheckInEntryViewModel @Inject constructor(
     init {
         wireSearchDebounce()
         hydrateRecentCustomers()
+        observeDeviceCategories()
+    }
+
+    /** Subscribe to server-driven category list (refreshed at app start). */
+    private fun observeDeviceCategories() {
+        viewModelScope.launch {
+            deviceCategoryRepository.categories.collect { list ->
+                _step2.update { it.copy(deviceCategories = list) }
+            }
+        }
+    }
+
+    /** Cashier taps a device-type chip on the Add-New-Device form. */
+    fun onDeviceTypeSelected(slug: String?) {
+        _step2.update { it.copy(selectedDeviceType = slug) }
     }
 
     /**

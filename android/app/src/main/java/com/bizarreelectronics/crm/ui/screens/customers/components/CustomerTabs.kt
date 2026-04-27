@@ -24,9 +24,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CardMembership
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -43,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.data.remote.api.Membership
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAsset
 import com.bizarreelectronics.crm.data.remote.dto.CustomerAnalytics
 import com.bizarreelectronics.crm.data.remote.dto.CustomerHealthScore
@@ -114,6 +120,12 @@ fun CustomerDetailTabs(
     onTagClick: ((String) -> Unit)? = null,
     /** 5.8.1: tag color palette forwarded from Detail VM. */
     tagPalette: Map<String, Color> = emptyMap(),
+    /**
+     * §38.3: active membership for this customer, loaded by [CustomerDetailViewModel].
+     * Null = no membership or server doesn't support memberships.
+     * Displayed as a compact summary card in the Info tab.
+     */
+    membership: Membership? = null,
     modifier: Modifier = Modifier,
 ) {
     // 5.8.1: tag chips header row — rendered above the tab bar if customer has tags.
@@ -165,6 +177,7 @@ fun CustomerDetailTabs(
                     analytics = analytics,
                     healthScore = healthScore,
                     ltvTier = ltvTier,
+                    membership = membership,
                     onCall = onCall,
                     onSms = onSms,
                     onCreateTicket = onCreateTicket,
@@ -202,6 +215,7 @@ private fun InfoTab(
     analytics: CustomerAnalytics?,
     healthScore: CustomerHealthScore?,
     ltvTier: CustomerLtvTier?,
+    membership: Membership?,
     onCall: ((String) -> Unit)?,
     onSms: ((String) -> Unit)?,
     onCreateTicket: (() -> Unit)?,
@@ -253,6 +267,13 @@ private fun InfoTab(
                 onShare = onShare,
                 onDelete = onDelete,
             )
+        }
+
+        // §38.3 — membership summary card (shown only when member)
+        if (membership != null) {
+            item {
+                MembershipSummaryCard(membership = membership)
+            }
         }
     }
 }
@@ -592,6 +613,79 @@ private fun AssetTabRow(asset: CustomerAsset, onClick: (() -> Unit)? = null) {
                 )
             }
         }
+    }
+}
+
+// ─── §38.3 Membership summary card ──────────────────────────────────────────
+
+/**
+ * Compact membership summary shown in the customer Info tab (§38.3).
+ *
+ * Displays tier name, status, expiry date, loyalty points accumulated, and
+ * the benefit-use count sourced from the [Membership.benefitUses] field
+ * already present in the server DTO. A full per-use log requires a
+ * `GET /memberships/:id/benefit-log` endpoint that does not yet exist.
+ */
+@Composable
+internal fun MembershipSummaryCard(
+    membership: Membership,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedCard(modifier = modifier.fillMaxWidth()) {
+        ListItem(
+            headlineContent = {
+                Text(
+                    membership.tierName ?: "Member",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium,
+                )
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val expiry = membership.expiresAt
+                    if (expiry != null) {
+                        Text(
+                            "Renews ${expiry}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(
+                            onClick = {},
+                            label = {
+                                Text(
+                                    "${membership.points} pts",
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
+                            },
+                            colors = AssistChipDefaults.assistChipColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                            ),
+                        )
+                        if (membership.benefitUses > 0) {
+                            AssistChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        "${membership.benefitUses} benefit uses",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            leadingContent = {
+                Icon(
+                    Icons.Default.CardMembership,
+                    contentDescription = "Membership tier: ${membership.tierName ?: "Member"}",
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            },
+        )
     }
 }
 

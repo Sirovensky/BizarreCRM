@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -19,16 +20,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.util.HapticEvent
+import com.bizarreelectronics.crm.util.LocalAppHapticController
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
+import com.bizarreelectronics.crm.data.remote.dto.CreditNoteRequest
+import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
 import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
+import com.bizarreelectronics.crm.data.remote.dto.VoidInvoiceRequest
 import com.bizarreelectronics.crm.data.repository.InvoiceRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
@@ -37,6 +43,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTextButton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import java.text.NumberFormat
+import java.util.Locale
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceLineItemsTable
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSendActions
 import com.bizarreelectronics.crm.ui.screens.invoices.components.sendSms
@@ -57,6 +65,8 @@ import javax.inject.Inject
 
 data class InvoiceDetailUiState(
     val invoice: InvoiceEntity? = null,
+    // Online detail fields available when device is connected (phone, email, etc.)
+    val onlineDetail: InvoiceDetail? = null,
     val lineItems: List<InvoiceLineItem> = emptyList(),
     val payments: List<InvoicePayment> = emptyList(),
     val onlineDetailMessage: String? = null,
@@ -70,6 +80,8 @@ data class InvoiceDetailUiState(
     val paymentSuccessCounter: Int = 0,
     // Server URL used by InvoiceSendActions for SMS/email/share/print links.
     val serverUrl: String? = null,
+    // Credit-note success counter — bumps on successful POST, closes the dialog.
+    val creditNoteSuccessCounter: Int = 0,
 )
 
 @HiltViewModel
@@ -116,12 +128,14 @@ class InvoiceDetailViewModel @Inject constructor(
                 val response = invoiceApi.getInvoice(invoiceId)
                 val detail = response.data?.invoice
                 _state.value = _state.value.copy(
+                    onlineDetail = detail,
                     lineItems = detail?.lineItems ?: emptyList(),
                     payments = detail?.payments ?: emptyList(),
                     onlineDetailMessage = null,
                 )
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
+                    onlineDetail = null,
                     lineItems = emptyList(),
                     payments = emptyList(),
                     onlineDetailMessage = "Line items available when online",
@@ -224,6 +238,63 @@ class InvoiceDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * POST /invoices/:id/credit-note — creates a credit-note invoice.
+     * Server requires amount > 0 and a non-blank reason.
+     * Callers close the dialog via [creditNoteSuccessCounter] LaunchedEffect.
+     */
+    fun createCreditNote(amount: Double, reason: String) {
+        if (_state.value.isActionInProgress) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                val request = CreditNoteRequest(amount = amount, reason = reason)
+                invoiceApi.createCreditNote(invoiceId, request)
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Credit note of $${"%.2f".format(amount)} created.",
+                    creditNoteSuccessCounter = _state.value.creditNoteSuccessCounter + 1,
+                )
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
+                loadOnlineDetails()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Credit note endpoint unavailable. Try again when the server is updated.",
+                )
+            }
+        }
+    }
+
+    /**
+     * POST /invoices/:id/void with an optional reason string.
+     * Replaces the existing [voidInvoice] call when a reason is provided.
+     * Keeps [voidInvoice] for back-compat.
+     */
+    fun voidInvoiceWithReason(reason: String?) {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                if (reason.isNullOrBlank()) {
+                    invoiceApi.voidInvoice(invoiceId)
+                } else {
+                    invoiceApi.voidInvoiceWithReason(invoiceId, VoidInvoiceRequest(reason = reason))
+                }
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Invoice voided.",
+                )
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
+                loadOnlineDetails()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to void invoice. You must be online for financial operations.",
+                )
+            }
+        }
+    }
+
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
@@ -252,17 +323,38 @@ fun InvoiceDetailScreen(
     var showMethodDropdown by remember { mutableStateOf(false) }
     var refundAmount by rememberSaveable { mutableStateOf("") }
     var refundReason by rememberSaveable { mutableStateOf("") }
+    // Credit note dialog state
+    var showCreditNoteDialog by rememberSaveable { mutableStateOf(false) }
+    var creditNoteAmount by rememberSaveable { mutableStateOf("") }
+    var creditNoteReason by rememberSaveable { mutableStateOf("") }
+    // Send-to-customer confirm dialog
+    var showSendConfirm by rememberSaveable { mutableStateOf(false) }
+    var pendingSendType by rememberSaveable { mutableStateOf("") } // "sms" | "email"
+    // Void with reason state
+    var voidReason by rememberSaveable { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val hapticCtrl = LocalAppHapticController.current
 
     // U1 fix: dialog is closed from a LaunchedEffect keyed on the VM's success
     // counter, never from the click handler. This guarantees the dialog stays
     // open until the mutation actually succeeds.
+    // §69.1 — Payment success → CONFIRM + extended 60ms pulse.
     LaunchedEffect(state.paymentSuccessCounter) {
         if (state.paymentSuccessCounter > 0) {
+            hapticCtrl?.fire(HapticEvent.PaymentSuccess)
             showPaymentDialog = false
             paymentAmount = ""
             paymentMethod = "cash"
+        }
+    }
+
+    // Close credit-note dialog on success
+    LaunchedEffect(state.creditNoteSuccessCounter) {
+        if (state.creditNoteSuccessCounter > 0) {
+            showCreditNoteDialog = false
+            creditNoteAmount = ""
+            creditNoteReason = ""
         }
     }
 
@@ -503,10 +595,124 @@ fun InvoiceDetailScreen(
             confirmLabel = "Void Invoice",
             onConfirm = {
                 showVoidConfirm = false
-                viewModel.voidInvoice()
+                viewModel.voidInvoiceWithReason(voidReason.ifBlank { null })
             },
-            onDismiss = { showVoidConfirm = false },
+            onDismiss = {
+                showVoidConfirm = false
+                voidReason = ""
+            },
             isDestructive = true,
+        )
+    }
+
+    // Credit note dialog
+    if (showCreditNoteDialog) {
+        val invoiceTotal = (invoice?.total ?: 0L).toDollars()
+        AlertDialog(
+            onDismissRequest = {
+                showCreditNoteDialog = false
+                creditNoteAmount = ""
+                creditNoteReason = ""
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Credit Note", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val parsedAmt = creditNoteAmount.toDoubleOrNull()
+                    val amtError: String? = when {
+                        creditNoteAmount.isBlank() -> null
+                        parsedAmt == null -> "Enter a valid amount"
+                        parsedAmt <= 0.0 -> "Amount must be greater than \$0.00"
+                        parsedAmt > invoiceTotal -> "Cannot exceed invoice total ($${"%.2f".format(invoiceTotal)})"
+                        else -> null
+                    }
+                    OutlinedTextField(
+                        value = creditNoteAmount,
+                        onValueChange = { v ->
+                            if (v.isEmpty() || v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) creditNoteAmount = v
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Amount") },
+                        leadingIcon = { Text("\$", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        isError = amtError != null,
+                        supportingText = {
+                            if (amtError != null) Text(amtError, color = MaterialTheme.colorScheme.error)
+                        },
+                    )
+                    OutlinedTextField(
+                        value = creditNoteReason,
+                        onValueChange = { creditNoteReason = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Reason *") },
+                        singleLine = true,
+                        isError = creditNoteReason.isBlank() && creditNoteAmount.isNotBlank(),
+                        supportingText = {
+                            if (creditNoteReason.isBlank() && creditNoteAmount.isNotBlank()) {
+                                Text("Reason is required", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                val parsedAmt = creditNoteAmount.toDoubleOrNull()
+                val isValid = parsedAmt != null && parsedAmt > 0.0 &&
+                    parsedAmt <= invoiceTotal && creditNoteReason.isNotBlank()
+                TextButton(
+                    onClick = {
+                        if (isValid && parsedAmt != null && !state.isActionInProgress) {
+                            viewModel.createCreditNote(parsedAmt, creditNoteReason)
+                        }
+                    },
+                    enabled = isValid && !state.isActionInProgress,
+                ) {
+                    if (state.isActionInProgress) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Creating…")
+                    } else {
+                        Text("Create Note")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showCreditNoteDialog = false
+                        creditNoteAmount = ""
+                        creditNoteReason = ""
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.secondary),
+                ) { Text("Cancel") }
+            },
+        )
+    }
+
+    // Send-to-customer confirm dialog
+    if (showSendConfirm) {
+        val typeLabel = if (pendingSendType == "sms") "SMS" else "email"
+        val phone = state.onlineDetail?.customerPhone
+        val email = state.onlineDetail?.customerEmail
+        val invNum = invoice?.orderId?.ifBlank { invoice.id.toString() } ?: ""
+        ConfirmDialog(
+            title = "Send invoice by $typeLabel?",
+            message = "Send invoice $invNum to ${state.onlineDetail?.customerName ?: "customer"} by $typeLabel? A message with a payment link will be sent.",
+            confirmLabel = "Send",
+            onConfirm = {
+                showSendConfirm = false
+                if (pendingSendType == "sms") {
+                    val link = if (!state.serverUrl.isNullOrBlank()) "${state.serverUrl}/invoices/$invNum" else null
+                    sendSms(context, phone, invNum, link)
+                } else {
+                    val link = if (!state.serverUrl.isNullOrBlank()) "${state.serverUrl}/invoices/$invNum" else null
+                    sendEmail(context, email, invNum, link)
+                }
+                pendingSendType = ""
+            },
+            onDismiss = { showSendConfirm = false; pendingSendType = "" },
         )
     }
 
@@ -549,13 +755,18 @@ fun InvoiceDetailScreen(
                             if (invoice != null && invoice.amountPaid > 0) {
                                 DropdownMenuItem(
                                     text = { Text("Issue Refund") },
-                                    leadingIcon = { Icon(Icons.Default.Undo, null) },
+                                    leadingIcon = { Icon(Icons.Default.Undo, contentDescription = null) },
                                     onClick = { showOverflowMenu = false; showRefundDialog = true },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Credit Note") },
+                                    leadingIcon = { Icon(Icons.Default.NoteAdd, contentDescription = null) },
+                                    onClick = { showOverflowMenu = false; showCreditNoteDialog = true },
                                 )
                             }
                             DropdownMenuItem(
                                 text = { Text("Clone Invoice") },
-                                leadingIcon = { Icon(Icons.Default.ContentCopy, null) },
+                                leadingIcon = { Icon(Icons.Default.ContentCopy, contentDescription = null) },
                                 onClick = {
                                     showOverflowMenu = false
                                     viewModel.cloneInvoice()
@@ -563,29 +774,27 @@ fun InvoiceDetailScreen(
                             )
                             HorizontalDivider()
                             val invNum = invoice?.orderId ?: invoiceId.toString()
-                            val phone = invoice?.let {
-                                // phone not on InvoiceEntity; use null — InvoiceSendActions will disable SMS
-                                null as String?
-                            }
-                            val email = null as String? // not on entity; will disable Email button
+                            // Phone/email from online detail (available when connected); null disables the action.
+                            val phone = state.onlineDetail?.customerPhone
+                            val email = state.onlineDetail?.customerEmail
                             val url = state.serverUrl
                             DropdownMenuItem(
                                 text = { Text("Send SMS") },
-                                leadingIcon = { Icon(Icons.Default.Sms, null) },
+                                leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
                                 onClick = {
                                     showOverflowMenu = false
-                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
-                                    sendSms(context, phone, invNum, link)
+                                    pendingSendType = "sms"
+                                    showSendConfirm = true
                                 },
                                 enabled = !phone.isNullOrBlank(),
                             )
                             DropdownMenuItem(
                                 text = { Text("Send Email") },
-                                leadingIcon = { Icon(Icons.Default.Email, null) },
+                                leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                                 onClick = {
                                     showOverflowMenu = false
-                                    val link = if (!url.isNullOrBlank()) "$url/invoices/$invNum" else null
-                                    sendEmail(context, email, invNum, link)
+                                    pendingSendType = "email"
+                                    showSendConfirm = true
                                 },
                                 enabled = !email.isNullOrBlank(),
                             )
@@ -658,6 +867,7 @@ fun InvoiceDetailScreen(
             invoice != null -> {
                 InvoiceDetailContent(
                     invoice = invoice,
+                    onlineDetail = state.onlineDetail,
                     lineItems = state.lineItems,
                     payments = state.payments,
                     onlineDetailMessage = state.onlineDetailMessage,
@@ -673,6 +883,7 @@ fun InvoiceDetailScreen(
 @Composable
 private fun InvoiceDetailContent(
     invoice: InvoiceEntity,
+    onlineDetail: com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail?,
     lineItems: List<InvoiceLineItem>,
     payments: List<InvoicePayment>,
     onlineDetailMessage: String?,
@@ -680,6 +891,8 @@ private fun InvoiceDetailContent(
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -687,32 +900,72 @@ private fun InvoiceDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Status + customer
+        // ── §7.2 Header — invoice number (SelectionContainer), status chip, due date, balance-due chip
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            invoice.customerName ?: "Unknown Customer",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-
+                        // Invoice number in monospace, selectable for copy
+                        SelectionContainer {
+                            Text(
+                                invoice.orderId.ifBlank { "INV-${invoice.id}" },
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                ),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                        }
                         BrandStatusBadge(
                             label = invoice.status.replaceFirstChar { it.uppercase() },
                             status = invoice.status,
                         )
                     }
-                    // CROSS46: canonical "April 16, 2026" rendering.
+                    // Created date (canonical CROSS46 format)
                     Text(
                         "Created: ${DateFormatter.formatAbsolute(invoice.createdAt).ifBlank { invoice.createdAt.take(10) }}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    // Due date chip
+                    if (!invoice.dueOn.isNullOrBlank()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Icon(
+                                Icons.Default.CalendarToday,
+                                contentDescription = "Due date",
+                                modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                "Due: ${invoice.dueOn.take(10)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    // Balance-due chip — only shown when there is an outstanding balance
+                    if (invoice.amountDue > 0L) {
+                        val formatter = NumberFormat.getCurrencyInstance(Locale.US)
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.errorContainer,
+                        ) {
+                            Text(
+                                "Balance due: ${formatter.format(invoice.amountDue / 100.0)}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
                     if (invoice.ticketId != null && onNavigateToTicket != null) {
                         Text(
                             "From ticket #${invoice.ticketId}",
@@ -720,6 +973,92 @@ private fun InvoiceDetailContent(
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onNavigateToTicket(invoice.ticketId) },
                         )
+                    }
+                }
+            }
+        }
+
+        // ── §7.2 Customer card — name, phone, email, quick-actions
+        item {
+            val customerName = onlineDetail?.customerName ?: invoice.customerName ?: "Unknown Customer"
+            val customerPhone = onlineDetail?.customerPhone
+            val customerEmail = onlineDetail?.customerEmail
+            val hasContactInfo = !customerPhone.isNullOrBlank() || !customerEmail.isNullOrBlank()
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.Default.Person,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            customerName,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    if (!customerPhone.isNullOrBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Phone, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(customerPhone, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (!customerEmail.isNullOrBlank()) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(customerEmail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                    if (hasContactInfo) {
+                        // Quick-action row
+                        Row(
+                            modifier = Modifier.padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (!customerPhone.isNullOrBlank()) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        val invNum = invoice.orderId.ifBlank { invoice.id.toString() }
+                                        val link = if (!serverUrl.isNullOrBlank()) "$serverUrl/invoices/$invNum" else null
+                                        sendSms(context, customerPhone, invNum, link)
+                                    },
+                                ) {
+                                    Icon(Icons.Default.Sms, contentDescription = "Send SMS", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("SMS", style = MaterialTheme.typography.labelSmall)
+                                }
+                                FilledTonalButton(
+                                    onClick = {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_DIAL, android.net.Uri.parse("tel:$customerPhone"))
+                                        runCatching { context.startActivity(intent) }
+                                    },
+                                ) {
+                                    Icon(Icons.Default.Call, contentDescription = "Call customer", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Call", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                            if (!customerEmail.isNullOrBlank()) {
+                                FilledTonalButton(
+                                    onClick = {
+                                        val invNum = invoice.orderId.ifBlank { invoice.id.toString() }
+                                        val link = if (!serverUrl.isNullOrBlank()) "$serverUrl/invoices/$invNum" else null
+                                        sendEmail(context, customerEmail, invNum, link)
+                                    },
+                                ) {
+                                    Icon(Icons.Default.Email, contentDescription = "Send email", modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Email", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -754,56 +1093,63 @@ private fun InvoiceDetailContent(
             }
         }
 
-        // Totals
+        // ── §7.2 Totals panel — subtotal / discount / tax / total / paid / balance due
         item {
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant,
-                thickness = 1.dp,
+            Text(
+                "Totals",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (invoice.discount > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                    Text(invoice.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                    Text("-${invoice.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                }
-            }
-            if (invoice.totalTax > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tax", style = MaterialTheme.typography.bodyMedium)
-                    Text(invoice.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    invoice.total.formatAsMoney(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                Text(invoice.amountPaid.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-            }
-            if (invoice.amountDue > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        "Due",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        invoice.amountDue.formatAsMoney(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+        }
+        item {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (invoice.discount > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Subtotal", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(invoice.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                            Text("-${invoice.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                        }
+                    }
+                    if (invoice.totalTax > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Tax", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(invoice.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            invoice.total.formatAsMoney(),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                        Text(invoice.amountPaid.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                    }
+                    if (invoice.amountDue > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                "Balance due",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Text(
+                                invoice.amountDue.formatAsMoney(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -866,8 +1212,8 @@ private fun InvoiceDetailContent(
             Spacer(modifier = Modifier.height(8.dp))
             InvoiceSendActions(
                 invoiceNumber = invoice.orderId.ifBlank { invoice.id.toString() },
-                customerPhone = null,  // not on InvoiceEntity; SMS button disabled gracefully
-                customerEmail = null,  // not on InvoiceEntity; Email button disabled gracefully
+                customerPhone = onlineDetail?.customerPhone,
+                customerEmail = onlineDetail?.customerEmail,
                 serverUrl = serverUrl,
             )
         }

@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.tickets.components
 
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -43,8 +44,9 @@ import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
  *     - Assigned / active → "Hold" (muted).
  *
  * Actions trigger [onMarkDone] / [onReopen] / [onAssignToMe] / [onHold] callbacks
- * which are owned by the ViewModel. Haptic feedback ([HapticFeedbackConstants.CONTEXT_CLICK])
- * fires when the user completes a swipe gesture.
+ * which are owned by the ViewModel. Haptic feedback fires when the user completes a swipe
+ * gesture: [HapticFeedbackConstants.GESTURE_END] on API 30+, [HapticFeedbackConstants.CONTEXT_CLICK]
+ * on older APIs (§69.1 — Swipe action release).
  *
  * Reduce-motion: when [reduceMotion] is true, a shorter tween duration (80ms)
  * replaces the default spring for the background reveal animation.
@@ -76,12 +78,22 @@ fun TicketSwipeRow(
         confirmValueChange = { value ->
             when (value) {
                 SwipeToDismissBoxValue.EndToStart -> {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    // §69.1 — Swipe action release → GESTURE_END (API 30+), CONTEXT_CLICK fallback.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        view.performHapticFeedback(HapticFeedbackConstants.GESTURE_END)
+                    } else {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    }
                     if (isClosed) onReopen() else onMarkDone()
                     false // don't auto-dismiss; ViewModel handles optimistic update
                 }
                 SwipeToDismissBoxValue.StartToEnd -> {
-                    view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    // §69.1 — Swipe action release → GESTURE_END (API 30+), CONTEXT_CLICK fallback.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        view.performHapticFeedback(HapticFeedbackConstants.GESTURE_END)
+                    } else {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                    }
                     if (isUnassigned) onAssignToMe() else onHold()
                     false
                 }

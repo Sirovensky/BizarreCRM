@@ -1,12 +1,17 @@
 package com.bizarreelectronics.crm.data.remote.api
 
+import com.bizarreelectronics.crm.data.remote.dto.AgingReportData
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.BulkActionRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreditNoteRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreditNoteResponseData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData
 import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
+import com.bizarreelectronics.crm.data.remote.dto.VoidInvoiceRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -51,4 +56,40 @@ interface InvoiceApi {
      */
     @POST("invoices/{id}/clone")
     suspend fun cloneInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>
+
+    /**
+     * Create a credit note against a paid/partial invoice.
+     * Server requires `amount` (> 0, <= invoice total) and `reason` (non-blank).
+     * Requires `invoices.credit_note` permission.
+     */
+    @POST("invoices/{id}/credit-note")
+    suspend fun createCreditNote(
+        @Path("id") id: Long,
+        @Body request: CreditNoteRequest,
+    ): ApiResponse<CreditNoteResponseData>
+
+    /**
+     * Aging report: buckets + flat invoice list from GET /dunning/invoices/aging.
+     * Mounted on the dunning router at /api/v1/dunning/invoices/aging.
+     */
+    @GET("dunning/invoices/aging")
+    suspend fun getAgingReport(): ApiResponse<AgingReportData>
+
+    /**
+     * Bulk action on multiple invoices.
+     * Server accepts `{ action: "send_reminder" | "export" | "void" | "delete", ids: number[] }`.
+     * 404 → endpoint not yet deployed; callers catch and surface a stub message.
+     */
+    @POST("invoices/bulk-action")
+    suspend fun bulkAction(@Body request: BulkActionRequest): ApiResponse<Unit>
+
+    /**
+     * Void an invoice with an optional reason string.
+     * Additive overload — existing [voidInvoice] without a body is kept for back-compat.
+     */
+    @POST("invoices/{id}/void")
+    suspend fun voidInvoiceWithReason(
+        @Path("id") id: Long,
+        @Body request: VoidInvoiceRequest,
+    ): ApiResponse<Unit>
 }

@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -21,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -33,13 +33,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.WarrantyRecordDto
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 
 /**
  * §4.18 L812-L822 — Warranty Claim screen.
@@ -68,6 +71,25 @@ fun WarrantyClaimScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHost = remember { SnackbarHostState() }
+    var showFileClaimConfirm by remember { mutableStateOf(false) }
+
+    // "File claim" confirmation dialog — shown before submitting to avoid accidental taps.
+    if (showFileClaimConfirm && state.selectedWarranty != null) {
+        val eligible = state.selectedWarranty!!.eligible
+        ConfirmDialog(
+            title = if (eligible) "File Warranty Claim" else "File Paid Claim",
+            message = if (eligible)
+                "This device is within the warranty period. A zero-price warranty-return ticket will be created."
+            else
+                "This device is out of warranty. A standard paid-repair ticket will be created.",
+            confirmLabel = if (eligible) "File Warranty Claim" else "File Paid Claim",
+            onConfirm = {
+                showFileClaimConfirm = false
+                viewModel.fileClaim()
+            },
+            onDismiss = { showFileClaimConfirm = false },
+        )
+    }
 
     // Handle branch outcomes
     LaunchedEffect(state.claimResult) {
@@ -208,7 +230,7 @@ fun WarrantyClaimScreen(
                             Text("Cancel")
                         }
                         Button(
-                            onClick = viewModel::fileClaim,
+                            onClick = { showFileClaimConfirm = true },
                             enabled = !state.isSubmitting,
                             modifier = Modifier.weight(2f),
                         ) {
@@ -236,7 +258,7 @@ private fun WarrantyResultCard(
     isSelected: Boolean,
     onSelect: () -> Unit,
 ) {
-    Card(
+    OutlinedCard(
         onClick = onSelect,
         modifier = Modifier.fillMaxWidth(),
     ) {

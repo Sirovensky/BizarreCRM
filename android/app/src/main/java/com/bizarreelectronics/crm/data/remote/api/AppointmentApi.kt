@@ -16,6 +16,12 @@ interface AppointmentApi {
     @GET("api/v1/appointments/{id}")
     suspend fun getAppointment(@Path("id") id: Long): ApiResponse<AppointmentItem>
 
+    /** §10.3 Minimal quick-create. Body must contain at minimum title + start_time + end_time. */
+    @POST("api/v1/appointments")
+    suspend fun createAppointment(
+        @Body body: Map<String, @JvmSuppressWildcards Any?>,
+    ): ApiResponse<AppointmentItem>
+
     @PATCH("api/v1/appointments/{id}")
     suspend fun patchAppointment(
         @Path("id") id: Long,

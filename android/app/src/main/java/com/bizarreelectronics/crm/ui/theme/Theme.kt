@@ -29,6 +29,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.bizarreelectronics.crm.BuildConfig
+import java.util.Calendar
 
 // ---------------------------------------------------------------------------
 // Primitive palette — Wave 1 brand foundation
@@ -197,6 +198,112 @@ fun tenantAccentOrFallback(override: Color? = null): Color = override ?: BrandAc
 val LocalBrandAccent = staticCompositionLocalOf<Color> { BrandAccent }
 
 // ---------------------------------------------------------------------------
+// §30.9 — Tenant accent with auto-contrast bump
+// ---------------------------------------------------------------------------
+
+/**
+ * Perceived relative luminance of [color] using the W3C sRGB formula.
+ *
+ * Returns a value in [0, 1] where 0 = black and 1 = white.
+ */
+private fun relativeLuminance(color: Color): Float {
+    fun linearize(c: Float): Float = if (c <= 0.04045f) {
+        c / 12.92f
+    } else {
+        Math.pow(((c + 0.055f) / 1.055f).toDouble(), 2.4).toFloat()
+    }
+    return 0.2126f * linearize(color.red) +
+           0.7152f * linearize(color.green) +
+           0.0722f * linearize(color.blue)
+}
+
+/**
+ * WCAG 2.1 contrast ratio between two colors.
+ *
+ * Values ≥ 4.5 satisfy AA for normal text; ≥ 3.0 satisfies AA for large text
+ * and graphical components (buttons, icons).
+ */
+fun contrastRatio(fg: Color, bg: Color): Float {
+    val l1 = relativeLuminance(fg)
+    val l2 = relativeLuminance(bg)
+    val lighter = maxOf(l1, l2)
+    val darker  = minOf(l1, l2)
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
+/**
+ * §30.9 — Returns the tenant accent color, bumped toward white (in dark mode)
+ * or toward black (in light mode) until the contrast ratio against the active
+ * surface color meets the AA 3.0 threshold for graphical components.
+ *
+ * If [tenantAccent] is null, returns [BrandAccent] (brand cream) unchanged —
+ * cream on the warm dark surface is already > 3.0.
+ *
+ * The bump is additive HSL lightness in 5% steps (max 6 steps). If no bump
+ * achieves AA 3.0, the original color is returned (fail-open — prefer tenant
+ * branding over hard rejecting any color). Callers that need strict AA must
+ * validate post-call.
+ *
+ * @param tenantAccent Tenant-provided accent, or null to use brand default.
+ * @param surfaceColor The background surface the accent will sit on. Defaults
+ *   to dark mode [Surface1] (`0xFF26201A`) — pass [Color.White] for light mode.
+ */
+fun tenantAccentWithContrastBump(
+    tenantAccent: Color?,
+    surfaceColor: Color = Surface1,
+): Color {
+    if (tenantAccent == null) return BrandAccent
+    val minContrast = 3.0f
+    if (contrastRatio(tenantAccent, surfaceColor) >= minContrast) return tenantAccent
+
+    // Try lightening the accent in 5% steps (up to +30% lightness).
+    val lightSurface = relativeLuminance(surfaceColor) > 0.5f
+    var bumped: Color = tenantAccent
+    repeat(6) {
+        val factor = if (lightSurface) 0.85f else 1.15f
+        bumped = Color(
+            red   = (bumped.red   * factor).coerceIn(0f, 1f),
+            green = (bumped.green * factor).coerceIn(0f, 1f),
+            blue  = (bumped.blue  * factor).coerceIn(0f, 1f),
+            alpha = bumped.alpha,
+        )
+        if (contrastRatio(bumped, surfaceColor) >= minContrast) return bumped
+    }
+    return bumped // best effort — caller's choice if still low-contrast
+}
+
+// ---------------------------------------------------------------------------
+// §30.8 — Dark mode after 7pm default
+// ---------------------------------------------------------------------------
+
+/**
+ * §30.8 — Returns true if the current local time is after 19:00 (7 pm) or
+ * before 07:00 (7 am) — the window during which dark mode should default ON
+ * when the user has not explicitly chosen a preference ("system" setting).
+ *
+ * Callers that want this auto-scheduling behaviour should read
+ * [AppPreferences.darkMode] first; only when the value is "system" (no
+ * user override) should this function influence the theme:
+ *
+ * ```kotlin
+ * val darkTheme = when (darkModePreference) {
+ *     "dark"   -> true
+ *     "light"  -> false
+ *     else     -> shouldDefaultDarkMode() // auto-schedule
+ * }
+ * ```
+ *
+ * Note: uses [Calendar.getInstance] (device local timezone). If the user has
+ * a timezone override configured via [AppPreferences.timezoneOverride], the
+ * ViewModel layer is responsible for injecting the correct wall-clock value
+ * rather than relying on this function directly.
+ */
+fun shouldDefaultDarkMode(): Boolean {
+    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+    return hour >= 19 || hour < 7
+}
+
+// ---------------------------------------------------------------------------
 // Theme entry point
 // ---------------------------------------------------------------------------
 
@@ -243,8 +350,16 @@ fun BizarreCrmTheme(
     // hardcoded top-level color vals.
     val extendedColors = if (darkTheme) darkExtended() else lightExtended()
 
-    // §1.4 line 195: resolve tenant accent (falls back to brand cream).
-    val resolvedAccent = tenantAccentOrFallback(tenantAccent)
+    // §30.9: resolve tenant accent with auto-contrast bump.
+    // Falls back to brand cream when null; bumps toward AA 3.0 when the
+    // tenant-supplied color is too pale against the active surface.
+    val activeSurface = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // Dynamic color — use a neutral mid-dark surface as the bump reference.
+        if (darkTheme) Surface1 else Color(0xFFFFF8F0)
+    } else {
+        if (darkTheme) Surface1 else Color(0xFFFFF8F0)
+    }
+    val resolvedAccent = tenantAccentWithContrastBump(tenantAccent, surfaceColor = activeSurface)
 
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,

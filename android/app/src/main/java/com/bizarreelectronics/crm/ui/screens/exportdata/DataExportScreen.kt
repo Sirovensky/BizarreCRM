@@ -1,6 +1,5 @@
 package com.bizarreelectronics.crm.ui.screens.exportdata
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,12 +17,16 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,12 +34,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,9 +51,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.R
 
 /**
  * §51 — Data Export Screen
@@ -74,15 +81,15 @@ fun DataExportScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
 
-    // SAF document-create launcher for downloading the export archive
+    // §51.3 — SAF document-create launcher: streams the export archive from the
+    // server directly into the user-chosen file location.  No external-storage
+    // permission needed — the Uri is granted by ACTION_CREATE_DOCUMENT.
     val saveLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument(state.selectedFormat.mimeType),
     ) { destUri: Uri? ->
-        if (destUri == null || state.downloadUrl == null) return@rememberLauncherForActivityResult
-        // Trigger the system download manager or copy via stream
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(state.downloadUrl))
-        intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        context.startActivity(intent)
+        if (destUri != null) {
+            viewModel.downloadTo(context, destUri)
+        }
     }
 
     LaunchedEffect(state.toastMessage) {
@@ -92,14 +99,41 @@ fun DataExportScreen(
         }
     }
 
+    // §51.3 — "Cancel export" ConfirmDialog (shown while poll is active)
+    if (state.showCancelConfirm) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCancelExport,
+            title = { Text(stringResource(R.string.export_cancel_title)) },
+            text = { Text(stringResource(R.string.export_cancel_message)) },
+            confirmButton = {
+                Button(
+                    onClick = viewModel::confirmCancelExport,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.export_cancel_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissCancelExport) {
+                    Text(stringResource(R.string.action_keep_waiting))
+                }
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Data Export") },
+                title = { Text(stringResource(R.string.screen_data_export)) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.cd_navigate_back),
+                        )
                     }
                 },
             )
@@ -117,9 +151,11 @@ fun DataExportScreen(
                     ExportProgressContent(
                         state = state,
                         onDownload = {
-                            val fileName = "export_${state.selectedFormat.apiValue}.${state.selectedFormat.apiValue}"
-                            saveLauncher.launch(fileName)
+                            // Build a default file name: e.g. "export_csv.csv"
+                            val ext = state.selectedFormat.apiValue
+                            saveLauncher.launch("export_$ext.$ext")
                         },
+                        onCancelExport = viewModel::promptCancelExport,
                         onReset = viewModel::resetJob,
                     )
                 }
@@ -253,56 +289,97 @@ private fun ExportConfigContent(
 private fun ExportProgressContent(
     state: DataExportUiState,
     onDownload: () -> Unit,
+    onCancelExport: () -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isReady = state.jobStatus == ExportJobStatus.READY
-    Column(
+    OutlinedCard(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (isReady) {
-            Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Text("Export ready!", style = MaterialTheme.typography.titleMedium)
-            Button(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Default.Download, contentDescription = null)
-                Text("Download", modifier = Modifier.padding(start = 8.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            if (isReady) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = stringResource(R.string.cd_export_ready),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    stringResource(R.string.export_ready_label),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Button(
+                    onClick = onDownload,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.isDownloading,
+                ) {
+                    if (state.isDownloading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 8.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Download,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp),
+                        )
+                    }
+                    Text(stringResource(R.string.export_action_download))
+                }
+            } else {
+                LinearProgressIndicator(
+                    progress = { state.progress / 100f },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = stringResource(R.string.export_preparing, state.progress),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = stringResource(R.string.export_notify_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                // §51 — cancel while polling
+                FilledTonalButton(
+                    onClick = onCancelExport,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        Icons.Default.Cancel,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    Text(stringResource(R.string.export_action_cancel))
+                }
             }
-        } else {
-            LinearProgressIndicator(
-                progress = { state.progress / 100f },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                text = "Preparing export… ${state.progress}%",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            Text(
-                text = "You can leave this screen — you'll be notified when ready.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-            )
-        }
-        state.error?.let { msg ->
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
-                Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            state.error?.let { msg ->
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Default.Error,
+                        contentDescription = stringResource(R.string.cd_error_icon),
+                        tint = MaterialTheme.colorScheme.error,
+                    )
+                    Text(msg, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
             }
-        }
-        if (isReady || state.error != null) {
-            OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
-                Text("New Export")
+            if (isReady || state.error != null) {
+                OutlinedButton(onClick = onReset, modifier = Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.export_action_new))
+                }
             }
         }
     }
@@ -314,10 +391,14 @@ private fun ExportProgressContent(
 private fun ExportAccessDeniedState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+            Icon(
+                Icons.Default.Error,
+                contentDescription = stringResource(R.string.cd_error_icon),
+                tint = MaterialTheme.colorScheme.error,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Manager access required to export data.",
+                stringResource(R.string.export_access_denied),
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
@@ -329,7 +410,7 @@ private fun ExportAccessDeniedState() {
 private fun ExportUnsupportedState() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Text(
-            "Export is not configured on this server.",
+            stringResource(R.string.export_unsupported),
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

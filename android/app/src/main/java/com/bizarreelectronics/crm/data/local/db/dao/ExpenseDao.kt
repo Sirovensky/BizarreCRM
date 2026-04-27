@@ -64,6 +64,34 @@ interface ExpenseDao {
         deleteById(tempId)
     }
 
+    /**
+     * Filter by ISO date range (inclusive). Pass empty string to skip a bound.
+     * Used by [ExpenseListViewModel] for the date-range filter.
+     */
+    @Query(
+        """
+        SELECT * FROM expenses
+        WHERE (:fromDate = '' OR date >= :fromDate)
+          AND (:toDate   = '' OR date <= :toDate)
+        ORDER BY date DESC
+        """
+    )
+    fun getByDateRange(fromDate: String, toDate: String): Flow<List<ExpenseEntity>>
+
+    /**
+     * Filter by employee user_id. Null user_id rows are excluded.
+     * Used by [ExpenseListViewModel] for the employee filter.
+     */
+    @Query("SELECT * FROM expenses WHERE user_id = :userId ORDER BY date DESC")
+    fun getByEmployee(userId: Long): Flow<List<ExpenseEntity>>
+
+    /**
+     * Filter by approval status (`pending` | `approved` | `denied`).
+     * Used by [ExpenseListViewModel] for the approval-status filter.
+     */
+    @Query("SELECT * FROM expenses WHERE status = :status ORDER BY date DESC")
+    fun getByStatus(status: String): Flow<List<ExpenseEntity>>
+
     /** Total expense amount in **cents**. */
     @Query("SELECT SUM(amount) FROM expenses")
     fun getTotalAmount(): Flow<Long?>

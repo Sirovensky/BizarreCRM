@@ -318,6 +318,45 @@ class PosTenderViewModel @Inject constructor(
 
     fun removeTender(tenderId: String) = coordinator.removeTender(tenderId)
 
+    // ─── §38.6 / §38.3 — Loyalty points redemption ───────────────────────────
+
+    /**
+     * Redeem loyalty points as a discount tender at POS.
+     *
+     * Each point converts at [centsPerPoint] (default: 1 pt = $0.01).
+     * Applied amount is capped at the remaining balance.
+     *
+     * NOTE (§38.6): server has no `/memberships/:id/redeem-points` endpoint yet —
+     * point deduction is queued client-side as a `loyalty_points` tender and
+     * sent to the server in the payments array on finalization. The server
+     * records the tender type but does NOT decrement the membership.points
+     * column. Full server-side enforcement is blocked pending a new migration +
+     * endpoint. See TODO §38.6 — "Redemption at POS".
+     *
+     * @param membershipId  the customer's active membership id
+     * @param pointsToRedeem  how many points the customer wishes to redeem
+     * @param centsPerPoint  conversion rate (default 1 cent per point)
+     */
+    fun applyLoyaltyPoints(
+        membershipId: Long,
+        pointsToRedeem: Int,
+        centsPerPoint: Long = 1L,
+    ) {
+        if (pointsToRedeem <= 0) return
+        val remaining = _uiState.value.remainingCents
+        if (remaining <= 0L) return
+        val requestedCents = pointsToRedeem * centsPerPoint
+        val appliedCents = requestedCents.coerceAtMost(remaining)
+        coordinator.addTender(
+            AppliedTender(
+                method = "loyalty_points",
+                label = "Loyalty Points",
+                amountCents = appliedCents,
+                detail = "${(appliedCents / centsPerPoint)} pts redeemed (membership #$membershipId)",
+            )
+        )
+    }
+
     /** Stub for Phase 4 BlockChyp integration. */
     @Suppress("UNUSED_PARAMETER")
     fun chargeCard(amountCents: Long) {

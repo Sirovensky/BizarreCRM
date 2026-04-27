@@ -187,6 +187,15 @@ class AppPreferences @Inject constructor(
      */
     val criticalChannelIds: Set<String> = setOf("sla_breach", "security_event")
 
+    /**
+     * §21.6 — OEM task-killer prompt. Set to `true` after the one-time in-app
+     * educational banner ("Your device may delay background notifications…") has
+     * been shown so we never repeat it on subsequent launches.
+     */
+    var oemBatteryPromptShown: Boolean
+        get() = prefs.getBoolean("oem_battery_prompt_shown", false)
+        set(value) = prefs.edit().putBoolean("oem_battery_prompt_shown", value).apply()
+
     /** §3.5 — once the user dismisses the dashboard onboarding card, stay hidden. */
     var onboardingDismissed: Boolean
         get() = prefs.getBoolean("onboarding_dismissed", false)
@@ -567,6 +576,7 @@ class AppPreferences @Inject constructor(
 
     companion object {
         private const val RECENT_CHECKIN_MAX = 3
+        internal const val RECENT_COMMANDS_MAX = 5
     }
 
     val recentCheckinCustomerIds: List<Long>
@@ -722,6 +732,31 @@ class AppPreferences @Inject constructor(
     }
 
     /**
+     * §3.15 L589 — Returns true if the user explicitly skipped (not just dismissed)
+     * the morning checklist for [date], and the skip was noted locally.
+     *
+     * "Skip" differs from "dismiss": dismiss hides the banner without a server
+     * audit entry; skip records the action in the server audit log (404-tolerant).
+     *
+     * [date] should be an ISO-date string (yyyy-MM-dd).
+     */
+    fun morningChecklistSkippedFor(date: String): Boolean =
+        prefs.getBoolean("morning_checklist_skipped_$date", false)
+
+    /**
+     * §3.15 L589 — Mark the morning checklist as explicitly skipped for [date].
+     *
+     * Also updates [lastMorningChecklistDate] so the banner does not re-appear.
+     * Idempotent.
+     */
+    fun setMorningChecklistSkipped(date: String) {
+        prefs.edit()
+            .putBoolean("morning_checklist_skipped_$date", true)
+            .putString("morning_checklist_last_date", date)
+            .apply()
+    }
+
+    /**
      * §36 L588 — Returns the set of step IDs checked off during the morning
      * checklist for [date].  Empty set when no steps have been completed or
      * when the pref key is absent.
@@ -837,6 +872,73 @@ class AppPreferences @Inject constructor(
 
     private fun serializeTileList(tiles: List<String>): String =
         "[${tiles.joinToString(",") { "\"$it\"" }}]"
+
+    // --- §54.4 — Command palette power-user toggle -------------------------
+    //
+    // When false, the command palette is not reachable by staff (Ctrl+K and
+    // long-press FAB do nothing). Defaults TRUE for admins and FALSE for
+    // non-admin users; the ViewModel enforces the role-default on first read.
+    // Surfaced via Settings > Display > "Command palette" toggle.
+
+    private val _commandPaletteEnabledFlow = MutableStateFlow(
+        prefs.getBoolean("command_palette_enabled", true),
+    )
+
+    /**
+     * §54.4 — observable command-palette enabled flag.
+     *
+     * Collect in [com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteViewModel]
+     * and at the Ctrl+K / long-press FAB call sites to gate the palette overlay.
+     */
+    val commandPaletteEnabledFlow: StateFlow<Boolean> = _commandPaletteEnabledFlow.asStateFlow()
+
+    /**
+     * §54.4 — command palette enabled toggle.
+     *
+     * True = Ctrl+K / long-press FAB opens the palette.
+     * False = palette is suppressed (intended for staff-only devices where it
+     * is deemed noise; admin can re-enable per-device).
+     *
+     * Default: `true` — on by default for all roles (admin can turn it off for staff).
+     */
+    var commandPaletteEnabled: Boolean
+        get() = prefs.getBoolean("command_palette_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("command_palette_enabled", value).apply()
+            _commandPaletteEnabledFlow.value = value
+        }
+
+    // --- §54.3 — Recent command IDs (palette MRU) --------------------------
+    //
+    // Stores the last N command IDs activated via the palette so the RECENT
+    // group shows them at the top on the next open. Capped at
+    // RECENT_COMMANDS_MAX entries; most-recent first. Stored as comma-separated
+    // string (same scheme as recentCheckinCustomerIds).
+    //
+    // Plain prefs are sufficient — command IDs are opaque strings, not PII.
+
+    /**
+     * §54.3 — ordered list of recently activated command IDs, most-recent first.
+     * Returns an empty list when no commands have been activated yet.
+     */
+    val recentCommandIds: List<String>
+        get() = prefs.getString("recent_command_ids", null)
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            .orEmpty()
+
+    /**
+     * §54.3 — record [commandId] as the most-recently activated command.
+     * Deduplicates and trims to [RECENT_COMMANDS_MAX].
+     */
+    fun addRecentCommandId(commandId: String) {
+        if (commandId.isBlank()) return
+        val updated = (listOf(commandId) + recentCommandIds)
+            .distinct()
+            .take(RECENT_COMMANDS_MAX)
+        prefs.edit().putString("recent_command_ids", updated.joinToString(",")).apply()
+    }
 
     // --- §4.14 L786 — accepted waiver versions (re-sign detection) -----------
     //
@@ -1122,10 +1224,18 @@ class AppPreferences @Inject constructor(
 
     /**
      * plan:L1991 — Returns whether the [eventId] × [channelId] cell is enabled.
-     * Defaults true.
+     * Defaults true (backwards-compat overload; prefer the 3-arg version for new code).
      */
     fun getNotifMatrixEnabled(eventId: String, channelId: String): Boolean =
         prefs.getBoolean("notif_matrix_${eventId}_$channelId", true)
+
+    /**
+     * §73.1 — Returns whether the [eventId] × [channelId] cell is enabled,
+     * using [defaultValue] as the fallback instead of a global `true` so each
+     * event's shipped default (from the §73 table) is respected on a fresh install.
+     */
+    fun getNotifMatrixEnabled(eventId: String, channelId: String, defaultValue: Boolean): Boolean =
+        prefs.getBoolean("notif_matrix_${eventId}_$channelId", defaultValue)
 
     /**
      * plan:L1991 — Persist the [enabled] state for the [eventId] × [channelId] cell.
@@ -1156,6 +1266,76 @@ class AppPreferences @Inject constructor(
                 prefs.edit().putString("global_search_saved_queries", value).apply()
             }
         }
+
+    // --- §1.5 line 202 — tab navigation order (phone bottom bar) ---------------
+    //
+    // Stores the user's preferred order for the four primary navigation tabs
+    // (Dashboard, Tickets, POS, Messages). Persisted as a comma-separated string
+    // of route identifiers matching [Screen].route values. The "More" tab is always
+    // appended as the fifth slot and is not user-reorderable.
+    //
+    // Default order: dashboard,tickets,pos,messages
+    // On fresh install or on any parse error the default order is returned so the
+    // bottom bar is never empty. Unknown route tokens are silently stripped; if the
+    // result is shorter than the four canonical tabs, the canonical default fills
+    // the gaps (forward-compatibility when new tabs are added).
+
+    private val _tabNavOrderFlow = MutableStateFlow(
+        prefs.getString("tab_nav_order", null) ?: "",
+    )
+
+    /**
+     * §1.5 line 202 — observable tab nav order.
+     *
+     * Emits the raw comma-separated route string. Consumers should call
+     * [com.bizarreelectronics.crm.util.TabNavPrefs.decodeOrder] to convert to a
+     * typed list. Emits an empty string on a fresh install (signals "use default").
+     */
+    val tabNavOrderFlow: StateFlow<String> = _tabNavOrderFlow.asStateFlow()
+
+    /**
+     * §1.5 line 202 — persisted tab order as a comma-separated route string.
+     *
+     * Write via [com.bizarreelectronics.crm.util.TabNavPrefs.encodeOrder] so
+     * serialisation stays in one place.
+     */
+    var tabNavOrder: String
+        get() = prefs.getString("tab_nav_order", null) ?: ""
+        set(value) {
+            prefs.edit().putString("tab_nav_order", value).apply()
+            _tabNavOrderFlow.value = value
+        }
+
+    // --- §74.3 — Analytics / telemetry opt-out --------------------------------
+    //
+    // Default: true (enabled).  User can disable via Settings → Privacy →
+    // "Disable telemetry".  When false, TelemetryClient drops events without
+    // writing breadcrumbs or buffering for upload.
+    //
+    // NOTE: the local crash-log ring buffer (CrashReporter + ReleaseTree) is
+    // unaffected — it exists solely for developer diagnostics and is never
+    // transmitted to any server regardless of this flag.
+
+    /**
+     * §74.3 — Whether the user has opted in to privacy-first analytics telemetry.
+     *
+     * `true` (default) = events are recorded in the [Breadcrumbs] ring buffer
+     * and — once the server endpoint lands — flushed to the tenant server.
+     * `false` = [TelemetryClient.track] is a no-op.
+     */
+    var telemetryEnabled: Boolean
+        get() = prefs.getBoolean("telemetry_enabled", true)
+        set(value) {
+            prefs.edit().putBoolean("telemetry_enabled", value).apply()
+            _telemetryEnabledFlow.value = value
+        }
+
+    private val _telemetryEnabledFlow = MutableStateFlow(
+        prefs.getBoolean("telemetry_enabled", true),
+    )
+
+    /** Observable version of [telemetryEnabled] for reactive UI. */
+    val telemetryEnabledFlow: StateFlow<Boolean> = _telemetryEnabledFlow.asStateFlow()
 
     /**
      * Serialize a list of SavedQuery triples (id, name, query) into the raw string.

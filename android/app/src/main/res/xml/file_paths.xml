@@ -12,6 +12,16 @@
         path="crash-reports/" />
 
     <!--
+      §32.4 — exposes filesDir/diagnostics-logs/ via FileProvider so
+      Settings → Diagnostics → View logs can share the flushed ring-buffer
+      file via the system share-sheet without world-readable storage.
+      "files-path" root maps to Context.getFilesDir().
+    -->
+    <files-path
+        name="diagnostics-logs"
+        path="diagnostics-logs/" />
+
+    <!--
       POS-RECEIPT-RE-AUDIT — exposes cacheDir/receipts/ so PosReceiptViewModel
       can render a PDF to a File and share it via ACTION_SEND without needing
       world-readable storage. "cache-path" root maps to Context.getCacheDir().
@@ -19,4 +29,19 @@
     <cache-path
         name="receipts"
         path="receipts/" />
+
+    <!--
+      §25.2 — exposes cacheDir/workorder/ so TicketPrintActions can share
+      work-order PDFs via ACTION_SEND without world-readable storage. The root
+      is already shared by the existing "receipts" entry; "workorder" is a
+      separate path to keep concerns distinct.
+      Also exposes cacheDir/photos/ for any locally-cached photo bitmaps
+      that need to be shared out via ACTION_SEND / ACTION_SEND_MULTIPLE.
+    -->
+    <cache-path
+        name="workorder"
+        path="workorder/" />
+    <cache-path
+        name="photos"
+        path="photos/" />
 </paths>

@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.remote.dto.SetupCompleteResponse
 import com.bizarreelectronics.crm.data.remote.dto.SetupProgressRequest
 import com.bizarreelectronics.crm.data.remote.dto.SetupProgressResponse
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 
@@ -60,4 +61,38 @@ interface SetupApi {
      */
     @POST("setup/complete")
     suspend fun completeSetup(): ApiResponse<SetupCompleteResponse>
+
+    /**
+     * §3.14 L582 — Insert demo sample data (5 customers, 10 tickets, 3 invoices).
+     *
+     * Endpoint: `POST /onboarding/sample-data`
+     *
+     * Idempotent — if sample data is already loaded, the server returns the
+     * current state rather than duplicating rows.
+     *
+     * 404 → server does not yet support sample data; caller treats as no-op.
+     */
+    @POST("onboarding/sample-data")
+    suspend fun loadSampleData(): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    /**
+     * §3.14 L582 — Remove all demo sample data inserted by [loadSampleData].
+     *
+     * Endpoint: `DELETE /onboarding/sample-data`
+     *
+     * 404 → no sample data loaded or endpoint not supported; caller treats as no-op.
+     */
+    @DELETE("onboarding/sample-data")
+    suspend fun clearSampleData(): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    /**
+     * §3.14 L582 — Check whether sample data is currently loaded.
+     *
+     * Endpoint: `GET /onboarding/state`
+     *
+     * Expected shape: `{ "sample_data_loaded": true, "sample_data_counts": { ... } }`
+     * 404 → server does not support onboarding state; caller treats as not loaded.
+     */
+    @GET("onboarding/state")
+    suspend fun getOnboardingState(): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
 }

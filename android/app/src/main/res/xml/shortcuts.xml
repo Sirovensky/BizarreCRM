@@ -59,4 +59,21 @@
             android:data="bizarrecrm://scan" />
     </shortcut>
 
+
+    <!--
+      §25.2 Direct-share targets — customers appear as "Share to…" rows in
+      the system chooser when the user shares a PDF, text, or vCard from another
+      app into BizarreCRM.
+      The category string must match ShareHelper.CATEGORY_SHARE_TARGET exactly.
+      ShortcutManagerCompat.addDynamicShortcuts() populates the icons + labels
+      at runtime with the most-recent customers (see util/ShareHelper.kt).
+    -->
+    <share-target android:targetClass="com.bizarreelectronics.crm.MainActivity">
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="text/x-vcard" />
+        <data android:mimeType="image/*" />
+        <category android:name="com.bizarreelectronics.crm.SHARE_TARGET" />
+    </share-target>
+
 </shortcuts>

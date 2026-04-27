@@ -1,10 +1,12 @@
 package com.bizarreelectronics.crm.service
 
+import android.content.Context
 import android.util.Log
 import com.bizarreelectronics.crm.data.local.db.dao.SmsDao
 import com.bizarreelectronics.crm.data.local.db.entities.SmsMessageEntity
-import com.bizarreelectronics.crm.data.repository.TicketRepository
+import com.bizarreelectronics.crm.data.sync.SyncWorker
 import com.google.gson.Gson
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -14,13 +16,14 @@ import javax.inject.Singleton
 
 /**
  * Listens to WebSocket events and updates Room so the UI is always in sync.
- * Handles real-time SMS received/sent, ticket updates, etc.
+ * Handles real-time SMS received/sent, ticket updates, `delta:invalidate` nudges, etc.
  */
 @Singleton
 class WebSocketEventHandler @Inject constructor(
     private val webSocketService: WebSocketService,
     private val smsDao: SmsDao,
     private val gson: Gson,
+    @ApplicationContext private val appContext: Context,
 ) {
     // AUDIT-AND-025: hold SupervisorJob separately so close() can cancel it,
     // stopping the event-collection coroutine when the user logs out.
@@ -83,6 +86,15 @@ class WebSocketEventHandler @Inject constructor(
 
             "notification:new" -> {
                 Log.d(TAG, "New notification via WS")
+            }
+
+            "delta:invalidate" -> {
+                // §20.10 — Server signals that changes are available since the last
+                // known cursor. Kick an expedited SyncWorker pass; DeltaSyncer will
+                // automatically resume from the cursor stored in sync_state rather
+                // than re-fetching from the beginning, so only the delta is pulled.
+                Log.d(TAG, "WS delta:invalidate — kicking SyncWorker from last cursor")
+                SyncWorker.syncNow(appContext)
             }
 
             else -> {

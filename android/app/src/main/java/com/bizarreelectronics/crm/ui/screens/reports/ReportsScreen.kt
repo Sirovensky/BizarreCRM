@@ -8,6 +8,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material3.*
@@ -160,6 +162,21 @@ data class SaleTransaction(
     val createdAt: String,
 )
 
+/**
+ * One row in the employee performance leaderboard (§15.4).
+ * All numeric fields default to zero so the UI can gracefully handle partial server responses.
+ */
+data class EmployeePerformanceItem(
+    val id: String,
+    val name: String,
+    val ticketsAssigned: Int = 0,
+    val ticketsClosed: Int = 0,
+    val hoursWorked: Double = 0.0,
+    val revenueGenerated: Double = 0.0,
+    val commissionEarned: Double = 0.0,
+    val avgTicketValue: Double = 0.0,
+)
+
 data class ReportsUiState(
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
@@ -194,6 +211,14 @@ data class ReportsUiState(
     val currentFilterSpec: String = "",
     // Recent transactions list — sourced from local invoice cache for reprint support.
     val recentTransactions: List<SaleTransaction> = emptyList(),
+    // §15.4 — Employee performance report
+    val employeePerformanceItems: List<EmployeePerformanceItem> = emptyList(),
+    val isEmployeesReportLoading: Boolean = false,
+    val employeesReportError: String? = null,
+    // §15.7 — Busy hours heatmap data (7×24 grid; empty = not yet loaded)
+    val busyHoursData: Array<IntArray> = emptyArray(),
+    val isBusyHoursLoading: Boolean = false,
+    val busyHoursError: String? = null,
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -319,7 +344,12 @@ class ReportsViewModel @Inject constructor(
 
     fun selectReportType(type: ReportType) {
         _state.update { it.copy(selectedReportType = type) }
-        if (type == ReportType.SALES) loadSalesReport()
+        when (type) {
+            ReportType.SALES -> loadSalesReport()
+            ReportType.EMPLOYEES -> loadEmployeesReport()
+            ReportType.INSIGHTS -> loadBusyHoursHeatmap()
+            else -> Unit
+        }
     }
 
     /** Fetches /reports/scheduled — 404 is tolerated and results in an empty list. */
@@ -399,6 +429,98 @@ class ReportsViewModel @Inject constructor(
     /** Clears the snackbar message after it has been shown. */
     fun clearScheduleSnackbar() {
         _state.update { it.copy(scheduleSnackbar = null) }
+    }
+
+    // ── §15.4 — Employee performance report ──────────────────────────────────
+
+    /**
+     * Loads `/reports/employees` for the current date range.
+     * 404 is treated as an empty list so the screen shows an empty state rather than an error.
+     */
+    fun loadEmployeesReport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isEmployeesReportLoading = true, employeesReportError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date" to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getEmployeesReport(filters) }
+                .onSuccess { resp ->
+                    val items = parseEmployeesResponse(resp.data)
+                    _state.update { it.copy(isEmployeesReportLoading = false, employeePerformanceItems = items) }
+                }
+                .onFailure { e ->
+                    // 404 → empty list; any other error surfaces in the UI
+                    val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isEmployeesReportLoading = false,
+                            employeePerformanceItems = emptyList(),
+                            employeesReportError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseEmployeesResponse(data: Map<String, Any>?): List<EmployeePerformanceItem> {
+        if (data == null) return emptyList()
+        val rows = data["employees"] as? List<*> ?: return emptyList()
+        return rows.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            EmployeePerformanceItem(
+                id = (map["id"] as? String) ?: return@mapNotNull null,
+                name = (map["name"] as? String) ?: "Unknown",
+                ticketsAssigned = (map["tickets_assigned"] as? Number)?.toInt() ?: 0,
+                ticketsClosed = (map["tickets_closed"] as? Number)?.toInt() ?: 0,
+                hoursWorked = (map["hours_worked"] as? Number)?.toDouble() ?: 0.0,
+                revenueGenerated = (map["revenue_generated"] as? Number)?.toDouble() ?: 0.0,
+                commissionEarned = (map["commission_earned"] as? Number)?.toDouble() ?: 0.0,
+                avgTicketValue = (map["avg_ticket_value"] as? Number)?.toDouble() ?: 0.0,
+            )
+        }.sortedByDescending { it.revenueGenerated }
+    }
+
+    // ── §15.7 — Busy hours heatmap ────────────────────────────────────────────
+
+    /**
+     * Loads `/reports/busy-hours-heatmap`.
+     * Returns a 7×24 IntArray; 404 / error → shows empty heatmap stub.
+     */
+    fun loadBusyHoursHeatmap() {
+        viewModelScope.launch {
+            _state.update { it.copy(isBusyHoursLoading = true, busyHoursError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date" to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getBusyHoursHeatmap(filters) }
+                .onSuccess { resp ->
+                    val grid = parseBusyHoursResponse(resp.data)
+                    _state.update { it.copy(isBusyHoursLoading = false, busyHoursData = grid) }
+                }
+                .onFailure { e ->
+                    val isNotFound = e.message?.contains("404") == true || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isBusyHoursLoading = false,
+                            busyHoursData = emptyArray(),
+                            busyHoursError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseBusyHoursResponse(data: Map<String, Any>?): Array<IntArray> {
+        if (data == null) return emptyArray()
+        val rows = data["rows"] as? List<*> ?: return emptyArray()
+        return Array(rows.size.coerceAtMost(7)) { dayIdx ->
+            val row = rows[dayIdx] as? List<*> ?: return@Array IntArray(24)
+            IntArray(24) { hourIdx -> (row.getOrNull(hourIdx) as? Number)?.toInt() ?: 0 }
+        }
     }
 
     // ── §15 L1730 — Filter-preservation for drill-through back-stack ──────────
@@ -665,10 +787,10 @@ fun ReportsScreen(
                         },
                     )
                     ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
-                    ReportType.EMPLOYEES -> EmployeesReportPlaceholder()
+                    ReportType.EMPLOYEES -> EmployeesReportScreen(viewModel = viewModel)
                     ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
                     ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
-                    ReportType.INSIGHTS -> InsightsPlaceholder()
+                    ReportType.INSIGHTS -> InsightsScreen(viewModel = viewModel)
                     ReportType.CUSTOM -> CustomReportScreen()
                 }
             }
@@ -761,64 +883,6 @@ private fun SalesReportScreenInline(
         onCustomRangeSelected = viewModel::setCustomRange,
         onRetry = viewModel::loadSalesReport,
     )
-}
-
-// ─── Placeholder sub-report screens ──────────────────────────────────────────
-
-@Composable
-private fun EmployeesReportPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                Icons.Default.Group,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("Employee Reports", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                "See the Employees section for individual technician stats.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 32.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun InsightsPlaceholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    Icons.Default.Insights,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
-                Text("Insights coming soon", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "AI-powered business insights based on your repair trends, customer patterns, and inventory velocity.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                )
-            }
-        }
-    }
 }
 
 // ─── §15 L1758 — Schedule report bottom sheet ────────────────────────────────
@@ -1491,7 +1555,7 @@ private fun RevenueChangeCard(changePct: Double) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
-                if (isPositive) Icons.Default.TrendingUp else Icons.Default.TrendingDown,
+                if (isPositive) Icons.AutoMirrored.Filled.TrendingUp else Icons.AutoMirrored.Filled.TrendingDown,
                 // decorative — non-clickable revenue change card; sibling Text siblings carry the announcement
                 contentDescription = null,
                 tint = textColor,

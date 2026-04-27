@@ -53,7 +53,14 @@ android {
         applicationId = "com.bizarreelectronics.crm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
+        // §33.2 — versionCode = Unix epoch seconds / 60 (monotonic, Play-safe).
+        // Evaluated at configuration time so the same value stamps every variant
+        // in a single invocation. The formula guarantees strict monotonicity:
+        // two builds a minute apart always produce a higher code.
+        // Override via -PversionCode=<n> in CI to use the build-runner's sequence
+        // number instead (e.g. GitHub Actions: -PversionCode=${{ github.run_number }}).
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+            ?: (System.currentTimeMillis() / 1000L / 60L).toInt()
         versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -114,6 +121,10 @@ android {
         }
         release {
             isMinifyEnabled = true
+            // §29.3 — R8 resource shrinking: strips unused drawables, layouts,
+            // and string resources after code shrinking so they don't bloat the APK.
+            // Must be paired with isMinifyEnabled = true (already set above).
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "SERVER_URL", quoteBuildConfig(configuredServerUrl))
             // signingConfig is only applied when the keystore file exists.
@@ -146,6 +157,22 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = false
+        }
+    }
+
+    // §33.4 — AAB split delivery: split the bundle by ABI, screen density, and
+    // language so Play only delivers the slices relevant to each device.
+    // Reduces download size by ~40% on typical mid-range phones compared with
+    // a fat APK. Language splits are especially valuable for ML Kit model bundles.
+    bundle {
+        abi {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        language {
+            enableSplit = true
         }
     }
 }
@@ -307,6 +334,11 @@ dependencies {
     // the full SDK (packages/server/src/services/blockchyp.ts). The Android
     // app is a thin client that proxies all terminal calls through the CRM
     // server via BlockChypApi (Retrofit) + BlockChypClient. No SDK dep needed.
+
+    // §20.12 — LeakCanary: debug-only heap-leak detector. Automatically no-op on
+    // release builds (LeakCanary ships a release no-op artifact automatically;
+    // debugImplementation ensures it is only included in debug APKs).
+    debugImplementation(libs.leakcanary.android)
 
     // §1.6 Custom lint rules — stateful object singleton + GlobalScope.launch ban (plan:L224)
     lintChecks(project(":lint-rules"))

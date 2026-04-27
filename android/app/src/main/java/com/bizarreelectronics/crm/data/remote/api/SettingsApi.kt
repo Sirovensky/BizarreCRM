@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 
@@ -75,4 +76,33 @@ interface SettingsApi {
      */
     @GET("settings/tag-palette")
     suspend fun getTagPalette(): ApiResponse<Map<String, String>>
+
+    /**
+     * §14.4 — Assign role / update employee fields.
+     * PUT /settings/users/:id (admin-only)
+     * Body may contain: role, email, first_name, last_name, is_active, pin, password.
+     * 404-tolerant.
+     */
+    @PUT("settings/users/{id}")
+    suspend fun updateEmployee(
+        @Path("id") employeeId: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
+
+    /** Payment methods admin list (POS settings). */
+    @GET("settings/payment-methods")
+    suspend fun getPaymentMethods(): ApiResponse<List<Map<String, @JvmSuppressWildcards Any>>>
+
+    /** SMS provider list (SMS settings). */
+    @GET("settings/sms-providers")
+    suspend fun getSmsProviders(): ApiResponse<List<Map<String, @JvmSuppressWildcards Any>>>
+
+    /** Generic store-level config K/V. */
+    @GET("settings/store-config")
+    suspend fun getStoreConfig(): ApiResponse<Map<String, String>>
+
+    @PUT("settings/store-config")
+    suspend fun putStoreConfig(
+        @Body body: Map<String, String>,
+    ): ApiResponse<Map<String, String>>
 }

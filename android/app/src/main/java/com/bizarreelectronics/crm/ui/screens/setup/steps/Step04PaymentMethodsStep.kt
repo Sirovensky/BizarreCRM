@@ -21,11 +21,13 @@ import androidx.compose.ui.unit.dp
  *
  * [data] — current saved values; parsed to restore checkbox state.
  * [onDataChange] — called with the field map on any change.
+ * [inlineError] — §36.4 validation error string to display inline; null when no error.
  */
 @Composable
 fun PaymentMethodsStep(
     data: Map<String, Any>,
     onDataChange: (Map<String, Any>) -> Unit,
+    inlineError: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val savedMethods = data["payment_methods"]?.toString()?.split(",")?.toSet() ?: setOf("cash", "card")
@@ -68,6 +70,15 @@ fun PaymentMethodsStep(
 
         OutlinedButton(onClick = { skipped = true; emit() }) {
             Text("Skip for now")
+        }
+
+        // §36.4 — inline validation error displayed below step fields.
+        if (!inlineError.isNullOrBlank()) {
+            Text(
+                text  = inlineError,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }

@@ -78,7 +78,15 @@ data class UserDto(
     val email: String?,
     val role: String,
     @SerializedName("avatar_url")
-    val avatarUrl: String?
+    val avatarUrl: String?,
+    /**
+     * §28.9 — Minimum app version code the server requires.  When present and
+     * greater than [com.bizarreelectronics.crm.BuildConfig.VERSION_CODE], the
+     * app shows the [com.bizarreelectronics.crm.ui.components.ForceUpgradeBlocker].
+     * Null = no floor enforced (older servers that don't set this field).
+     */
+    @SerializedName("min_supported_version")
+    val minSupportedVersion: Int? = null,
 )
 
 // RegisterDeviceRequest removed — /auth/register-device does not exist on server

@@ -21,9 +21,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.bizarreelectronics.crm.R
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,6 +48,7 @@ import com.bizarreelectronics.crm.util.QrCodeGenerator
 @Composable
 fun TicketQrCard(orderId: String) {
     val density = LocalDensity.current
+    val context = LocalContext.current
 
     // Inline card QR (200dp → px)
     val smallQrPx = with(density) { 200.dp.roundToPx() }.coerceAtLeast(200)
@@ -59,7 +62,8 @@ fun TicketQrCard(orderId: String) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable { showFullScreen = true }
-            .semantics { contentDescription = "QR code for ticket $orderId, tap to enlarge" },
+            // §26 — custom QR image: use a11y_* string resource with formatted order ID
+        .semantics { contentDescription = context.getString(R.string.a11y_qr_code_for_ticket, orderId) },
     ) {
         Column(
             modifier = Modifier
@@ -121,7 +125,8 @@ fun TicketQrCard(orderId: String) {
                     if (largeBitmap != null) {
                         Image(
                             bitmap = largeBitmap.asImageBitmap(),
-                            contentDescription = "Large QR code for $orderId",
+                            // §26 — a11y_* string resource
+                            contentDescription = context.getString(R.string.a11y_qr_code_large, orderId),
                             modifier = Modifier.size(400.dp),
                         )
                     }

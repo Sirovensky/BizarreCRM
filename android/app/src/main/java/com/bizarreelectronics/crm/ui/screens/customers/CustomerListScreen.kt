@@ -303,7 +303,7 @@ fun CustomerListScreen(
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },
-                placeholder = "Search customers...",
+                placeholder = "Name, phone, email, org…",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 

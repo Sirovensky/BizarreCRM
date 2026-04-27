@@ -433,6 +433,28 @@ class AuthPreferences @Inject constructor(
         _authCleared.tryEmit(reason)
     }
 
+    // region — server-enforced min version (§28.9)
+
+    /**
+     * Minimum app version code required by the connected server.
+     *
+     * Populated from `min_supported_version` on `GET /auth/me` responses.
+     * `null` means the server has not set a floor (feature not deployed or
+     * older server version).  [com.bizarreelectronics.crm.ui.components.ForceUpgradeBlocker]
+     * reads this value and blocks the UI when [BuildConfig.VERSION_CODE] < [serverMinVersion].
+     */
+    var serverMinVersion: Int?
+        get() {
+            val v = prefs.getInt(KEY_SERVER_MIN_VERSION, -1)
+            return if (v == -1) null else v
+        }
+        set(value) {
+            if (value == null) prefs.edit().remove(KEY_SERVER_MIN_VERSION).apply()
+            else prefs.edit().putInt(KEY_SERVER_MIN_VERSION, value).apply()
+        }
+
+    // endregion
+
     fun saveUser(
         token: String,
         refreshToken: String?,
@@ -474,6 +496,9 @@ class AuthPreferences @Inject constructor(
 
         // §2.17-L411 — per-tenant scoping: persisted active tenant domain
         private const val KEY_ACTIVE_TENANT_DOMAIN = "active_tenant_domain"
+
+        // §28.9 — server-enforced minimum version code for force-upgrade blocker
+        private const val KEY_SERVER_MIN_VERSION = "server_min_version"
 
         private const val HMAC_ALGORITHM = "HmacSHA256"
         private const val INSTALL_SECRET_BYTES = 32

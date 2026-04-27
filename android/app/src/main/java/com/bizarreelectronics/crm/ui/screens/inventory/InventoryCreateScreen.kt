@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -43,6 +44,8 @@ data class InventoryCreateUiState(
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val createdId: Long? = null,
+    /** Set to true after a "Save & add another" submit so the screen resets instead of navigating. */
+    val savedAndAddAnother: Boolean = false,
 )
 
 @HiltViewModel
@@ -79,21 +82,43 @@ class InventoryCreateViewModel @Inject constructor(
     }
     fun updateDescription(value: String) { _state.value = _state.value.copy(description = value) }
 
+    /** Called from the Scanner screen result (savedStateHandle "scanned_barcode"). */
+    fun applyScannedBarcode(code: String) {
+        val current = _state.value
+        // Fill UPC if empty, otherwise fill SKU; prefer whichever is blank.
+        _state.value = when {
+            current.upcCode.isBlank() -> current.copy(upcCode = code)
+            current.sku.isBlank()     -> current.copy(sku = code)
+            else                      -> current.copy(upcCode = code)
+        }
+    }
+
     fun clearError() {
         _state.value = _state.value.copy(error = null)
     }
 
-    fun save() {
+    private fun validateForm(): String? {
         val current = _state.value
-        if (current.name.isBlank()) {
-            _state.value = current.copy(error = "Name is required")
-            return
-        }
+        if (current.name.isBlank()) return "Name is required"
         val retail = current.retailPrice.toDoubleOrNull()
-        if (retail == null || retail <= 0.0) {
-            _state.value = current.copy(error = "Retail price must be greater than 0")
+        if (retail == null || retail <= 0.0) return "Retail price must be greater than 0"
+        val costStr = current.costPrice
+        if (costStr.isNotBlank() && costStr.toDoubleOrNull() == null) return "Cost price is not a valid number"
+        val stockStr = current.inStock
+        if (stockStr.isNotBlank() && stockStr.toIntOrNull() == null) return "Stock qty must be a whole number"
+        val reorderStr = current.reorderLevel
+        if (reorderStr.isNotBlank() && reorderStr.toIntOrNull() == null) return "Reorder level must be a whole number"
+        return null
+    }
+
+    fun save(addAnother: Boolean = false) {
+        val validationError = validateForm()
+        if (validationError != null) {
+            _state.value = _state.value.copy(error = validationError)
             return
         }
+        val current = _state.value
+        val retail = current.retailPrice.toDouble()
 
         viewModelScope.launch {
             _state.value = _state.value.copy(isSubmitting = true, error = null)
@@ -110,10 +135,19 @@ class InventoryCreateViewModel @Inject constructor(
                     reorderLevel = current.reorderLevel.toIntOrNull(),
                 )
                 val createdId = inventoryRepository.createItem(request)
-                _state.value = _state.value.copy(
-                    isSubmitting = false,
-                    createdId = createdId,
-                )
+                if (addAnother) {
+                    // Reset form fields; keep itemType as convenience for the user.
+                    _state.value = InventoryCreateUiState(
+                        itemType = current.itemType,
+                        isSubmitting = false,
+                        savedAndAddAnother = true,
+                    )
+                } else {
+                    _state.value = _state.value.copy(
+                        isSubmitting = false,
+                        createdId = createdId,
+                    )
+                }
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isSubmitting = false,
@@ -122,6 +156,10 @@ class InventoryCreateViewModel @Inject constructor(
             }
         }
     }
+
+    fun clearSavedAndAddAnother() {
+        _state.value = _state.value.copy(savedAndAddAnother = false)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,12 +167,25 @@ class InventoryCreateViewModel @Inject constructor(
 fun InventoryCreateScreen(
     onBack: () -> Unit,
     onCreated: (Long) -> Unit,
+    /** Navigate to the shared BarcodeScanScreen; result arrives via [scannedBarcode]. */
+    onScanBarcode: () -> Unit = {},
+    /** Barcode delivered from BarcodeScanScreen via savedStateHandle. */
+    scannedBarcode: String? = null,
+    /** Called after the scanned barcode has been consumed so the caller can clear it. */
+    onBarcodeLookupConsumed: () -> Unit = {},
     viewModel: InventoryCreateViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Navigate on successful creation
+    // Consume a scanned barcode delivered via savedStateHandle.
+    LaunchedEffect(scannedBarcode) {
+        val code = scannedBarcode ?: return@LaunchedEffect
+        viewModel.applyScannedBarcode(code)
+        onBarcodeLookupConsumed()
+    }
+
+    // Navigate on successful creation.
     LaunchedEffect(state.createdId) {
         val id = state.createdId
         if (id != null) {
@@ -142,7 +193,15 @@ fun InventoryCreateScreen(
         }
     }
 
-    // Show error via snackbar
+    // "Save & add another" feedback — show snackbar then clear flag.
+    LaunchedEffect(state.savedAndAddAnother) {
+        if (state.savedAndAddAnother) {
+            snackbarHostState.showSnackbar("Item saved. Form cleared for next item.")
+            viewModel.clearSavedAndAddAnother()
+        }
+    }
+
+    // Show error via snackbar.
     LaunchedEffect(state.error) {
         val error = state.error
         if (error != null) {
@@ -165,6 +224,13 @@ fun InventoryCreateScreen(
                     }
                 },
                 actions = {
+                    // §6.3: inline barcode scan icon to fill UPC/SKU fields.
+                    IconButton(onClick = onScanBarcode) {
+                        Icon(
+                            Icons.Filled.QrCodeScanner,
+                            contentDescription = "Scan barcode to fill SKU / UPC",
+                        )
+                    }
                     if (state.isSubmitting) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
@@ -203,9 +269,10 @@ fun InventoryCreateScreen(
             onReorderLevelChange = viewModel::updateReorderLevel,
             description = state.description,
             onDescriptionChange = viewModel::updateDescription,
-            // D5-6: IME Done on the last (Description) field saves the new
-            // item, matching the toolbar Save button.
             onSubmit = { if (canSave) viewModel.save() },
+            // §6.3: "Save & add another" secondary CTA shown at the bottom.
+            onSaveAndAddAnother = { if (canSave) viewModel.save(addAnother = true) },
+            canSave = canSave,
         )
     }
 }
@@ -240,6 +307,9 @@ internal fun InventoryFormContent(
     // final (Description) field. Callers pass their own save/guard logic so
     // Create and Edit can reuse this shared form.
     onSubmit: () -> Unit = {},
+    /** §6.3: "Save & add another" secondary CTA. Null = not shown (Edit screen). */
+    onSaveAndAddAnother: (() -> Unit)? = null,
+    canSave: Boolean = true,
 ) {
     // D5-6: IME Next advances focus, Done clears focus and invokes onSubmit.
     val focusManager = LocalFocusManager.current
@@ -383,6 +453,17 @@ internal fun InventoryFormContent(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = onDoneSubmit,
         )
+
+        // §6.3: "Save & add another" secondary CTA — only shown on the Create screen.
+        if (onSaveAndAddAnother != null) {
+            androidx.compose.material3.OutlinedButton(
+                onClick = onSaveAndAddAnother,
+                enabled = canSave,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Save & add another")
+            }
+        }
     }
 }
 

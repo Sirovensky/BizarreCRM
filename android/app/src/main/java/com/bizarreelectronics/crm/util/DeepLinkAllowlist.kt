@@ -35,6 +35,15 @@ object DeepLinkAllowlist {
         "ticket/new",
         "customer/new",
         "scan",
+        // §56.4 — Android TV / Leanback launcher launches with bizarrecrm://tvqueue.
+        // The host "tvqueue" maps directly to the Screen.TvQueueBoard route "tv/queue".
+        "tvqueue",
+        // §68.2 — static deep-link routes (no path parameters).
+        "dashboard",
+        "tickets",
+        "pos/new",
+        "reports",
+        "settings",
     )
 
     /**
@@ -90,6 +99,22 @@ object DeepLinkAllowlist {
                 null // invalid token — silent fallback
             }
         }
+
+        // §68.2 — parametric deep-link routes. Each path is allow-listed by prefix;
+        // the id/slug segment is accepted as-is since the receiving composable validates
+        // it (toLongOrNull / URI-decode). Slugs with path traversal chars (/) are
+        // rejected because startsWith matches only the first path level.
+        if (candidate.startsWith("tickets/")) return candidate
+        if (candidate.startsWith("customers/")) return candidate
+        if (candidate.startsWith("inventory/")) return candidate
+        if (candidate.startsWith("invoices/")) return candidate
+        if (candidate.startsWith("estimates/")) return candidate
+        if (candidate.startsWith("leads/")) return candidate
+        if (candidate.startsWith("appointments/")) return candidate
+        if (candidate.startsWith("sms/")) return candidate
+        if (candidate.startsWith("pos/cart/")) return candidate
+        if (candidate.startsWith("reports/")) return candidate
+        if (candidate.startsWith("settings/")) return candidate
 
         return if (candidate in routes) candidate else null
     }

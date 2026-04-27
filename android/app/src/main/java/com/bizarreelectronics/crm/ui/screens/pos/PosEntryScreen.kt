@@ -62,8 +62,23 @@ fun PosEntryScreen(
     onNavigateToTender: () -> Unit,
     onNavigateToTicket: (Long) -> Unit = {},
     onNavigateToStoreCreditPayment: () -> Unit = {},
+    // §POS — full-screen customer create launches a separate route + returns
+    // the created id via savedStateHandle. Defaults are no-ops so existing
+    // call-sites without the wiring still compile.
+    onNavigateToCustomerCreate: () -> Unit = {},
+    createdCustomerIdFlow: kotlinx.coroutines.flow.StateFlow<Long?>? = null,
+    onCreatedCustomerConsumed: () -> Unit = {},
     viewModel: PosEntryViewModel = hiltViewModel(),
 ) {
+    // §POS — observe back-stack for newly-created customer id from the
+    // full-screen customer-create route. On non-null, attach + clear key.
+    val createdId by (createdCustomerIdFlow
+        ?: kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)).collectAsState()
+    LaunchedEffect(createdId) {
+        val id = createdId ?: return@LaunchedEffect
+        viewModel.attachByCustomerId(id)
+        onCreatedCustomerConsumed()
+    }
     val state by viewModel.uiState.collectAsState()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -110,9 +125,12 @@ fun PosEntryScreen(
             searchFocusRequester.requestFocus()
         },
     ) {
+    // §23.5 standaloneModal: PosEntryScreen is drawn full-window without a parent
+    // Scaffold, so we zero the Scaffold's own insets and let statusBarsPadding below
+    // own the status bar. See ScaffoldInsetsDefaults.standaloneModal KDoc.
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = WindowInsets(0),
+        contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.standaloneModal,
     ) { innerPadding ->
     // statusBarsPadding pushes the entire POS-entry surface below the
     // system status bar so the customer banner / clock no longer overlap.
@@ -159,14 +177,7 @@ fun PosEntryScreen(
                     searchExpanded = true
                     searchFocusRequester.requestFocus()
                 },
-                onCreateCustomer = { firstName, lastName, phone, email ->
-                    viewModel.createCustomerAndAttach(
-                        firstName = firstName,
-                        lastName = lastName,
-                        phone = phone,
-                        email = email,
-                    )
-                },
+                onCreateCustomer = onNavigateToCustomerCreate,
             )
         }
 
@@ -282,7 +293,7 @@ private fun EntryContent(
     onNavigateToCart: () -> Unit,
     onNavigateToTicket: (Long) -> Unit,
     onSearchTap: () -> Unit,
-    onCreateCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
+    onCreateCustomer: () -> Unit,
 ) {
     if (state.attachedCustomer == null) {
         // Pre-attach: vertically center the 3 path tiles in the available
@@ -391,10 +402,10 @@ private fun PreAttachContent(
     onWalkIn: () -> Unit,
     onOpenTicket: (Long) -> Unit,
     onSearchTap: () -> Unit,
-    onCreateCustomer: (firstName: String, lastName: String?, phone: String?, email: String?) -> Unit,
+    // §POS — full-screen customer create launches a separate route + returns
+    // the created id via savedStateHandle. No more inline dialog.
+    onCreateCustomer: () -> Unit,
 ) {
-    var showCreateDialog by remember { mutableStateOf(false) }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -418,9 +429,9 @@ private fun PreAttachContent(
             PathTile(
                 emoji = "+",
                 title = "Create new customer",
-                subtitle = "First name required",
+                subtitle = "Full record · phone, email, address",
                 isPrimary = true,
-                onClick = { showCreateDialog = true },
+                onClick = onCreateCustomer,
             )
             GhostWalkInTile(onWalkIn = onWalkIn)
         }
@@ -447,20 +458,6 @@ private fun PreAttachContent(
         }
     }
 
-    if (showCreateDialog) {
-        CreateCustomerDialog(
-            onSubmit = { firstName, lastName, phone, email ->
-                onCreateCustomer(
-                    firstName,
-                    lastName.takeIf { it.isNotBlank() },
-                    phone.takeIf { it.isNotBlank() },
-                    email.takeIf { it.isNotBlank() },
-                )
-                showCreateDialog = false
-            },
-            onDismiss = { showCreateDialog = false },
-        )
-    }
 }
 
 @Composable
@@ -479,67 +476,6 @@ private fun RecentTicketChip(repair: PastRepair, onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun CreateCustomerDialog(
-    onSubmit: (firstName: String, lastName: String, phone: String, email: String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    val canSubmit = firstName.isNotBlank()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Create new customer") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = firstName,
-                    onValueChange = { firstName = it.take(80) },
-                    label = { Text("First name *") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = lastName,
-                    onValueChange = { lastName = it.take(80) },
-                    label = { Text("Last name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = phone,
-                    onValueChange = { phone = it.take(40) },
-                    label = { Text("Phone") },
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = email,
-                    onValueChange = { email = it.take(120) },
-                    label = { Text("Email") },
-                    singleLine = true,
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Email,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = canSubmit,
-                onClick = { onSubmit(firstName.trim(), lastName.trim(), phone.trim(), email.trim()) },
-            ) { Text("Create") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
 
 // ─── Reusable sub-composables ────────────────────────────────────────────────
 

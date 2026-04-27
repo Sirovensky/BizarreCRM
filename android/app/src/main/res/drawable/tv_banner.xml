@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  §56.4 — Android TV / Leanback launcher banner for the TV Queue Board.
+
+  Required dimensions: 320 × 180 dp (Android TV banner specification).
+  This placeholder renders the shop name on a dark background. Replace with
+  a proper branded asset (PNG or vector) before distributing via Google TV /
+  Fire TV stores. The aspect ratio must remain 16:9 (320 × 180 dp).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+
+    <!-- Dark background matching TV board palette -->
+    <path
+        android:fillColor="#FF0D0D1A"
+        android:pathData="M0,0 H320 V180 H0 Z" />
+
+    <!-- Accent bar at top -->
+    <path
+        android:fillColor="#FF7C3AED"
+        android:pathData="M0,0 H320 V8 H0 Z" />
+
+    <!-- Shop name placeholder text is rendered at runtime by the OS launcher;
+         the banner is a static image. A proper branded PNG should replace this
+         vector before production release. -->
+</vector>

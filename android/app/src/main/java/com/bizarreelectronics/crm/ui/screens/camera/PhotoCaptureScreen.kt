@@ -37,6 +37,8 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.theme.BrandMono
+import com.bizarreelectronics.crm.util.HapticEvent
+import com.bizarreelectronics.crm.util.LocalAppHapticController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -193,6 +195,7 @@ fun PhotoCaptureScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
+    val hapticCtrl = LocalAppHapticController.current
 
     // rememberSaveable so selection across rotation is retained.
     var selectedType by rememberSaveable { mutableStateOf("pre") }
@@ -288,8 +291,10 @@ fun PhotoCaptureScreen(
     }
 
     // Surface successful uploads via snackbar.
+    // §69.1 — Photo shutter / upload success → CLOCK_TICK haptic.
     LaunchedEffect(state.uploadedCount) {
         if (state.uploadedCount > 0) {
+            hapticCtrl?.fire(HapticEvent.PhotoShutter)
             snackbarHostState.showSnackbar("Photo uploaded ($selectedType-condition)")
         }
     }
