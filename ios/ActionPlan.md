@@ -624,9 +624,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
-- [ ] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
+- [x] **QR code** — 81130f8c — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
-- [ ] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
+- [x] **Copy link to ticket** — 81130f8c — Universal Link `app.bizarrecrm.com/tickets/:id`.
 - [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
@@ -1301,7 +1301,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Status tabs — All / Draft — db339de3 / Sent / Approved / Rejected / Expired / Converted.
 - [ ] Filters — date range, customer, amount, validity.
 - [ ] Bulk actions — Send / Delete / Export.
-- [ ] Expiring-soon chip (pulse animation when ≤3 days).
+- [x] Expiring-soon chip — 81130f8c (pulse animation when ≤3 days).
 - [ ] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
 - [ ] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
 
