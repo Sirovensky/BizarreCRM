@@ -320,6 +320,12 @@ These errors prevent `swift test` from completing across the full package graph.
 
 The `BluetoothManager` init and the `CBCentralManagerDelegate` extension both live in `ios/Packages/Hardware/Sources/Hardware/Bluetooth/BluetoothManager.swift` (Agent 2 owns this file). Agent 2 will implement the delegate wiring in a follow-up batch once Agent 10 confirms the `UIBackgroundModes` key is added (ordering: plist change first so CI doesn't fail on missing entitlement).
 
+### Agent 1 — b10 BlockChyp tasks STOPPED (HIGH RISK — orchestrator review required)
+
+**§16.5 BlockChyp live payment flow** (8 open tasks: start-charge, signature-capture, receipt-data POST, success/partial-auth/decline/timeout/tip-adjust/void/offline) — these require live payment rail calls via `POST /api/v1/blockchyp/process-payment` and manipulation of authorization tokens, partial-auth states, and refund-by-token flows. Per hard rule "BlockChyp payment math = HIGH RISK → STOP", all §16.5 tasks are paused. Existing scaffold code lives in `ios/Packages/Pos/Sources/Pos/BlockChyp/` (`BlockChypReaderStateView`, `BlockChypHeartbeatView`, `BlockChypTerminalPairingView`, `SignatureRouter`, `SignatureSheet`). Server routes exist in `packages/server/src/services/blockchyp.ts:63-790`. Also note: pre-existing Swift 6 compile errors in `APIClient+POS.swift` lines 259+274 (nested structs in generic functions) per Agent 9 b5 Discovered — these must be fixed before §16.5 can proceed. Orchestrator should approve before any agent implements live card payment processing.
+
+**§16.9 Return tender (BlockChyp refund with token) + return receipt** — the "Tender — original card (BlockChyp refund with token)" and "Receipt — RETURN printed; refund amount; signature if required" tasks involve BlockChyp token replay. Same HIGH RISK category. Paused alongside §16.5.
+
 ---
 
 ## Workflow per agent (reminder)

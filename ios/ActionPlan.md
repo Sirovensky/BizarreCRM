@@ -1976,8 +1976,8 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Gift card** — scan / key gift-card #; `POST /gift-cards/redeem` with amount; remaining balance displayed. `PosGiftCardAmountView` + `TenderMethod.giftCard` in `PosTenderAmountEntryView`. (feat(§16.6): gift card tender)
 - [x] **Store credit** — auto-offer if customer has balance; slider "Apply X of $Y available". `PosStoreCreditAmountView` + `TenderMethod.storeCredit` in `PosTenderAmountEntryView`. (feat(§16.6): store credit tender)
 - [x] **Check** — check # + bank + memo; no auth, goes to A/R. `PosCheckTenderSheet` + `TenderMethod.check`. (feat(§16.6): check tender)
-- [ ] **Account credit / net-30** — role-gated; only if customer has terms set; adds to open balance.
-- [ ] **Financing (if enabled)** — partner link (Affirm/Klarna) → QR/URL for customer to complete on their phone; webhook completes sale.
+- [x] **Account credit / net-30** — role-gated; only if customer has terms set; adds to open balance. `PosAccountCreditTenderSheet` + `TenderMethod.accountCredit` + wired in `PosTenderAmountEntryView`. (feat(§16): account-credit tender 2f6d8bab)
+- [x] **Financing (if enabled)** — partner link (Affirm/Klarna) → QR/URL for customer to complete on their phone; webhook completes sale. `PosFinancingLinkSheet` + `FinancingProvider` enum; no partner SDK. (feat(§16): financing link 2f6d8bab)
 - [x] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card. `PosTenderCoordinator.applyTender` multi-leg + `PosTenderMethodPickerView`. (feat(§16.6): split tender)
 
 ### 16.7 Receipt & hand-off
@@ -2046,7 +2046,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **3-column layout** — catalog + cart + customer panel. `PosIPadCustomerPanel` persistent trailing column; avatar + loyalty/tax-exempt chips; find/create CTAs on walk-in. (feat(§16.14): iPad 3-column customer panel 55ba3fb8)
 - [x] **Customer-facing display** — `CFDBridge` + `CFDView` + `CFDIdleView` + `CFDSettingsView`. iPad/Mac only; hidden on iPhone. Liquid Glass header/footer. A11y. Reduce Motion. Tests ≥80%. (Phase 5 §16)
 - [x] **Magic Keyboard shortcuts** — ⌘N (new custom line), ⌘⇧R (return), ⌘P (pay/charge), ⌘K (customer pick), ⌘H (hold), ⌘⇧H (resume holds), ⌘⇧D (discount), ⌘⇧T (tip), ⌘⇧F (fee), ⌘⇧⌫ (clear cart). ⌘F search focus + ⌘⇧V void deferred.
-- [ ] **Apple Pencil** — tap to add to cart, double-tap for 2, hover for preview on iPad Pro.
+- [x] **Apple Pencil** — tap to add to cart, double-tap for 2, hover for preview on iPad Pro. `PosApplePencilModifier` + `.onPencilDoubleTap` + `.onHover` ring + `Cart.add(_:qty:)` helper. (feat(§16.14): Apple Pencil 2f6d8bab)
 - [x] **Drag items** — drag from catalog to cart with haptic feedback. `PosCatalogDraggableModifier` + `PosCartDropTargetModifier` + `Cart.add(_:PosDraggedCatalogItem)`. (feat(§16.14): drag items from catalog to cart 3ad70973)
 
 ### 16.15 Membership / loyalty integration
@@ -2110,7 +2110,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Checkout sheet has "Gift receipt" switch. `GiftReceiptCheckoutSheet` + `GiftReceiptCheckoutViewModel`. (feat(§16): gift receipt checkout sheet 55ba3fb8)
 - [x] Content: item names + qty present; prices hidden; totals hidden. `GiftReceiptGenerator.buildPayload` zeroes all monetary fields. (feat(§16): gift receipt generator strips prices 55ba3fb8)
 - [x] Return-by date + policy printed on gift receipt. Dynamic footer with `returnByDays` from `GiftReceiptOptions`. (feat(§16): gift receipt return-by date footer 55ba3fb8)
-- [ ] QR with scoped code: enables one-time return without revealing price to recipient
+- [x] QR with scoped code: enables one-time return without revealing price to recipient. `GiftReceiptOptions.returnToken` + `returnURL(baseURL:)` + `GiftReceiptScopedQRView` (CoreImage, off-thread, single-use token). (feat(§16): gift receipt scoped QR 2f6d8bab)
 - [x] Channels: print + email + SMS + AirDrop. `GiftReceiptChannel` enum + picker in checkout sheet. (feat(§16): gift receipt channel picker 55ba3fb8)
 - [x] Return handling: gift return credits store credit (§40) by default unless paid-for matches card on file. `GiftReceiptReturnCredit` enum + picker. (feat(§16): gift receipt return credit picker 55ba3fb8)
 - [x] Partial gift receipt via per-line toggle. `GiftReceiptOptions.includedLineIds` + per-line toggle in sheet. (feat(§16): partial gift receipt line selection 55ba3fb8)
@@ -2128,9 +2128,9 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Limits: excluded categories. `DiscountRule.excludedCategories: Set<String>` + engine skip in `applyToLine`. (feat(§16): discount excluded categories 55ba3fb8)
 - [x] Auto-apply on each cart change without staff action. `DiscountAutoApplyService` actor evaluates on each cart change. (feat(§16): discount auto-apply service 55ba3fb8)
 - [x] Banner shows "N discounts applied". `DiscountAutoApplyResult.bannerText` + `showBanner` flag. (feat(§16): discount auto-apply banner 55ba3fb8)
-- [ ] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit
+- [x] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit. `PosAdHocDiscountSheet` + `PosAdHocDiscountViewModel`; manager PIN gate when over threshold; `discount_override` audit log. (feat(§16): ad-hoc discount override 2f6d8bab)
 - [x] Manager PIN required above threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [ ] Server validation: iOS optimistic, server re-validates to prevent fraud
+- [x] Server validation: iOS optimistic, server re-validates to prevent fraud. `CartServerValidationBannerView` + `CartServerValidationDetailSheet` + `ServerValidationMismatch` model (tax/discount/price mismatch with delta display). (feat(§16): server validation banner 2f6d8bab)
 - [ ] Reporting: discount effectiveness (usage, revenue impact, margin impact)
 - [x] Model: code string (human-friendly like `SAVE10`) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: discount rule linkage (§16) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
@@ -2138,10 +2138,10 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Model: usage limit (total + per customer) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: channel restriction (any / online only / in-store only). `DiscountChannel` enum + `DiscountRule.channel` + engine gate. (feat(§16): discount channel restriction model 55ba3fb8)
 - [x] POS checkout sheet has "Coupon" field with live validation showing discount applied (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [ ] QR coupons: printable/emailable QR containing code; scan at checkout auto-fills
-- [ ] Abuse prevention: rate-limit attempts per device
-- [ ] Abuse prevention: invalid attempts logged to audit
-- [ ] Affiliate codes: tie coupon code to staff member for sales attribution
+- [x] QR coupons: printable/emailable QR containing code; scan at checkout auto-fills. `CouponQRView` + `CouponQRShareView` (CoreImage off-thread, ShareLink, `.textSelection` for Mac). (feat(§16): coupon QR 2f6d8bab)
+- [x] Abuse prevention: rate-limit attempts per device. `CouponAbuseGuard` actor — 5 failures/60s → 120s cooldown. (feat(§16): coupon abuse rate-limit 2f6d8bab)
+- [x] Abuse prevention: invalid attempts logged to audit. `CouponAbuseGuard.recordFailedAttempt` → `PosAuditLogStore` "coupon_invalid_attempt". (feat(§16): coupon audit 2f6d8bab)
+- [x] Affiliate codes: tie coupon code to staff member for sales attribution. `AffiliateCode` model + `AffiliateCodeRepository` protocol. (feat(§16): affiliate codes model 2f6d8bab)
 - [x] Time-based: happy hour 3-5pm = 10% off services; weekend pricing adjustments (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Volume: buy 3 cases 5% off each, buy 5 cases 10% (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Customer-group: wholesale pricing for B2B tier (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
@@ -2149,15 +2149,15 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier. `PricingRuleType.promotionWindow` + `PromotionWindowBannerView` with live countdown. (feat(§16): pricing promotion window + cashier countdown 55ba3fb8)
 - [x] UI at Settings → Pricing rules (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Rule list with priority order — `PricingRulesListView` + `PricingRulesListViewModel` + `PricingRulesRepository`/`Impl` + `APIClient+PosRules`. Drag-to-reorder with PATCH /pos/pricing-rules/order sync. Editor extended for locationOverride + promotionWindow. 9 tests ≥80%. (agent-1-b8)
-- [ ] Live preview: "Apply to sample cart" simulator
+- [x] Live preview: "Apply to sample cart" simulator. `PricingRulePreviewView` + `PricingRulePreviewViewModel` — uses `PricingEngine` actor with `DiscountCartSnapshot`; per-rule savings breakdown. (feat(§16): pricing rule live preview 2f6d8bab)
 - [x] Conflict resolution: first matching rule wins (priority) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Explicit stack rules if tenant configures (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [ ] Effective dates: schedule rules to auto-activate/deactivate
-- [ ] Calendar view of scheduled rules
+- [x] Effective dates: schedule rules to auto-activate/deactivate. `EffectiveDatesEditorSection` embeddable in `PricingRuleEditorView`; `validFrom`/`validTo` DatePickers with toggles. (feat(§16): effective dates editor 2f6d8bab)
+- [x] Calendar view of scheduled rules. `ScheduledPricingRulesView` + `ScheduledPricingRulesViewModel` — month navigator, active/upcoming/expired grouping. (feat(§16): scheduled pricing rules calendar 2f6d8bab)
 - [ ] Live recompute: animate tick-up/tick-down per digit with small font-weight shift.
 - [ ] Discount highlight: flash discount line on apply; strike-through original → new.
 - [ ] Pending server validation: subtle shimmer on price until response finalizes.
-- [ ] Mismatch resolution: banner "Tax recomputed (+$0.03)" when server total differs.
+- [x] Mismatch resolution: banner "Tax recomputed (+$0.03)" when server total differs. `CartServerValidationBannerView` + `CartServerValidationDetailSheet` (see Server validation above). (feat(§16): server validation banner 2f6d8bab)
 - [ ] A11y: screen reader announces new total on change (debounced).
 - [ ] Sale record schema: local UUID + timestamp + lines + tenders + idempotency key.
 - [ ] Receipt printing: "OFFLINE" watermark until synced; post-sync reprint available without watermark.
