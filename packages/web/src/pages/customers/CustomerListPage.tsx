@@ -224,8 +224,29 @@ export function CustomerListPage() {
     mutationFn: (items: ImportCustomerItem[]) => customerApi.importCsv(items),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
-      const d = res?.data?.data;
-      toast.success(`Imported ${d?.created || 0} customers${d?.errors?.length ? `, ${d.errors.length} errors` : ''}`);
+      const d = res?.data?.data as { created?: number; skipped?: number; errors?: { row: number; error: string }[] } | undefined;
+      const created = d?.created ?? 0;
+      const errCount = d?.errors?.length ?? 0;
+      // WEB-S7-026: surface failed rows — show count and offer downloadable error log
+      if (errCount > 0) {
+        toast(`Imported ${created} customers, ${errCount} row${errCount !== 1 ? 's' : ''} failed`, { icon: '⚠️' });
+        // Download error log CSV so the user can review and fix the failed rows
+        const csvRows = [
+          toCsvRow(['Row', 'Error']),
+          ...(d?.errors ?? []).map(e => toCsvRow([String(e.row), e.error])),
+        ].join('\n');
+        const blob = new Blob([CSV_BOM + csvRows], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'import_errors.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      } else {
+        toast.success(`Imported ${created} customers${d?.skipped ? `, ${d.skipped} skipped` : ''}`);
+      }
       setShowImportModal(false);
       setImportText('');
       setImportPreview([]);

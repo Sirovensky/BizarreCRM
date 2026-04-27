@@ -58,3 +58,11 @@ export const TOP_MOVING_ITEMS_LIMIT = 10;
 // ─── Backup ──────────────────────────────────────────────────────────────────
 export const DEFAULT_BACKUP_RETENTION = 30;
 export const DEFAULT_BACKUP_SCHEDULE = '0 3 * * *'; // 3 AM daily
+
+// ─── Role helpers ─────────────────────────────────────────────────────────────
+/** WEB-S7-034: single source of truth for "admin or manager" check so adding
+ *  a new privileged role (e.g. 'supervisor') is a one-line change here. */
+export const ADMIN_MANAGER_ROLES: readonly string[] = ['admin', 'manager'];
+export function isAdminOrManager(role: string | undefined): boolean {
+  return role != null && ADMIN_MANAGER_ROLES.includes(role);
+}

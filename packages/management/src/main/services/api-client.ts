@@ -350,6 +350,20 @@ export function apiRequest<T = unknown>(
     });
 
     req.on('error', (err: Error) => reject(err));
+    // DASH-ELEC-085: separate connect-phase timeout from body-read timeout.
+    // Without a per-socket timeout, a process that port-squats on 443 (but
+    // never completes the TLS handshake) holds the request open for the full
+    // 30 s before the idle-time setTimeout fires. With this guard the socket
+    // is destroyed after 5 s if the connection isn't established, then the
+    // body read is still allowed up to REQUEST_TIMEOUT from that point.
+    req.on('socket', (socket) => {
+      socket.setTimeout(5_000, () => {
+        req.destroy(new Error('Connect timeout'));
+      });
+      // Once connected, clear the per-socket timer so it doesn't fire during
+      // a slow body read. The req.setTimeout below guards the idle phase.
+      socket.on('connect', () => socket.setTimeout(0));
+    });
     req.setTimeout(REQUEST_TIMEOUT, () => {
       req.destroy();
       reject(new Error('Request timeout'));

@@ -3147,3 +3147,28 @@ WEB-FJ: 008 (PhotoCapture URL strip pre-existing), 010 (portal 15-min idle timeo
 WEB-FX: 002 (htmlFor on top-5 forms), 004 (role="alert" on form errors).
 WEB-FAE: 007 (TechDashboard query key alignment).
 DASH-ELEC: 059 (session_revoked audit pre-existing), 063 (security alerts URL filters), 064 (audit log + security alerts pagination Load More), 069 (UpdatesPage hide flash on initial load).
+
+## todofixes426 — Cleanup pass 9 (2026-04-26) — WEB-S7/S5/FN remaining
+
+- [x] WEB-S7-022. **Global search q<3 fast-exit.** CLOSED 2026-04-26 — todofixes426: `q.length < 3` guard added to GET /search; empty result returned immediately for 1–2 char queries. `packages/server/src/routes/search.routes.ts`.
+- [x] WEB-S7-026. **CSV import failed rows downloadable error log.** CLOSED 2026-04-26 — todofixes426: `importMutation.onSuccess` shows `${errCount} rows failed` toast + auto-downloads `import_errors.csv` with Row/Error columns. `packages/web/src/pages/customers/CustomerListPage.tsx`.
+- [x] WEB-S7-029. **TicketListPage filtered_status_counts.** CLOSED 2026-04-26 — todofixes426: server adds `filtered_status_counts` (same WHERE/keywordJoin as main query) alongside global `status_counts`; web switches to filtered counts when `hasActiveFilters` is true. `packages/server/src/routes/tickets.routes.ts`, `packages/web/src/pages/tickets/TicketListPage.tsx`.
+- [x] WEB-S7-034. **isAdminOrManager shared util.** CLOSED 2026-04-26 — todofixes426: `isAdminOrManager()` + `ADMIN_MANAGER_ROLES` added to `utils/constants.ts`; both inline checks in `search.routes.ts` replaced. `packages/server/src/utils/constants.ts`, `packages/server/src/routes/search.routes.ts`.
+- [x] WEB-S7-036. **ReportsPage SalesTab empty EmptyState.** CLOSED 2026-04-26 — DONE-PREEXISTING: `rows.length === 0` guard already present at line 316.
+- [x] WEB-S7-037. **Portal timeline UTC sort.** CLOSED 2026-04-26 — DONE-PREEXISTING: `toUtc` helper in `portal.routes.ts:328` already normalizes timestamps before sort.
+- [x] WEB-S7-041. **Dashboard all-time floor.** CLOSED 2026-04-26 — DONE-PREEXISTING: `case 'all'` uses `'2000-01-01'` not `'2020-01-01'`; historical data covered.
+- [x] WEB-S7-044. **enforceImportRateLimit atomic transaction.** CLOSED 2026-04-26 — todofixes426: wrapped prune+count checks in `db.transaction()` to serialise concurrent import-start calls. `packages/server/src/routes/import.routes.ts`.
+- [x] WEB-S7-045. **ReportsPage CSV download DOM append.** CLOSED 2026-04-26 — DONE-PREEXISTING: `document.body.appendChild(a)` + `setTimeout` cleanup already present at lines 130–138.
+- [x] WEB-FN-008. **Error code lost on client.** CLOSED 2026-04-26 — DONE-PREEXISTING: `api/client.ts` interceptor already reads `envelope.code` → `error.errorCode`. Per-page branching on errorCode is a separate larger refactor.
+- [x] WEB-FN-009. **Signup 202 no-op on prod.** CLOSED 2026-04-26 — DONE-PREEXISTING: `SignupPage.tsx` already shows "Check Your Email" state; no redirect attempted for 202 responses.
+
+Skipped (requires non-existent DataTable component): WEB-S5-029, WEB-S5-030, WEB-S5-040, WEB-S5-044.
+Skipped (large codemod, 18+ route files): WEB-S7-038 (pagination out-of-bounds), WEB-FN-005 (pagination param name drift).
+
+## todofixes426 — Cleanup pass 9 (2026-04-26) — DASH-ELEC + S7 + FN final
+
+DASH-ELEC: 080 (spawnSync PowerShell), 083 (service action concurrency lock), 085 (5s socket connect timeout), 096 (IPC result narrowing), 114 (crashReporter.start), 122 (context-menu pre-existing), 146 (Theme = 'dark' only), 151 (Tailwind dynamic class names).
+
+WEB-S7: 022 (search short-q guard), 026 (import errors CSV download), 029 (filtered_status_counts), 034 (isAdminOrManager helper), 036 (EmptyState pre-existing), 037 (toUtc pre-existing), 041 (2000-01-01 pre-existing), 044 (rate-limit transaction), 045 (downloadCsv pre-existing).
+
+WEB-FN: 008 (errorCode interceptor pre-existing), 009 (Check Your Email pre-existing).

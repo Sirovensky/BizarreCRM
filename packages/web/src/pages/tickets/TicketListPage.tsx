@@ -895,8 +895,16 @@ export function TicketListPage() {
     }
     return filtered;
   }, [rawTickets, showClosed, showEmpty, statuses]);
-  const statusCounts: { status_id?: number; id?: number; name?: string; status_name?: string; color: string; count: number }[] =
+  // WEB-S7-029: use filtered_status_counts when any filter is active so the
+  // sidebar shows accurate per-status counts rather than all-ticket totals.
+  const hasActiveFilters = !!(keyword || assignedTo || dateFilter || statusGroupFilter);
+  const rawStatusCounts: { status_id?: number; id?: number; name?: string; status_name?: string; color: string; count: number }[] =
     ticketData?.data?.data?.status_counts || ticketData?.data?.status_counts || [];
+  const filteredStatusCounts: typeof rawStatusCounts =
+    ticketData?.data?.data?.filtered_status_counts || ticketData?.data?.filtered_status_counts || [];
+  const statusCounts = hasActiveFilters && filteredStatusCounts.length > 0
+    ? filteredStatusCounts
+    : rawStatusCounts;
 
   // Compute total created count
   const totalCreated = statusCounts.reduce((sum, sc) => sum + (sc.count || 0), 0);

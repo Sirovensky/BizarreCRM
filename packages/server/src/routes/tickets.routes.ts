@@ -667,8 +667,24 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   `;
   const dataParams = [...params, pageSize, offset];
 
+  // WEB-S7-029: filtered status counts — use the same WHERE conditions as the
+  // main query so sidebar counts reflect active date/assignee/keyword filters.
+  // The LEFT JOIN from ticket_statuses ensures statuses with 0 matching tickets
+  // still appear (count = 0) rather than being absent from the list.
+  const filteredCountSql = `
+    SELECT ts.id, ts.name, ts.color, ts.sort_order,
+           COUNT(DISTINCT t.id) AS count
+    FROM ticket_statuses ts
+    LEFT JOIN tickets t ON t.status_id = ts.id
+    LEFT JOIN customers c ON c.id = t.customer_id
+    ${keywordJoin}
+    ${whereClause}
+    GROUP BY ts.id
+    ORDER BY ts.sort_order ASC
+  `;
+
   // Parallel round 1: count + data + status counts all at once
-  const [countRow, rows, statusCounts] = await Promise.all([
+  const [countRow, rows, statusCounts, filteredStatusCounts] = await Promise.all([
     adb.get<AnyRow>(countSql, ...params),
     adb.all<AnyRow>(dataSql, ...dataParams),
     adb.all<AnyRow>(`
@@ -678,6 +694,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       GROUP BY ts.id
       ORDER BY ts.sort_order ASC
     `),
+    adb.all<AnyRow>(filteredCountSql, ...params),
   ]);
   const totalCount = countRow?.total ?? 0;
 
@@ -847,13 +864,16 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     };
   });
 
-  // statusCounts already fetched in parallel round 1 above
+  // statusCounts + filteredStatusCounts fetched in parallel round 1 above
 
   res.json({
     success: true,
     data: {
       tickets,
       status_counts: statusCounts,
+      // WEB-S7-029: filtered_status_counts match the active filters so the
+      // sidebar sidebar can show accurate per-status counts when filters are on.
+      filtered_status_counts: filteredStatusCounts,
       pagination: {
         page,
         per_page: pageSize,

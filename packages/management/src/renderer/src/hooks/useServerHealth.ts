@@ -4,7 +4,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getAPI } from '@/api/bridge';
+import { getAPI, type ServiceStatus } from '@/api/bridge';
 import { useServerStore } from '@/stores/serverStore';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -89,7 +89,18 @@ export function useServerHealth(): void {
           intervalRef.current = BASE_INTERVAL;
         }
 
-        useServerStore.getState().setServiceStatus(serviceStatus);
+        // DASH-ELEC-096: contextBridge strips TypeScript types — the actual IPC
+        // result is `unknown`. Narrow to ServiceStatus before storing; a shape
+        // mismatch after a main-process handler change surfaces here rather than
+        // propagating a malformed object into the store and crashing UI renders.
+        if (
+          serviceStatus !== null &&
+          typeof serviceStatus === 'object' &&
+          'state' in serviceStatus &&
+          'mode' in serviceStatus
+        ) {
+          useServerStore.getState().setServiceStatus(serviceStatus as ServiceStatus);
+        }
       } catch {
         if (isMountedRef.current) {
           useServerStore.getState().setOffline('Server not reachable');
