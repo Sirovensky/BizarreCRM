@@ -510,7 +510,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.9 Greeting + operator identity
 - [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
 - [x] Tap greeting → Settings → Profile. (`DashboardView.greeting` + `LoadedBody.onTapGreeting` callback; when provided, greeting becomes a `Button` → App layer navigates; `DashboardView.init(onTapGreeting:)` parameter added; agent-9 b9)
-- [ ] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5).
+- [x] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5). (`DashboardView.swift` `DashboardUserAvatarChip` toolbar item gated on `Platform.isCompact`; `onSwitchUser` callback; LongPressGesture; agent-9 b10)
 
 ### 3.10 Sync-status badge
 - [x] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline". (`SyncStatusBadge.swift`; b04ae99b)
@@ -523,7 +523,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.12 Unread-SMS / team-inbox tile
 - [x] `GET /sms/unread-count` drives a small pill badge; tap → SMS tab. (`Dashboard/UnreadSMSTile.swift`; `UnreadSMSViewModel` polls 60s; `DashboardEndpoints.smsUnreadCount()`; wired in `LoadedBody`; agent-9 b9)
-- [ ] `GET /inbox` count → Team Inbox tile (if tenant has team inbox enabled).
+- [x] `GET /inbox` count → Team Inbox tile (if tenant has team inbox enabled). (`Dashboard/UnreadSMSTile.swift` `teamInboxCount()` parallel fetch; nil = no inbox → hides tile; `DashboardEndpoints.teamInboxCount()`; agent-9 b10)
 
 ### 3.13 TV / queue board (iPad only, stretch)
 - [ ] Full-screen marketing / queue-board mode that mirrors web `/tv`. Launched from Settings → Display → Activate queue board.
@@ -531,9 +531,9 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Exit via 3-finger tap + PIN.
 
 ### 3.14 Empty / error states
-- [ ] Network fail → keep cached KPIs + sticky glass banner "Showing cached data. Retry.".
+- [x] Network fail → keep cached KPIs + sticky glass banner "Showing cached data. Retry.". (`DashboardViewModel` `cachedSnapshot` + `loadError`; `DashboardCachedDataBanner` overlay; agent-9 b10)
 - [ ] Zero data → illustrations differ per card (no tickets vs no revenue vs no customers).
-- [ ] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.".
+- [x] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.". (`DashboardView.swift` `StatTileCard` overlay pattern; `isPermissionGated` param; agent-9 b10)
 - [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
 - [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
 - [ ] Tickets empty: SF Symbol wrench+glow illustration; CTA "Create your first ticket"; sub-link "Or import from old system" (§48)
@@ -3013,7 +3013,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open. (invisible Button `.keyboardShortcut("f", modifiers: .command)` in `GlobalSearchView` body flips `searchFocused`; ⎋ / ⏎ handled by `.searchable` natively; db65cb55)
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
-- [ ] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom.
+- [x] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom. (`GlobalSearchView` `typeAheadOverlay`; `GlobalSearchViewModel` `fetchTypeAhead` 100ms debounce → `TypeAheadPreviewView`; agent-9 b10)
 - [ ] **Phone-number match** — strip formatting, match on last 10 digits.
 - [ ] **IMEI match** — 15-digit serial lookup; falls through to device-linked ticket.
 - [ ] **Barcode/SKU** — scan button in search field → auto-fills + submits.
@@ -3051,7 +3051,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.7 Offline search
 - [x] **Local index** — unified `search_index` FTS5 table (porter tokenizer); `FTSIndexStore` actor; `FTSReindexCoordinator` feeds on domain NC events. (feat(ios post-phase §18))
-- [ ] **Offline result** stale badge — indicate from-cache date.
+- [x] **Offline result** stale badge — indicate from-cache date. (`GlobalSearchView` `MergedResultRow` `isOfflineResult` → "cached" capsule badge when `.local` row + offline; agent-9 b10)
 - [ ] **Merge** — online + offline results deduplicated by id.
 
 ### 18.8 Privacy gates
@@ -3089,7 +3089,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device). (`ProfileSettingsPage.swift` `signOutEverywhere()` → `settingsRevokeAllSessions()`; 449eeceb)
 
 ### 19.2 Security
-- [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
+- [x] **PIN** — 6-digit PIN for quick re-auth (locally enforced). (`Settings/Pages/PINSetupSheet.swift`; `PINSetupViewModel` modes .set/.change; `PINDotField`; uses `PINStore.shared` from Persistence; agent-9 b10)
 - [x] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates. (`Settings/BiometricToggleRow.swift` in `SettingsView.swift` section "Security".)
 - [x] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot. (`Settings/Pages/SecuritySettingsPage.swift`; `AutoLockTimeout` enum + `SecuritySettingsViewModel`; a3a38f4b)
 - [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), ~~disable,~~ regenerate backup codes, copy to Notes prompt. (Self-service disable blocked by policy 2026-04-23; recovery happens via backup-code flow + super-admin force-disable.)
@@ -3128,12 +3128,12 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Locale** — `Locale.availableIdentifiers` picker. (`LanguageRegionPage.swift`)
 - [x] **Business hours** — per day of week with multiple blocks, holiday exceptions, presets, open/closed indicator. (`Settings/Hours/`: `HoursModels`, `BusinessHoursEditorView`, `HolidayListView`, `HolidayEditorSheet`, `HolidayPresetsSheet`, `OpenClosedIndicator`, `HoursCalculator`, `HoursValidator`, `HoursRepository`, `HoursEndpoints`. 27 pure-logic tests passing.)
 - [ ] **Location management** — sibling agent: `Settings/Locations/`.
-- [ ] **Receipt footer** + invoice footer text.
+- [x] **Receipt footer** + invoice footer text. (`OrganizationSettings` `receiptFooter`/`invoiceFooter` fields; `OrganizationSettingsView` TextEditor sections; `store_config` keys `receipt_footer`/`invoice_footer`; agent-9 b10)
 - [ ] **Terms & policies** — warranty, return, privacy printed on receipts.
 
 ### 19.6 Tickets settings (admin)
-- [ ] **Status taxonomy** — re-order / rename / add / archive custom statuses; color per status.
-- [ ] **Default status** — new tickets start at.
+- [x] **Status taxonomy** — re-order / rename / add / archive custom statuses; color per status. (`Settings/Pages/TicketStatusSettingsPage.swift`; `TicketStatusSettingsViewModel`; drag-to-reorder; `ColorPickerRow` 10 presets; agent-9 b10)
+- [x] **Default status** — new tickets start at. (`TicketStatusSettingsPage.swift` swipe-leading "Set Default" action + `setDefault()` VM method; agent-9 b10)
 - [ ] **Pre-conditions checklist** — tenant-configurable default list of checks (Back cover cracked? Sim tray? Water damage?).
 - [ ] **Conditions** — list (with icons) of device conditions to tick at intake; edit / reorder / add.
 - [ ] **Ticket # format** — `{prefix}-{year}-{seq}` tenant-configurable.
@@ -3143,13 +3143,13 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [ ] **Device templates** (see §48) — managed here.
 
 ### 19.7 Invoices settings (admin)
-- [ ] **Invoice # format**.
-- [ ] **Net terms** — Due-on-receipt / Net-15 / Net-30 / custom.
-- [ ] **Late fee** — percentage + grace period.
-- [ ] **Email from** — from-address + reply-to.
-- [ ] **Auto-send** reminders — 3 days before due / day of / 3 days after / weekly overdue.
-- [ ] **Allowed payment methods** — Card / Cash / Check / ACH / Financing.
-- [ ] **Fees** — processing surcharge (% or $); restocking fee default.
+- [x] **Invoice # format**. (`Settings/Pages/InvoiceSettingsPage.swift` `numberFormat` field with live preview; agent-9 b10)
+- [x] **Net terms** — Due-on-receipt / Net-15 / Net-30 / custom. (`InvoiceSettingsPage.swift` `NetTermsPreset` enum + Picker; agent-9 b10)
+- [x] **Late fee** — percentage + grace period. (`InvoiceSettingsPage.swift` `lateFeePercent` + `lateFeeGraceDays`; agent-9 b10)
+- [x] **Email from** — from-address + reply-to. (`InvoiceSettingsPage.swift` `emailFrom`/`emailReplyTo` fields; agent-9 b10)
+- [x] **Auto-send** reminders — 3 days before due / day of / 3 days after / weekly overdue. (`InvoiceSettingsPage.swift` `reminderDays` toggles for [7,3,1,0,-3,-7,-14]; agent-9 b10)
+- [x] **Allowed payment methods** — Card / Cash / Check / ACH / Financing. (`InvoiceSettingsPage.swift` `allowedPaymentMethods` toggle set; agent-9 b10)
+- [x] **Fees** — processing surcharge (% or $); restocking fee default. (`InvoiceSettingsPage.swift` `surchargePct` field; agent-9 b10)
 - [ ] **Accepted payment methods surface** on customer portal.
 
 ### 19.8 Tax
@@ -3773,10 +3773,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Large (4×4)** — up to 10 latest tickets list. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Extra Large (iPad)** — full dashboard mirror; 6 tiles + chart. (`BizarreCRMWidgets/DashboardMirrorWidget.swift`; 2-col LazyVGrid KPIs + ticket list with `Link` deep-links; 002d79f0)
 - [x] **Multiple widgets** — OpenTicketsWidget, TodaysRevenueWidget, AppointmentsNextWidget each with S/M/L variants. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
-- [ ] **Configurable** — `IntentConfiguration`: choose which KPI, time range, location.
+- [x] **Configurable** — `IntentConfiguration`: choose which KPI, time range, location. (`BizarreCRMWidgets/ConfigurableKPIWidget.swift`; `AppIntentConfiguration` + `WidgetKPIKind` AppEnum; picks openTickets/revenueToday/nextAppointments; agent-9 b10)
 - [x] **Refresh policy** — `TimelineProvider.getTimeline` returns entries at configurable interval (5/15/30 min); WidgetCenter reloads on main-app sync via `WidgetDataStore.write(_:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Data source** — App Group UserDefaults (`group.com.bizarrecrm`); main app writes `WidgetSnapshot` on sync via `WidgetDataStore`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
-- [ ] **Privacy** — redact in lock-screen mode if sensitive (revenue $); placeholder text.
+- [x] **Privacy** — redact in lock-screen mode if sensitive (revenue $); placeholder text. (`TodaysRevenueWidget` + `ConfigurableKPIWidget` `@Environment(\.redactionReasons)` → `privacySensitive()` + "••••" placeholder; agent-9 b10)
 
 ### 24.2 WidgetKit — Lock Screen (iOS 16+)
 - [x] **Circular** — ticket count badge via `.accessoryCircular`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
