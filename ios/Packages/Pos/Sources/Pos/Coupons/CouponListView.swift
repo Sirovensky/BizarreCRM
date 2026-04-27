@@ -172,7 +172,7 @@ public struct CouponListView: View {
                             } label: {
                                 Label("Expire", systemImage: "clock.badge.xmark")
                             }
-                            .tint(.orange)
+                            .tint(.bizarreWarning)
                         }
                         .hoverEffect(.highlight)
                         .contextMenu {
@@ -295,7 +295,7 @@ private struct CouponRow: View {
         let (label, color): (String, Color) = coupon.isExpired()
             ? ("Expired", .bizarreError)
             : coupon.isExhausted
-                ? ("Used up", .orange)
+                ? ("Used up", .bizarreWarning)
                 : ("Active", .bizarreSuccess)
         return Text(label)
             .font(.brandLabelSmall())

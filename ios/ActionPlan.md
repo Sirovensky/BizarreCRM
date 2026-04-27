@@ -2658,12 +2658,12 @@ public enum BrandPalette {
 - No visual change to non-POS screens in this pass — token is additive. The old orange color asset remains until a project-wide audit pass removes it (separate backlog item).
 
 **Status**
-- [ ] `BrandPalette` enum added to `Tokens.swift`.
-- [ ] `Color(hex:)` extension confirmed present in `DesignSystem`.
-- [ ] Asset catalog `Primary` adaptive color entry (cream / dark-mode tint).
-- [ ] SwiftLint sweep of `Pos` + `CheckIn` packages for residual orange values.
-- [ ] `GlassKit.swift` tint updated to `BrandPalette.primary`.
-- [ ] Tests: `DesignTokensTests` — assert `BrandPalette.primary` hex string equals `"#fdeed0"`.
+- [x] `BrandPalette` enum added to `Tokens.swift`.
+- [x] `Color(hex:)` extension confirmed present in `DesignSystem`.
+- [x] Asset catalog `Primary` adaptive color entry (cream / dark-mode tint).
+- [x] SwiftLint sweep of `Pos` + `CheckIn` packages for residual orange values.
+- [x] `GlassKit.swift` tint updated to `BrandPalette.primary`.
+- [x] Tests: `DesignTokensTests` — assert `BrandPalette.primary` hex string equals `"#fdeed0"`.
 
 ---
 ## §17. Hardware Integrations

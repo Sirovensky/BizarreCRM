@@ -64,4 +64,24 @@ final class DesignTokensTests: XCTestCase {
         XCTAssertLessThan(DesignTokens.Z.nav, DesignTokens.Z.sheet)
         XCTAssertLessThan(DesignTokens.Z.sheet, DesignTokens.Z.toast)
     }
+
+    // MARK: - §16.27 Cream primary token
+
+    func testBrandPalettePrimary() {
+        // §16.27 — cream primary must be #FDEED0 (cream-wave 2026-04-24).
+        XCTAssertEqual(DesignTokens.BrandPalette.primary, 0xFDEED0,
+                       "BrandPalette.primary must be #FDEED0 (cream dark-mode token)")
+    }
+
+    func testBrandPaletteOnPrimary() {
+        // §16.27 — on-primary must be dark brown #2B1400 for AAA contrast.
+        XCTAssertEqual(DesignTokens.BrandPalette.onPrimary, 0x2B1400,
+                       "BrandPalette.onPrimary must be #2B1400 (AAA on cream)")
+    }
+
+    func testBrandPalettePrimaryLight() {
+        // §16.27 — light-mode tint darker than cream for contrast.
+        XCTAssertEqual(DesignTokens.BrandPalette.primaryLight, 0xE8C98A,
+                       "BrandPalette.primaryLight must be #E8C98A (light-mode contrast tint)")
+    }
 }

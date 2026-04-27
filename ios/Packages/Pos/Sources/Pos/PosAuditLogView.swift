@@ -222,7 +222,7 @@ private struct AuditEntryRow: View {
     private var badgeColor: Color {
         switch entry.eventType {
         case "void_line":           return .red
-        case "no_sale":             return .orange
+        case "no_sale":             return .bizarreWarning
         case "discount_override":   return .purple
         case "price_override":      return .indigo
         case "delete_line":         return .red
