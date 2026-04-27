@@ -17,7 +17,7 @@ import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionRule
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosTaxCalculator
 import com.bizarreelectronics.crm.ui.screens.pos.components.TenantTaxConfig
 import com.bizarreelectronics.crm.ui.screens.pos.components.TaxBreakdown
-import com.bizarreelectronics.crm.util.CashDrawerControllerStub
+import com.bizarreelectronics.crm.ui.screens.pos.CashDrawerControllerStub
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import dagger.hilt.android.lifecycle.HiltViewModel

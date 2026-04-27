@@ -771,7 +771,7 @@ private fun CatalogTab(
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 140.dp),
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 12.dp, bottom = 12.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 0.dp, bottom = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
