@@ -4,22 +4,25 @@ import DesignSystem
 
 // MARK: - CustomerBulkActionBar
 
-/// §5.1 Bulk action bar — shown at bottom when `isBulkSelecting` is true.
-/// Surfaces "Tag…" and "Delete" actions.
+/// §5.1 / §5.6 Bulk action bar — shown at bottom when `isBulkSelecting` is true.
+/// Surfaces "Tag…", "Export" (§5.6), and "Delete" actions.
 public struct CustomerBulkActionBar: View {
     public let selectedCount: Int
     public var onTag: () -> Void
+    public var onExport: (() -> Void)?
     public var onDelete: () -> Void
     public var onCancel: () -> Void
 
     public init(
         selectedCount: Int,
         onTag: @escaping () -> Void,
+        onExport: (() -> Void)? = nil,
         onDelete: @escaping () -> Void,
         onCancel: @escaping () -> Void
     ) {
         self.selectedCount = selectedCount
         self.onTag = onTag
+        self.onExport = onExport
         self.onDelete = onDelete
         self.onCancel = onCancel
     }
@@ -48,6 +51,16 @@ public struct CustomerBulkActionBar: View {
             }
             .disabled(selectedCount == 0)
             .accessibilityLabel("Apply tag to \(selectedCount) selected customers")
+
+            // §5.6 Export selected
+            if let export = onExport {
+                Button(action: export) {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                        .font(.brandBodyMedium())
+                }
+                .disabled(selectedCount == 0)
+                .accessibilityLabel("Export \(selectedCount) selected customers as CSV")
+            }
 
             Button(role: .destructive, action: onDelete) {
                 Label("Delete", systemImage: "trash")
