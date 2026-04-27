@@ -26,6 +26,8 @@ public final class LeadCreateViewModel {
     public private(set) var isSubmitting = false
     public private(set) var errorMessage: String?
     public private(set) var createdId: Int64?
+    /// True when the create was queued offline (not yet sent to server).
+    public private(set) var queuedOffline: Bool = false
 
     @ObservationIgnored private let api: APIClient
     public init(api: APIClient) { self.api = api }
@@ -37,6 +39,7 @@ public final class LeadCreateViewModel {
     public func submit() async {
         guard !isSubmitting else { return }
         errorMessage = nil
+        queuedOffline = false
         guard isValid else {
             errorMessage = "First name is required."
             return
@@ -44,13 +47,30 @@ public final class LeadCreateViewModel {
         isSubmitting = true
         defer { isSubmitting = false }
 
+        let req = buildRequest()
+        do {
+            let created = try await api.createLead(req)
+            createdId = created.id
+        } catch {
+            let appError = AppError.from(error)
+            if case .offline = appError {
+                await enqueueOffline(req)
+            } else if LeadOfflineQueue.isNetworkError(error) {
+                await enqueueOffline(req)
+            } else {
+                AppLog.ui.error("Lead create failed: \(error.localizedDescription, privacy: .public)")
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func buildRequest() -> CreateLeadRequest {
         let valueCents: Int? = estimatedValue.isEmpty ? nil
             : Int((Double(estimatedValue) ?? 0) * 100)
         let followUp: String? = hasFollowUpDate
             ? ISO8601DateFormatter().string(from: followUpDate)
             : nil
-
-        let req = CreateLeadRequest(
+        return CreateLeadRequest(
             firstName: firstName.trimmingCharacters(in: .whitespaces),
             lastName: nilIfEmpty(lastName),
             email: nilIfEmpty(email),
@@ -63,11 +83,17 @@ public final class LeadCreateViewModel {
             stage: nilIfEmpty(stage),
             followUpAt: followUp
         )
+    }
+
+    private func enqueueOffline(_ req: CreateLeadRequest) async {
         do {
-            let created = try await api.createLead(req)
-            createdId = created.id
+            let payload = try LeadOfflineQueue.encode(req)
+            await LeadOfflineQueue.enqueue(op: "create", payload: payload)
+            createdId = PendingSyncLeadId
+            queuedOffline = true
+            errorMessage = nil
         } catch {
-            AppLog.ui.error("Lead create failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.sync.error("Lead offline encode failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
