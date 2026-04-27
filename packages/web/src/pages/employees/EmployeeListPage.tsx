@@ -202,7 +202,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
             onClick={() => onSubmit(pin)}
             disabled={!employee.has_pin || pin.length < 4 || isPending}
             className={cn(
-              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed',
+              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               action === 'clock-in'
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-red-600 hover:bg-red-700',

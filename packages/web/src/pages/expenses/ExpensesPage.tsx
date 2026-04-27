@@ -322,7 +322,7 @@ export function ExpensesPage() {
           <div className="flex gap-2 mt-4 justify-end">
             <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
             <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
               {editingId ? 'Update' : 'Add Expense'}
             </button>
@@ -407,10 +407,10 @@ export function ExpensesPage() {
           <div className="flex items-center justify-between border-t border-surface-200 dark:border-surface-700 px-4 py-3">
             <p className="text-sm text-surface-500">Page {page} of {pagination.total_pages}</p>
             <div className="flex gap-1">
-              <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
+              <button aria-label="Previous page" disabled={page <= 1} onClick={() => setPage(page - 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
                 <ChevronLeft className="h-4 w-4" />
               </button>
-              <button aria-label="Next page" disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
+              <button aria-label="Next page" disabled={page >= pagination.total_pages} onClick={() => setPage(page + 1)} className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>

@@ -104,7 +104,7 @@ function CashModal({ type, onClose }: CashModalProps) {
           <button
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+            className="w-full rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {submitting ? 'Processing...' : `Confirm Cash ${type === 'in' ? 'In' : 'Out'}`}
           </button>
@@ -454,7 +454,7 @@ export function BottomActions() {
             disabled={!hasRepair || creatingTicket || !!sourceTicketId}
             title={sourceTicketId ? 'Checking out existing ticket — use Checkout' : !hasRepair ? 'Add a repair to create ticket' : ''}
             className={cn(
-              'rounded-lg px-8 py-2.5 text-base font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+              'rounded-lg px-8 py-2.5 text-base font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasRepair && !sourceTicketId
                 ? 'bg-teal-600 text-white hover:bg-teal-700'
                 : 'bg-surface-200 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
@@ -479,7 +479,7 @@ export function BottomActions() {
             disabled={!hasItems}
             title={needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
-              'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+              'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               hasItems
                 ? 'border-surface-300 text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800'
                 : 'border-surface-200 text-surface-400 dark:border-surface-700 dark:text-surface-500',
@@ -632,7 +632,7 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
             <button
               type="submit"
               disabled={!pin.trim() || verifying}
-              className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {verifying ? 'Verifying…' : 'Approve'}
             </button>

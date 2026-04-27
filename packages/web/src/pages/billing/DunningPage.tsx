@@ -157,7 +157,7 @@ export function DunningPage() {
         <button type="button"
           onClick={() => runNowMutation.mutate()}
           disabled={runNowMutation.isPending}
-          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {runNowMutation.isPending ? 'Running…' : 'Run dunning now'}
         </button>
@@ -273,7 +273,7 @@ export function DunningPage() {
                 type="button"
                 onClick={() => setSteps((prev) => prev.filter((_, i) => i !== idx))}
                 disabled={steps.length === 1}
-                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-30"
+                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 title="Remove step"
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -284,7 +284,7 @@ export function DunningPage() {
         <button type="button"
           onClick={() => createMutation.mutate()}
           disabled={!name.trim() || steps.length === 0 || createMutation.isPending}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {createMutation.isPending ? 'Creating…' : 'Create'}
         </button>
@@ -328,7 +328,7 @@ export function DunningPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button type="button"
-                      className="rounded border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                      className="rounded border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       onClick={() =>
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })
                       }

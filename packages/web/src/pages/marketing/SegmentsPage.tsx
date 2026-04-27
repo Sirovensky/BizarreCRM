@@ -180,7 +180,7 @@ export function SegmentsPage() {
                             if (ok) remove.mutate(s.id);
                           }}
                           disabled={remove.isPending && remove.variables === s.id}
-                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-40"
+                          className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           title="Delete"
                           aria-label={`Delete segment ${s.name}`}
                         >
@@ -444,7 +444,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           <button
             onClick={() => create.mutate()}
             disabled={create.isPending || !name.trim() || !allConditionsFilled}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {create.isPending ? 'Creating…' : 'Create'}
           </button>

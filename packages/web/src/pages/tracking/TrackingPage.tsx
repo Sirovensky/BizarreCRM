@@ -611,7 +611,7 @@ export function TrackingPage() {
                           type="button"
                           onClick={sendMessage}
                           disabled={sendingMessage || !messageText.trim()}
-                          className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                          className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
                         >
                           {sendingMessage ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -668,7 +668,7 @@ export function TrackingPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                   Track

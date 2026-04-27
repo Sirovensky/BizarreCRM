@@ -262,7 +262,7 @@ export function SubscriptionsListPage() {
                           <button
                             onClick={() => handleRunBilling(sub)}
                             disabled={billingId === sub.id}
-                            className="flex items-center gap-1 text-primary-600 hover:text-primary-800 disabled:opacity-50 text-xs font-medium"
+                            className="flex items-center gap-1 text-primary-600 hover:text-primary-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
                             title="Charge card now"
                           >
                             {billingId === sub.id
@@ -276,7 +276,7 @@ export function SubscriptionsListPage() {
                         <button
                           onClick={() => handleCancel(sub)}
                           disabled={cancellingId === sub.id}
-                          className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 text-xs font-medium"
+                          className="flex items-center gap-1 text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-xs font-medium"
                         >
                           {cancellingId === sub.id && <Loader2 className="h-3 w-3 animate-spin" />}
                           Cancel

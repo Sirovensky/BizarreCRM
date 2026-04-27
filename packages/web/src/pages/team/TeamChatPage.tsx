@@ -262,7 +262,7 @@ export function TeamChatPage() {
             {messages.length > 0 && hasOlder && (
               <div className="flex justify-center pb-2">
                 <button
-                  className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50 disabled:opacity-40 inline-flex items-center gap-1"
+                  className="px-3 py-1 text-xs rounded border text-gray-600 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1"
                   disabled={loadingOlder}
                   onClick={loadOlder}
                 >

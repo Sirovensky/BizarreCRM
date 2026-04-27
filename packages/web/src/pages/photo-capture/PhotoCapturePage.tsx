@@ -265,7 +265,7 @@ export function PhotoCapturePage() {
           <button
             onClick={handleUpload}
             disabled={uploading}
-            className="flex items-center justify-center gap-3 w-full py-5 bg-green-600 active:bg-green-700 text-white rounded-2xl font-semibold text-lg transition-colors disabled:opacity-60 shadow-lg"
+            className="flex items-center justify-center gap-3 w-full py-5 bg-green-600 active:bg-green-700 text-white rounded-2xl font-semibold text-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none shadow-lg"
           >
             {uploading ? (
               <><Loader2 className="h-6 w-6 animate-spin" /> Uploading...</>

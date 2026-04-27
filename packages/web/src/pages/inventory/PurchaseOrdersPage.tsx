@@ -138,7 +138,7 @@ function ReceiveModal({ poId, poOrderId, items, onClose, onSuccess }: ReceiveMod
             <button
               onClick={() => receiveMut.mutate()}
               disabled={totalToReceive === 0 || receiveMut.isPending || receiving.length === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {receiveMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               Confirm Receive
@@ -464,7 +464,7 @@ export function PurchaseOrdersPage() {
               <button
                 onClick={() => createMut.mutate()}
                 disabled={!canSubmit || createMut.isPending}
-                className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin inline" /> : 'Create PO'}
               </button>
@@ -525,7 +525,7 @@ export function PurchaseOrdersPage() {
                 aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setPage(page - 1)}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -533,7 +533,7 @@ export function PurchaseOrdersPage() {
                 aria-label="Next page"
                 disabled={page >= (pagination.total_pages as number)}
                 onClick={() => setPage(page + 1)}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

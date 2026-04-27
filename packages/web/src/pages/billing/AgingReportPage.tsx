@@ -136,7 +136,7 @@ export function AgingReportPage() {
             <button
               onClick={() => bulkReminderMut.mutate([...selected])}
               disabled={bulkReminderMut.isPending}
-              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {bulkReminderMut.isPending
                 ? <Loader2 className="h-3 w-3 animate-spin" />
@@ -190,7 +190,7 @@ export function AgingReportPage() {
                     <button
                       onClick={() => handleRowReminder(inv)}
                       disabled={sendingId === inv.id || bulkReminderMut.isPending}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-amber-600 hover:bg-amber-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       title="Send payment reminder"
                     >
                       {sendingId === inv.id

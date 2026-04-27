@@ -207,7 +207,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <button
               onClick={() => previewMut.mutate()}
               disabled={!templateId || previewMut.isPending}
-              className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+              className="rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {previewMut.isPending ? 'Previewing…' : 'Preview'}
             </button>
@@ -215,7 +215,7 @@ export function BulkSmsModal({ open, onClose }: BulkSmsModalProps) {
             <button
               onClick={() => sendMut.mutate()}
               disabled={sendMut.isPending || preview.preview_count === 0}
-              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <Send className="h-3.5 w-3.5" />
               {sendMut.isPending ? 'Sending…' : `Send to ${preview.preview_count}`}

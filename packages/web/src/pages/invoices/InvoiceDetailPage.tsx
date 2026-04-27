@@ -647,7 +647,7 @@ export function InvoiceDetailPage() {
               <button
                 onClick={handleTerminalPay}
                 disabled={terminalProcessing || payMutation.isPending}
-                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50"
+                className="w-full mt-4 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {terminalProcessing ? (
                   <><Loader2 className="h-4 w-4 animate-spin" /> Waiting for terminal...</>
@@ -664,7 +664,7 @@ export function InvoiceDetailPage() {
             )}
             <div className="flex gap-3">
               <button onClick={() => setShowPayment(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                 {payMutation.isPending ? 'Recording...' : 'Record Payment'}
               </button>
             </div>
@@ -717,7 +717,7 @@ export function InvoiceDetailPage() {
                 <button
                   onClick={handleEmailReceipt}
                   disabled={emailReceiptSending}
-                  className="flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 px-4 py-2.5 text-sm font-medium text-blue-700 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   <Mail className="h-4 w-4" />
                   {emailReceiptSending ? 'Sending...' : `Email to ${invoice.customer_email}`}
@@ -795,7 +795,7 @@ export function InvoiceDetailPage() {
               <button
                 onClick={handleCreditNote}
                 disabled={creditNoteMutation.isPending}
-                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {creditNoteMutation.isPending ? 'Creating...' : 'Create Credit Note'}
               </button>

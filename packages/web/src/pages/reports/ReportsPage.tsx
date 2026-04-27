@@ -225,7 +225,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
           type="button"
           onClick={openPdf}
           disabled={pdfLoading}
-          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           title="Open print-ready PDF in a new tab"
         >
           {pdfLoading

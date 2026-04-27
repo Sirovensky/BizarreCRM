@@ -362,7 +362,7 @@ function CreateEstimateModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Estimate
@@ -755,7 +755,7 @@ export function EstimateListPage() {
                               // without this a rapid click on Convert mid-Send could navigate away
                               // while the first mutation was still writing.
                               disabled={anyMutationPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-950/30 dark:hover:text-primary-400 disabled:opacity-50"
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-primary-50 hover:text-primary-600 dark:hover:bg-primary-950/30 dark:hover:text-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                               aria-label={est.status === 'sent' ? 'Resend estimate to customer' : 'Send estimate to customer'}
                               title={est.status === 'sent' ? 'Resend to Customer' : 'Send to Customer'}
                             >
@@ -777,7 +777,7 @@ export function EstimateListPage() {
                                 }
                               }}
                               disabled={anyMutationPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400 disabled:opacity-50"
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-green-50 hover:text-green-600 dark:hover:bg-green-950/30 dark:hover:text-green-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                               aria-label="Convert estimate to ticket"
                               title="Convert to Ticket"
                             >
@@ -799,7 +799,7 @@ export function EstimateListPage() {
                                 }
                               }}
                               disabled={anyMutationPending}
-                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                               aria-label="Reject estimate"
                               title="Reject Estimate"
                             >
@@ -820,7 +820,7 @@ export function EstimateListPage() {
                               }
                             }}
                             disabled={anyMutationPending}
-                            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
+                            className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                             aria-label="Delete estimate"
                             title="Delete Estimate"
                           >
@@ -871,7 +871,7 @@ export function EstimateListPage() {
                 aria-label="Previous page"
                 disabled={page <= 1}
                 onClick={() => setParam('page', String(page - 1))}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -905,7 +905,7 @@ export function EstimateListPage() {
                 aria-label="Next page"
                 disabled={page >= pagination.total_pages}
                 onClick={() => setParam('page', String(page + 1))}
-                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
+                className="inline-flex items-center justify-center rounded-lg text-surface-500 transition-colors hover:bg-surface-100 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-surface-700 min-h-[44px] min-w-[44px] md:min-h-[32px] md:min-w-[32px] md:p-1.5"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

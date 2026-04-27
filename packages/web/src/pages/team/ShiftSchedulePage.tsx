@@ -249,7 +249,7 @@ export function ShiftSchedulePage() {
                       {s.role && <div className="text-primary-500 truncate">{s.role}</div>}
                       {canManageSchedule ? (
                         <button
-                          className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center disabled:opacity-40"
+                          className="text-red-500 hover:text-red-700 mt-1 inline-flex items-center disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                           onClick={() => deleteMut.mutate(s.id)}
                           disabled={deleteMut.isPending && deleteMut.variables === s.id}
                           aria-label={`Remove shift for ${s.first_name ?? ''} ${s.last_name ?? ''}`}
@@ -283,14 +283,14 @@ export function ShiftSchedulePage() {
                 {canManageSchedule ? (
                   <div className="flex gap-2 mt-2">
                     <button
-                      className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50"
+                      className="flex-1 bg-green-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
                       disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
                     >
                       <Check className="w-3 h-3 mr-1" /> Approve
                     </button>
                     <button
-                      className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50"
+                      className="flex-1 bg-red-600 text-white rounded px-2 py-1 inline-flex items-center justify-center hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       onClick={() => reviewMut.mutate({ id: r.id, status: 'denied' })}
                       disabled={reviewMut.isPending && reviewMut.variables?.id === r.id}
                     >

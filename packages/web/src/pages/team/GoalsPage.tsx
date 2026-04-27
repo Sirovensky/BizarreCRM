@@ -228,14 +228,14 @@ export function GoalsPage() {
                 <div className="flex items-center gap-1">
                   {/* WEB-S6-027: edit button */}
                   <button
-                    className="text-surface-400 hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-40"
+                    className="text-surface-400 hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     onClick={() => openEditModal(g)}
                     aria-label={`Edit goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
                   >
                     <Pencil className="w-4 h-4" />
                   </button>
                   <button
-                    className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                    className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     onClick={() => deleteMut.mutate(g.id)}
                     disabled={deleteMut.isPending && deleteMut.variables === g.id}
                     aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}

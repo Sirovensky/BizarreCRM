@@ -175,7 +175,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
             type="button"
             onClick={onNext}
             disabled={!canAdvance}
-            className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next — Your Pro trial
             <ArrowRight className="h-4 w-4" />

@@ -93,7 +93,7 @@ export function QuickSmsAttachmentButton({
           onClick={() => fileRef.current?.click()}
           disabled={disabled || uploading}
           title="Attach photo"
-          className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 hover:text-primary-600 disabled:opacity-50 dark:hover:bg-surface-700"
+          className="rounded-lg p-1.5 text-surface-500 hover:bg-surface-100 hover:text-primary-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:hover:bg-surface-700"
         >
           {uploading ? (
             <Loader2 className="h-4 w-4 animate-spin" />

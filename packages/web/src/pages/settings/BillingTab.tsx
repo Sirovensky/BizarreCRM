@@ -122,7 +122,7 @@ export function BillingTab() {
               <button
                 onClick={handleUpgrade}
                 disabled={checkoutLoading}
-                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-primary-950 shadow transition-all hover:shadow-lg disabled:opacity-50"
+                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-primary-950 shadow transition-all hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {checkoutLoading ? 'Loading…' : 'Upgrade to Pro'}
               </button>
@@ -131,7 +131,7 @@ export function BillingTab() {
               <button
                 onClick={handleManageBilling}
                 disabled={portalLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-semibold text-surface-700 transition-colors hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
               >
                 {portalLoading ? 'Loading…' : (<>Manage Billing <ExternalLink className="h-3.5 w-3.5" /></>)}
               </button>
@@ -195,7 +195,7 @@ export function BillingTab() {
           <button
             onClick={handleUpgrade}
             disabled={checkoutLoading}
-            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
+            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — $${(proDef.priceCents / 100).toFixed(0)}/mo`}
           </button>

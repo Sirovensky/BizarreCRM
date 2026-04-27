@@ -334,7 +334,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
             <button
               onClick={() => createMut.mutate()}
               disabled={!startTime || createMut.isPending}
-              className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+              className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending ? 'Creating...' : 'Schedule'}
             </button>

@@ -289,7 +289,7 @@ export function CampaignsPage() {
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Play className="h-3 w-3" /> Run now
                     </button>
@@ -297,7 +297,7 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'active' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <CircleCheck className="h-3 w-3" /> Activate
                       </button>
@@ -305,7 +305,7 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'paused' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-amber-700 hover:bg-amber-50 dark:text-amber-300 dark:hover:bg-amber-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <Pause className="h-3 w-3" /> Pause
                       </button>
@@ -313,7 +313,7 @@ export function CampaignsPage() {
                       <button
                         onClick={() => updateStatus.mutate({ id: campaign.id, status: 'draft' })}
                         disabled={updateStatus.isPending && updateStatus.variables?.id === campaign.id}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50"
+                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-surface-600 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       >
                         <CircleSlash className="h-3 w-3" /> Restore
                       </button>
@@ -328,7 +328,7 @@ export function CampaignsPage() {
                     <button
                       onClick={() => setDeleteConfirm(campaign)}
                       disabled={deleteCampaign.isPending && deleteCampaign.variables === campaign.id}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Trash2 className="h-3 w-3" /> Delete
                     </button>
@@ -589,7 +589,7 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
               onChange={(e) => handleTypeChange(e.target.value)}
               disabled={isEdit}
               title={isEdit ? 'Campaign type cannot be changed after creation' : undefined}
-              className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm disabled:opacity-60"
+              className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -770,7 +770,7 @@ function CreateCampaignModal({ segments, onClose, onCreated, initialCampaign }: 
           <button
             onClick={() => save.mutate()}
             disabled={save.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {save.isPending ? (isEdit ? 'Saving…' : 'Creating…') : (isEdit ? 'Save changes' : 'Create')}
           </button>

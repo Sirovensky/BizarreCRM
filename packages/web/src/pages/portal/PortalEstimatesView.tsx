@@ -133,7 +133,7 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
                   <button
                     onClick={() => handleApprove(est.id)}
                     disabled={approvingId === est.id}
-                    className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    className="w-full rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                   >
                     {approvingId === est.id ? 'Approving...' : 'Approve Estimate'}
                   </button>

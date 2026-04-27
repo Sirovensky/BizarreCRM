@@ -97,7 +97,7 @@ export function StepBusinessHours({ pending, onUpdate, onComplete, onCancel }: S
                   onChange={(e) => updateDay(day, { from: e.target.value })}
                   disabled={!h.open}
                   aria-invalid={!!dayError}
-                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
+                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
                 />
                 <span className="text-sm text-surface-400">to</span>
                 <input
@@ -106,7 +106,7 @@ export function StepBusinessHours({ pending, onUpdate, onComplete, onCancel }: S
                   onChange={(e) => updateDay(day, { to: e.target.value })}
                   disabled={!h.open}
                   aria-invalid={!!dayError}
-                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
+                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
                 />
                 {!h.open && <span className="text-xs text-surface-400">Closed</span>}
               </div>
@@ -164,7 +164,7 @@ export function SubStepFooter({
         type="button"
         onClick={onComplete}
         disabled={completeDisabled}
-        className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
       >
         <Check className="h-4 w-4" />
         {completeLabel}

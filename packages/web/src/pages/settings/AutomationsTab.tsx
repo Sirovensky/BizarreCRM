@@ -489,7 +489,7 @@ export function AutomationModal({
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {rule ? 'Update Rule' : 'Create Rule'}
@@ -820,7 +820,7 @@ export function AutomationsTab() {
                       <button
                         onClick={(e) => { e.stopPropagation(); dryRunMut.mutate(rule.id); }}
                         disabled={dryRunMut.isPending && dryRunMut.variables === rule.id}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-40 text-[10px] font-medium"
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded bg-surface-100 dark:bg-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-200 dark:hover:bg-surface-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none text-[10px] font-medium"
                         title="Dry-run — check if this rule would fire (no side effects)"
                       >
                         <FlaskConical className="h-3 w-3" /> Dry-run

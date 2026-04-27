@@ -177,7 +177,7 @@ export function PerformanceReviewsPage() {
                 onChange={(e) => setDraftNotes(e.target.value)}
               />
               <button
-                className="mt-2 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
+                className="mt-2 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center"
                 disabled={!draftNotes.trim() || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >
@@ -206,7 +206,7 @@ export function PerformanceReviewsPage() {
                         {r.reviewer_first} {r.reviewer_last}
                       </div>
                       <button
-                        className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                        className="text-red-500 hover:text-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                         onClick={() => deleteMut.mutate(r.id)}
                         disabled={deleteMut.isPending && deleteMut.variables === r.id}
                         aria-label="Delete review"
@@ -237,14 +237,14 @@ export function PerformanceReviewsPage() {
                   </span>
                   <div className="flex gap-2">
                     <button
-                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       disabled={pagination.page <= 1}
                       onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
                     >
                       Previous
                     </button>
                     <button
-                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       disabled={pagination.page >= pagination.total_pages}
                       onClick={() => setReviewPage((p) => p + 1)}
                     >

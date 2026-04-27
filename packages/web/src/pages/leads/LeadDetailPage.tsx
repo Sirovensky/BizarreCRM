@@ -146,7 +146,7 @@ function LostReasonModal({
           <button
             onClick={() => { if (reason) onConfirm(reason); }}
             disabled={!reason || isPending}
-            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {isPending ? 'Saving...' : 'Mark as Lost'}
           </button>
@@ -410,7 +410,7 @@ export function LeadDetailPage() {
                 }
               }}
               disabled={convertMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               <ArrowRightLeft className="h-4 w-4" />
               {convertMut.isPending ? 'Converting...' : 'Convert to Ticket'}
@@ -495,7 +495,7 @@ export function LeadDetailPage() {
                   className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50">
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                     <Save className="h-3 w-3" /> Save
                   </button>
                   <button onClick={() => setEditingNotes(false)} className="text-xs text-surface-500">Cancel</button>
@@ -546,7 +546,7 @@ export function LeadDetailPage() {
                       });
                     }}
                     disabled={createReminderMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     {createReminderMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
                     Save Reminder

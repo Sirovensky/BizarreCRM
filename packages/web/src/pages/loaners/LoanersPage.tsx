@@ -145,7 +145,7 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
           <button
             onClick={() => returnMutation.mutate()}
             disabled={returnMutation.isPending}
-            className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {returnMutation.isPending ? 'Returning...' : 'Confirm Return'}
           </button>
@@ -296,7 +296,7 @@ function AddLoanerDialog({ onClose }: { onClose: () => void }) {
             <button
               type="submit"
               disabled={createMutation.isPending}
-              className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+              className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMutation.isPending ? 'Adding...' : 'Add Device'}
             </button>

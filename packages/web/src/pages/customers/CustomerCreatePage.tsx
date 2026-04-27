@@ -377,7 +377,7 @@ export function CustomerCreatePage() {
               <div className="space-y-1.5">
                 {duplicates.map((c: any) => (
                   <Link key={c.id} to={`/customers/${c.id}`}
-                    className="flex items-center justify-between rounded-md px-3 py-2 text-sm bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
+                    className="flex items-center justify-between rounded-lg px-3 py-2 text-sm bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors">
                     <span className="font-medium text-surface-900 dark:text-surface-100">
                       {c.first_name} {c.last_name}
                     </span>
@@ -556,7 +556,7 @@ export function CustomerCreatePage() {
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {createMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

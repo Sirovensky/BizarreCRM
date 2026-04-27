@@ -428,7 +428,7 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
                   onClick={() => addToQueueMut.mutate(p)}
                   disabled={addToQueueMut.isPending}
                   title="Add to order queue"
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   {addToQueueMut.isPending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -1318,14 +1318,14 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
                   <button
                     onClick={() => move(i, -1)}
                     disabled={i === 0}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     <ChevronUp className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => move(i, 1)}
                     disabled={i === draft.length - 1}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
@@ -1464,7 +1464,7 @@ function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
       <button
         onClick={handleSync}
         disabled={syncing}
-        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
       >
         {syncing ? 'Syncing...' : 'Sync from Catalog'}
       </button>

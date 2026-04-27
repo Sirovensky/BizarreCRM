@@ -118,7 +118,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
             type="button"
             onClick={onBack}
             disabled={saving}
-            className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+            className="flex items-center gap-1 text-sm font-medium text-surface-600 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-surface-400 dark:hover:text-surface-100"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to hub
@@ -128,7 +128,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
               type="button"
               onClick={onSkip}
               disabled={saving}
-              className="text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 dark:text-surface-400 dark:hover:text-surface-100"
+              className="text-xs font-medium text-surface-500 hover:text-surface-900 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:text-surface-400 dark:hover:text-surface-100"
             >
               Skip extras for now
             </button>
@@ -136,7 +136,7 @@ export function StepReview({ pending, completedCards, onBack, onComplete, onSkip
               type="button"
               onClick={onComplete}
               disabled={saving}
-              className="flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-lg bg-green-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
               Complete Setup

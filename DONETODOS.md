@@ -3320,3 +3320,7 @@ SKIPPED (design decision / new dependency / multi-file refactor / server-scope c
 - DASH-ELEC-266/269/273: Type/debt items — shared types file creation across tsconfigs
 
 DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.
+
+## todofixes426 — Cleanup pass 13 (2026-04-26) — WEB-FQ codemods
+
+DONE: WEB-FQ-007 (disabled state opacity codemod, 119 files, 306 substitutions), WEB-FQ-008 (border-radius scrambled, 5 sites), WEB-FQ-009 (input height/padding canonical, 11 sites), WEB-FQ-010 (modal sizes already correct, no changes), WEB-FQ-011 (heading hierarchy, 4 sites).

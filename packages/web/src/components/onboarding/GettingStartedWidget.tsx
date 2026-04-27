@@ -259,7 +259,7 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
             type="button"
             onClick={handleDismissForever}
             disabled={dismissMutation.isPending}
-            className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200 disabled:opacity-50"
+            className="rounded-md p-1 text-surface-400 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-800 dark:hover:text-surface-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             title="Don't show this again"
             aria-label="Don't show this again"
           >

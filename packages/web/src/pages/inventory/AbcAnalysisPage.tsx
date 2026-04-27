@@ -143,7 +143,7 @@ export function AbcAnalysisPage() {
           <button
             onClick={() => clearanceMut.mutate()}
             disabled={clearanceMut.isPending}
-            className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {clearanceMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tag className="h-4 w-4" />}
             Mark {selectedClearance.size} for Clearance (50% off)

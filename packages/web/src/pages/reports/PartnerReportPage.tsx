@@ -72,7 +72,7 @@ export function PartnerReportPage() {
         type="button"
         onClick={openReport}
         disabled={generating}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
       >
         {generating ? (
           <><Loader2 size={16} className="animate-spin" /> Generating…</>

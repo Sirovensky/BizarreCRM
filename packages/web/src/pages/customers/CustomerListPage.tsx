@@ -583,7 +583,7 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {exporting ? 'Exporting...' : 'Export'}
           </button>
@@ -686,7 +686,7 @@ export function CustomerListPage() {
                 <button
                   onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
                   disabled={!tagValue.trim() || bulkTagMut.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   {bulkTagMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Apply
@@ -803,11 +803,11 @@ export function CustomerListPage() {
                 {pagination.total_pages > 1 && (
                   <div className="flex items-center gap-2">
                     <button onClick={() => setPage(page - 1)} disabled={page <= 1}
-                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors">
                       <ChevronLeft className="h-4 w-4" /> Previous
                     </button>
                     <button onClick={() => setPage(page + 1)} disabled={page >= pagination.total_pages}
-                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors">
                       Next <ChevronRight className="h-4 w-4" />
                     </button>
                   </div>
@@ -834,7 +834,7 @@ export function CustomerListPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
+              <h2 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h2>
               <button aria-label="Close" onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
             </div>
             <p className="text-sm text-surface-500 mb-2">
@@ -845,7 +845,7 @@ export function CustomerListPage() {
               placeholder={'first_name,last_name,email,phone,mobile\nJohn,Doe,john@example.com,,555-0100'}
               rows={6} className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 font-mono mb-3" />
             <div className="mb-2">
-              <label className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
+              <label className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 cursor-pointer">
                 <Upload className="h-4 w-4 inline mr-1" /> Upload File
                 <input type="file" accept=".csv" className="hidden" onChange={e => {
                   const file = e.target.files?.[0]; if (!file) return;
@@ -884,7 +884,7 @@ export function CustomerListPage() {
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">Cancel</button>
               <button onClick={() => importMutation.mutate(importPreview)} disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1.5">
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} customers
               </button>
@@ -953,12 +953,12 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
   return (
     <div className="flex items-center justify-end gap-1" ref={ref}>
       <Link to={`/customers/${customer.id}`} onClick={(e) => e.stopPropagation()}
-        className="p-1.5 rounded-md text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 transition-colors" title="View">
+        className="p-1.5 rounded-lg text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:text-primary-400 dark:hover:bg-primary-900/20 transition-colors" title="View">
         <Eye className="h-4 w-4" />
       </Link>
       <div className="relative">
         <button onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
-          className="p-1.5 rounded-md text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:text-surface-300 dark:hover:bg-surface-700 transition-colors" title="More actions">
+          className="p-1.5 rounded-lg text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:text-surface-300 dark:hover:bg-surface-700 transition-colors" title="More actions">
           <MoreHorizontal className="h-4 w-4" />
         </button>
         {open && (
@@ -1022,7 +1022,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <Users className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
-        <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers found</h2>
+        <p className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers found</p>
         <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">
           {keyword ? `No results matching "${keyword}"` : 'No customers match the active filters'}
         </p>
@@ -1033,7 +1033,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
   return (
     <div className="flex flex-col items-center justify-center py-20">
       <Users className="h-16 w-16 text-surface-300 dark:text-surface-600 mb-4" />
-      <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers yet</h2>
+      <p className="text-lg font-medium text-surface-600 dark:text-surface-400">No customers yet</p>
       <p className="text-sm text-surface-400 dark:text-surface-500 mt-1">Add your first customer to get started</p>
       <div className="mt-4 flex items-center gap-3">
         <Link
@@ -1046,7 +1046,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
           type="button"
           onClick={() => sampleMutation.mutate()}
           disabled={sampleMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <Download className="h-4 w-4" />
           {sampleMutation.isPending ? 'Loading…' : 'Load 5 sample customers'}

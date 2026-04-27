@@ -217,7 +217,7 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
         <button
           onClick={() => startMut.mutate()}
           disabled={startMut.isPending}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-3 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           <Play className="h-4 w-4" />
           Start work
@@ -229,14 +229,14 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <button
             onClick={() => pauseMut.mutate()}
             disabled={pauseMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
+            className="flex items-center justify-center gap-1 rounded-lg border border-surface-300 px-3 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:text-surface-300 dark:hover:bg-surface-800"
           >
             <Pause className="h-4 w-4" /> Pause
           </button>
           <button
             onClick={() => stopMut.mutate()}
             disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Square className="h-4 w-4" /> Stop
           </button>
@@ -248,14 +248,14 @@ export function BenchTimer({ ticketId, ticketDeviceId }: BenchTimerProps) {
           <button
             onClick={() => resumeMut.mutate()}
             disabled={resumeMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-green-600 px-3 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Play className="h-4 w-4" /> Resume
           </button>
           <button
             onClick={() => stopMut.mutate()}
             disabled={stopMut.isPending}
-            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+            className="flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Square className="h-4 w-4" /> Stop
           </button>
