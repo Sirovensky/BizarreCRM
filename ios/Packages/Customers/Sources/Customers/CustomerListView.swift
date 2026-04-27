@@ -181,6 +181,14 @@ public struct CustomerListView: View {
                 Divider().overlay(Color.bizarreOutline.opacity(0.2))
             }
 
+            // §5.7 Tag filter active bar
+            if let activeTag = vm.filter.tag, !activeTag.isEmpty {
+                CustomerTagFilterBar(tag: activeTag) {
+                    vm.filter.tag = nil
+                    Task { await vm.load() }
+                }
+            }
+
             // Main list content
             listContent { id in
                 if vm.isBulkSelecting {
@@ -193,11 +201,22 @@ public struct CustomerListView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // §5.1 Bulk action bar
+            // §5.1 / §5.6 Bulk action bar
             if vm.isBulkSelecting {
                 CustomerBulkActionBar(
                     selectedCount: vm.selectedIds.count,
                     onTag: { showingTagInput = true },
+                    onExport: {
+                        // §5.6 bulk export selected customers as CSV
+                        let selected = vm.customers.filter { vm.selectedIds.contains($0.id) }
+                        if let url = CustomerCSVExporter.export(selected) {
+                            let activity = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                            if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                               let vc = scene.windows.first?.rootViewController {
+                                vc.present(activity, animated: true)
+                            }
+                        }
+                    },
                     onDelete: {
                         Task {
                             let deleted = await vm.bulkDelete()
@@ -216,6 +235,8 @@ public struct CustomerListView: View {
                     },
                     onCancel: { vm.toggleBulkSelect() }
                 )
+                // §5.6 bulk export — shares via UIActivityViewController (same as exportCSV())
+
             }
         }
     }
