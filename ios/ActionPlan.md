@@ -1774,10 +1774,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Clock-in/out via Control Center widget (iOS 18+). (`ClockInOutControl` + `ClockInOutControlIntent` in `App/Intents/ControlCenterControls.swift`; `@available(iOS 18.0, *)` guard; `StaticControlConfiguration` kind `com.bizarrecrm.control.clockinout`; reads `ClockStateProvider` from App Group UserDefaults.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 - [x] Siri intent "Clock me in at BizarreCRM". (`ClockInIntent` + `ClockOutIntent` + `ClockIntentConfig` in `Packages/Core/Sources/Core/Intents/`; `@available(iOS 16, *)` `AppIntent`; `IntentDescription` "Clock in to start your shift"; `ClockRepository` protocol injected at app launch.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 
-- [x] End-of-shift summary: card with KPIs + trend. Implementations in BOTH packages: Timeclock side (`EndShiftSummaryView` 6c1d66ee) + Pos side (`EndOfShiftSummaryView` a3234515).
+- [x] End-of-shift summary: card with KPIs + trend. Timeclock `EndShiftSummaryView` (6c1d66ee) + Pos `EndOfShiftSummaryView` (a3234515).
 - [x] Close cash drawer: denomination count + over/short. Timeclock `CashDenominationCountView` (6c1d66ee) + Pos `DenominationCountView` (a3234515).
-- [x] Manager sign-off: PIN gate when |delta|>$2 + audit. Timeclock side via `verifyManagerPin` (6c1d66ee) + Pos side via `ManagerPinSheet` (a3234515).
-- [x] Receipt: Z-report PDF archived + linked in shift summary. `EndOfShiftSummaryView.onViewZReport` → `ZReportView` (a3234515).
+- [x] Manager sign-off: PIN gate when |delta|>$2 + audit. Timeclock `verifyManagerPin` (6c1d66ee) + Pos `ManagerPinSheet` (a3234515).
+- [x] Receipt: Z-report archived + linked in shift summary. Pos `ZReportView` (a3234515) + Timeclock done-screen `zReportURL()` builds authenticated tenant PDF URL, "View Z-Report" glass button (ea8ee40e).
 - [x] Handoff: opening cash for next cashier. Timeclock `submitShiftHandoff` (6c1d66ee) + Pos `ShiftHandoffView` (a3234515).
 - [x] Sovereignty: tenant server only — both implementations route via `APIClient.baseURL`.
 - [x] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link. (`HireWizardView` + `HireWizardViewModel`; 4-step wizard; POST /api/v1/settings/users.) (feat(§14): hire wizard — 4-step new employee flow dc179fa0)
@@ -5491,7 +5491,7 @@ _Server: `GET /device-templates`, `POST /device-templates`, `GET /repair-pricing
 
 The server stores message bodies as **plaintext `TEXT` columns** (`team_chat_messages.body TEXT NOT NULL`). No column-level encryption, no hashing, no tokenization. Acceptable today for MVP staff chat; worth a comprehensive review before shipping it cross-platform:
 
-- [ ] Audit item filed in root TODO (`TEAM-CHAT-AUDIT-001`) — full list of questions (at-rest encryption / retention / export / moderation / HIPAA/PCI scope).
+- [x] Audit item filed in root TODO (`TEAM-CHAT-AUDIT-001`) — full list of questions (at-rest encryption / retention / export / moderation / HIPAA/PCI scope). (chore(§45.0): verified TEAM-CHAT-AUDIT-001 already filed in root TODO.md at line 719 — agent-7 b9)
 - iOS side obeys the outcome. If server adds column-level encryption, iOS just passes through.
 
 Iterate iOS work on this section only after Android parity + audit close in root TODO.
