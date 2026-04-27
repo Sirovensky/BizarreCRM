@@ -54,6 +54,48 @@ public extension APIClient {
         let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? phone
         _ = try await post("/api/v1/inbox/\(encoded)/assign", body: InboxAssignBody(), as: InboxAssignResult.self)
     }
+
+    // MARK: - Create customer from SMS thread (§12.2)
+
+    /// `POST /api/v1/customers` — creates a minimal customer record pre-filled with
+    /// the thread phone number. Returns the new customer's id.
+    /// Server: customer.routes.ts POST /customers — standard create endpoint.
+    @discardableResult
+    func createCustomerFromThread(
+        firstName: String,
+        lastName: String,
+        phone: String,
+        email: String?
+    ) async throws -> Int64 {
+        let body = CreateCustomerFromThreadBody(
+            firstName: firstName,
+            lastName: lastName,
+            phone: phone,
+            email: email
+        )
+        let result = try await post("/api/v1/customers", body: body, as: CreateCustomerResponse.self)
+        return result.id
+    }
+
+    // MARK: - Ticket/invoice/payment-link picker (§12.2)
+
+    /// `GET /api/v1/tickets?limit=20&status=open` — minimal list for SMS link picker.
+    func listTicketPickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/tickets?limit=20", as: [TicketPickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.displayId ?? "#\($0.id)", kind: .ticket) }
+    }
+
+    /// `GET /api/v1/invoices?limit=20&status=unpaid` — minimal list for SMS link picker.
+    func listInvoicePickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/invoices?limit=20", as: [InvoicePickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.displayId ?? "Invoice #\($0.id)", kind: .invoice) }
+    }
+
+    /// `GET /api/v1/payment-links?limit=20&active=true` — minimal list for SMS link picker.
+    func listPaymentLinkPickerItems() async throws -> [SmsLinkPickerItem] {
+        let raw = try await get("/api/v1/payment-links?limit=20", as: [PaymentLinkPickerRaw].self)
+        return raw.map { SmsLinkPickerItem(id: "\($0.id)", label: $0.title ?? "Payment link", kind: .paymentLink) }
+    }
 }
 
 // MARK: - Request / response types
@@ -145,4 +187,73 @@ struct InboxAssignBody: Encodable, Sendable {
 /// Response for inbox assign.
 public struct InboxAssignResult: Decodable, Sendable {
     public let success: Bool
+}
+
+// MARK: - Create customer from thread types
+
+/// Body for `POST /api/v1/customers` from SMS thread.
+struct CreateCustomerFromThreadBody: Encodable, Sendable {
+    let firstName: String
+    let lastName: String
+    let phone: String
+    let email: String?
+
+    enum CodingKeys: String, CodingKey {
+        case firstName = "first_name"
+        case lastName  = "last_name"
+        case phone, email
+    }
+}
+
+/// Minimal create-customer response — only need the new id.
+struct CreateCustomerResponse: Decodable, Sendable {
+    let id: Int64
+}
+
+// MARK: - SMS link picker types
+
+/// A reference to a ticket, invoice, or payment link for insertion into an SMS.
+public struct SmsLinkPickerItem: Identifiable, Sendable, Hashable {
+    public enum Kind: Sendable, Hashable {
+        case ticket, invoice, paymentLink
+    }
+
+    public let id: String
+    public let label: String
+    public let kind: Kind
+
+    public init(id: String, label: String, kind: Kind) {
+        self.id = id
+        self.label = label
+        self.kind = kind
+    }
+
+    /// The deep-link token inserted into the SMS body.
+    /// Example: `[Ticket #T-1234 — view: bizarrecrm://ticket/1234]`
+    public func linkToken(baseURL: String) -> String {
+        switch kind {
+        case .ticket:
+            return "[\(label) — view: \(baseURL)/public/tracking/\(id)]"
+        case .invoice:
+            return "[\(label) — pay: \(baseURL)/public/pay/\(id)]"
+        case .paymentLink:
+            return "[\(label): \(baseURL)/public/pay/\(id)]"
+        }
+    }
+}
+
+// Raw decoders — minimal fields only.
+struct TicketPickerRaw: Decodable, Sendable {
+    let id: Int64
+    let displayId: String?
+    enum CodingKeys: String, CodingKey { case id; case displayId = "display_id" }
+}
+struct InvoicePickerRaw: Decodable, Sendable {
+    let id: Int64
+    let displayId: String?
+    enum CodingKeys: String, CodingKey { case id; case displayId = "display_id" }
+}
+struct PaymentLinkPickerRaw: Decodable, Sendable {
+    let id: Int64
+    let title: String?
 }

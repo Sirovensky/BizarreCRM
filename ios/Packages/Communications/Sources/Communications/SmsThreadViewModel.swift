@@ -25,10 +25,16 @@ public final class SmsThreadViewModel {
     /// When true the composer appends "Reply STOP to opt out" before sending.
     public var appendComplianceFooter: Bool = false
 
+    /// §12.2 Typing indicator — true while remote party is composing.
+    /// Set by `handleTypingEvent()` and auto-cleared after 5s.
+    public var isRemoteTyping: Bool = false
+
     public let phoneNumber: String
 
     @ObservationIgnored private let repo: SmsThreadRepository
     @ObservationIgnored var wsListenTask: Task<Void, Never>?
+    /// Internal task that clears the typing indicator after a timeout.
+    @ObservationIgnored var typingClearTask: Task<Void, Never>?
 
     public init(repo: SmsThreadRepository, phoneNumber: String) {
         self.repo = repo

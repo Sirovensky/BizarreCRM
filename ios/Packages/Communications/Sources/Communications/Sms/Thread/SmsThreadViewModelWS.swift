@@ -31,8 +31,17 @@ public extension SmsThreadViewModel {
             guard let self else { return }
             for await event in wsClient.events {
                 guard !Task.isCancelled else { break }
-                if case .smsReceived(let dto) = event {
+                switch event {
+                case .smsReceived(let dto):
                     await self.handleWsMessage(dto)
+                case .unknown(let type)
+                    where type.hasPrefix("sms.typing"):
+                    // §12.2 Typing indicator — server sends `sms:typing` with the
+                    // phone number of the conversation where typing is occurring.
+                    // WSEvent.unknown passes through until Agent-10 adds the typed case.
+                    self.handleTypingEvent()
+                default:
+                    break
                 }
             }
         }

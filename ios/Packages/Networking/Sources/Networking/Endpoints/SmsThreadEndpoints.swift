@@ -59,6 +59,9 @@ public struct SmsMessage: Decodable, Sendable, Identifiable, Hashable {
     public let convPhone: String?
     public let messageType: String?
     public let createdAt: String?
+    /// §12.2 Read receipts — ISO-8601 timestamp when the remote party read this
+    /// outbound message. Nil when server does not support read receipts.
+    public let readAt: String?
 
     public var isOutbound: Bool { direction?.lowercased() == "outbound" }
 
@@ -85,6 +88,7 @@ public struct SmsMessage: Decodable, Sendable, Identifiable, Hashable {
         case convPhone = "conv_phone"
         case messageType = "message_type"
         case createdAt = "created_at"
+        case readAt = "read_at"
     }
 }
 
