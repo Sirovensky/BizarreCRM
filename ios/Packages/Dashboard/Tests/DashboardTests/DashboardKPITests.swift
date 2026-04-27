@@ -9,6 +9,7 @@ import Networking
 //   • KPIs from DashboardKPIs are included when non-nil
 //   • Tile count / label correctness
 //   • DashboardSnapshot.kpis optional is respected
+//   • DashboardTileDestination — §3.1 tile taps
 
 final class DashboardKPITests: XCTestCase {
 
@@ -120,5 +121,61 @@ final class DashboardKPITests: XCTestCase {
         let tiles = kpiItems(from: summary)
         let ids = Set(tiles.map(\.id))
         XCTAssertEqual(ids.count, tiles.count, "Each KPI tile must have a unique ID")
+    }
+
+    // MARK: - DashboardTileDestination (§3.1 tile taps)
+
+    func test_tileDest_ticketList_open_hasCorrectFilter() {
+        let dest = DashboardTileDestination.ticketList(filter: "status_group=open")
+        if case .ticketList(let f) = dest {
+            XCTAssertEqual(f, "status_group=open")
+        } else {
+            XCTFail("Expected .ticketList")
+        }
+    }
+
+    func test_tileDest_inventoryList_lowStock_hasCorrectFilter() {
+        let dest = DashboardTileDestination.inventoryList(filter: "low_stock=true")
+        if case .inventoryList(let f) = dest {
+            XCTAssertTrue(f.contains("low_stock=true"))
+        } else {
+            XCTFail("Expected .inventoryList")
+        }
+    }
+
+    func test_tileDest_reports_hasCorrectName() {
+        let dest = DashboardTileDestination.reports(name: "net-profit")
+        if case .reports(let name) = dest {
+            XCTAssertEqual(name, "net-profit")
+        } else {
+            XCTFail("Expected .reports")
+        }
+    }
+
+    func test_tileDest_revenueToday_isDistinct() {
+        let a = DashboardTileDestination.revenueToday
+        let b = DashboardTileDestination.revenueToday
+        XCTAssertEqual(a, b)
+    }
+
+    func test_tileDest_isSendableAndHashable() {
+        // Compile-time check: DashboardTileDestination is Sendable + Hashable.
+        var set: Set<DashboardTileDestination> = []
+        set.insert(.revenueToday)
+        set.insert(.ticketList(filter: "status_group=open"))
+        set.insert(.inventoryList(filter: "low_stock=true"))
+        set.insert(.reports(name: "tax"))
+        set.insert(.appointmentList(filter: "date=today"))
+        XCTAssertEqual(set.count, 5)
+    }
+
+    func test_tileDest_accessibilityDescription_openTickets() {
+        let dest = DashboardTileDestination.ticketList(filter: "status_group=open")
+        XCTAssertTrue(dest.accessibilityDescription.contains("open"))
+    }
+
+    func test_tileDest_accessibilityDescription_lowStock() {
+        let dest = DashboardTileDestination.inventoryList(filter: "low_stock=true")
+        XCTAssertTrue(dest.accessibilityDescription.contains("low stock"))
     }
 }

@@ -12,19 +12,33 @@ public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
 
+    /// Called when the user taps a KPI tile. The App layer should handle
+    /// navigation to the filtered list (e.g. push Tickets with `status_group=open`).
+    ///
+    /// If `nil`, tile taps do nothing (non-interactive appearance).
+    ///
+    /// **Wiring note (Discovered §3.1):** `DeepLinkRoute` in Core does not yet
+    /// have filtered-list cases; Agent 10 must add `.ticketList(filter:)`,
+    /// `.inventoryList(filter:)`, etc. before this callback can use deep-link
+    /// routing. The callback interface is stable; App-layer wiring can follow.
+    public var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
+
     /// - Parameters:
     ///   - repo: Dashboard data repository.
     ///   - api: APIClient for all network calls (timeclock included).
     ///   - userIdProvider: Closure that returns the current user's ID for
     ///     timeclock calls. Defaults to `{ 0 }` — a placeholder until
     ///     `GET /auth/me` is wired (TODO post-phase-11).
+    ///   - onTileTap: Called when the user taps a KPI tile. Nil = non-interactive.
     public init(
         repo: DashboardRepository,
         api: APIClient,
-        userIdProvider: (@Sendable () async -> Int64)? = nil
+        userIdProvider: (@Sendable () async -> Int64)? = nil,
+        onTileTap: (@MainActor (DashboardTileDestination) -> Void)? = nil
     ) {
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
         _clockVM = State(wrappedValue: ClockInOutViewModel(api: api, userIdProvider: userIdProvider))
+        self.onTileTap = onTileTap
     }
 
     public var body: some View {
@@ -64,7 +78,7 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot, clockVM: clockVM)
+            LoadedBody(snapshot: snapshot, clockVM: clockVM, onTileTap: onTileTap)
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
@@ -75,6 +89,7 @@ public struct DashboardView: View {
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
+    var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
 
     var body: some View {
         ScrollView {
@@ -125,27 +140,28 @@ private struct LoadedBody: View {
         let k = snapshot.kpis
 
         // Build the full tile set — only show KPI tiles when data is available.
+        // §3.1 Tile taps: each tile carries a destination; onTileTap fires when tapped.
         var tiles: [StatTile] = [
-            .init(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver"),
-            .init(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar"),
+            .init(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle",              destination: .revenueToday),
+            .init(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver",        destination: .ticketList(filter: "status_group=open")),
+            .init(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal",                destination: .ticketList(filter: "status_group=closed&closed_today=true")),
+            .init(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar",                      destination: .appointmentList(filter: "date=today")),
         ]
         if let low = s.lowStockCount {
-            tiles.append(.init(label: "Low stock",    value: "\(low)", icon: "exclamationmark.triangle"))
+            tiles.append(.init(label: "Low stock",    value: "\(low)", icon: "exclamationmark.triangle",  destination: .inventoryList(filter: "low_stock=true")))
         }
         if let k {
             tiles += [
-                .init(label: "Tax",           value: Self.money(k.tax),          icon: "percent"),
-                .init(label: "Discounts",     value: Self.money(k.discounts),    icon: "tag"),
-                .init(label: "COGS",          value: Self.money(k.cogs),         icon: "shippingbox"),
-                .init(label: "Net profit",    value: Self.money(k.netProfit),    icon: "chart.line.uptrend.xyaxis"),
-                .init(label: "Refunds",       value: Self.money(k.refunds),      icon: "arrow.uturn.backward"),
-                .init(label: "Expenses",      value: Self.money(k.expenses),     icon: "creditcard"),
-                .init(label: "Receivables",   value: Self.money(k.receivables),  icon: "clock.badge.exclamationmark"),
+                .init(label: "Tax",           value: Self.money(k.tax),          icon: "percent",                        destination: .reports(name: "tax")),
+                .init(label: "Discounts",     value: Self.money(k.discounts),    icon: "tag",                            destination: .reports(name: "discounts")),
+                .init(label: "COGS",          value: Self.money(k.cogs),         icon: "shippingbox",                    destination: .reports(name: "cogs")),
+                .init(label: "Net profit",    value: Self.money(k.netProfit),    icon: "chart.line.uptrend.xyaxis",      destination: .reports(name: "net-profit")),
+                .init(label: "Refunds",       value: Self.money(k.refunds),      icon: "arrow.uturn.backward",           destination: .reports(name: "refunds")),
+                .init(label: "Expenses",      value: Self.money(k.expenses),     icon: "creditcard",                     destination: .reports(name: "expenses")),
+                .init(label: "Receivables",   value: Self.money(k.receivables),  icon: "clock.badge.exclamationmark",    destination: .reports(name: "receivables")),
             ]
         }
-        tiles.append(.init(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox.fill"))
+        tiles.append(.init(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox.fill", destination: .inventoryList(filter: "")))
 
         // Column count: iPhone = 2-col adaptive; iPad = 3-col; Mac = 4-col.
         let columns: [GridItem]
@@ -168,7 +184,13 @@ private struct LoadedBody: View {
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
             ForEach(tiles) { tile in
-                StatTileCard(tile: tile)
+                StatTileCard(
+                    tile: tile,
+                    onTap: tile.destination.flatMap { dest -> (@MainActor () -> Void)? in
+                        guard let handler = onTileTap else { return nil }
+                        return { @MainActor in handler(dest) }
+                    }
+                )
             }
         }
     }
@@ -243,12 +265,33 @@ private struct StatTile: Identifiable {
     let label: String
     let value: String
     let icon: String
+    /// Navigation destination for tile taps. Nil = non-tappable tile.
+    let destination: DashboardTileDestination?
+
+    init(label: String, value: String, icon: String, destination: DashboardTileDestination? = nil) {
+        self.label = label
+        self.value = value
+        self.icon = icon
+        self.destination = destination
+    }
 }
 
 private struct StatTileCard: View {
     let tile: StatTile
+    var onTap: (@MainActor () -> Void)?
 
     var body: some View {
+        if let onTap {
+            Button { onTap() } label: { tileContent }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Navigate to \(tile.label.lowercased())")
+        } else {
+            tileContent
+        }
+    }
+
+    private var tileContent: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             Image(systemName: tile.icon)
                 .font(.system(size: 16, weight: .regular))
