@@ -1604,11 +1604,11 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] Star toggle via long-press context menu; `POST /sms/messages/:id/star`, `DELETE` to unstar. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
 
 ### 12.10 Voice / calls (if VoIP tenant)
-- [ ] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available.
-- [ ] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → CallKit integration (`CXProvider`).
-- [ ] **Recording playback** — `GET /voice/calls/:id/recording` → `AVAudioPlayer`.
-- [ ] **Hangup** — `POST /voice/call/:id/hangup`.
-- [ ] **Transcription display** — if server provides.
+- [x] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available. (`CallsTabView` + `CallsTabViewModel` + `CallLogRepository`; All/Inbound/Outbound/Missed segments; duration + recording/transcript action buttons; iPhone NavigationStack / iPad compatible. feat(§12.10): VoIP Calls tab 680fd1cf)
+- [x] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → CallKit integration (`CXProvider`). (`CallKitCoordinator.reportOutboundCall` + `CXProvider`/`CXCallController`; `initiateVoiceCall` in `APIClient+Communications`; `InitiateCallSheet`; active-call Liquid Glass banner with Hang Up CTA. feat(§12.10): VoIP Calls tab 680fd1cf)
+- [x] **Recording playback** — `GET /voice/calls/:id/recording` → `AVAudioPlayer`. (`CallRecordingPlayerSheet` + `CallRecordingPlayerViewModel`; resolves path-only URLs via `api.currentBaseURL()`; progress slider + play/pause; unavailable state on 404/nil. feat(§12.10): VoIP Calls tab 680fd1cf)
+- [x] **Hangup** — `POST /voice/call/:id/hangup`. (`hangupVoiceCall` in `APIClient+Communications`; `CallsTabViewModel.hangup()` calls repo; `CallKitCoordinator.hangup(uuid:)` ends CallKit call. feat(§12.10): VoIP Calls tab 680fd1cf)
+- [x] **Transcription display** — if server provides. (`CallTranscriptSheet`; shows `entry.transcriptText`; `.textSelection(.enabled)` on Mac; ShareLink export; unavailable state when nil. feat(§12.10): VoIP Calls tab 680fd1cf)
 - [x] **Incoming call push** (PushKit VoIP) → CallKit UI. (`voip` UIBackgroundMode added to `write-info-plist.sh`; PushKit entitlement covered by existing `aps-environment`; unblocks CallKit wiring by Agent 7. feat(§12.10+§42.4): voip+bluetooth-central UIBackgroundModes 18f052de)
 
 ### 12.11 Push → deep link
