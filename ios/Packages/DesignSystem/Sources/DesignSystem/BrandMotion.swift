@@ -121,3 +121,64 @@ private struct BrandAnimationModifier<V: Equatable>: ViewModifier {
         )
     }
 }
+
+// MARK: - §67 Staggered list-appear cascade
+
+/// §67 — Stagger animation: +40ms per row, 200ms cap.
+///
+/// Each row fades + slides up with an offset based on its index.
+/// Reduce Motion collapses to a simple opacity fade (no translate).
+/// Cap: beyond row 4 the delay is fixed at 200ms so the last items
+/// don't trail by half a second.
+///
+/// Usage:
+/// ```swift
+/// ForEach(tickets) { ticket in
+///     TicketRow(ticket: ticket)
+///         .staggeredAppear(index: tickets.firstIndex(of: ticket) ?? 0)
+/// }
+/// ```
+public extension View {
+    /// Applies staggered appearance animation (§67 choreography).
+    ///
+    /// - Parameter index: Zero-based row index in the list.
+    /// - Parameter trigger: Value change that triggers the animation; pass
+    ///   `true` once the list data has arrived so rows animate in together.
+    func staggeredAppear(index: Int, trigger: Bool = true) -> some View {
+        modifier(StaggeredAppearModifier(index: index, trigger: trigger))
+    }
+}
+
+private struct StaggeredAppearModifier: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    let index: Int
+    let trigger: Bool
+
+    /// §67: +40ms per row, hard cap 200ms.
+    private var delay: Double {
+        min(Double(index) * 0.04, 0.20)
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(appeared ? 1 : 0)
+            .offset(y: (appeared || reduceMotion) ? 0 : 12)
+            .onAppear {
+                let d = delay
+                let rm = reduceMotion
+                Task { @MainActor in
+                    if d > 0 {
+                        try? await Task.sleep(nanoseconds: UInt64(d * 1_000_000_000))
+                    }
+                    withAnimation(rm ? .easeInOut(duration: 0.15) : BrandMotion.listItemAppear) {
+                        appeared = true
+                    }
+                }
+            }
+            .onChange(of: trigger) { _, isTriggered in
+                if !isTriggered { appeared = false }
+            }
+    }
+}
