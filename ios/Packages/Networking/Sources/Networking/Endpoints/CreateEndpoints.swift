@@ -128,21 +128,45 @@ public struct CreateLeadRequest: Encodable, Sendable {
     public let phone: String?
     public let source: String?
     public let notes: String?
+    // §9.4 Extended fields
+    public let company: String?
+    public let title: String?
+    public let estimatedValueCents: Int?
+    public let stage: String?
+    public let followUpAt: String?
 
-    public init(firstName: String, lastName: String? = nil, email: String? = nil,
-                phone: String? = nil, source: String? = nil, notes: String? = nil) {
+    public init(
+        firstName: String,
+        lastName: String? = nil,
+        email: String? = nil,
+        phone: String? = nil,
+        source: String? = nil,
+        notes: String? = nil,
+        company: String? = nil,
+        title: String? = nil,
+        estimatedValueCents: Int? = nil,
+        stage: String? = nil,
+        followUpAt: String? = nil
+    ) {
         self.firstName = firstName
         self.lastName = lastName
         self.email = email
         self.phone = phone
         self.source = source
         self.notes = notes
+        self.company = company
+        self.title = title
+        self.estimatedValueCents = estimatedValueCents
+        self.stage = stage
+        self.followUpAt = followUpAt
     }
 
     enum CodingKeys: String, CodingKey {
-        case email, phone, source, notes
-        case firstName = "first_name"
-        case lastName = "last_name"
+        case email, phone, source, notes, company, title, stage
+        case firstName            = "first_name"
+        case lastName             = "last_name"
+        case estimatedValueCents  = "estimated_value_cents"
+        case followUpAt           = "follow_up_at"
     }
 }
 
