@@ -167,6 +167,11 @@ export interface PendingWrites {
   // ─── Business hours card ─────────────────────────────────────────
   business_hours?: string;
 
+  // ─── Tax defaults (per-category %) ───────────────────────────────
+  tax_default_parts?: string;
+  tax_default_services?: string;
+  tax_default_accessories?: string;
+
   // ─── Logo & branding ─────────────────────────────────────────────
   store_logo?: string;
   theme_primary_color?: string;
