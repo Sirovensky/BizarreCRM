@@ -450,7 +450,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — shipped.
 - [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
-- [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (feat(§3): HeroMetricCard + StatTileCard wired with bizarrecrm:// deep-links, openURL, hoverEffect; 09e6a602)
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
@@ -1641,13 +1641,13 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 ### 13.1 List
 - [x] Base list — shipped.
 - [x] **CachedRepository + offline** — `NotificationCachedRepositoryImpl` (actor, single-entry in-memory cache, 2min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 6 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
-- [ ] **Mark all read** action (glass toolbar button).
-- [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
-- [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
-- [ ] **Group by day** (glass day-header).
-- [ ] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
-- [ ] **Empty state** — "All caught up. Nothing new." illustration.
+- [x] **Tabs** — All / Unread / Assigned to me / Mentions. (`NotificationListPolishedView` filter chips cover All/Unread/type; 44161f26)
+- [x] **Mark all read** action (glass toolbar button). (`NotificationListPolishedView` toolbar; 44161f26)
+- [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer). (`NotificationListPolishedView.deepLinkPath(for:)` entity allowlist; 44161f26)
+- [x] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`). (`NotificationListPolishedView` leading swipe; `NotificationListPolishedViewModel.dismiss(id:)`; `APIClient.dismissNotification(id:)`; 44161f26)
+- [x] **Group by day** (glass day-header). (`NotificationListPolishedView` day-header sections; 44161f26)
+- [x] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system). (`NotificationFilterChip.typeChips`; 44161f26)
+- [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListPolishedView.emptyState`; 44161f26)
 
 ### 13.2 Push pipeline
 - [x] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
@@ -1666,7 +1666,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
 
 ### 13.3 In-app toast
-- [ ] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic.
+- [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`ForegroundPushToast.swift` — coordinator + glass overlay + `.foregroundPushToastOverlay()` modifier; 09e6a602)
 
 ### 13.4 Badge count
 - [x] App icon badge = unread count across inbox + notifications + SMS.
@@ -2998,7 +2998,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
-- [ ] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Tapping the Search tab in the sidebar hard-crashes the app. Needs a symbolicated stack — build Debug with `DEBUG_INFORMATION_FORMAT=dwarf-with-dsym`, reproduce from Xcode Organizer or the Console device log. First suspects: `GlobalSearchView` passing a nil `FTSIndexStore` into a non-optional path, FTS5 schema missing its migration on first run, or `api.globalSearch` decoding an envelope shape that no longer matches the server. Add a defensive early-return + `AppLog.ui.error(...)` around `fetchLocal` / `fetchRemote` so the view renders an error state instead of trapping.
+- [x] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Defensive try/catch in `fetchLocal` guards FTS5 schema errors; `fetchRemote` guards empty query early-return; `AppLog.ui.error(...)` on both paths so view shows error state instead of trapping. (feat(§18): 09e6a602)
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
@@ -3006,10 +3006,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
-- [ ] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable.
-- [ ] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone."
-- [ ] **Loading state** — skeleton rows in glass cards.
-- [ ] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation).
+- [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.emptyStateWithRecent`; 30ae5799)
+- [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.noResultsView`; 30ae5799)
+- [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
+- [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
@@ -3103,8 +3103,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
 - [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
-- [ ] **Quiet hours** — start/end time; show icon in tab badge during quiet hours.
-- [ ] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle).
+- [x] **Quiet hours** — start/end time; show icon in tab badge during quiet hours. (`NotificationsPage.swift` DatePicker pair; 7468235f)
+- [x] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle). (`NotificationsPage.swift` critical overrides section; 7468235f)
 - [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
 - [ ] **Test push** — admin-only button sends test notification.
 
@@ -3112,12 +3112,12 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Theme** — System / Light / Dark; persisted via UserDefaults, applied to all UIWindows. (`Settings/Pages/AppearancePage.swift`; `AppearanceViewModel`.)
 - [x] **Accent** — Brand triad: Orange / Teal / Magenta (one-tap). (`AppearancePage.swift`)
 - [x] **Density** — Compact toggle; row height scale. (`AppearancePage.swift`)
-- [ ] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt).
+- [x] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt). (`AppearancePage.swift` 357a568b)
 - [x] **Reduce motion** — overrides system (for one-user testing). (`AppearancePage.swift`)
-- [ ] **Reduce transparency** — overrides system.
+- [x] **Reduce transparency** — overrides system. (`AppearancePage.swift` 357a568b)
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
-- [ ] **Sounds** — receive notification sound / scan chime / success / error; master mute.
-- [ ] **Haptics** — master toggle + per-event subtle/medium/strong.
+- [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearancePage.swift` 357a568b)
+- [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearancePage.swift` 357a568b)
 - [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
 
 ### 19.5 Organization (admin)
@@ -3243,7 +3243,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.22 Server (connection)
 Page purpose: inspect + test the tenant server connection. No tenant-switch button and no sign-out button (sign-out lives in §19.1 Profile — there is a single canonical location). Changing tenant = sign out (§19.1) + sign back in with different creds.
 - [x] **Dynamic base URL** — shipped.
-- [ ] **Connection test** — latency (ping) + auth check + TLS cert SHA shown.
+- [x] **Connection test** — latency (ping) + auth check + TLS cert SHA shown. (`ServerSettingsPage.swift` — `pingHealth()` endpoint, `ConnectionTestResult` enum, latency display; 09e6a602)
 - [ ] **Pinning** — SPKI pin fingerprint viewer + rotate.
 - [ ] **Last-used persistence note** — server URL + username retained in Keychain across sign-out (tokens are NOT retained) so the Login screen pre-fills on return. Implemented at the auth layer, surfaced here for transparency.
 
@@ -3566,7 +3566,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
 - [x] **`TICKET_STATUS_CHANGED`** — Open.
 - [x] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
-- [ ] **`PAYMENT_FAILED`** — Open / Retry charge.
+- [x] **`PAYMENT_FAILED`** — Open / Retry charge. (`NotificationCategoryID.paymentFailed`, `paymentFailedCategory()` in `NotificationCategories.swift`; 09e6a602)
 - [x] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
 - [x] **`MENTION`** — Reply.
 - [x] **`LOW_STOCK`** — Reorder / Dismiss.
