@@ -13,6 +13,8 @@ import Networking
 public struct EstimateCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: EstimateCreateViewModel
+    // §8.3 — catalog picker
+    @State private var showingCatalogPicker: Bool = false
 
     public init(api: APIClient) {
         _vm = State(wrappedValue: EstimateCreateViewModel(api: api))
@@ -193,6 +195,22 @@ public struct EstimateCreateView: View {
                     }, onChange: {
                         vm.scheduleAutoSave()
                     })
+                }
+            }
+
+            // §8.3 — catalog button
+            Button {
+                showingCatalogPicker = true
+            } label: {
+                Label("Add from catalog", systemImage: "list.bullet.rectangle.portrait")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOrange)
+            }
+            .accessibilityLabel("Add line items from repair-pricing catalog")
+            .sheet(isPresented: $showingCatalogPicker) {
+                RepairServicePickerSheet(api: vm.apiForPicker) { items in
+                    items.forEach { vm.lineItems.append($0) }
+                    vm.scheduleAutoSave()
                 }
             }
         }

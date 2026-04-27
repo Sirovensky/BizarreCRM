@@ -42,6 +42,9 @@ public final class EstimateCreateViewModel {
 
     @ObservationIgnored private let api: APIClient
 
+    /// §8.3 — Exposed for RepairServicePickerSheet inside EstimateCreateView.
+    public var apiForPicker: APIClient { api }
+
     public init(api: APIClient) { self.api = api }
 
     /// §8.3 — Prefill from a lead detail: customer identity carried over; no line items yet.
@@ -129,6 +132,15 @@ public final class EstimateCreateViewModel {
         scheduleAutoSave()
     }
 
+    // MARK: - §8.3 Idempotency key
+
+    /// Per-session UUID sent as `Idempotency-Key` header. Generated once on
+    /// first submit; stays the same so a network-retry doesn't double-create.
+    @ObservationIgnored private var idempotencyKey: String = UUID().uuidString
+
+    /// Reset the key — called when the user explicitly cancels and re-opens.
+    public func resetIdempotencyKey() { idempotencyKey = UUID().uuidString }
+
     // MARK: - Submit
 
     public func submit() async {
@@ -161,7 +173,8 @@ public final class EstimateCreateViewModel {
         )
 
         do {
-            let created = try await api.createEstimate(body)
+            // §8.3 — Pass idempotency key so retries don't double-create.
+            let created = try await api.createEstimate(body, idempotencyKey: idempotencyKey)
             createdId = created.id
             await _draftAutoSaverValue.clear()
         } catch {
