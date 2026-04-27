@@ -58,11 +58,12 @@ public final class PencilAnnotationViewModel {
 
     // MARK: - Tool switching (Pencil double-tap / squeeze)
 
-    /// Cycles to the next non-eraser tool, honoring UIPencilPreferredAction.
+    /// Cycles to the next non-eraser ink tool, honoring UIPencilPreferredAction.
+    /// Shape tools (arrow/rectangle/oval/textBox) are skipped by double-tap.
     public func handleDoubleTap() {
         let drawingTools: [AnnotationTool] = [.pen, .highlighter, .marker]
         guard let idx = drawingTools.firstIndex(of: activeTool) else {
-            // Currently on eraser — go back to pen
+            // Currently on eraser or shape tool — go back to pen
             activeTool = .pen
             return
         }
