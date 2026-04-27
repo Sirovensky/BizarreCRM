@@ -10,6 +10,8 @@ public struct LoginFlowView: View {
     @State private var flow: LoginFlow
     @FocusState private var focus: FocusField?
     private let onFinished: (() -> Void)?
+    // §2.12 Shake trigger — toggled when a wrong-password 401 is returned
+    @State private var shakeCredentials: Bool = false
 
     public init(api: APIClient, onFinished: (() -> Void)? = nil) {
         self._flow = State(wrappedValue: LoginFlow(api: api))
@@ -29,6 +31,14 @@ public struct LoginFlowView: View {
             backgroundOrbs
             ScrollView {
                 VStack(spacing: BrandSpacing.lg) {
+                    // §2.11 Session-revoked glass banner
+                    if let msg = flow.sessionRevokedMessage {
+                        sessionRevokedBanner(message: msg)
+                            .padding(.horizontal, BrandSpacing.base)
+                            .padding(.top, BrandSpacing.sm)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     header
                     BrandGlassContainer(spacing: 24) {
                         VStack(spacing: BrandSpacing.lg) {
@@ -58,11 +68,57 @@ public struct LoginFlowView: View {
                     flow.backupCodes = []
                 }
             }
+
+            // §2.1 Setup-status probe overlay — glass spinner while connecting
+            if flow.isProbing {
+                ServerProbeOverlay()
+                    .transition(.opacity)
+                    .animation(BrandMotion.snappy, value: flow.isProbing)
+            }
         }
         .preferredColorScheme(.dark)
+        .animation(BrandMotion.snappy, value: flow.sessionRevokedMessage != nil)
         .onChange(of: flow.step) { _, new in
             if case .done = new { onFinished?() }
         }
+        // §2.12 Account locked modal
+        .alert("Account Locked", isPresented: $flow.isAccountLocked) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Your account has been locked. Contact your admin to unlock it.")
+        }
+    }
+
+    // MARK: - §2.11 Session-revoked banner
+
+    private func sessionRevokedBanner(message: String) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.shield.fill")
+                .foregroundStyle(.bizarreWarning)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .multilineTextAlignment(.leading)
+            Spacer()
+            Button {
+                withAnimation(BrandMotion.snappy) {
+                    flow.sessionRevokedMessage = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.sm)
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 14), tint: Color.bizarreWarning.opacity(0.12))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("auth.sessionRevokedBanner")
     }
 
     // MARK: - Chrome
@@ -255,8 +311,15 @@ public struct LoginFlowView: View {
                 .focused($focus, equals: .password)
                 .submitLabel(.go)
                 .onSubmit { Task { await flow.submitCredentials() } }
+                // §2.12 Shake animation on wrong password
+                .modifier(ShakeModifier(trigger: shakeCredentials))
 
             errorRow
+
+            // §2.2 Rate-limit countdown chip
+            if let retryAfter = flow.rateLimitRetryAfter, retryAfter > 0 {
+                RateLimitCountdown(secondsRemaining: retryAfter)
+            }
 
             primaryButton("Sign in") { await flow.submitCredentials() }
                 .disabled(flow.username.isEmpty || flow.password.isEmpty)
@@ -270,6 +333,16 @@ public struct LoginFlowView: View {
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
+        }
+        .onChange(of: flow.errorMessage) { _, new in
+            // Trigger shake when a 401 inline error is set
+            if new == "Username or password incorrect." {
+                shakeCredentials.toggle()
+            }
+        }
+        // §2.6 Biometric shortcut overlay — shows only when stored credentials exist
+        .biometricLoginShortcut { username, password in
+            await flow.loginWithBiometricCredentials(username: username, password: password)
         }
     }
 
@@ -348,6 +421,17 @@ public struct LoginFlowView: View {
             }
 
             errorRow
+
+            // §2.2 Trust-this-device checkbox
+            HStack {
+                Toggle(isOn: $flow.trustDevice) {
+                    Text("Trust this device for 90 days")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("twoFactor.trustDevice")
+            }
 
             primaryButton("Verify") { await flow.submitTwoFactorVerify() }
                 .disabled(verifyDisabled)
@@ -475,7 +559,18 @@ public struct LoginFlowView: View {
                 .accessibilityLabel("Six-digit authenticator code")
                 .accessibilityIdentifier("twoFactor.totpField")
                 .onChange(of: flow.totpCode) { _, new in
-                    flow.totpCode = String(new.filter(\.isNumber).prefix(6))
+                    let digits = String(new.filter(\.isNumber).prefix(6))
+                    flow.totpCode = digits
+                }
+                .onAppear {
+                    // §2.4 Paste-from-clipboard auto-detect:
+                    // If the clipboard holds exactly 6 digits, pre-fill the field.
+                    if flow.totpCode.isEmpty,
+                       let pasted = UIPasteboard.general.string,
+                       pasted.filter(\.isNumber).count == 6,
+                       pasted.trimmingCharacters(in: .whitespaces) == pasted.filter(\.isNumber) {
+                        flow.totpCode = String(pasted.filter(\.isNumber))
+                    }
                 }
         }
         .padding(BrandSpacing.md)
@@ -565,6 +660,91 @@ public struct LoginFlowView: View {
     private static func qrImage(from base64: String) -> UIImage? {
         guard let data = Data(base64Encoded: base64) else { return nil }
         return UIImage(data: data)
+    }
+}
+
+// MARK: - §2.1 Server probe overlay
+
+/// §2.1 — Glass spinner shown while the setup-status probe is in flight.
+/// Transparent to the user; appears for ≤ 400 ms on a healthy connection.
+private struct ServerProbeOverlay: View {
+    var body: some View {
+        ZStack {
+            Color.bizarreSurfaceBase.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: BrandSpacing.md) {
+                ProgressView()
+                    .scaleEffect(1.4)
+                    .tint(.bizarreOrange)
+                Text("Connecting to your server…")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .padding(BrandSpacing.xl)
+            .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 20))
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Connecting to your server")
+    }
+}
+
+// MARK: - §2.12 Shake modifier (wrong-password feedback)
+
+/// Applies a horizontal shake animation when `trigger` flips.
+private struct ShakeModifier: ViewModifier {
+    let trigger: Bool
+    @State private var offset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: offset)
+            .onChange(of: trigger) { _, _ in
+                withAnimation(Animation.easeInOut(duration: 0.06).repeatCount(5, autoreverses: true)) {
+                    offset = 8
+                }
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 360_000_000) // 6 cycles × 60ms
+                    withAnimation { offset = 0 }
+                }
+            }
+    }
+}
+
+// MARK: - §2.2 Rate-limit countdown chip
+
+private struct RateLimitCountdown: View {
+    let secondsRemaining: TimeInterval
+    @State private var remaining: TimeInterval
+
+    init(secondsRemaining: TimeInterval) {
+        self.secondsRemaining = secondsRemaining
+        self._remaining = State(wrappedValue: secondsRemaining)
+    }
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .foregroundStyle(.bizarreWarning)
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text("Try again in \(Int(remaining.rounded()))s")
+                .font(.brandLabelSmall().monospacedDigit())
+                .foregroundStyle(.bizarreWarning)
+        }
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .brandGlass(.regular, in: Capsule(), tint: Color.bizarreWarning.opacity(0.1))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rate limited. Try again in \(Int(remaining.rounded())) seconds.")
+        .onAppear { startTicking() }
+    }
+
+    private func startTicking() {
+        Task { @MainActor in
+            while remaining > 0 {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                remaining = max(0, remaining - 1)
+            }
+        }
     }
 }
 
