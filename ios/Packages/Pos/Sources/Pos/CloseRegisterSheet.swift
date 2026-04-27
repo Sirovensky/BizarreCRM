@@ -18,6 +18,11 @@ public struct CloseRegisterSheet: View {
     @State private var isSubmitting: Bool = false
     @State private var errorMessage: String?
 
+    // §16.10 — Blind-count mode: cashier counts without seeing the expected
+    // total. Expected total is revealed only after the cashier submits.
+    @State private var blindCountMode: Bool = false
+    @State private var blindCountRevealed: Bool = false
+
     public init(session: CashSessionRecord, expectedCents: Int, closedBy: Int64, onClosed: @escaping (CashSessionRecord) -> Void) {
         self.session = session
         self.expectedCents = expectedCents
@@ -28,13 +33,47 @@ public struct CloseRegisterSheet: View {
     public var body: some View {
         NavigationStack {
             Form {
+                // §16.10 — Blind count toggle (loss-prevention mode)
+                Section {
+                    Toggle(isOn: $blindCountMode) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Blind count")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Text("Cashier counts without seeing expected total")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                    }
+                    .tint(.bizarreOrange)
+                    .accessibilityIdentifier("pos.closeRegister.blindCount")
+                    .onChange(of: blindCountMode) { _, _ in
+                        // Reset reveal state when toggled
+                        blindCountRevealed = false
+                    }
+                }
+
                 Section("Shift") {
                     row("Opened", Self.format(date: session.openedAt))
                         .accessibilityIdentifier("pos.closeRegister.opened")
                     row("Opening float", CartMath.formatCents(session.openingFloat))
                         .accessibilityIdentifier("pos.closeRegister.float")
-                    row("Expected in drawer", CartMath.formatCents(expectedCents))
-                        .accessibilityIdentifier("pos.closeRegister.expected")
+                    if !blindCountMode || blindCountRevealed {
+                        row("Expected in drawer", CartMath.formatCents(expectedCents))
+                            .accessibilityIdentifier("pos.closeRegister.expected")
+                    } else {
+                        HStack {
+                            Text("Expected in drawer")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Spacer()
+                            Text("Hidden — blind count mode")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .italic()
+                        }
+                        .accessibilityLabel("Expected total hidden. Blind count mode active.")
+                    }
                 }
                 Section("Count") {
                     HStack(spacing: BrandSpacing.sm) {
@@ -48,7 +87,28 @@ public struct CloseRegisterSheet: View {
                             .accessibilityIdentifier("pos.closeRegister.counted")
                     }
                 }
-                Section { varianceBadge.accessibilityIdentifier("pos.closeRegister.variance") }
+                if blindCountMode && !blindCountRevealed {
+                    Section {
+                        Button {
+                            guard amountCents > 0 else { return }
+                            blindCountRevealed = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "eye.fill")
+                                    .accessibilityHidden(true)
+                                Text(countedCents > 0
+                                     ? "Reveal expected total"
+                                     : "Enter counted amount first")
+                                    .font(.brandBodyMedium())
+                            }
+                            .foregroundStyle(countedCents > 0 ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                        }
+                        .disabled(countedCents == 0)
+                        .accessibilityIdentifier("pos.closeRegister.revealExpected")
+                    }
+                } else {
+                    Section { varianceBadge.accessibilityIdentifier("pos.closeRegister.variance") }
+                }
                 Section {
                     TextField(notesPlaceholder, text: $notes, axis: .vertical)
                         .lineLimit(3...6)

@@ -10,6 +10,8 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     case cash
     case giftCard
     case storeCredit
+    /// §16.6 — Paper check: check # + bank + memo; no payment auth; goes to A/R.
+    case check
 
     public var id: String { rawValue }
 
@@ -20,6 +22,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .cash:        return "Cash"
         case .giftCard:    return "Gift card"
         case .storeCredit: return "Store credit"
+        case .check:       return "Check"
         }
     }
 
@@ -32,6 +35,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .cash:        return "banknote.fill"
         case .giftCard:    return "giftcard.fill"
         case .storeCredit: return "dollarsign.circle.fill"
+        case .check:       return "checkmark.seal.fill"
         }
     }
 
@@ -43,6 +47,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .cash:        return "cash"
         case .giftCard:    return "gift_card"
         case .storeCredit: return "store_credit"
+        case .check:       return "check"
         }
     }
 
@@ -56,6 +61,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .cash:        return true
         case .giftCard:    return true
         case .storeCredit: return true
+        case .check:       return true
         case .card:        return false  // TODO: ProximityReader entitlement pending
         }
     }
@@ -70,6 +76,12 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         }
     }
 
+    /// Whether this method requires an additional details sheet (check) rather
+    /// than a simple numeric amount entry.
+    public var requiresDetailsSheet: Bool {
+        self == .check
+    }
+
     /// Subtitle shown on every method tile (ready or not) — matching mockup 5a/4a.
     public var tileSubtitle: String {
         switch self {
@@ -77,6 +89,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .cash:        return "Enter amount"
         case .giftCard:    return "Scan / enter"
         case .storeCredit: return "Avail. balance"
+        case .check:       return "Check # + bank"
         }
     }
 

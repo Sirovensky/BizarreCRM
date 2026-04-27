@@ -2,6 +2,8 @@
 import SwiftUI
 import DesignSystem
 import Core
+import CoreImage
+import CoreImage.CIFilterBuiltins
 
 /// §Agent-E — Receipt confirmation screen. Shown immediately after a tender
 /// settles. Replaces (sits alongside) `PosPostSaleView` — the older view is
@@ -42,17 +44,27 @@ public struct PosReceiptView: View {
     /// the transaction settles.
     public let paidAt: Date
 
+    /// Optional public tracking URL (from server invoice response `trackingToken`).
+    /// When set, the QR code encodes this URL. Falls back to nil (no QR shown).
+    public let trackingURL: URL?
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    // MARK: - §16.7 PDF export
+    @State private var pdfExportURL: URL?
+    @State private var showingPdfExporter: Bool = false
 
     public init(
         vm: PosReceiptViewModel,
         receiptText: String? = nil,
-        paidAt: Date = Date()
+        paidAt: Date = Date(),
+        trackingURL: URL? = nil
     ) {
         self.vm = vm
         self.receiptText = receiptText
         self.paidAt = paidAt
+        self.trackingURL = trackingURL
     }
 
     public var body: some View {
@@ -62,6 +74,94 @@ public struct PosReceiptView: View {
         }
         .sensoryFeedback(.success, trigger: paidAt)
         .accessibilityIdentifier("pos.receipt.root")
+        // §16.7 — PDF download via fileExporter (only active when a PDF is ready)
+        .modifier(ReceiptPDFExporterModifier(
+            isPresented: $showingPdfExporter,
+            url: $pdfExportURL,
+            invoiceId: vm.payload.invoiceId
+        ))
+        .task(id: paidAt) {
+            // §16.7 — Persist receipt model on first appear (keyed to paidAt so
+            // re-renders don't cause duplicate writes).
+            await persistReceiptModel()
+        }
+    }
+
+    // MARK: - §16.7 — Persist receipt model
+
+    private func persistReceiptModel() async {
+        let model = ReceiptModelStore.StoredReceiptModel(
+            invoiceId: vm.payload.invoiceId,
+            receiptNumber: String(vm.payload.invoiceId),
+            amountPaidCents: vm.payload.amountPaidCents,
+            changeGivenCents: vm.payload.changeGivenCents,
+            methodLabel: vm.payload.methodLabel,
+            customerPhone: vm.payload.customerPhone,
+            customerEmail: vm.payload.customerEmail,
+            receiptText: receiptText
+        )
+        await ReceiptModelStore.shared.save(model)
+    }
+
+    // MARK: - §16.7 — PDF rendering
+
+    private func exportPDF() {
+        guard let text = receiptText else { return }
+        let pdfData = renderReceiptPDF(text: text)
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Receipt-\(vm.payload.invoiceId)-\(Self.isoDateString()).pdf")
+        do {
+            try pdfData.write(to: tempURL)
+            pdfExportURL = tempURL
+            showingPdfExporter = true
+        } catch {
+            AppLog.pos.error("Receipt PDF write failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func renderReceiptPDF(text: String) -> Data {
+        let pageRect = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let renderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        return renderer.pdfData { ctx in
+            ctx.beginPage()
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: UIFont.monospacedSystemFont(ofSize: 10, weight: .regular)
+            ]
+            let lines = text
+                .components(separatedBy: .newlines)
+                .map { NSAttributedString(string: $0, attributes: attrs) }
+            var yOffset: CGFloat = 32
+            for line in lines {
+                line.draw(at: CGPoint(x: 32, y: yOffset))
+                yOffset += 14
+                if yOffset > pageRect.height - 32 {
+                    ctx.beginPage()
+                    yOffset = 32
+                }
+            }
+        }
+    }
+
+    private static func isoDateString() -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return f.string(from: Date())
+    }
+
+    // MARK: - §16.7 — QR code generation
+
+    /// Generates a QR-code `UIImage` from the tracking URL.
+    /// Returns `nil` when `trackingURL` is absent.
+    private var trackingQRImage: UIImage? {
+        guard let url = trackingURL else { return nil }
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(url.absoluteString.utf8)
+        filter.correctionLevel = "M"
+        guard let ciImage = filter.outputImage else { return nil }
+        let scaled = ciImage.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
+        guard let cgImage = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 
     // MARK: - Scroll body
@@ -89,6 +189,8 @@ public struct PosReceiptView: View {
         VStack(spacing: BrandSpacing.lg) {
             heroSection
             shareTileGrid
+            downloadPDFButton
+            qrCodeSection
             loyaltyCelebration
             if let text = receiptText {
                 inlineReceiptPreview(text: text)
@@ -105,17 +207,88 @@ public struct PosReceiptView: View {
             VStack(spacing: BrandSpacing.lg) {
                 heroSection
                 shareTileGrid
+                downloadPDFButton
                 loyaltyCelebration
                 pencilSignatureBanner
                 postSaleActionRow
             }
             .frame(maxWidth: .infinity)
 
-            // Right: inline receipt preview (lowest elevation per mockup)
-            if let text = receiptText {
-                inlineReceiptPreview(text: text)
-                    .frame(maxWidth: .infinity)
+            // Right: inline receipt preview + QR code (lowest elevation per mockup)
+            VStack(spacing: BrandSpacing.lg) {
+                if let text = receiptText {
+                    inlineReceiptPreview(text: text)
+                }
+                qrCodeSection
             }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - §16.7 — Download PDF button
+
+    @ViewBuilder
+    private var downloadPDFButton: some View {
+        if receiptText != nil {
+            Button {
+                exportPDF()
+            } label: {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "arrow.down.doc.fill")
+                        .font(.system(size: 16, weight: .medium))
+                    Text("Download PDF")
+                        .font(.brandTitleSmall())
+                }
+                .foregroundStyle(.bizarreOrange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+            .buttonStyle(.bordered)
+            .tint(.bizarreOrange)
+            .accessibilityLabel("Download receipt as PDF")
+            .accessibilityHint("Saves a PDF file to your chosen location")
+            .accessibilityIdentifier("pos.receipt.downloadPDF")
+        }
+    }
+
+    // MARK: - §16.7 — QR code section
+
+    @ViewBuilder
+    private var qrCodeSection: some View {
+        if let qrImage = trackingQRImage {
+            VStack(spacing: BrandSpacing.sm) {
+                Text("Scan to track order")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .textCase(.uppercase)
+                    .kerning(0.8)
+                Image(uiImage: qrImage)
+                    .resizable()
+                    .interpolation(.none)
+                    .scaledToFit()
+                    .frame(width: 140, height: 140)
+                    .padding(BrandSpacing.sm)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 10))
+                    .accessibilityLabel("Tracking QR code — customer can scan to track order")
+                    .accessibilityIdentifier("pos.receipt.qrCode")
+                if let url = trackingURL {
+                    Text(url.absoluteString)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("pos.receipt.trackingURL")
+                }
+            }
+            .padding(.vertical, BrandSpacing.md)
+            .padding(.horizontal, BrandSpacing.lg)
+            .frame(maxWidth: .infinity)
+            .background(Color.bizarreSurface1.opacity(0.8), in: RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
         }
     }
 
@@ -539,5 +712,61 @@ public struct PosReceiptView: View {
         paidAt: Date()
     )
     .preferredColorScheme(.light)
+}
+#endif
+
+// MARK: - §16.7 — PDF File Document (FileExporter support)
+
+#if canImport(UIKit)
+import UniformTypeIdentifiers
+
+/// Wraps a locally-generated PDF file URL for use with `.fileExporter`.
+public struct ReceiptPDFDocument: FileDocument {
+    public static var readableContentTypes: [UTType] { [.pdf] }
+
+    let url: URL
+
+    public init(url: URL) { self.url = url }
+
+    public init(configuration: ReadConfiguration) throws {
+        throw CocoaError(.fileReadUnsupportedScheme)
+    }
+
+    public func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        let data = try Data(contentsOf: url)
+        return FileWrapper(regularFileWithContents: data)
+    }
+}
+
+/// ViewModifier that conditionally attaches a `.fileExporter` when a PDF URL
+/// is ready. SwiftUI's `.fileExporter` requires a non-Optional document, so
+/// we gate on `url != nil` here.
+struct ReceiptPDFExporterModifier: ViewModifier {
+    @Binding var isPresented: Bool
+    @Binding var url: URL?
+    let invoiceId: Int64
+
+    private var filename: String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
+        return "Receipt-\(invoiceId)-\(f.string(from: Date())).pdf"
+    }
+
+    func body(content: Content) -> some View {
+        if let readyURL = url {
+            content.fileExporter(
+                isPresented: $isPresented,
+                document: ReceiptPDFDocument(url: readyURL),
+                contentType: .pdf,
+                defaultFilename: filename
+            ) { result in
+                if case .failure(let err) = result {
+                    AppLog.pos.error("Receipt PDF export failed: \(err.localizedDescription)")
+                }
+            }
+        } else {
+            content
+        }
+    }
 }
 #endif

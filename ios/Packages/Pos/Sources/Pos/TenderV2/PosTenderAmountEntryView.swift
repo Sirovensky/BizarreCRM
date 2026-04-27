@@ -11,6 +11,7 @@ import DesignSystem
 /// - `.card`        → `PosCardAmountView`
 /// - `.giftCard`    → `PosGiftCardAmountView`
 /// - `.storeCredit` → `PosStoreCreditAmountView`
+/// - `.check`       → `PosCheckTenderSheet` (§16.6)
 ///
 /// Each sub-view calls `coordinator.applyTender(amountCents:reference:)` on
 /// confirmation, which handles the partial/full-payment state transition.
@@ -69,6 +70,18 @@ public struct PosTenderAmountEntryView: View {
                 PosStoreCreditAmountView(
                     dueCents: coordinator.remaining,
                     availableBalanceCents: storeCreditBalanceCents,
+                    onConfirm: { amountCents, reference in
+                        coordinator.applyTender(amountCents: amountCents, reference: reference)
+                    },
+                    onCancel: {
+                        coordinator.cancelAmountEntry()
+                    }
+                )
+            case .check:
+                // §16.6 — Check tender. Full amount is applied; no partial
+                // check entry (the cashier can do a second leg if needed).
+                PosCheckTenderSheet(
+                    dueCents: coordinator.remaining,
                     onConfirm: { amountCents, reference in
                         coordinator.applyTender(amountCents: amountCents, reference: reference)
                     },

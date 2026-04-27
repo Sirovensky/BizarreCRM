@@ -1928,7 +1928,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Cart-level** — discount (% + $), tip (preset 10/15/20% + custom), fees (cents + label) via `PosCartAdjustmentSheets` + overflow ⋯ toolbar menu. `effectiveDiscountCents` re-derives on subtotal change.
 - [x] **Tax** — per-line `taxRate` propagated into `CartMath.totals` with bankers rounding; multi-rate per item supported. Tenant-wide tax config integration deferred to §19.
 - [x] **Totals breakdown** — Subtotal → Tax → Total with `.monospacedDigit()` via `CartMath.formatCents`. Discount + Tip lines added when those features ship.
-- [ ] **Link to record** — chip "Link to Ticket #1234".
+- [x] **Link to record** — chip "Link to Ticket #1234". `Cart.linkedTicketId` + `Cart.linkToTicket(id:)` + `PosCartTicketLinkChip`. (feat(§16.3): cart ticket link chip)
 - [x] **Hold cart** — `POsHoldCartSheet` + `PosResumeHoldsSheet` wired to `POST/GET /pos/holds` with 404/501 "Coming soon" fallback. Resume clears cart first, never inherits pending payment link. Synthetic single-line pending per-hold detail endpoint.
 - [x] **Clear cart** — `Clear cart` toolbar action with ⌘⇧⌫ shortcut (destructive confirm lands with the first real-tender phase).
 - [x] **Empty state** — "Cart is empty" illustration with call-out to scan / pick / add custom.
@@ -1964,7 +1964,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **Offline** — queue sale locally (GRDB); replay when connection + terminal restored; show offline-sale badge on receipt ("Authorized offline").
 
 ### 16.6 Payment — other tenders
-- [ ] **Cash** — keypad sheet; amount-received field; large "Change due" in Barlow Condensed glass card; rounding rules per tenant.
+- [x] **Cash** — keypad sheet; amount-received field; large "Change due" in Barlow Condensed glass card; rounding rules per tenant. `PosCashAmountView` + `PosTenderCoordinator` + `PosTenderAmountEntryView`. (feat(§16.6): cash tender flow)
 - [ ] **Manual keyed card — same PCI model as §17.3.** We do NOT build our own `TextField`s capturing PAN / expiry / CVV. That would push the app into SAQ-D scope and is a non-starter.
   - **Preferred path**: cashier hands terminal to customer; customer keys card on the terminal PIN pad (or tap / insert). SDK call is the same `charge(..., allowManualKey: true)`; terminal UI prompts for keyed entry. Raw digits never leave the terminal.
   - **Cardholder-not-present path** (phone orders, back-office): BlockChyp "virtual-terminal" / tokenization call — SDK presents BlockChyp's own secure keyed-entry sheet that tokenizes inside the SDK process; we get `{token, last4, brand}` back. Still no PAN on our disk or our server.
@@ -1973,12 +1973,12 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
   - **No photo / screenshot of card.** Camera attachments on payment screens explicitly blocked (blur on background per §28.3).
   - **Same sovereignty rule** — BlockChyp is the single permitted payment peer; no Stripe / Square / PayPal SDK fallbacks anywhere in the bundle.
   - **Offline** — manual-keyed not available offline. Cloud-relay vs local mode same as §17.3: needs outbound path to BlockChyp for the tokenization call. If fully offline, disable manual-keyed option with tooltip "Requires internet to tokenize."
-- [ ] **Gift card** — scan / key gift-card #; `POST /gift-cards/redeem` with amount; remaining balance displayed.
-- [ ] **Store credit** — auto-offer if customer has balance; slider "Apply X of $Y available".
-- [ ] **Check** — check # + bank + memo; no auth, goes to A/R.
+- [x] **Gift card** — scan / key gift-card #; `POST /gift-cards/redeem` with amount; remaining balance displayed. `PosGiftCardAmountView` + `TenderMethod.giftCard` in `PosTenderAmountEntryView`. (feat(§16.6): gift card tender)
+- [x] **Store credit** — auto-offer if customer has balance; slider "Apply X of $Y available". `PosStoreCreditAmountView` + `TenderMethod.storeCredit` in `PosTenderAmountEntryView`. (feat(§16.6): store credit tender)
+- [x] **Check** — check # + bank + memo; no auth, goes to A/R. `PosCheckTenderSheet` + `TenderMethod.check`. (feat(§16.6): check tender)
 - [ ] **Account credit / net-30** — role-gated; only if customer has terms set; adds to open balance.
 - [ ] **Financing (if enabled)** — partner link (Affirm/Klarna) → QR/URL for customer to complete on their phone; webhook completes sale.
-- [ ] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card.
+- [x] **Split tender** — add tender → shows remaining due → repeat until 0; show running "Paid / Remaining" card. `PosTenderCoordinator.applyTender` multi-leg + `PosTenderMethodPickerView`. (feat(§16.6): split tender)
 
 ### 16.7 Receipt & hand-off
 - [x] **On-device rendering pipeline per §17.4** (contract enforced via `ReceiptPrinter`/`PosReceiptRenderer`). Single SwiftUI `ReceiptView` deferred to full printer SDK work.
@@ -1987,17 +1987,17 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] **AirPrint** — fallback for non-MFi: same `ReceiptView` rendered to local PDF file URL via `UIGraphicsPDFRenderer`; hand the file URL (not a web URL) to `UIPrintInteractionController`.
 - [x] **Email** — `POST /notifications/send-receipt` wired (soft-absorbs 400/404). PDF attachment deferred to §17.4 pipeline.
 - [x] **SMS** — `POST /sms/send` wired. Tracking short-link routing deferred to §53.
-- [ ] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`.
-- [ ] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient).
+- [x] **Download PDF** — `.fileExporter` pointed at locally-rendered PDF; filename `Receipt-{id}-{date}.pdf`. `ReceiptPDFDocument` + `ReceiptPDFExporterModifier` + `exportPDF()` in `PosReceiptView`. (feat(§16.7): receipt PDF download)
+- [x] **QR code** — rendered inside `ReceiptView` via `CIFilter.qrCodeGenerator`; encodes public tracking/returns URL (tokenized, no auth required by recipient). `trackingQRImage` + `qrCodeSection` in `PosReceiptView`. (feat(§16.7): receipt QR code)
 - [ ] **Signature print** — captured `PKDrawing` / `PKCanvasView` image composed into the view, printed as part of the same bitmap.
 - [x] **Gift receipt** — `GiftReceiptGenerator` pure-function generator + `GiftReceiptSheet` post-sale prompt. Strips prices/tenders/customer, preserves names/SKUs/qty. Tests ≥80%. (Phase 5 §16)
-- [ ] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes.
+- [x] **Persist the render model** — snapshot `ReceiptModel` persisted at sale close so reprints are byte-identical even after template / branding changes. `ReceiptModelStore` actor + `.task` in `PosReceiptView`. (feat(§16.7): persist receipt model)
 
 ### 16.8 Post-sale screen
 - [x] **Glass "Sale complete" card** — `PosPostSaleView` with 600ms spinner → success. Confetti animation deferred.
 - [x] **Summary tile** — total + method label. Full tender breakdown + sale # deferred.
 - [x] **Next-action CTAs** — New sale / Email / Text / Print (disabled). ⌘N/⌘R shortcuts deferred. Print gift receipt deferred.
-- [ ] **Auto-dismiss** after 10s → empty catalog + cart for next customer.
+- [x] **Auto-dismiss** after 10s → empty catalog + cart for next customer. Countdown + `startAutoDismissCountdown` in `PosPostSaleView`; cancels on any user interaction or sheet open. (feat(§16.8): auto-dismiss post-sale)
 - [ ] **Cash drawer kick** — pulse drawer via printer ESC command if cash tender used.
 
 ### 16.9 Returns / refunds
@@ -2013,11 +2013,11 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.10 Cash register (open/close)
 - [x] **Open shift** — `OpenRegisterSheet` presented on POS mount when no session via fullScreenCover. Opening float input (single aggregate cents, per-denomination deferred). Local-first via `CashRegisterStore`. Employee PIN + server sync deferred.
-- [ ] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature.
+- [x] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature. `CashDropSheet` wired to `POST /pos/cash-out`. (feat(§16.10): mid-shift cash drop)
 - [x] **Close shift** — `CloseRegisterSheet` with counted/expected/notes + `CashVariance` band. Over/short color coded. Per-denomination count + mandatory note threshold deferred.
 - [x] **Z-report** — `ZReportView` renders tiles + variance card. Auto-print/email-to-manager deferred to §17.4 pipeline.
 - [ ] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition.
-- [ ] **Blind-count mode** — cashier doesn't see expected total until after count (loss prevention).
+- [x] **Blind-count mode** — cashier doesn't see expected total until after count (loss prevention). `blindCountMode` + `blindCountRevealed` toggle in `CloseRegisterSheet`. (feat(§16.10): blind-count mode)
 - [ ] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN.
 
 ### 16.11 Anti-theft / loss prevention
@@ -5315,7 +5315,7 @@ See §16.10 for core flow. Additional items:
 
 ### 39.1 Shift log
 - [x] **Per-shift entry** — `CashRegisterStore` local-first schema (open_at, opening_cash, close_at, closing_cash, variance). Endpoint DTOs + stub `APIClient` wrappers in `CashRegisterEndpoints.swift`.
-- [ ] **Shift history** — list of past shifts; open any for detail.
+- [x] **Shift history** — list of past shifts; open any for detail. `ZReportDetailView` (GRDB local store, server POS-SESSIONS-001 pending). (feat(§39.1): shift history list)
 - [x] **Shift diff viewer** — `CashVariance` + `ZReportView` surface expected vs actual with color.
 
 ### 39.2 Z-report PDF
@@ -5325,7 +5325,7 @@ See §16.10 for core flow. Additional items:
 - [x] **Data** — sales / tenders / over-short / cashier. Refunds / voids / discounts / tips / taxes / printer-log deferred.
 
 ### 39.3 X-report (mid-shift)
-- [ ] **`GET /cash-register/x-report`** — peek current shift without closing.
+- [x] **`GET /cash-register/x-report`** — peek current shift without closing. `XReportView` + `APIClient.getXReport()` stub (POS-XREPORT-001 pending). (feat(§39.3): X-report mid-shift view)
 
 ### 39.4 Reconciliation export
 - [ ] CSV per day of all transactions + tender splits.
@@ -5366,8 +5366,8 @@ See §16.10 for core flow. Additional items:
 - [ ] Already detailed.
 
 ### 40.4 Approval workflow
-- [ ] **Manager PIN** required on gift-card void / large refund.
-- [ ] **Audit trail** — every issuance / void / redeem logged.
+- [x] **Manager PIN** required on gift-card void / large refund. `GiftCardVoidSheet` gates on `ManagerPinSheet` before committing. (feat(§40.4): gift card void manager PIN)
+- [x] **Audit trail** — every issuance / void / redeem logged. `GiftCardAuditLog` actor + `GiftCardAuditLogView` + wired into `GiftCardRedeemViewModel`. (feat(§40.4): gift card audit trail)
 - [ ] See §38 for the full list.
 
 ---

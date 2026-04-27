@@ -142,9 +142,28 @@ public final class Cart {
     /// Total savings from pricing rules (computed by engine).
     public private(set) var pricingSavingCents: Int = 0
 
+    // MARK: - §16.3 — Linked ticket
+
+    /// Server-assigned ticket id linked to this cart (e.g. repair ticket).
+    /// Nil = not linked. Set via `linkToTicket(id:)`. Drives the
+    /// "Link to Ticket #NNNN" chip in `PosCartPanel`.
+    public private(set) var linkedTicketId: Int64? = nil
+
     public init(items: [CartItem] = [], customer: PosCustomer? = nil) {
         self.items = items
         self.customer = customer
+    }
+
+    // MARK: - §16.3 — Linked ticket mutations
+
+    /// Attach or update the linked repair ticket.
+    public func linkToTicket(id: Int64) {
+        linkedTicketId = id
+    }
+
+    /// Remove the linked ticket association.
+    public func unlinkTicket() {
+        linkedTicketId = nil
     }
 
     // MARK: - Mutations (always replace, never in-place edit)

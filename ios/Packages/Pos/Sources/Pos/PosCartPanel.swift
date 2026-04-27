@@ -140,6 +140,14 @@ struct PosCartPanel: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 6, trailing: 16))
 
+                // Ticket link chip — §16.3
+                HStack(spacing: BrandSpacing.sm) {
+                    PosCartTicketLinkChip(cart: cart)
+                    Spacer(minLength: 0)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 6, trailing: 16))
+
                 // Coupon section
                 couponSection
                     .listRowBackground(Color.clear)

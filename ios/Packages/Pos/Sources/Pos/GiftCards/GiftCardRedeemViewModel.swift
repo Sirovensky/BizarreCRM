@@ -98,6 +98,14 @@ public final class GiftCardRedeemViewModel {
                 amountCents: amountCents,
                 reason: reasonTrimmed.isEmpty ? nil : reasonTrimmed
             )
+            // §40.4 — Record redemption in audit log.
+            await GiftCardAuditLog.shared.record(
+                kind: .redeemed,
+                cardCode: card.code,
+                amountCents: -amountCents,
+                balanceCents: response.remainingBalanceCents,
+                invoiceReference: invoiceId.map { String($0) }
+            )
             state = .redeemed(remainingBalanceCents: response.remainingBalanceCents)
         } catch let APITransportError.httpStatus(code, message) {
             let msg = (message?.isEmpty == false) ? message! : "Redeem failed"
