@@ -1,4 +1,22 @@
 
+### todofixes426 — final cleanup sweep (S4/S5/FW/DASH-ELEC 270-286 batch) (2026-04-26)
+
+- [x] DASH-ELEC-270. **tsconfigs missing strict flags.** CLOSED 2026-04-26 — added `noFallthroughCasesInSwitch`, `useUnknownInCatchVariables`, `noImplicitOverride` to tsconfig.json + tsconfig.node.json + tsconfig.preload.json. `exactOptionalPropertyTypes` skipped (breaking codemod).
+- [x] DASH-ELEC-274. **PageErrorBoundary missing role="alert".** CLOSED 2026-04-26 — added `role="alert"` to outermost div in `packages/management/src/renderer/src/components/shared/ErrorBoundary.tsx`. Global ErrorBoundary in main.tsx already had it (DONE-PREEXISTING).
+- [x] DASH-ELEC-275. **Toaster error toasts not assertive.** CLOSED 2026-04-26 — DONE-PREEXISTING (main.tsx already has `error: { ariaProps: { role:'alert', 'aria-live':'assertive' } }`).
+- [x] DASH-ELEC-276. **401 auto-logout no explanatory toast.** CLOSED 2026-04-26 — DONE-PREEXISTING (authStore.ts already has `toast.error('Session expired ...')`).
+- [x] DASH-ELEC-277. **formatApiError omits HTTP status.** CLOSED 2026-04-26 — DONE-PREEXISTING (apiError.ts already includes `[${f.status}]` in format string).
+- [x] DASH-ELEC-285. **Canvas ResizeObserver ctx.scale accumulates.** CLOSED 2026-04-26 — DONE-PREEXISTING (DASH-ELEC-291 already removed ctx.scale; drawGraphFn uses idempotent setTransform).
+- [x] DASH-ELEC-286. **dpr change (monitor swap) never triggers canvas rescale.** CLOSED 2026-04-26 — added matchMedia `(resolution: Xdppx)` listener with recursive re-subscribe to ResizeObserver effect in `packages/management/src/renderer/src/pages/OverviewPage.tsx`.
+- [x] WEB-S4-037. **"Get Started Free" → /signup 404 on self-host.** CLOSED 2026-04-26 — DONE-PREEXISTING (App.tsx only renders LandingPage when isMultiTenant=true; /signup route is registered in the same branch).
+- [x] WEB-S4-040. **TOTP step no autoFocus / auto-submit.** CLOSED 2026-04-26 — autoFocus was already present; added `requestAnimationFrame(() => form.requestSubmit())` when v.length===6 in both verify and setup TOTP onChange handlers in `packages/web/src/pages/auth/LoginPage.tsx`.
+- [x] WEB-S4-042. **Sign-out doesn't call server logout.** CLOSED 2026-04-26 — added `superAdminApi.logout()` to `packages/web/src/api/endpoints.ts` (best-effort POST /super-admin/logout); sign-out button in `packages/web/src/pages/super-admin/TenantsListPage.tsx` calls it via `.finally()`.
+- [x] WEB-S5-029. **DataTable "Select all" page-scoped but banner implies global.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; existing list pages already use "Select all on page" labelling).
+- [x] WEB-S5-030. **DataTable "Showing X-Y of Z" hidden when total undefined.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; all "Showing" occurrences guard on total).
+- [x] WEB-S5-044. **DataTable sortable th adds role="button".** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; no th with role="button" exists in web/src).
+- [x] WEB-FW-006. **App.tsx 68 lazy imports repetitive boilerplate.** CLOSED 2026-04-26 — added `lazyNamed` helper to `packages/web/src/App.tsx` for future use. Existing 68 calls not converted (codemod scope).
+- [x] WEB-FW-007. **package.json missing lint/typecheck/analyze scripts.** CLOSED 2026-04-26 — DONE-PREEXISTING (`typecheck` and `lint` already exist in package.json). `analyze` script skipped (new dep scope).
+
 ### todofixes426 — WEB small remaining (FB/FD/FE/FG/FAE/FO/FAD batch) (2026-04-26)
 
 - [x] WEB-FB-003. **RepairsTab 30-site any-soup.** CLOSED 2026-04-26 — only idiomatic `catch (err: any)` remains; all 30 sites across RepairsTab/CustomerStep/UnifiedPosPage narrowed in prior passes. Closing.
@@ -3220,3 +3238,9 @@ Skipped (design/research/complex): 160 (CSP plugin eval), 190 (protocol stub), 1
 DONE: 180 (hCaptcha ConfirmDialog), 194 (Close Dashboard ConfirmDialog), 199 (cors textarea), 200 (aria-busy flag toggle), 204 (aria-labelledby sections), 208 (rollback wrapHandler), 212 (file:// fallback URL guard), 214 (logout server-side first), 219 (audit log click-to-expand), 231 (keepAliveAgent), 232 (re-check auth post-await), 233 (compact offline banner), 241 (TenantsPage detailInFlight ref), 248 (BannerCertWarning 24h re-show), 250 (SetupChecklist severity sort), 255 (apiRequest timeoutMs param + 5min backup), 256 (BackupPage isMountedRef), 257 (offline retry banner).
 
 DONE-PREEXISTING: 176 (CommandPalette pt-clamp), 229 (formatApiError [status] prefix), 259 (ageMs Math.max), 260 (TenantsPage delete cleanup).
+
+## todofixes426 — Cleanup pass 11 (2026-04-26) — final small sweep
+
+DONE: DASH-ELEC-270 (tsconfig strict flags), 274 (PageErrorBoundary role=alert), 286 (matchMedia dpr listener), WEB-S4-040 (TOTP auto-submit on length=6), S4-042 (super-admin server logout), WEB-FW-006 (lazyNamed helper).
+
+DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.

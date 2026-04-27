@@ -1474,4 +1474,12 @@ export const superAdminApi = {
     superAdminClient.post<{ success: boolean; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
+  // WEB-S4-042: server-side logout so the super-admin JWT is audit-logged as
+  // revoked; the token stays valid until its TTL otherwise (no server-side
+  // blocklist in this version but the audit trail captures the intent).
+  logout: () =>
+    superAdminClient.post<{ success: boolean; message?: string }>('/logout').catch(() => {
+      // Best-effort — don't block local sign-out if the server call fails
+      // (e.g. network unavailable, token already expired).
+    }),
 };

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState, type ComponentType } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
@@ -17,6 +17,15 @@ import {
   NotFoundPage,
   SetupFailedScreen,
 } from './components/shared/LoadingScreen';
+
+// WEB-FW-006: tiny helper so future lazy imports don't need the
+// `.then(m => ({ default: m.X }))` dance on every line.
+// Usage: `const FooPage = lazyNamed(() => import('./pages/foo/FooPage'), 'FooPage')`
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const lazyNamed = <T extends Record<string, ComponentType<any>>>(
+  factory: () => Promise<T>,
+  name: keyof T,
+) => lazy(() => factory().then((m) => ({ default: m[name] })));
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));

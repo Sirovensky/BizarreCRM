@@ -839,7 +839,15 @@ export function LoginPage() {
                 <label htmlFor="2fa-setup-code" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
                 <input id="2fa-setup-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                   aria-label="Verification code"
-                  value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  value={totpCode} onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, '');
+                    setTotpCode(v);
+                    if (v.length === 6) {
+                      requestAnimationFrame(() => {
+                        (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
+                      });
+                    }
+                  }}
                   placeholder="000000" autoFocus
                   className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
                 {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
@@ -862,7 +870,17 @@ export function LoginPage() {
               <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
               <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
                 aria-label="6-digit authenticator code"
-                value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                value={totpCode} onChange={(e) => {
+                  // WEB-S4-040: auto-submit when all 6 digits are entered so
+                  // the user doesn't have to tap/click Verify manually.
+                  const v = e.target.value.replace(/\D/g, '');
+                  setTotpCode(v);
+                  if (v.length === 6) {
+                    requestAnimationFrame(() => {
+                      (e.target.closest('form') as HTMLFormElement | null)?.requestSubmit();
+                    });
+                  }
+                }}
                 placeholder="000000" autoFocus
                 className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}

@@ -479,7 +479,14 @@ export function TenantsListPage() {
             <option value="deleted">Deleted</option>
           </select>
           <button
-            onClick={() => { superAdminTokenStore.remove(); setIsAuthenticated(false); }}
+            onClick={() => {
+              // WEB-S4-042: call server logout so the audit log records the
+              // sign-out; best-effort — token is removed locally regardless.
+              superAdminApi.logout().finally(() => {
+                superAdminTokenStore.remove();
+                setIsAuthenticated(false);
+              });
+            }}
             className="px-3 py-1.5 text-xs font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800"
           >
             Sign out
