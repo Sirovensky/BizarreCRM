@@ -30,6 +30,11 @@ public final class EndShiftSummaryViewModel {
     public private(set) var step: Step = .loadingStats
     public private(set) var summary: EndShiftSummary?
 
+    /// Z-report ID returned by the server on shift close (`EndShiftResponse.zReportId`).
+    /// Non-nil when the tenant has the Z-report feature enabled and the report was
+    /// archived server-side.  Used by the done screen to surface a "View Z-Report" link.
+    public private(set) var zReportId: Int64?
+
     /// Denomination rows the cashier fills in.
     public var denominations: [CashDenomination] = CashDenomination.defaultDenominations
 
@@ -49,6 +54,16 @@ public final class EndShiftSummaryViewModel {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let employeeId: Int64
     private let calculator = OverShortCalculator()
+
+    // MARK: - Z-report URL helper
+
+    /// Returns the authenticated PDF URL for the Z-report, constructed from the
+    /// tenant's `baseURL`.  Returns nil when `zReportId` is nil or baseURL is unset.
+    public func zReportURL() -> URL? {
+        guard let id = zReportId,
+              let base = api.currentBaseURL() else { return nil }
+        return base.appendingPathComponent("api/v1/cash-register/z-reports/\(id)/pdf")
+    }
 
     // MARK: - Init
 
@@ -140,6 +155,9 @@ public final class EndShiftSummaryViewModel {
         )
         do {
             let response = try await api.closeShift(employeeId: employeeId, body: request)
+
+            // Capture Z-report ID if the server archived a report (§39 feature).
+            zReportId = response.zReportId
 
             // Store handoff amount for next opener if cashier chose to enter one.
             if handoffCashCents > 0 {

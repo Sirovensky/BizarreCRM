@@ -21,6 +21,7 @@ public struct EndShiftSummaryView: View {
 
     @Bindable var vm: EndShiftSummaryViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
 
     public init(vm: EndShiftSummaryViewModel) { self.vm = vm }
 
@@ -185,6 +186,23 @@ public struct EndShiftSummaryView: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, BrandSpacing.xl)
+            }
+
+            // §14.10 — Z-report PDF link: shown when the server archived a Z-report
+            // for this shift close (§39 Cash register feature).  Opens the PDF in the
+            // default browser / PDF viewer via the tenant's authenticated API URL.
+            if let zURL = vm.zReportURL() {
+                Button {
+                    openURL(zURL)
+                } label: {
+                    Label("View Z-Report", systemImage: "doc.text.fill")
+                        .font(.brandBodyLarge().weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.md)
+                }
+                .buttonStyle(.brandGlass)
+                .padding(.horizontal, BrandSpacing.xl)
+                .accessibilityLabel("View Z-Report PDF for this shift")
             }
 
             Button("Done") { dismiss() }
