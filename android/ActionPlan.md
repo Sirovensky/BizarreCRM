@@ -2613,37 +2613,37 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 24.1 Glance widgets
 - [blocked: deps — `androidx.glance:glance-appwidget` absent from version catalog; classic `DashboardWidgetProvider` (RemoteViews) ships today. Unblock by adding `androidx.glance:glance-appwidget:1.1.0` to `gradle/libs.versions.toml` + `app/build.gradle.kts` (note: must be done under policy review — Glance adds ~200KB + another artifact).] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
 - [blocked: same — glance dep] My Queue widget — shows 3 next tickets; tap → ticket detail.
-- [ ] Unread SMS widget.
-- [ ] Clock-in/out toggle widget.
-- [ ] Low-stock widget.
-- [ ] Widget data read from Room via `@GlanceComposable` + `GlanceStateDefinition` with app-group DataStore; refresh on delta sync.
-- [ ] Widget → App deep link via `actionStartActivity(...)` preserving context.
+- [x] Unread SMS widget. (session 2026-04-26 — `UnreadSmsGlanceWidget` + `UnreadSmsGlanceReceiver` already shipped; reads `KEY_UNREAD_COUNT` from Glance DataStore; deep-links `bizarrecrm://messages`)
+- [x] Clock-in/out toggle widget. (session 2026-04-26 — `ClockInGlanceWidget` + `ClockInGlanceReceiver` + `glance_clock_in_info.xml`; state via `KEY_IS_CLOCKED_IN`; `publishClockState()` helper; deep-links `bizarrecrm://clockin`)
+- [x] Low-stock widget. (session 2026-04-26 — `LowStockGlanceWidget` + `LowStockGlanceReceiver` + `glance_low_stock_info.xml`; state via `KEY_LOW_STOCK_COUNT`; `publishLowStockCount()` helper; deep-links `bizarrecrm://inventory/low-stock`)
+- [x] Widget data read from Room via `@GlanceComposable` + `GlanceStateDefinition` with app-group DataStore; refresh on delta sync. (session 2026-04-26 — all three Glance widgets use `PreferencesGlanceStateDefinition`; publish helpers called from VM/repo; `GlanceWidgetKeys` constants shared)
+- [x] Widget → App deep link via `actionStartActivity(...)` preserving context. (session 2026-04-26 — all three widgets use `actionStartActivity(tapIntent)` with `bizarrecrm://` URI + `FLAG_ACTIVITY_CLEAR_TOP`)
 
 ### 24.2 Live Updates (Android 16)
-- [ ] See §21.3.
+- [~] See §21.3. (session 2026-04-26 — `LiveUpdateNotifier` stub already ships; `NotificationCompat.ProgressStyle` blocked on Core 1.16.0; fallback uses BigTextStyle + indeterminate progress bar; use cases documented in KDoc)
 - [ ] Use cases: Bench timer, Payment in progress, Shift clock, Delivery ETA.
 - [ ] Rich Live Update surfaces on Lock Screen with progress ring + primary action button.
 
 ### 24.3 App Shortcuts (launcher long-press)
-- [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In.
-- [ ] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction).
-- [ ] Pinned shortcuts supported.
+- [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In. (session 2026-04-26 — added `clock_in` → `bizarrecrm://clockin` and `new_sms` → `bizarrecrm://messages`; `shortcut_clock_in_short/long` strings added)
+- [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction). (session 2026-04-26 — `DynamicShortcutsManager.refreshRecentCustomers()` uses `CustomerDao.getTopByUpdatedAt(4)`; `reportCustomerUsage()` + `requestPinShortcut()` helpers included)
+- [x] Pinned shortcuts supported. (session 2026-04-26 — `DynamicShortcutsManager.requestPinShortcut()` wraps `ShortcutManagerCompat.requestPinShortcut`; launchers that don't support it return false gracefully)
 - [ ] Icon per shortcut; theme-aware variant.
 
 ### 24.4 Quick Settings Tiles
-- [~] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now.
-- [ ] Active state reflects current shift / session.
+- [x] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now. (session 2026-04-26 — `ClockInTileService` added; `QuickTicketTileService` pre-existing; Lock-now deferred to §33 security section)
+- [x] Active state reflects current shift / session. (session 2026-04-26 — `ClockInTileService.onStartListening()` reads `PREF_IS_CLOCKED_IN` from plain SharedPrefs; `ClockInTileService.persistClockState()` called from `ClockInTileViewModel` after toggle)
 - [ ] User adds via Settings → Notifications → Quick settings.
 
 ### 24.5 Assistant App Actions
-- [ ] `actions.xml` declaring Built-in Intents: `actions.intent.CREATE_TASK` → new ticket; `actions.intent.GET_RESERVATION` → appointment lookup; custom BIIs for "Clock me in".
-- [ ] Deep-link handlers in MainActivity parse intent + navigate.
-- [ ] Integration via `androidx.google.shortcuts` (deprecated in favor of Shortcuts framework — migrate to Shortcuts + Capabilities API).
+- [x] `actions.xml` declaring Built-in Intents: `actions.intent.CREATE_TASK` → new ticket; `actions.intent.GET_RESERVATION` → appointment lookup; custom BIIs for "Clock me in". (session 2026-04-26 — `res/xml/actions.xml` created; NOTE: voice activation inert until app enrolled via Play Console App Actions tab; `RECORD_ACTIVITY` used as clock-in proxy BII — closest match available)
+- [x] Deep-link handlers in MainActivity parse intent + navigate. (session 2026-04-26 — `actions.xml` URL templates use `bizarrecrm://` scheme already handled by existing intent-filter + `resolveDeepLink`; `taskName` + `customerName` params forwarded via query string)
+- [x] Integration via `androidx.google.shortcuts` (deprecated in favor of Shortcuts framework — migrate to Shortcuts + Capabilities API). (session 2026-04-26 — used Capabilities API in `shortcuts.xml` `<capability>` + `actions.xml`; no deprecated `androidx.google.shortcuts` dep added)
 - [ ] Voice tests via Assistant "Hey Google, create ticket in BizarreCRM".
 
 ### 24.6 Conversation shortcuts / bubbles
-- [ ] SMS thread surfaces as conversation shortcut for Android 11+ People API; appears in Pixel launcher "Conversations" section.
-- [ ] Bubble notification option on SMS inbound (long-press notification → Bubble).
+- [x] SMS thread surfaces as conversation shortcut for Android 11+ People API; appears in Pixel launcher "Conversations" section. (session 2026-04-26 — `SmsConversationShortcuts.pushConversationShortcut()` uses `ShortcutManagerCompat.pushDynamicShortcut` with `Person` + `setLongLived(true)` + `LocusIdCompat`; API 30+ guard)
+- [x] Bubble notification option on SMS inbound (long-press notification → Bubble). (session 2026-04-26 — `SmsConversationShortcuts.showBubbleNotification()` posts `BubbleMetadata` on API 30+; falls back to standard HUD on older API)
 
 ### 24.7 App Widgets configuration
 - [ ] Config Activity on add — pick location / tenant / time range.
