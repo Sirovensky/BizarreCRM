@@ -1248,7 +1248,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Model: max cap (`LateFeePolicy.maxFeeCents`; `LateFeeCalculator` applies `min(feeCents, cap)`. feat(ios post-phase §7))
 - [ ] Application: auto-added to invoice on overdue
 - [ ] Status change to "Past due" triggers reminder
-- [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6)
+- [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6) — **wired** into `InvoiceDetailView` toolbar ⋯ menu. ([actionplan agent-6 b11] b556eef5)
 - [x] Threshold above which manager PIN required. (`kLateFeeWaiverManagerPinThresholdCents` = $50 (5 000 cents); `requiresManagerPin` gate in `LateFeeWaiverViewModel`; 13 tests. [actionplan agent-6 b9] 482309e6)
 - [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead)
 - [ ] Customer communication: fee-applied notification with payment link
@@ -1265,7 +1265,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 ### 7.9 Installment payment plans
 - [x] **`InstallmentPlan`** — `{ invoiceId, totalCents, installments: [{ dueDate, amountCents, paidAt? }], autopay }`. (feat(ios post-phase §7))
 - [x] **`InstallmentPlanEditorSheet`** — split invoice into N installments with custom dates + amounts; total must sum to invoice total. (feat(ios post-phase §7))
-- [x] **`InstallmentScheduleView`** — visualize upcoming installments in `InvoiceDetailView`; A11y on rows; Reduce Motion. (feat(ios post-phase §7))
+- [x] **`InstallmentScheduleView`** — visualize upcoming installments in `InvoiceDetailView`; A11y on rows; Reduce Motion. (feat(ios post-phase §7)) — **wired** into `InvoiceDetailView` (toolbar entry + sheet + async load); `invoiceInstallmentPlan(invoiceId:)` endpoint added in `InstallmentReminder.swift`; 9-test `InstallmentPlanEndpointTests.swift` added. ([actionplan agent-6 b11] b556eef5)
 - [x] **`InstallmentReminder`** — `POST /api/v1/invoices/installment-plans/:planId/reminders`; auto-send 3 days before. (feat(ios post-phase §7))
 - [x] **`InstallmentCalculator`** — pure `static func distribute(totalCents:count:startDate:interval:) -> [ComputedInstallmentItem]`; 28 tests ≥80%. (feat(ios post-phase §7))
 
@@ -1286,7 +1286,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **`LateFeeCalculator`** — pure `static func compute(invoice:asOf:policy:) -> Cents`; 19 tests covering flat, percent, compound, grace window, zero-balance, no-due-date. (feat(ios post-phase §7))
 
 ### 7.13 Discount codes on invoice
-- [x] **`InvoiceDiscountInputSheet`** — code field; auto-uppercased; `POST /api/v1/invoices/:id/apply-discount`. (feat(ios post-phase §7))
+- [x] **`InvoiceDiscountInputSheet`** — code field; auto-uppercased; `POST /api/v1/invoices/:id/apply-discount`. (feat(ios post-phase §7)) — **wired** into `InvoiceDetailView` toolbar ⋯ menu + state + sheet. ([actionplan agent-6 b11] b556eef5)
 - [x] **`InvoiceDiscountInputViewModel`** — reuses CouponInputViewModel pattern; `@Observable`. (feat(ios post-phase §7))
 
 ---
@@ -5968,6 +5968,7 @@ Number preserved as stub so cross-refs don't break.
 
 ### 59.3 Forecast
 - [x] **30/60/90 day revenue forecast** (ML if server). `RevenueForecastCard` + `RevenueForecaster` OLS linear regression; ±15% confidence band; Swift Charts dashed + area; AXChartDescriptorRepresentable; 8 tests. (feat(§59.3) 8f3a2aae)
+- [x] **OwnerPL time-series chart `AXChartDescriptorRepresentable`** — `OwnerPLChartDescriptor` added to `OwnerPLView.swift`; Revenue + Expenses series; categorical x-axis (period), numeric y-axes; `.accessibilityChartDescriptor` applied to grouped bar chart. ([actionplan agent-6 b11] 35822698)
 
 ### 59.4 Financial exports + tax year
 - [x] **CSV export**. (`FinancialExportService`)
