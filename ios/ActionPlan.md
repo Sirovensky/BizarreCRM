@@ -457,7 +457,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
 - [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
-- [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
+- [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (`Dashboard/DashboardNewTenantEmptyState.swift`; `isNewTenantSnapshot()` helper; wired via onCreateTicket/onImportData on DashboardView.init; a964a315)
 
 ### 3.2 Business-intelligence widgets (mirror web)
 - [ ] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`).
@@ -475,7 +475,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
 - [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
-- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
+- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`DashboardView.swift` AttentionAllClearView; sparkle icon; shown when attention items total to 0 and tenant has data; a964a315)
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
