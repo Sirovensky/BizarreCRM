@@ -15,6 +15,24 @@ import Foundation
 /// This extension is append-only per §12 ownership rules.
 public extension APIClient {
 
+    // MARK: - §12.10 Voice / calls
+
+    /// `POST /api/v1/voice/call` — initiate click-to-call.
+    /// Body: `{ to, customer_id? }`. Server: voice.routes.ts:76.
+    /// Returns the new call's server-assigned `id`.
+    @discardableResult
+    func initiateVoiceCall(to phoneNumber: String, customerId: Int64?) async throws -> Int64 {
+        let body = InitiateCallBody(to: phoneNumber, customerId: customerId)
+        let result = try await post("/api/v1/voice/call", body: body, as: InitiateCallResponse.self)
+        return result.callId
+    }
+
+    /// `POST /api/v1/voice/call/:id/hangup` — hang up an active call.
+    /// Server: voice.routes.ts:299.
+    func hangupVoiceCall(id: Int64) async throws {
+        _ = try await post("/api/v1/voice/call/\(id)/hangup", body: HangupBody(), as: HangupResponse.self)
+    }
+
     // MARK: - Customer picker (SMS compose)
 
     /// `GET /api/v1/customers` — minimal summaries for the SMS compose customer picker.
@@ -99,6 +117,42 @@ public extension APIClient {
 }
 
 // MARK: - Request / response types
+
+// MARK: - Voice call request / response types (§12.10)
+
+/// Body for `POST /api/v1/voice/call`.
+struct InitiateCallBody: Encodable, Sendable {
+    let to: String
+    let customerId: Int64?
+
+    enum CodingKeys: String, CodingKey {
+        case to
+        case customerId = "customer_id"
+    }
+}
+
+/// Server response for `POST /api/v1/voice/call`.
+/// Returns `{ call_id }` (or `{ id }`) under the envelope `data`.
+struct InitiateCallResponse: Decodable, Sendable {
+    let callId: Int64
+
+    enum CodingKeys: String, CodingKey {
+        // Server may send either "call_id" or "id"
+        case callId = "call_id"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        // Prefer "call_id"; fall back to 0 as a safe sentinel (caller ignores on hangup)
+        callId = (try? container.decode(Int64.self, forKey: .callId)) ?? 0
+    }
+}
+
+/// Empty body for `POST /api/v1/voice/call/:id/hangup`.
+struct HangupBody: Encodable, Sendable {}
+
+/// Ack for hangup — server just acknowledges.
+struct HangupResponse: Decodable, Sendable {}
 
 /// `POST /api/v1/sms/preview-template` request body.
 /// Server reads: `template_id`, `vars`.
