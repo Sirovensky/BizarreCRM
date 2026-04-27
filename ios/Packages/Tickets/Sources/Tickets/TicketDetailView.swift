@@ -35,6 +35,11 @@ public struct TicketDetailView: View {
     @State private var showingNoteCompose: Bool = false
     // §4.9 — Bench timer widget visibility toggle
     @State private var showBenchTimer: Bool = false
+    // §4.2 — Share PDF / AirPrint
+    @State private var showingSharePDF: Bool = false
+    @State private var sharePDFURL: URL?
+    // §4.2 — Handoff (NSUserActivity for Continuity)
+    @State private var userActivity: NSUserActivity?
     @Environment(\.dismiss) private var dismiss
     private let api: APIClient?
 
@@ -58,8 +63,46 @@ public struct TicketDetailView: View {
         }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // §4.13 — iPad Magic Keyboard shortcuts
+        .keyboardShortcut("d", modifiers: .command, comment: "Mark ticket done")  // ⌘D — mark done (advance to complete)
+        .simultaneousGesture(TapGesture().onEnded { })  // placeholder anchor for shortcut
+        .background(
+            // §4.13 — Register keyboard shortcuts via overlay so they appear in discoverability HUD
+            Group {
+                Button(action: { showingTransition = true }) { EmptyView() }
+                    .keyboardShortcut("d", modifiers: .command)
+                    .accessibilityLabel("Mark ticket done")
+                Button(action: { showingAssigneePicker = true }) { EmptyView() }
+                    .keyboardShortcut("a", modifiers: [.command, .shift])
+                    .accessibilityLabel("Assign ticket")
+                Button(action: {
+                    if case .loaded(let detail) = vm.state,
+                       let phone = detail.customer?.phone,
+                       let url = URL(string: "sms:\(phone.filter { $0.isNumber })") {
+                        UIApplication.shared.open(url)
+                    }
+                }) { EmptyView() }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
+                    .accessibilityLabel("Send SMS update")
+                Button(action: { vm.showDeleteConfirm = true }) { EmptyView() }
+                    .keyboardShortcut(.delete, modifiers: .command)
+                    .accessibilityLabel("Delete ticket (admin only)")
+            }
+            .opacity(0)  // invisible — shortcuts still fire
+        )
         .task {
             await vm.load()
+            // §4.2 — Handoff: advertise this ticket via NSUserActivity for Continuity
+            if case .loaded(let detail) = vm.state {
+                let activity = NSUserActivity(activityType: "com.bizarrecrm.ticket")
+                activity.title = "Ticket \(detail.orderId)"
+                activity.userInfo = ["ticketId": detail.id, "orderId": detail.orderId]
+                activity.isEligibleForHandoff = true
+                activity.isEligibleForSearch = false
+                activity.webpageURL = URL(string: "https://app.bizarrecrm.com/tickets/\(detail.id)")
+                activity.becomeCurrent()
+                userActivity = activity
+            }
             // §4.2 — Lazily init + load warranty/SLA VM after detail loaded
             if let api, case .loaded(let detail) = vm.state {
                 let firstIMEI = detail.devices.first?.imei
@@ -399,6 +442,16 @@ public struct TicketDetailView: View {
                     }
                     .accessibilityIdentifier("ticket.qrcode")
 
+                    // §4.2 — Share PDF / AirPrint
+                    if case .loaded(let detail) = vm.state {
+                        let woModel = WorkOrderModel.from(detail)
+                        TicketSharePDFButton(model: woModel)
+                            .accessibilityIdentifier("ticket.sharePDF")
+                        TicketAirPrintButton(model: woModel)
+                            .accessibilityIdentifier("ticket.airprint")
+                            .keyboardShortcut("p", modifiers: .command)  // §4.13 ⌘P print
+                    }
+
                     Divider()
 
                     // §4.5 — Convert to invoice
@@ -538,6 +591,12 @@ public struct TicketDetailView: View {
                     }
 
                     InfoRow(detail: detail)
+
+                    // §4.2 — Handoff banner (iPad/Mac only) — tells the user that
+                    // Continuity Handoff is active so they can pick this up on their Mac.
+                    if !Platform.isCompact {
+                        TicketHandoffBanner(orderId: detail.orderId)
+                    }
 
                     // §4.6 — Status chip with inline transition button + server hex color
                     if let status = detail.status, let api {
@@ -1359,6 +1418,35 @@ private struct BenchTimerToggleCard: View {
             }
         }
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+// MARK: - §4.2 Handoff banner (iPad/Mac only)
+
+/// §4.2 — Small glass strip shown on iPad/Mac indicating that NSUserActivity
+/// Handoff is active, so the user can continue on their Mac via the Dock icon.
+private struct TicketHandoffBanner: View {
+    let orderId: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "hand.point.up.left.fill")
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            Text("Handoff active — pick up Ticket \(orderId) on your Mac")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            Spacer()
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Handoff is active. You can continue this ticket on your Mac.")
     }
 }
 
