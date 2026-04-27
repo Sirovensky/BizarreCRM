@@ -3566,7 +3566,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
 - [x] **`TICKET_STATUS_CHANGED`** — Open.
 - [x] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
-- [ ] **`PAYMENT_FAILED`** — Open / Retry charge.
+- [x] **`PAYMENT_FAILED`** — Open / Retry charge. (`NotificationCategories.swift` paymentFailedCategory; NotificationCategoryID.paymentFailed + paymentFailedView/paymentFailedRetry action IDs; 3 tests; f658027b)
 - [x] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
 - [x] **`MENTION`** — Reply.
 - [x] **`LOW_STOCK`** — Reorder / Dismiss.
