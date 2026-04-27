@@ -18,6 +18,8 @@ public struct InventoryDetailView: View {
     // §6.2 Reorder / Restock action
     @State private var showingRestockActionSheet: Bool = false
     @State private var showingDraftPO: Bool = false
+    // §6.2 Full movement history sheet
+    @State private var showingMovementHistory: Bool = false
     private let api: APIClient?
     /// Called after delete so parent can pop.
     private let onDeleted: (() -> Void)?
@@ -108,6 +110,12 @@ public struct InventoryDetailView: View {
                 PurchaseOrderComposeView(api: api) {
                     Task { await vm.load() }
                 }
+            }
+        }
+        // §6.2 Full movement history — cursor-paginated sheet
+        .sheet(isPresented: $showingMovementHistory) {
+            if case let .loaded(resp) = vm.state {
+                InventoryMovementHistoryView(itemId: resp.item.id, api: api)
             }
         }
     }
@@ -244,8 +252,11 @@ public struct InventoryDetailView: View {
                     if let tiers = resp.groupPrices, !tiers.isEmpty {
                         GroupPricesCard(tiers: tiers)
                     }
+                    // §6.2 Recent movements (from detail response) + link to full cursor-paginated history
                     if let movements = resp.movements, !movements.isEmpty {
-                        MovementsCard(movements: movements)
+                        MovementsCard(movements: movements) {
+                            showingMovementHistory = true
+                        }
                     }
                     // §6.2 Price history chart — retail vs cost over time
                     PriceHistoryCard(itemId: resp.item.id, api: api)
@@ -259,6 +270,14 @@ public struct InventoryDetailView: View {
                     BinLocationCard(item: resp.item, api: api)
                     // §6.2 Used in tickets — recent tickets that consumed this part
                     UsedInTicketsCard(itemId: resp.item.id, api: api)
+                    // §6.2 Tax class — editable (admin only; server returns nil for non-admin)
+                    if let tc = resp.item.taxClass {
+                        InventoryTaxClassCard(itemId: resp.item.id, taxClass: tc, api: api)
+                    }
+                    // §6.2 Serials — if serial-tracked, list assigned serial numbers
+                    if resp.item.isSerialized == 1 {
+                        ItemSerialsCard(itemId: resp.item.id, sku: resp.item.sku, api: api)
+                    }
                 }
                 .padding(BrandSpacing.base)
             }
@@ -376,11 +395,19 @@ private struct GroupPricesCard: View {
 
 private struct MovementsCard: View {
     let movements: [InventoryDetailResponse.StockMovement]
+    var onViewAll: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Recent movements").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            ForEach(movements.prefix(25)) { m in
+            HStack {
+                Text("Recent movements").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Button("View all") { onViewAll?() }
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityLabel("View full movement history")
+            }
+            ForEach(movements.prefix(10)) { m in
                 HStack(alignment: .top, spacing: BrandSpacing.sm) {
                     Image(systemName: m.type?.lowercased().contains("in") == true ? "arrow.down.circle.fill" : "arrow.up.circle.fill")
                         .foregroundStyle(movementColor(m.type))
