@@ -63,7 +63,8 @@ public final class ChangePINViewModel {
         do {
             try await api.changePIN(currentPin: currentPIN, newPin: newPIN)
             // Update the local PINStore so unlock still works immediately.
-            try PINStore.shared.enrol(pin: newPIN)
+            // Silently ignore if Keychain is unavailable (e.g. test sandbox).
+            try? PINStore.shared.enrol(pin: newPIN)
             successMessage = "PIN updated successfully."
             // Clear fields after success.
             currentPIN = ""

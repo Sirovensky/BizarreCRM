@@ -377,4 +377,29 @@ final class SetupWizardViewModelTests: XCTestCase {
         XCTAssertEqual(vm.wizardPayload.companyName,    "Acme Repairs")
         XCTAssertEqual(vm.wizardPayload.companyAddress, "42 Oak Ave")
     }
+
+    // MARK: - §36.3 MVP completion gate
+
+    func testIsMVPComplete_falseWhenNoStepsCompleted() {
+        XCTAssertFalse(vm.isMVPComplete)
+    }
+
+    func testIsMVPComplete_trueWhenAllMVPStepsDone() {
+        vm.completedSteps = [1, 2, 4, 5, 6, 7, 15]
+        XCTAssertTrue(vm.isMVPComplete)
+    }
+
+    func testIsMVPComplete_falseWhenMissingTaxStep() {
+        vm.completedSteps = [1, 2, 4, 5, 7, 15]  // missing 6 (Tax)
+        XCTAssertFalse(vm.isMVPComplete)
+    }
+
+    func testMVPStepsRemaining_seven_whenNoneComplete() {
+        XCTAssertEqual(vm.mvpStepsRemaining, 7)
+    }
+
+    func testMVPStepsRemaining_zero_whenAllMVPComplete() {
+        vm.completedSteps = [1, 2, 4, 5, 6, 7, 15]
+        XCTAssertEqual(vm.mvpStepsRemaining, 0)
+    }
 }
