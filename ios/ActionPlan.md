@@ -1206,16 +1206,16 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Send now** checkbox — email/SMS on create. `sendOnCreate` toggle. (feat(§7.3) 5e509224)
 
 ### 7.4 Record payment
-- [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other). Want to make sure to wire this correctly, especially for card, store credit and gift cards.
-- [ ] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
-- [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal).
-- [ ] **Notes** field.
-- [ ] **Cash** — change calculator.
-- [ ] **Split tender** — chain multiple methods until balance = 0.
+- [x] **Method picker** — `InvoiceTender` 6-option enum (cash/card/gift_card/store_credit/check/other); chip row in `InvoicePaymentSheet.LegRow`; `needsReference` flag gates reference field display. Static list (fetching from `GET /settings/payment` for dynamic payment methods deferred — server endpoint not yet available). ([actionplan agent-6 b5] 98fb3559)
+- [x] **Amount entry** — `TextField` pre-seeded with balance due; `InvoicePaymentViewModel.amountCents` from `balanceCents`; partial + full + overpayment supported; surplus shows `changeDueCard`. ([actionplan agent-6 b5] 98fb3559)
+- [x] **Reference** (check# / card last 4). `ref` field in `LegRow` shown when `selectedTender.needsReference`; passed as `methodDetail` to server. BlockChyp txn ID auto-fill deferred to Agent 2 hardware integration. ([actionplan agent-6 b5] 98fb3559)
+- [x] **Notes** field. `notesSection` in `InvoicePaymentSheet`; bound to `vm.notes`; passed to server as `notes`. ([actionplan agent-6 b5] 98fb3559)
+- [x] **Cash** — change calculator. `changeDueCard` shown when `vm.isOverpayment`; `changeDueCents = max(0, totalTenderedCents - balanceCents)`. ([actionplan agent-6 b5] 98fb3559)
+- [x] **Split tender** — `addLeg()` / `removeLeg()` / `updateLeg()`; `totalTenderedCents` progress; `splitSummary` card; `partialWarning` when partial. ([actionplan agent-6 b5] 98fb3559)
 - [ ] **BlockChyp card** — start terminal charge → poll status; surface Live Activity for the txn.
 - [x] **Idempotency-Key** required on POST /invoices/:id/payments. Per-leg UUID (`PaymentLeg.id`) passed as `transactionId`. ([actionplan agent-6 b4] c0cb747c)
 - [ ] **Receipt** — print (MFi / AirPrint) + email + SMS; PDF download.
-- [ ] **Haptic** `.success` on payment confirm.
+- [x] **Haptic** `.success` on payment confirm. `BrandHaptics.success()` called in `InvoicePaymentViewModel.applyPayment()` on success. ([actionplan agent-6 b5] 98fb3559)
 
 ### 7.5 Overdue automation
 - [ ] Server schedules reminders. iOS: overdue badge on dashboard + push notif tap → deep-link to invoice.
@@ -1819,34 +1819,34 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Export button** — "Export PDF" toolbar action via `ReportExportService.generatePDF` + `ShareLink`; "Email Report" posts to `POST /api/v1/reports/email`. (feat(ios phase-8 §15))
 - [x] **iPad** — 3-column `LazyVGrid` gated on `Platform.isCompact`; iPhone single-column. (feat(ios phase-8 §15))
 - [x] **Schedule report** — `ScheduledReportsSettingsView` with `GET/POST/DELETE /reports/scheduled`; frequency picker daily/weekly/monthly; recipient email list. (feat(ios phase-8 §15))
-- [ ] **Sub-routes / segmented picker** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom.
+- [x] **Sub-routes / segmented picker** — Sales / Tickets / Employees / Inventory / Tax / Insights / Custom. `ReportSubTab` 6-case enum; `subTabPicker` ScrollView chip picker in `ReportsView`; `cardItems` switch drives per-tab rendering. ([actionplan agent-6 b5] 98fb3559)
 
 ### 15.2 Sales
 - [x] Revenue trend — `RevenueChartCard` with Swift Charts `AreaMark + LineMark`, y-axis in $K, x-axis time-scale; hero tile shows period total + sparkline + trend arrow. (feat(ios phase-8 §15))
 - [x] Total invoices / revenue / unique customers / period-over-period delta. `SalesKPISummaryCard` with delta badge and `SalesTotals`; iPhone 2×2 grid, iPad HStack. ([actionplan agent-6 b4] c0cb747c)
 - [x] Revenue by payment method pie. `RevenueByMethodPieCard` with Swift Charts `SectorMark`, tappable legend, `AXChartDescriptorRepresentable`; iPhone stacked, iPad side-by-side. ([actionplan agent-6 b4] c0cb747c)
-- [ ] YoY growth.
-- [ ] Top 10 customers by spend.
+- [x] YoY growth. `YoYGrowthCard` grouped `BarMark` current vs prior year; `YoYDataPoint` model with `growthPct`; annotation per period; `AXChartDescriptorRepresentable`; derived client-side from two `getSalesReport` calls. `YoYPoints` loaded in `ReportsViewModel.loadYoYGrowth()`. ([actionplan agent-6 b5] 98fb3559)
+- [x] Top 10 customers by spend. `TopCustomersCard` ranked list with inline revenue bar (iPhone) + `HStack` bar chart + rank list (iPad); `TopCustomerRow` model; `onTapCustomer` closure; `getTopCustomers` → `GET /api/v1/reports/top-customers`; `AXChartDescriptorRepresentable`. ([actionplan agent-6 b5] 98fb3559)
 - [ ] Cohort revenue retention.
 
 ### 15.3 Tickets
 - [x] Tickets by status — `TicketsByStatusCard` horizontal `BarMark` chart with per-status color. (feat(ios phase-8 §15))
-- [ ] Opened vs closed per day (stacked bar).
-- [ ] Close rate.
-- [ ] Avg turnaround time.
-- [ ] Tickets by tech bar.
-- [ ] Busy-hours heatmap.
-- [ ] SLA breach count.
+- [x] Opened vs closed per day (stacked bar). `TicketsTrendCard` stacked `BarMark` (`chartForegroundStyleScale`); `TicketDayPoint` model with `closeRate` + `avgTurnaroundHours`; overallCloseRate + avgTurnaround KPI tiles; iPhone + iPad 2-col layouts; `AXChartDescriptorRepresentable`. ([actionplan agent-6 b5] 98fb3559)
+- [x] Close rate. Computed in `TicketsTrendCard.overallCloseRate` and per-day `TicketDayPoint.closeRate`; displayed as KPI tile. ([actionplan agent-6 b5] 98fb3559)
+- [x] Avg turnaround time. Computed in `TicketsTrendCard.avgTurnaround` from `avgTurnaroundHours` field; displayed as KPI tile. ([actionplan agent-6 b5] 98fb3559)
+- [x] Tickets by tech bar. `TicketsByTechCard` horizontal `BarMark` assigned vs closed per tech; `TicketsByTechPoint` model from `EmployeePerf`; `chartOverlay` tap → `onTapTech(id)` closure. ([actionplan agent-6 b5] 98fb3559)
+- [x] Busy-hours heatmap. `BusyHoursHeatmapCard` 7×24 intensity grid; `BusyHourCell` model; orange opacity scale + color-scale legend; `getBusyHours` → `GET /api/v1/reports/tickets-heatmap`. ([actionplan agent-6 b5] 98fb3559)
+- [x] SLA breach count. `SLABreachCard` with `SLABreachSummary`; breach count + rate + at-risk chip + compliance progress bar + top reason; `getSLASummary` → `GET /api/v1/reports/sla`. ([actionplan agent-6 b5] 98fb3559)
 
 ### 15.4 Employees
 - [x] `GET /reports/employees-performance` — `TopEmployeesCard` top-5 ranked by revenue; `EmployeePerf` model with tickets closed, revenue cents, avg resolution hours. (feat(ios phase-8 §15))
 - [x] `GET /reports/technician-performance` — `TechnicianPerformanceCard` table: name / tickets assigned / closed / commission / hours / revenue; `TechnicianPerfRow` model; iPad sortable `Table`. ([actionplan agent-6 b4] c0cb747c)
-- [ ] Per-tech detail drill.
+- [x] Per-tech detail drill. `TechDetailSheet` (NavigationStack) with hero glass tile + 6-stat grid; `TicketsByTechCard.onTapTech` → `selectedTechForDrill` state → `.sheet(item:)` in `ReportsView`; 6 stats: assigned/closed/revenue/commission/hours/closeRate. ([actionplan agent-6 b5] 98fb3559)
 
 ### 15.5 Inventory
 - [x] Turnover / dead-stock — `InventoryTurnoverCard` sorted table top-10 slowest by daysOnHand; `InventoryTurnoverRow` model with turnoverRate + daysOnHand. (feat(ios phase-8 §15))
-- [ ] Low stock / out-of-stock counts.
-- [ ] Inventory value (cost + retail).
+- [x] Low stock / out-of-stock counts. `InventoryStockCard` two KPI tiles (out-of-stock red, low-stock amber) from `InventoryReport.outOfStockCount` + `lowStockCount`. ([actionplan agent-6 b5] 98fb3559)
+- [x] Inventory value (cost + retail). `InventoryStockCard` value section: totalCost + totalRetail + markup% from `valueSummary`; per-category horizontal `BarMark` chart. iPhone stacked, iPad side-by-side. ([actionplan agent-6 b5] 98fb3559)
 - [ ] Shrinkage trend.
 
 ### 15.6 Tax
@@ -1874,7 +1874,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Drill-through — `DrillThroughSheet` tapping any chart data point opens `GET /reports/drill-through?metric=&date=`; records list with sale navigation closure. (feat(ios phase-8 §15))
 - [x] Swift Charts with `AreaMark + LineMark` on revenue; `BarMark` on tickets/CSAT; `Gauge` on CSAT/NPS; all with `.accessibilityChartDescriptor`. (feat(ios phase-8 §15))
 - [x] Sovereignty: all compute on tenant server; no external BI tool — single network peer via `APIClient.baseURL`. (feat(ios phase-8 §15))
-- [ ] CSV / PDF export per report (CSV not yet wired).
+- [x] CSV / PDF export per report. CSV: `ReportCSVService.generateSnapshotCSV` covers revenue/tickets/employees/turnover/CSAT/NPS sections; `exportCSV()` in `ReportsView` calls it and presents `ShareLink`. PDF already wired via `ReportExportService`. ([actionplan agent-6 b5] 98fb3559)
 - [x] "BI" sub-tab in Reports for deeper analysis — `ReportSubTab` enum (6 cases) + chip picker in `ReportsView`; switch drives per-tab card rendering. ([actionplan agent-6 b4] c0cb747c)
 - [ ] Built-in reports: revenue/margin by category/tech/customer segment
 - [ ] Built-in reports: repeat customer rate, time-to-repeat
