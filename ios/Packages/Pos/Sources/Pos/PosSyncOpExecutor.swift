@@ -132,8 +132,9 @@ public struct CashOpeningPayload: Codable, Sendable {
 // MARK: - PosSyncOpExecutor
 
 /// Concrete `SyncOpExecutor` for the POS domain. Dispatches `pos.sale.finalize`,
-/// `pos.return.create`, and `pos.cash.opening` to the server. Unknown op kinds
-/// throw `AppError.syncDeadLetter` so the drain loop moves them to DLQ.
+/// `pos.return.create`, `pos.cash.opening`, and `invoice.payment` (offline card
+/// tenders — §16.23) to the server. Unknown op kinds throw `AppError.syncDeadLetter`
+/// so the drain loop moves them to DLQ.
 ///
 /// 409 on `pos.sale.finalize` means "items already sold by another terminal" —
 /// non-retriable: executor throws `AppError.conflict` and the drain loop dead-
@@ -146,6 +147,9 @@ public struct CashOpeningPayload: Codable, Sendable {
 /// ```
 public final class PosSyncOpExecutor: SyncOpExecutor {
     private let api: APIClient
+
+    /// §16.23 — handler for offline-queued card tenders.
+    private lazy var cardTenderHandler = PosCardTenderSyncHandler(api: api)
 
     public init(api: APIClient) {
         self.api = api
@@ -168,6 +172,11 @@ public final class PosSyncOpExecutor: SyncOpExecutor {
         case "pos.cash.opening":
             let body = try decodedPayload(CashOpeningPayload.self, from: payloadData, kind: kind)
             try await api.posCashSessionOpen(body)
+
+        // §16.23 — offline-queued card tender. Enqueued by OfflineCardTenderService
+        // when the device is offline after BlockChyp terminal approval.
+        case "invoice.payment":
+            try await cardTenderHandler.execute(record)
 
         default:
             throw AppError.syncDeadLetter(
