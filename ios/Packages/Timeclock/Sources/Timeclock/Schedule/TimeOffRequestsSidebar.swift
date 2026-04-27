@@ -26,6 +26,9 @@ public final class TimeOffRequestsSidebarViewModel {
     public private(set) var actionError: String?
 
     @ObservationIgnored private let api: APIClient
+    /// §14.9 — called when a request is approved so the shift grid can refresh
+    /// its PTO blocks and re-run conflict detection.
+    @ObservationIgnored public var onApproved: (@MainActor (TimeOffRequest) -> Void)?
 
     public init(api: APIClient) {
         self.api = api
@@ -48,8 +51,10 @@ public final class TimeOffRequestsSidebarViewModel {
     public func approve(_ request: TimeOffRequest) async {
         actionError = nil
         do {
-            _ = try await api.approveTimeOff(id: request.id)
+            let approved = try await api.approveTimeOff(id: request.id)
             pendingRequests.removeAll { $0.id == request.id }
+            // §14.9 — notify shift grid so it can add a PTO block and re-check conflicts
+            onApproved?(approved)
         } catch {
             AppLog.ui.error("Approve PTO failed: \(error.localizedDescription, privacy: .public)")
             actionError = error.localizedDescription

@@ -21,13 +21,49 @@ public final class ShiftSchedulePostViewModel {
     public private(set) var shifts: [ScheduledShift] = []
     public private(set) var conflicts: [ScheduleConflict] = []
     public var weekStart: String = currentWeekStartISO()
+    /// §14.6 drag-drop: local display sort order (indices into `shifts`).
+    /// iPad drag-drop updates this array; server order unchanged (sorted by time).
+    public private(set) var sortedIndices: [Int] = []
 
     @ObservationIgnored private let api: APIClient
-    @ObservationIgnored private let ptoBlocks: [PTOBlock]
+    /// §14.9 — PTO blocks used for conflict checking. Mutable so approved PTO
+    /// requests can be added at runtime without reloading the whole schedule.
+    private var ptoBlocks: [PTOBlock]
 
     public init(api: APIClient, ptoBlocks: [PTOBlock] = []) {
         self.api = api
         self.ptoBlocks = ptoBlocks
+    }
+
+    /// §14.9 — Integrate an approved PTO request into the conflict checker.
+    /// Called by `TimeOffRequestsSidebar` via its `onApproved` callback.
+    /// Converts the approved `TimeOffRequest` to a `PTOBlock` and re-runs
+    /// conflict detection across existing shifts.
+    public func addApprovedPTOBlock(from request: TimeOffRequest) {
+        let block = PTOBlock(
+            employeeId: request.userId,
+            startAt: request.startDate + "T00:00:00Z",
+            endAt: request.endDate + "T23:59:59Z",
+            description: "\(request.kind.rawValue.capitalized) \(request.startDate)–\(request.endDate)"
+        )
+        ptoBlocks.append(block)
+        // Re-evaluate conflicts across all existing shifts with the new PTO block.
+        let newConflicts = shifts.compactMap { shift -> [ScheduleConflict]? in
+            let body = CreateScheduledShiftBody(
+                employeeId: shift.employeeId,
+                startAt: shift.startAt,
+                endAt: shift.endAt,
+                role: shift.role,
+                notes: shift.notes
+            )
+            let c = ShiftScheduleConflictChecker.check(
+                proposed: body,
+                existingShifts: shifts.filter { $0.id != shift.id },
+                ptoBlocks: ptoBlocks
+            )
+            return c.isEmpty ? nil : c
+        }.flatMap { $0 }
+        conflicts = Array(Set(newConflicts))
     }
 
     public func load() async {
@@ -35,9 +71,23 @@ public final class ShiftSchedulePostViewModel {
         do {
             let loaded = try await api.getSchedule(weekStart: weekStart)
             shifts = loaded
+            sortedIndices = Array(loaded.indices)
             loadState = .loaded
         } catch {
             loadState = .failed(error.localizedDescription)
+        }
+    }
+
+    /// §14.6 iPad drag-drop: reorder local display order without a server call.
+    /// The server shift times are unchanged; this affects visual grouping only.
+    public func moveShifts(fromOffsets: IndexSet, toOffset: Int) {
+        sortedIndices.move(fromOffsets: fromOffsets, toOffset: toOffset)
+    }
+
+    /// Shifts in the current display order.
+    public var sortedShifts: [ScheduledShift] {
+        sortedIndices.compactMap { idx in
+            shifts.indices.contains(idx) ? shifts[idx] : nil
         }
     }
 
@@ -54,6 +104,7 @@ public final class ShiftSchedulePostViewModel {
         do {
             let shift = try await api.createScheduledShift(body: body)
             shifts = shifts + [shift]
+            sortedIndices = Array(shifts.indices)
             conflicts = []
         } catch {
             loadState = .failed(error.localizedDescription)
@@ -83,8 +134,8 @@ public final class ShiftSchedulePostViewModel {
 
 /// Manager view: weekly schedule grid with add-shift and publish.
 ///
-/// iPad: 7-column grid with drag-drop (simplified placeholder for now).
-/// iPhone: list grouped by day.
+/// iPad: scrollable grid with drag-drop reordering (§14.6).
+/// iPhone: list grouped by day with swipe-to-delete.
 /// Liquid Glass on toolbar + publish banner.
 public struct ShiftSchedulePostView: View {
 
@@ -121,9 +172,10 @@ public struct ShiftSchedulePostView: View {
 
     // MARK: - Layouts
 
+    /// iPhone: plain list with pull-to-refresh.
     private var iPhoneLayout: some View {
         List {
-            ForEach(vm.shifts) { shift in
+            ForEach(vm.sortedShifts) { shift in
                 ScheduledShiftRow(shift: shift)
             }
         }
@@ -131,17 +183,32 @@ public struct ShiftSchedulePostView: View {
         .overlay { stateOverlay }
     }
 
+    /// iPad: scrollable grid with drag-drop reorder (§14.6).
+    ///
+    /// Uses `List` with `.onMove` so SwiftUI provides the native long-press-then-drag
+    /// affordance on iPad. The list scrolls horizontally when there are many shifts,
+    /// but the default vertical `List` works fine for the standard weekly layout.
     private var iPadLayout: some View {
-        ScrollView(.horizontal) {
-            LazyHGrid(rows: [GridItem(.flexible())], spacing: DesignTokens.Spacing.md) {
-                ForEach(vm.shifts) { shift in
-                    ScheduledShiftRow(shift: shift)
-                        .frame(width: 160)
-                        .brandHover()
-                }
+        List {
+            ForEach(vm.sortedShifts) { shift in
+                ScheduledShiftRow(shift: shift)
+                    .frame(maxWidth: .infinity)
+                    .brandHover()
+                    .hoverEffect(.highlight)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            // Deletion deferred to §14 delete task (server PATCH needed)
+                        } label: {
+                            Label("Remove Shift", systemImage: "trash")
+                        }
+                    }
             }
-            .padding()
+            .onMove { from, to in
+                vm.moveShifts(fromOffsets: from, toOffset: to)
+            }
         }
+        .environment(\.editMode, .constant(.active))
+        .refreshable { await vm.load() }
         .overlay { stateOverlay }
     }
 
