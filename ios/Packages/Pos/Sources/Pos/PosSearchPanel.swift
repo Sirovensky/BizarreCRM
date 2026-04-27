@@ -23,13 +23,29 @@ struct PosSearchPanel: View {
     /// IDs currently in the cart — drives the "In cart" badge on tiles.
     var cartItemInventoryIds: Set<Int64> = []
 
+    /// §16.2 — Favorites + recently-sold + filter chips wiring.
+    /// Pass the PosViewModel from PosView for full feature integration.
+    var posVM: PosViewModel? = nil
+
     /// When set, the panel is waiting for results matching a scanned
     /// barcode so it can auto-pick the first hit.
     @State private var pendingScanCode: String?
     @State private var showingScanSheet: Bool = false
 
-    /// Active category filter — nil means "All" / "Matches" pseudo-chip.
+    /// §16.2 — Active category filter — nil means "All" / "Matches" pseudo-chip.
     @State private var activeCategory: String? = nil
+
+    /// §16.2 — Preview sheet for long-press quick-preview.
+    @State private var previewItem: InventoryListItem? = nil
+
+    /// §16.2 — Extended filter sheet.
+    @State private var showingFilterSheet: Bool = false
+
+    /// §16.2 — "Favorites" chip selected.
+    @State private var showingFavoritesOnly: Bool = false
+
+    /// §16.2 — "Recently sold" chip selected.
+    @State private var showingRecentlySoldOnly: Bool = false
 
     var body: some View {
         ZStack {
@@ -46,6 +62,35 @@ struct PosSearchPanel: View {
         .sheet(isPresented: $showingScanSheet) {
             PosScanSheet { code in
                 handleScan(code)
+            }
+        }
+        // §16.2 — Long-press quick-preview sheet.
+        .sheet(item: $previewItem) { item in
+            PosCatalogTilePreviewSheet(
+                item: item,
+                isFavorite: posVM?.isFavorite(itemId: item.id) ?? false,
+                onAddToCart: {
+                    BrandHaptics.success()
+                    onPick(item)
+                },
+                onToggleFavorite: {
+                    posVM?.toggleFavorite(itemId: item.id)
+                }
+            )
+        }
+        // §16.2 — Extended filter sheet.
+        .sheet(isPresented: $showingFilterSheet) {
+            if let posVM {
+                PosCatalogFilterSheet(filter: Binding(
+                    get: { posVM.catalogFilter },
+                    set: { posVM.catalogFilter = $0 }
+                ))
+            }
+        }
+        // §16.2 — Repair services: load when Services chip is tapped.
+        .onChange(of: activeCategory) { _, newCat in
+            if newCat == "service" || newCat == "Services" {
+                Task { await posVM?.loadRepairServicesIfNeeded() }
             }
         }
         .onChange(of: search.results) { _, newResults in
@@ -117,31 +162,77 @@ struct PosSearchPanel: View {
     private var filterChips: some View {
         // Build chip labels: first chip is "Matches · N" when results exist, else "All"
         let categories = derivedCategories
-        if !categories.isEmpty {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    // "All / Matches" chip
-                    let matchLabel = search.results.isEmpty
-                        ? "All"
-                        : (search.query.isEmpty ? "All" : "Matches · \(search.results.count)")
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                // "All / Matches" chip — clears all chip filters.
+                let matchLabel = search.results.isEmpty
+                    ? "All"
+                    : (search.query.isEmpty ? "All" : "Matches · \(filteredResults.count)")
+                PosFilterChip(
+                    label: matchLabel,
+                    isActive: activeCategory == nil && !showingFavoritesOnly && !showingRecentlySoldOnly
+                ) {
+                    activeCategory = nil
+                    showingFavoritesOnly = false
+                    showingRecentlySoldOnly = false
+                }
+
+                // §16.2 Favorites chip — shown when posVM is available.
+                if let posVM, !posVM.favoriteItemIds.isEmpty {
                     PosFilterChip(
-                        label: matchLabel,
-                        isActive: activeCategory == nil
+                        label: "★ Favorites",
+                        isActive: showingFavoritesOnly
                     ) {
+                        showingFavoritesOnly.toggle()
+                        showingRecentlySoldOnly = false
                         activeCategory = nil
                     }
-                    ForEach(categories, id: \.self) { cat in
-                        PosFilterChip(
-                            label: cat,
-                            isActive: activeCategory == cat
-                        ) {
-                            activeCategory = cat
-                        }
+                }
+
+                // §16.2 Recently sold chip — top 10 sold on this register.
+                if let posVM, !posVM.recentlySoldIds.isEmpty {
+                    PosFilterChip(
+                        label: "Recent",
+                        isActive: showingRecentlySoldOnly
+                    ) {
+                        showingRecentlySoldOnly.toggle()
+                        showingFavoritesOnly = false
+                        activeCategory = nil
                     }
                 }
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.vertical, 10)
+
+                // Category chips derived from search results.
+                ForEach(categories, id: \.self) { cat in
+                    PosFilterChip(
+                        label: cat,
+                        isActive: activeCategory == cat && !showingFavoritesOnly && !showingRecentlySoldOnly
+                    ) {
+                        activeCategory = cat
+                        showingFavoritesOnly = false
+                        showingRecentlySoldOnly = false
+                    }
+                }
+
+                // §16.2 Extended filter button — funnel icon.
+                if posVM != nil {
+                    let isFilterActive = posVM?.catalogFilter.isFiltered ?? false
+                    Button {
+                        showingFilterSheet = true
+                    } label: {
+                        Image(systemName: isFilterActive ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(isFilterActive ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                            .frame(width: 34, height: 34)
+                            .background(Color.bizarreSurface2.opacity(0.6), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .hoverEffect(.highlight)
+                    .accessibilityLabel(isFilterActive ? "Filters active — tap to change" : "Filter catalog")
+                    .accessibilityIdentifier("pos.filterButton")
+                }
             }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, 10)
         }
     }
 
@@ -158,10 +249,34 @@ struct PosSearchPanel: View {
         return result
     }
 
-    /// Filter the results by active category (itemType).
+    /// Apply all active chip filters + posVM client-side filters.
     private var filteredResults: [InventoryListItem] {
-        guard let cat = activeCategory else { return search.results }
-        return search.results.filter { $0.itemType == cat }
+        var items = search.results
+
+        // §16.2 Favorites chip
+        if showingFavoritesOnly, let posVM {
+            items = items.filter { posVM.isFavorite(itemId: $0.id) }
+        }
+
+        // §16.2 Recently sold chip
+        if showingRecentlySoldOnly, let posVM {
+            let recentSet = Set(posVM.recentlySoldIds)
+            items = items.filter { recentSet.contains($0.id) }
+        }
+
+        // Category chip (derived from itemType)
+        if let cat = activeCategory, !showingFavoritesOnly, !showingRecentlySoldOnly {
+            items = items.filter { $0.itemType == cat }
+        }
+
+        // §16.2 Extended filter sheet (price, in-stock, taxable)
+        if let posVM {
+            items = posVM.applyClientFilters(to: items)
+            // Sort: favorites float first.
+            items = posVM.sorted(items)
+        }
+
+        return items
     }
 
     // MARK: - Results area
@@ -213,10 +328,19 @@ struct PosSearchPanel: View {
                 ForEach(filteredResults) { item in
                     PosCatalogTile(
                         item: item,
-                        isInCart: cartItemInventoryIds.contains(item.id)
+                        isInCart: cartItemInventoryIds.contains(item.id),
+                        isFavorite: posVM?.isFavorite(itemId: item.id) ?? false
                     ) {
                         BrandHaptics.success()
                         onPick(item)
+                    } onLongPress: {
+                        // §16.2 Long-press → quick-preview sheet.
+                        BrandHaptics.tap()
+                        previewItem = item
+                    } onToggleFavorite: {
+                        // §16.2 Star tap on tile toggles favorite.
+                        posVM?.toggleFavorite(itemId: item.id)
+                        BrandHaptics.tap()
                     }
                 }
             }
@@ -394,9 +518,15 @@ struct PosFilterChip: View {
 struct PosCatalogTile: View {
     let item: InventoryListItem
     var isInCart: Bool = false
+    /// Whether this item is in the cashier's favorites list.
+    var isFavorite: Bool = false
     /// Pass `true` from `PosCatalogGrid` to engage iPad sizing/layout.
     var isPad: Bool = false
     let onTap: () -> Void
+    /// §16.2 Long-press → quick-preview sheet.
+    var onLongPress: (() -> Void)? = nil
+    /// §16.2 Star button tap → toggle favorite.
+    var onToggleFavorite: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -411,22 +541,38 @@ struct PosCatalogTile: View {
             ZStack(alignment: .topTrailing) {
                 // Card body
                 VStack(alignment: .leading, spacing: 6) {
-                    // Icon — box on iPhone, bare emoji on iPad
-                    if isPad {
-                        Image(systemName: "shippingbox.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .accessibilityHidden(true)
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.bizarreSurface2.opacity(0.6))
-                            Image(systemName: "shippingbox.fill")
-                                .font(.system(size: 18))
+                    // Icon row — box on iPhone, bare system image on iPad.
+                    HStack(alignment: .top) {
+                        if isPad {
+                            Image(systemName: tileSystemImage)
+                                .font(.system(size: 22))
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
                                 .accessibilityHidden(true)
+                        } else {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.bizarreSurface2.opacity(0.6))
+                                Image(systemName: tileSystemImage)
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    .accessibilityHidden(true)
+                            }
+                            .frame(width: 34, height: 34)
                         }
-                        .frame(width: 34, height: 34)
+                        Spacer(minLength: 0)
+                        // §16.2 Favorite star — top-right of icon row.
+                        if let onToggleFavorite {
+                            Button {
+                                onToggleFavorite()
+                            } label: {
+                                Image(systemName: isFavorite ? "star.fill" : "star")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(isFavorite ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted.opacity(0.6))
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(isFavorite ? "Remove from favorites" : "Add to favorites")
+                            .accessibilityIdentifier("pos.tile.favorite.\(item.id)")
+                        }
                     }
 
                     Text(item.displayName)
@@ -463,10 +609,8 @@ struct PosCatalogTile: View {
                         )
                 )
 
-                // "In cart" badge — top-right corner.
-                // bg = bizarreOrange (cream dark / dark-amber light);
-                // text = bizarreOnOrange (#2B1400 dark / #fff light).
-                if isInCart {
+                // "In cart" badge — top-right corner (only when no favorite star above).
+                if isInCart && onToggleFavorite == nil {
                     Text("In cart")
                         .font(.system(size: 10, weight: .black))
                         .foregroundStyle(Color.bizarreOnOrange)
@@ -480,12 +624,25 @@ struct PosCatalogTile: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
+        // §16.2 Long-press → quick preview.
+        .onLongPressGesture(minimumDuration: 0.4) {
+            onLongPress?()
+        }
         .accessibilityLabel(
-            "\(item.displayName)\(isInCart ? ", in cart" : "")" +
+            "\(item.displayName)\(isInCart ? ", in cart" : "")\(isFavorite ? ", favorited" : "")" +
             (item.priceCents.map { ", \(CartMath.formatCents($0))" } ?? "")
         )
         .accessibilityAddTraits(isInCart ? [.isSelected] : [])
         .accessibilityIdentifier("pos.catalogTile.\(item.id)")
+    }
+
+    private var tileSystemImage: String {
+        switch item.itemType?.lowercased() {
+        case "service":     return "wrench.and.screwdriver"
+        case "part":        return "puzzlepiece"
+        case "accessory":   return "cable.connector"
+        default:            return "shippingbox.fill"
+        }
     }
 
     @ViewBuilder
