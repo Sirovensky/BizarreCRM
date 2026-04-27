@@ -178,4 +178,45 @@ final class DashboardKPITests: XCTestCase {
         let dest = DashboardTileDestination.inventoryList(filter: "low_stock=true")
         XCTAssertTrue(dest.accessibilityDescription.contains("low stock"))
     }
+
+    // MARK: - isNewTenantSnapshot (§3.1 / §3.14 empty state)
+
+    func test_isNewTenant_whenAllZeroAndNoKpis() {
+        let snap = DashboardSnapshot(summary: DashboardSummary(), attention: NeedsAttention())
+        XCTAssertTrue(isNewTenantSnapshot(snap))
+    }
+
+    func test_isNewTenant_false_whenOpenTicketsNonZero() {
+        let snap = DashboardSnapshot(
+            summary: DashboardSummary(openTickets: 1),
+            attention: NeedsAttention()
+        )
+        XCTAssertFalse(isNewTenantSnapshot(snap))
+    }
+
+    func test_isNewTenant_false_whenRevenueNonZero() {
+        let snap = DashboardSnapshot(
+            summary: DashboardSummary(revenueToday: 100),
+            attention: NeedsAttention()
+        )
+        XCTAssertFalse(isNewTenantSnapshot(snap))
+    }
+
+    func test_isNewTenant_false_whenClosedTodayNonZero() {
+        let snap = DashboardSnapshot(
+            summary: DashboardSummary(closedToday: 2),
+            attention: NeedsAttention()
+        )
+        XCTAssertFalse(isNewTenantSnapshot(snap))
+    }
+
+    func test_isNewTenant_false_whenKpisPresent() {
+        let kpis = DashboardKPIs(totalSales: 0, tax: 0, netProfit: 0)
+        let snap = DashboardSnapshot(
+            summary: DashboardSummary(),
+            kpis: kpis,
+            attention: NeedsAttention()
+        )
+        XCTAssertFalse(isNewTenantSnapshot(snap))
+    }
 }

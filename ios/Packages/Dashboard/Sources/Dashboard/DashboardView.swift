@@ -23,6 +23,12 @@ public struct DashboardView: View {
     /// routing. The callback interface is stable; App-layer wiring can follow.
     public var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
 
+    /// §3.1 / §3.14 New-tenant empty state CTA — "Create your first ticket".
+    public var onCreateTicket: (() -> Void)?
+
+    /// §3.1 / §3.14 New-tenant empty state CTA — "Import data".
+    public var onImportData: (() -> Void)?
+
     /// - Parameters:
     ///   - repo: Dashboard data repository.
     ///   - api: APIClient for all network calls (timeclock included).
@@ -30,15 +36,21 @@ public struct DashboardView: View {
     ///     timeclock calls. Defaults to `{ 0 }` — a placeholder until
     ///     `GET /auth/me` is wired (TODO post-phase-11).
     ///   - onTileTap: Called when the user taps a KPI tile. Nil = non-interactive.
+    ///   - onCreateTicket: Called from the new-tenant empty state CTA. Nil hides button.
+    ///   - onImportData: Called from the new-tenant empty state CTA. Nil hides button.
     public init(
         repo: DashboardRepository,
         api: APIClient,
         userIdProvider: (@Sendable () async -> Int64)? = nil,
-        onTileTap: (@MainActor (DashboardTileDestination) -> Void)? = nil
+        onTileTap: (@MainActor (DashboardTileDestination) -> Void)? = nil,
+        onCreateTicket: (() -> Void)? = nil,
+        onImportData: (() -> Void)? = nil
     ) {
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
         _clockVM = State(wrappedValue: ClockInOutViewModel(api: api, userIdProvider: userIdProvider))
         self.onTileTap = onTileTap
+        self.onCreateTicket = onCreateTicket
+        self.onImportData = onImportData
     }
 
     public var body: some View {
@@ -78,8 +90,14 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot, clockVM: clockVM, onTileTap: onTileTap)
-                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            LoadedBody(
+                snapshot: snapshot,
+                clockVM: clockVM,
+                onTileTap: onTileTap,
+                onCreateTicket: onCreateTicket,
+                onImportData: onImportData
+            )
+            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
 }
@@ -90,14 +108,27 @@ private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
     var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
+    var onCreateTicket: (() -> Void)?
+    var onImportData: (() -> Void)?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 greeting
                 ClockInOutTile(vm: clockVM)
-                heroCard
-                secondaryGrid
+
+                // §3.1 / §3.14 — New-tenant empty state replaces KPI grid
+                // when the shop has never had any activity.
+                if isNewTenantSnapshot(snapshot) {
+                    DashboardNewTenantEmptyState(
+                        onCreateTicket: onCreateTicket,
+                        onImportData: onImportData
+                    )
+                } else {
+                    heroCard
+                    secondaryGrid
+                }
+
                 attentionCard
             }
             .padding(.horizontal, BrandSpacing.base)
@@ -208,6 +239,10 @@ private struct LoadedBody: View {
 
         if total > 0 {
             AttentionCard(items: items)
+        } else if !isNewTenantSnapshot(snapshot) {
+            // §3.3 — "All clear" empty state: only shown when there's real
+            // data but nothing needs attention (not on a brand-new tenant).
+            AttentionAllClearView()
         }
     }
 
@@ -391,6 +426,39 @@ private struct AttentionRow: View {
             }
             #endif
         }
+    }
+}
+
+// MARK: - Attention all-clear
+
+/// §3.3 — Shown in the Needs Attention section when there are no urgent items.
+/// Plain surface, no glass on content.
+private struct AttentionAllClearView: View {
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("All clear")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Nothing needs your attention right now.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("All clear. Nothing needs your attention right now.")
     }
 }
 
