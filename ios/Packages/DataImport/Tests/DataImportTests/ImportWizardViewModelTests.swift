@@ -60,6 +60,37 @@ actor MockImportRepository: ImportRepository {
         rollbackCallCount += 1
         return try rollbackResult.get()
     }
+
+    // §48.3 Pause / resume / cancel
+    var pauseResult: Result<ImportJob, Error> = .success(.fixture(status: .paused))
+    var resumeResult: Result<ImportJob, Error> = .success(.fixture(status: .running))
+    var cancelResult: Result<RollbackImportResponse, Error> = .success(.init(message: "Cancelled"))
+    var exportErrorsResult: Result<URL, Error> = .success(URL(string: "https://example.com/errors.csv")!)
+
+    private(set) var pauseCallCount = 0
+    private(set) var resumeCallCount = 0
+    private(set) var cancelCallCount = 0
+    private(set) var exportErrorsCallCount = 0
+
+    func pauseJob(id: String) async throws -> ImportJob {
+        pauseCallCount += 1
+        return try pauseResult.get()
+    }
+
+    func resumeJob(id: String) async throws -> ImportJob {
+        resumeCallCount += 1
+        return try resumeResult.get()
+    }
+
+    func cancelJob(id: String) async throws -> RollbackImportResponse {
+        cancelCallCount += 1
+        return try cancelResult.get()
+    }
+
+    func exportErrors(id: String) async throws -> URL {
+        exportErrorsCallCount += 1
+        return try exportErrorsResult.get()
+    }
 }
 
 // MARK: - Fixtures

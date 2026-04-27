@@ -84,6 +84,34 @@ extension APIClient {
         return try await get("/imports", as: [ImportJob].self)
     }
 
+    /// POST /imports/:id/pause — §48.3 pause a running job.
+    /// STUB: server endpoint planned, not yet shipped.
+    public func pauseImport(id: String) async throws -> ImportJob {
+        return try await post("/imports/\(id)/pause", body: ImportStartRequest(), as: ImportJob.self)
+    }
+
+    /// POST /imports/:id/resume — §48.3 resume a paused job.
+    /// STUB: server endpoint planned, not yet shipped.
+    public func resumeImport(id: String) async throws -> ImportJob {
+        return try await post("/imports/\(id)/resume", body: ImportStartRequest(), as: ImportJob.self)
+    }
+
+    /// POST /imports/:id/cancel — §48.3 cancel an in-progress job.
+    /// STUB: server endpoint planned, not yet shipped.
+    public func cancelImport(id: String) async throws -> RollbackImportResponse {
+        return try await post("/imports/\(id)/cancel", body: ImportStartRequest(), as: RollbackImportResponse.self)
+    }
+
+    /// GET /imports/:id/errors/export — §48.2 download errors as CSV URL.
+    /// Server returns `{ url: String }` — we download and return a local temp file.
+    public func exportImportErrors(id: String) async throws -> URL {
+        let resp = try await get("/imports/\(id)/errors/export", as: ImportErrorExportResponse.self)
+        guard let urlStr = resp.url, let remote = URL(string: urlStr) else {
+            throw ImportError.noExportURL
+        }
+        return remote
+    }
+
     // MARK: - Internal multipart helper
 
     private func postMultipart<T: Decodable & Sendable>(

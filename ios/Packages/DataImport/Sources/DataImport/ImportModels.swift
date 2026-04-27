@@ -60,9 +60,16 @@ public enum ImportStatus: String, Codable, Sendable {
     case previewing = "previewing"
     case mapping    = "mapping"
     case running    = "running"
+    case paused     = "paused"     // §48.3 pause/resume
     case completed  = "completed"
     case failed     = "failed"
     case rolledBack = "rolled_back"
+
+    /// Whether this job is actively processing (allows pause).
+    public var isRunning: Bool { self == .running }
+
+    /// Whether this job can be resumed.
+    public var isPaused: Bool { self == .paused }
 }
 
 // MARK: - ImportJob
@@ -245,6 +252,21 @@ struct ImportStartRequest: Encodable, Sendable {}
 struct ImportMultipartBody: Encodable, Sendable {
     let filename: String
     let data: String // base64
+}
+
+// MARK: - §48.2 Error export response
+public struct ImportErrorExportResponse: Codable, Sendable {
+    public let url: String?
+}
+
+// MARK: - §48.3 Import errors
+public enum ImportError: Error, Sendable {
+    case noExportURL
+    public var localizedDescription: String {
+        switch self {
+        case .noExportURL: return "Server did not return an export URL."
+        }
+    }
 }
 
 // MARK: - CRM field schema per entity type

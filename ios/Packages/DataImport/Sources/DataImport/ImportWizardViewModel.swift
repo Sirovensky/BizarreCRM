@@ -203,6 +203,74 @@ public final class ImportWizardViewModel {
         }
     }
 
+    // MARK: - §48.3 Pause / resume / cancel
+
+    public private(set) var isPausing: Bool = false
+    public private(set) var isResuming: Bool = false
+    public private(set) var isCancelling: Bool = false
+
+    /// Pause the running import. Stops polling until resumed.
+    public func pauseImport() async {
+        guard let id = jobId, job?.status.isRunning == true else { return }
+        isPausing = true
+        defer { isPausing = false }
+        do {
+            let updated = try await repository.pauseJob(id: id)
+            job = updated
+            pollTask?.cancel()   // stop polling while paused
+            AppLog.ui.info("Import paused: \(id, privacy: .public)")
+        } catch {
+            AppLog.ui.error("Import pause failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Resume a paused import. Restarts polling.
+    public func resumeImport() async {
+        guard let id = jobId, job?.status.isPaused == true else { return }
+        isResuming = true
+        defer { isResuming = false }
+        do {
+            let updated = try await repository.resumeJob(id: id)
+            job = updated
+            startPolling()
+            AppLog.ui.info("Import resumed: \(id, privacy: .public)")
+        } catch {
+            AppLog.ui.error("Import resume failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// Cancel the import (destructive — no rollback after this).
+    public func cancelImport() async {
+        guard let id = jobId else { return }
+        isCancelling = true
+        defer { isCancelling = false }
+        pollTask?.cancel()
+        do {
+            _ = try await repository.cancelJob(id: id)
+            reset()
+        } catch {
+            AppLog.ui.error("Import cancel failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - §48.2 Error report export
+
+    public private(set) var errorExportURL: URL?
+    public private(set) var isExportingErrors: Bool = false
+
+    /// Fetch downloadable error report URL from server.
+    public func exportErrors() async {
+        guard let id = jobId else { return }
+        isExportingErrors = true
+        errorExportURL = nil
+        defer { isExportingErrors = false }
+        do {
+            errorExportURL = try await repository.exportErrors(id: id)
+        } catch {
+            AppLog.ui.error("Export errors failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     /// Roll back a completed import (within 24 h window).
     public func rollback() async {
         guard let id = jobId, job?.canRollback == true else { return }

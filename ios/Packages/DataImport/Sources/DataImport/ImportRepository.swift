@@ -13,6 +13,14 @@ public protocol ImportRepository: Sendable {
     func getErrors(id: String) async throws -> [ImportRowError]
     func listJobs() async throws -> [ImportJob]
     func rollbackJob(id: String) async throws -> RollbackImportResponse
+    /// §48.3 Pause a running import job.
+    func pauseJob(id: String) async throws -> ImportJob
+    /// §48.3 Resume a paused import job.
+    func resumeJob(id: String) async throws -> ImportJob
+    /// §48.3 Cancel an in-progress import job.
+    func cancelJob(id: String) async throws -> RollbackImportResponse
+    /// §48.2 Export row errors as a downloadable CSV URL.
+    func exportErrors(id: String) async throws -> URL
 }
 
 // MARK: - Live implementation
@@ -59,5 +67,21 @@ public final class LiveImportRepository: ImportRepository {
 
     public func rollbackJob(id: String) async throws -> RollbackImportResponse {
         try await api.rollbackImport(id: id)
+    }
+
+    public func pauseJob(id: String) async throws -> ImportJob {
+        try await api.pauseImport(id: id)
+    }
+
+    public func resumeJob(id: String) async throws -> ImportJob {
+        try await api.resumeImport(id: id)
+    }
+
+    public func cancelJob(id: String) async throws -> RollbackImportResponse {
+        try await api.cancelImport(id: id)
+    }
+
+    public func exportErrors(id: String) async throws -> URL {
+        try await api.exportImportErrors(id: id)
     }
 }
