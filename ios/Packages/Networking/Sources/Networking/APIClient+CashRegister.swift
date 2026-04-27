@@ -104,6 +104,30 @@ public extension APIClient {
         try await delete("/api/v1/coupons/\(id)")
     }
 
+    // MARK: Reconciliation (§39.4)
+
+    /// `GET /api/v1/pos/reconciliation/daily?date=YYYY-MM-DD`
+    /// Server ticket: POS-RECON-001. Returns daily tie-out metrics.
+    /// Gracefully degrades to `.unavailable` on 404/501.
+    func getDailyReconciliation<T: Decodable & Sendable>(date: String, as type: T.Type) async throws -> T {
+        let query = [URLQueryItem(name: "date", value: date)]
+        return try await get("/api/v1/pos/reconciliation/daily", query: query, as: type)
+    }
+
+    /// `GET /api/v1/pos/reconciliation/monthly?month=YYYY-MM`
+    /// Full monthly report (revenue, COGS, AR aging, AP aging). POS-RECON-001.
+    func getMonthlyReconciliation<T: Decodable & Sendable>(month: String, as type: T.Type) async throws -> T {
+        let query = [URLQueryItem(name: "month", value: month)]
+        return try await get("/api/v1/pos/reconciliation/monthly", query: query, as: type)
+    }
+
+    /// `GET /api/v1/pos/reconciliation/drill?date=YYYY-MM-DD`
+    /// Variance drill entries for a specific day. POS-RECON-002.
+    func getVarianceDrill<T: Decodable & Sendable>(date: String, as type: T.Type) async throws -> T {
+        let query = [URLQueryItem(name: "date", value: date)]
+        return try await get("/api/v1/pos/reconciliation/drill", query: query, as: type)
+    }
+
     // MARK: Notifications (used by PosReceiptViewModel)
 
     /// `POST /api/v1/notifications/send-receipt` — send receipt via email or SMS.
