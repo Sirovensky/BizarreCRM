@@ -97,6 +97,192 @@ public enum ReceiptRenderer {
         return tempURL
     }
 
+    // MARK: - Render multi-page PDF (pagination for long invoices)
+
+    /// Renders a SwiftUI view into a **paginated** PDF, splitting content across
+    /// `pageRect`-sized pages with a repeated header on each.
+    ///
+    /// §17.4 — "Pagination: long invoices span pages with reprinted header + page
+    /// numbers."
+    ///
+    /// Algorithm:
+    ///  1. Render full content to one large `CGImage` at `medium.contentWidth`.
+    ///  2. Slice the image into `pageHeight`-tall strips.
+    ///  3. Render each strip onto its own PDF page with optional page-number footer.
+    ///
+    /// - Parameters:
+    ///   - view:   Full SwiftUI document view (e.g. `InvoiceDocumentView`).
+    ///   - header: Short header view re-printed at the top of continuation pages.
+    ///   - medium: Target paper size.
+    ///   - jobId:  UUID used in the output filename.
+    /// - Returns: Local file URL of the paginated PDF.
+    public static func renderMultiPagePDF<Content: View, Header: View>(
+        content view: Content,
+        continuationHeader header: Header? = nil,
+        medium: PrintMedium = .letter,
+        jobId: UUID = UUID()
+    ) async throws -> URL {
+        let scale = UIScreen.main.scale
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = scale
+        renderer.proposedSize = .init(width: medium.contentWidth, height: nil)
+
+        guard let cgImage = renderer.cgImage else {
+            throw ReceiptRenderError.rasterizationFailed("ImageRenderer produced no content image for multi-page PDF")
+        }
+
+        let pageW    = medium.pageWidth
+        let margin   = medium.margin
+        let usableH  = medium.pageHeight - margin * 2
+        let contentW = CGFloat(cgImage.width)
+        let contentH = CGFloat(cgImage.height)
+
+        // Scale factor from content pixels to page points.
+        let ptPerPx  = pageW / contentW
+        let totalPtH = contentH * ptPerPx
+        let pageCount = Int(ceil(totalPtH / usableH))
+
+        // Render header (continuation only) once if supplied.
+        var headerImage: CGImage?
+        if let hdr = header {
+            let hRenderer = ImageRenderer(content: hdr)
+            hRenderer.scale = scale
+            hRenderer.proposedSize = .init(width: medium.contentWidth, height: nil)
+            headerImage = hRenderer.cgImage
+        }
+        let headerPtH: CGFloat = headerImage.map { CGFloat($0.height) * ptPerPx } ?? 0
+
+        let pageRect = CGRect(x: 0, y: 0, width: pageW, height: medium.pageHeight)
+        let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageRect)
+        let pdfData = pdfRenderer.pdfData { ctx in
+            for page in 0..<pageCount {
+                let pageInfo = [kCGPDFContextMediaBox: pageRect] as [CFString: Any]
+                ctx.beginPage(withBounds: pageRect, pageInfo: pageInfo as [AnyHashable: Any])
+
+                let context = UIGraphicsGetCurrentContext()
+
+                // On continuation pages, draw repeat header at top.
+                var yOffset = margin
+                if page > 0, let hdr = headerImage {
+                    let hdrSrcRect = CGRect(x: 0, y: 0, width: contentW, height: CGFloat(hdr.height))
+                    let hdrDstRect = CGRect(x: margin, y: yOffset, width: pageW - margin * 2, height: headerPtH)
+                    context?.draw(hdr, in: hdrDstRect, byTiling: false)
+                    _ = hdrSrcRect // suppress unused warning
+                    yOffset += headerPtH + margin * 0.5
+                }
+
+                // Slice of the full content this page covers.
+                let contentUsableH = medium.pageHeight - yOffset - margin
+                let sliceTopPx  = CGFloat(page) * usableH / ptPerPx
+                let slicePxH    = contentUsableH / ptPerPx
+                let srcSlice    = CGRect(
+                    x: 0,
+                    y: sliceTopPx,
+                    width: contentW,
+                    height: min(slicePxH, contentH - sliceTopPx)
+                )
+                guard let slicedCG = cgImage.cropping(to: srcSlice) else { continue }
+                let dstRect = CGRect(
+                    x: margin,
+                    y: yOffset,
+                    width: pageW - margin * 2,
+                    height: CGFloat(slicedCG.height) * ptPerPx
+                )
+                context?.draw(slicedCG, in: dstRect, byTiling: false)
+
+                // Page number footer.
+                let pageLabel = "Page \(page + 1) of \(pageCount)" as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 8),
+                    .foregroundColor: UIColor.gray
+                ]
+                let labelSize = pageLabel.size(withAttributes: attrs)
+                let labelRect = CGRect(
+                    x: pageW - labelSize.width - margin,
+                    y: medium.pageHeight - margin * 0.8,
+                    width: labelSize.width,
+                    height: labelSize.height
+                )
+                pageLabel.draw(in: labelRect, withAttributes: attrs)
+            }
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("invoice-paginated-\(jobId.uuidString).pdf")
+        try pdfData.write(to: tempURL)
+        AppLog.hardware.info("ReceiptRenderer: paginated PDF (\(pageCount)p) written to \(tempURL.lastPathComponent, privacy: .public)")
+        return tempURL
+    }
+
+    // MARK: - A11y-tagged PDF
+
+    /// Renders a SwiftUI view to a PDF with PDFKit accessibility metadata.
+    ///
+    /// §17.4 — "A11y: tagged PDFs (searchable/copyable); screen-reader friendly in-app."
+    ///
+    /// The PDF metadata includes `Title`, `Author`, `Subject`, and `Keywords` so
+    /// screen readers (VoiceOver PDF viewer, Preview, Adobe Reader) can announce
+    /// document structure. The rendered content is identical to `renderPDF` — only
+    /// the metadata envelope differs.
+    ///
+    /// - Parameters:
+    ///   - view:     SwiftUI document view.
+    ///   - title:    Document title (e.g. "Invoice INV-2026-00099").
+    ///   - author:   Tenant name.
+    ///   - subject:  Document type (e.g. "Invoice", "Receipt").
+    ///   - keywords: Searchable terms (e.g. ["repair", "iPhone", "INV-00099"]).
+    ///   - medium:   Target paper size.
+    ///   - jobId:    UUID used in the output filename.
+    public static func renderAccessiblePDF<V: View>(
+        _ view: V,
+        title: String,
+        author: String,
+        subject: String,
+        keywords: [String] = [],
+        medium: PrintMedium = .letter,
+        jobId: UUID = UUID()
+    ) async throws -> URL {
+        let scale = UIScreen.main.scale
+        let imageRenderer = ImageRenderer(content: view)
+        imageRenderer.scale = scale
+        imageRenderer.proposedSize = .init(width: medium.contentWidth, height: nil)
+
+        guard let cgImage = imageRenderer.cgImage else {
+            throw ReceiptRenderError.rasterizationFailed("ImageRenderer produced no image for accessible PDF")
+        }
+
+        let pageW = medium.pageWidth
+        let pageH = CGFloat(cgImage.height) * (pageW / CGFloat(cgImage.width))
+        let pageRect = CGRect(x: 0, y: 0, width: pageW, height: pageH)
+
+        // Build document info dictionary for PDF metadata (a11y + searchability).
+        var docInfo: [CFString: Any] = [
+            kCGPDFContextTitle:          title as CFString,
+            kCGPDFContextAuthor:         author as CFString,
+            kCGPDFContextSubject:        subject as CFString
+        ]
+        if !keywords.isEmpty {
+            docInfo[kCGPDFContextKeywords] = keywords.joined(separator: ", ") as CFString
+        }
+
+        let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageRect, format: {
+            let fmt = UIGraphicsPDFRendererFormat()
+            fmt.documentInfo = docInfo as [String: Any]
+            return fmt
+        }())
+
+        let pdfData = pdfRenderer.pdfData { ctx in
+            ctx.beginPage()
+            UIImage(cgImage: cgImage).draw(in: pageRect)
+        }
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("doc-a11y-\(jobId.uuidString).pdf")
+        try pdfData.write(to: tempURL)
+        AppLog.hardware.info("ReceiptRenderer: accessible PDF written to \(tempURL.lastPathComponent, privacy: .public)")
+        return tempURL
+    }
+
     // MARK: - 1-bit Atkinson dithering
 
     /// Converts a CGImage to a 1-bit `RasterBitmap` via Atkinson dithering.

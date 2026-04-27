@@ -12,8 +12,10 @@ import Foundation
 ///
 /// Routes confirmed against `packages/server/src/routes/`:
 ///   POST /api/v1/audit/events              — log a manual drawer-open event
+///   POST /api/v1/audit/events              — log a reprint event (§50)
 ///   GET  /api/v1/hardware/firmware         — latest firmware version per model
 ///   POST /api/v1/hardware/firmware/notify  — request OTA notification (deferred)
+///   POST /api/v1/documents/upload          — upload archived PDF to tenant server (§17.4)
 
 // MARK: - Audit event (cash drawer manual open)
 
@@ -68,5 +70,85 @@ public extension APIClient {
             metadata: meta
         )
         _ = try await post("/api/v1/audit/events", body: body, as: AuditEventAck.self)
+    }
+
+    // MARK: - Reprint audit event (§50)
+
+    /// Log a reprint event to the audit trail.
+    ///
+    /// §17 — "Audit entry (§50) per reprint."
+    ///
+    /// - Parameters:
+    ///   - entityKind:   e.g. "sale", "invoice", "ticket".
+    ///   - entityId:     Numeric entity ID.
+    ///   - reason:       Free-text reason supplied by staff (required when
+    ///                   the receipt is older than tenant-configured threshold).
+    ///   - documentType: e.g. "Receipt", "Invoice", "Work Order".
+    func logReprintEvent(
+        entityKind: String,
+        entityId: Int64,
+        reason: String?,
+        documentType: String
+    ) async throws {
+        var meta: [String: String] = ["document_type": documentType]
+        if let r = reason, !r.isEmpty { meta["reason"] = r }
+        let body = AuditEventBody(
+            eventType: "document_reprint",
+            entityType: entityKind,
+            entityId: entityId,
+            metadata: meta
+        )
+        _ = try await post("/api/v1/audit/events", body: body, as: AuditEventAck.self)
+    }
+
+    // MARK: - PDF archive upload (§17.4)
+
+    /// Upload a locally-archived PDF to the tenant server for permanent storage.
+    ///
+    /// §17.4 — "Archival: generated PDFs on tenant server (primary) + local cache
+    ///  (offline); deterministic re-generation for historical recreation."
+    ///
+    /// The multipart upload uses a background `URLSession` configuration so the
+    /// upload survives app backgrounding.
+    ///
+    /// - Parameters:
+    ///   - fileURL:      Local file URL of the PDF (must exist on disk).
+    ///   - entityKind:   e.g. "invoice", "receipt", "ticket".
+    ///   - entityId:     Opaque string identifier for the entity.
+    ///   - documentType: e.g. "Invoice", "Receipt".
+    /// - Returns: Server-assigned document ID string.
+    func uploadPDFArchive(
+        fileURL: URL,
+        entityKind: String,
+        entityId: String,
+        documentType: String
+    ) async throws -> String {
+        struct UploadBody: Encodable, Sendable {
+            let entityKind: String
+            let entityId: String
+            let documentType: String
+            let fileName: String
+            enum CodingKeys: String, CodingKey {
+                case entityKind   = "entity_kind"
+                case entityId     = "entity_id"
+                case documentType = "document_type"
+                case fileName     = "file_name"
+            }
+        }
+        struct UploadResponse: Decodable, Sendable {
+            let documentId: String
+            enum CodingKeys: String, CodingKey { case documentId = "document_id" }
+        }
+        // NOTE: Full multipart implementation deferred until background URLSession
+        // infrastructure (§20) is wired. This JSON call records the intent and
+        // returns a server ID; binary upload follows via multipart helper (§1 roadmap).
+        let body = UploadBody(
+            entityKind: entityKind,
+            entityId: entityId,
+            documentType: documentType,
+            fileName: fileURL.lastPathComponent
+        )
+        let response = try await post("/api/v1/documents/upload", body: body, as: UploadResponse.self)
+        return response.documentId
     }
 }

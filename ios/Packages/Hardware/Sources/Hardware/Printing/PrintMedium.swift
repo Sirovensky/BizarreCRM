@@ -80,6 +80,16 @@ public enum PrintMedium: String, CaseIterable, Sendable {
     /// Lateral margin on each side (points).
     public var sideMargin: CGFloat { (pageWidth - contentWidth) / 2 }
 
+    /// Top/bottom margin (points). Used by the paginated PDF renderer to leave
+    /// breathing room between content slices and page edges.
+    public var margin: CGFloat {
+        switch self {
+        case .thermal80mm, .thermal58mm: return 4
+        case .letter, .a4, .legal:       return 36  // 0.5 in
+        case .label4x6, .label2x4:      return 8
+        }
+    }
+
     // MARK: - Fonts
 
     /// Header font (tenant name / document title).

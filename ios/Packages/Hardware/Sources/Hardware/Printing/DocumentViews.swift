@@ -699,6 +699,512 @@ public struct LabelView: View {
     .environment(\.printMedium, .label4x6)
     .padding()
 }
+
+// MARK: - InvoiceDocumentPayload
+
+/// Strongly-typed data carrier for a printed invoice / quote.
+///
+/// §17.4 — "Structure: header tenant branding, body line items + subtotals,
+///  footer terms + signature line + QR for public tracking."
+///
+/// Self-contained: all values embedded so rendering is fully offline-capable.
+/// Never includes a URL-based payload — Android regression lesson §17.4.
+public struct InvoiceDocumentPayload: Sendable, Codable {
+
+    // MARK: - Nested types
+
+    public struct LineItem: Sendable, Codable {
+        public let description: String
+        public let quantity: String      // e.g. "2" or "1.5 lb"
+        public let unitPrice: String     // formatted, e.g. "$12.00"
+        public let lineTotal: String     // formatted, e.g. "$24.00"
+        public init(description: String, quantity: String, unitPrice: String, lineTotal: String) {
+            self.description = description
+            self.quantity = quantity
+            self.unitPrice = unitPrice
+            self.lineTotal = lineTotal
+        }
+    }
+
+    public enum InvoiceStatus: String, Sendable, Codable, CaseIterable {
+        case draft      = "DRAFT"
+        case sent       = "SENT"
+        case paid       = "PAID"
+        case overdue    = "OVERDUE"
+        case void       = "VOID"
+    }
+
+    // MARK: - Header — tenant branding
+
+    public let logoData: Data?
+    public let tenantName: String
+    public let tenantAddress: String
+    public let tenantPhone: String
+    public let tenantEmail: String
+    public let tenantWebsite: String
+
+    // MARK: - Invoice meta
+
+    public let invoiceNumber: String
+    public let invoiceDate: Date
+    public let dueDate: Date?
+    public let status: InvoiceStatus
+    /// Deep-link URL encoded in footer QR (e.g. "https://app.bizarrecrm.com/pay/INV-…").
+    public let publicTrackingURL: String?
+
+    // MARK: - Customer billing info
+
+    public let customerName: String
+    public let customerAddress: String?
+    public let customerEmail: String?
+
+    // MARK: - Body — line items
+
+    public let lineItems: [LineItem]
+
+    // MARK: - Subtotals
+
+    public let subtotalCents: Int
+    public let discountCents: Int
+    public let taxCents: Int
+    public let totalCents: Int
+    public let amountPaidCents: Int
+    public let balanceDueCents: Int
+
+    // MARK: - Footer — terms + signature line
+
+    public let paymentTerms: String?        // e.g. "Net 30"
+    public let termsAndConditions: String?  // block text for footer
+    public let requiresSignature: Bool
+    public let signatureLabel: String       // e.g. "Customer Signature"
+    public let preparedBy: String?
+
+    // MARK: - Init
+
+    public init(
+        logoData: Data? = nil,
+        tenantName: String,
+        tenantAddress: String,
+        tenantPhone: String,
+        tenantEmail: String = "",
+        tenantWebsite: String = "",
+        invoiceNumber: String,
+        invoiceDate: Date,
+        dueDate: Date? = nil,
+        status: InvoiceStatus = .sent,
+        publicTrackingURL: String? = nil,
+        customerName: String,
+        customerAddress: String? = nil,
+        customerEmail: String? = nil,
+        lineItems: [LineItem],
+        subtotalCents: Int,
+        discountCents: Int = 0,
+        taxCents: Int,
+        totalCents: Int,
+        amountPaidCents: Int = 0,
+        balanceDueCents: Int,
+        paymentTerms: String? = nil,
+        termsAndConditions: String? = nil,
+        requiresSignature: Bool = false,
+        signatureLabel: String = "Customer Signature",
+        preparedBy: String? = nil
+    ) {
+        self.logoData = logoData
+        self.tenantName = tenantName
+        self.tenantAddress = tenantAddress
+        self.tenantPhone = tenantPhone
+        self.tenantEmail = tenantEmail
+        self.tenantWebsite = tenantWebsite
+        self.invoiceNumber = invoiceNumber
+        self.invoiceDate = invoiceDate
+        self.dueDate = dueDate
+        self.status = status
+        self.publicTrackingURL = publicTrackingURL
+        self.customerName = customerName
+        self.customerAddress = customerAddress
+        self.customerEmail = customerEmail
+        self.lineItems = lineItems
+        self.subtotalCents = subtotalCents
+        self.discountCents = discountCents
+        self.taxCents = taxCents
+        self.totalCents = totalCents
+        self.amountPaidCents = amountPaidCents
+        self.balanceDueCents = balanceDueCents
+        self.paymentTerms = paymentTerms
+        self.termsAndConditions = termsAndConditions
+        self.requiresSignature = requiresSignature
+        self.signatureLabel = signatureLabel
+        self.preparedBy = preparedBy
+    }
+}
+
+// MARK: - InvoiceDocumentView
+
+/// Printable invoice / quote document.
+///
+/// §17.4 structure:
+///   Header — tenant logo + name + address + contact
+///   Bill-to block — customer name / address / email
+///   Meta row — invoice #, date, due date, status badge
+///   Body — line-item table (description / qty / unit price / total)
+///   Subtotals block — subtotal / discount / tax / TOTAL / paid / balance due
+///   Footer — payment terms + T&C block + optional signature line + QR
+///
+/// Same view backs print + PDF + in-app preview.
+/// Liquid Glass: NOT applied — invoice is data content, not chrome.
+public struct InvoiceDocumentView: View {
+
+    public let model: InvoiceDocumentPayload
+    @Environment(\.printMedium) private var medium
+
+    public init(model: InvoiceDocumentPayload) {
+        self.model = model
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            headerSection
+            divider
+            billToAndMetaSection
+            divider
+            lineItemsSection
+            divider
+            subtotalsSection
+            if model.termsAndConditions != nil || model.requiresSignature || model.publicTrackingURL != nil {
+                divider
+                footerSection
+            }
+        }
+        .frame(width: medium.contentWidth)
+        .background(Color.white)
+        .foregroundStyle(Color.black)
+    }
+
+    // MARK: - Header (tenant branding)
+
+    private var headerSection: some View {
+        HStack(alignment: .top) {
+            // Tenant logo (left)
+            VStack(alignment: .leading, spacing: 2) {
+                if let bytes = model.logoData, let uiImage = UIImage(data: bytes) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: min(80, medium.contentWidth * 0.35))
+                        .accessibilityLabel("Business logo")
+                }
+                Text(model.tenantName)
+                    .font(medium.headerFont)
+                    .accessibilityAddTraits(.isHeader)
+            }
+            Spacer(minLength: 4)
+            // Contact info (right)
+            VStack(alignment: .trailing, spacing: 1) {
+                if !model.tenantAddress.isEmpty {
+                    Text(model.tenantAddress).font(medium.captionFont).multilineTextAlignment(.trailing)
+                }
+                if !model.tenantPhone.isEmpty {
+                    Text(model.tenantPhone).font(medium.captionFont)
+                }
+                if !model.tenantEmail.isEmpty {
+                    Text(model.tenantEmail).font(medium.captionFont)
+                }
+                if !model.tenantWebsite.isEmpty {
+                    Text(model.tenantWebsite).font(medium.captionFont)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Bill-to + Invoice meta
+
+    private var billToAndMetaSection: some View {
+        HStack(alignment: .top) {
+            // Bill-to block
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Bill To:")
+                    .font(medium.bodyFont.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Text(model.customerName).font(medium.bodyFont)
+                if let addr = model.customerAddress { Text(addr).font(medium.captionFont) }
+                if let email = model.customerEmail   { Text(email).font(medium.captionFont) }
+            }
+            Spacer(minLength: 4)
+            // Invoice meta
+            VStack(alignment: .trailing, spacing: 1) {
+                labelValueRight("Invoice:", model.invoiceNumber)
+                labelValueRight("Date:",
+                                model.invoiceDate.formatted(.dateTime.month(.abbreviated).day().year()))
+                if let due = model.dueDate {
+                    labelValueRight("Due:", due.formatted(.dateTime.month(.abbreviated).day().year()))
+                }
+                statusBadge
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var statusBadge: some View {
+        Text(model.status.rawValue)
+            .font(medium.captionFont.bold())
+            .padding(.horizontal, 4)
+            .padding(.vertical, 1)
+            .overlay(RoundedRectangle(cornerRadius: 2).stroke(Color.black, lineWidth: 0.5))
+            .accessibilityLabel("Invoice status: \(model.status.rawValue)")
+    }
+
+    // MARK: - Line items table
+
+    private var lineItemsSection: some View {
+        VStack(spacing: 0) {
+            // Column headers
+            HStack {
+                Text("Description").font(medium.bodyFont.bold()).frame(maxWidth: .infinity, alignment: .leading)
+                Text("Qty").font(medium.bodyFont.bold()).frame(width: 36, alignment: .trailing)
+                Text("Unit Price").font(medium.bodyFont.bold()).frame(width: 64, alignment: .trailing)
+                Text("Total").font(medium.bodyFont.bold()).frame(width: 64, alignment: .trailing)
+            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 3)
+            .background(Color.black.opacity(0.06))
+
+            ForEach(Array(model.lineItems.enumerated()), id: \.offset) { _, item in
+                HStack {
+                    Text(item.description)
+                        .font(medium.bodyFont)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(item.quantity)
+                        .font(medium.bodyFont)
+                        .frame(width: 36, alignment: .trailing)
+                    Text(item.unitPrice)
+                        .font(medium.bodyFont)
+                        .frame(width: 64, alignment: .trailing)
+                    Text(item.lineTotal)
+                        .font(medium.bodyFont)
+                        .frame(width: 64, alignment: .trailing)
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("\(item.description), qty \(item.quantity), \(item.unitPrice) each, \(item.lineTotal)")
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Subtotals
+
+    private var subtotalsSection: some View {
+        VStack(spacing: 1) {
+            subtotalRow("Subtotal", formatCents(model.subtotalCents))
+            if model.discountCents > 0 {
+                subtotalRow("Discount", "-\(formatCents(model.discountCents))")
+            }
+            subtotalRow("Tax", formatCents(model.taxCents))
+            thinDivider
+            // TOTAL — bold, larger
+            HStack {
+                Spacer()
+                Text("TOTAL").font(medium.bodyFont.bold())
+                Text(formatCents(model.totalCents))
+                    .font(medium.bodyFont.bold())
+                    .frame(width: 80, alignment: .trailing)
+            }
+            .padding(.vertical, 1)
+            .padding(.horizontal, 4)
+            .accessibilityLabel("Total: \(formatCents(model.totalCents))")
+
+            if model.amountPaidCents > 0 {
+                subtotalRow("Amount Paid", formatCents(model.amountPaidCents))
+                HStack {
+                    Spacer()
+                    Text("Balance Due").font(medium.bodyFont.bold())
+                    Text(formatCents(model.balanceDueCents))
+                        .font(medium.bodyFont.bold())
+                        .frame(width: 80, alignment: .trailing)
+                }
+                .padding(.vertical, 1)
+                .padding(.horizontal, 4)
+                .accessibilityLabel("Balance due: \(formatCents(model.balanceDueCents))")
+            }
+        }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Footer (terms + signature line + QR)
+
+    private var footerSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let terms = model.paymentTerms {
+                subtotalRow("Payment Terms:", terms)
+            }
+            if let tc = model.termsAndConditions, !tc.isEmpty {
+                Text("Terms & Conditions")
+                    .font(medium.captionFont.bold())
+                    .padding(.top, 4)
+                Text(tc)
+                    .font(medium.captionFont)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Terms and conditions: \(tc)")
+            }
+            if let preparedBy = model.preparedBy {
+                Text("Prepared by: \(preparedBy)")
+                    .font(medium.captionFont)
+                    .padding(.top, 2)
+            }
+            if model.requiresSignature {
+                signatureLine
+            }
+            if let url = model.publicTrackingURL, !url.isEmpty {
+                qrBlock(url)
+            }
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+    }
+
+    private var signatureLine: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Rectangle()
+                .stroke(Color.black, lineWidth: 0.5)
+                .frame(maxWidth: .infinity)
+                .frame(height: 24)
+                .padding(.top, 6)
+            Text(model.signatureLabel)
+                .font(medium.captionFont)
+                .foregroundStyle(Color.gray)
+        }
+        .accessibilityLabel("Signature field: \(model.signatureLabel)")
+    }
+
+    private func qrBlock(_ content: String) -> some View {
+        VStack(alignment: .center, spacing: 4) {
+            if let image = generateQRImage(content) {
+                Image(uiImage: image)
+                    .interpolation(.none)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: min(72, medium.contentWidth - 16),
+                           height: min(72, medium.contentWidth - 16))
+                    .accessibilityLabel("QR code: scan to pay or view invoice online")
+            }
+            Text("Pay / view online")
+                .font(medium.captionFont)
+                .foregroundStyle(Color.gray)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Dividers / helpers
+
+    private var divider: some View {
+        Rectangle()
+            .fill(Color.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 0.5)
+            .padding(.horizontal, 4)
+    }
+
+    private var thinDivider: some View {
+        Rectangle()
+            .fill(Color.black.opacity(0.3))
+            .frame(maxWidth: .infinity)
+            .frame(height: 0.5)
+            .padding(.horizontal, 4)
+    }
+
+    private func subtotalRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Spacer()
+            Text(label).font(medium.bodyFont)
+            Text(value).font(medium.bodyFont)
+                .frame(width: 80, alignment: .trailing)
+        }
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
+    }
+
+    private func labelValueRight(_ label: String, _ value: String) -> some View {
+        HStack(spacing: 4) {
+            Text(label).font(medium.captionFont)
+            Text(value).font(medium.captionFont.bold())
+        }
+    }
+
+    private func formatCents(_ cents: Int) -> String {
+        let dollars = abs(cents) / 100
+        let pennies = abs(cents) % 100
+        let sign = cents < 0 ? "-" : ""
+        return "\(sign)$\(dollars).\(String(format: "%02d", pennies))"
+    }
+
+    private func generateQRImage(_ content: String) -> UIImage? {
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        let data = content.data(using: .utf8) ?? Data()
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let output = filter.outputImage else { return nil }
+        let scale: CGFloat = 4
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+        let ctx = CIContext()
+        guard let cg = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
+// MARK: - InvoiceDocumentPayload preview helper
+
+private extension InvoiceDocumentPayload {
+    static let preview = InvoiceDocumentPayload(
+        logoData: nil,
+        tenantName: "Bizarre Fix Co.",
+        tenantAddress: "456 Elm Street\nSpringfield, IL 62701",
+        tenantPhone: "(555) 123-4567",
+        tenantEmail: "billing@bizarrefix.com",
+        tenantWebsite: "bizarrefix.com",
+        invoiceNumber: "INV-2026-00099",
+        invoiceDate: Date(timeIntervalSince1970: 1_750_000_000),
+        dueDate: Date(timeIntervalSince1970: 1_752_600_000),
+        status: .sent,
+        publicTrackingURL: "https://app.bizarrecrm.com/pay/INV-2026-00099",
+        customerName: "Jane Smith",
+        customerAddress: "789 Oak Ave, Springfield, IL 62702",
+        customerEmail: "jane@example.com",
+        lineItems: [
+            .init(description: "iPhone 13 Pro Screen Repair", quantity: "1", unitPrice: "$199.00", lineTotal: "$199.00"),
+            .init(description: "OEM Glass Panel",             quantity: "1", unitPrice: "$79.00",  lineTotal: "$79.00"),
+            .init(description: "Diagnostic Fee",              quantity: "1", unitPrice: "$25.00",  lineTotal: "$25.00")
+        ],
+        subtotalCents: 30300,
+        discountCents: 1000,
+        taxCents: 2344,
+        totalCents: 31644,
+        amountPaidCents: 0,
+        balanceDueCents: 31644,
+        paymentTerms: "Net 30",
+        termsAndConditions: "Payment due within 30 days. Late fee of 1.5%/month applies after due date.",
+        requiresSignature: true,
+        signatureLabel: "Authorized Signature",
+        preparedBy: "Alice (Technician)"
+    )
+}
+
+#Preview("Invoice Document (Letter)") {
+    ScrollView {
+        InvoiceDocumentView(model: .preview)
+            .environment(\.printMedium, .letter)
+            .padding()
+    }
+}
 #endif
 
 #endif
