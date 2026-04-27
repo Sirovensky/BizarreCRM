@@ -91,7 +91,6 @@ public extension APIClient {
 public struct NotifDismissResponse: Decodable, Sendable {
     public let success: Bool
     public init(success: Bool) { self.success = success }
-}
 
 // ---------------------------------------------------------------------------
 // Notification Preferences — /api/v1/notification-preferences
