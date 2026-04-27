@@ -238,7 +238,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
               <button class="btn-primary w-full mt-2">Create my shop</button>
             </div></div>
           </div>
-          <div class="annot"><h4>Annotations</h4><ul><li>Provisions tenant DB at <span class="kbd">data/tenants/&lt;slug&gt;.db</span></li><li>14-day Pro trial auto-issued</li><li>Email verification required</li><li>Password rule: min 10</li></ul></div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Provisions tenant DB at <span class="kbd">data/tenants/&lt;slug&gt;.db</span></li><li>14-day Pro trial auto-issued</li><li>Email verification required</li><li>Password rule: min 10</li><li><strong>Email captured ONCE here</strong> (account email). Verify screen echoes it back, doesn't re-ask.</li><li><strong>Store-info Step 6 SHOP email is pre-filled from this</strong> — owner can change if shop uses a separate contact address. No duplicate manual entry.</li><li><strong>Landing CTA deprecation:</strong> any old modal/quick-menu signup form on landing page should redirect to <span class="kbd">/signup</span> (this canonical page). Single source of truth — kill the modal duplication.</li></ul></div>
         </div>
       </section>
 
@@ -383,7 +383,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
               <div class="grid grid-cols-2 gap-4">
                 <div class="field col-span-2"><label class="field-label required">Street address</label><input class="field-input" value="123 Main St, Suite 4B" /></div>
                 <div class="field"><label class="field-label required">Phone</label><input class="field-input field-error" value="555-1090" /><p class="field-err-text" role="alert">Phone must be 10-15 digits</p></div>
-                <div class="field"><label class="field-label required">Email</label><input class="field-input" value="contact@joesphonerepair.com" /></div>
+                <div class="field"><label class="field-label required">Shop contact email</label><input class="field-input" value="contact@joesphonerepair.com" /><p class="text-xs text-surface-500 mt-1 saas-only">💡 Pre-filled from your signup email. Change if your shop uses a different contact address (printed on receipts + invoices).</p><p class="text-xs text-surface-500 mt-1 self-only">Used on receipts + invoices. Different from admin login.</p></div>
                 <div class="field"><label class="field-label required">Timezone</label><select class="field-input"><option>America/Los_Angeles</option><option>America/Denver</option></select></div>
                 <div class="field"><label class="field-label required">Currency</label><select class="field-input"><option>USD — US Dollar</option></select></div>
               </div>

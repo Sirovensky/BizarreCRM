@@ -7,6 +7,207 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Signup flow consolidation (SSW-CANON-SIGNUP)
+
+- [ ] SSW-SIGNUP-1. **Deprecate landing-page signup modal/quick-menu — canonical entry is `/signup` route.** Today the marketing landing page may have a "Sign up" button that pops a modal duplicating the fields collected on `/signup` (name/email/password/slug). Two paths to the same outcome doubles maintenance + risks drift (modal validates differently than page). After SSW1-5 ships the wizard, the canonical entry should be the page-based form at `/signup` (existing `SignupPage.tsx`).
+  - **Files to audit:**
+    - `packages/web/src/pages/landing/LandingPage.tsx` — find any `<button onClick={openSignupModal}>` / `<SignupModal>` usage. Replace with `<Link to="/signup">`.
+    - `packages/web/src/components/SignupModal.tsx` (if exists) — delete after callsites migrated.
+    - `packages/web/src/pages/signup/SignupPage.tsx` — verify form covers everything the old modal did.
+  - **Outcome:** single signup form, single validation surface, single test target. Owner clicks landing CTA → routed to `/signup` page → wizard.
+
+- [ ] SSW-SIGNUP-2. **Pre-fill Store info contact email from signup email (don't ask twice).** Wizard Step 6 (Store info) asks for the SHOP's contact email (used on receipts + invoices). Today wizard treats this as fresh input. SaaS owners just typed their account email at signup 30 seconds earlier — the same address is almost always the right shop email too.
+  - On wizard mount: read account email from auth context → pre-fill `pending.store_email` (only if currently empty).
+  - Add helper text under the field: "Pre-filled from your signup email. Change if your shop uses a different address."
+  - Self-host: pre-fill from admin's user record email if available; helper text omits the "signup" framing.
+  - File: `packages/web/src/pages/setup/steps/StepStoreInfo.tsx` — add prefill effect on mount.
+
+- [ ] SSW-SIGNUP-3. **Verify-email screen does NOT re-ask email — confirms it.** Audit `packages/web/src/pages/auth/VerifyEmailPage.tsx` (or similar) to ensure it's read-only display ("we sent to <email>") not an input. If currently has an input field for email, change to read-only paragraph + "Resend" button + "Wrong address? Cancel signup" link that re-opens `/signup` with prefill.
+
+## Dynamic repair-pricing index (DPI-PRICE-INDEX) — major feature
+
+- [ ] DPI-1. **Tiered pricing by device-model age — wire wizard + Settings UI to per-device-model price matrix.** Real shops price by model generation: latest flagships (iPhone 15/16, Galaxy S24/S25, Pixel 9) command $249 labor on a screen replacement (≈$200 profit) while older devices (iPhone X/XR/8, S9/S10) sit at $79 labor (≈$40 profit, get-in-door). Schema `repair_prices(device_model_id, repair_service_id, labor_price)` exists since migration 010 — already per-device — but wizard + Settings only expose flat-per-service pricing today. Need to surface 3-tier defaults + per-device drill-down + auto-recalc loop.
+  - **Tier classification (server-side):**
+    - Tier A "Flagship": `device_models.released_year >= year(now) - 2`
+    - Tier B "Mainstream": `released_year >= year(now) - 5 AND released_year < year(now) - 2`
+    - Tier C "Legacy": `released_year < year(now) - 5`
+    - Tier thresholds stored in `store_config` so owner can override (e.g. shops in markets with longer device lifecycles like LATAM may want B = 3-7yr).
+    - Re-evaluated nightly (3 AM cron, after catalog price refresh) — when a model crosses a tier boundary the next year, its `repair_prices.labor_price` rebases to the new tier's value UNLESS the row has `is_custom=1` flag (operator-overridden).
+  - **Wizard input surface:**
+    - Default mode: "Tier by model age" — owner sets 3 labor inputs per service. Server fans out to all device models. 12 services × 3 tiers = 36 rows owner sees → 12 × 203 = 2,436 rows on disk.
+    - Advanced: "Per-device matrix" — full 203×12 grid editable. Sets `repair_prices.is_custom=1` for any cell touched.
+    - Flat mode (existing): one labor per service, applied to all devices regardless of age.
+  - **Schema additions needed:**
+    - Add `is_custom INTEGER DEFAULT 0` column to `repair_prices` (migration 154+) so tier rebase doesn't clobber owner overrides.
+    - Add `tier_label TEXT NULL` (computed at write time from device_models.released_year via wizard logic — informational, not authoritative).
+    - Add `last_tier_rebase_at` timestamp for audit.
+  - **Files:**
+    - `packages/server/src/db/migrations/154_repair_prices_is_custom.sql` (NEW)
+    - `packages/server/src/services/repairPricing/tierResolver.ts` (NEW) — exports `tierForDeviceModel(deviceModelId)`, `computeTierThresholds()`, `bulkApplyTier(serviceId, tier, labor)` for wizard fan-out.
+    - `packages/server/src/services/repairPricing/nightlyRebase.ts` (NEW) — cron job; reads each device, computes current tier, updates labor for non-custom rows.
+    - `packages/web/src/pages/setup/steps/StepRepairPricing.tsx` (NEW) — wizard step matching preview HTML screen 8.
+    - `packages/web/src/pages/settings/RepairPricingTab.tsx` (EDIT) — add tier-mode + per-device-matrix tabs.
+
+- [ ] DPI-2. **Daily catalog price scrape feeds dynamic profit estimator — Mobilesentrix + PhoneLcdParts via cheerio.** CLAUDE.md notes scraper exists for these two suppliers. Currently scraped values land in `supplier_catalog` table but aren't joined to `repair_prices` for profit-margin calculation. Need a cron job that:
+  - Runs once daily at 3 AM local (parameterized via `store_config.catalog_refresh_hour`, default 3)
+  - For each `(device_model_id, repair_service_id)` pair in `repair_prices`:
+    - Look up matching part in `supplier_catalog` (FK on `device_model_id` + service category)
+    - Compute `profit_estimate = labor_price - latest_supplier_cost - tax_estimate`
+    - Write to new column `repair_prices.profit_estimate REAL` (migration 155)
+    - Stale-flag if no supplier match found in 7 days (`profit_stale_at` timestamp)
+  - **Why daily, not real-time:** suppliers update catalog overnight. Scraping per-page-load explodes request count + breaks if supplier rate-limits. Daily batch is industry-standard.
+  - **Auto-margin loop (opt-in):** when `auto_margin_enabled=1` flag is on, the cron also adjusts `labor_price` to preserve a target margin: `labor_price = max(min_labor, supplier_cost + target_profit)`. Owner sets `target_profit_amber` (warning floor) + `target_profit_green` (healthy floor) per tier in Settings (these keys already exist in ALLOWED_CONFIG_KEYS audit-gap from SSW1).
+  - **Edge cases:**
+    - Supplier 404s on a model: fall back to last-known-cost, mark `profit_stale=1`, surface in Settings → Repair Pricing as a yellow chip "stale 12 days".
+    - Supplier price spike >50% overnight: don't auto-bump labor. Surface alert "Part cost jumped from $45 to $120 — review labor". Auto-margin pauses for that row pending owner ack.
+    - New device model added to catalog mid-month: auto-classified into a tier on next nightly run; labor seeded from tier defaults. Owner sees yellow "new model — review pricing" chip on dashboard.
+    - Two suppliers list same part at different prices: prefer the one with newer `last_seen_at`; tiebreak by lower price.
+  - **Files:**
+    - `packages/server/src/services/catalogScraper.ts` (EXISTS — extend to write `repair_prices.profit_estimate` after scrape)
+    - `packages/server/src/services/repairPricing/profitRecompute.ts` (NEW) — daily cron callback; iterates active `repair_prices` rows.
+    - `packages/server/src/services/repairPricing/autoMargin.ts` (NEW) — opt-in labor adjustment loop with safety rails (cap delta per night at 25% to prevent runaway).
+    - `packages/server/src/db/migrations/155_repair_prices_profit_columns.sql` (NEW) — adds `profit_estimate REAL`, `profit_stale_at TIMESTAMP NULL`, `auto_margin_enabled INTEGER DEFAULT 0`, `last_supplier_cost REAL`, `last_supplier_seen_at TIMESTAMP`.
+    - `packages/server/src/index.ts` (EDIT) — register cron `setInterval` 60min checker, fires once at `localHour === catalog_refresh_hour` with `shouldRunDaily()` idempotency.
+
+- [ ] DPI-3. **Settings UI — Repair Pricing tab full matrix view + audit log per-row.** Owner needs to (a) see at a glance which device-services have stale supplier costs, (b) drill into one device for full-service pricing, (c) override any cell and have it stick (`is_custom=1`), (d) revert overrides back to tier default, (e) see history of automatic price changes for compliance. Pages exists at `pages/settings/RepairPricingTab.tsx` but only renders a flat list today.
+  - **UI sections:**
+    - Top: tier-mode editor (3 inputs × 12 services × per service = 36 inputs total). Same layout as wizard step.
+    - Middle: per-device search with autocomplete. Pick "iPhone 15 Pro" → expands to 12-service column. All 12 inputs editable; non-custom rows show "Tier A · auto" placeholder; custom rows show value with "Revert to tier" link.
+    - Bottom: audit log table — `repair_prices_audit(id, device_model_id, repair_service_id, old_labor, new_labor, changed_by, source ('tier'|'manual'|'auto-margin'|'supplier-spike'), created_at)`.
+  - **Files:**
+    - `packages/server/src/db/migrations/156_repair_prices_audit.sql` (NEW)
+    - `packages/server/src/routes/repairPricing.routes.ts` (EDIT) — add `GET /repair-pricing/audit?device_model_id=&from=&to=` + `POST /repair-pricing/revert/:id` (sets `is_custom=0`, triggers tier-rebase recompute on this row)
+    - `packages/web/src/pages/settings/RepairPricingTab.tsx` (EDIT) — three new sections.
+
+- [ ] DPI-4. **Supplier source plugin architecture — abstract Mobilesentrix/PhoneLcdParts behind interface for adding more suppliers.** Today scraper hardcodes 2 suppliers. Real shops use 3-5 (PhoneLcdParts, Mobilesentrix, MobileDefenders, Repair Outlet, eTech Parts, Allparts). Plus dropshippers and LCD wholesalers. Needs pluggable source interface.
+  - **Interface:**
+    ```typescript
+    interface SupplierSource {
+      slug: string;
+      displayName: string;
+      authType: 'none' | 'apikey' | 'oauth';
+      fetchPart(query: PartQuery): Promise<PartListing[]>;
+      isPriceFresh(seenAt: Date): boolean;
+    }
+    ```
+  - **Per-supplier files:**
+    - `packages/server/src/services/suppliers/mobilesentrix.ts` (extract from existing scraper)
+    - `packages/server/src/services/suppliers/phonelcdparts.ts` (extract)
+    - `packages/server/src/services/suppliers/index.ts` (registry pattern)
+    - `packages/server/src/services/suppliers/types.ts` (interface)
+  - **Owner UI:** Settings → Suppliers — toggle on/off per supplier. Inactive ones don't get scraped, freeing rate-limit budget.
+
+- [ ] DPI-5. **Tier rebase visibility — dashboard chip "12 devices crossed tier boundary last night, prices auto-adjusted."** When a device flips Tier A → B (e.g. iPhone 13 ages out of flagship in 2026), labor drops automatically. Owner needs visibility or they'll be confused why margins shifted.
+  - Dashboard shows a chip with last-night's rebase count
+  - Click → modal: list of crossing devices + before/after labor for each service
+  - Acknowledge button writes `last_tier_rebase_acked_at`
+  - Future rebases without acknowledgment compound a numbered chip: "5 unread tier shifts"
+
+- [ ] DPI-6. **Per-shop tier configuration — owner can name tiers + set their own thresholds.** Phone-only shop may want 2 tiers ("New" / "Old"); console-repair shop may want 4 (release year matters less for consoles). Wizard ships 3-tier default but Settings should expose:
+  - Tier count: 2-5 selectable
+  - Per-tier: label, threshold years, color chip, default profit margin %
+  - Validation: tiers must cover all years without overlap; wizard gates "Save" until valid.
+  - Files: `packages/server/src/db/migrations/157_pricing_tier_config.sql` adds `pricing_tiers` table; `repair_prices.tier_id` FK.
+
+- [ ] DPI-7. **Margin alerts — when a service's profit drops below `target_profit_amber` for 7+ days, alert dashboard + email digest.** Without alerts owner doesn't notice that supplier-cost creep silently ate margins.
+  - Daily cron computes `profit_estimate < target_profit_amber` → write to `margin_alerts` table
+  - Auto-resolve when profit recovers
+  - Dashboard chip + weekly email digest (gated by `notification_digest_mode`)
+  - Settings → Repair Pricing → add "Set thresholds" — green/amber/red profit floors per tier.
+
+- [ ] DPI-8. **Initial seed strategy — when shop picks shop type at wizard, seed `repair_prices` with industry-median labor per (tier, service).** Owner doesn't have to think about prices day-1; defaults are reasonable and will auto-tune via supplier scrape over the first week.
+  - Static seed table `seed_repair_prices_by_shop_type(shop_type, service_slug, tier_a_labor, tier_b_labor, tier_c_labor)` baked into migration.
+  - Wizard step 8 inputs are pre-filled from this table; owner can adjust before save.
+  - Sources for industry medians: scrape RepairDesk/RepairShopr public price lists once, hand-verified, anonymized. Document source in migration comment.
+  - Update annually as part of major releases.
+
+- [ ] DPI-9. **End-to-end test — fixture device catalog + supplier scrape + tier reclassify + auto-margin recompute.** Pure-handler vitest in `packages/server/src/__tests__/repairPricing.dpi.test.ts`:
+  - Setup: in-memory DB with 3 device models (one per tier), 1 service, 1 fake supplier listing.
+  - Run wizard fan-out → assert 3 `repair_prices` rows created at correct tier values.
+  - Override one row (`is_custom=1`).
+  - Run nightly rebase → assert non-custom rows updated, custom row unchanged.
+  - Bump supplier cost → run profit recompute → assert `profit_estimate` updated, alert written.
+  - Run auto-margin cron with target_profit set → assert labor_price bumped, capped at 25% delta.
+
+- [ ] DPI-11. **Per-device pricing matrix — full 203×12 grid editor with virtualization, bulk-edit, CSV export/import, profit heatmap.** This is the power-user interface that lives behind the "Per-device matrix" tab in Settings → Repair Pricing AND in the wizard's advanced mode. Owner can override any individual cell, see profit-per-cell, sort/filter by margin, and bulk-apply changes. Performance-critical: naive React rendering of 2,436 input cells will stutter on a quad-core laptop, so virtualization is mandatory.
+  - **Grid layout:**
+    - Rows: 203 device models (`device_models` table, `is_active=1`)
+    - Columns: 12 active services (`repair_services`, `is_active=1`) + frozen left column (device name + thumb + tier chip)
+    - Rendered via `@tanstack/react-virtual` (already in tree per package.json) — only visible viewport rows render. ~30 visible rows × 12 cols = 360 inputs in DOM at once. Smooth scroll on >100k cells confirmed.
+    - Sticky top header (service names + part-cost-trend mini chart per column).
+    - Sticky left column (device row).
+    - Cell width: 96px (input + tier chip + delta arrow).
+  - **Cell anatomy:**
+    - Input value = `repair_prices.labor_price`
+    - Background tint by profit health: green (>amber), amber, red (<min). Read from `profit_estimate`.
+    - Top-right badge: `T` (tier-derived, no override) / `C` (custom override).
+    - Bottom-right delta: `↑$5` (labor went up vs last week) / `↓$3` / blank.
+    - Hover tooltip: full breakdown — labor, supplier cost, last seen, tier, profit, suggested labor.
+    - Right-click: "Revert to tier default" / "Lock cell (no auto-margin)" / "View audit history".
+  - **Bulk operations:**
+    - Multi-select rows via checkbox column → "Apply labor $X to all selected for column Y"
+    - Multi-select columns (services) → "Multiply all selected by 1.10" (10% bump)
+    - Select-all-tier (e.g. all Tier A) → bulk-edit
+    - Confirmation modal showing impact: "147 cells will be modified. Estimated profit change: +$8.2k/month"
+  - **Filtering + sorting:**
+    - Filter by tier (A/B/C/All)
+    - Filter by margin status (red/amber/green/stale)
+    - Filter by manufacturer (Apple/Samsung/Google/etc.)
+    - Filter by search box (free-text against device name)
+    - Sort by any column (labor ascending/descending) OR by row's average profit
+    - Hot-models toggle: filter to top-20 most-ticketed devices in last 30 days
+  - **CSV export/import (round-trip):**
+    - Export: streams CSV with columns `device_id, device_name, tier, service_id, service_name, labor_price, is_custom, profit_estimate, supplier_cost, last_supplier_seen_at`. Filename `repair-prices-YYYY-MM-DD.csv`.
+    - Import: upload CSV; preview diff (rows changed/added/removed) before commit; commit applies via batch UPDATE; flags `is_custom=1` on every modified row.
+    - Validation: reject CSV with missing device_id/service_id, invalid labor (negative or >$10000), or columns the importer doesn't know about.
+    - Audit: each imported row gets `repair_prices_audit` entry with `source='csv-import'`, `imported_filename`, `imported_by`.
+  - **Profit heatmap toggle:**
+    - Off (default): cells show labor value as text.
+    - On: cells colored by `(profit_estimate / labor_price) * 100`. Green = >40% margin, amber = 20-40%, red = <20%. Useful for spotting under-priced services at a glance.
+    - Color-blind mode: switches to symbol overlay (◆/●/▲) instead of pure color.
+  - **Mobile/tablet:**
+    - Below `lg` breakpoint, the 12-column matrix collapses to a 2-pane drill-in:
+      - Pane 1: device list (vertical scroll, 203 rows)
+      - Pane 2: tap a device → expand all 12 services in card form
+    - Bulk-edit disabled on mobile (too easy to misclick at scale).
+  - **Performance budgets:**
+    - Initial render <500ms with 203 devices loaded
+    - Cell-edit response <16ms (one frame)
+    - Filter change <100ms
+    - CSV export of full grid <2s
+    - CSV import + diff preview <5s for 2,436 rows
+  - **State management:**
+    - Use `react-hook-form` with `useFieldArray` for input state
+    - Optimistic update on save (roll back on server error with toast + audit row marked `failed`)
+    - Debounce save 800ms after last keystroke per cell
+    - `BeforeUnload` warning when dirty
+  - **Server endpoints:**
+    - `GET /repair-pricing/matrix?tier=&manufacturer=&q=` — paginated per-device-service rows with tier metadata + profit estimate
+    - `PATCH /repair-pricing/matrix` — batch update (max 500 rows per call), returns audit log entries
+    - `POST /repair-pricing/matrix/import` — CSV upload, returns dry-run diff
+    - `POST /repair-pricing/matrix/import/commit` — applies the diff
+    - `GET /repair-pricing/matrix/export.csv` — streaming CSV (uses Node Readable, mirrors WEB-W3-013 inventory export pattern)
+  - **Edge cases:**
+    - **Device added to catalog mid-edit:** server returns 409 on save with stale-tier-id; client refetches + merges, preserves user's pending edits.
+    - **Service archived during edit:** column greys out; existing rows for that service marked `archived_at`; values preserved for historical invoice reconstruction.
+    - **Supplier price spike between page-load and save:** server includes `supplier_cost` snapshot in PATCH payload; if current cost differs by >25%, server rejects with `409 supplier_drift` + new value; client shows banner.
+    - **Concurrent edits:** optimistic-locking via `repair_prices.updated_at` etag in PATCH header. Conflict → "Another admin edited row X seconds ago. Reload?"
+    - **Partial save failure:** transactional batch — all-or-nothing per PATCH call. Failed batches return per-row error array; UI highlights the offending cells.
+  - **Files:**
+    - NEW: `packages/web/src/pages/settings/RepairPricingMatrix.tsx` (mounted as a sub-tab of `RepairPricingTab`)
+    - NEW: `packages/web/src/pages/settings/components/PriceCell.tsx` — single cell with badge + delta + tooltip
+    - NEW: `packages/web/src/pages/settings/components/MatrixToolbar.tsx` — filter bar, bulk-edit modal, heatmap toggle, export/import buttons
+    - NEW: `packages/web/src/api/repairPricingMatrix.ts` — client wrapper for matrix endpoints
+    - EDIT: `packages/server/src/routes/repairPricing.routes.ts` — add 4 matrix endpoints
+    - NEW: `packages/server/src/services/repairPricing/csvImport.ts` — diff-based import
+    - NEW: `packages/server/src/services/repairPricing/matrixQuery.ts` — efficient JOIN with `device_models` + `repair_prices` + `supplier_catalog`
+    - DEPENDS: DPI-1 (tier classification), DPI-2 (profit_estimate column), DPI-3 (audit log table)
+  - **Out of scope (future):** AI-suggested labor based on neighbor-shop pricing (would need shared pricing-bench feed); seasonal auto-adjustments (holiday pricing).
+
+- [ ] DPI-10. **Admin override audit + 4-eyes for tier threshold changes.** Changing tier thresholds (e.g. moving "Tier A" cutoff from 2 to 3 years) re-prices thousands of rows. Should require admin role + a confirmation modal listing impact: "This will reprice 47 device models. Estimated revenue change: -$14k/yr. Type 'CONFIRM' to proceed."
+  - Audit log entry with before/after thresholds + projected revenue delta.
+  - Email all admin users on change.
+
 ## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
 
 ### P2 (cosmetic / missing UI)
