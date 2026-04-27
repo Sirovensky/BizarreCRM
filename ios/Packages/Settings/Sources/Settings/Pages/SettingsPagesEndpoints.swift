@@ -258,6 +258,16 @@ public extension APIClient {
         _ = try await put("/auth/change-password", body: body, as: EmptyResponse.self)
     }
 
+    // MARK: Server health
+
+    /// `GET /health` — ping the server; returns latency in milliseconds.
+    func pingHealth() async throws -> Int {
+        let start = Date()
+        struct HealthResponse: Decodable, Sendable { let status: String? }
+        _ = try await get("/health", as: HealthResponse.self)
+        return Int(Date().timeIntervalSince(start) * 1000)
+    }
+
     // MARK: Tax Rates
 
     /// `GET /tax-rates` — list all tax rates.

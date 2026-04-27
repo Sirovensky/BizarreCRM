@@ -108,25 +108,32 @@ private struct LoadedBody: View {
 
     // Hero = the one primary focus. On a repair-shop dashboard that's
     // "open tickets right now". Larger, more visual weight than the rest.
+    // §3.1: tap → Tickets filtered to open status.
     private var heroCard: some View {
         let s = snapshot.summary
         return HeroMetricCard(
             value: "\(s.openTickets)",
             label: "Open tickets",
-            supporting: "\(s.ticketsCreatedToday) new today"
+            supporting: "\(s.ticketsCreatedToday) new today",
+            deepLink: "bizarrecrm://tickets?status_group=open"
         )
     }
 
     // Compact stat tiles — muted hierarchy.
     // iPhone: 2-column grid (adaptive minimum 140 pt).
     // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §3.1: each tile deep-links to the filtered list via bizarrecrm:// scheme.
     private var secondaryGrid: some View {
         let s = snapshot.summary
         let tiles: [StatTile] = [
-            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
+            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle",
+                  deepLink: "bizarrecrm://reports/revenue"),
+            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal",
+                  deepLink: "bizarrecrm://tickets?status_group=closed"),
+            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar",
+                  deepLink: "bizarrecrm://appointments?date=today"),
+            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox",
+                  deepLink: "bizarrecrm://inventory"),
         ]
 
         let columns: [GridItem] = Platform.isCompact
@@ -175,35 +182,50 @@ private struct HeroMetricCard: View {
     let value: String
     let label: String
     let supporting: String
+    var deepLink: String? = nil
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Text(label.uppercased())
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .tracking(0.8)
-            Text(value)
-                .font(.brandDisplayMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .monospacedDigit()
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-            Text(supporting)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .monospacedDigit()
+        Button {
+            if let link = deepLink, let url = URL(string: link) {
+                BrandHaptics.selection()
+                openURL(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text(label.uppercased())
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .tracking(0.8)
+                Text(value)
+                    .font(.brandDisplayMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(supporting)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .monospacedDigit()
+            }
+            .padding(BrandSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
         }
-        .padding(BrandSpacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
+        #if canImport(UIKit)
+        .hoverEffect(.highlight)
+        #endif
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue("\(value). \(supporting).")
-        .accessibilityAddTraits(.isHeader)
+        .accessibilityAddTraits(deepLink != nil ? [.isHeader, .isButton] : .isHeader)
+        .accessibilityHint(deepLink != nil ? "Double tap to view open tickets" : "")
     }
 }
 
@@ -214,37 +236,61 @@ private struct StatTile: Identifiable {
     let label: String
     let value: String
     let icon: String
+    /// Custom scheme deep-link URL (bizarrecrm://…) — nil = no deep link.
+    let deepLinkURL: URL?
+
+    init(label: String, value: String, icon: String, deepLink: String? = nil) {
+        self.label = label
+        self.value = value
+        self.icon = icon
+        self.deepLinkURL = deepLink.flatMap { URL(string: $0) }
+    }
 }
 
 private struct StatTileCard: View {
     let tile: StatTile
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Image(systemName: tile.icon)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .accessibilityHidden(true)
-            Text(tile.value)
-                .font(.brandTitleLarge())
-                .foregroundStyle(.bizarreOnSurface)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text(tile.label)
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+        Button {
+            if let url = tile.deepLinkURL {
+                BrandHaptics.selection()
+                openURL(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Image(systemName: tile.icon)
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text(tile.value)
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(tile.label)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .padding(BrandSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+            )
         }
-        .padding(BrandSpacing.md)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
+        #if canImport(UIKit)
+        .hoverEffect(.highlight)
+        #endif
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tile.label)
         .accessibilityValue(tile.value)
+        .accessibilityHint(tile.deepLinkURL != nil ? "Double tap to open" : "")
+        .accessibilityAddTraits(tile.deepLinkURL != nil ? .isButton : [])
     }
 }
 

@@ -72,29 +72,43 @@ public final class GlobalSearchViewModel {
 
     private func fetchLocal() async {
         guard let store = ftsStore else { return }
-        let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
-        async let hitsResult = store.search(query: query, entity: filter, limit: 50)
-        async let countsResult = store.scopeCounts(query: query)
-        let (hits, counts) = (try? await (hitsResult, countsResult)) ?? ([], .zero)
-        localHits = hits
-        scopeCounts = counts
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
+            async let hitsResult = store.search(query: trimmed, entity: filter, limit: 50)
+            async let countsResult = store.scopeCounts(query: trimmed)
+            let (hits, counts) = try await (hitsResult, countsResult)
+            localHits = hits
+            scopeCounts = counts
+        } catch {
+            // FTS5 schema not yet migrated (first run) or store error — degrade gracefully.
+            AppLog.ui.error("FTS local search error: \(error.localizedDescription, privacy: .public)")
+            localHits = []
+        }
         updateMergedRows()
     }
 
     private func fetchRemote() async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            isLoading = false
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
         do {
-            let remote = try await api.globalSearch(query)
+            let remote = try await api.globalSearch(trimmed)
             results = remote
             // Merge scope counts with remote results.
             scopeCounts = scopeCounts.merged(with: remote)
             updateMergedRows()
         } catch {
-            AppLog.ui.error("Search failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
-            results = nil
+            AppLog.ui.error("Search remote failed: \(error.localizedDescription, privacy: .public)")
+            if results == nil {
+                errorMessage = error.localizedDescription
+            }
             updateMergedRows()
         }
     }
