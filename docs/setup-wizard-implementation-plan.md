@@ -1,14 +1,81 @@
 # Setup Wizard Implementation Plan
 
-**Branch:** `todofixes426` (DO NOT branch off; all agents commit here)
+**Branch:** `todofixes426` — agents check out a worktree at this branch's HEAD. They never `git pull` on the canonical repo (see Safety Protocol below).
 **Visual source of truth:** `docs/setup-wizard-preview.html` — every requirement below maps to a `<section id="screen-N">` in that file. When in doubt, open that file and read the corresponding section's annotations panel.
 **Tenancy modes:** Self-host (single-tenant LAN) and SaaS (multi-tenant). Wizard reads `isMultiTenant` from `GET /api/v1/auth/setup-status` and renders mode-specific entry screens.
 
 ---
 
+## Safety protocol — preventing data loss (READ FIRST)
+
+The canonical repo currently has 297 dirty Android files from a parallel `androidfixes426` loop, plus this plan was just committed at `858cfe4a` on `todofixes426`. A naive `git pull` on the canonical repo will either fail with "uncommitted changes" or, worse, lose work via stash drops. **Every agent MUST follow this:**
+
+### Required protocol per agent
+
+1. **Use an isolated worktree.** Each agent runs in its own git worktree off `todofixes426`. Never `cd` into the canonical repo. Spawn the worktree explicitly:
+   ```bash
+   git fetch origin todofixes426
+   git worktree add ../wizard-agent-N origin/todofixes426 -b wizard-agent-N-work
+   cd ../wizard-agent-N
+   ```
+   This way the agent's pull/commit/push cycle is independent of whatever is dirty on the canonical tree.
+
+2. **Never run on canonical repo:** `git pull`, `git reset --hard`, `git stash drop`, `git clean -fdx`, `git checkout .`. These are the moves that destroy uncommitted work. If you find yourself wanting to run any of them, stop and report back.
+
+3. **Commit-then-push, do not amend.** Make a single commit per file (or per file group). Push the agent branch to origin. Do not amend, rebase, or force-push.
+   ```bash
+   git add <your-file>
+   git commit -m "feat(wizard): <step name> — Agent N"
+   git push origin wizard-agent-N-work
+   ```
+
+4. **Pull only your own branch, only with `--ff-only`.** If you need the latest plan/contract changes, do:
+   ```bash
+   git fetch origin
+   git rebase origin/todofixes426    # safe — rebases YOUR commits onto latest plan
+   ```
+   Never `git pull` without `--ff-only` or rebase. A merge commit on a feature branch from a sub-agent is a smell.
+
+5. **Open a PR (or hand the branch to the human) — do not merge yourself.** The human merges agent branches into `todofixes426` sequentially. This is the choke point that prevents two agents from clobbering each other.
+
+6. **If you discover uncommitted work that isn't yours, STOP.** Don't stash it, don't commit it, don't reset. Report back with `git status --short` output. The human investigates.
+
+### Human pre-flight (run BEFORE spawning any agent)
+
+```bash
+# 1. On the canonical repo: confirm the plan commit is on remote.
+cd "C:/Users/Owner/Downloads/MY OWN CRM/bizarre-crm"
+git log --oneline -3 todofixes426
+# expect 858cfe4a docs(wizard): implementation plan + bc inside browser ...
+
+# 2. Confirm plan is on origin too.
+git fetch origin
+git log --oneline origin/todofixes426 -3
+# expect same SHA on origin
+
+# 3. Land the human-only contract edits (H1, H2, H3, validateShopSlug,
+#    AppLayout TrialBanner mount) on the canonical repo, commit, push.
+#    Agents must rebase onto this commit before they start.
+
+# 4. Note the agent-baseline SHA. Every agent rebases onto this.
+git rev-parse todofixes426
+```
+
+### Recovery if work is lost
+
+`git reflog` keeps every HEAD movement for 90 days. If an agent reports lost work:
+```bash
+git reflog                       # find the lost commit
+git checkout <sha>              # peek at it
+git cherry-pick <sha>           # recover into a fresh branch
+```
+Stashes also persist as unreachable refs — recover via `git fsck --unreachable | grep stash`.
+
+---
+
 ## Workflow rules (binding for every agent)
 
-1. **Branch:** Stay on `todofixes426`. No new branches. Pull before commit.
+1. **Worktree, not canonical.** See Safety Protocol above. No exceptions.
 2. **Scope:** One agent = one file (or one tightly-coupled file group). No cross-file edits outside your scope. If your task requires editing a file owned by another agent, **stop and report back** so the human merges.
 3. **Shared contracts (frozen — humans only edit these):**
    - `packages/web/src/pages/setup/wizardTypes.ts` — `WizardPhase`, `PendingWrites`, `StepProps`, `SubStepProps`
