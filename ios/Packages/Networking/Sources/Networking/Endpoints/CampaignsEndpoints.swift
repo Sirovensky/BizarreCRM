@@ -83,10 +83,29 @@ public struct CampaignStatCounts: Decodable, Sendable {
     public let failed: Int
     public let replied: Int
     public let converted: Int
+    /// Contacts that unsubscribed / opted out after this campaign. Nil when server not yet reporting.
+    public let optedOut: Int?
+    /// Revenue attributed to conversions from this campaign, in cents.
+    public let convertedRevenueCents: Int?
 
-    public init(sent: Int, failed: Int, replied: Int, converted: Int) {
+    public init(sent: Int, failed: Int, replied: Int, converted: Int,
+                optedOut: Int? = nil, convertedRevenueCents: Int? = nil) {
         self.sent = sent; self.failed = failed
         self.replied = replied; self.converted = converted
+        self.optedOut = optedOut
+        self.convertedRevenueCents = convertedRevenueCents
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case sent, failed, replied, converted
+        case optedOut              = "opted_out"
+        case convertedRevenueCents = "converted_revenue_cents"
+    }
+
+    /// Unsubscribe rate as a fraction (0–1). Nil if `sent` is zero or `optedOut` is unknown.
+    public var unsubscribeRate: Double? {
+        guard let optedOut, sent > 0 else { return nil }
+        return Double(optedOut) / Double(sent)
     }
 }
 

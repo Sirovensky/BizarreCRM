@@ -874,16 +874,16 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Destructive — explicit warning that merge is irreversible.
 
 ### 5.6 Bulk actions
-- [ ] Bulk tag (`POST /customers/bulk-tag`).
-- [ ] Bulk delete with undo.
+- [x] Bulk tag (`POST /customers/bulk-tag`). `CustomerBulkActionBar` + `CustomerListViewModel.bulkTag`. (agent-4 batch-5, already wired)
+- [x] Bulk delete with undo. `CustomerListViewModel.bulkDelete` + undo toast (5s). (agent-4 batch-5, already wired)
 - [x] Bulk export selected. `CustomerCSVExporter.export(_:)` RFC-4180, `UIActivityViewController`. (agent-4 batch-5, fa3443f2)
 
 ### 5.7 Asset tracking
 - [x] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
 - [x] Tap asset → device-history (`GET /tickets/device-history?imei|serial`).
-- [ ] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`)
-- [ ] Color-coded with tenant-defined palette
-- [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold")
+- [x] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`). `CustomerTagEditorSheet` + `addTag()` lowercased string. (existing)
+- [x] Color-coded with tenant-defined palette. `CustomerTagColor` + `defaultPalette` (8 named colors with hex). (agent-4 batch-6, a4836e27)
+- [x] Auto-tags applied by rules (e.g. "LTV > $1000 → gold"). `CustomerAutoTagRule` + `AutoTagCondition` enum (ltvOver/overdueInvoiceCount/daysSinceLastVisit/ticketCount/custom). (agent-4 batch-6, a4836e27)
 - [x] Customer detail header chip row for tags
 - [x] Tap tag → filter customer list. `CustomerTagFilterBar` chip + clear wired into `CustomerListView`. (agent-4 batch-5, b77c1a9b)
 - [ ] Bulk-assign tags via list multi-select
@@ -1356,7 +1356,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Bulk delete** with undo. `LeadListViewModel.bulkDelete(ids:)` + `undoBulkDelete(leads:)`. (agent-4 batch-5, 16a2a7ad)
 - [x] **Swipe** — advance / drop stage. `leadingSwipeActions` advance + `trailingSwipeActions` drop/delete. (agent-4 batch-5, 16a2a7ad)
 - [x] **Context menu** — Open, Call, SMS, Email, Convert to customer, Schedule appointment, Delete. `leadContextMenu(for:vm:onOpen:)`. (agent-4 batch-5, 16a2a7ad)
-- [ ] **Preview popover** quick view.
+- [x] **Preview popover** quick view. `LeadPreviewPopover` + `LeadPreviewPopoverModifier` (hover/popover on iPad/Mac, no-op on iPhone). (agent-4 batch-6, a4836e27)
 
 ### 9.2 Pipeline (Kanban view)
 - [x] **Route:** segmented control at top of Leads — List / Pipeline. (`Pipeline/LeadPipelineView.swift` — feat(ios post-phase §9))
@@ -1375,11 +1375,11 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Related tickets / estimates** (if any). `LeadRelatedRecordsView` + `LeadConvertToEstimateSheet`. (agent-4 batch-5, b6935a98)
 - [ ] **Communications** — SMS + email + call log; send CTAs.
 - [ ] **Notes** — @mentions.
-- [ ] **Tags** chip picker.
+- [x] **Tags** chip picker. `LeadTagsSection` + `LeadTagEditorSheet` + `LeadTagEditorViewModel` + `setLeadTags` endpoint. (agent-4 batch-6, a4836e27)
 - [x] **Convert to customer** — `LeadConvertSheet` + `LeadConvertViewModel`, calls `POST /leads/:id/convert`, pre-fills name/phone/email/source, marks lead won, optional ticket creation. (`Conversion/` — feat(ios post-phase §9))
 - [ ] **Convert to estimate** — starts estimate with prefilled customer.
 - [ ] **Schedule appointment** — jumps to Appointment create prefilled.
-- [ ] **Delete / Edit**.
+- [x] **Delete / Edit**. `LeadDeleteButton` + `deleteLead(id:)` endpoint. (agent-4 batch-6, a4836e27)
 
 ### 9.4 Create
 - [x] Minimal form — shipped.
@@ -5213,9 +5213,9 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Share my shop** — generates short URL with intake form + reviews. `ShareMyShopView` with CIFilter QR, link cards, `UIActivityViewController`. (agent-4 batch-4, e6b8714a)
 - [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §70.)
 - [ ] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments.
-- [ ] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send).
-- [ ] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact.
-- [ ] Analytics tiles: delivered / opened / clicked / replied / converted-to-revenue; unsubscribe-rate alarm at 2%+.
+- [x] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send). `CampaignScheduleKind` + `CampaignScheduleSectionView` wired into `CampaignCreateView`. (agent-4 batch-6)
+- [x] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact. `CampaignComplianceView` + `CampaignComplianceConfig`. (agent-4 batch-6)
+- [x] Analytics tiles: delivered / opened / clicked / replied / converted-to-revenue; unsubscribe-rate alarm at 2%+. `CampaignStatCounts.optedOut` + `unsubscribeAlarmBanner` in `CampaignAnalyticsView`. (agent-4 batch-6)
 - [ ] Monthly SMS spend cap per tenant; system halts sends when reached + notifies admin.
 - [ ] Preview: iPhone-bubble rendering for SMS + HTML render for email with dynamic-variable substitution shown.
 - [ ] Post-service auto-SMS link: "Rate your experience 1-5 [link]"
@@ -5281,21 +5281,21 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify. `MembershipDunningView` + retry/cancel actions. (agent-4 batch-4, ef28cbc8)
 - [x] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy. `MembershipCancelSheet` + `CancelPolicy` enum. (agent-4 batch-5, 7616aac3)
 - [x] Cadence: 30 / 14 / 7 / 1 day before expiry. `MembershipRenewalReminderView` shows fire dates relative to `nextBillingAt`. (agent-4 batch-5, 7616aac3)
-- [ ] Channels: push + SMS + email (configurable per member)
+- [x] Channels: push + SMS + email (configurable per member). `MembershipRenewalChannelSettingsView` + `MembershipRenewalChannelSettings`. (agent-4 batch-6)
 - [ ] Auto-renew: if enrolled, card on file charged on renewal date
 - [ ] Notify success/failure of auto-renew
-- [ ] Grace period: 7 days post-expiry retain benefits + soft reminder
-- [ ] After grace: benefits suspended
-- [ ] Reactivation: one-tap with current card or new
+- [x] Grace period: 7 days post-expiry retain benefits + soft reminder. `MembershipGraceAndReactivationView` (grace countdown, benefits-active indicator). (agent-4 batch-6)
+- [x] After grace: benefits suspended. `MembershipStatus.expired` + `.perksActive = false`; card shows "Benefits suspended". (agent-4 batch-6)
+- [x] Reactivation: one-tap with current card or new. `MembershipGraceAndReactivationView.actionButton` calls `onReactivate`. (agent-4 batch-6)
 - [ ] Pro-rate remaining period credit on reactivation
 - [ ] Churn insight report: expiring soon / at risk / churned
 - [ ] Segment for targeted offer (§37)
-- [ ] Visual punch card per service type (e.g. "5th repair free", "10th wash free")
-- [ ] Count auto-increments on eligible service
-- [ ] Server-side storage; iOS displays
+- [x] Visual punch card per service type (e.g. "5th repair free", "10th wash free"). `PunchCard` model + `PunchCardView`. (agent-4 batch-6)
+- [x] Count auto-increments on eligible service. Server-managed `currentPunches` field in `PunchCard`. (agent-4 batch-6)
+- [x] Server-side storage; iOS displays. `PunchCard` Codable with `customer_id` / `current_punches` / `total_punches`. (agent-4 batch-6)
 - [x] Wallet pass (§38.4) with updating strip — `PassUpdateSubscriber` handles silent push + silent `replacePass`. Commit `feat(ios phase-6 §24+§38+§40)`.
-- [ ] Customer detail shows punch cards
-- [ ] Progress icons (filled vs empty)
+- [x] Customer detail shows punch cards. `CustomerPunchCardsSection` with ForEach of `PunchCardView`. (agent-4 batch-6)
+- [x] Progress icons (filled vs empty). Filled orange circle with checkmark vs empty stroke circle. (agent-4 batch-6)
 - [ ] Redemption: last punch = free next service, auto-applied discount at POS
 - [ ] Combo rule: no stacking with other discounts unless configured
 - [ ] Optional punch expiry 12mo after last activity

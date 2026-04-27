@@ -107,8 +107,23 @@ public struct CampaignAnalyticsView: View {
                 // Campaign info header
                 campaignHeader(stats.campaign)
 
+                // Unsubscribe alarm — shown prominently if rate >= 2%
+                if let rate = stats.counts.unsubscribeRate, rate >= 0.02 {
+                    unsubscribeAlarmBanner(rate: rate, optedOut: stats.counts.optedOut ?? 0)
+                }
+
                 // Stat grid — iPhone 2-col, iPad 4-col
                 statsGrid(stats.counts, campaign: stats.campaign)
+
+                // Revenue tile (if available)
+                if let revCents = stats.counts.convertedRevenueCents {
+                    revenueTile(cents: revCents)
+                }
+
+                // Unsubscribe rate row (always visible when data present)
+                if let optedOut = stats.counts.optedOut {
+                    unsubscribeRateRow(optedOut: optedOut, sent: stats.counts.sent)
+                }
 
                 // Run now / send confirmation
                 if stats.campaign.status != "archived" {
@@ -170,12 +185,77 @@ public struct CampaignAnalyticsView: View {
                GridItem(.flexible()), GridItem(.flexible())]
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.sm) {
-            StatTileCard(icon: "paperplane.fill",   label: "Sent",      value: "\(campaign.sentCount)",    accent: .bizarreOrange)
-            StatTileCard(icon: "checkmark.circle.fill", label: "Delivered", value: "\(counts.sent)",       accent: .bizarreSuccess)
-            StatTileCard(icon: "bubble.left.fill",  label: "Replied",   value: "\(campaign.repliedCount)", accent: .bizarreTeal)
+            StatTileCard(icon: "paperplane.fill",       label: "Sent",      value: "\(campaign.sentCount)",    accent: .bizarreOrange)
+            StatTileCard(icon: "checkmark.circle.fill", label: "Delivered", value: "\(counts.sent)",           accent: .bizarreSuccess)
+            StatTileCard(icon: "bubble.left.fill",      label: "Replied",   value: "\(campaign.repliedCount)", accent: .bizarreTeal)
             StatTileCard(icon: "arrow.right.circle.fill", label: "Converted", value: "\(campaign.convertedCount)", accent: .bizarreMagenta)
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private func unsubscribeAlarmBanner(rate: Double, optedOut: Int) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.white)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("High unsubscribe rate: \(Int(rate * 100))%")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.white)
+                Text("\(optedOut) recipient(s) opted out — review message relevance and audience targeting.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreError, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Warning: High unsubscribe rate of \(Int(rate * 100)) percent. \(optedOut) recipients opted out.")
+    }
+
+    private func revenueTile(cents: Int) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "dollarsign.circle.fill")
+                .foregroundStyle(.bizarreSuccess)
+                .font(.system(size: 28))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Attributed Revenue")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text(String(format: "$%.2f", Double(cents) / 100))
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(BrandSpacing.md)
+        .background(Color.bizarreSuccess.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Attributed revenue: \(String(format: "$%.2f", Double(cents) / 100))")
+    }
+
+    private func unsubscribeRateRow(optedOut: Int, sent: Int) -> some View {
+        let rate = sent > 0 ? Double(optedOut) / Double(sent) : 0
+        let isHigh = rate >= 0.02
+        return HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: isHigh ? "exclamationmark.triangle.fill" : "hand.raised.slash.fill")
+                .foregroundStyle(isHigh ? .bizarreError : .bizarreOnSurfaceMuted)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            Text("Unsubscribes: \(optedOut)")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer(minLength: 0)
+            Text(String(format: "%.1f%%", rate * 100))
+                .font(.brandTitleSmall())
+                .foregroundStyle(isHigh ? .bizarreError : .bizarreOnSurfaceMuted)
+                .monospacedDigit()
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Unsubscribe rate: \(String(format: "%.1f", rate * 100)) percent")
     }
 
     private var runNowSection: some View {

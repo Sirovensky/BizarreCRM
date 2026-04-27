@@ -21,6 +21,15 @@ public final class CampaignCreateViewModel {
     public var abEnabled: Bool = false
     public var variantB: String = ""
 
+    // §37 Extended scheduler
+    public var scheduleKind: CampaignScheduleKind = .sendNow
+    public var scheduledSendAt: Date = Date().addingTimeInterval(3600)
+    public var recurrenceConfig: CampaignRecurrenceConfig = CampaignRecurrenceConfig()
+    public var triggerConfig: CampaignTriggerConfig = CampaignTriggerConfig()
+
+    // §37 Compliance
+    public var compliance: CampaignComplianceConfig = CampaignComplianceConfig()
+
     // Legacy compat accessors
     public var audienceSegmentId: String? { audience.segmentIdString }
     public var audienceSegmentName: String? {
