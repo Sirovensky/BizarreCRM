@@ -46,6 +46,16 @@ final class PrinterProfileTests: XCTestCase {
         XCTAssertEqual(medium, .letter)
     }
 
+    func testPrintMediumPreference_legal() {
+        let medium = PrintMediumPreference.legal.printMedium
+        XCTAssertEqual(medium, .legal)
+    }
+
+    func testPrintMediumPreference_allCasesCount() {
+        // Verify all 6 paper sizes are present: thermal80mm, thermal58mm, letter, legal, a4, label2x4
+        XCTAssertEqual(PrintMediumPreference.allCases.count, 6)
+    }
+
     // MARK: - PersistedJobEntry serialisation
 
     func testPersistedJobEntry_encodesAndDecodes() throws {

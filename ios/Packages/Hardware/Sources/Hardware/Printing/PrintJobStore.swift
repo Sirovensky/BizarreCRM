@@ -158,6 +158,7 @@ public enum PrintMediumPreference: String, Codable, Sendable, CaseIterable {
     case thermal80mm = "80mm Thermal"
     case thermal58mm = "58mm Thermal"
     case letter = "Letter (US)"
+    case legal = "Legal (US)"
     case a4 = "A4"
     case label2x4 = "Label 2×4\""
 }
@@ -171,6 +172,7 @@ public extension PrintMediumPreference {
         case .thermal80mm: return .thermal80mm
         case .thermal58mm: return .thermal58mm
         case .letter:      return .letter
+        case .legal:       return .legal
         case .a4:          return .a4
         case .label2x4:    return .label2x4
         }
@@ -229,6 +231,13 @@ public final class PrinterProfileStore {
     /// Returns nil when no printer is configured → callers should fall back to PDF share sheet.
     public var activeReceiptPrinter: Printer? {
         guard let printerId = currentProfile.defaultReceiptPrinterId else { return nil }
+        return loadPrinter(id: printerId)
+    }
+
+    /// The active label printer for this station, if one has been selected and persisted.
+    /// Returns nil when no label printer is configured.
+    public var activeLabelPrinter: Printer? {
+        guard let printerId = currentProfile.defaultLabelPrinterId else { return nil }
         return loadPrinter(id: printerId)
     }
 
