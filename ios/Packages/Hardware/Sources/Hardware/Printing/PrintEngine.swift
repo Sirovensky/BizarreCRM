@@ -72,17 +72,23 @@ public struct PrintJob: Sendable {
     public let kind: JobKind
     public let payload: JobPayload
     public let createdAt: Date
+    /// When `true`, the engine appends a cash-drawer-kick ESC/POS opcode after
+    /// the print data and cut command. Only effective for thermal receipt printers
+    /// that have a drawer connected via the RJ11 port. Defaults to `false`.
+    public let kickDrawer: Bool
 
     public init(
         id: UUID = UUID(),
         kind: JobKind,
         payload: JobPayload,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        kickDrawer: Bool = false
     ) {
         self.id = id
         self.kind = kind
         self.payload = payload
         self.createdAt = createdAt
+        self.kickDrawer = kickDrawer
     }
 }
 

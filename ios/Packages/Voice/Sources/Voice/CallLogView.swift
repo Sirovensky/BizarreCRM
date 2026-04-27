@@ -193,7 +193,7 @@ public struct CallLogView: View {
                             } label: {
                                 Label("Call back", systemImage: "phone.fill")
                             }
-                            .tint(.green)
+                            .tint(.bizarreSuccess)
                         }
                         .hoverEffect(.highlight)
                         .contextMenu {
@@ -351,7 +351,7 @@ private struct CallDetailView: View {
                               ? "phone.arrow.down.left"
                               : "phone.arrow.up.right")
                             .font(.system(size: 32))
-                            .foregroundStyle(entry.isInbound ? .blue : .green)
+                            .foregroundStyle(entry.isInbound ? .bizarreTeal : .bizarreSuccess)
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xxs) {
                             Text(entry.customerName ?? entry.phoneNumber)
@@ -528,7 +528,7 @@ private struct CallLogRow: View {
     }
 
     private var directionColor: Color {
-        entry.isInbound ? .blue : .green
+        entry.isInbound ? .bizarreTeal : .bizarreSuccess
     }
 
     private func formatDuration(_ seconds: Int) -> String {

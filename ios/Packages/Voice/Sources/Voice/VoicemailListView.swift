@@ -158,7 +158,7 @@ public struct VoicemailListView: View {
                 } label: {
                     Label("Mark heard", systemImage: "checkmark.circle")
                 }
-                .tint(.blue)
+                .tint(.bizarrePrimary)
             }
             .hoverEffect(.highlight)
             .contextMenu {
@@ -224,7 +224,7 @@ private struct VoicemailRow: View {
             Button(action: onPlay) {
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 36))
-                    .foregroundStyle(entry.heard ? Color.secondary : Color.blue)
+                    .foregroundStyle(entry.heard ? Color.secondary : Color.bizarrePrimary)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Play voicemail from \(entry.customerName ?? entry.phoneNumber)")
@@ -238,7 +238,7 @@ private struct VoicemailRow: View {
                         .lineLimit(1)
                     if !entry.heard {
                         Circle()
-                            .fill(.blue)
+                            .fill(.bizarrePrimary)
                             .frame(width: 8, height: 8)
                             .accessibilityLabel("Unheard")
                     }

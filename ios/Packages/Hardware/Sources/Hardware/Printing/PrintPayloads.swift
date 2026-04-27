@@ -2,8 +2,10 @@ import Foundation
 
 // MARK: - Receipt Payload
 
-/// Full data needed to render a receipt on-device. Model is self-contained
-/// (zero deferred network reads inside render) so printing works fully offline.
+/// Full data needed to render a receipt on-device. Model is self-contained:
+/// every value required by the renderer is embedded (including `logoData` as
+/// raw PNG/JPEG bytes), so printing works fully offline with zero deferred
+/// network reads inside the render pipeline. §17.4 compliance.
 public struct ReceiptPayload: Sendable, Codable {
     public struct Line: Sendable, Codable {
         public let label: String
@@ -14,6 +16,10 @@ public struct ReceiptPayload: Sendable, Codable {
         }
     }
 
+    /// Business logo as raw image bytes (PNG or JPEG).
+    /// `nil` → no logo rendered. Never a URL — must be pre-fetched and embedded
+    /// before constructing the payload so the renderer stays offline-capable.
+    public let logoData: Data?
     public let tenantName: String
     public let tenantAddress: String
     public let tenantPhone: String
@@ -25,11 +31,14 @@ public struct ReceiptPayload: Sendable, Codable {
     public let tipCents: Int
     public let totalCents: Int
     public let paymentTender: String
+    /// Auth code / last-4 from payment terminal. Stored as a token; raw PAN never stored.
+    public let paymentAuthLast4: String?
     public let cashierName: String
     public let footerMessage: String?
     public let qrContent: String?
 
     public init(
+        logoData: Data? = nil,
         tenantName: String,
         tenantAddress: String,
         tenantPhone: String,
@@ -41,10 +50,12 @@ public struct ReceiptPayload: Sendable, Codable {
         tipCents: Int,
         totalCents: Int,
         paymentTender: String,
+        paymentAuthLast4: String? = nil,
         cashierName: String,
         footerMessage: String? = nil,
         qrContent: String? = nil
     ) {
+        self.logoData = logoData
         self.tenantName = tenantName
         self.tenantAddress = tenantAddress
         self.tenantPhone = tenantPhone
@@ -56,6 +67,7 @@ public struct ReceiptPayload: Sendable, Codable {
         self.tipCents = tipCents
         self.totalCents = totalCents
         self.paymentTender = paymentTender
+        self.paymentAuthLast4 = paymentAuthLast4
         self.cashierName = cashierName
         self.footerMessage = footerMessage
         self.qrContent = qrContent

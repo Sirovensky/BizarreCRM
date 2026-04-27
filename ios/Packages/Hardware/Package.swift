@@ -9,10 +9,11 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../Core"),
-        .package(path: "../Persistence")
+        .package(path: "../Persistence"),
+        .package(path: "../DesignSystem")
     ],
     targets: [
-        .target(name: "Hardware", dependencies: ["Core", "Persistence"]),
+        .target(name: "Hardware", dependencies: ["Core", "Persistence", "DesignSystem"]),
         .testTarget(name: "HardwareTests", dependencies: ["Hardware"])
     ]
 )

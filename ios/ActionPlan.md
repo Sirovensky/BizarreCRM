@@ -2735,10 +2735,10 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
   - Email / SMS attachments: PDF.
   - Preview in app: same `ReceiptView` rendered live in a scroll view.
 - [x] **Single `ReceiptView` per document type** — `ReceiptView`, `GiftReceiptView`, `WorkOrderTicketView`, `IntakeFormView`, `ARStatementView`, `ZReportView`, `LabelView`. Each takes a strongly-typed model. Same view backs print + preview + PDF + email attachment. `DocumentViews.swift` adds IntakeFormView, ARStatementView, ZReportView, LabelView. Commit `e348d254`.
-- [ ] **Model is self-contained** — `ReceiptModel` carries every value needed (business logo `Data`, shop name, address, line items, totals, payment auth last4, timestamp, tenant footer). Zero deferred network reads inside render. Offline-safe.
-- [ ] **Width-aware layout** — `@Environment(\.printMedium)` picks `.thermal80mm`, `.thermal58mm`, `.letter`, `.a4`, `.label2x4`, etc. Fonts + columns adapt; single SwiftUI view, media-specific modifiers.
-- [ ] **Rasterization** — thermal path goes through `ImageRenderer.scale = 2.0`, dithered to 1-bit for print head. Preview uses same image so what tenant sees is what prints.
-- [ ] **Cut + drawer-kick** — ESC/POS opcodes appended after the rasterized bitmap, not embedded in view. Keeps view pure visual.
+- [x] **Model is self-contained** — `ReceiptModel` carries every value needed (business logo `Data`, shop name, address, line items, totals, payment auth last4, timestamp, tenant footer). Zero deferred network reads inside render. Offline-safe. Commit `0de684a5`.
+- [x] **Width-aware layout** — `@Environment(\.printMedium)` picks `.thermal80mm`, `.thermal58mm`, `.letter`, `.a4`, `.label2x4`, etc. Fonts + columns adapt; single SwiftUI view, media-specific modifiers. `PrintMedium.swift` ships all cases + fonts + contentWidth. Commit `0de684a5`.
+- [x] **Rasterization** — thermal path goes through `ImageRenderer.scale = 2.0`, dithered to 1-bit for print head. Preview uses same image so what tenant sees is what prints. `ReceiptRenderer.rasterize` + Atkinson dither ships. Commit `0de684a5`.
+- [x] **Cut + drawer-kick** — ESC/POS opcodes appended after the rasterized bitmap, not embedded in view. Keeps view pure visual. `PrintJob.kickDrawer` flag; `EscPosNetworkEngine` appends `drawerKick()` when set. Commit `0de684a5`.
 
 #### MFi / model support
 - [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP for web-printable models (no MFi); still renders our bitmap, not a URL.
@@ -2854,10 +2854,10 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Use `VNDocumentCameraViewController`. `DocumentScanner` UIViewControllerRepresentable + `DocumentScanViewModel` + `DocumentScanPreviewView`. Camera/DocScan/. Commit 468fe08.
 - [x] Multi-page scan with auto-crop + perspective correction — VisionKit handles perspective; pages collected via `VNDocumentCameraScan.imageOfPage(at:)`.
 - [x] Reorder / delete pages before save — `DocumentScanPreviewView` List with `.onMove`/`.onDelete`; `DocumentScanViewModel.movePages`/`deletePage`.
-- [ ] OCR via `VNRecognizeTextRequest`, text searchable via FTS5
-- [ ] Output: PDF (preferred) or JPEG at 200 DPI default
+- [x] OCR via `VNRecognizeTextRequest`, text searchable via FTS5 — `DocumentOCRService` actor; `DocumentScanViewModel.runOCR()` exposes `ocrState`+`extractedText`. Commit `5e647018`.
+- [x] Output: PDF (preferred) or JPEG at 200 DPI default — `assemblePDF` produces Letter PDF via `UIGraphicsPDFRenderer`; images scaled aspect-fit with 0.25in margin. Commit `5e647018`.
 - [ ] Auto-classification by keyword: license / invoice / receipt / warranty → suggest tag
-- [ ] Privacy: on-device Vision only; no external/cloud OCR
+- [x] Privacy: on-device Vision only; no external/cloud OCR — `DocumentOCRService` uses `VNImageRequestHandler` exclusively; no network calls. Commit `5e647018`.
 - [ ] Bulk append multiple scans to single file
 - [ ] Settings → Hardware → Printer → manual IP entry
 - [ ] Optional port (default 9100 raw / 631 IPP)
