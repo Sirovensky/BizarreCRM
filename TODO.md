@@ -204,6 +204,47 @@ type: project
     - DEPENDS: DPI-1 (tier classification), DPI-2 (profit_estimate column), DPI-3 (audit log table)
   - **Out of scope (future):** AI-suggested labor based on neighbor-shop pricing (would need shared pricing-bench feed); seasonal auto-adjustments (holiday pricing).
 
+- [ ] DPI-12. **Expand `repair_services` seed catalog — console, tablet, IT services categories are too thin to ship.** Wizard "Console / PC" card claims 15 services but database only has 4 (HDMI port, disc drive, controller, overheating). Tablet has 2 (screen, battery only). "IT services" doesn't exist as a distinct category — wizard would have to fall back to a laptop subset. Need full coverage so shop owner picking a category gets a usable catalog day-1.
+  - **Console (4 → 12):** add joystick repair, joystick drift fix, fan replacement, thermal paste, power button repair, eject mechanism repair, BD drive laser, hard drive upgrade, controller buttons, controller charge port, controller battery, jailbreak/firmware reset.
+  - **Tablet (2 → 10):** add charging port, camera, button repair, water damage diagnostic, back glass, speaker, mic, software reset, jailbreak removal, glass-only (no LCD).
+  - **IT services (0 → 9 dedicated):** virus removal, malware cleanup, OS reinstall, data recovery (drive imaging), network setup (home), network setup (small office), printer setup, password reset, in-home diagnostic visit. Add `category='it_service'` enum value + UI category icon.
+  - **Phone (11 → 16):** add Face-ID repair, True-Tone calibration after screen, esim activation help, jailbreak/de-jailbreak, MDM unlock (with proof-of-ownership gate).
+  - **Laptop (14 → 18):** add backlight repair, trackpad repair, HDMI port, audio jack, BIOS unlock, password reset.
+  - **TV (9 → 14):** add HDMI port, audio output, voice remote pairing, smart-feature reset, wall-mount install service.
+  - **Files:**
+    - `packages/server/src/db/migrations/158_repair_services_expansion.sql` — INSERT OR IGNORE for new rows.
+    - Update `packages/server/src/db/migrations/010_repair_pricing.sql` annotations only (don't modify shipped INSERT statements — additive in mig 158).
+
+- [ ] DPI-13. **Seed `repair_prices` industry-median labor per (shop_type, tier, service) at wizard time.** Today `repair_prices` is empty — every owner has to set every price. Wizard shop-type pick should fan out reasonable defaults. Schema: a static seed table maps shop type + tier + service to a labor amount that's pre-populated when owner clicks Save on Step 8.
+  - **Seed source data (research one-time + verify):** scrape RepairDesk + RepairShopr public price benchmarks; cross-reference with iFixit "professional rate" guide; survey 5-10 partner shops for sanity check. Document source per service in migration comment so future maintainers can re-verify.
+  - **Schema:**
+    ```sql
+    CREATE TABLE seed_repair_prices (
+      shop_type TEXT NOT NULL,        -- 'phone', 'multi-device', 'console', 'it', 'tv'
+      tier TEXT NOT NULL,             -- 'A', 'B', 'C'
+      service_slug TEXT NOT NULL,     -- FK to repair_services.slug
+      labor_price INTEGER NOT NULL,   -- cents
+      source TEXT,                    -- 'repairdesk-2025', 'shop-survey-2026q1', etc.
+      verified_at DATE,
+      PRIMARY KEY (shop_type, tier, service_slug)
+    );
+    ```
+  - **Wizard integration:** when owner completes Step 5 + Step 8, server fans out: for each device_model in shop's category × each active service, look up `seed_repair_prices(shop_type, computeTier(device_model.release_year), service_slug)` → write `repair_prices(device_model_id, repair_service_id, labor_price)`.
+  - **Coverage required:** 5 shop types × 3 tiers × ~12 services = 180 seed rows minimum. Document missing combinations → fall back to flat-per-service if the (shop_type, tier, service) tuple is missing in the seed table.
+  - **Annual refresh:** seed table re-verified yearly + bumped via new migration. Owner who already customized via `is_custom=1` is protected from rebase clobber.
+  - **Files:**
+    - `packages/server/src/db/migrations/159_seed_repair_prices.sql` — table + ~180 INSERT rows.
+    - `packages/server/src/services/repairPricing/seedFanout.ts` — wizard-time fan-out helper.
+
+- [ ] DPI-14. **TV models seed — find or create.** CLAUDE.md claims "67 TV models" exist but `device-models-seed.ts` has 0 with `category: 'tv'`. Either (a) TVs live in a separate seed file, or (b) the 67 number was aspirational. Audit + reconcile:
+  - Search for `tv-models` / `tv_models` table or seed file under `packages/server/src/db/`.
+  - If missing: add 67 TV models with manufacturer (Samsung, LG, Sony, Vizio, Hisense, TCL, Philips), screen size (40"-85"), panel type (LED/OLED/QLED/Plasma), release year. Source: TV manufacturer model lists.
+  - Wizard "TV repair" card should reflect the actual count.
+
+- [ ] DPI-15. **Tier classification needs `release_year` to be populated on every device row.** `device-models-seed.ts` has `release_year ?? null` — many older devices lack release year. Tier resolver falls back to "unknown" → Tier C by default. Audit + backfill missing release years for the 236 seeded models.
+  - Verify each row has `release_year` set.
+  - Add NOT NULL constraint after backfill (migration).
+
 - [ ] DPI-10. **Admin override audit + 4-eyes for tier threshold changes.** Changing tier thresholds (e.g. moving "Tier A" cutoff from 2 to 3 years) re-prices thousands of rows. Should require admin role + a confirmation modal listing impact: "This will reprice 47 device models. Estimated revenue change: -$14k/yr. Type 'CONFIRM' to proceed."
   - Audit log entry with before/after thresholds + projected revenue delta.
   - Email all admin users on change.

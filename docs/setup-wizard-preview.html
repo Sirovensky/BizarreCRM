@@ -344,19 +344,19 @@ body { font-family: 'Inter', system-ui, sans-serif; }
               <p class="text-base text-surface-600 dark:text-surface-400 mt-2 mb-8">We'll seed device categories + repair services so you can take a ticket day one.</p>
               <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
                 <button class="text-left rounded-2xl border-2 border-primary-800 bg-primary-300 p-5 min-h-[140px]">
-                  <div class="text-2xl mb-2">📱</div><h3 class="font-medium">Phone repair</h3><p class="text-xs text-surface-700 mt-1">iPhones, Androids, screens, batteries</p><span class="text-xs text-primary-900 font-semibold">12 services seeded</span>
+                  <div class="text-2xl mb-2">📱</div><h3 class="font-medium">Phone repair</h3><p class="text-xs text-surface-700 mt-1">iPhones, Androids — 143 models</p><span class="text-xs text-primary-900 font-semibold">11 services seeded</span>
                 </button>
                 <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
-                  <div class="text-2xl mb-2">📱💻🎮</div><h3 class="font-medium">Multi-device</h3><p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Phones, tablets, laptops, consoles</p><span class="text-xs text-primary-900 font-semibold">28 services</span>
+                  <div class="text-2xl mb-2">📱💻🎮</div><h3 class="font-medium">Multi-device</h3><p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Phones + tablets + laptops + consoles — 236 models</p><span class="text-xs text-primary-900 font-semibold">~30 services</span>
                 </button>
                 <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
-                  <div class="text-2xl mb-2">🎮</div><h3 class="font-medium">Console / PC</h3><p class="text-xs text-surface-500 mt-1">Xbox, PS, Switch, gaming PCs</p><span class="text-xs text-primary-900 font-semibold">15 services</span>
+                  <div class="text-2xl mb-2">🎮</div><h3 class="font-medium">Console / PC</h3><p class="text-xs text-surface-500 mt-1">Xbox, PS, Switch, gaming PCs — 19 models</p><span class="text-xs text-amber-700 font-semibold">4 services <span class="text-amber-600">(thin — TODO DPI-12)</span></span>
                 </button>
                 <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
-                  <div class="text-2xl mb-2">🖥️</div><h3 class="font-medium">IT services</h3><p class="text-xs text-surface-500 mt-1">Networking, virus removal, data recovery</p><span class="text-xs text-primary-900 font-semibold">9 services</span>
+                  <div class="text-2xl mb-2">🖥️</div><h3 class="font-medium">IT services</h3><p class="text-xs text-surface-500 mt-1">Networking, virus removal, data recovery</p><span class="text-xs text-amber-700 font-semibold">~7 (subset of laptop) <span class="text-amber-600">(TODO DPI-12)</span></span>
                 </button>
                 <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
-                  <div class="text-2xl mb-2">📺</div><h3 class="font-medium">TV repair</h3><p class="text-xs text-surface-500 mt-1">LED, OLED, plasma — 67 TV models</p><span class="text-xs text-primary-900 font-semibold">18 services</span>
+                  <div class="text-2xl mb-2">📺</div><h3 class="font-medium">TV repair</h3><p class="text-xs text-surface-500 mt-1">LED, OLED, plasma</p><span class="text-xs text-primary-900 font-semibold">9 services</span>
                 </button>
                 <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
                   <div class="text-2xl mb-2">🛠️</div><h3 class="font-medium">Custom / skip</h3><p class="text-xs text-surface-500 mt-1">No defaults — I'll set up manually</p><span class="text-xs text-surface-500">0 services</span>
@@ -365,7 +365,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
               <div class="flex justify-between mt-8"><button class="btn-ghost">← Back</button><button class="btn-primary">Next — Store info →</button></div>
             </div></div>
           </div>
-          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">shop_type</span></li><li>Triggers seed: <span class="kbd">repair_services</span> + <span class="kbd">repair_prices</span> rows</li><li>"Custom" = no seed (CROSS31 fix path)</li><li>Multi-select allowed in advanced mode (Settings)</li></ul></div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">shop_type</span></li><li><strong>Seed reality (current):</strong> 236 device models in <span class="kbd">device-models-seed.ts</span> (143 phones, 29 tablets, 45 laptops, 19 consoles). 11 phone + 14 laptop + 4 console + 9 TV + 2 tablet + 7 desktop services. <strong>repair_prices table empty — no labor seeded.</strong></li><li>"Custom" = empty catalog (CROSS31 manual-price prompt at ticket creation)</li><li><strong>Gaps tracked:</strong> DPI-12 (expand console + tablet + IT services seeds), DPI-13 (seed industry-median repair_prices per shop type via tier).</li></ul></div>
         </div>
       </section>
 
