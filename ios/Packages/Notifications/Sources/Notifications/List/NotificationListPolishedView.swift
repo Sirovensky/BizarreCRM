@@ -3,6 +3,9 @@ import Core
 import DesignSystem
 import Networking
 import Sync
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - NotificationListPolishedView
 
@@ -184,7 +187,18 @@ public struct NotificationListPolishedView: View {
                     ForEach(section.items) { note in
                         NotificationRowView(note: note)
                             .listRowBackground(Color.bizarreSurface1)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            .contentShape(Rectangle())
+                            // §13.1 Tap → deep link
+                            .onTapGesture {
+                                if let url = vm.deepLinkURL(for: note) {
+                                    Task { await vm.markRead(id: note.id) }
+                                    #if canImport(UIKit)
+                                    UIApplication.shared.open(url)
+                                    #endif
+                                }
+                            }
+                            // §13.1 Swipe leading: mark read
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                 if !note.read {
                                     Button {
                                         Task { await vm.markRead(id: note.id) }
@@ -194,6 +208,15 @@ public struct NotificationListPolishedView: View {
                                     .tint(.bizarreTeal)
                                     .accessibilityIdentifier("notif.swipe.read.\(note.id)")
                                 }
+                            }
+                            // §13.1 Swipe trailing: dismiss (persists via PATCH /dismiss)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task { await vm.dismiss(id: note.id) }
+                                } label: {
+                                    Label("Dismiss", systemImage: "trash")
+                                }
+                                .accessibilityIdentifier("notif.swipe.dismiss.\(note.id)")
                             }
                     }
                 } header: {

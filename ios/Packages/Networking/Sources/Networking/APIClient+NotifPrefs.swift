@@ -34,6 +34,11 @@ struct NotifPrefsBody: Encodable {
     let preferences: [NotifPreferenceWire]
 }
 
+/// Simple success envelope returned by notification-preference PUT.
+struct NotifPrefsStatusPayload: Decodable, Sendable {
+    let success: Bool
+}
+
 public extension APIClient {
     /// Fetch the current user's notification preferences from the server.
     func getNotifPreferences() async throws -> [NotifPreferenceWire] {
@@ -45,11 +50,7 @@ public extension APIClient {
         _ = try await put(
             "/api/v1/notifications/preferences",
             body: NotifPrefsBody(preferences: prefs),
-            as: StatusPayload.self
+            as: NotifPrefsStatusPayload.self
         )
-    }
-
-    struct StatusPayload: Decodable {
-        let success: Bool
     }
 }

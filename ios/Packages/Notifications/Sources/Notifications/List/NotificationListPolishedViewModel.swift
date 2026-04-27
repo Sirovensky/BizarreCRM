@@ -127,6 +127,34 @@ public final class NotificationListPolishedViewModel {
         successBanner = nil
     }
 
+    /// Swipe-to-dismiss: removes from list optimistically; calls server persist.
+    public func dismiss(id: Int64) async {
+        guard let idx = allItems.firstIndex(where: { $0.id == id }) else { return }
+        let previous = allItems[idx]
+        allItems.remove(at: idx)
+        do {
+            try await api.dismissNotification(id: id)
+        } catch {
+            allItems.insert(previous, at: min(idx, allItems.endIndex))
+            errorMessage = "Couldn't dismiss notification."
+        }
+    }
+
+    /// Returns a `bizarrecrm://` URL for the given notification if it has a
+    /// known entity type and ID. Returns `nil` for system-only notifications.
+    public func deepLinkURL(for note: NotificationItem) -> URL? {
+        guard
+            let entityType = note.entityType,
+            let entityId = note.entityId,
+            !entityType.isEmpty
+        else { return nil }
+        var comps = URLComponents()
+        comps.scheme = "bizarrecrm"
+        comps.host = entityType.lowercased()
+        comps.path = "/\(entityId)"
+        return comps.url
+    }
+
     // MARK: - Filter
 
     public func setFilter(_ chip: NotificationFilterChip) {

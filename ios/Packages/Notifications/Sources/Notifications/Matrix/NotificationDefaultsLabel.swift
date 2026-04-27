@@ -30,8 +30,8 @@ public struct NotificationDefaults {
         // Per §70 table
         switch event {
         case .ticketAssigned:              return (true,  true)
-        case .ticketStatusChangedMine:     return (true,  true)
-        case .ticketStatusChangedAnyone:   return (false, true)  // admin-visible only
+        case .ticketStatusChangeMine:      return (true,  true)
+        case .ticketStatusChangeAny:       return (false, true)  // admin-visible only
         case .smsInbound:                  return (true,  true)
         case .smsDeliveryFailed:           return (true,  true)
         case .newCustomerCreated:          return (false, true)

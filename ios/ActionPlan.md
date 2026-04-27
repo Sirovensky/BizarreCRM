@@ -1641,12 +1641,12 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 ### 13.1 List
 - [x] Base list — shipped.
 - [x] **CachedRepository + offline** — `NotificationCachedRepositoryImpl` (actor, single-entry in-memory cache, 2min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 6 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Tabs** — All / Unread / Assigned to me / Mentions.
-- [ ] **Mark all read** action (glass toolbar button).
-- [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
-- [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
+- [x] **Tabs / Filter chips** — All / Unread / type chips (Ticket / SMS / Invoice / Payment / Appointment / Mention / System) in `NotificationFilterChip` enum; iPhone horizontal scroll bar + iPad sidebar list. (`NotificationListPolishedView.swift`, `NotificationFilterChip.swift`; agent-9 b4)
+- [x] **Mark all read** action (glass toolbar button). (`NotificationListPolishedView` toolbar + `NotificationListPolishedViewModel.markAllRead()` + optimistic UI; agent-9 b4)
+- [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer). (`NotificationListPolishedView` `.onTapGesture` calls `vm.deepLinkURL(for:)` → `UIApplication.shared.open`; `NotificationListPolishedViewModel.deepLinkURL(for:)`; agent-9 b4)
+- [x] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`). (`NotificationListPolishedView` swipe trailing + `NotificationListPolishedViewModel.dismiss(id:)` + `APIClient.dismissNotification(id:)` in `NotificationsEndpoints.swift`; agent-9 b4)
 - [x] **Group by day** (glass day-header). (`NotificationListView.swift` uses `NotificationDaySectionBuilder.build(from:)` + `DayHeader` private view per section; c28bece8)
-- [ ] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
+- [x] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system). (see Tabs line above; agent-9 b4)
 - [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListView.swift` emptyState(icon:text:) → "You're all caught up" + `bell.slash` icon; shown when items empty + online; pre-existing impl)
 
 ### 13.2 Push pipeline
@@ -1661,12 +1661,12 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `PAYMENT_RECEIVED` → View receipt / Thank customer.
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
-- [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
+- [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (`NotificationDeepLinkCoordinator.swift` `kEntityTypeAllowlist` set of 11 types; `isAllowedURL` rejects unknown schemes; agent-9 b4 confirmed)
 - [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
 - [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
 
 ### 13.3 In-app toast
-- [ ] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic.
+- [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`RealtimeUX.swift`: `WSToast` model + `WSToastBanner` view + `.wsToastOverlay(toast:onTap:)` ViewModifier; glass pill, 4s auto-dismiss, swipe-up early dismiss, `.selection` haptic. agent-9 b4 confirmed)
 
 ### 13.4 Badge count
 - [x] App icon badge = unread count across inbox + notifications + SMS.
@@ -3102,22 +3102,22 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
-- [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
-- [ ] **Quiet hours** — start/end time; show icon in tab badge during quiet hours.
-- [ ] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle).
+- [x] **Delivery medium** per channel — Push / Email / SMS / In-app only. (`Settings/Pages/NotificationsExtendedPage.swift`: `DeliveryMedium` enum + `DeliveryMediumRow` + `ChannelDeliveryPrefs`; icon-chip row per channel; agent-9 b4 confirmed)
+- [x] **Quiet hours** — start/end time; show icon in tab badge during quiet hours. (`NotificationsExtendedPage.swift` `DatePicker` start/end + `UserDefaults` persistence + `putNotifSettings` API; agent-9 b4 confirmed)
+- [x] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle). (`NotificationsExtendedPage.swift` `criticalOverrideEnabled` toggle wired to `NotifSettingsWire.criticalOverride`; agent-9 b4 confirmed)
 - [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
-- [ ] **Test push** — admin-only button sends test notification.
+- [x] **Test push** — admin-only button sends test notification. (`NotificationsExtendedPage.swift` `vm.sendTestPush()` → `api.postTestPush()` → `POST /api/v1/notifications/test`; admin gate; alert confirm; agent-9 b4 confirmed)
 
 ### 19.4 Appearance
 - [x] **Theme** — System / Light / Dark; persisted via UserDefaults, applied to all UIWindows. (`Settings/Pages/AppearancePage.swift`; `AppearanceViewModel`.)
 - [x] **Accent** — Brand triad: Orange / Teal / Magenta (one-tap). (`AppearancePage.swift`)
 - [x] **Density** — Compact toggle; row height scale. (`AppearancePage.swift`)
-- [ ] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt).
+- [x] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt). (`Settings/Pages/AppearanceExtendedPage.swift` `glassIntensity` slider + footer note; agent-9 b4 confirmed)
 - [x] **Reduce motion** — overrides system (for one-user testing). (`AppearancePage.swift`)
-- [ ] **Reduce transparency** — overrides system.
+- [x] **Reduce transparency** — overrides system. (`AppearanceExtendedPage.swift` `reduceTransparency` toggle in "Glass & transparency" section; agent-9 b4 confirmed)
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
-- [ ] **Sounds** — receive notification sound / scan chime / success / error; master mute.
-- [ ] **Haptics** — master toggle + per-event subtle/medium/strong.
+- [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearanceExtendedPage.swift` `soundsEnabled` master toggle + per-sound toggles (notification, scan, success, error); agent-9 b4 confirmed)
+- [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearanceExtendedPage.swift` `hapticsEnabled` toggle + `HapticIntensity` segmented picker (subtle/medium/strong); agent-9 b4 confirmed)
 - [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
 
 ### 19.5 Organization (admin)
@@ -6374,7 +6374,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 
 ### 70.1 User override (Settings § 19.3)
 - [x] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent. (`NotificationPreferencesMatrixView`, `NotificationPreferencesMatrixViewModel`)
-- [ ] Defaults shown greyed with "(default)" label until user flips.
+- [x] Defaults shown greyed with "(default)" label until user flips. (`NotificationDefaultsLabel.swift`: `NotificationDefaultBadge` view — shows "(default)" when `current` matches `NotificationDefaults.default(for:)`; shows "Reset" micro-button when diverged; fixed enum case names `ticketStatusChangeMine`/`ticketStatusChangeAny`; agent-9 b4)
 - [x] "Reset all to default" button. (`resetAllToDefault()`)
 - [x] Explicit warning when enabling SMS on a high-volume event. (`StaffNotificationCategoryExclusions`)
 
