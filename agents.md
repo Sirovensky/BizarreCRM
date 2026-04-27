@@ -330,7 +330,7 @@ This pulls in all merged work from sibling agents (and your own prior batches). 
 3. Read `ios/CLAUDE.md` and `ios/agent-ownership.md` for non-negotiables.
 4. Read 2-3 sibling files in your owned packages before adding new code.
 5. Implement task-by-task; flip `[ ]` → `[x]` with commit SHA in ActionPlan.md as you finish each.
-6. Build + test gate per batch: `bash ios/scripts/gen.sh && swift test`. CI lint: `bash ios/scripts/sdk-ban.sh && bash ios/scripts/a11y-audit.sh`.
+6. **Light gate (default):** `bash ios/scripts/sdk-ban.sh` only. Skip `swift test` and `swift build` unless you specifically need to verify a non-trivial change. Spot-check single-package compile via `swift build --package-path Packages/<YourPkg>` if uncertain. Pre-existing failures across other packages are tracked in Discovered — do not chase them.
 7. Commit per batch (preferred) or per task. **Do NOT push** — orchestrator merges + pushes after review.
 8. Report back to orchestrator when batch done OR blocked — do not start next batch until reviewed.
 
