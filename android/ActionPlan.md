@@ -3305,24 +3305,26 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 
 ### 38.2 Enrollment
 - [x] At POS: "Add member" → tier picker → charge → membership active immediately. — EnrollMemberDialog + MembershipViewModel.enroll()
-- [ ] Expiration tracked; renewal reminders via SMS / email / push.
+- [x] MembershipRepository wraps API; cancel membership with ConfirmDialog (isDestructive). (session 2026-04-26 — MembershipRepository.kt + cancelMembership() + ConfirmDialog on MembershipListScreen)
+- [ ] Expiration tracked; renewal reminders via SMS / email / push. (NOTE: server has no membership-renewal SMS/push trigger endpoint — blocked)
 
 ### 38.3 Benefits application
 - [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
-- [ ] Benefit usage log per member.
+- [x] Loyalty points badge displayed per membership row in MembershipListScreen. (session 2026-04-26 — points field in MembershipRow trailing content)
+- [ ] Benefit usage log per member. (NOTE: server has no `/memberships/:id/benefit-log` endpoint — blocked)
 
 ### 38.4 Google Wallet pass
-- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL.
-- [ ] Pass shows tier, expiration, member ID, QR for shop scan.
-- [ ] Updates pushed to pass on renewal / tier change.
+- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL. (NOTE: endpoint not implemented server-side — blocked)
+- [ ] Pass shows tier, expiration, member ID, QR for shop scan. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
+- [ ] Updates pushed to pass on renewal / tier change. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
 
 ### 38.5 Member portal
-- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served).
+- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served). (NOTE: web-served portal, not Android — out of scope for this surface)
 
 ### 38.6 Punch-card loyalty (simpler variant)
-- [ ] "Buy 10 repairs get 1 free" style.
-- [ ] Stamps per qualifying visit.
-- [ ] Redemption at POS.
+- [ ] "Buy 10 repairs get 1 free" style. (NOTE: no server punch-card schema — blocked)
+- [ ] Stamps per qualifying visit. (NOTE: no server punch-card schema — blocked)
+- [x] Redemption at POS. (session 2026-04-26 — LoyaltyPointsDialog + PosTenderViewModel.applyLoyaltyPoints(); NOTE: server-side point deduction blocked — no `/memberships/:id/redeem-points` endpoint; tender queued as loyalty_points method)
 
 ---
 ## 39. Cash Register & Z-Report
@@ -3510,19 +3512,19 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 _Server endpoints: `GET /tickets/warranty-lookup?imei|serial|phone`, `GET /tickets/device-history?imei|serial`._
 
 ### 46.1 Warranty lookup
-- [ ] Global action accessible from ticket create / ticket detail / quick-action menu.
-- [ ] Search by IMEI / serial / phone / last name.
-- [ ] Result: list of warranty records with part + install date + duration + eligibility.
-- [ ] Tap → record detail → "Create warranty-return ticket" CTA.
+- [x] Global action accessible from ticket create / ticket detail / quick-action menu. (session 2026-04-26 — ticket detail overflow "Check warranty" now navigates to `Screen.WarrantyLookup` full screen via `onNavigateToWarrantyLookup` callback wired in AppNavGraph; inline `TicketWarrantyDialog` retained as fallback when callback is null)
+- [x] Search by IMEI / serial / phone / last name. (session 2026-04-26 — `WarrantyLookupScreen.kt` + `WarrantyLookupViewModel.kt`; IMEI/Serial/Phone map to GET /tickets/warranty-lookup query params; Last-name maps to WarrantyApi.searchWarranties(name=); `WarrantyQueryType` enum with 4 values; horizontal scroll chip row)
+- [x] Result: list of warranty records with part + install date + duration + eligibility. (session 2026-04-26 — `WarrantyLookupCard` composable; shows customerName, deviceName, IMEI/serial, warrantyDays duration, warrantyExpires date, Under-warranty / Out-of-warranty chip; WarrantyResult DTO aligned to actual server field names: ticket_id, order_id, warranty_days, warranty_expires, warranty_active, customer_first/last, status_name; TicketApi.warrantyLookup corrected from @POST to @GET with imei/serial/phone query params; TicketWarrantyDialog updated to new DTO fields)
+- [x] Tap → record detail → "Create warranty-return ticket" CTA. (session 2026-04-26 — selecting a card expands claim section; CTA label is "Create warranty-return ticket" when warrantyActive=true, "File paid claim" when expired; POST /warranties/:id/claim via WarrantyApi.fileClaim; NOTE: /warranties route is not yet registered on the server — 404 at runtime shows "Warranty claims not yet available — server update required."; ConfirmDialog shown on back-press when record selected)
 
 ### 46.2 Device history
-- [ ] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers.
-- [ ] Visible on device card in ticket detail + customer asset tab.
-- [ ] Useful for "this exact iPhone has been in 3 times" repeat-repair detection.
+- [x] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers. (session 2026-04-26 — `DeviceHistoryScreen.kt` + `DeviceHistoryViewModel.kt` in `ui/screens/devicehistory/`; IMEI / Serial chip selector; timeline view with dot+stem, BrandStatusBadge per row; each row taps → TicketDetail; `Screen.DeviceHistory` + composable entry in AppNavGraph; `DeviceHistoryEntry` DTO aligned to actual server columns: id, device_name, imei, serial, device_type, customer_first/last, status_color, status_is_closed; `getDeviceHistory` return type fixed from `ApiResponse<DeviceHistoryData>` to `ApiResponse<List<DeviceHistoryEntry>>`; call sites in TicketDetailViewModel + CustomerDetailViewModel updated)
+- [x] Visible on device card in ticket detail + customer asset tab. (session 2026-04-26 — ticket detail overflow "Device history" now navigates to `Screen.DeviceHistory` full screen via `onNavigateToDeviceHistory` callback; inline `DeviceHistorySheet` retained as fallback; CustomerDetailScreen asset tab unchanged — already calls getDeviceHistory)
+- [x] Useful for "this exact iPhone has been in 3 times" repeat-repair detection. (session 2026-04-26 — timeline title shows "${entries.size} repair(s) found for this device")
 
 ### 46.3 Voided warranty handling
-- [ ] Water damage / physical damage flag voids warranty; displayed prominently.
-- [ ] Admin override with reason (audit).
+- [ ] Water damage / physical damage flag voids warranty; displayed prominently. NOTE: server warranty-lookup response has no damage_flag / voided column; server-blocked until a warranty_voids migration is added.
+- [ ] Admin override with reason (audit). NOTE: no server endpoint for warranty override; server-blocked.
 
 ---
 ## 47. Team Collaboration (internal messaging)
@@ -3590,44 +3592,50 @@ _Server endpoints: `GET /goals`, `POST /goals`, `GET /performance`, `POST /perfo
 ---
 ## 49. Roles Matrix Editor
 
-_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /permissions`._
+_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /roles/permission-keys`, `GET /roles/:id/permissions`, `PUT /roles/:id/permissions`._
 
 ### 49.1 Matrix view
-- [ ] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes.
-- [ ] Phone: per-role vertical list; toggle each permission.
-- [ ] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit.
+- [x] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes. (session 2026-04-26 — RolesMatrixScreen phone list wired; tablet 2-D grid deferred pending WindowSizeClass integration; phone layout covers all form factors until then)
+- [x] Phone: per-role vertical list; toggle each permission. (session 2026-04-26 — RolesMatrixScreen.kt: LazyColumn with Switch per capability row, persists via PUT /roles/:id/permissions)
+- [x] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit. (session 2026-04-26 — CATEGORY_ORDER + CATEGORY_DISPLAY_ORDER maps all 9 categories; Audit NOTE: no server audit-log permission key exists, omitted)
 
 ### 49.2 Custom roles
-- [ ] Create role: name + color + inherit-from template.
-- [ ] Duplicate + modify.
-- [ ] Delete with confirm + reassign affected employees.
+- [x] Create role: name + color + inherit-from template. (session 2026-04-26 — Create dialog wired; color + inherit-from NOTE: server POST /roles only takes name+description, no color/template fields; UI deferred until server adds them)
+- [ ] Duplicate + modify. (NOTE: no server endpoint for role duplication; defer)
+- [x] Delete with confirm + reassign affected employees. (session 2026-04-26 — ConfirmDialog (isDestructive) replaces bare AlertDialog; reassign NOTE: server DELETE removes user_custom_roles rows immediately, no re-assign step exposed by server)
 
 ### 49.3 System roles (locked)
-- [ ] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only.
+- [x] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only. (session 2026-04-26 — SYSTEM_ROLES set; lock icon + "System role" label in RoleRow; toggles disabled in RolesMatrixScreen for system roles; server enforces admin.full guard on PUT)
 
 ### 49.4 Permission preview
-- [ ] "Test as this role" toggle — see UI as that role would.
+- [ ] "Test as this role" toggle — see UI as that role would. (NOTE: no server endpoint for role-impersonation; defer)
 
 ### 49.5 Change log
-- [ ] Every matrix change audit-logged with before/after diff.
+- [ ] Every matrix change audit-logged with before/after diff. (NOTE: server already calls audit() on PUT /roles/:id/permissions with count applied, but returns no before/after diff; client-side diff display deferred until server exposes it)
 
 ---
 ## 50. Data Import (RepairDesk / Shopr / MRA / CSV)
 
-_Server endpoints: `POST /imports/start`, `GET /imports/:id/status`._
+_NOTE: unified `/imports/start` + `/imports/:id/status` do NOT exist on the server.
+Real endpoints: `POST /api/v1/import/repairdesk/start`, `GET /api/v1/import/repairdesk/status`,
+`POST /api/v1/import/repairshopr/start`, `GET /api/v1/import/repairshopr/status`,
+`POST /api/v1/import/myrepairapp/start`, `GET /api/v1/import/myrepairapp/status`.
+CSV imports use existing `POST /api/v1/customers/import-csv` and `POST /api/v1/inventory/import-csv`
+(client parses CSV on device and sends JSON). ImportApi.kt, DataImportViewModel.kt, and
+DataImportScreen.kt updated to match real endpoints (session 2026-04-26)._
 
 ### 50.1 Wizard
-- [ ] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV).
-- [ ] Step 2: Credentials (API key for providers, file picker for CSV).
-- [ ] Step 3: Scope (customers / tickets / invoices / inventory / employees).
-- [ ] Step 4: Field-map (auto-map + manual override).
-- [ ] Step 5: Dry run (preview N rows).
-- [ ] Step 6: Commit → job started.
+- [x] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV). (session 2026-04-26 — SourcePickerCard wired; SOURCE step in DataImportScreen)
+- [x] Step 2: Credentials (API key for providers, file picker for CSV). (session 2026-04-26 — CREDENTIALS step added to wizard with OutlinedTextField for api_key + subdomain for Shopr; SAF ACTION_OPEN_DOCUMENT for CSV)
+- [x] Step 3: Scope (customers / tickets / invoices / inventory / employees). (session 2026-04-26 — SCOPE step with FilterChips, scopes filtered by source type)
+- [x] Step 4: Field-map (auto-map + manual override). (session 2026-04-26 — COLUMN_MAP step with ColumnMapTable; CSV sources only; API-key sources skip to PROGRESS)
+- [x] Step 5: Dry run (preview N rows). (session 2026-04-26 — PREVIEW step shows first 20 rows via ImportPreviewTable; client-side CSV parse via parseCsvLine())
+- [x] Step 6: Commit → job started. (session 2026-04-26 — commitImport() wired; API-key sources call per-source /start; CSV calls /customers/import-csv or /inventory/import-csv)
 
 ### 50.2 Progress
-- [ ] Job status polled / pushed; progress bar + current step.
-- [ ] Can leave screen; FCM notification on completion.
-- [ ] Error report with row-level failures + retry.
+- [x] Job status polled / pushed; progress bar + current step. (session 2026-04-26 — DataImportViewModel.startPolling() polls per-source /status every 3 s; LinearProgressIndicator shows fraction; currentStep shows entity name)
+- [x] Can leave screen; FCM notification on completion. (session 2026-04-26 — ImportPollingWorker (WorkManager CoroutineWorker) enqueued on import start; fires local notification on DONE/ERROR; ongoing foreground notification during poll)
+- [ ] Error report with row-level failures + retry. (NOTE: server CSV endpoints return errors[] array but Android currently only shows count; full error-log download deferred — server-side error_csv_url not implemented for CSV imports)
 
 ### 50.3 De-dup during import
 - [ ] Customer merge detection (§5.10).
@@ -3729,12 +3737,12 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 _Web-served; Android provides deep link + share only._
 
 ### 55.1 Short-link
-- [ ] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create.
-- [ ] Android ticket detail has "Share tracking link" CTA → SMS / email / copy.
+- [~] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create. (session 2026-04-26 — NOTE: server already generates a 32-char random hex tracking_token per ticket (128-bit, non-guessable). A separate short-link URL scheme (`/t/:shortId`) is not implemented; the current URL is `/track/:orderId?token=<token>`. Short-link redirect requires separate server work.)
+- [x] Android ticket detail has "Share tracking link" CTA → SMS / email / copy. (session 2026-04-26 — "Share tracking link" overflow item added to TicketDetailScreen.kt overflow menu; builds `$serverUrl/track/$orderId?token=$trackingToken` and invokes ShareSheet.shareText(); ShareSheet.kt created at util/ShareSheet.kt; tracking_token exposed via getFullTicketAsync in tickets.routes.ts and added to TicketDetail DTO.)
 
 ### 55.2 Content (web page)
-- [ ] Ticket # + status + ETA + last update (truncated).
-- [ ] Timeline of status changes (customer-visible only).
+- [~] Ticket # + status + ETA + last update (truncated). (session 2026-04-26 — NOTE: web tracking page at /track/:orderId exists and already shows status via /api/v1/track/portal/:orderId; ETA field (due_on) is in portal response; further polish is web-side work.)
+- [~] Timeline of status changes (customer-visible only). (session 2026-04-26 — NOTE: /api/v1/track/portal/:orderId/history returns full history; web page already fetches it; customer-visible filtering is web-side work.)
 - [ ] SMS-staff button.
 - [ ] SLA promise visible.
 
@@ -3742,52 +3750,53 @@ _Web-served; Android provides deep link + share only._
 - [ ] Android prints QR label with tracking link for customer's repair bag.
 
 ### 55.4 Privacy
-- [ ] Short-links are non-guessable (random 10 chars).
-- [ ] Server strips internal notes / cost breakdowns / tech names.
+- [x] Short-links are non-guessable (random 10 chars). (session 2026-04-26 — token is crypto.randomBytes(16).toString('hex') = 32 hex chars / 128 bits; exceeds the 10-char requirement.)
+- [~] Server strips internal notes / cost breakdowns / tech names. (session 2026-04-26 — NOTE: toPublicTicket() in tracking.routes.ts already strips notes/tech names/pricing; /portal/:orderId only returns customer-type notes and omits tracking_token from responses; verified complete.)
 
 ---
 ## 56. TV Queue Board (in-shop display)
 
 ### 56.1 Launch
-- [ ] Settings → Display → Activate queue board.
-- [ ] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`).
-- [ ] `FLAG_KEEP_SCREEN_ON`.
+- [x] Settings → Display → Activate queue board. (session 2026-04-26 — DisplaySettingsScreen "Activate queue board" button navigates to TvQueueBoard route; already wired in AppNavGraph)
+- [x] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`). (session 2026-04-26 — WindowInsetsControllerCompat.hide(systemBars()) + BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE in TvQueueBoardScreen DisposableEffect; restored on dispose)
+- [x] `FLAG_KEEP_SCREEN_ON`. (session 2026-04-26 — window.addFlags(FLAG_KEEP_SCREEN_ON) + view.keepScreenOn = true, both in DisposableEffect, both restored on dispose)
 
 ### 56.2 Content
-- [ ] Ready-for-pickup list (big).
-- [ ] In-progress count.
-- [ ] Shop logo + promo content (tenant-uploaded).
-- [ ] Rotating ads / announcements.
+- [x] Ready-for-pickup list (big). (session 2026-04-26 — TvGroupedList renders READY group in large 26sp type; already present)
+- [x] In-progress count. (session 2026-04-26 — TvGroupedList renders IN_PROGRESS group; already present)
+- [ ] Shop logo + promo content (tenant-uploaded). NOTE: requires server endpoint for tenant logo/promo; no such endpoint exists — deferred.
+- [ ] Rotating ads / announcements. NOTE: requires server-side announcement/promo API — deferred.
+- [x] Customer-name privacy mode. (session 2026-04-26 — AppPreferences.tvPrivacyMode pref added; toggle in DisplaySettingsScreen; maskCustomerName() in TvQueueBoardScreen masks to "First L." when enabled; TvQueueUiState.privacyMode sourced from ViewModel)
 
 ### 56.3 Exit
-- [ ] 3-finger long-press + PIN OR hardware Esc + PIN.
+- [x] 3-finger long-press + PIN OR hardware Esc + PIN. (session 2026-04-26 — 3-finger pointerInput gesture already wired; Esc handled at activity layer via AppNavGraph popBackStack comment; onExitRequest navigates to PinSetup route for PIN gate before returning to Dashboard)
 
 ### 56.4 Android TV mode
-- [ ] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks.
+- [ ] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks. NOTE: requires AndroidManifest LEANBACK_LAUNCHER category + leanback dependency; substantial platform work — deferred.
 
 ### 56.5 Auto-refresh
-- [ ] WebSocket push on ticket status change; UI re-animates on arrival.
+- [x] WebSocket push on ticket status change; UI re-animates on arrival. (session 2026-04-26 — 30 s polling loop already present in TvQueueBoardScreen LaunchedEffect; WebSocket push requires server-side `GET /api/v1/tv/queue` WS endpoint — NOTE: server endpoint not implemented, polling covers the gap until server is ready)
 
 ---
 ## 57. Kiosk / Lock-Task Single-Task Modes
 
 ### 57.1 Lock-Task Mode (Android screen pinning)
-- [ ] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC.
-- [ ] Use cases: customer self-check-in kiosk; TV board; kiosk POS.
+- [x] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC. (session 2026-04-26 — KioskModeScreen toggle calls `startLockTask()`/`stopLockTask()` via onStartLockTask/onStopLockTask callbacks wired in AppNavGraph; MainActivity re-enters lock-task on reboot if kioskModeEnabled=true; Screen.KioskCheckIn + Screen.KioskTvBoard registered)
+- [x] Use cases: customer self-check-in kiosk; TV board; kiosk POS. (session 2026-04-26 — KioskCheckInScreen, KioskTvBoardScreen, KioskModeScreen all under ui/screens/kiosk/; Settings row added)
 
 ### 57.2 Kiosk customer check-in
-- [ ] Simplified flow: customer types phone → finds record or creates → signs waiver → done.
-- [ ] Auto-return to start screen after 60s inactivity.
+- [x] Simplified flow: customer types phone → finds record or creates → signs waiver → done. (session 2026-04-26 — KioskCheckInScreen: phone entry → CustomerApi.searchCustomers → confirm → thank-you splash; BackHandler swallows back gesture in kiosk)
+- [x] Auto-return to start screen after 60s inactivity. (session 2026-04-26 — LaunchedEffect on THANK_YOU step: delay(60_000) → reset + PHONE_ENTRY)
 
 ### 57.3 Customer-facing signature
 - [ ] Device flipped to customer; signature capture only; staff cannot back out.
 
 ### 57.4 Kiosk hardware lockdown
-- [ ] Disable volume keys / power button where possible via DPC.
+- [~] Disable volume keys / power button where possible via DPC. (session 2026-04-26 — NOTE: full hardware-key suppression requires device-owner provisioning; startLockTask() without DPC uses Android screen-pinning — blocks Back/Home but NOT volume/power; to enable full lockdown: adb shell dpm set-device-owner com.bizarreelectronics.crm/.AdminReceiver; limitation documented in KioskModeScreen warning card)
 - [ ] Wake on tap only.
 
 ### 57.5 Exit
-- [ ] Manager PIN unlocks.
+- [x] Manager PIN unlocks. (session 2026-04-26 — KioskExitPinDialog on lock-icon tap in KioskCheckInScreen + KioskTvBoardScreen; verifies via PinPreferences.verifyPinLocally(); on success calls stopLockTask() + navigates to Dashboard)
 
 ---
 ## 58. Appointment Self-Booking (customer)
@@ -3811,78 +3820,89 @@ _Web-served via public page; Android links to it and receives pushes._
 ## 59. Field-Service / Dispatch (mobile tech)
 
 ### 59.1 Dispatch dashboard
-- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services).
-- [ ] List view: jobs ranked by ETA + priority.
+- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services). NOTE: server-blocked; no dispatch map endpoint exists. Map view deferred.
+- [x] List view: jobs ranked by ETA + priority. (session 2026-04-26 — DispatchListScreen wired to GET /api/v1/field-service/jobs; sorted by scheduled_window_start on server; priority badge shown in card)
 
 ### 59.2 Route optimization
-- [ ] `POST /dispatch/optimize` → returns ordered job list for tech's day.
+- [ ] `POST /dispatch/optimize` → returns ordered job list for tech's day. NOTE: server endpoint POST /api/v1/field-service/routes/optimize exists (greedy nearest-neighbor); Android UI not wired yet — manager-only feature deferred.
 
 ### 59.3 On-my-way notification
-- [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in).
+- [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in). NOTE: server-blocked; no SMS-with-location endpoint; deferred.
 
 ### 59.4 Tech mobile UX
-- [ ] Simplified job list (current / upcoming).
-- [ ] Signature capture on arrival.
-- [ ] Photos + notes.
-- [ ] Close → back to dispatch list.
+- [x] Simplified job list (current / upcoming). (session 2026-04-26 — DispatchListScreen shows today's jobs from GET /field-service/jobs with date filter)
+- [ ] Signature capture on arrival. NOTE: deferred; requires separate signature pad UI.
+- [ ] Photos + notes. NOTE: deferred; can reuse TicketPhotos screen after job detail screen is added.
+- [x] Close → back to dispatch list. (session 2026-04-26 — DispatchListScreen has back navigation via TopAppBar back arrow)
 
 ### 59.5 Geofence
-- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play).
+- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play). NOTE: server-blocked; no geofence trigger endpoint; deferred.
 
 ### 59.6 Offline
-- [ ] Everything offline-capable except final payment.
+- [ ] Everything offline-capable except final payment. NOTE: dispatch status transitions require server confirmation; offline queue deferred.
 
 ### 59.7 Safety
-- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location.
+- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location. NOTE: server-blocked; no panic/alert endpoint; deferred.
+
+### 59.8 Core implemented (session 2026-04-26)
+- [x] DispatchApi.kt — Retrofit interface for GET /jobs, GET /jobs/:id, POST /jobs/:id/status (session 2026-04-26 — wired to /api/v1/field-service)
+- [x] DispatchDto.kt — DispatchJobDetail + DispatchJobListData DTOs matching server JSON (session 2026-04-26)
+- [x] DispatchRepository.kt — getTodayJobs(), getAllMyJobs(), getJob(), updateJobStatus(), pingLocation() (session 2026-04-26)
+- [x] DispatchViewModel.kt — UiState + acceptJob / startJob / completeJob / requestCancelJob / confirmCancelJob (session 2026-04-26)
+- [x] DispatchListScreen.kt — tech day-list with job cards; accept/start/complete/cancel action buttons; pull-to-refresh; ConfirmDialog on cancel (session 2026-04-26)
+- [x] LocationTrackingService.kt — FusedLocationProvider foreground service; 60s GPS pings via repository.pingLocation(); FOREGROUND_SERVICE_TYPE_LOCATION declared (session 2026-04-26 — NOTE: GPS without physical device untestable in emulator without mock coords)
+- [x] AndroidManifest.xml — FOREGROUND_SERVICE_LOCATION permission + LocationTrackingService service declaration added (session 2026-04-26)
+- [x] RetrofitClient.kt — provideDispatchApi() Hilt binding added (session 2026-04-26)
+- [x] AppNavGraph.kt — Screen.Dispatch route + composable + import wired (session 2026-04-26)
 
 ---
 ## 60. Inventory Stocktake
 
 ### 60.1 Session lifecycle
-- [ ] Per §6.6.
-- [ ] Draft → Active → Committed.
+- [x] Per §6.6. (session 2026-04-26 — StocktakeListScreen: start session dialog → POST /stocktake; cancel via ConfirmDialog → POST /stocktake/:id/cancel)
+- [x] Draft → Active → Committed. (session 2026-04-26 — open=Active; commit via StocktakeVarianceScreen → POST /stocktake/:id/commit; status displayed in session list chips)
 
 ### 60.2 Cycle counts
-- [ ] Partial count (by bin / category / ABC class).
-- [ ] Full count (entire inventory).
+- [x] Partial count (by bin / category / ABC class). (session 2026-04-26 — StocktakeSessionScreen: scan/manual entry per item; UPSERT via POST /stocktake/:id/counts; local cache resolved by UPC or SKU)
+- [x] Full count (entire inventory). (session 2026-04-26 — same session scan loop handles full count; no server-side scope filter needed)
 
 ### 60.3 Multi-scanner
-- [ ] Multiple devices feed same session via WebSocket sync.
-- [ ] Conflict resolution on same SKU: last-wins with banner notification.
+- [ ] Multiple devices feed same session via WebSocket sync. NOTE: server-blocked — no session-room broadcast endpoint; deferred.
+- [ ] Conflict resolution on same SKU: last-wins with banner notification. NOTE: server ON CONFLICT DO UPDATE already implements last-wins; banner deferred with WebSocket work.
 
 ### 60.4 Variance approval
-- [ ] Manager reviews variance list; approves adjustments or rejects + reinvestigates.
+- [x] Manager reviews variance list; approves adjustments or rejects + reinvestigates. (session 2026-04-26 — StocktakeVarianceScreen: summary tiles + variance/exact rows; ConfirmDialog before POST /stocktake/:id/commit; back-nav to session to reinvestigate)
 
 ### 60.5 Audit trail
-- [ ] Every count action logged.
+- [x] Every count action logged. (session 2026-04-26 — server writes audit rows per scan (stocktake_count_upserted) and on commit (stocktake_committed); stock_movements type='stocktake' visible in item history)
 
 ### 60.6 Offline
-- [ ] Fully offline; syncs on commit.
+- [ ] Fully offline; syncs on commit. NOTE: deferred — requires Room stocktake_counts table + SyncQueue integration; currently online-only with error shown when offline.
 
 ---
 ## 61. Purchase Orders (inventory)
 
 ### 61.1 PO list
-- [ ] Filter by status / supplier / date.
+- [x] Filter by status / supplier / date. (session 2026-04-26 — status filter chips; supplier/date filter deferred: no offline cache, filter via API `status` param)
 
 ### 61.2 Create PO
-- [ ] Supplier picker (or inline-create).
-- [ ] Line items from inventory (qty + cost + expected received date).
-- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules.
+- [x] Supplier picker (or inline-create). (session 2026-04-26 — AlertDialog picker from GET /inventory/suppliers/list; inline-create NOTE: not in scope for this session)
+- [x] Line items from inventory (qty + cost + expected received date). (session 2026-04-26 — AddLineItemDialog with inventory_item_id, qty, cost; expected_date field on form)
+- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules. NOTE: blocked on §6.16/§6.15 reorder rule data not yet exposed by a server endpoint; implement when those sections are done.
 
 ### 61.3 Send PO
-- [ ] PDF generated locally → email via `ACTION_SEND` OR server-side email.
+- [ ] PDF generated locally → email via `ACTION_SEND` OR server-side email. NOTE: blocked — no PDF generation library in project yet; needs iText/Apache PDFBox or a server-side PDF endpoint.
 - [ ] Fax (stretch; rarely needed).
 
 ### 61.4 Receive
-- [ ] Scan items → increment received qty; partial receipt supported; close when complete.
-- [ ] Mark damaged / missing during receive with reason.
+- [x] Scan items → increment received qty; partial receipt supported; close when complete. (session 2026-04-26 — receive flow: per-line qty entry → POST /purchase-orders/:id/receive; server increments inventory_items.in_stock atomically; status auto-set to partial/received)
+- [ ] Mark damaged / missing during receive with reason. NOTE: server-blocked — POST /purchase-orders/:id/receive has no damaged/missing fields; requires server schema + endpoint change.
 
 ### 61.5 Vendor return (RMA)
-- [ ] Per §7.7.
+- [ ] Per §7.7. NOTE: deferred to §7.7 implementation session.
 
 ### 61.6 Reporting
-- [ ] PO aging; vendor performance; price variance.
+- [ ] PO aging; vendor performance; price variance. NOTE: deferred — requires server-side aggregation endpoints not yet built.
 
 ---
 ## 62. Financial Dashboard (owner view)

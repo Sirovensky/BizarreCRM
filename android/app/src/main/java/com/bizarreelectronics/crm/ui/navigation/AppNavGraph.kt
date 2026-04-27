@@ -122,7 +122,11 @@ import com.bizarreelectronics.crm.ui.screens.giftcards.GiftCardScreen
 import com.bizarreelectronics.crm.ui.screens.audit.AuditLogsScreen
 import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
 import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
+import com.bizarreelectronics.crm.ui.screens.fieldservice.DispatchListScreen
 import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
+import com.bizarreelectronics.crm.ui.screens.warranty.WarrantyLookupScreen
+import com.bizarreelectronics.crm.ui.screens.devicehistory.DeviceHistoryScreen
+import com.bizarreelectronics.crm.ui.screens.kiosk.KioskModeScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
@@ -457,6 +461,13 @@ sealed class Screen(val route: String) {
     // §14.4 — Role management (admin)
     data object RoleManagement : Screen("role-management")
 
+    // §49 — Roles Matrix Editor: permission grid for a single role
+    data class RolesMatrix(val roleId: Long, val roleName: String) : Screen("roles-matrix/$roleId/$roleName") {
+        companion object {
+            const val ROUTE = "roles-matrix/{roleId}/{roleName}"
+        }
+    }
+
     // §52 — Audit Logs (admin-only)
     data object AuditLogs : Screen("audit-logs")
 
@@ -465,6 +476,9 @@ sealed class Screen(val route: String) {
 
     // §51 — Data Export (manager+)
     data object DataExport : Screen("data-export")
+
+    // §59 — Field Service / Dispatch: technician day-list + job detail.
+    data object Dispatch : Screen("field-service")
 
     // §54 — Command Palette (overlay; not a real nav destination, but registered
     // so Ctrl+K handling in AppNavGraph can check against it)
@@ -479,8 +493,22 @@ sealed class Screen(val route: String) {
     // §19.9 — SMS settings sub-screen
     data object SmsSettings : Screen("settings/sms")
 
+    // §46 — Warranty & Device History Lookup screens
+    data object WarrantyLookup : Screen("warranty-lookup")
+    data object DeviceHistory : Screen("device-history")
+
     // §19.19 — Business info sub-screen
     data object BusinessInfo : Screen("settings/business-info")
+
+    // §57 — Kiosk / Lock-Task Mode settings sub-screen.
+    data object KioskMode : Screen("settings/kiosk")
+
+    // §61 — Purchase Orders (inventory)
+    data object PurchaseOrders : Screen("purchase-orders")
+    data object PurchaseOrderCreate : Screen("purchase-orders/create")
+    data object PurchaseOrderDetail : Screen("purchase-orders/{id}") {
+        fun createRoute(id: Long) = "purchase-orders/$id"
+    }
 }
 
 data class BottomNavItem(
@@ -507,9 +535,9 @@ data class BottomNavItem(
  */
 private fun mapResolvedRoute(raw: String): String? = when {
     // External H1 contract routes → internal nav destinations
-    raw == "ticket/new"   -> Screen.CheckInEntry.route
-    raw == "customer/new" -> Screen.CustomerCreate.route
-    raw == "scan"         -> Screen.Scanner.route
+    raw == "ticket/new"      -> Screen.CheckInEntry.route
+    raw == "customer/new"    -> Screen.CustomerCreate.route
+    raw == "scan"            -> Screen.Scanner.route
     // §2.7 L330 — setup invite: "login?setupToken=<encoded>" must navigate
     // to the Login composable before the user is authenticated. Returned
     // as-is; the auth gate in the collector is bypassed for this prefix.
@@ -734,7 +762,9 @@ fun AppNavGraph(
             currentRoute != Screen.HardwareSettings.route &&
             currentRoute != Screen.PrinterDiscovery.route &&
             // §4.9 L756 — bench tab and settings sub-screens hide the bottom bar
-            currentRoute != Screen.Bench.route
+            currentRoute != Screen.Bench.route &&
+            // §60 — stocktake session + variance are detail screens; hide bottom bar
+            !currentRoute.startsWith("stocktake/")
 
     val bottomNavItems = listOf(
         BottomNavItem(Screen.Dashboard, "Dashboard") { Icon(Icons.Default.Home, "Dashboard") },
@@ -1168,6 +1198,9 @@ fun AppNavGraph(
                     },
                     // POS-AUDIT-041: Screen.Checkout (stub) deleted; onCheckout omitted
                     // so the top-bar Checkout icon auto-hides (null guard in TicketDetailScreen).
+                    // §46 — warranty lookup + device history full-screen navigation.
+                    onNavigateToWarrantyLookup = { navController.navigate(Screen.WarrantyLookup.route) },
+                    onNavigateToDeviceHistory = { navController.navigate(Screen.DeviceHistory.route) },
                 )
             }
             composable(Screen.TicketDeviceEdit.route) { backStackEntry ->
@@ -1610,6 +1643,25 @@ fun AppNavGraph(
             composable(Screen.RoleManagement.route) {
                 com.bizarreelectronics.crm.ui.screens.employees.RoleManagementScreen(
                     onBack = { navController.popBackStack() },
+                    onOpenMatrix = { roleId, roleName ->
+                        navController.navigate("roles-matrix/$roleId/$roleName")
+                    },
+                )
+            }
+            // §49 — Roles Matrix Editor: permission grid for a single role
+            composable(
+                route = Screen.RolesMatrix.ROUTE,
+                arguments = listOf(
+                    androidx.navigation.navArgument("roleId") { type = androidx.navigation.NavType.LongType },
+                    androidx.navigation.navArgument("roleName") { type = androidx.navigation.NavType.StringType },
+                ),
+            ) { backStackEntry ->
+                val roleId = backStackEntry.arguments?.getLong("roleId") ?: return@composable
+                val roleName = backStackEntry.arguments?.getString("roleName") ?: ""
+                com.bizarreelectronics.crm.ui.screens.employees.RolesMatrixScreen(
+                    roleId = roleId,
+                    roleName = roleName,
+                    onBack = { navController.popBackStack() },
                 )
             }
             composable(Screen.Settings.route) {
@@ -1671,6 +1723,8 @@ fun AppNavGraph(
                     onRepairPricing = { navController.navigate(Screen.RepairPricing.route) },
                     // §44.3 — Device catalog.
                     onDeviceCatalog = { navController.navigate(Screen.DeviceCatalog.route) },
+                    // §57 — Kiosk / Lock-Task Mode sub-screen.
+                    onKioskMode = { navController.navigate(Screen.KioskMode.route) },
                 )
             }
             // §19.7 — Ticket settings sub-screen.
@@ -1877,6 +1931,12 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+
+            // §57 — Kiosk / Lock-Task Mode settings sub-screen.
+            composable(Screen.KioskMode.route) {
+                KioskModeScreen(onBack = { navController.popBackStack() })
+            }
+
             // §2.14 [plan:L369-L378] — Staff picker (kiosk lock screen).
             // Entered automatically by the inactivity observer (AppNavGraph LaunchedEffect
             // or MainActivity) when sharedDeviceModeEnabled=true and idle > threshold.
@@ -2375,6 +2435,60 @@ fun AppNavGraph(
             composable(Screen.DataExport.route) {
                 DataExportScreen(
                     onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §59 Field Service / Dispatch (technician day-list) ───────────
+            // Server endpoints live under /api/v1/field-service/jobs.
+            // Role scoping is enforced server-side: technicians see only their
+            // own assigned jobs; managers see all.
+            composable(Screen.Dispatch.route) {
+                DispatchListScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §46 Warranty Lookup ──────────────────────────────────────────
+            composable(Screen.WarrantyLookup.route) {
+                WarrantyLookupScreen(
+                    onNavigateToTicket = { ticketId -> navController.navigate(Screen.TicketDetail.createRoute(ticketId)) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §46 Device History ───────────────────────────────────────────
+            composable(Screen.DeviceHistory.route) {
+                DeviceHistoryScreen(
+                    onNavigateToTicket = { ticketId -> navController.navigate(Screen.TicketDetail.createRoute(ticketId)) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §61 Purchase Orders ──────────────────────────────────────────
+            composable(Screen.PurchaseOrders.route) {
+                com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderListScreen(
+                    onPoClick = { id -> navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) },
+                    onCreateClick = { navController.navigate(Screen.PurchaseOrderCreate.route) },
+                )
+            }
+            composable(Screen.PurchaseOrderCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderCreateScreen(
+                    onCreated = { id ->
+                        navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) {
+                            popUpTo(Screen.PurchaseOrderCreate.route) { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(
+                Screen.PurchaseOrderDetail.route,
+                arguments = listOf(androidx.navigation.navArgument("id") {
+                    type = androidx.navigation.NavType.LongType
+                }),
+            ) {
+                com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderDetailScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
         }

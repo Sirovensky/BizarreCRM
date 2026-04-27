@@ -767,6 +767,15 @@ object RetrofitClient {
     @Provides @Singleton fun provideMarketingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.MarketingApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.MarketingApi::class.java)
     @Provides @Singleton fun provideSegmentApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SegmentApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SegmentApi::class.java)
 
+    // §59 — Field Service / Dispatch (mobile tech job list + status transitions + location pings)
+    @Provides @Singleton fun provideDispatchApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.DispatchApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.DispatchApi::class.java)
+
+    // §60 — Stocktake: session lifecycle, scan counts, variance commit.
+    @Provides @Singleton fun provideStocktakeApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.StocktakeApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.StocktakeApi::class.java)
+
+    // §61 — Purchase Orders: list, create, receive, status transitions.
+    @Provides @Singleton fun providePurchaseOrderApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi::class.java)
+
     // §36.2 — Unencrypted prefs for setup-wizard local progress (no secrets stored here;
     // passwords are never written; step data is non-sensitive configuration).
     @Provides @Singleton @SetupWizardPrefs

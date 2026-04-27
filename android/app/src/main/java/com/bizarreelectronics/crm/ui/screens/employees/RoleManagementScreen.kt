@@ -15,9 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.ManageAccounts
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -30,6 +30,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,6 +49,7 @@ import com.bizarreelectronics.crm.data.remote.api.CreateRoleBody
 import com.bizarreelectronics.crm.data.remote.api.CustomRoleDto
 import com.bizarreelectronics.crm.data.remote.api.RolesApi
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -55,6 +57,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+/** System roles whose base permissions are immutable (§49.3). */
+private val SYSTEM_ROLES = setOf("owner", "admin", "manager", "technician", "cashier")
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -71,6 +78,7 @@ data class RoleManagementUiState(
 
 /**
  * §14.4 — Custom role management.
+ * §49   — Extended: ConfirmDialog on delete; system-role locking; matrix navigation.
  * Uses GET /roles, POST /roles, DELETE /roles/:id (roles.routes.ts).
  * Admin-only — 403 is surfaced as a snackbar.
  */
@@ -171,9 +179,22 @@ class RoleManagementViewModel @Inject constructor(
 
 // ── Screen ────────────────────────────────────────────────────────────────────
 
+/**
+ * §14.4 / §49 — Role Management screen.
+ *
+ * Lists all custom roles with:
+ *  - System roles (owner/admin/manager/technician/cashier) shown with a lock
+ *    badge — base permissions immutable; user can still tap Edit to add extras.
+ *  - Custom roles show a delete icon (ConfirmDialog on tap) and an edit icon
+ *    that navigates to the per-role permission matrix.
+ *  - FAB opens the Create Role dialog.
+ *
+ * @param onOpenMatrix Navigate to the permission matrix for [roleId]/[roleName].
+ */
 @Composable
 fun RoleManagementScreen(
     onBack: () -> Unit,
+    onOpenMatrix: (roleId: Long, roleName: String) -> Unit = { _, _ -> },
     viewModel: RoleManagementViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -186,20 +207,17 @@ fun RoleManagementScreen(
         }
     }
 
-    // Delete confirm dialog
+    // §49.2 — ConfirmDialog on role delete (replaces bare AlertDialog)
+    val pendingDeleteRole = state.roles.firstOrNull { it.id == state.pendingDeleteId }
     if (state.pendingDeleteId != null) {
-        AlertDialog(
-            onDismissRequest = { viewModel.dismissDelete() },
-            title = { Text("Delete role?") },
-            text = { Text("This role will be permanently removed. Users assigned this role will not be affected immediately.") },
-            confirmButton = {
-                TextButton(onClick = { viewModel.deleteRole() }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { viewModel.dismissDelete() }) { Text("Cancel") }
-            },
+        ConfirmDialog(
+            title = "Delete role?",
+            message = "\"${pendingDeleteRole?.name?.replaceFirstChar { it.uppercase() } ?: "This role"}\" will be permanently removed. " +
+                "Employees currently assigned this role will lose it immediately.",
+            confirmLabel = "Delete",
+            isDestructive = true,
+            onConfirm = { viewModel.deleteRole() },
+            onDismiss = { viewModel.dismissDelete() },
         )
     }
 
@@ -250,6 +268,7 @@ fun RoleManagementScreen(
                     icon = Icons.Default.ManageAccounts,
                     title = "No custom roles",
                     subtitle = "Tap + to create your first custom role.",
+                    includeWave = true,
                 )
             }
 
@@ -258,9 +277,12 @@ fun RoleManagementScreen(
                 contentPadding = PaddingValues(bottom = 80.dp),
             ) {
                 items(state.roles, key = { it.id }) { role ->
+                    val isSystem = role.name.lowercase() in SYSTEM_ROLES
                     RoleRow(
                         role = role,
-                        onDelete = { viewModel.confirmDelete(role.id) },
+                        isSystemRole = isSystem,
+                        onEdit = { onOpenMatrix(role.id, role.name) },
+                        onDelete = if (isSystem) null else ({ viewModel.confirmDelete(role.id) }),
                     )
                     HorizontalDivider()
                 }
@@ -270,7 +292,12 @@ fun RoleManagementScreen(
 }
 
 @Composable
-private fun RoleRow(role: CustomRoleDto, onDelete: () -> Unit) {
+private fun RoleRow(
+    role: CustomRoleDto,
+    isSystemRole: Boolean,
+    onEdit: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,11 +306,25 @@ private fun RoleRow(role: CustomRoleDto, onDelete: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                role.name.replaceFirstChar { it.uppercase() },
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    role.name.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+                // §49.3 — System-role lock badge
+                if (isSystemRole) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = "System role — base permissions locked",
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    )
+                }
+            }
             if (!role.description.isNullOrBlank()) {
                 Text(
                     role.description,
@@ -291,21 +332,40 @@ private fun RoleRow(role: CustomRoleDto, onDelete: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+            if (isSystemRole) {
+                Text(
+                    "System role",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
         }
-        if (role.isActive == 1) {
+        if (role.isActive == 1 && !isSystemRole) {
             Text(
                 "Active",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
         }
-        IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+        // Edit → permission matrix (all roles, including system with extras)
+        IconButton(onClick = onEdit, modifier = Modifier.size(36.dp)) {
             Icon(
-                Icons.Default.Delete,
-                contentDescription = "Delete ${role.name}",
+                Icons.Default.Edit,
+                contentDescription = "Edit permissions for ${role.name}",
                 modifier = Modifier.size(18.dp),
-                tint = MaterialTheme.colorScheme.error,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // Delete — only custom roles
+        if (onDelete != null) {
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete ${role.name}",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.error,
+                )
+            }
         }
     }
 }

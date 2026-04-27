@@ -74,6 +74,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketWarrantyDi
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.util.ClipboardUtil
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.ShareSheet
 import com.bizarreelectronics.crm.util.ReduceMotion
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -660,10 +661,17 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
             try {
-                val response = ticketApi.warrantyLookup(mapOf("query" to query))
-                val result = response.data
-                _state.value = if (result != null) {
-                    _state.value.copy(warrantyLoading = false, warrantyResult = result)
+                // Determine if query is phone (digits only), otherwise treat as IMEI/serial.
+                val isPhone = query.all { it.isDigit() || it == '+' || it == '-' || it == ' ' } && query.length < 15
+                val response = if (isPhone) {
+                    ticketApi.warrantyLookup(phone = query.trim())
+                } else {
+                    ticketApi.warrantyLookup(imei = query.trim())
+                }
+                val results = response.data
+                val first = results?.firstOrNull()
+                _state.value = if (first != null) {
+                    _state.value.copy(warrantyLoading = false, warrantyResult = first)
                 } else {
                     _state.value.copy(warrantyLoading = false, warrantyError = "No warranty record found.")
                 }
@@ -702,7 +710,7 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(deviceHistoryLoading = true)
             try {
                 val response = ticketApi.getDeviceHistory(imei = imei?.ifBlank { null }, serial = serial?.ifBlank { null })
-                val entries = response.data?.history ?: emptyList()
+                val entries = response.data ?: emptyList()
                 _state.value = _state.value.copy(
                     deviceHistoryLoading = false,
                     deviceHistoryEntries = entries,
@@ -1182,6 +1190,10 @@ fun TicketDetailScreen(
     onCheckout: ((ticketId: Long, total: Double, customerName: String) -> Unit)? = null,
     // L780-L786 — navigate to WaiverListScreen; hidden when null (feature not yet wired)
     onNavigateToWaivers: ((ticketId: Long) -> Unit)? = null,
+    // §46.1 — navigate to the full Warranty Lookup screen (optional; inline dialog used when null)
+    onNavigateToWarrantyLookup: (() -> Unit)? = null,
+    // §46.2 — navigate to the full Device History screen (optional; inline sheet used when null)
+    onNavigateToDeviceHistory: (() -> Unit)? = null,
     viewModel: TicketDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -1527,22 +1539,51 @@ fun TicketDetailScreen(
                                         }
                                     },
                                 )
-                                // L725 — Check warranty
+                                // §55.1 — Share tracking link with customer
+                                run {
+                                    val trackingToken = state.ticketDetail?.trackingToken
+                                    val orderId = ticket.orderId
+                                    val serverUrl = viewModel.serverUrl
+                                    if (!trackingToken.isNullOrBlank() && serverUrl.isNotBlank()) {
+                                        DropdownMenuItem(
+                                            text = { Text("Share tracking link") },
+                                            leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                val url = "$serverUrl/track/$orderId?token=$trackingToken"
+                                                ShareSheet.shareText(
+                                                    context,
+                                                    url,
+                                                    "Track your repair — $orderId",
+                                                )
+                                            },
+                                        )
+                                    }
+                                }
+                                // L725 — Check warranty (full screen if callback wired, inline dialog otherwise)
                                 DropdownMenuItem(
                                     text = { Text("Check warranty") },
                                     leadingIcon = { Icon(Icons.Default.VerifiedUser, contentDescription = null) },
                                     onClick = {
                                         showOverflowMenu = false
-                                        viewModel.showWarrantyDialog()
+                                        if (onNavigateToWarrantyLookup != null) {
+                                            onNavigateToWarrantyLookup()
+                                        } else {
+                                            viewModel.showWarrantyDialog()
+                                        }
                                     },
                                 )
-                                // L726 — Device history
+                                // L726 — Device history (full screen if callback wired, inline sheet otherwise)
                                 DropdownMenuItem(
                                     text = { Text("Device history") },
                                     leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
                                     onClick = {
                                         showOverflowMenu = false
-                                        viewModel.showDeviceHistory()
+                                        if (onNavigateToDeviceHistory != null) {
+                                            onNavigateToDeviceHistory()
+                                        } else {
+                                            viewModel.showDeviceHistory()
+                                        }
                                     },
                                 )
                                 // L727 — Pin to dashboard

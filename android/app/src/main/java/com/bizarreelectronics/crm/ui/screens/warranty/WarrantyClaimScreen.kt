@@ -33,7 +33,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +71,22 @@ fun WarrantyClaimScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbarHost = remember { SnackbarHostState() }
+    var showCloseConfirm by remember { mutableStateOf(false) }
+
+    if (showCloseConfirm) {
+        ConfirmDialog(
+            title = "Discard warranty claim?",
+            message = "You have a warranty record selected. Leaving will discard your unsaved claim.",
+            confirmLabel = "Leave",
+            onConfirm = {
+                showCloseConfirm = false
+                viewModel.clearSelection()
+                onBack()
+            },
+            onDismiss = { showCloseConfirm = false },
+            isDestructive = false,
+        )
+    }
 
     // Handle branch outcomes
     LaunchedEffect(state.claimResult) {
@@ -96,7 +115,11 @@ fun WarrantyClaimScreen(
             TopAppBar(
                 title = { Text("Warranty Claim") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = {
+                            if (state.selectedWarranty != null) showCloseConfirm = true else onBack()
+                        },
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },

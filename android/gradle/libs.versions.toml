@@ -157,6 +157,9 @@ zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing-c
 # SMS Retriever — OTP autofill without READ_SMS permission (§2.4 L302)
 play-services-auth-api-phone = { group = "com.google.android.gms", name = "play-services-auth-api-phone", version.ref = "play-services-auth-api-phone" }
 
+# §59 — FusedLocationProvider for field-service GPS pings (LocationTrackingService)
+play-services-location = { group = "com.google.android.gms", name = "play-services-location", version = "21.3.0" }
+
 # Glance (home-screen widget Compose API — §1.6 plan:L225 / §24 plan:L2316)
 androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-glance-material3 = { group = "androidx.glance", name = "glance-material3", version.ref = "glance" }

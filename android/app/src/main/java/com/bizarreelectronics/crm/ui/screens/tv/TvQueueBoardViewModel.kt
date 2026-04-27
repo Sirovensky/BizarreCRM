@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.tv
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.remote.api.DashboardApi
 import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,9 +30,10 @@ import javax.inject.Inject
 @HiltViewModel
 class TvQueueBoardViewModel @Inject constructor(
     private val dashboardApi: DashboardApi,
+    private val appPreferences: AppPreferences,
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(TvQueueUiState())
+    private val _uiState = MutableStateFlow(TvQueueUiState(privacyMode = appPreferences.tvPrivacyMode))
     val uiState: StateFlow<TvQueueUiState> = _uiState.asStateFlow()
 
     /** Kick off the first load immediately when the ViewModel is created. */
@@ -100,16 +102,20 @@ class TvQueueBoardViewModel @Inject constructor(
 /**
  * UI state for [TvQueueBoardScreen].
  *
- * @property isLoading True during the first fetch and each subsequent refresh.
- * @property groups    Tickets grouped by [TvQueueGroup], in display order.
- *                     Empty map when the endpoint returns 404 or no tickets.
- * @property error     Non-null when the last refresh failed (non-404). The
- *                     screen shows this transiently while the loop continues.
+ * @property isLoading   True during the first fetch and each subsequent refresh.
+ * @property groups      Tickets grouped by [TvQueueGroup], in display order.
+ *                       Empty map when the endpoint returns 404 or no tickets.
+ * @property error       Non-null when the last refresh failed (non-404). The
+ *                       screen shows this transiently while the loop continues.
+ * @property privacyMode When true, customer names are masked to first-name +
+ *                       last-initial ("John S.") in [TvQueueBoardScreen].
+ *                       Set once from [AppPreferences.tvPrivacyMode] at VM init.
  */
 data class TvQueueUiState(
     val isLoading: Boolean = true,
     val groups: Map<TvQueueGroup, List<TvQueueItem>> = emptyMap(),
     val error: String? = null,
+    val privacyMode: Boolean = false,
 ) {
     /** True when there are no tickets across all groups and the endpoint is live. */
     val isEmpty: Boolean get() = !isLoading && groups.values.all { it.isEmpty() }

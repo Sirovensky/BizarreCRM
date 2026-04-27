@@ -427,6 +427,19 @@ class AppPreferences @Inject constructor(
         get() = prefs.getBoolean("keep_screen_on", false)
         set(value) = prefs.edit().putBoolean("keep_screen_on", value).apply()
 
+    /**
+     * §56.2 — TV queue board customer-name privacy mode.
+     *
+     * When true, customer full names shown on the TV board are masked to
+     * first-name + last-initial (e.g. "John S.") so bystanders cannot
+     * read a customer's full name from across the room.
+     *
+     * Defaults false (full name shown) — shop owner opts in explicitly.
+     */
+    var tvPrivacyMode: Boolean
+        get() = prefs.getBoolean("tv_privacy_mode", false)
+        set(value) = prefs.edit().putBoolean("tv_privacy_mode", value).apply()
+
     // --- §2.14 [plan:L369-L378] — shared-device / counter-kiosk mode --------
     //
     // When [sharedDeviceModeEnabled] is true, the app shows a staff-picker
@@ -1133,6 +1146,27 @@ class AppPreferences @Inject constructor(
     fun setNotifMatrixEnabled(eventId: String, channelId: String, enabled: Boolean) {
         prefs.edit().putBoolean("notif_matrix_${eventId}_$channelId", enabled).apply()
     }
+
+    // --- §57 Kiosk / Lock-Task Mode -----------------------------------------
+    //
+    // [kioskModeEnabled] — master switch; MainActivity calls startLockTask() /
+    //   stopLockTask() in response to this pref via KioskModeScreen's
+    //   onStartLockTask / onStopLockTask callbacks.
+    //
+    // [kioskTarget] — "check_in" | "tv_board" selects which single-task
+    //   screen the app navigates to when kiosk mode activates.
+    //
+    // Both stored in plain prefs (operational settings, not credentials).
+
+    /** §57 — Whether kiosk / lock-task mode is currently enabled. */
+    var kioskModeEnabled: Boolean
+        get() = prefs.getBoolean("kiosk_mode_enabled", false)
+        set(value) = prefs.edit().putBoolean("kiosk_mode_enabled", value).apply()
+
+    /** §57 — Selected kiosk target: "check_in" | "tv_board". Default "check_in". */
+    var kioskTarget: String
+        get() = prefs.getString("kiosk_target", "check_in") ?: "check_in"
+        set(value) = prefs.edit().putString("kiosk_target", value).apply()
 
     // --- Global Search saved/pinned queries (item 8) -----------------------
     //

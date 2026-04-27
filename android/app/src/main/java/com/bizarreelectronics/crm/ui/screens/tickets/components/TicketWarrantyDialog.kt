@@ -86,29 +86,45 @@ fun TicketWarrantyDialog(
 
 @Composable
 private fun WarrantyResultCard(result: WarrantyResult) {
+    val isActive = result.warrantyActive == true
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (!result.deviceName.isNullOrBlank()) {
-                LabeledRow("Device", result.deviceName)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    result.customerName,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = if (isActive)
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                    else MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        if (isActive) "Under warranty" else "Expired",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isActive) MaterialTheme.colorScheme.secondary
+                        else MaterialTheme.colorScheme.onErrorContainer,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
-            if (!result.customerName.isNullOrBlank()) {
-                LabeledRow("Customer", result.customerName)
-            }
-            if (!result.status.isNullOrBlank()) {
-                LabeledRow("Status", result.status)
-            }
-            if (!result.purchaseDate.isNullOrBlank()) {
-                LabeledRow("Purchased", DateFormatter.formatAbsolute(result.purchaseDate))
-            }
-            if (!result.warrantyEnd.isNullOrBlank()) {
-                LabeledRow("Warranty ends", DateFormatter.formatAbsolute(result.warrantyEnd))
-            }
-            if (!result.lastRepairDate.isNullOrBlank()) {
-                LabeledRow("Last repair", DateFormatter.formatAbsolute(result.lastRepairDate))
-            }
+            if (!result.deviceName.isNullOrBlank()) LabeledRow("Device", result.deviceName)
+            if (!result.imei.isNullOrBlank()) LabeledRow("IMEI", result.imei)
+            if (!result.serial.isNullOrBlank()) LabeledRow("Serial", result.serial)
+            if (!result.statusName.isNullOrBlank()) LabeledRow("Status", result.statusName)
+            result.warrantyDays?.let { LabeledRow("Duration", "$it days") }
+            if (!result.warrantyExpires.isNullOrBlank()) LabeledRow("Expires", DateFormatter.formatAbsolute(result.warrantyExpires))
+            result.ticketId?.let { LabeledRow("Ticket", "#$it") }
         }
     }
 }

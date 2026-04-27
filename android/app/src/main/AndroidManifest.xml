@@ -36,6 +36,10 @@
     <!-- FOREGROUND_SERVICE_PHONE_CALL: API 34+ — required for the phoneCall
          foreground-service type used by CallNotificationService on API 34+. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <!-- FOREGROUND_SERVICE_LOCATION: API 34+ — required for LocationTrackingService
+         which uses foregroundServiceType="location" to send GPS pings while
+         a field-service technician is en-route to a job. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- POST_NOTIFICATIONS: runtime permission required on API 33+ to show any
          notification (FCM alerts, RepairInProgress pinned notification, etc.).
@@ -289,6 +293,17 @@
         <service
             android:name=".service.RepairInProgressService"
             android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- §59 — GPS location pings while a field-service tech is en-route to a job.
+             foregroundServiceType="location" is required on API 34+ (Android 14)
+             for services that request location while running in the foreground.
+             ACCESS_FINE_LOCATION (already declared above) satisfies the runtime
+             permission requirement; this service type satisfies the manifest
+             requirement introduced by Android 14. -->
+        <service
+            android:name=".service.LocationTrackingService"
+            android:foregroundServiceType="location"
             android:exported="false" />
 
         <!-- §42 — In-progress call Activity. supportsPictureInPicture=true lets

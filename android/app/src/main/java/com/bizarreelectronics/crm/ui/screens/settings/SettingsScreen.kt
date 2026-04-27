@@ -290,6 +290,8 @@ fun SettingsScreen(
     onRepairPricing: (() -> Unit)? = null,
     // §44.3 — opens the Device Catalog sub-screen.
     onDeviceCatalog: (() -> Unit)? = null,
+    // §57 — opens the Kiosk / Lock-Task Mode sub-screen.
+    onKioskMode: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -381,6 +383,19 @@ fun SettingsScreen(
                     icon = Icons.Default.Tv,
                     title = "Display",
                     onClick = onDisplay,
+                )
+            }
+
+            // §57 — Kiosk / Lock-Task Mode. Shown when the callback is wired
+            // (admin role gating is enforced at the navigation call site).
+            if (onKioskMode != null) {
+                val kioskEnabled = viewModel.appPreferences.kioskModeEnabled
+                SettingsRowWithBadge(
+                    icon = Icons.Default.TabletAndroid,
+                    title = "Kiosk Mode",
+                    badgeText = if (kioskEnabled) "On" else "Off",
+                    badgeEnabled = kioskEnabled,
+                    onClick = onKioskMode,
                 )
             }
 

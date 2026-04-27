@@ -248,6 +248,9 @@ dependencies {
     // GMS Document Scanner (§17.3 L1877-L1878 — waivers, warranty cards, receipts, IDs)
     implementation(libs.gms.document.scanner)
 
+    // §59 — FusedLocationProvider for LocationTrackingService GPS pings (field-service)
+    implementation(libs.play.services.location)
+
     // ML Kit (Text recognition — on-device receipt OCR, no Firebase)
     implementation(libs.mlkit.text.recognition)
 

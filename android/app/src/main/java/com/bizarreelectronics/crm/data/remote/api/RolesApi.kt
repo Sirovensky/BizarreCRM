@@ -11,11 +11,10 @@ import retrofit2.http.Path
 
 /**
  * §14.4 — Custom roles API.
+ * §49   — Roles Matrix Editor (permission grid).
  *
  * Mounted at /api/v1/roles on the server (roles.routes.ts).
- * All endpoints admin-only (server enforces; client shows 403 snackbar).
- *
- * Also covers: PUT /roles/users/:userId/role for per-user role assignment.
+ * All write endpoints admin-only (server enforces; client shows 403 snackbar).
  */
 
 data class CustomRoleDto(
@@ -41,11 +40,38 @@ data class AssignRoleBody(
     val role: String,
 )
 
+// ── §49 — Permission matrix DTOs ──────────────────────────────────────────────
+
+/** One row of the permission matrix returned by GET /roles/:id/permissions. */
+data class PermissionEntryDto(
+    val key: String,
+    val allowed: Boolean,
+)
+
+/** Full payload returned by GET /roles/:id/permissions. */
+data class PermissionMatrixDto(
+    val role: CustomRoleDto,
+    val matrix: List<PermissionEntryDto>,
+)
+
+/** Body for PUT /roles/:id/permissions. */
+data class UpdatePermissionsBody(
+    val updates: List<PermissionEntryDto>,
+)
+
 interface RolesApi {
 
     /** List all custom roles. Admin only. */
     @GET("roles")
     suspend fun getRoles(): ApiResponse<List<CustomRoleDto>>
+
+    /**
+     * §49 — Canonical permission key list.
+     * GET /roles/permission-keys — returns the server's PERMISSION_KEYS array.
+     * No auth required.
+     */
+    @GET("roles/permission-keys")
+    suspend fun getPermissionKeys(): ApiResponse<List<String>>
 
     /** Create a custom role. Admin only. */
     @POST("roles")
@@ -53,7 +79,7 @@ interface RolesApi {
         @Body body: CreateRoleBody,
     ): ApiResponse<CustomRoleDto>
 
-    /** Update role name / description / is_active. Admin only. */
+    /** Update role description / is_active. Admin only. */
     @PUT("roles/{id}")
     suspend fun updateRole(
         @Path("id") roleId: Long,
@@ -64,6 +90,27 @@ interface RolesApi {
     @DELETE("roles/{id}")
     suspend fun deleteRole(
         @Path("id") roleId: Long,
+    ): ApiResponse<@JvmSuppressWildcards Any>
+
+    /**
+     * §49 — Full permission matrix for a role.
+     * GET /roles/:id/permissions → { role, matrix: [{key, allowed}] }
+     * Admin only.
+     */
+    @GET("roles/{id}/permissions")
+    suspend fun getRolePermissions(
+        @Path("id") roleId: Long,
+    ): ApiResponse<PermissionMatrixDto>
+
+    /**
+     * §49 — Persist toggled permissions for a role.
+     * PUT /roles/:id/permissions with { updates: [{key, allowed}] }
+     * Admin only. Server applies as a transaction — partial-fail rolls back.
+     */
+    @PUT("roles/{id}/permissions")
+    suspend fun updateRolePermissions(
+        @Path("id") roleId: Long,
+        @Body body: UpdatePermissionsBody,
     ): ApiResponse<@JvmSuppressWildcards Any>
 
     /**

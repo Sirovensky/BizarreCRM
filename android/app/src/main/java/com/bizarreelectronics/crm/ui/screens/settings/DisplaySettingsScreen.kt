@@ -48,8 +48,9 @@ import javax.inject.Inject
 /**
  * §3.13 — ViewModel for [DisplaySettingsScreen].
  *
- * Owns the "Keep screen on" toggle backed by [AppPreferences.keepScreenOn].
- * All writes go directly to SharedPreferences — no server round-trip.
+ * Owns the "Keep screen on" toggle and the TV privacy-mode toggle, both
+ * backed by [AppPreferences]. All writes go directly to SharedPreferences —
+ * no server round-trip.
  */
 @HiltViewModel
 class DisplaySettingsViewModel @Inject constructor(
@@ -62,6 +63,14 @@ class DisplaySettingsViewModel @Inject constructor(
     fun setKeepScreenOn(enabled: Boolean) {
         appPreferences.keepScreenOn = enabled
         _keepScreenOn.value = enabled
+    }
+
+    private val _tvPrivacyMode = MutableStateFlow(appPreferences.tvPrivacyMode)
+    val tvPrivacyMode: StateFlow<Boolean> = _tvPrivacyMode.asStateFlow()
+
+    fun setTvPrivacyMode(enabled: Boolean) {
+        appPreferences.tvPrivacyMode = enabled
+        _tvPrivacyMode.value = enabled
     }
 }
 
@@ -83,6 +92,7 @@ fun DisplaySettingsScreen(
     viewModel: DisplaySettingsViewModel = hiltViewModel(),
 ) {
     val keepScreenOn by viewModel.keepScreenOn.collectAsState()
+    val tvPrivacyMode by viewModel.tvPrivacyMode.collectAsState()
 
     Scaffold(
         topBar = {
@@ -148,6 +158,29 @@ fun DisplaySettingsScreen(
                         )
                         Spacer(Modifier.width(8.dp))
                         Text("Activate queue board")
+                    }
+                    // §56.2 — customer-name privacy toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleRowSemantics("Privacy mode", checked = tvPrivacyMode),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Privacy mode",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = "Show first name + last initial only (e.g. \"John S.\")",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Switch(
+                            checked = tvPrivacyMode,
+                            onCheckedChange = { viewModel.setTvPrivacyMode(it) },
+                        )
                     }
                 }
             }

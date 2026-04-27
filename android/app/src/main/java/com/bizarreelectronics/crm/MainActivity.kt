@@ -176,6 +176,13 @@ class MainActivity : FragmentActivity() {
         // breadcrumbs without an external profiler.
         jankReporter.attach(this)
 
+        // §57 — If kiosk mode was left enabled from a previous session (e.g.
+        // the device was rebooted), re-enter lock-task on launch so the device
+        // stays pinned without requiring staff interaction.
+        if (appPreferences.kioskModeEnabled) {
+            startLockTask()
+        }
+
         // Resolve a route from two possible sources, in priority order:
         //   1. AND-20260414-H1: launcher shortcut / App Actions / QS tile
         //      surfaces a whitelisted `bizarrecrm://` path via

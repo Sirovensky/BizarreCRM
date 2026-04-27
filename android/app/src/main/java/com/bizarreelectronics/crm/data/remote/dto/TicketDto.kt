@@ -148,6 +148,10 @@ data class TicketDetail(
     val history: List<TicketHistory>?,
     val photos: List<TicketPhoto>?,
     val payments: List<PaymentSummary>?,
+    /** Staff-only tracking token — present only when fetched via authenticated GET /tickets/:id.
+     *  Null on list endpoints. Used to build the public tracking URL shared with customers. */
+    @SerializedName("tracking_token")
+    val trackingToken: String? = null,
 ) {
     /** Computed helpers for UI compatibility */
     val statusName: String? get() = status?.name

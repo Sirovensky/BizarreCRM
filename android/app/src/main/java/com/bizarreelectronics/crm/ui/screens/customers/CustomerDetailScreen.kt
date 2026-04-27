@@ -542,7 +542,7 @@ class CustomerDetailViewModel @Inject constructor(
                     imei = asset.imei?.takeIf { it.isNotBlank() },
                     serial = asset.serial?.takeIf { it.isNotBlank() },
                 )
-                _state.value = _state.value.copy(assetHistory = response.data?.history ?: emptyList())
+                _state.value = _state.value.copy(assetHistory = response.data ?: emptyList())
             } catch (_: Exception) {
                 _state.value = _state.value.copy(assetHistory = emptyList())
             }

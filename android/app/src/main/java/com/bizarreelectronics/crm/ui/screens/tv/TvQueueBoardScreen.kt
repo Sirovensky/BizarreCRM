@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.tv
 
+import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -44,10 +45,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.data.remote.api.TvQueueItem
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
@@ -77,14 +82,33 @@ private val TvGroupColor = mapOf(
  * and device description in large readable type suitable for a wall-
  * mounted display.
  *
- * ## Keep-awake
- * Sets `view.keepScreenOn = true` for the lifetime of the composable so
- * the display never dims while the board is active.
+ * ## Full-screen / immersive mode (§56.1)
+ * On entry, `WindowInsetsControllerCompat.hide(systemBars())` hides the
+ * status bar and navigation bar.  Behaviour is set to
+ * [BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE] so the bars re-appear temporarily
+ * when the user swipes from an edge but auto-hide again — standard "lean
+ * back" immersive pattern.  The previous behaviour and visibility are
+ * restored via [DisposableEffect.onDispose] so the regular app shell is
+ * unaffected when the board exits.
  *
- * ## Auto-refresh
+ * ## Keep-awake (§56.1)
+ * Sets both `view.keepScreenOn = true` AND `FLAG_KEEP_SCREEN_ON` on the
+ * window for the lifetime of the composable.  `view.keepScreenOn` covers
+ * the Compose surface directly; the window flag covers the case where the
+ * view hierarchy is replaced (e.g. by a modal) while the route is still
+ * active.  Both are restored in [DisposableEffect.onDispose].
+ *
+ * ## Auto-refresh (§56.5)
  * A [LaunchedEffect] loop calls [TvQueueBoardViewModel.refresh] every 30 s.
+ * WebSocket push (§56.5) requires `GET /api/v1/tv/queue` WebSocket endpoint
+ * on the server — NOTE: server endpoint not yet implemented; polling covers
+ * the gap.
  *
- * ## Exit gesture (3-finger tap)
+ * ## Privacy mode (§56.2)
+ * When [AppPreferences.tvPrivacyMode] is true, customer names are masked
+ * to first-name + last-initial ("John S.") before display.
+ *
+ * ## Exit gesture (3-finger tap) (§56.3)
  * Three simultaneous pointer contacts detected via [pointerInput] trigger
  * [onExitRequest].  A fading "Exit" hint visible for 3 s in the bottom-
  * right corner makes the gesture discoverable without cluttering the board.
@@ -104,12 +128,33 @@ fun TvQueueBoardScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // --- Keep screen on for the entire lifetime of this composable ---
+    // --- Immersive full-screen: hide system bars for the TV board lifetime ---
+    // Uses WindowInsetsControllerCompat (androidx.core) which works on API 21+
+    // and handles the deprecated WindowManager.LayoutParams.FLAG_FULLSCREEN path
+    // internally. BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE: bars reappear on edge-
+    // swipe and auto-hide after a short timeout — "lean back" immersive pattern.
     val view = LocalView.current
+    val context = LocalContext.current
     DisposableEffect(view) {
-        val previous = view.keepScreenOn
+        val window = (context as? android.app.Activity)?.window ?: return@DisposableEffect onDispose {}
+        // FLAG_KEEP_SCREEN_ON on the window (belt-and-suspenders alongside view.keepScreenOn).
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Immersive full-screen: hide status bar + navigation bar.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val insetsController = WindowInsetsControllerCompat(window, view)
+        insetsController.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        insetsController.hide(WindowInsetsCompat.Type.systemBars())
+        // view.keepScreenOn covers the Compose surface directly.
+        val previousKeepScreenOn = view.keepScreenOn
         view.keepScreenOn = true
-        onDispose { view.keepScreenOn = previous }
+        onDispose {
+            // Restore everything so the regular app shell is not affected.
+            insetsController.show(WindowInsetsCompat.Type.systemBars())
+            WindowCompat.setDecorFitsSystemWindows(window, true)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            view.keepScreenOn = previousKeepScreenOn
+        }
     }
 
     // --- Auto-refresh every 30 s ---
@@ -119,6 +164,9 @@ fun TvQueueBoardScreen(
             viewModel.refresh()
         }
     }
+
+    // --- Privacy mode sourced from ViewModel (reads AppPreferences at init) ---
+    val privacyMode = uiState.privacyMode
 
     // --- Exit hint: visible for 3 s then fades out ---
     var showExitHint by remember { mutableStateOf(true) }
@@ -190,7 +238,7 @@ fun TvQueueBoardScreen(
                 }
 
                 else -> {
-                    TvGroupedList(groups = uiState.groups)
+                    TvGroupedList(groups = uiState.groups, privacyMode = privacyMode)
                 }
             }
         }
@@ -254,7 +302,10 @@ private fun TvTitleBar() {
 }
 
 @Composable
-private fun TvGroupedList(groups: Map<TvQueueGroup, List<TvQueueItem>>) {
+private fun TvGroupedList(
+    groups: Map<TvQueueGroup, List<TvQueueItem>>,
+    privacyMode: Boolean,
+) {
     LazyColumn(verticalArrangement = Arrangement.spacedBy(32.dp)) {
         groups.forEach { (group, items) ->
             if (items.isNotEmpty()) {
@@ -268,7 +319,7 @@ private fun TvGroupedList(groups: Map<TvQueueGroup, List<TvQueueItem>>) {
                     )
                 }
                 items(items = items, key = { it.id }) { ticket ->
-                    TvTicketRow(ticket = ticket, group = group)
+                    TvTicketRow(ticket = ticket, group = group, privacyMode = privacyMode)
                 }
             }
         }
@@ -277,8 +328,33 @@ private fun TvGroupedList(groups: Map<TvQueueGroup, List<TvQueueItem>>) {
     }
 }
 
+/**
+ * §56.2 — Mask a full name to "First L." format.
+ *
+ * Splits on whitespace; takes the first token as the given name and the
+ * first character of the last token as the family-name initial.  Falls
+ * back gracefully for single-word names (returns the name unchanged) so
+ * data with no surname doesn't produce broken output.
+ *
+ * Examples:
+ *   "John Smith"       → "John S."
+ *   "Mary Jane Watson" → "Mary W."
+ *   "Cher"             → "Cher"
+ */
+private fun maskCustomerName(fullName: String): String {
+    val parts = fullName.trim().split("\\s+".toRegex())
+    if (parts.size < 2) return fullName
+    val first = parts.first()
+    val lastInitial = parts.last().first().uppercaseChar()
+    return "$first $lastInitial."
+}
+
 @Composable
-private fun TvTicketRow(ticket: TvQueueItem, group: TvQueueGroup) {
+private fun TvTicketRow(
+    ticket: TvQueueItem,
+    group: TvQueueGroup,
+    privacyMode: Boolean,
+) {
     val dotColor = TvGroupColor[group] ?: TvTextPrimary
 
     // Animated pulse on the status dot so the board feels alive.
@@ -313,9 +389,10 @@ private fun TvTicketRow(ticket: TvQueueItem, group: TvQueueGroup) {
                     .background(dotColor.copy(alpha = alpha)),
             )
 
-            // Customer name — largest element; readable from metres away
+            // Customer name — largest element; readable from metres away.
+            // §56.2: when privacy mode is on, mask to "First L." format.
             Text(
-                text = ticket.customerName,
+                text = if (privacyMode) maskCustomerName(ticket.customerName) else ticket.customerName,
                 color = TvTextPrimary,
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 26.sp,
