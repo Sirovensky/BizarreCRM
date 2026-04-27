@@ -168,6 +168,7 @@ fun CheckInEntryScreen(
                 onNotesChange = viewModel::onNotesChange,
                 onSelectOnFileDevice = viewModel::selectOnFileDevice,
                 onAddNewDevice = viewModel::toggleManualEntry,
+                onDeviceTypeSelected = viewModel::onDeviceTypeSelected,
             )
         }
     }
@@ -369,6 +370,7 @@ private fun Step2DeviceContent(
     onNotesChange: (String) -> Unit,
     onSelectOnFileDevice: (Long) -> Unit = {},
     onAddNewDevice: () -> Unit = {},
+    onDeviceTypeSelected: (String?) -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -417,6 +419,35 @@ private fun Step2DeviceContent(
         // 'Add new device' or selects nothing. Stays as a 3-field stack so
         // the existing text-field layout doesn't regress.
         if (state.showManualEntry) {
+            // 2026-04-26 — device-type chip-row pulled from server-driven
+            // DeviceCategoryRepository (refreshed at app start). Phone /
+            // Tablet / Laptop / TV / Game Console / Desktop tap-to-select.
+            item {
+                Text(
+                    "TYPE",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            item {
+                androidx.compose.foundation.lazy.LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                ) {
+                    items(state.deviceCategories, key = { it.slug }) { cat ->
+                        FilterChip(
+                            selected = state.selectedDeviceType == cat.slug,
+                            onClick = {
+                                onDeviceTypeSelected(
+                                    if (state.selectedDeviceType == cat.slug) null else cat.slug
+                                )
+                            },
+                            label = { Text(cat.label) },
+                        )
+                    }
+                }
+            }
             item {
                 OutlinedTextField(
                     value = state.deviceModel,
