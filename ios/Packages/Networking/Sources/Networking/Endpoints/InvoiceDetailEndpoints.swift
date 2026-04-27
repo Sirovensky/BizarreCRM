@@ -182,9 +182,6 @@ public struct CloneInvoiceResponse: Decodable, Sendable {
     }
 }
 
-// Empty body for POST requests that require no payload
-private struct EmptyBody: Encodable, Sendable {}
-
 // MARK: - Void endpoint
 // Server: POST /api/v1/invoices/:id/void
 // Allowed transitions: any non-void status with no payments (or draft)

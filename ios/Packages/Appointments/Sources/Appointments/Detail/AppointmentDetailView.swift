@@ -67,6 +67,28 @@ public final class AppointmentDetailViewModel {
         }
     }
 
+    // MARK: - §10.2 Send reminder
+
+    /// Sends a reminder to the customer by re-confirming the appointment.
+    /// The server dispatches SMS / email on every PUT with `status: confirmed`.
+    public private(set) var reminderSent: Bool = false
+
+    public func sendReminder() async {
+        guard !isLoading else { return }
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            let req = UpdateAppointmentRequest(status: AppointmentStatus.confirmed.rawValue)
+            appointment = try await api.updateAppointment(id: appointment.id, req)
+            reminderSent = true
+            AppLog.ui.info("Reminder sent for appointment \(appointment.id, privacy: .public)")
+        } catch {
+            errorMessage = AppError.from(error).errorDescription ?? "Failed to send reminder."
+            AppLog.ui.error("Reminder send failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
     // MARK: - §10.6 Check-in / check-out
 
     /// Stamps the check-in time and transitions appointment to "confirmed".
@@ -122,6 +144,9 @@ public struct AppointmentDetailView: View {
     // §10.6 Check-in / check-out confirm
     @State private var showCheckInConfirm = false
     @State private var showCheckOutConfirm = false
+    // §10.2 Send reminder confirm
+    @State private var showReminderConfirm = false
+    @State private var showReminderSentToast = false
 
     private let api: APIClient
     private let onDismissAction: (() -> Void)?
@@ -174,6 +199,23 @@ public struct AppointmentDetailView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This stamps the departure time and marks the appointment completed.")
+        }
+        // §10.2 Send reminder confirm
+        .confirmationDialog("Send reminder to customer?", isPresented: $showReminderConfirm, titleVisibility: .visible) {
+            Button("Send Reminder") {
+                Task {
+                    await vm.sendReminder()
+                    if vm.reminderSent { showReminderSentToast = true }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("An SMS/email reminder will be sent to the customer.")
+        }
+        .alert("Reminder Sent", isPresented: $showReminderSentToast) {
+            Button("OK") { showReminderSentToast = false }
+        } message: {
+            Text("The customer has been notified about their appointment.")
         }
         .alert("Error", isPresented: Binding(
             get: { vm.errorMessage != nil },
@@ -314,6 +356,11 @@ public struct AppointmentDetailView: View {
                 actionChip(icon: "xmark.circle",         label: "Cancel",      color: .bizarreError,
                            isDestructive: true) {
                     showCancel = true
+                }
+
+                // §10.2 Send reminder chip
+                actionChip(icon: "bell.badge",           label: "Send Reminder", color: .bizarreOrange) {
+                    showReminderConfirm = true
                 }
             }
 

@@ -20,6 +20,8 @@ public struct ExpenseFilterSheet: View {
     @State private var draftFromDate: Date?
     @State private var draftToDate: Date?
     @State private var draftStatus: String
+    /// §11.1 reimbursable flag filter (nil = any, true = reimbursable only, false = non-reimbursable)
+    @State private var draftReimbursable: Bool?
     @State private var showFromPicker: Bool = false
     @State private var showToPicker: Bool = false
 
@@ -34,10 +36,11 @@ public struct ExpenseFilterSheet: View {
     public init(filter: Binding<ExpenseListFilter>) {
         _filter = filter
         let f = filter.wrappedValue
-        _draftCategory = State(initialValue: f.category ?? "")
-        _draftStatus   = State(initialValue: f.status ?? "")
-        _draftFromDate = State(initialValue: f.fromDate.flatMap { Self.dateFormatter.date(from: $0) })
-        _draftToDate   = State(initialValue: f.toDate.flatMap   { Self.dateFormatter.date(from: $0) })
+        _draftCategory    = State(initialValue: f.category ?? "")
+        _draftStatus      = State(initialValue: f.status ?? "")
+        _draftFromDate    = State(initialValue: f.fromDate.flatMap { Self.dateFormatter.date(from: $0) })
+        _draftToDate      = State(initialValue: f.toDate.flatMap   { Self.dateFormatter.date(from: $0) })
+        _draftReimbursable = State(initialValue: f.isReimbursable)
     }
 
     public var body: some View {
@@ -45,6 +48,7 @@ public struct ExpenseFilterSheet: View {
             Form {
                 categorySection
                 statusSection
+                reimbursableSection
                 dateRangeSection
             }
             .scrollContentBackground(.hidden)
@@ -113,6 +117,35 @@ public struct ExpenseFilterSheet: View {
         .listRowBackground(Color.bizarreSurface1)
     }
 
+    // MARK: - §11.1 Reimbursable flag section
+
+    private var reimbursableSection: some View {
+        Section("Reimbursable") {
+            Picker("Reimbursable", selection: Binding(
+                get: {
+                    switch draftReimbursable {
+                    case .none:  return 0
+                    case .some(true):  return 1
+                    case .some(false): return 2
+                    }
+                },
+                set: { v in
+                    switch v {
+                    case 1:  draftReimbursable = true
+                    case 2:  draftReimbursable = false
+                    default: draftReimbursable = nil
+                    }
+                }
+            )) {
+                Text("Any").tag(0).accessibilityLabel("No reimbursable filter")
+                Text("Reimbursable only").tag(1)
+                Text("Non-reimbursable only").tag(2)
+            }
+            .accessibilityLabel("Filter by reimbursable status")
+        }
+        .listRowBackground(Color.bizarreSurface1)
+    }
+
     // MARK: - Date range section
 
     private var dateRangeSection: some View {
@@ -140,7 +173,8 @@ public struct ExpenseFilterSheet: View {
             category: draftCategory.isEmpty ? nil : draftCategory,
             fromDate: draftFromDate.map { Self.dateFormatter.string(from: $0) },
             toDate: draftToDate.map { Self.dateFormatter.string(from: $0) },
-            status: draftStatus.isEmpty ? nil : draftStatus
+            status: draftStatus.isEmpty ? nil : draftStatus,
+            isReimbursable: draftReimbursable
         )
     }
 
@@ -149,6 +183,7 @@ public struct ExpenseFilterSheet: View {
         draftStatus = ""
         draftFromDate = nil
         draftToDate = nil
+        draftReimbursable = nil
     }
 }
 

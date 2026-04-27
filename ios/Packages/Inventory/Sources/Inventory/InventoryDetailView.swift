@@ -193,6 +193,12 @@ public struct InventoryDetailView: View {
                 VStack(spacing: BrandSpacing.base) {
                     DetailsCard(item: resp.item)
                     StockCard(item: resp.item)
+                    // §6.2 Cost vs retail variance analysis
+                    if let cost = resp.item.costPrice, let retail = resp.item.retailPrice, cost > 0 {
+                        VarianceCard(costPrice: cost, retailPrice: retail)
+                    }
+                    // §6.2 Photos gallery (shows primary image + upload CTA)
+                    ItemPhotosCard(item: resp.item, api: api)
                     // §6.2 Barcode display — Code-128 via CoreImage; .textSelection on SKU/UPC
                     if resp.item.sku != nil || resp.item.upcCode != nil {
                         BarcodeCard(item: resp.item)
@@ -203,6 +209,8 @@ public struct InventoryDetailView: View {
                     if let movements = resp.movements, !movements.isEmpty {
                         MovementsCard(movements: movements)
                     }
+                    // §6.2 Used in tickets placeholder — deep link when ticket module ships
+                    UsedInTicketsCard(itemId: resp.item.id)
                 }
                 .padding(BrandSpacing.base)
             }
@@ -438,6 +446,125 @@ private struct BarcodeCard: View {
         let scaled = output.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
         guard let cgImage = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
         return UIImage(cgImage: cgImage)
+    }
+}
+
+// MARK: - §6.2 Variance Card
+
+/// Margin analysis: cost vs retail price.
+private struct VarianceCard: View {
+    let costPrice: Double
+    let retailPrice: Double
+
+    private var marginAmt: Double { retailPrice - costPrice }
+    private var marginPct: Double { costPrice > 0 ? (marginAmt / costPrice) * 100 : 0 }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Margin Analysis").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            HStack(spacing: BrandSpacing.lg) {
+                statBlock(label: "Cost", value: formatMoney(costPrice), color: .bizarreOnSurface)
+                statBlock(label: "Retail", value: formatMoney(retailPrice), color: .bizarreOnSurface)
+                statBlock(label: "Margin $", value: formatMoney(marginAmt), color: marginAmt >= 0 ? .bizarreSuccess : .bizarreError)
+                statBlock(label: "Margin %", value: String(format: "%.1f%%", marginPct), color: marginPct >= 30 ? .bizarreSuccess : marginPct >= 10 ? .bizarreWarning : .bizarreError)
+            }
+        }
+        .cardBackground()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Margin analysis. Cost \(formatMoney(costPrice)), Retail \(formatMoney(retailPrice)), Margin \(String(format: "%.1f%%", marginPct))")
+    }
+
+    private func statBlock(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+            Text(value).font(.brandBodyLarge()).foregroundStyle(color).monospacedDigit()
+        }
+    }
+}
+
+// MARK: - §6.2 Photos Card
+
+/// Shows the primary image for an inventory item, with an upload CTA.
+/// Upload goes via `POST /api/v1/inventory/:id/image` (multipart).
+/// Gallery lightbox and multi-photo are Phase 4+ polish.
+private struct ItemPhotosCard: View {
+    let item: InventoryItemDetail
+    let api: APIClient?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            HStack {
+                Text("Photos").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                // §6.2 upload CTA — requires api
+                if api != nil {
+                    Label("Upload", systemImage: "photo.badge.plus")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityLabel("Upload photo for this item")
+                }
+            }
+            if let imageURL = resolvedImageURL {
+                AsyncImage(url: imageURL) { phase in
+                    switch phase {
+                    case .empty:
+                        ProgressView().frame(maxWidth: .infinity, minHeight: 120).accessibilityLabel("Loading image")
+                    case .success(let img):
+                        img.resizable().scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .frame(maxWidth: .infinity)
+                            .accessibilityLabel("Item photo")
+                    case .failure:
+                        placeholderPhoto
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+            } else {
+                placeholderPhoto
+            }
+        }
+        .cardBackground()
+    }
+
+    private var placeholderPhoto: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "photo.on.rectangle").font(.system(size: 24)).foregroundStyle(.bizarreOnSurfaceMuted).accessibilityHidden(true)
+            Text("No photo yet").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+        .accessibilityLabel("No photo uploaded yet")
+    }
+
+    private var resolvedImageURL: URL? {
+        guard let raw = item.image, !raw.isEmpty else { return nil }
+        if raw.hasPrefix("http") { return URL(string: raw) }
+        // Relative path — we can't resolve without base URL here; return nil and let the async resolve happen
+        return nil
+    }
+}
+
+// MARK: - §6.2 Used In Tickets Card
+
+/// Shows a note that this item can be linked from the Tickets module.
+/// Real data wired when `GET /inventory/:id/tickets` server endpoint ships.
+/// Maps to §81 endpoint catalog for future wiring.
+private struct UsedInTicketsCard: View {
+    let itemId: Int64
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Used in Tickets").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "wrench.and.screwdriver").foregroundStyle(.bizarreOnSurfaceMuted).accessibilityHidden(true)
+                Text("Ticket history will appear here when available.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .accessibilityLabel("No ticket history available yet for this item")
+        }
+        .cardBackground()
     }
 }
 

@@ -22,6 +22,8 @@ public struct InventoryListView: View {
     @State private var showingAdjust: Bool = false
     @State private var adjustTargetId: Int64?
     @State private var adjustTargetName: String = ""
+    /// §6.5 HID scanner — toast shown when barcode resolves to nothing
+    @State private var hidScanErrorMessage: String?
     private let detailRepo: InventoryDetailRepository
     private let api: APIClient?
 
@@ -63,6 +65,15 @@ public struct InventoryListView: View {
         NavigationStack(path: $path) {
             ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
+                // §6.5 HID scanner — invisible field captures external Bluetooth scanner input
+                #if canImport(UIKit)
+                HIDScannerField { code in
+                    Task { @MainActor in
+                        await handleHIDScan(code: code, appendPath: { id in path.append(id) })
+                    }
+                }
+                .frame(width: 0, height: 0)
+                #endif
                 VStack(spacing: 0) {
                     // §6.1 Tab bar — All / Products / Parts
                     itemTypeTabBar
@@ -243,6 +254,23 @@ public struct InventoryListView: View {
             get: { vm.advanced },
             set: { vm.advanced = $0 }
         )
+    }
+
+    // MARK: - §6.5 HID scanner handler
+
+    /// Resolves a scanned barcode string to an inventory item and navigates to its detail.
+    /// Fires a haptic via `HIDScannerField` before this is called.
+    @MainActor
+    private func handleHIDScan(code: String, appendPath: @escaping (Int64) -> Void) async {
+        guard let api else { return }
+        do {
+            let item = try await api.inventoryItemByBarcode(code)
+            appendPath(item.id)
+        } catch {
+            // Not found — surface briefly
+            hidScanErrorMessage = "No item found for code "\(code)""
+            AppLog.ui.notice("HID scan no match: \(code, privacy: .public)")
+        }
     }
 
     // MARK: - Batch selection banner (Liquid Glass chrome)

@@ -19,6 +19,10 @@ public final class ExpenseDetailViewModel {
     public private(set) var isDeleting: Bool = false
     public private(set) var deleteError: String?
     public private(set) var didDelete: Bool = false
+    // §11.2 Approval workflow
+    public private(set) var isApproving: Bool = false
+    public private(set) var isDenying: Bool = false
+    public private(set) var approvalError: String?
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let id: Int64
@@ -59,6 +63,38 @@ public final class ExpenseDetailViewModel {
     public func refreshAfterReceiptAttach() async {
         await load()
     }
+
+    // MARK: - §11.2 Approval workflow
+
+    /// Approve expense via `POST /expenses/:id/approve`.
+    public func approve() async {
+        guard !isApproving else { return }
+        approvalError = nil
+        isApproving = true
+        defer { isApproving = false }
+        do {
+            try await api.approveExpense(id: id)
+            await load()
+        } catch {
+            AppLog.ui.error("Expense approve failed: \(error.localizedDescription, privacy: .public)")
+            approvalError = error.localizedDescription
+        }
+    }
+
+    /// Deny expense via `POST /expenses/:id/deny` with a reason comment.
+    public func deny(reason: String) async {
+        guard !isDenying else { return }
+        approvalError = nil
+        isDenying = true
+        defer { isDenying = false }
+        do {
+            try await api.denyExpense(id: id, reason: reason)
+            await load()
+        } catch {
+            AppLog.ui.error("Expense deny failed: \(error.localizedDescription, privacy: .public)")
+            approvalError = error.localizedDescription
+        }
+    }
 }
 
 // MARK: - View
@@ -69,6 +105,9 @@ public struct ExpenseDetailView: View {
     @State private var showEdit: Bool = false
     @State private var showReceiptAttach: Bool = false
     @State private var showDeleteConfirm: Bool = false
+    /// §11.2 Approval — deny reason sheet
+    @State private var showDenySheet: Bool = false
+    @State private var denyReasonText: String = ""
     private let api: APIClient
 
     public init(api: APIClient, id: Int64) {
@@ -123,6 +162,54 @@ public struct ExpenseDetailView: View {
             Button("OK") { }
         } message: {
             Text(vm.deleteError ?? "")
+        }
+        // §11.2 Approval error alert
+        .alert("Action failed", isPresented: Binding(
+            get: { vm.approvalError != nil },
+            set: { _ in }
+        )) {
+            Button("OK") { }
+        } message: {
+            Text(vm.approvalError ?? "")
+        }
+        // §11.2 Deny reason sheet
+        .sheet(isPresented: $showDenySheet) {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: BrandSpacing.md) {
+                    Text("Provide a reason for denying this expense.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .padding(.horizontal)
+                    TextEditor(text: $denyReasonText)
+                        .frame(minHeight: 100)
+                        .padding(BrandSpacing.sm)
+                        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+                        .padding(.horizontal)
+                        .accessibilityLabel("Denial reason")
+                    Spacer()
+                }
+                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+                .navigationTitle("Deny Expense")
+                #if canImport(UIKit)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showDenySheet = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Submit") {
+                            let reason = denyReasonText
+                            showDenySheet = false
+                            denyReasonText = ""
+                            Task { await vm.deny(reason: reason) }
+                        }
+                        .disabled(denyReasonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .accessibilityLabel("Submit denial reason")
+                    }
+                }
+            }
+            .presentationDetents([.medium])
         }
     }
 
@@ -214,6 +301,10 @@ public struct ExpenseDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 headerCard(expense)
+                // §11.2 Approval workflow — show approve/deny buttons when pending
+                if expense.status == ExpenseStatus.pending.rawValue {
+                    approvalActionsCard(expense)
+                }
                 if let desc = expense.description, !desc.isEmpty {
                     descriptionCard(desc)
                 }
@@ -234,6 +325,10 @@ public struct ExpenseDetailView: View {
                 GridRow {
                     VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                         headerCard(expense)
+                        // §11.2 Approval workflow (iPad)
+                        if expense.status == ExpenseStatus.pending.rawValue {
+                            approvalActionsCard(expense)
+                        }
                         if let desc = expense.description, !desc.isEmpty {
                             descriptionCard(desc)
                         }
@@ -251,6 +346,61 @@ public struct ExpenseDetailView: View {
             .frame(maxWidth: 1100, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // MARK: - §11.2 Approval actions card
+
+    private func approvalActionsCard(_ expense: Expense) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            sectionHeader("Manager Action")
+            Text("This expense is pending approval.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.md) {
+                Button {
+                    Task { await vm.approve() }
+                } label: {
+                    HStack {
+                        if vm.isApproving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill").accessibilityHidden(true)
+                        }
+                        Text("Approve")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreSuccess)
+                .disabled(vm.isApproving || vm.isDenying)
+                .accessibilityLabel("Approve expense")
+                .accessibilityIdentifier("expenses.detail.approve")
+
+                Button {
+                    denyReasonText = ""
+                    showDenySheet = true
+                } label: {
+                    HStack {
+                        if vm.isDenying {
+                            ProgressView().tint(.white)
+                        } else {
+                            Image(systemName: "xmark.circle.fill").accessibilityHidden(true)
+                        }
+                        Text("Deny")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreError)
+                .disabled(vm.isApproving || vm.isDenying)
+                .accessibilityLabel("Deny expense")
+                .accessibilityIdentifier("expenses.detail.deny")
+            }
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreWarning.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreWarning.opacity(0.4), lineWidth: 0.5))
     }
 
     // MARK: - Header card
