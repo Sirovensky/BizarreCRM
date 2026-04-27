@@ -6,6 +6,7 @@ import XCTest
 // Real UIScreen state cannot be toggled in unit tests; all tests use
 // MockScreenCapturePrivacy which provides direct isCaptured mutation.
 
+@MainActor
 final class ScreenCapturePrivacyTests: XCTestCase {
 
     // MARK: - MockScreenCapturePrivacy — initial state
