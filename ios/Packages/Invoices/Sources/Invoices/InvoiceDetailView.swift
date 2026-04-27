@@ -36,6 +36,14 @@ public struct InvoiceDetailView: View {
     @State private var showAirPrint = false
     @ObservationIgnored private let printService = InvoicePrintService()
 
+    // §7.9 Installment plan
+    @State private var installmentPlan: InstallmentPlan?
+    @State private var showInstallmentEditor = false
+    // §7.7 Late fee waiver
+    @State private var showLateFeeWaiver = false
+    // §7.13 Discount code input
+    @State private var showDiscountInput = false
+
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let repo: InvoiceDetailRepository
 
@@ -58,8 +66,18 @@ public struct InvoiceDetailView: View {
         }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .task {
+            await vm.load()
+            if case let .loaded(inv) = vm.state {
+                await loadInstallmentPlan(invoiceId: inv.id)
+            }
+        }
+        .refreshable {
+            await vm.load()
+            if case let .loaded(inv) = vm.state {
+                await loadInstallmentPlan(invoiceId: inv.id)
+            }
+        }
         .toolbar { toolbarItems }
         .sheet(isPresented: $showPaySheet) {
             if case let .loaded(inv) = vm.state {
@@ -226,6 +244,40 @@ public struct InvoiceDetailView: View {
                 ShareSheet(items: [url])
             }
         }
+        // §7.9 Installment plan editor sheet
+        .sheet(isPresented: $showInstallmentEditor) {
+            if case let .loaded(inv) = vm.state {
+                let totalCents = Int(((inv.total ?? 0) * 100).rounded())
+                InstallmentPlanEditorSheet(
+                    api: api,
+                    invoiceId: inv.id,
+                    totalCents: totalCents
+                ) {
+                    await loadInstallmentPlan(invoiceId: inv.id)
+                    showInstallmentEditor = false
+                }
+            }
+        }
+        // §7.7 Late fee waiver sheet
+        .sheet(isPresented: $showLateFeeWaiver) {
+            if case let .loaded(inv) = vm.state {
+                LateFeeWaiverSheet(
+                    vm: LateFeeWaiverViewModel(api: api, invoiceId: inv.id, maxWaiverCents: 0)
+                ) {
+                    showLateFeeWaiver = false
+                    Task { await vm.load() }
+                }
+            }
+        }
+        // §7.13 Discount code input sheet
+        .sheet(isPresented: $showDiscountInput) {
+            if case let .loaded(inv) = vm.state {
+                InvoiceDiscountInputSheet(api: api, invoiceId: inv.id) { _ in
+                    showDiscountInput = false
+                    Task { await vm.load() }
+                }
+            }
+        }
         // §7.7 Customer return flow sheet
         .sheet(isPresented: $showReturnSheet) {
             if case let .loaded(inv) = vm.state {
@@ -369,11 +421,54 @@ public struct InvoiceDetailView: View {
                         }
                         .disabled(isCloning)
                         .accessibilityLabel("Clone this invoice")
+                        Divider()
+                        // §7.9 Installment plan editor
+                        if inv.canPay || installmentPlan != nil {
+                            Button {
+                                showInstallmentEditor = true
+                            } label: {
+                                Label(
+                                    installmentPlan == nil ? "Set Up Payment Plan" : "Edit Payment Plan",
+                                    systemImage: "calendar.badge.clock"
+                                )
+                            }
+                            .accessibilityLabel(installmentPlan == nil ? "Set up installment payment plan" : "Edit installment payment plan")
+                        }
+                        // §7.7 Waive late fee (always visible on non-void invoices)
+                        if (inv.status ?? "").lowercased() != "void" {
+                            Button {
+                                showLateFeeWaiver = true
+                            } label: {
+                                Label("Waive Late Fee", systemImage: "minus.circle.fill")
+                            }
+                            .accessibilityLabel("Waive applied late fee")
+                        }
+                        // §7.13 Apply discount code
+                        if inv.canEditLines {
+                            Button {
+                                showDiscountInput = true
+                            } label: {
+                                Label("Apply Discount Code", systemImage: "tag")
+                            }
+                            .accessibilityLabel("Apply a discount code to this invoice")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - §7.9 Installment plan load
+
+    @MainActor
+    private func loadInstallmentPlan(invoiceId: Int64) async {
+        do {
+            installmentPlan = try await api.invoiceInstallmentPlan(invoiceId: invoiceId)
+        } catch {
+            // No plan yet — leave nil; not an error condition
+            installmentPlan = nil
         }
     }
 
@@ -485,6 +580,10 @@ public struct InvoiceDetailView: View {
                     let timelineEvents = buildInvoiceTimeline(from: inv)
                     if !timelineEvents.isEmpty {
                         InvoiceTimelineView(events: timelineEvents)
+                    }
+                    // §7.9 Installment schedule — shown when a payment plan exists
+                    if let plan = installmentPlan {
+                        InstallmentScheduleView(plan: plan)
                     }
                 }
                 .padding(BrandSpacing.base)
