@@ -105,14 +105,110 @@ public enum InvoiceFilter: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
+// MARK: - Invoice statistics (§7.1 Stats header)
+// Server: GET /api/v1/invoices/stats
+
+public struct InvoiceStats: Decodable, Sendable {
+    /// Total outstanding amount (dollars).
+    public let outstandingDollars: Double
+    /// Total paid amount for the period (dollars).
+    public let paidDollars: Double
+    /// Total overdue amount (dollars).
+    public let overdueDollars: Double
+    /// Average invoice value (dollars).
+    public let avgValueDollars: Double
+    /// Payment method breakdown for pie chart (method → dollars).
+    public let byPaymentMethod: [String: Double]
+
+    public init(
+        outstandingDollars: Double = 0,
+        paidDollars: Double = 0,
+        overdueDollars: Double = 0,
+        avgValueDollars: Double = 0,
+        byPaymentMethod: [String: Double] = [:]
+    ) {
+        self.outstandingDollars = outstandingDollars
+        self.paidDollars = paidDollars
+        self.overdueDollars = overdueDollars
+        self.avgValueDollars = avgValueDollars
+        self.byPaymentMethod = byPaymentMethod
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case outstandingDollars  = "outstanding"
+        case paidDollars         = "paid"
+        case overdueDollars      = "overdue"
+        case avgValueDollars     = "avg_value"
+        case byPaymentMethod     = "by_payment_method"
+    }
+}
+
+// MARK: - Bulk action (§7.1)
+// Server: POST /api/v1/invoices/bulk-action
+
+public struct InvoiceBulkActionRequest: Encodable, Sendable {
+    public let ids: [Int64]
+    /// One of: "send_reminder", "export", "void", "delete"
+    public let action: String
+
+    public init(ids: [Int64], action: String) {
+        self.ids = ids
+        self.action = action
+    }
+}
+
+public struct InvoiceBulkActionResponse: Decodable, Sendable {
+    public let processed: Int
+    public let failed: Int
+
+    enum CodingKeys: String, CodingKey {
+        case processed, failed
+    }
+}
+
 public extension APIClient {
-    func listInvoices(filter: InvoiceFilter = .all, keyword: String? = nil, pageSize: Int = 50) async throws -> InvoicesListResponse {
+    func listInvoices(
+        filter: InvoiceFilter = .all,
+        keyword: String? = nil,
+        pageSize: Int = 50,
+        cursor: String? = nil,
+        sort: String? = nil,
+        statusOverride: String? = nil
+    ) async throws -> InvoicesListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
         if let keyword, !keyword.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: keyword))
         }
+        if let cursor, !cursor.isEmpty {
+            items.append(URLQueryItem(name: "cursor", value: cursor))
+        }
+        if let sort, !sort.isEmpty {
+            items.append(URLQueryItem(name: "sort", value: sort))
+        }
+        // statusOverride lets us pass "void" which InvoiceFilter doesn't have
+        if let statusOverride {
+            // Remove any existing status item and replace
+            items.removeAll { $0.name == "status" }
+            items.append(URLQueryItem(name: "status", value: statusOverride))
+        }
         return try await get("/api/v1/invoices", query: items, as: InvoicesListResponse.self)
+    }
+
+    /// `GET /api/v1/invoices/stats`
+    func invoiceStats() async throws -> InvoiceStats {
+        try await get("/api/v1/invoices/stats", query: nil, as: InvoiceStats.self)
+    }
+
+    /// `POST /api/v1/invoices/bulk-action`
+    func invoiceBulkAction(_ body: InvoiceBulkActionRequest) async throws -> InvoiceBulkActionResponse {
+        try await post("/api/v1/invoices/bulk-action", body: body, as: InvoiceBulkActionResponse.self)
+    }
+
+    /// `POST /api/v1/invoices/:id/credit-note`
+    func issueInvoiceCreditNote(invoiceId: Int64, amount: Double, reason: String) async throws -> CreditNoteIssueResponse {
+        let body = InvoiceCreditNoteRequest(amount: amount, reason: reason)
+        return try await post("/api/v1/invoices/\(invoiceId)/credit-note", body: body, as: CreditNoteIssueResponse.self)
     }
 }
 
@@ -172,6 +268,28 @@ public extension APIClient {
     /// Returns the updated invoice detail. Idempotency-Key must be set per request.
     func recordPayment(invoiceId: Int64, body: RecordInvoicePaymentRequest) async throws -> RecordPaymentResponse {
         try await post("/api/v1/invoices/\(invoiceId)/payments", body: body, as: RecordPaymentResponse.self)
+    }
+}
+
+// MARK: - Credit note request/response for POST /invoices/:id/credit-note
+
+public struct InvoiceCreditNoteRequest: Encodable, Sendable {
+    public let amount: Double
+    public let reason: String
+
+    public init(amount: Double, reason: String) {
+        self.amount = amount
+        self.reason = reason
+    }
+}
+
+public struct CreditNoteIssueResponse: Decodable, Sendable {
+    public let id: Int64
+    public let referenceNumber: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case referenceNumber = "reference_number"
     }
 }
 

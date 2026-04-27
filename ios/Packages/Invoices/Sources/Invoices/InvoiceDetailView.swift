@@ -10,6 +10,7 @@ public struct InvoiceDetailView: View {
     @State private var showRefundSheet = false
     @State private var showVoidAlert = false
     @State private var showReceiptSheet = false
+    @State private var showCreditNoteSheet = false
 
     @ObservationIgnored private let api: APIClient
 
@@ -85,6 +86,17 @@ public struct InvoiceDetailView: View {
             isPresented: $showVoidAlert,
             vm: voidVM ?? InvoiceVoidViewModel(api: api, invoiceId: 0, canVoid: false)
         ) { _ in Task { await vm.load() } }
+        // §7.2 Credit note sheet
+        .sheet(isPresented: $showCreditNoteSheet) {
+            if case let .loaded(inv) = vm.state {
+                let paidCents = Int(((inv.amountPaid ?? 0) * 100).rounded())
+                InvoiceCreditNoteSheet(
+                    api: api,
+                    invoiceId: inv.id,
+                    maxCents: paidCents
+                ) { showCreditNoteSheet = false; Task { await vm.load() } }
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -125,6 +137,15 @@ public struct InvoiceDetailView: View {
                             Label("Email Receipt", systemImage: "envelope")
                         }
                         .accessibilityLabel("Email receipt to customer")
+                        // §7.2 Credit note
+                        if (inv.amountPaid ?? 0) > 0 {
+                            Button {
+                                showCreditNoteSheet = true
+                            } label: {
+                                Label("Issue Credit Note", systemImage: "minus.circle")
+                            }
+                            .accessibilityLabel("Issue credit note for this invoice")
+                        }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }

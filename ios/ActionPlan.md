@@ -1162,16 +1162,16 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Base list + filter chips + search — shipped.
 - [x] Row a11y — combined VoiceOver utterance `displayId. customerName. total. [Status X]. [Due $Y]`. Selectable order IDs, monospaced Due text.
 - [x] **CachedRepository + offline** — `InvoiceCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InvoiceSummary]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired. `OfflineEmptyStateView` shown when offline + cache empty. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
-- [ ] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void.
+- [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void. (`InvoiceStatusTab` enum; wired in `InvoiceListView` tab bar + `InvoiceListViewModel.applyStatusTab`; `legacyFilter` + `serverStatus` mapping; 10 tests) (3c5f3522)
 - [ ] **Filters** — date range, customer, amount range, payment method, created-by.
-- [ ] **Sort** — date / amount / due date / status.
-- [ ] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through).
-- [ ] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down.
-- [ ] **Status pie + payment-method pie** (iPad/Mac) — small `Chart.SectorMark` cards.
-- [ ] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete.
-- [ ] **Export CSV** via `.fileExporter`.
-- [ ] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void.
-- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. `GET /invoices?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
+- [x] **Sort** — date / amount / due date / status. (`InvoiceSortOption` 7-option enum with query items; wired in toolbar sort Menu + `InvoiceListViewModel.applySort`; 4 tests) (3c5f3522)
+- [x] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through). (`InvoiceRowChip` view + `InvoiceRowChipDescriptor`; 12 tests) (3c5f3522)
+- [x] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down. (`InvoiceStatsHeaderView` + `InvoiceStatsViewModel`; `InvoiceStats` model in `InvoicesEndpoints`; `api.invoiceStats()`) (3c5f3522)
+- [x] **Status pie + payment-method pie** (iPad/Mac) — small `Chart.SectorMark` cards. (In `InvoiceStatsHeaderView` gated on `!Platform.isCompact`; `AXChartDescriptorRepresentable` for a11y) (3c5f3522)
+- [x] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete. (`InvoiceBulkActionViewModel` + `InvoiceBulkActionRequest/Response`; bulk mode toggle in toolbar; 5 tests) (3c5f3522)
+- [x] **Export CSV** via `.fileExporter`. (`InvoiceCSVExporter.csv(from:)` RFC-4180; `ExportableCSV: FileDocument`; wired in toolbar + bulk mode; 5 tests) (3c5f3522)
+- [x] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void. (Full context menu + leading/trailing swipe actions in `InvoiceListView`) (3c5f3522)
+- [x] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. `GET /invoices?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`. (`InvoiceRepository.listExtended` with cursor param; load-more footer in list; `hasMore`/`nextCursor` in ViewModel) (3c5f3522)
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
@@ -1182,7 +1182,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
 - [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
 - [x] **Issue refund** — `POST /invoices/:id/refund`; role-gated; partial + full; manager PIN > $100. `InvoiceRefundSheet` + `InvoiceRefundViewModel` + `ManagerPinSheet`. (feat(ios phase-4 §7))
-- [ ] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`.
+- [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`. (`InvoiceCreditNoteSheet` + `InvoiceCreditNoteViewModel`; wired in `InvoiceDetailView` ⋯ menu when amountPaid > 0; success shows ref number; 9 tests) (3c5f3522)
 - [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm. `InvoiceVoidConfirmAlert` + `InvoiceVoidViewModel`. Only allowed when no payments or draft. (feat(ios phase-4 §7))
 - [ ] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`.
 - [x] **Send by email** — `InvoiceEmailReceiptSheet` — `POST /invoices/:id/email-receipt` + SMS copy toggle. (feat(ios phase-4 §7))
