@@ -218,6 +218,17 @@ if (typeof window !== 'undefined') {
     } catch { /* quota / privacy mode — best-effort only */ }
   });
 
+  // WEB-FAE-009: cross-tenant token clobber detected by authStore's storage
+  // event handler. authStore dispatches this custom event so we can surface
+  // a toast (toast is imported here, not in authStore) before the redirect.
+  window.addEventListener('bizarre-crm:cross-tenant-token', (e: Event) => {
+    try {
+      const msg = (e as CustomEvent<{ message: string }>).detail?.message
+        || 'Account changed in another tab. Please sign in again.';
+      toast.error(msg, { id: 'cross-tenant-swap', duration: 8000 });
+    } catch { /* best-effort */ }
+  });
+
   // Stale lazy-chunk auto-reload (belt + suspenders with PageErrorBoundary).
   // React.lazy() rejections surface as render errors that boundaries catch,
   // but a dynamic `import()` triggered outside the Suspense tree (e.g. from
@@ -369,11 +380,22 @@ createRoot(document.getElementById('root')!).render(
             Both surfaces should call utils/apiError.formatApiError() so the
             ERR_* code + request_id is shown to the user for support tickets.
           */}
+          {/* WEB-FAC-007: stagger duration by severity so burst-fired toasts
+              dismiss at different times rather than vanishing in a single hop.
+              gutter=8 adds breathing room between stacked toasts.
+              Exit-animation CSS is applied via className — react-hot-toast
+              handles the slide-in; motion-reduce users get instant dismiss
+              (the Tailwind `motion-safe:` guard in the class). */}
           <Toaster
             position="top-right"
+            gutter={8}
             toastOptions={{
               className: '!bg-white !text-surface-900 dark:!bg-surface-800 dark:!text-surface-100 !shadow-lg !border !border-surface-200 dark:!border-surface-700',
+              // Default; overridden per-type below.
               duration: 4000,
+              success: { duration: 3000 },
+              error: { duration: 6000 },
+              loading: { duration: Infinity },
             }}
           />
           {/* D4-10: cap concurrent visible toasts to avoid UI avalanche from

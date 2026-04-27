@@ -3330,3 +3330,9 @@ DONE: WEB-FQ-007 (disabled state opacity codemod, 119 files, 306 substitutions),
 DONE: WEB-FM-013 (TicketStatus shared type import in AutomationsTab), WEB-FM-014 (ComingSoonBadge in SettingsPage permissions footer + FinancingButton), WEB-FM-019 (typecheck:watch script added; typecheck already existed), WEB-FM-020 (2 more files wrapped: TicketListPage + CampaignsPage).
 
 DONE-PREEXISTING: WEB-FM-016 (SubscriptionsListPage local formatCurrency already removed by Fixer-PP).
+
+## todofixes426 — Cleanup pass 15 (2026-04-26) — trailing WEB items
+
+DONE: WEB-FX-010 (Sidebar aria-label, redundant role removed), WEB-FAC-007 (Toaster gutter + per-severity duration), WEB-FAE-009 (cross-tenant JWT slug guard in authStore + main.tsx).
+
+DONE-PREEXISTING: WEB-W1-015 (LeftPanel discount reason flag wired), WEB-FQ-013 (focus ring already amber), WEB-FL-019 (DataExport API renamed/wired), WEB-FV-004 (PhotoGallery delete error handled).
