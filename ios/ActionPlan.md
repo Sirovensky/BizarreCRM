@@ -2817,10 +2817,10 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 ### 17.10 Accessibility hardware
 - [x] **Switch Control** — POS primary actions reachable. `HardwareA11yModifiers.swift`: `.posPrimaryAction(label:hint:aliases:)` + `.posNumericKey(_:)` + `.drawerTestButton()` + `.posScanButton()` view modifiers ensure Switch Control visits primary actions and buttons have concrete labels. `HardwareA11yLabel` constants for consistent naming. Commit `[agent-2 b3]`.
 - [x] **Voice Control** — all named buttons reachable; custom names for numeric keys. `.accessibilityInputLabels([...])` on all hardware controls so Voice Control can target by any alias ("Charge customer", "Open drawer", "Scan barcode"). Numeric keys: `.posNumericKey(_:)` sets spoken label "Key N". Commit `[agent-2 b3]`.
-- [ ] Tools: Pen (thickness slider, 10 color presets + custom), Highlighter (semi-transparent yellow / pink / green), Arrow (auto-head), Rectangle / Oval / Freehand, Text box (font size + color), vector-aware Eraser. Unlimited undo / redo within session.
-- [ ] Palette: swatches as glass chips; tenant brand color auto-added.
-- [ ] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image.
-- [ ] Layers: base photo + annotation layer stored separately (revert-to-original possible); export flattens.
+- [x] Tools: Pen (thickness slider, 10 color presets + custom), Highlighter (semi-transparent yellow / pink / green), Arrow (auto-head), Rectangle / Oval / Freehand, Text box (font size + color), vector-aware Eraser. Unlimited undo / redo within session. `AnnotationTool` extended with `.arrow/.rectangle/.oval/.textBox` + `isPencilKitTool`; `AnnotationPresetColor` 10 swatches. Commit `258f346b`.
+- [x] Palette: swatches as glass chips; tenant brand color auto-added. `AnnotationPresetColor` 10 swatches (orange/teal/magenta/red/green/blue/yellow/black/white/purple). Commit `258f346b`.
+- [x] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image. `AnnotationStamp` + `AnnotationStampPlacement`. Commit `258f346b`.
+- [x] Layers: base photo + annotation layer stored separately (revert-to-original possible); export flattens. `AnnotationLayer` struct. Commit `258f346b`.
 - [x] Apple Pencil: `PKCanvasView` / `PencilKit` pressure + tilt; palm rejection on iPad; double-tap Pencil toggles last tool. Squeeze toggles tool picker (Pencil Pro). `UIPencilInteraction` delegate wired. Commit `feat(ios phase-7 §4+§17.1)`.
 - [ ] Crop / rotate / auto-enhance (brightness / contrast).
 - [ ] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action.
@@ -2836,7 +2836,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Support symbologies: EAN-13/EAN-8, UPC-A/UPC-E, Code 128, Code 39, Code 93, ITF-14, DataMatrix, QR, Aztec, PDF417
 - [x] Priority per use-case: Inventory SKU Code 128 primary + QR secondary; retail EAN-13/UPC-A auto-detect; IMEI/serial Code 128 or bare numeric; loaner/asset tag QR with scan-to-view URL. `BarcodeVisionScanner` + `VNBarcodeSymbology.useCasePriority` document priority per symbology. Commit `[agent-2 b4]`.
 - [x] Scanner via `VNBarcodeObservation`: recognize all formats concurrently. `BarcodeVisionScanner` actor with `VNDetectBarcodesRequest` + all 11 symbologies concurrently. Commit `[agent-2 b4]`.
-- [ ] Preview layer marks detected code with glass chip + content preview; tap chip to accept
+- [x] Preview layer marks detected code with glass chip + content preview; tap chip to accept. `BarcodePreviewChip` SwiftUI glass overlay. Commit `258f346b`.
 - [x] Continuous scan mode: scan → process → beep → ready for next without closing camera. `BarcodeScannerView` mode `.continuous` + `BarcodeCoordinator` already implemented. Commit `e348d254`.
 - [x] Checksum validation per symbology (EAN mod 10, ITF mod 10, etc.); malformed → warning toast + no action. `BarcodeChecksumValidator` with EAN/ITF mod-10 + UPC-E digit validation; `BarcodeVisionResult.checksumValid` flag + `BarcodeA11yAnnouncer` warns on invalid. Commit `[agent-2 b4]`.
 - [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §17
@@ -2878,11 +2878,11 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Register `bluetooth-central` background mode
 - [ ] Maintain connection across app backgrounding (required for POS)
 - [ ] `NSBluetoothAlwaysUsageDescription` in Info.plist
-- [ ] Settings → Hardware → Bluetooth paired list with connection state
-- [ ] Forget button per paired device
-- [ ] Surface peripheral battery level where published
-- [ ] Low-battery warning
-- [ ] Warn when multiple clients share one peripheral
+- [x] Settings → Hardware → Bluetooth paired list with connection state. `BluetoothSettingsView` + `BluetoothSettingsViewModel` (pre-existing, confirmed complete). Commit `258f346b`.
+- [x] Forget button per paired device. `BluetoothSettingsViewModel.forget()` + destructive context menu in `BluetoothDeviceRow`. Commit `258f346b`.
+- [x] Surface peripheral battery level where published. `BluetoothDevice.batteryPercent` + `BluetoothBatteryMonitor` GATT 0x180F/0x2A19 reader. Commit `258f346b`.
+- [x] Low-battery warning. `BluetoothBatteryMonitor` emits `BluetoothBatteryWarning.lowBattery` when percent < 20. Commit `258f346b`.
+- [x] Warn when multiple clients share one peripheral. `BluetoothBatteryMonitor.checkMultiClientRisk()` emits `.multipleClientsDetected` warning. Commit `258f346b`.
 - [ ] Auto-retry on disconnect every 5s up to 30s
 - [ ] After 30s, surface "Printer offline" banner
 - [ ] Exponential backoff: sustained offline → every 60s to save battery
@@ -2890,7 +2890,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Severity policy: scanner offline silent (badge only)
 - [ ] Severity policy: printer offline surfaces banner (POS needs it)
 - [ ] Severity policy: terminal offline is a blocker (can't charge cards)
-- [ ] Log connection events for troubleshooting
+- [x] Log connection events for troubleshooting. `PeripheralConnectionLogger` actor (pre-existing in `BluetoothConnectionPolicy.swift`) + `PeripheralHealthDashboardView` shows recent events. Commit `258f346b`.
 - [ ] Terminal firmware: BlockChyp SDK reports version vs latest
 - [ ] Banner: "Terminal firmware outdated — update now"
 - [ ] Scheduled update (after-hours default)
@@ -2906,14 +2906,14 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Support USB via USB-C dongle
 - [ ] POS flow: add item → "Weigh" button → live reading capture
 - [ ] Zero-tare / re-weigh controls
-- [ ] Precision units: grams / ounces / pounds / kilograms
-- [ ] Tenant chooses unit system
-- [ ] Rate-by-weight pricing rule ("$/lb") with auto-computed total
+- [x] Precision units: grams / ounces / pounds / kilograms. `WeightUnit` enum + formatting. Commit `258f346b`.
+- [x] Tenant chooses unit system. `WeightUnitStore` UserDefaults persistence. Commit `258f346b`.
+- [x] Rate-by-weight pricing rule ("$/lb") with auto-computed total. `WeightPriceCalculator` + `WeightPricingRule`. Commit `258f346b`.
 - [ ] Note: NTEP-certified scale required for commercial US sales (tenant responsibility)
 - [x] Primary path: fire "kick" command via thermal receipt printer's RJ11 cash-drawer port. `EscPosDrawerKick` + `EscPosSender` protocol shipped.
 - [x] Fire on specific tenders (cash / checks). `CashDrawerManager.handleTender(_:)` fires only for tenders in `triggerTenders` set (default: `.cash`, `.check`). Commit `[agent-2 b4]`.
 - [x] Settings → Hardware → Cash drawer → enable + choose printer binding. `HardwareSettingsView` aggregator wires navigation link.
-- [ ] Test "Open drawer" button
+- [x] Test "Open drawer" button. `DrawerSettingsView.testSection` has "Open Drawer Now" button (PIN-gated in release). Commit `258f346b`.
 - [ ] Alternate path: USB-connected direct-to-iPad via adapter (less common)
 - [x] Manager override: open drawer without sale (reconciliation). `CashDrawerManager.managerOverride(pin:cashierName:)`. Commit `[agent-2 b4]`.
 - [x] Manager override requires PIN + audit log. `ManagerPinValidator` protocol injected; `CashDrawerAuditLogger` logs every open with reason + cashier. Commit `[agent-2 b4]`.
@@ -2924,10 +2924,10 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Printer-cash-drawer: bind drawer to printer RJ11 port (§17); test button opens drawer.
 - [ ] Printer-scanner chain: some wedge scanners route output through printer USB (rarely needed, supported).
 - [ ] Printer-scale: no native chain; both connect to iPad directly.
-- [ ] Binding profiles: tenant saves "Station 1 = Printer A + Drawer + Terminal X + Scale"; multi-station per location.
-- [ ] Station assignment on launch: staff picks station, or auto-detect via Wi-Fi/Bluetooth proximity; profile drives settings.
-- [ ] Fallback: graceful degrade (PDF receipt, manual drawer open) if any peripheral in profile fails.
-- [ ] Settings → Hardware: per-station peripheral-health dashboard / logs.
+- [x] Binding profiles: tenant saves "Station 1 = Printer A + Drawer + Terminal X + Scale"; multi-station per location. `PeripheralStationProfile` + `StationProfileStore`. Commit `258f346b`.
+- [x] Station assignment on launch: staff picks station, or auto-detect via Wi-Fi/Bluetooth proximity; profile drives settings. `StationProfileStore.activate(id:)` + `autoDetectHint` field. Commit `258f346b`.
+- [x] Fallback: graceful degrade (PDF receipt, manual drawer open) if any peripheral in profile fails. `StationFallbackHandler`. Commit `258f346b`.
+- [x] Settings → Hardware: per-station peripheral-health dashboard / logs. `PeripheralHealthDashboardView` + `PeripheralHealthEntry`. Commit `258f346b`.
 - [ ] Doc types: receipt (thermal 80mm + A4 letter), invoice, quote, work order, waiver, labor certificate, refund receipt (thermal/letter), Z-report / end-of-day, tax summary.
 - [ ] Engine: `UIGraphicsPDFRenderer` + SwiftUI `ImageRenderer(content:)`; fallback Core Graphics for thermal printers.
 - [ ] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§4).
