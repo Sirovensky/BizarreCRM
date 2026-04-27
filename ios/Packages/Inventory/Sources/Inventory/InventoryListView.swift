@@ -52,7 +52,7 @@ public struct InventoryListView: View {
     public init(repo: InventoryRepository, detailRepo: InventoryDetailRepository, api: APIClient? = nil) {
         self.detailRepo = detailRepo
         self.api = api
-        _vm = State(wrappedValue: InventoryListViewModel(repo: repo))
+        _vm = State(wrappedValue: InventoryListViewModel(repo: repo, api: api))
     }
 
     public var body: some View {
@@ -490,7 +490,7 @@ public struct InventoryListView: View {
     @ViewBuilder
     private func row(for item: InventoryListItem, onSelect: @escaping (Int64) -> Void) -> some View {
         if isBatchSelectMode {
-            InventoryRow(item: item, onAdjust: nil)
+            InventoryRow(item: item, agingTier: vm.agingTierMap[item.id], onAdjust: nil)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if multiSelection.contains(item.id) {
@@ -513,7 +513,7 @@ public struct InventoryListView: View {
         } else if Platform.isCompact {
             NavigationLink(value: item.id) {
                 // §6.1 Quick stock adjust inline — only if api available
-                InventoryRow(item: item, onAdjust: api != nil ? {
+                InventoryRow(item: item, agingTier: vm.agingTierMap[item.id], onAdjust: api != nil ? {
                     adjustTargetId = item.id
                     adjustTargetName = item.displayName
                     showingAdjust = true
@@ -523,7 +523,7 @@ public struct InventoryListView: View {
             .contextMenu { rowContextMenu(for: item) }
         } else {
             Button { onSelect(item.id) } label: {
-                InventoryRow(item: item, onAdjust: api != nil ? {
+                InventoryRow(item: item, agingTier: vm.agingTierMap[item.id], onAdjust: api != nil ? {
                     adjustTargetId = item.id
                     adjustTargetName = item.displayName
                     showingAdjust = true
@@ -605,6 +605,8 @@ public struct InventoryListView: View {
 
 private struct InventoryRow: View {
     let item: InventoryListItem
+    /// §6.8 Aging tier — non-nil when AgeReport data is loaded; nil = still loading or fresh.
+    let agingTier: AgingTier?
     /// Non-nil when quick stock-adjust is available (requires api).
     let onAdjust: (() -> Void)?
 
@@ -626,6 +628,8 @@ private struct InventoryRow: View {
                         .font(.brandLabelLarge())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
+                // §6.8 Stale / Dead aging badge
+                agingBadge
             }
 
             Spacer(minLength: BrandSpacing.sm)
@@ -666,6 +670,32 @@ private struct InventoryRow: View {
         )
         .accessibilityHint(RowAccessibilityFormatter.inventoryRowHint)
         .accessibilityAddTraits(.isButton)
+    }
+
+    // MARK: - §6.8 Aging badge (Stale / Dead / Obsolete)
+
+    @ViewBuilder
+    private var agingBadge: some View {
+        switch agingTier {
+        case .slow:
+            agingChip(label: "Stale", color: .bizarreWarning)
+        case .dead:
+            agingChip(label: "Dead", color: .bizarreError)
+        case .obsolete:
+            agingChip(label: "Obsolete", color: Color.gray)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func agingChip(label: String, color: Color) -> some View {
+        Text(label)
+            .font(.brandLabelSmall())
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .foregroundStyle(.white)
+            .background(color, in: Capsule())
+            .accessibilityLabel("\(label) stock")
     }
 
     // MARK: - §6.1 Stock badge: low-stock (critical-low pulse respects Reduce Motion)

@@ -23,23 +23,47 @@ public final class InventoryListViewModel {
     // Indicates at least one advanced filter is active (drives filter-drawer badge).
     public var hasActiveAdvancedFilters: Bool { !advanced.isEmpty }
 
+    // §6.8 Aging tiers cross-referenced from AgeReport API — keyed by item id.
+    // Loaded in background after the main list; nil = data not yet available.
+    public private(set) var agingTierMap: [Int64: AgingTier] = [:]
+
     @ObservationIgnored private let repo: InventoryRepository
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private let api: APIClient?
 
-    public init(repo: InventoryRepository) {
+    public init(repo: InventoryRepository, api: APIClient? = nil) {
         self.repo = repo
+        self.api = api
     }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
         defer { isLoading = false; isRefreshing = false }
         await fetch(forceRemote: false)
+        await loadAgingTiers()
     }
 
     public func refresh() async {
         isRefreshing = true
         defer { isRefreshing = false }
         await fetch(forceRemote: true)
+        await loadAgingTiers()
+    }
+
+    // §6.8 Stale/Dead badge — load aging report in background and build id→tier map.
+    // Silently ignored on failure (badges are informational only).
+    public func loadAgingTiers() async {
+        guard let api else { return }
+        do {
+            let aged = try await api.ageReport()
+            var map: [Int64: AgingTier] = [:]
+            for item in aged where item.tier != .fresh {
+                map[item.id] = item.tier
+            }
+            agingTierMap = map
+        } catch {
+            AppLog.ui.debug("Aging tier load skipped: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     public func applyFilter(_ newFilter: InventoryFilter) async {
