@@ -456,14 +456,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
 - [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
-- [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
+- [x] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`. (`Dashboard/DashboardTileCustomization.swift`; `DashboardTileOrderStore` + `DashboardTileCustomizationSheet`; d3eb8a1d)
 - [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (`Dashboard/DashboardNewTenantEmptyState.swift`; `isNewTenantSnapshot()` helper; wired via onCreateTicket/onImportData on DashboardView.init; a964a315)
 
 ### 3.2 Business-intelligence widgets (mirror web)
 - [x] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`). (`BIWidgets/ProfitHeroWidget.swift`; 132ea6ee)
 - [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; `Chart { RectangleMark(...) }`. (`BusyHoursHeatmapWidget.swift`; b3b05a17)
 - [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (`BIWidgets/TechLeaderboardWidget.swift`; cb7f854e)
-- [ ] **Repeat-customers** card — repeat-rate %.
+- [x] **Repeat-customers** card — repeat-rate %. (`BIWidgets/RepeatCustomersWidget.swift`; donut `SectorMark` + `combinedSharePct` footer; 38ea4641)
 - [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (`CashTrappedWidget.swift`; b3b05a17)
 - [x] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (`ChurnAlertWidget.swift`; b3b05a17)
 - [x] **Forecast chart** — projected revenue (`LineMark` with confidence band). (`ForecastWidget.swift`; b3b05a17)
@@ -484,10 +484,10 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in the **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
   - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting. (`MyQueueView.swift` scope independent of tenant visibility; a3a38f4b)
 - [x] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin." (`MyQueueView.swift` `MyQueueFilter` Picker + `isTeamFilterBlocked` + `&scope=team` query param + disabled tooltip; a3a38f4b)
-- [ ] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later).
-- [ ] **Sort** — due date ASC, then age DESC.
-- [ ] **Tap** → ticket detail.
-- [ ] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete.
+- [x] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later). (`MyQueueView.swift` `QueueRow` + `StatusChip` + `AgeSeverity` + `DueSeverity`; a3a38f4b)
+- [x] **Sort** — due date ASC, then age DESC. (`MyQueueView.swift` client-sort in `load()`; a3a38f4b)
+- [x] **Tap** → ticket detail. (`MyQueueView.swift` `onTap` callback → `DeepLinkRouter`; a3a38f4b)
+- [x] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete. (`MyQueueView.swift` `.swipeActions` + `.contextMenu`; a3a38f4b)
 
 ### 3.5 Getting-started / onboarding checklist
 - [x] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, create first ticket, record first payment, invite employee, configure SMS, print first receipt, etc. Commit `28073d86`.
@@ -503,7 +503,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`. (`AnnouncementsBanner.swift`; b04ae99b)
 
 ### 3.8 Quick-action FAB / toolbar
-- [ ] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. We want to be aware about liquid glass design standards here - android like FAB may not be the way to go, but need to research.
+- [x] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. (`Dashboard/DashboardFAB.swift`; `DashboardFABViewModel` + radial action pills + `Platform.isCompact` guard + Reduce Motion; 1d0ef8fe)
 - [ ] **iPad/Mac:** toolbar group (`.toolbar { ToolbarItemGroup(...) }`) with the same actions — no FAB.
 - [x] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS). (`DashboardView.swift` `.toolbar` `ToolbarItem` with `.keyboardShortcut`; iPad/Mac only via `Platform.isCompact` guard; b04ae99b)
 
@@ -3082,7 +3082,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.1 Profile
 - [x] **Avatar** — circular tap → action sheet (Camera / Library / Remove). (`ProfileSettingsPage.swift` PhotosPicker + confirmationDialog; POST/DELETE `/auth/me/avatar`; 449eeceb)
 - [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
-- [ ] **Change email** — server emits verify-email link; banner until verified.
+- [x] **Change email** — server emits verify-email link; banner until verified. (`Settings/Profile/ChangeEmailSheet.swift`; `PendingEmailVerificationBanner`; POST `/auth/change-email`; `ProfileSettingsPage` wired; a9c41ef5)
 - [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
 - [ ] **Username / slug** — read-only unless admin.
 - [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
@@ -3771,7 +3771,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Small (2×2)** — open ticket count; revenue today widget (small). (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Medium (4×2)** — 3 latest tickets with deep-link; revenue delta; next 3 appointments. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Large (4×4)** — up to 10 latest tickets list. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
-- [ ] **Extra Large (iPad)** — full dashboard mirror; 6 tiles + chart.
+- [x] **Extra Large (iPad)** — full dashboard mirror; 6 tiles + chart. (`BizarreCRMWidgets/DashboardMirrorWidget.swift`; 2-col LazyVGrid KPIs + ticket list with `Link` deep-links; 002d79f0)
 - [x] **Multiple widgets** — OpenTicketsWidget, TodaysRevenueWidget, AppointmentsNextWidget each with S/M/L variants. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Configurable** — `IntentConfiguration`: choose which KPI, time range, location.
 - [x] **Refresh policy** — `TimelineProvider.getTimeline` returns entries at configurable interval (5/15/30 min); WidgetCenter reloads on main-app sync via `WidgetDataStore.write(_:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
@@ -3817,12 +3817,12 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **SMS unread** badge control. Commit `67eb6295`.
 
 ### 24.7 Action Button (iPhone 15 Pro+)
-- [ ] **Map "Action Button" → CreateTicket shortcut** per user preference.
-- [ ] **Alt**: Clock-in toggle.
+- [x] **Map "Action Button" → CreateTicket shortcut** per user preference. (`App/Intents/ActionButtonIntents.swift`; `CreateTicketActionIntent` + `BizarreCRMActionButtonProvider`; 97d04ec8)
+- [x] **Alt**: Clock-in toggle. (`App/Intents/ActionButtonIntents.swift`; `ClockInOutActionIntent`; 97d04ec8)
 
 ### 24.8 Interactive widgets (iOS 17+)
-- [ ] **Toggle "Clock in"** directly from widget (no app open).
-- [ ] **Mark ticket done** from Medium widget.
+- [x] **Toggle "Clock in"** directly from widget (no app open). (`BizarreCRMWidgets/InteractiveWidgetIntents.swift`; `ClockInOutWidgetIntent` + `Button(intent:)` in `OpenTicketsInteractiveMediumView`; 71bc7f01)
+- [x] **Mark ticket done** from Medium widget. (`BizarreCRMWidgets/InteractiveWidgetIntents.swift`; `MarkTicketDoneWidgetIntent` per-row Done button; 71bc7f01)
 - [ ] **Reply to SMS** inline widget (typing button).
 
 ### 24.9 Smart Stack / ReloadTimeline
@@ -3859,9 +3859,9 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 ## §25. Spotlight, Handoff, Universal Clipboard, Share Sheet
 
 ### 25.1 Spotlight (`CoreSpotlight`)
-- [ ] **Index window** — last 60 days tickets + top 500 customers + top 200 invoices + top 100 appointments + all inventory SKUs.
+- [x] **Index window** — last 60 days tickets + top 500 customers + top 200 invoices + top 100 appointments + all inventory SKUs. (`Search/Spotlight/SpotlightSyncTrigger.swift`; `SpotlightIndexWindow` enum; 232d1931)
 - [x] **Attributes per item** — `title`, `contentDescription`, `keywords`, `thumbnailData`, `domainIdentifier`, `contentURL`, `relatedUniqueIdentifiers`. (feat(ios phase-6 §24+§25))
-- [ ] **Refresh** — on sync-complete, background reindex changed items; batch 100.
+- [x] **Refresh** — on sync-complete, background reindex changed items; batch 100. (`Search/Spotlight/SpotlightSyncTrigger.swift`; `SpotlightSyncTrigger` observes `syncComplete` notification; 232d1931)
 - [x] **Deletion** — tombstoned items deleted from index. (feat(ios phase-6 §24+§25))
 - [x] **Privacy** — respect user-facing "Hide from Spotlight" per domain in Settings. (feat(ios phase-6 §24+§25))
 - [x] **Deep-link handler** — `continueUserActivity` → route by `uniqueIdentifier`. (feat(ios phase-6 §24+§25))
@@ -3892,10 +3892,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Image with logo watermark** — before sharing.
 
 ### 25.5 Share Extension (receive sheet)
-- [ ] **Accept image** — from Photos app or other apps → "Attach to ticket" picker flow.
-- [ ] **Accept PDF** — "Attach to invoice" or "Attach to expense" (receipt).
-- [ ] **Accept URL** — "Add to note on ticket".
-- [ ] **Extension bundle** — separate target; uses App Group for temp hand-off.
+- [x] **Accept image** — from Photos app or other apps → "Attach to ticket" picker flow. (`BizarreCRMShareExtension/ShareViewController.swift`; `UTType.image` → App Group copy; e55bb72f)
+- [x] **Accept PDF** — "Attach to invoice" or "Attach to expense" (receipt). (`BizarreCRMShareExtension/ShareViewController.swift`; `UTType.pdf`; e55bb72f)
+- [x] **Accept URL** — "Add to note on ticket". (`BizarreCRMShareExtension/ShareViewController.swift`; `UTType.url` → `shared_url.txt`; e55bb72f)
+- [x] **Extension bundle** — separate target; uses App Group for temp hand-off. (`BizarreCRMShareExtension/`; `group.com.bizarrecrm` + `bizarrecrm://sharehandoff` URL; e55bb72f)
 
 ### 25.6 Drag-and-drop
 - [ ] **Drop image from Files/Photos** → ticket photos, expense receipts, customer avatar.
@@ -3909,8 +3909,8 @@ Apple Associated Domains are compiled into the app entitlement, so we can only l
 
 - [ ] **AASA file** hosted at `https://app.bizarrecrm.com/.well-known/apple-app-site-association` with path patterns `/c/*`, `/t/*`, `/i/*`, `/estimates/*`, `/receipts/*`, `/public/*` wildcards (where we want the app to open instead of web).
 - [ ] **Entitlement** — `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` (subdomains for tenant slugs we host).
-- [ ] **Route handler** — `onContinueUserActivity(.browsingWeb)` extracts path → navigate.
-- [ ] **Login gate** — unauth user stores intent, signs in to the matching tenant, restores.
+- [x] **Route handler** — `onContinueUserActivity(.browsingWeb)` extracts path → navigate. (`App/Scenes/UniversalLinkHandler.swift`; `UniversalLinkHandler.handle(_:)` → `DeepLinkDestination`; d2a8d2ff)
+- [x] **Login gate** — unauth user stores intent, signs in to the matching tenant, restores. (`App/Scenes/UniversalLinkHandler.swift`; `PendingUniversalLink` stores/consumes URL in UserDefaults; d2a8d2ff)
 - [ ] **Fallback** — Universal Link that fails to open app shows public web page instead.
 - [ ] **Self-hosted tenants get custom scheme (§25.8), not Universal Links.** Document this in the self-hosted admin docs.
 
@@ -3924,12 +3924,12 @@ The custom scheme is the portable deep-link path; it doesn't care about tenant d
   - `bizarrecrm://acme-repair/pos`
   - `bizarrecrm://acme-repair/sms/456`
   - `bizarrecrm://demo/dashboard`
-- [ ] **Tenant-slug resolution** — slug maps to a stored server URL (Keychain, set at login per §19.22). On cold open, if the user isn't signed into that tenant, show "Sign in to Acme Repair to continue" with server URL pre-filled.
+- [x] **Tenant-slug resolution** — slug maps to a stored server URL (Keychain, set at login per §19.22). On cold open, if the user isn't signed into that tenant, show "Sign in to Acme Repair to continue" with server URL pre-filled. (`App/Scenes/CustomSchemeHandler.swift`; `TenantSlugRegistry` UserDefaults slug → base URL; 6497a3d2)
 - [ ] **Self-hosted tenant IDs** — for self-hosted, the slug is whatever the server's `.env` declares as tenant_slug (typically the shop name, lowercased); the Keychain entry binds slug → full base URL (`https://repairs.acmephone.com`).
 - [ ] **Used by** — Shortcuts, App Intents, push-notification deep-links, in-app share sheets (shares custom-scheme link when tenant is self-hosted, Universal Link when cloud-hosted), QR codes printed on tickets / receipts for staff-side opening.
 - [ ] **Public customer-facing URLs stay HTTPS** — tracking / pay / book pages (§53 / §41 / §56) remain HTTPS on whichever domain the tenant serves, whether `app.bizarrecrm.com` or self-hosted. Those URLs are for browsers, not the staff app.
-- [ ] **Multi-tenant safety** — if a deep link arrives for tenant A while user is signed into tenant B, app shows confirmation "Open Acme Repair? You'll be signed out of Bizarre Demo first." Never silently switches tenants (§79 scope rule).
-- [ ] **Unknown scheme / path** — reject with inline toast, never crash. Rate-limit per source (Shortcuts / push / clipboard) against DoS by malformed URLs.
+- [x] **Multi-tenant safety** — if a deep link arrives for tenant A while user is signed into tenant B, app shows confirmation "Open Acme Repair? You'll be signed out of Bizarre Demo first." Never silently switches tenants (§79 scope rule). (`App/Scenes/CustomSchemeHandler.swift`; `CustomSchemeResolution.confirmTenantSwitch`; 6497a3d2)
+- [x] **Unknown scheme / path** — reject with inline toast, never crash. Rate-limit per source (Shortcuts / push / clipboard) against DoS by malformed URLs. (`App/Scenes/CustomSchemeHandler.swift`; `CustomSchemeRateLimiter` actor token bucket; 6497a3d2)
 - [ ] Indexed entity set: tickets (id/customer/device/status), customers (name/phones/emails), invoices (id/total/status), inventory (SKU/name), notes (body).
 - [ ] Layer: `CSSearchableIndex` fed from SQLCipher read-through; refresh on insert/update.
 - [ ] Privacy: Spotlight items scoped per-user to tenant + role access; Settings → Privacy → "Disable Spotlight" opt-out.
