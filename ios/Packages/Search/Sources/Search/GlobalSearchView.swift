@@ -71,8 +71,8 @@ public final class GlobalSearchViewModel {
             await fetchTypeAhead(new)
         }
         searchTask = Task { @MainActor in
-            // 300ms debounce — cancellable on each keystroke.
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            // §18.1 250ms debounce — cancel prior request on each keystroke.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
             // Full search hides type-ahead once results are ready.
             showTypeAhead = false
