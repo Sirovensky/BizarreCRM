@@ -215,22 +215,35 @@ public final class TicketCreateFlowViewModel {
     // MARK: - Validation per step
 
     public var stepValid: Bool {
+        stepValidationMessage == nil
+    }
+
+    /// §4.3 — Inline glass error toast text for the current step.
+    /// Returns nil when the step is valid (no toast shown).
+    public var stepValidationMessage: String? {
         switch currentStep {
-        case .customer: return selectedCustomer != nil
+        case .customer:
+            return selectedCustomer == nil ? "Please select or create a customer." : nil
         case .devices:
-            return !devices.isEmpty && devices.allSatisfy { !$0.deviceName.trimmingCharacters(in: .whitespaces).isEmpty }
+            if devices.isEmpty { return "Add at least one device." }
+            if devices.contains(where: { $0.deviceName.trimmingCharacters(in: .whitespaces).isEmpty }) {
+                return "Each device needs a name."
+            }
+            return nil
         case .pricing:
             if !discountText.isEmpty {
-                guard let v = Double(discountText.replacingOccurrences(of: ",", with: ".")), v >= 0 else {
-                    return false
+                if Double(discountText.replacingOccurrences(of: ",", with: ".")) == nil {
+                    return "Discount must be a number."
                 }
-                if discountMode == .percent, let v = Double(discountText.replacingOccurrences(of: ",", with: ".")), v > 100 {
-                    return false
+                if discountMode == .percent,
+                   let v = Double(discountText.replacingOccurrences(of: ",", with: ".")),
+                   v > 100 {
+                    return "Percentage discount cannot exceed 100%."
                 }
             }
-            return true
-        case .schedule: return true
-        case .review:   return true
+            return nil
+        case .schedule: return nil
+        case .review:   return nil
         }
     }
 

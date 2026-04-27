@@ -48,6 +48,16 @@ public struct TicketCreateFlowView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
+        // §4.3 — Per-step inline validation toast (glass error pill at bottom)
+        .overlay(alignment: .bottom) {
+            if let msg = vm.stepValidationMessage, !vm.canGoNext {
+                CreateFlowValidationToast(message: msg)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.lg)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.25), value: vm.stepValidationMessage)
     }
 
     // MARK: - iPhone: full-screen NavigationStack
@@ -204,6 +214,31 @@ public struct TicketCreateFlowView: View {
         let all = CreateFlowStep.allCases
         guard let idx = all.firstIndex(of: vm.currentStep), idx > 0 else { return "" }
         return all[idx - 1].title
+    }
+}
+
+// MARK: - §4.3 Inline validation toast (glass error pill)
+
+private struct CreateFlowValidationToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.white)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.bizarreError.opacity(0.9), in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Validation error: \(message)")
+        .accessibilityAddTraits(.isStaticText)
     }
 }
 
