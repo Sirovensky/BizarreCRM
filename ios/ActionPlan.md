@@ -841,7 +841,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star. `CustomerDetailHeader` with SmallHealthRing + LTV tier chip + VIP star overlay. (agent-4 batch-4, 26985090)
 - [x] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`. `CustomerHealthExplainerSheet` + animated `HealthRing`. (agent-4 batch-2)
 - [x] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk); tap → explanation. `CustomerLTVExplainerSheet` with tier thresholds table. (agent-4 batch-2)
-- [ ] **Photo mementos** — recent repair photos gallery (horizontal scroll).
+- [x] **Photo mementos** — recent repair photos gallery (horizontal scroll). `CustomerPhotoMementosSection` + `PhotoLightboxView` (pinch-zoom 1×–6×, double-tap toggle), `LazyImage` horizontal scroll, `GET /customers/:id/assets?kind=photo`. (agent-4 batch-7, 4d2e0dd8)
 - [x] **Contact card** — phones (multi, labeled), emails (multi), address (tap → Maps.app), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields. `CustomerFullContactCard` multi-phone/email + address→Maps. (agent-4 batch-4, c5d6bdcb)
 - [x] **Quick-action row** — glass chips: Call · SMS · Email · FaceTime · New ticket · New invoice. `CustomerQuickActionRow` with `.ultraThinMaterial` Capsule chips, `UIApplication.shared.open()` for `tel:`/`sms:`/`mailto:`/`facetime:` URLs, `.hoverEffect(.highlight)`. (agent-4 batch-2)
 - [x] **Tickets tab** — `GET /customers/:id/tickets`; infinite scroll; status chips; tap → ticket detail. `CustomerTicketsTabView` wired to `api.customerRecentTickets`. (agent-4 batch-2)
@@ -886,12 +886,12 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Auto-tags applied by rules (e.g. "LTV > $1000 → gold"). `CustomerAutoTagRule` + `AutoTagCondition` enum (ltvOver/overdueInvoiceCount/daysSinceLastVisit/ticketCount/custom). (agent-4 batch-6, a4836e27)
 - [x] Customer detail header chip row for tags
 - [x] Tap tag → filter customer list. `CustomerTagFilterBar` chip + clear wired into `CustomerListView`. (agent-4 batch-5, b77c1a9b)
-- [ ] Bulk-assign tags via list multi-select
+- [x] Bulk-assign tags via list multi-select. `CustomerBulkTagSheet` (chip display + autosuggest + apply via `POST /customers/bulk-tag`). (agent-4 batch-7, a581ee83)
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d")
 - [ ] Segments used by marketing (§37) and pricing (§6.3)
 - [ ] Max 20 tags per customer (warn at 10)
-- [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices)
+- [x] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices). `CustomerSuggestedTagsService` pure struct (7 rules: late-payer/vip/at-risk/frequent/returning/new/high-value) + 14 Swift Testing tests. (agent-4 batch-7, ac211301)
 - [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
 - [ ] Vertical chronological timeline with colored dots per event type
 - [ ] Timeline filter chips and jump-to-date picker
@@ -1350,7 +1350,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] Base list — shipped.
 - [x] Row a11y — combined utterance `displayName. [orderId]. [phone-or-email]. [Status X]. [Score N of 100]`. Selectable phone/email/order, monospaced score.
 - [x] **CachedRepository + offline** — `LeadCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 progress bar) / Status / Source / Value / Next Action.
+- [x] **Columns** — Name / Phone / Email / Lead Score (0–100 progress bar) / Status / Source / Value / Next Action. `LeadColumnsView`: iPad `Table` sortable, iPhone compact list with score bar + status chip. (agent-4 batch-7, 1da7ef44)
 - [x] **Status filter** (multi-select) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost. `LeadListFilterSheet` + multi-select `selectedStatuses: Set<String>` + Clear button. (agent-4 batch-2)
 - [x] **Sort** — name / created / lead score / last activity / next action. `LeadSortOrder` enum (8 cases) + `sortOrder` binding in `LeadListFilterSheet`. (agent-4 batch-2)
 - [x] **Bulk delete** with undo. `LeadListViewModel.bulkDelete(ids:)` + `undoBulkDelete(leads:)`. (agent-4 batch-5, 16a2a7ad)
@@ -1373,8 +1373,8 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Status workflow** — transition dropdown; Lost → reason dialog (required). `LeadStatusTransitionSheet` + `LeadStatusTransitionViewModel` (state machine per status, "lost" routes to existing `LostReasonSheet`). (agent-4 batch-2)
 - [x] **Activity timeline** — calls, SMS, email, appointments, property changes. `LeadActivityTimelineView` + `LeadActivityEntry` model. (agent-4 batch-4, 94581122)
 - [x] **Related tickets / estimates** (if any). `LeadRelatedRecordsView` + `LeadConvertToEstimateSheet`. (agent-4 batch-5, b6935a98)
-- [ ] **Communications** — SMS + email + call log; send CTAs.
-- [ ] **Notes** — @mentions.
+- [x] **Communications** — SMS + email + call log; send CTAs. `LeadCommsSection` + `LeadCommRow` + `LeadQuickSMSSheet` + `LeadQuickEmailSheet`; unified timeline from `GET /leads/:id/communications`. (agent-4 batch-7, 211f1ad5)
+- [x] **Notes** — @mentions. `LeadNotesSection` + `LeadNoteRow` (`mentionHighlightedText` orange highlight) + `LeadAddNoteSheet`; CRUD via `GET/POST/DELETE /leads/:id/notes`. (agent-4 batch-7, dc1ff553)
 - [x] **Tags** chip picker. `LeadTagsSection` + `LeadTagEditorSheet` + `LeadTagEditorViewModel` + `setLeadTags` endpoint. (agent-4 batch-6, a4836e27)
 - [x] **Convert to customer** — `LeadConvertSheet` + `LeadConvertViewModel`, calls `POST /leads/:id/convert`, pre-fills name/phone/email/source, marks lead won, optional ticket creation. (`Conversion/` — feat(ios post-phase §9))
 - [ ] **Convert to estimate** — starts estimate with prefilled customer.
@@ -5216,8 +5216,8 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send). `CampaignScheduleKind` + `CampaignScheduleSectionView` wired into `CampaignCreateView`. (agent-4 batch-6)
 - [x] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact. `CampaignComplianceView` + `CampaignComplianceConfig`. (agent-4 batch-6)
 - [x] Analytics tiles: delivered / opened / clicked / replied / converted-to-revenue; unsubscribe-rate alarm at 2%+. `CampaignStatCounts.optedOut` + `unsubscribeAlarmBanner` in `CampaignAnalyticsView`. (agent-4 batch-6)
-- [ ] Monthly SMS spend cap per tenant; system halts sends when reached + notifies admin.
-- [ ] Preview: iPhone-bubble rendering for SMS + HTML render for email with dynamic-variable substitution shown.
+- [x] Monthly SMS spend cap per tenant; system halts sends when reached + notifies admin. `SMSSpendCapView` + `SMSSpendCapViewModel` (async-let parallel load); usage bar (orange→warning→error at 70/90%); cap-exceeded banner; PATCH endpoint. (agent-4 batch-7, afbaccc8)
+- [x] Preview: iPhone-bubble rendering for SMS + HTML render for email with dynamic-variable substitution shown. `CampaignMessagePreviewView` + `TemplateVariableRenderer` + `SMSSegmentCalculator` + `BubbleShape`; 11 Swift Testing tests. (agent-4 batch-7, 0db54ae5)
 - [ ] Post-service auto-SMS link: "Rate your experience 1-5 [link]"
 - [ ] One-tap reply-with-digit for 1-5
 - [ ] Quarterly NPS: "How likely are you to recommend us 0-10?"
@@ -5296,7 +5296,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Wallet pass (§38.4) with updating strip — `PassUpdateSubscriber` handles silent push + silent `replacePass`. Commit `feat(ios phase-6 §24+§38+§40)`.
 - [x] Customer detail shows punch cards. `CustomerPunchCardsSection` with ForEach of `PunchCardView`. (agent-4 batch-6)
 - [x] Progress icons (filled vs empty). Filled orange circle with checkmark vs empty stroke circle. (agent-4 batch-6)
-- [ ] Redemption: last punch = free next service, auto-applied discount at POS
+- [x] Redemption: last punch = free next service, auto-applied discount at POS. `PunchCardRedemptionSheet` + `PunchCardRedemptionViewModel` (confirm/redeeming/success/failure phases, stacking toggle, `POST /loyalty/punch-cards/:id/redeem`). (agent-4 batch-7, f68a35b7)
 - [ ] Combo rule: no stacking with other discounts unless configured
 - [ ] Optional punch expiry 12mo after last activity
 - [ ] Tenant config: cards shared across locations vs per-location
