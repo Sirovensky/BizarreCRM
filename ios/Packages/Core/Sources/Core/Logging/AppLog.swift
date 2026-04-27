@@ -21,6 +21,10 @@ public enum AppLog {
     public static let ui          = Logger(subsystem: subsystem, category: "ui")
     public static let perf        = Logger(subsystem: subsystem, category: "performance")
     public static let telemetry   = Logger(subsystem: subsystem, category: "telemetry")
+    /// §32 Background-task category (`bg`).
+    public static let bg          = Logger(subsystem: subsystem, category: "bg")
+    /// §32 Database category (`db`).
+    public static let db          = Logger(subsystem: subsystem, category: "db")
 
     // MARK: — §32.6 PII redaction helper (new)
 

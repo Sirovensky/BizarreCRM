@@ -86,6 +86,23 @@ final class AppServices {
                 _ = try await URLSession.shared.data(for: req)
             })
             metricKit.start()
+
+            // §32.9 Heartbeat — POST /heartbeat every 5 min while foregrounded.
+            await HeartbeatService.shared.start { [client] payload in
+                _ = try await client.post("/heartbeat", body: payload, as: HeartbeatAck.self)
+            }
         }
     }
+
+    /// §32.9 — Stop heartbeat on logout / scene background.
+    /// Call from the logout flow after clearing Keychain credentials.
+    func stopHeartbeat() {
+        Task { await HeartbeatService.shared.stop() }
+    }
 }
+
+// MARK: — §32.9 Heartbeat acknowledgment envelope
+
+/// Minimal ack from `POST /heartbeat`. Server returns `{ success: true }` wrapped in
+/// the standard `{ success, data, message }` envelope; only `success` matters here.
+private struct HeartbeatAck: Decodable, Sendable {}
