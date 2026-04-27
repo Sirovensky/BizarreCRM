@@ -461,24 +461,24 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.2 Business-intelligence widgets (mirror web)
 - [ ] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`).
-- [ ] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; `Chart { RectangleMark(...) }`.
+- [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; `Chart { RectangleMark(...) }`. (`BusyHoursHeatmapWidget.swift`; b3b05a17)
 - [ ] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail.
 - [ ] **Repeat-customers** card — repeat-rate %.
-- [ ] **Cash-Trapped** card — overdue receivables sum; tap → Aging report.
-- [ ] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`.
-- [ ] **Forecast chart** — projected revenue (`LineMark` with confidence band).
-- [ ] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items.
+- [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (`CashTrappedWidget.swift`; b3b05a17)
+- [x] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (`ChurnAlertWidget.swift`; b3b05a17)
+- [x] **Forecast chart** — projected revenue (`LineMark` with confidence band). (`ForecastWidget.swift`; b3b05a17)
+- [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (`MissingPartsAlertWidget.swift`; b3b05a17)
 
 ### 3.3 Needs-attention surface
 - [x] Base card — shipped.
-- [ ] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week".
-- [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
-- [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
+- [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (`DashboardView.swift` AttentionChip + AttentionRow; b04ae99b)
+- [x] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss. (`DashboardView.swift` `.swipeActions`; b04ae99b)
+- [x] **Context menu** (iPad/Mac) with all row actions + "Copy ID". (`DashboardView.swift` `.contextMenu`; b04ae99b)
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
 - [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`DashboardView.swift` AttentionAllClearView; sparkle icon; shown when attention items total to 0 and tenant has data; a964a315)
 
 ### 3.4 My Queue (assigned tickets, per user)
-- [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
+- [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). (`MyQueueView.swift` integrated into `DashboardView.LoadedBody`; b04ae99b)
 - [ ] **Always visible to every signed-in user.** "Assigned to me" is a universally useful convenience view — not gated by role or tenant flag. Shown on the dashboard for admins, managers, techs, cashiers alike.
 - [ ] **Separate from tenant-wide visibility.** Two orthogonal controls:
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in the **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
@@ -499,13 +499,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link. Commit `eace0734`.
 
 ### 3.7 Announcements / what's new
-- [ ] **Backend:** `GET /system/announcements?since=<last_seen>` (verify).
-- [ ] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`.
+- [x] **Backend:** `GET /system/announcements?since=<last_seen>` (verify). (`DashboardEndpoints.swift` `systemAnnouncements(since:)`; b04ae99b)
+- [x] **Frontend:** sticky glass banner above KPI grid. Tap → full-screen reader. "Dismiss" persists last-seen ID in `UserDefaults`. (`AnnouncementsBanner.swift`; b04ae99b)
 
 ### 3.8 Quick-action FAB / toolbar
 - [ ] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. We want to be aware about liquid glass design standards here - android like FAB may not be the way to go, but need to research.
 - [ ] **iPad/Mac:** toolbar group (`.toolbar { ToolbarItemGroup(...) }`) with the same actions — no FAB.
-- [ ] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS).
+- [x] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS). (`DashboardView.swift` `.toolbar` `ToolbarItem` with `.keyboardShortcut`; iPad/Mac only via `Platform.isCompact` guard; b04ae99b)
 
 ### 3.9 Greeting + operator identity
 - [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
@@ -513,8 +513,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge
-- [ ] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline".
-- [ ] Tap → Settings → Data → Sync Issues.
+- [x] Small glass pill on dashboard header: "Synced 2 min ago" / "Pending 3" / "Offline". (`SyncStatusBadge.swift`; b04ae99b)
+- [x] Tap → Settings → Data → Sync Issues. (`SyncStatusBadge.onTapSyncSettings` callback; b04ae99b)
 
 ### 3.11 Clock in/out tile
 - [x] **Big tile** — `ClockInOutTile` in `Packages/Timeclock` shows "Clock in" (idle) / "Clock out · HH:MM AM/PM + Nh Mm" (active). 30s tick, Reduce-Motion aware. Commit `d1d3392`.
@@ -3080,13 +3080,13 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (`Settings/UnsavedChangesBanner.swift`; `.unsavedChangesBanner(isDirty:onSave:onDiscard:)` modifier; wired into ProfileSettingsPage; 4dcf7c71)
 
 ### 19.1 Profile
-- [ ] **Avatar** — circular tap → action sheet (Camera / Library / Remove).
+- [x] **Avatar** — circular tap → action sheet (Camera / Library / Remove). (`ProfileSettingsPage.swift` PhotosPicker + confirmationDialog; POST/DELETE `/auth/me/avatar`; 449eeceb)
 - [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
 - [ ] **Change email** — server emits verify-email link; banner until verified.
 - [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
 - [ ] **Username / slug** — read-only unless admin.
 - [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
-- [ ] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device).
+- [x] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device). (`ProfileSettingsPage.swift` `signOutEverywhere()` → `settingsRevokeAllSessions()`; 449eeceb)
 
 ### 19.2 Security
 - [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
