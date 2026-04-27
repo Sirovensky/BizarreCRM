@@ -170,44 +170,40 @@ export async function autoClockOutStaleSessions(adb: AsyncDb, db: any): Promise<
 
 // ---------------------------------------------------------------------------
 // GET / – List employees (active users, no password_hash)
-// WEB-S6-033: include is_clocked_in + weekly_hours in the list response so
-// EmployeeListPage doesn't fire a separate detail fetch per row (N+1).
+// WEB-S6-033: includes is_clocked_in + weekly_hours to eliminate per-row
+// detail queries in EmployeeRow. The weekly_hours sub-query sums clock entries
+// from Monday 00:00:00 UTC to now; NULL clock_out rows (active sessions) use
+// the current timestamp as the end. is_clocked_in is true when any open
+// (clock_out IS NULL) entry exists for the user.
 // ---------------------------------------------------------------------------
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
-
-    // Week start (Monday 00:00 UTC) for weekly_hours calculation
-    const now = new Date();
-    const dayOfWeek = now.getUTCDay();
-    const daysBackToMonday = (dayOfWeek + 6) % 7;
-    const weekStart = new Date(now);
-    weekStart.setUTCHours(0, 0, 0, 0);
-    weekStart.setUTCDate(weekStart.getUTCDate() - daysBackToMonday);
-    const weekStartIso = weekStart.toISOString();
-
     const employees = await adb.all(`
-      SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role, u.avatar_url,
-             u.is_active, u.pin IS NOT NULL AS has_pin, u.permissions, u.home_location_id,
-             u.created_at, u.updated_at,
-             CASE WHEN open.id IS NOT NULL THEN 1 ELSE 0 END AS is_clocked_in,
-             COALESCE(wk.weekly_hours, 0) AS weekly_hours
+      SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role,
+             u.avatar_url, u.is_active, u.pin IS NOT NULL AS has_pin,
+             u.permissions, u.home_location_id, u.created_at, u.updated_at,
+             -- WEB-S6-033: clock status inline — no per-row detail call needed
+             CASE WHEN EXISTS (
+               SELECT 1 FROM clock_entries ce
+               WHERE ce.user_id = u.id AND ce.clock_out IS NULL
+             ) THEN 1 ELSE 0 END AS is_clocked_in,
+             COALESCE((
+               SELECT SUM(
+                 CASE WHEN ce.clock_out IS NULL
+                   THEN (unixepoch('now') - unixepoch(ce.clock_in)) / 3600.0
+                   ELSE ce.total_hours
+                 END
+               )
+               FROM clock_entries ce
+               WHERE ce.user_id = u.id
+                 AND ce.clock_in >= datetime('now', 'weekday 1', '-7 days', 'start of day')
+             ), 0.0) AS weekly_hours
       FROM users u
-      LEFT JOIN (
-        SELECT user_id, id FROM clock_entries
-        WHERE clock_out IS NULL
-        GROUP BY user_id HAVING MIN(id)
-      ) open ON open.user_id = u.id
-      LEFT JOIN (
-        SELECT user_id, ROUND(SUM(total_hours), 2) AS weekly_hours
-        FROM clock_entries
-        WHERE clock_in >= ? AND clock_out IS NOT NULL
-        GROUP BY user_id
-      ) wk ON wk.user_id = u.id
       WHERE u.is_active = 1
       ORDER BY u.first_name, u.last_name
-    `, weekStartIso);
+    `);
 
     res.json({ success: true, data: employees });
   }),

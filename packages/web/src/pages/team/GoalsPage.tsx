@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Target, Trash2, Plus, Loader2, Pencil } from 'lucide-react';
+import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { formatCurrency } from '@/utils/format';
@@ -33,16 +33,23 @@ interface Employee {
   last_name: string;
 }
 
-const METRIC_LABELS: Record<string, string> = {
+interface GoalMetricDef {
+  key: string;
+  label: string;
+  unit: string;
+}
+
+// WEB-W3-037: Static fallback labels for metrics not yet loaded from server.
+// The GoalsPage fetches /team/goal-metrics on mount; until that resolves these
+// cover the legacy values so existing goals render correctly.
+const METRIC_LABELS_FALLBACK: Record<string, string> = {
   tickets_closed_week: 'Tickets closed',
   revenue_week: 'Revenue',
   avg_ticket_value: 'Avg ticket value',
-  csat: 'CSAT score',
+  csat: 'CSAT',
   on_time_completion: 'On-time completion',
   parts_accuracy: 'Parts accuracy',
 };
-
-const METRIC_OPTIONS = Object.entries(METRIC_LABELS).map(([value, label]) => ({ value, label }));
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -70,24 +77,6 @@ export function GoalsPage() {
   const [newStart, setNewStart] = useState(todayIso());
   const [newEnd, setNewEnd] = useState(plusDaysIso(7));
 
-  const [editGoal, setEditGoal] = useState<Goal | null>(null);
-  const [editMetric, setEditMetric] = useState('');
-  const [editTarget, setEditTarget] = useState('');
-  const [editStart, setEditStart] = useState('');
-  const [editEnd, setEditEnd] = useState('');
-
-  function openEdit(g: Goal) {
-    setEditGoal(g);
-    setEditMetric(g.metric);
-    setEditTarget(String(g.target_value));
-    setEditStart(g.period_start);
-    setEditEnd(g.period_end);
-  }
-
-  function closeEdit() {
-    setEditGoal(null);
-  }
-
   const { data: goalsData } = useQuery({
     queryKey: ['team', 'goals'],
     queryFn: async () => {
@@ -105,6 +94,21 @@ export function GoalsPage() {
     },
   });
   const employees: Employee[] = employeesData || [];
+
+  // WEB-W3-037: Load supported metric types from server enum instead of hardcoding.
+  const { data: metricsData } = useQuery({
+    queryKey: ['team', 'goal-metrics'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: GoalMetricDef[] }>('/team/goal-metrics');
+      return res.data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const metricDefs: GoalMetricDef[] = metricsData || [];
+  const metricLabels: Record<string, string> = {
+    ...METRIC_LABELS_FALLBACK,
+    ...Object.fromEntries(metricDefs.map((m) => [m.key, m.label])),
+  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -134,24 +138,6 @@ export function GoalsPage() {
       toast.success('Goal deleted');
       queryClient.invalidateQueries({ queryKey: ['team', 'goals'] });
     },
-  });
-
-  const editMut = useMutation({
-    mutationFn: async () => {
-      if (!editGoal) return;
-      await api.put(`/team/goals/${editGoal.id}`, {
-        metric: editMetric,
-        target_value: Number(editTarget),
-        period_start: editStart,
-        period_end: editEnd,
-      });
-    },
-    onSuccess: () => {
-      toast.success('Goal updated');
-      queryClient.invalidateQueries({ queryKey: ['team', 'goals'] });
-      closeEdit();
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to update goal'),
   });
 
   return (
@@ -200,26 +186,17 @@ export function GoalsPage() {
                     {g.first_name} {g.last_name}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-surface-400">
-                    {METRIC_LABELS[g.metric] || g.metric} · {g.period_start} → {g.period_end}
+                    {metricLabels[g.metric] || g.metric} · {g.period_start} → {g.period_end}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="text-blue-500 hover:text-blue-700"
-                    onClick={() => openEdit(g)}
-                    aria-label={`Edit goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                  <button
-                    className="text-red-500 hover:text-red-700 disabled:opacity-40"
-                    onClick={() => deleteMut.mutate(g.id)}
-                    disabled={deleteMut.isPending && deleteMut.variables === g.id}
-                    aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
+                <button
+                  className="text-red-500 hover:text-red-700 disabled:opacity-40"
+                  onClick={() => deleteMut.mutate(g.id)}
+                  disabled={deleteMut.isPending && deleteMut.variables === g.id}
+                  aria-label={`Delete goal for ${g.first_name ?? ''} ${g.last_name ?? ''}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
               <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                 <div
@@ -265,8 +242,15 @@ export function GoalsPage() {
                   value={newMetric}
                   onChange={(e) => setNewMetric(e.target.value)}
                 >
-                  {METRIC_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {(metricDefs.length > 0
+                    ? metricDefs
+                    : [
+                        { key: 'tickets_closed_week', label: 'Tickets closed' },
+                        { key: 'revenue_week',        label: 'Revenue'        },
+                        { key: 'csat',                label: 'CSAT score'     },
+                      ]
+                  ).map((m) => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
                   ))}
                 </select>
               </label>
@@ -330,91 +314,6 @@ export function GoalsPage() {
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
                 Save
-              </button>
-            </div>
-          </div>
-        </NewGoalModal>
-      )}
-
-      {editGoal && (
-        <NewGoalModal onClose={closeEdit}>
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 id="new-goal-title" className="text-lg font-bold mb-1">Edit goal</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              {editGoal.first_name} {editGoal.last_name}
-            </p>
-            <div className="space-y-3">
-              <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Metric</span>
-                <select
-                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
-                  value={editMetric}
-                  onChange={(e) => setEditMetric(e.target.value)}
-                >
-                  {METRIC_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-xs font-semibold text-gray-600">Target value</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
-                  value={editTarget}
-                  onChange={(e) => setEditTarget(e.target.value)}
-                  placeholder="e.g. 15"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="block">
-                  <span className="text-xs font-semibold text-gray-600">Start</span>
-                  <input
-                    type="date"
-                    min={GOAL_DATE_MIN}
-                    max={GOAL_DATE_MAX}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
-                    value={editStart}
-                    onChange={(e) => setEditStart(e.target.value)}
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold text-gray-600">End</span>
-                  <input
-                    type="date"
-                    min={editStart || GOAL_DATE_MIN}
-                    max={GOAL_DATE_MAX}
-                    className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
-                    value={editEnd}
-                    onChange={(e) => setEditEnd(e.target.value)}
-                  />
-                </label>
-              </div>
-              {editStart && editEnd && editStart > editEnd && (
-                <p role="alert" aria-live="polite" className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
-              )}
-            </div>
-            <div className="flex gap-2 mt-5">
-              <button
-                className="flex-1 px-3 py-2 border rounded text-sm hover:bg-gray-50"
-                onClick={closeEdit}
-              >
-                Cancel
-              </button>
-              <button
-                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700 inline-flex items-center justify-center"
-                disabled={
-                  !editTarget
-                  || !editStart
-                  || !editEnd
-                  || editStart > editEnd
-                  || editMut.isPending
-                }
-                onClick={() => editMut.mutate()}
-              >
-                {editMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
-                Save changes
               </button>
             </div>
           </div>

@@ -141,24 +141,6 @@ export const customerApi = {
   exportData: (id: number) => api.get(`/customers/${id}/export`),
   merge: (keep_id: number, merge_id: number) =>
     api.post('/customers/merge', { keep_id, merge_id }),
-  bulkDelete: (customerIds: number[]) =>
-    api.post('/customers/bulk-delete', { customer_ids: customerIds }),
-};
-
-// ==================== Geocode ====================
-export const geocodeApi = {
-  lookup: (address: string) =>
-    api.get<{ success: boolean; data: { lat: number; lng: number } | null }>('/geocode', { params: { address } }),
-};
-
-// ==================== Custom Fields ====================
-export const customFieldApi = {
-  listDefinitions: (entityType: string) =>
-    api.get('/custom-fields/definitions', { params: { entity_type: entityType } }),
-  saveValues: (entityType: string, entityId: number, fields: { definition_id: number; value: string }[]) =>
-    api.put(`/custom-fields/values/${entityType}/${entityId}`, { fields }),
-  getValues: (entityType: string, entityId: number) =>
-    api.get(`/custom-fields/values/${entityType}/${entityId}`),
 };
 
 // ==================== Tickets ====================
@@ -186,8 +168,6 @@ export const ticketApi = {
     api.post(`/tickets/${id}/photos`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   deletePhoto: (photoId: number) =>
     api.delete(`/tickets/photos/${photoId}`),
-  updatePhoto: (photoId: number, data: { caption: string | null }) =>
-    api.put(`/tickets/photos/${photoId}`, data),
   convertToInvoice: (id: number) =>
     api.post(`/tickets/${id}/convert-to-invoice`),
   getHistory: (id: number) =>
@@ -258,12 +238,9 @@ export const ticketApi = {
 import type { InvoiceDetail } from '@/types/invoice';
 
 export const invoiceApi = {
-  // WEB-W2-032: sort_by + sort_dir added for sortable columns
-  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
+  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number }) =>
     api.get('/invoices', { params }),
-  // WEB-W2-022: stats accepts same filters as list so KPIs reflect active context
-  stats: (params?: { status?: string; from_date?: string; to_date?: string; customer_id?: number; location_id?: number; keyword?: string }) =>
-    api.get('/invoices/stats', { params }),
+  stats: () => api.get('/invoices/stats'),
   // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
   get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
   // DA-6 / WEB-FH-002: send an idempotency key so a double-click or flaky
@@ -293,10 +270,7 @@ export const invoiceApi = {
       },
     }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
-  // WEB-W2-018: `code` (RefundReasonCode) and `note` (free text) are stored as
-  // dedicated columns (credit_note_code, credit_note_note) via migration 150.
-  // `reason` is still required for backwards compat (used in line-item notes).
-  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }) =>
+  createCreditNote: (id: number, data: { amount: number; reason: string }) =>
     api.post(`/invoices/${id}/credit-note`, data),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
@@ -383,15 +357,6 @@ export const inventoryApi = {
     api.get(`/inventory/${id}/barcode`, { params: { format: format || 'svg' } }),
   varianceReport: (months?: number) =>
     api.get('/inventory/variance-report', { params: { months: months || 6 } }),
-  // WEB-W3-013: Server-streaming CSV export honoring all list filters
-  exportCsv: (params?: { keyword?: string; item_type?: string; category?: string; low_stock?: boolean; supplier_id?: number; manufacturer?: string; min_price?: number; max_price?: number; hide_out_of_stock?: boolean; location_id?: number }) =>
-    api.get('/inventory/export.csv', { params, responseType: 'blob' }),
-  // WEB-S6-009: Cost price history for an item
-  priceHistory: (id: number) => api.get(`/inventory/${id}/price-history`),
-  // WEB-S6-010: Per-location stock breakdown
-  locationStock: (id: number) => api.get(`/inventory/${id}/locations`),
-  // WEB-W3-025: Mark clearance (50% off) on selected items
-  markClearance: (item_ids: number[]) => api.post('/inventory-enrich/mark-clearance', { item_ids }),
 };
 
 // ==================== Settings ====================
@@ -474,14 +439,11 @@ export const settingsApi = {
     api.get(`/settings/receipt-templates/for-type/${type}`),
   updateReceiptTemplate: (id: number, data: { name?: string; header_text?: string; footer_text?: string }) =>
     api.put(`/settings/receipt-templates/${id}`, data),
-  // WEB-W1-034: test SMTP configuration
-  testSmtp: (to?: string) => api.post('/settings/test-smtp', to ? { to } : {}),
 };
 
 // ==================== Automations ====================
 export const automationsApi = {
   list: () => api.get('/automations'),
-  getOne: (id: number) => api.get(`/automations/${id}`),
   create: (data: { name: string; trigger_type: string; trigger_config?: Record<string, unknown>; action_type: string; action_config?: Record<string, unknown>; sort_order?: number }) =>
     api.post('/automations', data),
   update: (id: number, data: Partial<{ name: string; trigger_type: string; trigger_config: Record<string, unknown>; action_type: string; action_config: Record<string, unknown>; sort_order: number }>) =>
@@ -573,8 +535,6 @@ export const reportApi = {
     `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
   partnerReportPdfUrl: (year: string | number) =>
     `/api/v1/reports/partner-report.pdf?year=${encodeURIComponent(String(year))}`,
-  salesReportPdfUrl: (from: string, to: string) =>
-    `/api/v1/reports/sales-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   npsTrend: (months?: number) => api.get('/reports/nps-trend', { params: { months } }),
   referrals: () => api.get('/reports/referrals'),
   submitNps: (data: { customer_id: number; ticket_id?: number; score: number; comment?: string; channel?: string }) =>
@@ -609,22 +569,35 @@ export const smsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  // WEB-S6-017: email thread inbox
-  emailThreads: (q?: string) => api.get<{ success: boolean; data: { threads: EmailThread[] } }>('/sms/email-threads', { params: q ? { q } : undefined }),
-  emailThread: (address: string) => api.get(`/sms/email-threads/${encodeURIComponent(address)}`),
 };
 
+// ==================== Email ====================
+// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
 export interface EmailThread {
-  from_address: string;
-  to_address: string;
-  message_count: number;
+  id: number;
+  customer_id?: number | null;
+  subject?: string | null;
+  from_address?: string | null;
   last_message_at: string;
-  subject: string | null;
-  last_body: string | null;
-  customer_id: number | null;
-  first_name: string | null;
-  last_name: string | null;
+  message_count?: number;
+  unread_count?: number;
+  first_name?: string | null;
+  last_name?: string | null;
 }
+
+export interface EmailThreadsPayload {
+  threads: EmailThread[];
+  enabled: boolean;
+  pagination?: { page: number; per_page: number; total: number; total_pages: number };
+}
+
+export const emailApi = {
+  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
+  threads: (params?: { page?: number; pagesize?: number }) =>
+    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
+  messages: (threadId: number) =>
+    api.get(`/email/threads/${threadId}/messages`),
+};
 
 // ==================== Voice / Click-to-Call ====================
 
@@ -663,18 +636,11 @@ export const voiceApi = {
   calls: (params?: { page?: number; pagesize?: number; conv_phone?: string; entity_type?: string; entity_id?: number }) =>
     api.get<VoiceCallsResponse>('/voice/calls', { params }),
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
-  // WEB-W3-023: issue a short-lived HMAC token then open the recording URL
-  // with ?token= so the browser can fetch it without a cookie/Bearer header.
-  getRecordingToken: (id: number) =>
-    api.post<{ success: boolean; data: { token: string } }>(`/voice/calls/${id}/recording-token`),
-  /** @deprecated raw path — use openRecording() for auth-safe playback */
+  /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
-  /** Opens a recording in a new tab via a short-lived signed token. */
-  openRecording: async (id: number): Promise<void> => {
-    const res = await api.post<{ success: boolean; data: { token: string } }>(`/voice/calls/${id}/recording-token`);
-    const token = res.data.data.token;
-    window.open(`/api/v1/voice/calls/${id}/recording?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
-  },
+  /** WEB-W3-023: Fetch a short-lived signed URL for playback (5-min HMAC token). */
+  recordingSignedUrl: (id: number) =>
+    api.get<{ success: boolean; data: { url: string } }>(`/voice/calls/${id}/recording-url`),
 };
 
 // ==================== POS ====================
@@ -692,8 +658,7 @@ export const posApi = {
   // event so a flaky-network double-click doesn't double-record opening float.
   cashIn: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-in', data),
   cashOut: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-out', data),
-  transaction: (data: PosTransactionInput, pinVerified?: boolean) =>
-    api.post('/pos/transaction', data, pinVerified ? { headers: { 'X-Pos-Pin-Verified': '1' } } : undefined),
+  transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
   // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
   // cart-session (in the unified-pos store) and reused across every retry
@@ -702,14 +667,13 @@ export const posApi = {
   // middleware returns the cached response, so we never charge twice.
   // Caller is REQUIRED to pass a stable key; internal fallback exists only
   // for legacy callers and should be removed once all callers migrate.
-  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string, pinVerified?: boolean) =>
+  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string) =>
     api.post('/pos/checkout-with-ticket', data, {
       headers: {
         'X-Idempotency-Key':
           idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
-        ...(pinVerified ? { 'X-Pos-Pin-Verified': '1' } : {}),
       },
     }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
@@ -850,17 +814,13 @@ export const catalogApi = {
 
 // ==================== Leads ====================
 export const leadApi = {
-  // WEB-W2-035: sort_by + sort_order added for sortable columns
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; assigned_to?: number; sort_by?: string; sort_order?: 'ASC' | 'DESC' }) =>
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; assigned_to?: number }) =>
     api.get('/leads', { params }),
   get: (id: number) => api.get(`/leads/${id}`),
   create: (data: CreateLeadInput) => api.post('/leads', data),
   update: (id: number, data: UpdateLeadInput) => api.put(`/leads/${id}`, data),
   convert: (id: number) => api.post(`/leads/${id}/convert`),
   delete: (id: number) => api.delete(`/leads/${id}`),
-  // WEB-W2-035: bulk action endpoint (delete or status-change for selected leads)
-  bulkAction: (lead_ids: number[], action: string, value?: string) =>
-    api.post('/leads/bulk-action', { lead_ids, action, value }),
   pipeline: () => api.get('/leads/pipeline'),
   reminders: (id: number) => api.get(`/leads/${id}/reminders`),
   createReminder: (id: number, data: { remind_at: string; note?: string }) =>
@@ -885,8 +845,7 @@ export const leadApi = {
 // view ever needs in-shop staff signing, add the wrapper here and a
 // matching `<EstimateSignDialog>` component.
 export const estimateApi = {
-  // WEB-W2-033: sort_by + sort_dir added for sortable columns
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
     api.get('/estimates', { params }),
   get: (id: number) => api.get(`/estimates/${id}`),
   create: (data: CreateEstimateInput) => api.post('/estimates', data),
@@ -896,8 +855,6 @@ export const estimateApi = {
   delete: (id: number) => api.delete(`/estimates/${id}`),
   send: (id: number, method?: 'sms' | 'email') => api.post(`/estimates/${id}/send`, { method: method ?? 'sms' }),
   approve: (id: number, token?: string) => api.post(`/estimates/${id}/approve`, token ? { token } : {}),
-  // WEB-W2-020: reject endpoint — staff-only, sets status to 'rejected'
-  reject: (id: number) => api.post(`/estimates/${id}/reject`),
   versions: (id: number) => api.get(`/estimates/${id}/versions`),
   versionDetail: (id: number, versionId: number) => api.get(`/estimates/${id}/versions/${versionId}`),
 };
@@ -912,9 +869,6 @@ export const employeeApi = {
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/commissions`, { params }),
-  // WEB-S6-014: PATCH /employees/:id — set/clear hourly pay_rate (admin only)
-  updatePayRate: (id: number, pay_rate: number | null) =>
-    api.patch(`/employees/${id}`, { pay_rate }),
 };
 
 // ==================== Day-1 Onboarding (audit section 42) ====================
@@ -1281,10 +1235,6 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
-
-  // WEB-W3-020: run billing for a single subscription (charges stored token)
-  runBilling: (id: number) =>
-    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================
@@ -1466,43 +1416,6 @@ export interface SuperAdminTenant {
   created_at: string;
   db_size_mb: number;
 }
-
-// ==================== Installment Plans ====================
-export interface InstallmentScheduleRow {
-  index?: number;
-  due_date: string;
-  amount_cents: number;
-}
-
-export interface CreateInstallmentPlanInput {
-  customer_id: number;
-  invoice_id?: number | null;
-  total_cents: number;
-  installment_count: number;
-  frequency_days: number;
-  acceptance_token: string;
-  acceptance_signed_at: string;
-  schedule: InstallmentScheduleRow[];
-}
-
-export const installmentApi = {
-  /** Create a new installment plan + schedule rows. Returns the plan with schedule. */
-  create: (data: CreateInstallmentPlanInput) =>
-    api.post('/installments', data),
-  /** List plans with optional filters. */
-  list: (params?: { invoice_id?: number; customer_id?: number; status?: string }) =>
-    api.get('/installments', { params }),
-  listByInvoice: (invoice_id: number) =>
-    api.get('/installments', { params: { invoice_id } }),
-  listByCustomer: (customer_id: number) =>
-    api.get('/installments', { params: { customer_id } }),
-  /** Fetch a single plan with its schedule rows. */
-  get: (id: number) =>
-    api.get(`/installments/${id}`),
-  /** Cancel a pending/active plan. Requires admin or manager role. */
-  cancel: (id: number) =>
-    api.post(`/installments/${id}/cancel`),
-};
 
 export const superAdminApi = {
   /** Login step 1 — returns challengeToken */

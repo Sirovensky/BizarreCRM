@@ -129,13 +129,11 @@ interface CheckoutModalProps {
 
 export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const store = useUnifiedPosStore;
-  const { setShowSuccess, meta, setMeta, posPinVerified, setPosPinVerified } = useUnifiedPosStore();
+  const { setShowSuccess, meta, setMeta } = useUnifiedPosStore();
   const totals = useCheckoutTotals();
 
   const [method, setMethod] = useState<PaymentMethod>('Cash');
   const [cashGiven, setCashGiven] = useState('');
-  // WEB-W1-015: discount reason required when pos_show_discount_reason=1
-  const [localDiscountReason, setLocalDiscountReason] = useState(store.getState().discountReason || '');
   const [processing, setProcessing] = useState(false);
   const [signature, setSignature] = useState('');
   const [showSignature, setShowSignature] = useState(false);
@@ -192,9 +190,6 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     staleTime: 60_000,
   });
   const membershipEnabled = configData?.['membership_enabled'] === 'true';
-  // WEB-W1-015: require reason when a discount is applied and this setting is on
-  const showDiscountReason = configData?.['pos_show_discount_reason'] === '1';
-  const requireDiscountReason = showDiscountReason && totals.discountAmount > 0;
 
   const { data: memberStatus } = useQuery({
     queryKey: ['membership', 'customer', customer?.id],
@@ -299,12 +294,6 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   }, [totals.total]);
 
   const handleCompleteCheckout = async () => {
-    // WEB-W1-015: block checkout if discount reason is required but missing
-    if (requireDiscountReason && !localDiscountReason.trim()) {
-      toast.error('Please enter a reason for the discount');
-      return;
-    }
-
     if (splitMode) {
       // WEB-FB-009 / WEB-FH-014: cents-int compare. Float compare drifted by
       // 1¢ on three-way even splits (33.33×3) and either blocked legit
@@ -329,25 +318,18 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       const validSplits = splitMode
         ? splitPayments.filter((sp) => parseFloat(sp.amount) > 0)
         : undefined;
-      const rawPayload = buildPayload(
+      const payload = buildPayload(
         store.getState(),
         method,
         splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
         validSplits,
       );
-      // WEB-W1-015: when pos_show_discount_reason=1, override the stored
-      // discountReason with the value the cashier typed in this modal.
-      const payload = showDiscountReason
-        ? { ...rawPayload, ticket: { ...rawPayload.ticket, discount_reason: localDiscountReason } }
-        : rawPayload;
       // WEB-FH-001 / WEB-FH-002: stable idempotency key for this cart-session.
       // Reused on every retry of the SAME submit so a double-click or flaky
       // network can't double-charge — server idempotent middleware caches by
       // (user, url, key) for 5 minutes.
       const idempotencyKey = store.getState().ensureIdempotencyKey();
-      const pv = posPinVerified;
-      setPosPinVerified(false); // consume once
-      const res = await posApi.checkoutWithTicket(payload, idempotencyKey, pv);
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then
@@ -359,25 +341,62 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       // to customers whose card had actually declined.
       let cardDeclined = false;
       let cardDeclineMessage: string | null = null;
-      if (!splitMode && method === 'Card' && blockchypConfigured) {
+
+      if (blockchypConfigured) {
         const invoiceId: number | undefined = res.data?.data?.invoice?.id;
         if (invoiceId) {
-          try {
-            const terminalRes = await blockchypApi.processPayment(invoiceId);
-            const terminalResult = terminalRes.data?.data;
-            if (!terminalResult?.success) {
+          if (!splitMode && method === 'Card') {
+            // Single Card payment — charge full remaining balance.
+            try {
+              const terminalRes = await blockchypApi.processPayment(invoiceId);
+              const terminalResult = terminalRes.data?.data;
+              if (!terminalResult?.success) {
+                cardDeclined = true;
+                cardDeclineMessage =
+                  terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
+                toast.error(
+                  `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
+                  { duration: 8000 },
+                );
+              }
+            } catch (terminalErr: unknown) {
               cardDeclined = true;
-              cardDeclineMessage =
-                terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
-              toast.error(
-                `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
-                { duration: 8000 },
-              );
+              cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+              toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
             }
-          } catch (terminalErr: unknown) {
-            cardDeclined = true;
-            cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
-            toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
+          } else if (splitMode) {
+            // WEB-W3-004: split payments — each Card leg must fire an independent
+            // BlockChyp `charge` for that leg's amount. Non-card legs (Cash/Other)
+            // are already recorded by the POS checkout endpoint; we only hit
+            // the terminal for Card legs.
+            const cardLegs = (validSplits ?? []).filter((sp) => sp.method === 'Card');
+            for (const leg of cardLegs) {
+              const legAmount = parseFloat(leg.amount) || 0;
+              if (legAmount <= 0) continue;
+              try {
+                const terminalRes = await blockchypApi.processPayment(invoiceId, undefined, legAmount);
+                const terminalResult = terminalRes.data?.data;
+                if (!terminalResult?.success) {
+                  cardDeclined = true;
+                  const legMsg =
+                    terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
+                  cardDeclineMessage = cardDeclineMessage
+                    ? `${cardDeclineMessage}; ${legMsg}`
+                    : legMsg;
+                  toast.error(
+                    `Card leg $${legAmount.toFixed(2)} declined: ${legMsg}. Retry from the invoice page.`,
+                    { duration: 8000 },
+                  );
+                }
+              } catch (terminalErr: unknown) {
+                cardDeclined = true;
+                const legMsg = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+                cardDeclineMessage = cardDeclineMessage
+                  ? `${cardDeclineMessage}; ${legMsg}`
+                  : legMsg;
+                toast.error(`Card leg $${legAmount.toFixed(2)} failed: ${legMsg}. Retry from the invoice page.`, { duration: 8000 });
+              }
+            }
           }
         }
       }
@@ -422,23 +441,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               <span>Subtotal: ${totals.subtotal.toFixed(2)}</span>
             </div>
             {totals.discountAmount > 0 && (
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
-                  <span>Discount</span>
-                  <span>-${totals.discountAmount.toFixed(2)}</span>
-                </div>
-                {/* WEB-W1-015: require reason input when pos_show_discount_reason=1 */}
-                {showDiscountReason && (
-                  <div>
-                    <input
-                      type="text"
-                      value={localDiscountReason}
-                      onChange={(e) => setLocalDiscountReason(e.target.value)}
-                      placeholder={requireDiscountReason ? 'Discount reason (required)' : 'Discount reason (optional)'}
-                      className="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 px-2 py-1 text-xs text-surface-700 dark:text-surface-200 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
-                    />
-                  </div>
-                )}
+              <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
+                <span>Discount</span>
+                <span>-${totals.discountAmount.toFixed(2)}</span>
               </div>
             )}
             <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">

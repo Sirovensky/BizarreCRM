@@ -104,7 +104,6 @@ import trackingRoutes from './routes/tracking.routes.js';
 import expenseRoutes from './routes/expenses.routes.js';
 import loanerRoutes from './routes/loaners.routes.js';
 import customFieldRoutes from './routes/customFields.routes.js';
-import geocodeRoutes from './routes/geocode.routes.js';
 import refundRoutes from './routes/refunds.routes.js';
 import rmaRoutes from './routes/rma.routes.js';
 import giftCardRoutes from './routes/giftCards.routes.js';
@@ -1601,7 +1600,6 @@ app.use('/api/v1/repair-pricing', authMiddleware, repairPricingRoutes);
 app.use('/api/v1/expenses', authMiddleware, expenseRoutes);
 app.use('/api/v1/loaners', authMiddleware, loanerRoutes);
 app.use('/api/v1/custom-fields', authMiddleware, requireFeature('customFields'), customFieldRoutes);
-app.use('/api/v1/geocode', authMiddleware, geocodeRoutes);
 app.use('/api/v1/refunds', authMiddleware, refundRoutes);
 app.use('/api/v1/rma', authMiddleware, rmaRoutes);
 app.use('/api/v1/gift-cards', authMiddleware, giftCardRoutes);
@@ -1695,9 +1693,6 @@ app.use('/api/v1/deposits', authMiddleware, depositRoutes);
 import installmentsRoutes from './routes/installments.routes.js';
 app.use('/api/v1/installments', authMiddleware, installmentsRoutes);
 
-import installmentsRoutes from './routes/installments.routes.js';
-app.use('/api/v1/installments', authMiddleware, installmentsRoutes);
-
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);
 
@@ -1714,9 +1709,12 @@ app.use('/api/v1/management', managementRoutes);
 import teamRoutes from './routes/team.routes.js';
 import rolesRoutes from './routes/roles.routes.js';
 import teamChatRoutes from './routes/teamChat.routes.js';
+// WEB-S6-017: Email thread tab stub — gated by store_config.email_inbox_enabled.
+import emailRoutes from './routes/email.routes.js';
 app.use('/api/v1/team', authMiddleware, teamRoutes);
 app.use('/api/v1/roles', authMiddleware, rolesRoutes);
 app.use('/api/v1/team-chat', authMiddleware, teamChatRoutes);
+app.use('/api/v1/email', authMiddleware, emailRoutes);
 
 app.get('/admin', (req, res) => {
   if (config.multiTenant && req.tenantSlug) {

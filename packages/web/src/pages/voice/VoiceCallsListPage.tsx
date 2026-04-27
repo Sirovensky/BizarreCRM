@@ -11,6 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { voiceApi, type VoiceCall } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatDateTime } from '@/utils/format';
@@ -36,13 +37,18 @@ function hasRecording(call: VoiceCall): boolean {
   return Boolean(call.recording_url);
 }
 
-// WEB-W3-023: obtain a short-lived HMAC token from the server before opening
-// the recording URL so the request carries auth proof without relying on
-// a browser cookie / session that may not exist in a new tab context.
-function openRecording(callId: number): void {
-  voiceApi.openRecording(callId).catch(() => {
-    // openRecording is async — swallow here; toast shown by axios interceptor.
-  });
+// WEB-W3-023: Fetch a short-lived signed URL from the server, then open it.
+// The signed URL is an HMAC-protected token valid for 5 minutes — the raw
+// /calls/:id/recording endpoint requires session auth which <audio> src cannot send.
+async function openRecordingSecure(callId: number): Promise<void> {
+  try {
+    const res = await voiceApi.recordingSignedUrl(callId);
+    const url = res.data?.data?.url;
+    if (!url) throw new Error('No URL returned');
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch {
+    toast.error('Could not load recording');
+  }
 }
 
 interface CallRowProps {
@@ -50,7 +56,17 @@ interface CallRowProps {
 }
 
 function CallRow({ call }: CallRowProps) {
+  const [loadingRec, setLoadingRec] = useState(false);
   const isInbound = call.direction === 'inbound';
+
+  const handlePlay = async () => {
+    setLoadingRec(true);
+    try {
+      await openRecordingSecure(call.id);
+    } finally {
+      setLoadingRec(false);
+    }
+  };
 
   return (
     <tr className="border-t border-surface-100 dark:border-surface-800 hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors">
@@ -94,11 +110,16 @@ function CallRow({ call }: CallRowProps) {
       <td className="px-4 py-3">
         {hasRecording(call) ? (
           <button
-            onClick={() => openRecording(call.id)}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors"
+            onClick={handlePlay}
+            disabled={loadingRec}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-700 rounded-lg hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-colors disabled:opacity-50"
             title="Open recording in new tab"
           >
-            <Play className="h-3 w-3" />
+            {loadingRec ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="h-3 w-3" />
+            )}
             Play
           </button>
         ) : (

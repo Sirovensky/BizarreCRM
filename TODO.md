@@ -10,24 +10,21 @@ type: project
 ## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
 
 ### P0
-- [ ] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** `pages/pos/CashRegisterPage.tsx` / `unified-pos`. Fix: each card leg of split tender must call BlockChyp `charge` for that amount; only mark paid on terminal success.
-- [x] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** CLOSED 2026-04-26 — todofixes426: `POST /:token/pay` (paymentLinks.routes.ts) calls `createPaymentLink` (blockchyp.ts) to generate a BlockChyp hosted checkout URL; CustomerPayPage shows "Pay now" button that POSTs to get the URL and redirects; graceful fallback ("call shop") when BlockChyp not configured.
+- [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
 
 ### P1 (silent no-op)
-- [ ] WEB-W3-016. **POS Z-report Print prints full page not modal.** `pages/pos/`. Fix: `window.print()` after wrapping report in print-only stylesheet, or open new window with z-report HTML.
-- [x] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** CLOSED 2026-04-26 — todofixes426: AgingReportPage fully rewritten — `bulkReminderMut` via `invoiceApi.bulkAction('send_reminder', ids)`, per-row "Remind" button with `sendingId` spinner, bulk "Send Reminder (N)" button in totals bar.
-- [x] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** CLOSED 2026-04-26 — todofixes426: DunningPage replaced JSON textarea with structured step editor — `DunningStep[]` state, day-offset number input, action `<select>`, template `<select>`, add/remove row buttons.
-- [x] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** CLOSED 2026-04-26 — todofixes426: `POST /membership/:id/run-billing` (membership.routes.ts) validates status/token, idempotency guard (period_end future → reject), calls `chargeToken`, advances period 1 month, records `subscription_payments`; SubscriptionsListPage wires `runBillingMut` + admin-only "Bill now" per-row button.
+- [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
+- [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
+- [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
 - [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
 - [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
 
 ### P2 (cosmetic / missing UI)
+- [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
 - [x] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`. FIXED-by-Fixer-A23 2026-04-25 — added FKeyLegend popover button (bottom-right of UnifiedPosPage) listing F1/F2/F3 tabs, F4 customer search, Shift+F5 complete sale, F6 returns hotkey. `<kbd>`-styled rows, dialog role + aria-expanded button.
-- [x] WEB-W3-030. **Subscriptions Cancel has no end-date display.** CLOSED 2026-04-26 — todofixes426: SubscriptionsListPage now shows "Cancels {date}" using `formatDate(current_period_end)` when `cancel_at_period_end === 1`.
 - [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
 - [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
 - [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
-- [ ] WEB-W3-037. **Team goals: only 3 hardcoded metric types.** `pages/team/`. Fix: load metrics from server enum or expand list.
 
 ## Web Audit Wave-WEB-2026-04-24 — settings tabs + setup wizard (search agent A1)
 
@@ -60,8 +57,6 @@ type: project
 ## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
 
 ### P0 (blocks workflow / data loss)
-- [x] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.** CLOSED 2026-04-26 — todofixes426: invoices route `send_reminder` bulk action now calls `sendReminderNotification` per invoice (email + SMS via notifications service) before updating `last_reminder_sent_at`.
-- [x] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).** CLOSED 2026-04-26 — todofixes426: added `installments.routes.ts` with POST / (create plan + schedule), GET /?invoice_id=, GET /:id, PUT /:id/cancel; migration 151_installment_plans.sql; `installmentApi` in endpoints.ts.
 - [ ] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route — likely 404.**
   - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` or `TicketActions.tsx`
   - Fix: confirm endpoint in `tickets.routes.ts`; if missing, add `POST /tickets/:id/clone-warranty` that copies ticket with `is_warranty=true` and parent reference.
@@ -95,25 +90,15 @@ type: project
   - Fix: confirm `repairPricing.routes.ts` shape matches client; align if not.
   - File: `packages/web/src/pages/customers/CustomerDetailPage.tsx`
   - Fix: trigger anchor download with `download` attr instead of `window.open`.
-- [x] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".** CLOSED 2026-04-26 — todofixes426: button hidden until partner financing integration is built; tooltip updated accordingly.
-- [x] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.** CLOSED 2026-04-26 — todofixes426: tip-adjust button hidden in POS UI when BlockChyp does not expose adjustTip; route now returns 501 with clear message instead of silent NOT_SUPPORTED.
-- [x] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.** CLOSED 2026-04-26 — todofixes426: migration 150_credit_note_code_note.sql adds `credit_note_code TEXT` + `credit_note_note TEXT` to `invoices`; `POST /:id/credit-note` persists both; `createCreditNote` API signature updated; `as any` cast removed.
-- [x] WEB-W2-019. **Estimate line items display-only after creation — can't edit.** CLOSED 2026-04-26 — todofixes426: EstimateDetailPage adds inline edit mode (editingItems/draftItems state, per-row inputs for description/qty/price/tax, add/remove row) posting to existing `PUT /estimates/:id` `line_items` array.
-- [x] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.** CLOSED 2026-04-26 — todofixes426: `POST /estimates/:id/reject` route added; `estimateApi.reject()` wired; Reject button in EstimateDetailPage action bar + per-row Reject in EstimateListPage; audit logged.
   - File: `packages/web/src/pages/leads/`
   - Fix: same normalization to `notes`.
-- [x] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.** CLOSED 2026-04-26 — todofixes426: `GET /invoices/stats` rebuilt to accept `status/from_date/to_date/customer_id/location_id/keyword` mirroring list filters; InvoiceListPage `statsData` query passes active filters; cache key includes keyword.
-- [x] WEB-W2-023. **Overdue count computed from current page only — inaccurate.** CLOSED 2026-04-26 — todofixes426: stats endpoint returns `overdue_count`/`overdue_amount` from independent DB query; InvoiceListPage uses `stats.overdue_count` with local fallback.
 
 ### P2 (cosmetic / minor UX)
 - [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
 - [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
 - [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
-- [ ] WEB-W2-032. **No sortable columns on invoice table.** — `pages/invoices/`.
-- [ ] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** — `pages/estimates/`.
-- [ ] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** — add print stylesheet or PDF route.
-- [x] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`. CLOSED 2026-04-26 — todofixes426
-- [x] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine. CLOSED 2026-04-26 — todofixes426
+- [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
+- [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
 
 ## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
 
@@ -161,12 +146,22 @@ type: project
   - Backend stores pre/post conditions as JSON array. The edit form captures the field in state but has no checkbox or multi-input UI for it.
   - Fix: add a "Pre-repair Conditions" checklist using a configurable list (or free-text tags) that writes to `form.pre_conditions`; `post_conditions` similarly absent.
 
-- [x] WEB-S6-011. **CustomerCreatePage: address geocoding absent — no lat/lng stored, breaking field-service map routing.** CLOSED 2026-04-26 — todofixes426: new geocode.routes.ts (Nominatim, no key), mounted at /api/v1/geocode, geocodeApi in endpoints.ts, address blur triggers geocodeAddress() in CustomerCreatePage, migration 149_customers_lat_lng.sql adds lat/lng columns, create+update routes persist them.
+- [ ] WEB-S6-009. **InventoryDetailPage: price history absent — no way to see how retail/cost price changed over time.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (stock movements shown, price history is not)
+  - Android audit references price history. The server has `inventory_price_history` table (migration 006 or similar). No route or UI exposes it on web.
+  - Fix: add `GET /inventory/:id/price-history` route if missing; render as mini timeline under Pricing card.
+
+- [ ] WEB-S6-010. **InventoryDetailPage: multi-location stock absent — only shows single `in_stock` total, not per-location breakdown.**
+  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx`
+  - `locations.routes.ts` and `inventory` route accept `location_id`. Android likely shows per-location stock. Web detail shows one number.
+  - Fix: add `GET /inventory/:id/locations` or query `inventory_locations` join; render per-location stock table with per-location adjust button.
+
+- [ ] WEB-S6-011. **CustomerCreatePage: address geocoding absent — no lat/lng stored, breaking field-service map routing.**
   - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` — no geocode call on address blur
   - `fieldService.routes.ts` expects lat/lng on customers for route optimization. Android likely geocodes on save.
   - Fix: on `address1`/`city`/`state` blur, call `GET /api/v1/geocode?address=…` (add route or use nominatim) and silently set `lat`/`lng` in payload.
 
-- [x] WEB-S6-012. **CustomerCreatePage: custom fields absent — all `custom_fields` defined in settings are invisible on the create form.** CLOSED 2026-04-26 — todofixes426: customFieldApi added to endpoints.ts, CustomerCreatePage fetches GET /custom-fields/definitions?entity_type=customer, renders CustomFieldInput per def (text/number/boolean/date/select/textarea), saves values via PUT /custom-fields/values/customer/:id after create.
+- [ ] WEB-S6-012. **CustomerCreatePage: custom fields absent — all `custom_fields` defined in settings are invisible on the create form.**
   - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` (no `customFieldsApi` import or render)
   - `customFields.routes.ts` provides a list of entity-scoped custom fields. Android intake shows them. Web create page skips them entirely.
   - Fix: fetch `GET /custom-fields?entity=customer`; render as additional form fields; include in payload as `custom_field_values`.
@@ -176,7 +171,7 @@ type: project
   - The button is an `<a>` tag, not a `<Link>`. Full page reload on click. Should use React Router `<Link>` or `useNavigate`.
   - Fix: replace with `<Link to="/settings/users">` from react-router-dom.
 
-- [x] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.** CLOSED 2026-04-26 — todofixes426
+- [ ] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.**
   - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no pay_rate field anywhere
   - Android employee detail shows pay rate. `employees.routes.ts` presumably stores it. Web page has clock-in/out and commissions but no pay rate management.
   - Fix: add pay rate display in `EmployeeExpandedRow`; allow edit via `PATCH /employees/:id` with `pay_rate` field.
@@ -206,6 +201,19 @@ type: project
   - Complex automations with many conditions cannot be edited comfortably in a cramped in-list form. Android likely has a dedicated edit screen.
   - Fix: add `/automations/:id` detail page with full condition/action builder UI; link from list rows.
 
+- [ ] WEB-S6-020. **CampaignsPage: `trigger_rule_json` stored on campaign but never editable — no trigger rule builder in create modal.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` line 44 (field exists in type) and `CreateCampaignModal` (no trigger_rule field in form)
+  - Scheduled/triggered campaigns (birthday, churn) require a rule but the create modal has no way to configure when it fires.
+  - Fix: add trigger rule builder to `CreateCampaignModal`: date-offset picker for birthday/winback, threshold for churn warning, etc.
+
+- [ ] WEB-S6-021. **CampaignsPage: no campaign edit — after creation only delete/status-toggle possible; name, body, segment, channel are immutable from UI.**
+  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` — no edit modal, no edit button
+  - Fix: add an edit button per row that opens `CreateCampaignModal` pre-populated; PUT to `campaignsApi.update(id, payload)`.
+
+- [ ] WEB-S6-022. **SegmentsPage: rule builder only supports single-condition rules — no AND/OR compound conditions.**
+  - File: `packages/web/src/pages/marketing/SegmentsPage.tsx` — `RULE_FIELDS` implies one condition per segment
+  - Useful audience segments (e.g. "LTV > $500 AND churned > 90 days") require multiple conditions. Current builder creates one rule object.
+  - Fix: allow adding multiple conditions with AND/OR connectors; serialize as `{ op: 'and', conditions: [...] }` to `rule_json`.
 
 - [ ] WEB-S6-023. **PartnerReportPage: no loading/error state — if the PDF endpoint is slow or returns 500, user sees nothing.**
   - File: `packages/web/src/pages/reports/PartnerReportPage.tsx` — `openReport()` is a bare `window.open` with no try/catch
