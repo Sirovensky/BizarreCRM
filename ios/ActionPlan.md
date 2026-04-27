@@ -490,13 +490,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete.
 
 ### 3.5 Getting-started / onboarding checklist
-- [ ] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, create first ticket, record first payment, invite employee, configure SMS, print first receipt, etc.
-- [ ] **Frontend:** collapsible glass card at top of dashboard — progress bar + remaining steps. Dismissible once 100% complete.
-- [ ] **Celebratory modal** — first sale / first customer / setup complete → confetti `Symbol Animation` + copy.
+- [x] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, create first ticket, record first payment, invite employee, configure SMS, print first receipt, etc. Commit `28073d86`.
+- [x] **Frontend:** collapsible glass card at top of dashboard — progress bar + remaining steps. Dismissible once 100% complete. Commit `28073d86`.
+- [x] **Celebratory modal** — first sale / first customer / setup complete → confetti `Symbol Animation` + copy. Commit `28073d86`.
 
 ### 3.6 Recent activity feed
-- [ ] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing.
-- [ ] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link.
+- [x] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing. Commit `eace0734`.
+- [x] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link. Commit `eace0734`.
 
 ### 3.7 Announcements / what's new
 - [ ] **Backend:** `GET /system/announcements?since=<last_seen>` (verify).
@@ -3596,13 +3596,13 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.
 
 ### 21.6 Foreground lifecycle
-- [ ] **`didBecomeActive`** — lightweight sync + WS re-subscribe.
-- [ ] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on.
-- [ ] **Memory warning** — flush image cache, reduce GRDB page cache.
+- [x] **`didBecomeActive`** — lightweight sync + WS re-subscribe. Commit `3404f056`.
+- [x] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on. Commit `3404f056`.
+- [x] **Memory warning** — flush image cache, reduce GRDB page cache. Commit `3404f056`.
 
 ### 21.7 Real-time UX
-- [ ] **Pulse animation** on list row when item updates via WS.
-- [ ] **Toast** — top-of-screen glass "New message from X" with tap → thread.
+- [x] **Pulse animation** on list row when item updates via WS. Commit `1be36e50`.
+- [x] **Toast** — top-of-screen glass "New message from X" with tap → thread. Commit `1be36e50`.
 - [x] **Badge sync** — unread counts propagate to tab bar + icon badge.
 
 ### 21.8 Deep-link routing from push
@@ -3784,7 +3784,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Inline** — single-line ticket count via `.accessoryInline`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.3 Live Activities (ActivityKit)
-- [ ] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done.
+- [x] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done. Commit `baa1cbb6`.
 - [x] **POS charge pending** — `SaleInProgressLiveActivity` + `POSSaleActivityAttributes`; Dynamic Island compact/expanded; ends on `endSaleActivity()`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Clock-in timer** — `ClockInOutLiveActivity` + `ShiftActivityAttributes`; Dynamic Island "8h 14m"; tap → timeclock deep-link; updated via `updateShiftActivity(durationMinutes:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Appointment countdown** — 15 min before appointment → live activity on Lock Screen.
@@ -3811,10 +3811,10 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Siri suggestions** on lock screen.
 
 ### 24.6 Control Center controls (iOS 18+)
-- [ ] **Clock in/out toggle** — one-tap.
-- [ ] **Quick scan** — opens scanner.
-- [ ] **Quick sale** — opens POS.
-- [ ] **SMS unread** badge control.
+- [x] **Clock in/out toggle** — one-tap. Commit `67eb6295`.
+- [x] **Quick scan** — opens scanner. Commit `67eb6295`.
+- [x] **Quick sale** — opens POS. Commit `67eb6295`.
+- [x] **SMS unread** badge control. Commit `67eb6295`.
 
 ### 24.7 Action Button (iPhone 15 Pro+)
 - [ ] **Map "Action Button" → CreateTicket shortcut** per user preference.
@@ -3877,16 +3877,16 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **`eligibleForPrediction`** — Siri suggests continue-ticket on other devices. (feat(ios phase-6 §24+§25))
 
 ### 25.3 Universal Clipboard
-- [ ] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU.
-- [ ] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive.
-- [ ] **iCloud Keychain paste** for SMS codes (`UITextContentType.oneTimeCode`).
+- [x] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU. Commit `ef872a82`.
+- [x] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive. Commit `ef872a82`.
+- [x] **iCloud Keychain paste** for SMS codes (`UITextContentType.oneTimeCode`). Commit `ef872a82`.
 
 ### 25.4 Share Sheet (`UIActivityViewController` / `ShareLink`)
-- [ ] **Invoice PDF** — generate via `UIPrintPageRenderer` → share.
-- [ ] **Estimate PDF** — same renderer.
-- [ ] **Receipt PDF** — same renderer.
-- [ ] **Customer vCard** — `CNMutableContact` → `CNContactVCardSerialization` → share.
-- [ ] **Ticket summary plaintext + image** — formatted block copy.
+- [x] **Invoice PDF** — generate via `UIPrintPageRenderer` → share. Commit `ef872a82`.
+- [x] **Estimate PDF** — same renderer. Commit `ef872a82`.
+- [x] **Receipt PDF** — same renderer. Commit `ef872a82`.
+- [x] **Customer vCard** — `CNMutableContact` → `CNContactVCardSerialization` → share. Commit `ef872a82`.
+- [x] **Ticket summary plaintext + image** — formatted block copy. Commit `ef872a82`.
 - [ ] **Public tracking link** — share short URL to public-tracking page (see §57).
 - [ ] **Photo** — ticket photo → share.
 - [ ] **Image with logo watermark** — before sharing.
