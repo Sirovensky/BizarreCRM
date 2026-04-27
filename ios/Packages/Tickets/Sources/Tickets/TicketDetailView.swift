@@ -18,6 +18,8 @@ public struct TicketDetailView: View {
     @State private var showingSignOff: Bool = false
     // §4.2 — QR code
     @State private var showingQRCode: Bool = false
+    // §4.2 — Tab layout
+    @State private var activeTab: TicketDetailTab = .actions
     @Environment(\.dismiss) private var dismiss
     private let api: APIClient?
 
@@ -340,51 +342,79 @@ public struct TicketDetailView: View {
                         }
                     }
 
-                    if !detail.devices.isEmpty {
-                        DevicesSection(devices: detail.devices)
-                    }
-                    if !detail.notes.isEmpty {
-                        NotesSection(notes: detail.notes)
-                    }
+                    // §4.2 — Tab picker (segmented on iPhone, horizontal tabs on iPad)
+                    TicketDetailTabPicker(selection: $activeTab)
 
-                    // §4 — Photos section
-                    TicketDevicePhotoListView(
-                        photos: detail.photos,
-                        ticketId: detail.id,
-                        uploadService: nil,
-                        onUpload: nil
-                    )
-                    .cardBackground()
+                    // §4.2 — Tab content
+                    switch activeTab {
 
-                    // §4 — Sign-off button when readyForPickup
-                    if api != nil,
-                       detail.status?.name.lowercased().contains("pickup") == true {
-                        Button {
-                            showingSignOff = true
-                        } label: {
-                            Label("Customer Sign-Off", systemImage: "signature")
-                                .font(.brandBodyLarge())
+                    case .actions:
+                        // §4 — Sign-off button when readyForPickup
+                        if api != nil,
+                           detail.status?.name.lowercased().contains("pickup") == true {
+                            Button {
+                                showingSignOff = true
+                            } label: {
+                                Label("Customer Sign-Off", systemImage: "signature")
+                                    .font(.brandBodyLarge())
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, BrandSpacing.sm)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.bizarreOrange)
+                            .accessibilityLabel("Customer sign-off for pickup")
+                            .accessibilityHint("Opens signature capture for customer to sign off on repair")
+                        }
+
+                        // §4.7 — Timeline section (inline preview)
+                        if let api, !detail.history.isEmpty {
+                            TimelinePreviewSection(
+                                ticketId: detail.id,
+                                api: api,
+                                history: detail.history
+                            ) {
+                                showingTimeline = true
+                            }
+                        }
+
+                        TotalsCard(detail: detail)
+
+                    case .devices:
+                        if detail.devices.isEmpty {
+                            Text("No devices attached")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
                                 .frame(maxWidth: .infinity)
-                                .padding(.vertical, BrandSpacing.sm)
+                                .padding(BrandSpacing.lg)
+                        } else {
+                            DevicesSection(devices: detail.devices)
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.bizarreOrange)
-                        .accessibilityLabel("Customer sign-off for pickup")
-                        .accessibilityHint("Opens signature capture for customer to sign off on repair")
-                    }
 
-                    // §4.7 — Timeline section (inline preview)
-                    if let api, !detail.history.isEmpty {
-                        TimelinePreviewSection(
+                    case .notes:
+                        if detail.notes.isEmpty {
+                            Text("No notes yet")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .frame(maxWidth: .infinity)
+                                .padding(BrandSpacing.lg)
+                        } else {
+                            NotesSection(notes: detail.notes)
+                        }
+
+                        // §4 — Photos section
+                        TicketDevicePhotoListView(
+                            photos: detail.photos,
                             ticketId: detail.id,
-                            api: api,
-                            history: detail.history
-                        ) {
-                            showingTimeline = true
-                        }
-                    }
+                            uploadService: nil,
+                            onUpload: nil
+                        )
+                        .cardBackground()
 
-                    TotalsCard(detail: detail)
+                    case .payments:
+                        TicketPaymentsTabView(payments: detail.payments)
+                            .cardBackground()
+
+                    }
 
                     // §4.4 — Delete button at bottom of detail
                     if api != nil {

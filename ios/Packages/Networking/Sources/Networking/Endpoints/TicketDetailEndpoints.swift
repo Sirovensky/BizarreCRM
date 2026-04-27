@@ -33,6 +33,8 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
     public let notes: [TicketNote]
     public let history: [TicketHistory]
     public let photos: [TicketPhoto]
+    /// §4.2 — Payments from the linked invoice. Empty when no invoice attached.
+    public let payments: [TicketPayment]
 
     public struct Customer: Decodable, Sendable, Hashable {
         public let id: Int64?
@@ -196,6 +198,31 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
         }
     }
 
+    // MARK: - §4.2 Payments (from linked invoice)
+
+    public struct TicketPayment: Decodable, Sendable, Identifiable, Hashable {
+        public let id: Int64
+        public let amount: Double
+        public let method: String?
+        public let methodDetail: String?
+        public let transactionId: String?
+        public let notes: String?
+        public let createdAt: String?
+
+        public var methodDisplay: String {
+            let base = method?.capitalized ?? "Payment"
+            if let detail = methodDetail, !detail.isEmpty { return "\(base) — \(detail)" }
+            return base
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, amount, method, notes
+            case methodDetail = "method_detail"
+            case transactionId = "transaction_id"
+            case createdAt = "created_at"
+        }
+    }
+
     public struct TicketPhoto: Decodable, Sendable, Identifiable, Hashable {
         public let id: Int64
         public let url: String?
@@ -233,7 +260,7 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
         case customer, status
         case assignedUser = "assigned_user"
         case createdByUser = "created_by_user"
-        case devices, notes, history, photos
+        case devices, notes, history, photos, payments
     }
 
     // MARK: - Safe decoding for missing arrays
@@ -265,6 +292,7 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
         notes = (try? c.decode([TicketNote].self, forKey: .notes)) ?? []
         history = (try? c.decode([TicketHistory].self, forKey: .history)) ?? []
         photos = (try? c.decode([TicketPhoto].self, forKey: .photos)) ?? []
+        payments = (try? c.decode([TicketPayment].self, forKey: .payments)) ?? []
     }
 }
 
