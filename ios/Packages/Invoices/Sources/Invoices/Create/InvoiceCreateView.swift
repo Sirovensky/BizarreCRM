@@ -11,8 +11,11 @@ import Networking
 public struct InvoiceCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: InvoiceCreateViewModel
+    @State private var showCustomerPicker = false
+    private let api: APIClient
 
     public init(api: APIClient) {
+        self.api = api
         _vm = State(wrappedValue: InvoiceCreateViewModel(api: api))
     }
 
@@ -31,17 +34,26 @@ public struct InvoiceCreateView: View {
                 Form {
                     // MARK: — Customer (§7.3)
                     Section("Customer") {
-                        if vm.customerDisplayName.isEmpty {
-                            Label("No customer selected", systemImage: "person.badge.plus")
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .accessibilityLabel("No customer selected — tap to pick")
-                        } else {
-                            Label(vm.customerDisplayName, systemImage: "person.fill")
-                                .foregroundStyle(.bizarreOnSurface)
-                                .accessibilityLabel("Customer: \(vm.customerDisplayName)")
+                        Button {
+                            showCustomerPicker = true
+                        } label: {
+                            if vm.customerDisplayName.isEmpty {
+                                Label("Pick a customer…", systemImage: "person.badge.plus")
+                                    .foregroundStyle(.bizarreOrange)
+                                    .accessibilityLabel("No customer selected — tap to pick a customer")
+                            } else {
+                                HStack {
+                                    Label(vm.customerDisplayName, systemImage: "person.fill")
+                                        .foregroundStyle(.bizarreOnSurface)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .imageScale(.small)
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                                .accessibilityLabel("Customer: \(vm.customerDisplayName). Tap to change.")
+                            }
                         }
-                        // Caller injects customer by setting vm.customerId / vm.customerDisplayName
-                        // via a sheet callback. (e.g. CustomerPickerSheet → binding)
+                        .buttonStyle(.plain)
                     }
 
                     // MARK: — Line items (§7.3)
@@ -177,6 +189,13 @@ public struct InvoiceCreateView: View {
                 }
             }
             .task { await vm.onAppear() }
+            .sheet(isPresented: $showCustomerPicker) {
+                InvoiceCustomerPickerSheet(api: api) { id, name in
+                    vm.customerId = id
+                    vm.customerDisplayName = name
+                    vm.scheduleAutoSave()
+                }
+            }
         }
     }
 }

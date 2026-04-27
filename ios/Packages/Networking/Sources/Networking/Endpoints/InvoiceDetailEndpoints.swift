@@ -169,7 +169,7 @@ public extension APIClient {
     // §7.2 Clone invoice — POST /api/v1/invoices/:id/clone
     // Server duplicates all line items, sets status to "draft", returns new invoice id.
     func cloneInvoice(id: Int64) async throws -> CloneInvoiceResponse {
-        try await post("/api/v1/invoices/\(id)/clone", body: EmptyBody(), as: CloneInvoiceResponse.self)
+        try await post("/api/v1/invoices/\(id)/clone", body: InvoiceCloneEmptyBody(), as: CloneInvoiceResponse.self)
     }
 }
 
@@ -181,6 +181,9 @@ public struct CloneInvoiceResponse: Decodable, Sendable {
         case orderId = "order_id"
     }
 }
+
+// Empty body for POST requests that require no payload (named to avoid conflict with NotificationsEndpoints.EmptyBody)
+private struct InvoiceCloneEmptyBody: Encodable, Sendable {}
 
 // MARK: - Void endpoint
 // Server: POST /api/v1/invoices/:id/void

@@ -59,6 +59,10 @@ public final class InvoiceCreateViewModel {
         DraftAutoSaver(screen: "invoice.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
+    /// §7.3 Idempotency key — generated once per create session.
+    /// Passed as `idempotency_key` in the request body so the server can
+    /// deduplicate retries from flaky networks.
+    @ObservationIgnored private let idempotencyKey: String = UUID().uuidString
 
     public init(api: APIClient) { self.api = api }
 
@@ -119,7 +123,8 @@ public final class InvoiceCreateViewModel {
             notes: notes.isEmpty ? nil : notes,
             dueOn: dueOn.isEmpty ? nil : dueOn,
             discount: cartDiscount > 0 ? cartDiscount : nil,
-            lineItems: requestLineItems
+            lineItems: requestLineItems,
+            idempotencyKey: idempotencyKey
         )
 
         do {

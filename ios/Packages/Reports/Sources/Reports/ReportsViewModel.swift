@@ -9,6 +9,10 @@ import Networking
 @MainActor
 public final class ReportsViewModel {
 
+    // MARK: - Sub-tab (§15.1)
+
+    public var selectedSubTab: ReportSubTab = .sales
+
     // MARK: - Date range
 
     public var selectedPreset: DateRangePreset = .thirtyDays {
@@ -39,6 +43,11 @@ public final class ReportsViewModel {
     public var csatScore: CSATScore?
     public var npsScore: NPSScore?
     public var lastSyncedAt: Date?
+    /// §15.4 Technician performance (GET /reports/technician-performance)
+    public var technicianPerf: [TechnicianPerfRow] = []
+    /// §15.6 Tax report (GET /reports/tax)
+    public var taxReport: TaxReportResponse?
+    public var taxReportLoading: Bool = false
 
     // MARK: - Loading / error
 
@@ -85,6 +94,8 @@ public final class ReportsViewModel {
             group.addTask { await self.loadExpensesReport() }
             group.addTask { await self.loadCSAT() }
             group.addTask { await self.loadNPS() }
+            group.addTask { await self.loadTechnicianPerf() }
+            group.addTask { await self.loadTaxReport() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -197,6 +208,30 @@ public final class ReportsViewModel {
             npsScore = try await repository.getNPS(from: fromDateString, to: toDateString)
         } catch {
             errorMessage = "NPS: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadTechnicianPerf() async {
+        do {
+            technicianPerf = try await repository.getTechnicianPerformance(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            // Endpoint may not exist yet — suppress and leave empty
+            technicianPerf = []
+        }
+    }
+
+    private func loadTaxReport() async {
+        taxReportLoading = true
+        defer { taxReportLoading = false }
+        do {
+            taxReport = try await repository.getTaxReport(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            // Tax endpoint may not yet be live — leave nil
+            taxReport = nil
         }
     }
 }

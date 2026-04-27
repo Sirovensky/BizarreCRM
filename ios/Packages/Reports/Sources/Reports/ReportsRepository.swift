@@ -30,6 +30,10 @@ public protocol ReportsRepository: Sendable {
     func deleteScheduledReport(id: Int64) async throws
     // Email report
     func emailReport(recipient: String, pdfBase64: String) async throws
+    // §15.4 Technician performance — GET /api/v1/reports/technician-performance
+    func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow]
+    // §15.6 Tax report — GET /api/v1/reports/tax
+    func getTaxReport(from: String, to: String) async throws -> TaxReportResponse
 }
 
 // MARK: - LiveReportsRepository
@@ -234,6 +238,37 @@ public actor LiveReportsRepository: ReportsRepository {
     public func emailReport(recipient: String, pdfBase64: String) async throws {
         let body = EmailReportRequest(recipient: recipient, pdfBase64: pdfBase64)
         _ = try await api.post("/api/v1/reports/email", body: body, as: EmptyReportPayload.self)
+    }
+
+    // MARK: - Technician Performance → GET /api/v1/reports/technician-performance
+
+    public func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow] {
+        struct TechPerfResponse: Decodable, Sendable {
+            let rows: [TechnicianPerfRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([TechnicianPerfRow].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        let response = try await api.get(
+            "/api/v1/reports/technician-performance", query: query, as: TechPerfResponse.self
+        )
+        return response.rows
+    }
+
+    // MARK: - Tax Report → GET /api/v1/reports/tax
+
+    public func getTaxReport(from: String, to: String) async throws -> TaxReportResponse {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date", value: to)
+        ]
+        return try await api.get("/api/v1/reports/tax", query: query, as: TaxReportResponse.self)
     }
 
     // MARK: - Private helpers

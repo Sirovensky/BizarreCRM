@@ -327,11 +327,14 @@ public struct CreateInvoiceRequest: Encodable, Sendable {
     public let discount: Double?
     public let discountReason: String?
     public let lineItems: [InvoiceLineItemRequest]
+    /// §7.3 — idempotency key prevents duplicate creation on retry.
+    public let idempotencyKey: String?
 
     public init(customerId: Int64, ticketId: Int64? = nil,
                 notes: String? = nil, dueOn: String? = nil,
                 discount: Double? = nil, discountReason: String? = nil,
-                lineItems: [InvoiceLineItemRequest] = []) {
+                lineItems: [InvoiceLineItemRequest] = [],
+                idempotencyKey: String? = nil) {
         self.customerId = customerId
         self.ticketId = ticketId
         self.notes = notes
@@ -339,14 +342,16 @@ public struct CreateInvoiceRequest: Encodable, Sendable {
         self.discount = discount
         self.discountReason = discountReason
         self.lineItems = lineItems
+        self.idempotencyKey = idempotencyKey
     }
 
     enum CodingKeys: String, CodingKey {
         case notes, discount
-        case customerId    = "customer_id"
-        case ticketId      = "ticket_id"
-        case dueOn         = "due_on"
+        case customerId     = "customer_id"
+        case ticketId       = "ticket_id"
+        case dueOn          = "due_on"
         case discountReason = "discount_reason"
+        case idempotencyKey = "idempotency_key"
         case lineItems     = "line_items"
     }
 }

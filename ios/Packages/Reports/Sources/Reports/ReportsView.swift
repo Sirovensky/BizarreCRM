@@ -194,10 +194,13 @@ public struct ReportsView: View {
         }
     }
 
-    // MARK: - Date Range Picker + Granularity Toggle
+    // MARK: - Date Range Picker + Granularity Toggle + Sub-tab
 
     private var dateRangePicker: some View {
         VStack(spacing: BrandSpacing.sm) {
+            // §15.1 Sub-routes segmented picker
+            subTabPicker
+
             Picker("Date Range", selection: $vm.selectedPreset) {
                 ForEach(DateRangePreset.allCases) { preset in
                     Text(preset.displayLabel).tag(preset)
@@ -211,6 +214,39 @@ public struct ReportsView: View {
 
             granularityToggle
         }
+    }
+
+    // MARK: - §15.1 Sub-routes picker
+
+    private var subTabPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(ReportSubTab.allCases) { tab in
+                    Button {
+                        withAnimation(.easeInOut(duration: DesignTokens.Motion.quick)) {
+                            vm.selectedSubTab = tab
+                        }
+                    } label: {
+                        Label(tab.displayLabel, systemImage: tab.systemImage)
+                            .font(.brandLabelSmall())
+                            .padding(.horizontal, BrandSpacing.md)
+                            .padding(.vertical, BrandSpacing.sm)
+                            .foregroundStyle(vm.selectedSubTab == tab ? .white : .bizarreOnSurface)
+                            .background(
+                                vm.selectedSubTab == tab
+                                    ? Color.bizarreOrange
+                                    : Color.bizarreSurface2,
+                                in: Capsule()
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(tab.displayLabel) report section")
+                    .accessibilityAddTraits(vm.selectedSubTab == tab ? .isSelected : [])
+                }
+            }
+            .padding(.horizontal, BrandSpacing.xxs)
+        }
+        .accessibilityLabel("Report section selector")
     }
 
     private var granularityToggle: some View {
@@ -305,40 +341,49 @@ public struct ReportsView: View {
         .padding(.horizontal, BrandSpacing.base)
     }
 
-    // MARK: - Card items (shared between phone/iPad)
+    // MARK: - Card items (shared between phone/iPad, filtered by sub-tab)
 
     @ViewBuilder
     private var cardItems: some View {
-        // §15.2 Revenue chart — line + bar via /reports/sales
-        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-            drillContext = .revenue(date: pt.date)
-        }
+        switch vm.selectedSubTab {
+        case .sales:
+            // §15.2 Period summary KPIs
+            SalesKPISummaryCard(totals: vm.salesTotals)
+            // §15.2 Revenue chart
+            RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
+                drillContext = .revenue(date: pt.date)
+            }
+            // §15.2 Revenue by payment method pie
+            RevenueByMethodPieCard(points: vm.revenueByMethod)
+            // §15.9 Expenses chart
+            ExpensesChartCard(report: vm.expensesReport)
 
-        // §15.9 Expenses chart — bar via /reports/dashboard-kpis
-        ExpensesChartCard(report: vm.expensesReport)
+        case .tickets:
+            // §15.3 Tickets by status
+            TicketsByStatusCard(points: vm.ticketsByStatus)
+            // §15.2 Avg ticket value
+            AvgTicketValueCard(value: vm.avgTicketValue)
 
-        // §15.5 Inventory movement chart — bar via /reports/inventory
-        InventoryMovementCard(report: vm.inventoryReport)
+        case .employees:
+            // §15.4 Top employees (revenue-ranked)
+            TopEmployeesCard(employees: vm.employeePerf)
+            // §15.4 Technician performance table
+            TechnicianPerformanceCard(rows: vm.technicianPerf)
 
-        // §15.3 Tickets by status
-        TicketsByStatusCard(points: vm.ticketsByStatus)
+        case .inventory:
+            // §15.5 Inventory movement
+            InventoryMovementCard(report: vm.inventoryReport)
+            // §15.5 Inventory turnover
+            InventoryTurnoverCard(rows: vm.inventoryTurnover)
 
-        // §15.2 Avg ticket value KPI
-        AvgTicketValueCard(value: vm.avgTicketValue)
+        case .tax:
+            // §15.6 Tax collected by class
+            TaxReportCard(report: vm.taxReport, isLoading: vm.taxReportLoading)
 
-        // §15.4 Employee performance
-        TopEmployeesCard(employees: vm.employeePerf)
-
-        // §15.5 Inventory turnover (category table)
-        InventoryTurnoverCard(rows: vm.inventoryTurnover)
-
-        // §15.7 CSAT + NPS
-        CSATScoreCard(score: vm.csatScore) {
-            showCSATDetail = true
-        }
-
-        NPSScoreCard(score: vm.npsScore) {
-            showNPSDetail = true
+        case .insights:
+            // §15.7 CSAT + NPS
+            CSATScoreCard(score: vm.csatScore) { showCSATDetail = true }
+            NPSScoreCard(score: vm.npsScore)   { showNPSDetail  = true }
         }
     }
 

@@ -200,6 +200,8 @@ public final class InvoicePaymentViewModel {
 
     /// Submit all legs sequentially. Succeeds when all post successfully.
     /// On partial failure: state = .failed, but already-posted legs remain on the server.
+    /// §7.4 — each leg carries a stable per-leg idempotency key (UUID) so that
+    /// network retries on the same leg do not create duplicate payments.
     public func applyPayment() async {
         guard isValid else {
             state = .failed("Enter a valid amount.")
@@ -212,11 +214,14 @@ public final class InvoicePaymentViewModel {
         var lastResponse: RecordPaymentResponse?
         for leg in legs {
             let dollars = Double(leg.amountCents) / 100.0
+            // §7.4 — idempotency key: stable per leg UUID generated at session start.
+            // The server uses this to deduplicate within its 5-second window.
+            let idempotencyKey = leg.id.uuidString
             let body = RecordInvoicePaymentRequest(
                 amount: dollars,
                 method: leg.tender.rawValue,
                 methodDetail: leg.reference.isEmpty ? nil : leg.reference,
-                transactionId: nil,
+                transactionId: idempotencyKey,
                 notes: notes.isEmpty ? nil : notes,
                 paymentType: "payment"
             )

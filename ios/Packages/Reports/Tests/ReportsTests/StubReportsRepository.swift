@@ -45,6 +45,8 @@ actor StubReportsRepository: ReportsRepository {
                         recipientEmails: ["a@b.com"], isActive: true, nextRunAt: nil)
     )
     var emailReportError: Error? = nil
+    var technicianResult: Result<[TechnicianPerfRow], Error> = .success([])
+    var taxReportResult: Result<TaxReportResponse, Error> = .success(TaxReportResponse())
 
     // MARK: - Call tracking
 
@@ -128,6 +130,14 @@ actor StubReportsRepository: ReportsRepository {
     func emailReport(recipient: String, pdfBase64: String) async throws {
         emailCallCount += 1
         if let err = emailReportError { throw err }
+    }
+
+    func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow] {
+        try technicianResult.get()
+    }
+
+    func getTaxReport(from: String, to: String) async throws -> TaxReportResponse {
+        try taxReportResult.get()
     }
 }
 
