@@ -106,19 +106,23 @@ public final class OrganizationSettingsViewModel: Sendable {
         taxId: String? = nil,
         currencyCode: String? = nil,
         timezone: String? = nil,
-        locale: String? = nil
+        locale: String? = nil,
+        receiptFooter: String? = nil,
+        invoiceFooter: String? = nil
     ) {
         settings = OrganizationSettings(
             name: settings.name,
             legalName: settings.legalName,
-            address: address       ?? settings.address,
-            phone: phone           ?? settings.phone,
-            email: email           ?? settings.email,
-            logoUrl: logoUrl       ?? settings.logoUrl,
-            taxId: taxId           ?? settings.taxId,
+            address: address           ?? settings.address,
+            phone: phone               ?? settings.phone,
+            email: email               ?? settings.email,
+            logoUrl: logoUrl           ?? settings.logoUrl,
+            taxId: taxId               ?? settings.taxId,
             currencyCode: currencyCode ?? settings.currencyCode,
-            timezone: timezone     ?? settings.timezone,
-            locale: locale         ?? settings.locale
+            timezone: timezone         ?? settings.timezone,
+            locale: locale             ?? settings.locale,
+            receiptFooter: receiptFooter ?? settings.receiptFooter,
+            invoiceFooter: invoiceFooter ?? settings.invoiceFooter
         )
     }
 }

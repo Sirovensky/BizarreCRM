@@ -56,6 +56,7 @@ public struct OrganizationSettingsView: View {
             identitySection
             contactSection
             localisationSection
+            documentFooterSection       // §19.5
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
@@ -74,6 +75,7 @@ public struct OrganizationSettingsView: View {
                 identityCard
                 contactCard
                 localisationCard
+                documentFooterCard      // §19.5
             }
             .padding(BrandSpacing.lg)
         }
@@ -128,6 +130,82 @@ public struct OrganizationSettingsView: View {
         } header: {
             Text("Localisation")
         }
+    }
+
+    // MARK: §19.5 Document footers section + card
+
+    private var documentFooterSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text("Receipt footer")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                TextEditor(text: receiptFooterBinding)
+                    .frame(minHeight: 72, maxHeight: 120)
+                    .disabled(!canEdit)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("org.receiptFooter")
+                    .accessibilityLabel("Receipt footer text")
+            }
+            .listRowBackground(Color.bizarreSurface1)
+
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text("Invoice footer")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                TextEditor(text: invoiceFooterBinding)
+                    .frame(minHeight: 72, maxHeight: 160)
+                    .disabled(!canEdit)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .scrollContentBackground(.hidden)
+                    .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityIdentifier("org.invoiceFooter")
+                    .accessibilityLabel("Invoice footer text")
+            }
+            .listRowBackground(Color.bizarreSurface1)
+        } header: {
+            Text("Document Footers")
+        } footer: {
+            Text("Text shown at the bottom of receipts and invoices. Supports line breaks.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+    }
+
+    private var documentFooterCard: some View {
+        GroupBox("Document Footers") {
+            VStack(alignment: .leading, spacing: BrandSpacing.md) {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("Receipt footer")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    TextEditor(text: receiptFooterBinding)
+                        .frame(minHeight: 64, maxHeight: 100)
+                        .disabled(!canEdit)
+                        .font(.brandBodyMedium())
+                        .scrollContentBackground(.hidden)
+                        .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityLabel("Receipt footer text")
+                }
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("Invoice footer")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    TextEditor(text: invoiceFooterBinding)
+                        .frame(minHeight: 80, maxHeight: 140)
+                        .disabled(!canEdit)
+                        .font(.brandBodyMedium())
+                        .scrollContentBackground(.hidden)
+                        .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 8))
+                        .accessibilityLabel("Invoice footer text")
+                }
+            }
+        }
+        .groupBoxStyle(.organization)
     }
 
     // MARK: - Cards (iPad)
@@ -318,6 +396,21 @@ public struct OrganizationSettingsView: View {
         Binding(
             get: { vm.settings.locale },
             set: { vm.updateField(locale: $0) }
+        )
+    }
+
+    // §19.5 document-footer bindings
+    private var receiptFooterBinding: Binding<String> {
+        Binding(
+            get: { vm.settings.receiptFooter },
+            set: { vm.updateField(receiptFooter: $0) }
+        )
+    }
+
+    private var invoiceFooterBinding: Binding<String> {
+        Binding(
+            get: { vm.settings.invoiceFooter },
+            set: { vm.updateField(invoiceFooter: $0) }
         )
     }
 

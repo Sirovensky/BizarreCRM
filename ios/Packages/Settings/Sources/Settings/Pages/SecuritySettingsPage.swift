@@ -2,6 +2,7 @@ import SwiftUI
 import Observation
 import Core
 import DesignSystem
+import Persistence
 
 #if canImport(UIKit)
 import UIKit
@@ -10,7 +11,7 @@ import UIKit
 // MARK: - §19.2 Security settings page
 //
 // Auto-lock timeout, biometric app-lock on cold launch, privacy snapshot.
-// PIN enrollment deferred to §19.2 PIN sub-page (separate task).
+// §19.2 PIN enrollment: 6-digit PIN for quick re-auth (locally enforced).
 
 // MARK: - Auto-lock timeout
 
@@ -115,6 +116,9 @@ public final class SecuritySettingsViewModel {
 
 public struct SecuritySettingsPage: View {
     @State private var vm: SecuritySettingsViewModel
+    @State private var showPINSetup: Bool = false
+    @State private var pinSheetMode: PINSetupViewModel.Mode = .set
+    @State private var hasPIN: Bool = PINStore.shared.isEnrolled
 
     public init(defaults: UserDefaults = .standard) {
         _vm = State(initialValue: SecuritySettingsViewModel(defaults: defaults))
@@ -124,6 +128,7 @@ public struct SecuritySettingsPage: View {
         ZStack {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             Form {
+                pinSection
                 autoLockSection
                 biometricSection
                 privacySection
@@ -137,6 +142,95 @@ public struct SecuritySettingsPage: View {
         #if canImport(UIKit)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .sheet(isPresented: $showPINSetup) {
+            PINSetupSheet(mode: pinSheetMode) {
+                hasPIN = PINStore.shared.isEnrolled
+                showPINSetup = false
+            }
+        }
+    }
+
+    // MARK: - §19.2 PIN
+
+    @ViewBuilder
+    private var pinSection: some View {
+        Section {
+            if hasPIN {
+                Button {
+                    pinSheetMode = .change
+                    showPINSetup = true
+                } label: {
+                    HStack(spacing: BrandSpacing.md) {
+                        Image(systemName: "lock.rotation")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.bizarreOrange)
+                            .frame(width: 28)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Change PIN")
+                                .font(.brandBodyLarge())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Text("Update your 6-digit quick-access PIN.")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.bizarreSurface1)
+                .accessibilityIdentifier("security.changePIN")
+
+                Button(role: .destructive) {
+                    pinSheetMode = .change   // uses currentEntry verification before clear
+                    showPINSetup = true
+                } label: {
+                    HStack(spacing: BrandSpacing.md) {
+                        Image(systemName: "lock.slash")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.bizarreError)
+                            .frame(width: 28)
+                            .accessibilityHidden(true)
+                        Text("Remove PIN")
+                            .font(.brandBodyLarge())
+                    }
+                }
+                .listRowBackground(Color.bizarreSurface1)
+                .accessibilityIdentifier("security.removePIN")
+            } else {
+                Button {
+                    pinSheetMode = .set
+                    showPINSetup = true
+                } label: {
+                    HStack(spacing: BrandSpacing.md) {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.bizarreOrange)
+                            .frame(width: 28)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Set up PIN")
+                                .font(.brandBodyLarge())
+                                .foregroundStyle(.bizarreOnSurface)
+                            Text("Add a 6-digit PIN for quick re-authentication.")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.bizarreSurface1)
+                .accessibilityIdentifier("security.setPIN")
+            }
+        } header: {
+            Text("Quick-Access PIN")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityAddTraits(.isHeader)
+        } footer: {
+            Text("A 6-digit PIN lets staff re-authenticate quickly without biometrics. Stored locally on this device.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
     }
 
     // MARK: - Auto-lock
