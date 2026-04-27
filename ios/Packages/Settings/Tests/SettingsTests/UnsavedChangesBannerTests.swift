@@ -78,4 +78,24 @@ final class UnsavedChangesBannerTests: XCTestCase {
         vm.email = ""
         XCTAssertFalse(vm.isDirty)
     }
+
+    // MARK: - §19.1 Username / slug
+
+    func test_username_defaultsEmpty() {
+        let vm = ProfileSettingsViewModel(api: nil)
+        XCTAssertEqual(vm.username, "")
+    }
+
+    func test_isAdmin_defaultsFalse() {
+        let vm = ProfileSettingsViewModel(api: nil)
+        XCTAssertFalse(vm.isAdmin)
+    }
+
+    func test_username_doesNotAffectIsDirty() {
+        // username is read-only on the server; isDirty should not track it.
+        let vm = ProfileSettingsViewModel(api: nil)
+        vm.username = "some-slug"
+        // isDirty only tracks mutable fields (firstName, lastName, displayName, email, phone, jobTitle)
+        XCTAssertFalse(vm.isDirty)
+    }
 }

@@ -474,7 +474,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (`DashboardView.swift` AttentionChip + AttentionRow; b04ae99b)
 - [x] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss. (`DashboardView.swift` `.swipeActions`; b04ae99b)
 - [x] **Context menu** (iPad/Mac) with all row actions + "Copy ID". (`DashboardView.swift` `.contextMenu`; b04ae99b)
-- [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
+- [x] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices. (`DashboardView.onDismissAttentionItem` callback wired into `AttentionCard.onDismiss`; App layer calls `api.dismissNotification(id:)` in the callback; `DashboardAttentionDismissTests` 6 assertions; agent-9 b9)
 - [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`DashboardView.swift` AttentionAllClearView; sparkle icon; shown when attention items total to 0 and tenant has data; a964a315)
 
 ### 3.4 My Queue (assigned tickets, per user)
@@ -504,12 +504,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.8 Quick-action FAB / toolbar
 - [x] **iPhone:** floating `.brandGlassProminent` FAB, bottom-right (safe-area aware, avoids tab bar). Expands radially to: New ticket / New sale / New customer / Scan barcode / New SMS. Haptic `.medium` on expand. (`Dashboard/DashboardFAB.swift`; `DashboardFABViewModel` + radial action pills + `Platform.isCompact` guard + Reduce Motion; 1d0ef8fe)
-- [ ] **iPad/Mac:** toolbar group (`.toolbar { ToolbarItemGroup(...) }`) with the same actions — no FAB.
+- [x] **iPad/Mac:** toolbar group (`.toolbar { ToolbarItemGroup(...) }`) with the same actions — no FAB. (`DashboardView.swift` toolbar block gated on `!Platform.isCompact`; New Ticket + New Customer + Scan + New SMS `ToolbarItem`s with keyboardShortcuts; agent-9 b9)
 - [x] **Keyboard shortcuts** (⌘N → New ticket; ⌘⇧N → New customer; ⌘⇧S → Scan; ⌘⇧M → New SMS). (`DashboardView.swift` `.toolbar` `ToolbarItem` with `.keyboardShortcut`; iPad/Mac only via `Platform.isCompact` guard; b04ae99b)
 
 ### 3.9 Greeting + operator identity
 - [x] **Dynamic greeting by hour** — `DashboardView.greeting` shows "Good morning/afternoon/evening" / "Working late" buckets. Commit `8f3f864`.
-- [ ] Tap greeting → Settings → Profile. (Needs `/auth/me` for firstName; deferred.)
+- [x] Tap greeting → Settings → Profile. (`DashboardView.greeting` + `LoadedBody.onTapGreeting` callback; when provided, greeting becomes a `Button` → App layer navigates; `DashboardView.init(onTapGreeting:)` parameter added; agent-9 b9)
 - [ ] Avatar in top-left (iPhone) / top-right of toolbar (iPad); long-press → Switch user (§2.5).
 
 ### 3.10 Sync-status badge
@@ -522,7 +522,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Success haptic + toast** — `BrandHaptics.success()` + 2.5s toast on state transition.
 
 ### 3.12 Unread-SMS / team-inbox tile
-- [ ] `GET /sms/unread-count` drives a small pill badge; tap → SMS tab.
+- [x] `GET /sms/unread-count` drives a small pill badge; tap → SMS tab. (`Dashboard/UnreadSMSTile.swift`; `UnreadSMSViewModel` polls 60s; `DashboardEndpoints.smsUnreadCount()`; wired in `LoadedBody`; agent-9 b9)
 - [ ] `GET /inbox` count → Team Inbox tile (if tenant has team inbox enabled).
 
 ### 3.13 TV / queue board (iPad only, stretch)
@@ -3084,7 +3084,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
 - [x] **Change email** — server emits verify-email link; banner until verified. (`Settings/Profile/ChangeEmailSheet.swift`; `PendingEmailVerificationBanner`; POST `/auth/change-email`; `ProfileSettingsPage` wired; a9c41ef5)
 - [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
-- [ ] **Username / slug** — read-only unless admin.
+- [x] **Username / slug** — read-only unless admin. (`ProfileSettingsPage` Identity section; `UserProfileWire.username` + `isAdmin` fields added; admin sees `TextField`, non-admin sees read-only `.textSelection(.enabled)` `Text`; `ProfileSettingsViewModel.username/isAdmin` loaded from `/auth/me`; agent-9 b9)
 - [x] **Sign out (primary)** — bottom of page, destructive red. (`Settings/SettingsView.swift` destructive `Button(role: .destructive)` with confirm; calls `onSignOut`; logout wipes `TokenStore` + `PINStore` + `BiometricPreference`.)
 - [x] **Sign out everywhere** — cross-link to §19.2 Security (revokes other sessions; security-scoped, not just this device). (`ProfileSettingsPage.swift` `signOutEverywhere()` → `settingsRevokeAllSessions()`; 449eeceb)
 
@@ -3290,7 +3290,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [x] Location: Settings → Diagnostics → Dead-letter queue (+ exposed in §19.25 debug-drawer panel). (`Sync/DeadLetter/DeadLetterListView.swift`)
 - [x] Item row: action type (create-ticket / update-inventory / …), failure reason, first-attempted-at, last-attempt-at, attempt count, last-error. (`DeadLetterListView` row shows entity, op, attempts, error, relative timestamp.)
 - [x] Actions per row: Retry now / Retry later / Edit payload (advanced) / Discard (confirm required). (`DeadLetterDetailView` — Retry re-enqueues via `SyncQueueStore.retryDeadLetter`; Discard via `discardDeadLetter`; full JSON payload displayed with `textSelection`; destructive confirm alert.)
-- [ ] App-root banner if DLQ count > 0: "3 changes couldn't sync — open to fix."
+- [x] App-root banner if DLQ count > 0: "3 changes couldn't sync — open to fix." (`Settings/DLQAlertBanner.swift`; `DLQAlertBannerViewModel` polls `SyncQueueStore.deadLetterCount()` every 30s; glass banner with "Fix now" tap + dismiss button; re-shows on new failures; 4 XCTest assertions; agent-9 b9)
 - [ ] Auto-escalation at > 24h: server emails tenant admin (not iOS-sent).
 - [ ] Before discard, offer "Export JSON" so user can manually reapply elsewhere.
 - [ ] Top-level search bar in Settings: typeahead over all setting labels + synonyms; jumps to matching page with highlight

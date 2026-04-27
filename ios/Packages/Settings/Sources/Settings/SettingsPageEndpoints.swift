@@ -117,6 +117,10 @@ public struct UserProfileWire: Codable, Sendable {
     public var email: String?
     public var phone: String?
     public var jobTitle: String?
+    /// §19.1 — read-only unless admin; set by server from tenant slug / login.
+    public var username: String?
+    /// `true` when the caller has admin privileges (from `/auth/me` response).
+    public var isAdmin: Bool?
 }
 
 private struct ChangePasswordWire: Encodable, Sendable {

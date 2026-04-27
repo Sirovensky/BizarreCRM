@@ -18,6 +18,9 @@ public final class ProfileSettingsViewModel: Sendable {
     var email: String = ""
     var phone: String = ""
     var jobTitle: String = ""
+    /// §19.1 — read-only unless admin; comes from server `/auth/me`.
+    var username: String = ""
+    var isAdmin: Bool = false
 
     // MARK: §19.1 Avatar
     var avatarURL: String?
@@ -95,6 +98,9 @@ public final class ProfileSettingsViewModel: Sendable {
             email = profile.email ?? ""
             phone = profile.phone ?? ""
             jobTitle = profile.jobTitle ?? ""
+            // §19.1 — username/slug: read-only display from server
+            username = profile.username ?? ""
+            isAdmin = profile.isAdmin ?? false
             // Snapshot loaded state for dirty tracking
             savedFirstName = firstName
             savedLastName = lastName
@@ -312,6 +318,28 @@ public struct ProfileSettingsPage: View {
                 TextField("Job title", text: $vm.jobTitle)
                     .accessibilityLabel("Job title")
                     .accessibilityIdentifier("profile.jobTitle")
+
+                // §19.1 Username / slug — read-only unless admin.
+                if !vm.username.isEmpty {
+                    HStack {
+                        Text("Username")
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        if vm.isAdmin {
+                            TextField("Username", text: $vm.username)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.bizarreOnSurface)
+                                .accessibilityLabel("Username, editable (admin)")
+                                .accessibilityIdentifier("profile.username")
+                        } else {
+                            Text(vm.username)
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .textSelection(.enabled)
+                                .accessibilityLabel("Username: \(vm.username), read-only")
+                                .accessibilityIdentifier("profile.username")
+                        }
+                    }
+                }
             }
 
             Section("Contact") {

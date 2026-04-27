@@ -46,11 +46,19 @@ public struct DashboardView: View {
     public var onScanBarcode: (() -> Void)?
     public var onNewSMS: (() -> Void)?
 
+    // §3.9 Tap greeting → Settings → Profile
+    public var onTapGreeting: (() -> Void)?
+
     // §3.10 Sync-status tap callback
     public var onTapSyncSettings: (() -> Void)?
 
     // §3.12 SMS tile tap callback
     public var onTapSMSTab: (() -> Void)?
+
+    // §3.3 Dismiss attention row — server-backed (POST /notifications/:id/dismiss)
+    // The notification ID comes from the attention item. Best-effort; local dismiss
+    // happens immediately; server call fires async.
+    public var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
 
     @ObservationIgnored private let api: APIClient
 
@@ -82,8 +90,10 @@ public struct DashboardView: View {
         onNewCustomer: (() -> Void)? = nil,
         onScanBarcode: (() -> Void)? = nil,
         onNewSMS: (() -> Void)? = nil,
+        onTapGreeting: (() -> Void)? = nil,
         onTapSyncSettings: (() -> Void)? = nil,
-        onTapSMSTab: (() -> Void)? = nil
+        onTapSMSTab: (() -> Void)? = nil,
+        onDismissAttentionItem: ((AttentionRowKind) -> Void)? = nil
     ) {
         self.api = api
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
@@ -100,8 +110,10 @@ public struct DashboardView: View {
         self.onNewCustomer = onNewCustomer
         self.onScanBarcode = onScanBarcode
         self.onNewSMS = onNewSMS
+        self.onTapGreeting = onTapGreeting
         self.onTapSyncSettings = onTapSyncSettings
         self.onTapSMSTab = onTapSMSTab
+        self.onDismissAttentionItem = onDismissAttentionItem
     }
 
     public var body: some View {
@@ -188,7 +200,9 @@ public struct DashboardView: View {
                 onMyQueueStartWork: onMyQueueStartWork,
                 onMyQueueMarkReady: onMyQueueMarkReady,
                 onMyQueueComplete: onMyQueueComplete,
-                onTapSMSTab: onTapSMSTab
+                onTapSMSTab: onTapSMSTab,
+                onTapGreeting: onTapGreeting,
+                onDismissAttentionItem: onDismissAttentionItem
             )
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
@@ -204,6 +218,10 @@ private struct LoadedBody: View {
     var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
     var onCreateTicket: (() -> Void)?
     var onImportData: (() -> Void)?
+    // §3.9 Greeting tap → Settings → Profile
+    var onTapGreeting: (() -> Void)?
+    // §3.3 Dismiss attention item (server-backed)
+    var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
     // §3.4 My Queue callbacks
     var onMyQueueTicketTap: ((Int64) -> Void)?
     var onMyQueueStartWork: ((Int64) -> Void)?
@@ -260,11 +278,29 @@ private struct LoadedBody: View {
     /// day-part name, falls back to "Hello" if the clock lies. No server
     /// round trip; the user's first name would need `/auth/me` which is
     /// still TBD, so for now we keep it impersonal.
+    ///
+    /// Tap navigates to Settings → Profile (§3.9). If `onTapGreeting` is nil
+    /// the greeting is still displayed but non-interactive.
     private var greeting: some View {
-        Text(dashboardGreeting(for: Date()))
-            .font(.brandTitleLarge())
-            .foregroundStyle(.bizarreOnSurface)
-            .accessibilityAddTraits(.isHeader)
+        Group {
+            if let onTapGreeting {
+                Button {
+                    onTapGreeting()
+                } label: {
+                    Text(dashboardGreeting(for: Date()))
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(dashboardGreeting(for: Date()) + ". Tap to open Profile settings.")
+                .accessibilityHint("Opens your profile settings.")
+            } else {
+                Text(dashboardGreeting(for: Date()))
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+        }
+        .accessibilityAddTraits(.isHeader)
     }
 
     // greetingText extracted to module-level `dashboardGreeting(for:)` for testability.
@@ -351,6 +387,9 @@ private struct LoadedBody: View {
 
         if total > 0 {
             // §3.3 — Row-level chips, swipe, context menu, dismiss persistence.
+            // onDismiss fires the App-layer callback (`POST /notifications/:id/dismiss`)
+            // for server-backed persistence; the AttentionCard already handles
+            // local animation via its own `dismissedIds` state.
             AttentionCard(
                 attention: a,
                 onViewTicket: nil,   // Agent 10 / App-layer wires navigation
@@ -358,10 +397,7 @@ private struct LoadedBody: View {
                 onSMSCustomer: nil,
                 onMarkResolved: nil,
                 onSnooze: nil,
-                // §3.3 Dismiss persistence: local dismiss (animation); App layer
-                // wires the server call (`POST /notifications/:id/dismiss`) via
-                // onDismiss callback — GRDB mirror is an Agent 10 concern.
-                onDismiss: nil
+                onDismiss: onDismissAttentionItem
             )
         } else if !isNewTenantSnapshot(snapshot) {
             // §3.3 — "All clear" empty state: only shown when there's real
