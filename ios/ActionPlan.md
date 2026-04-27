@@ -1222,9 +1222,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Dunning sequences (see §40) manage escalation.
 
 ### 7.6 Aging report
-- [ ] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days).
-- [ ] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket.
-- [ ] Row actions: Send reminder / Record payment / Write off.
+- [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). <!-- shipped feat(§7.6) -->
+- [x] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket. <!-- shipped feat(§7.6) -->
+- [x] Row actions: Send reminder / Record payment / Write off. <!-- Remind + Pay shipped; Write-off deferred (no server endpoint) feat(§7.6) -->
 
 - [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory).
 - [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides.
@@ -5967,7 +5967,7 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Per-tech profitability**. (top customers + top SKUs tiles in `FinancialDashboardView`)
 
 ### 59.3 Forecast
-- [ ] **30/60/90 day revenue forecast** (ML if server).
+- [x] **30/60/90 day revenue forecast** (ML if server). `RevenueForecastCard` + `RevenueForecaster` OLS linear regression; ±15% confidence band; Swift Charts dashed + area; AXChartDescriptorRepresentable; 8 tests. (feat(§59.3) 8f3a2aae)
 
 ### 59.4 Financial exports + tax year
 - [x] **CSV export**. (`FinancialExportService`)
