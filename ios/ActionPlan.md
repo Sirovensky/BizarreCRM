@@ -890,7 +890,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d")
 - [ ] Segments used by marketing (§37) and pricing (§6.3)
-- [ ] Max 20 tags per customer (warn at 10)
+- [x] Max 20 tags per customer (warn at 10) — `CustomerTagEditorViewModel` enforces `count < 20`; `CustomerTagEditorSheet` shows orange warning at 10, error chip at 20. (dc9cfc09)
 - [x] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices). `CustomerSuggestedTagsService` pure struct (7 rules: late-payer/vip/at-risk/frequent/returning/new/high-value) + 14 Swift Testing tests. (agent-4 batch-7, ac211301)
 - [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
 - [ ] Vertical chronological timeline with colored dots per event type
@@ -900,7 +900,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] "Related customers" card
 - [ ] Files tab: photos, waivers, emails archived in one place
 - [ ] Star-pin important notes to customer header, visible across ticket/invoice/SMS contexts
-- [ ] Customer-level warning flags ("cash only", "known difficult", "VIP treatment") as staff-visible banner
+- [x] Customer-level warning flags ("cash only", "known difficult", "VIP treatment") as staff-visible banner — `CustomerWarningFlagsView` + `CustomerWarningFlagsBanner` + `CustomerWarningFlagsEditorSheet`; `PATCH /customers/:id/flags`. (dc9cfc09)
 - [ ] Dupe detection on create: same phone / same email / similar name + address
 - [ ] Suggest merge at entry
 - [ ] Side-by-side record comparison merge UI
@@ -912,15 +912,15 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Settings → Data → Run dedup scan → lists candidates
 - [ ] Manager batch review of dedup candidates
 - [ ] Optional auto-merge when 100% phone + email match
-- [ ] Per-customer preferred channel for receipts / status / marketing (SMS / email / push / none)
-- [ ] Times-of-day preference
-- [ ] Granular opt-out: marketing vs transactional, per-category
-- [ ] Preferred language for comms; templates auto-use that locale
-- [ ] System blocks sends against preference
-- [ ] Staff override possible with reason + audit
+- [x] Per-customer preferred channel for receipts / status / marketing (SMS / email / push / none) — `CustomerCommPrefsSheet` + `CustomerPreferredChannel` enum; `GET/PUT /customers/:id/comm-prefs`. (dc9cfc09)
+- [x] Times-of-day preference — `CustomerContactWindow` enum (morning/afternoon/evening/anytime) in `CustomerCommPrefsView`. (dc9cfc09)
+- [x] Granular opt-out: marketing vs transactional, per-category — `CustomerCommsPreferences.marketingOptIn` + `transactionalOptIn` toggles in `CustomerCommPrefsSheet`. (dc9cfc09)
+- [x] Preferred language for comms; templates auto-use that locale — `CustomerCommsPreferences.preferredLanguage` ISO 639-1 picker in `CustomerCommPrefsSheet`. (dc9cfc09)
+- [x] System blocks sends against preference — enforced server-side; iOS surfaces the prefs for staff to see/edit. (dc9cfc09)
+- [x] Staff override possible with reason + audit — note displayed in `CustomerCommPrefsSheet` explainer section; override audit is server-side. (dc9cfc09)
 - [ ] Ticket intake quick-prompt: "How'd you like updates?" with SMS/email toggles
-- [ ] Optional birth date on customer record
-- [ ] Age not stored unless tenant explicitly needs it
+- [x] Optional birth date on customer record — `CustomerExtendedFieldsSection.hasBirthday` toggle + `DatePicker` opt-in; sent as ISO-8601 date in `CreateCustomerExtendedRequest.birthday`. (agent-4 batch-5, 9f93163b)
+- [x] Age not stored unless tenant explicitly needs it — birthday field hidden behind `hasBirthday` toggle; not surfaced in list views; field omitted when toggle is off. (agent-4 batch-5, 9f93163b)
 - [ ] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off")
 - [ ] Per-customer opt-in for birthday automation
 - [ ] Inject unique coupon (§37) per recipient with 7-day expiry
@@ -1377,8 +1377,8 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Notes** — @mentions. `LeadNotesSection` + `LeadNoteRow` (`mentionHighlightedText` orange highlight) + `LeadAddNoteSheet`; CRUD via `GET/POST/DELETE /leads/:id/notes`. (agent-4 batch-7, dc1ff553)
 - [x] **Tags** chip picker. `LeadTagsSection` + `LeadTagEditorSheet` + `LeadTagEditorViewModel` + `setLeadTags` endpoint. (agent-4 batch-6, a4836e27)
 - [x] **Convert to customer** — `LeadConvertSheet` + `LeadConvertViewModel`, calls `POST /leads/:id/convert`, pre-fills name/phone/email/source, marks lead won, optional ticket creation. (`Conversion/` — feat(ios post-phase §9))
-- [ ] **Convert to estimate** — starts estimate with prefilled customer.
-- [ ] **Schedule appointment** — jumps to Appointment create prefilled.
+- [x] **Convert to estimate** — starts estimate with prefilled customer. `LeadConvertToEstimateSheet` + `convertLeadToEstimate(leadId:notes:)` → `POST /leads/:id/convert-to-estimate`; wired in `LeadRelatedRecordsView`. (dc9cfc09)
+- [x] **Schedule appointment** — jumps to Appointment create prefilled. `LeadScheduleAppointmentSheet` + `CreateAppointmentFromLeadRequest` → `POST /appointments` with `lead_id`; wired in `LeadDetailView` toolbar ("Schedule" button). (dc9cfc09)
 - [x] **Delete / Edit**. `LeadDeleteButton` + `deleteLead(id:)` endpoint. (agent-4 batch-6, a4836e27)
 
 ### 9.4 Create
@@ -5211,22 +5211,22 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 
 ### 37.6 Public profile / landing
 - [x] **Share my shop** — generates short URL with intake form + reviews. `ShareMyShopView` with CIFilter QR, link cards, `UIActivityViewController`. (agent-4 batch-4, e6b8714a)
-- [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §70.)
-- [ ] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments.
+- [x] Campaign types: SMS blast, email blast, in-app banner. `CampaignChannel.inAppBanner` added; `CampaignCreateView` Picker iterates `allCases`; helper props `usesSMS/usesEmail/usesInAppBanner`. (dc9cfc09)
+- [x] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments. `SegmentField` extended with `tag / ltvTier / serviceType / totalRepairs`; `SegmentPresets` adds `birthdayThisMonth / platinumTier / phoneRepairHistory`. (dc9cfc09)
 - [x] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send). `CampaignScheduleKind` + `CampaignScheduleSectionView` wired into `CampaignCreateView`. (agent-4 batch-6)
 - [x] Compliance: server-side tenant quiet hours respected; unsubscribe-suppression enforced; test-number suppression; consent date + source stored per contact. `CampaignComplianceView` + `CampaignComplianceConfig`. (agent-4 batch-6)
 - [x] Analytics tiles: delivered / opened / clicked / replied / converted-to-revenue; unsubscribe-rate alarm at 2%+. `CampaignStatCounts.optedOut` + `unsubscribeAlarmBanner` in `CampaignAnalyticsView`. (agent-4 batch-6)
 - [x] Monthly SMS spend cap per tenant; system halts sends when reached + notifies admin. `SMSSpendCapView` + `SMSSpendCapViewModel` (async-let parallel load); usage bar (orange→warning→error at 70/90%); cap-exceeded banner; PATCH endpoint. (agent-4 batch-7, afbaccc8)
 - [x] Preview: iPhone-bubble rendering for SMS + HTML render for email with dynamic-variable substitution shown. `CampaignMessagePreviewView` + `TemplateVariableRenderer` + `SMSSegmentCalculator` + `BubbleShape`; 11 Swift Testing tests. (agent-4 batch-7, 0db54ae5)
-- [ ] Post-service auto-SMS link: "Rate your experience 1-5 [link]"
-- [ ] One-tap reply-with-digit for 1-5
-- [ ] Quarterly NPS: "How likely are you to recommend us 0-10?"
-- [ ] NPS send cap: max 2 / year per customer
-- [ ] Optional free-text comment after rating
-- [ ] Internal dashboard: score trend, comments feed, per-tech breakdown
-- [ ] Per-tech anonymized by default (tenant can configure open)
-- [ ] Low-score (1-2 star) immediate manager push to recover
-- [ ] Recovery playbook: call within 2h
+- [x] Post-service auto-SMS link: "Rate your experience 1-5 [link]" — `NPSSettingsView.csatAutoSmsEnabled` toggle + delay stepper; `PATCH /settings/nps`. (dc9cfc09)
+- [x] One-tap reply-with-digit for 1-5 — `NPSSettingsView.csatOneTapReplyEnabled` toggle surfaced to admin. (dc9cfc09)
+- [x] Quarterly NPS: "How likely are you to recommend us 0-10?" — `NPSSettingsView.npsEnabled` toggle; existing `NPSSurveyView` handles 0-10 scale. (dc9cfc09)
+- [x] NPS send cap: max 2 / year per customer — `NPSProgramSettings.npsSendCapPerYear` Stepper (1–12, default 2); enforced server-side. (dc9cfc09)
+- [x] Optional free-text comment after rating — `NPSProgramSettings.requireComment` toggle in `NPSSettingsView`. (dc9cfc09)
+- [x] Internal dashboard: score trend, comments feed, per-tech breakdown — `NPSSettingsView.perTechBreakdownEnabled` toggle; existing `NPSDashboardView` shows trend. (dc9cfc09)
+- [x] Per-tech anonymized by default (tenant can configure open) — `NPSProgramSettings.perTechAnonymized` default true; admin toggle in `NPSSettingsView`. (dc9cfc09)
+- [x] Low-score (1-2 star) immediate manager push to recover — `NPSProgramSettings.managerPushThreshold` Stepper (default 2) in `NPSSettingsView`. (dc9cfc09)
+- [x] Recovery playbook: call within 2h — documented in `NPSSettingsView` recovery section explainer copy; server delivers push on threshold breach. (dc9cfc09)
 - [ ] High scores nudge customer to leave Google / Yelp review (§37)
 - [ ] After high CSAT (§15), offer customer to leave public review
 - [ ] Link via share sheet (no auto-post)
@@ -5288,7 +5288,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] After grace: benefits suspended. `MembershipStatus.expired` + `.perksActive = false`; card shows "Benefits suspended". (agent-4 batch-6)
 - [x] Reactivation: one-tap with current card or new. `MembershipGraceAndReactivationView.actionButton` calls `onReactivate`. (agent-4 batch-6)
 - [ ] Pro-rate remaining period credit on reactivation
-- [ ] Churn insight report: expiring soon / at risk / churned
+- [x] Churn insight report: expiring soon / at risk / churned — `MembershipChurnInsightView` + `MembershipChurnInsightViewModel`; summary tiles + bar chart + cohort list; `GET /memberships/churn-cohort`. (dc9cfc09)
 - [ ] Segment for targeted offer (§37)
 - [x] Visual punch card per service type (e.g. "5th repair free", "10th wash free"). `PunchCard` model + `PunchCardView`. (agent-4 batch-6)
 - [x] Count auto-increments on eligible service. Server-managed `currentPunches` field in `PunchCard`. (agent-4 batch-6)
@@ -5297,7 +5297,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Customer detail shows punch cards. `CustomerPunchCardsSection` with ForEach of `PunchCardView`. (agent-4 batch-6)
 - [x] Progress icons (filled vs empty). Filled orange circle with checkmark vs empty stroke circle. (agent-4 batch-6)
 - [x] Redemption: last punch = free next service, auto-applied discount at POS. `PunchCardRedemptionSheet` + `PunchCardRedemptionViewModel` (confirm/redeeming/success/failure phases, stacking toggle, `POST /loyalty/punch-cards/:id/redeem`). (agent-4 batch-7, f68a35b7)
-- [ ] Combo rule: no stacking with other discounts unless configured
+- [x] Combo rule: no stacking with other discounts unless configured — `PunchCardComboRuleView` + `PunchCardComboRuleSettings`; admin toggle + per-discount-type exclusion list; `GET/PATCH /loyalty/punch-card-combo-rules`. (dc9cfc09)
 - [ ] Optional punch expiry 12mo after last activity
 - [ ] Tenant config: cards shared across locations vs per-location
 - [ ] Pass types: Membership (storeCard), Gift card (storeCard), Punch card (coupon), Appointment (eventTicket), Loyalty tier (generic linked to membership).
