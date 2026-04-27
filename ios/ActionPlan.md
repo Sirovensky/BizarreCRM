@@ -1910,7 +1910,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 ### 16.2 Catalog browse (left pane)
 - [x] **Layout** — iPhone: single-column full screen; iPad/Mac: `NavigationSplitView(.balanced)` — search/inventory picker leading, cart trailing.
 - [x] **Hierarchy** — top chips: All / Services / Parts / Accessories / Custom. Grid below: category tiles → products. PosCatalogCategory enum + chip wiring in PosSearchPanel. (d7edd4a1)
-- [x] **Product tile** — glass card with photo (Nuke thumbnail), name, price, stock badge. `PosCatalogTileImage` AsyncImage + shimmer placeholder; optional URL param on `PosCatalogTile`. (feat(§16.2): product tile image via AsyncImage)
+- [x] **Product tile** — glass card with photo (Nuke thumbnail), name, price, stock badge. `PosCatalogTileImage` AsyncImage + shimmer placeholder; optional URL param on `PosCatalogTile`. (feat(§16.2): product tile image via AsyncImage 55ba3fb8)
 - [x] **Search bar** — sticky top, queries `InventoryRepository.list(keyword:)`; tap result adds to cart with haptic success.
 - [x] **Long-press tile** — quick-preview sheet (price history, stock, location, last sold date). PosCatalogTilePreviewSheet + onLongPress wire. (d7edd4a1)
 - [x] **Recently sold** chip — shows top 10 items sold in last 24h per this register. PosViewModel.recordSale + recentlySoldIds + chip in PosSearchPanel. (d7edd4a1)
@@ -1998,7 +1998,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Summary tile** — total + method label. Full tender breakdown + sale # deferred.
 - [x] **Next-action CTAs** — New sale / Email / Text / Print (disabled). ⌘N/⌘R shortcuts deferred. Print gift receipt deferred.
 - [x] **Auto-dismiss** after 10s → empty catalog + cart for next customer. Countdown + `startAutoDismissCountdown` in `PosPostSaleView`; cancels on any user interaction or sheet open. (feat(§16.8): auto-dismiss post-sale)
-- [x] **Cash drawer kick** — pulse drawer via printer ESC command if cash tender used. `PosDrawerKickService` actor maps cash/check tenders → `DrawerTriggerTender`; silent for card/gift/store-credit. (feat(§16.8): cash drawer kick on cash tender)
+- [x] **Cash drawer kick** — pulse drawer via printer ESC command if cash tender used. `PosDrawerKickService` actor maps cash/check tenders → `DrawerTriggerTender`; silent for card/gift/store-credit. (feat(§16.8): cash drawer kick on cash tender 55ba3fb8)
 
 ### 16.9 Returns / refunds
 - [x] **Entry** — POS toolbar "Process return" button (⌘⇧R) → `PosReturnsView` search by order/phone.
@@ -2032,7 +2032,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Offline sale** — queue to GRDB sync-queue via `PosSyncOpExecutor` + `CartViewModel.checkoutIfOffline`; `PosCartSnapshotStore` persists cart across kills; auto-drain via `SyncManager.autoStart()` on reconnect. (SHA: pending commit)
 - [x] **Sync replay** — `SyncManager` drain loop + `PosSyncOpExecutor` dispatch; 409-conflict dead-lettered; `OfflineSaleQueueView` + `OfflineSaleDetailView` for manual retry/cancel.
 - [x] **Offline banner** — `OfflineSaleIndicator` glass chip in POS chrome; taps into `OfflineSaleQueueView`. (SHA: pending commit)
-- [x] **Stop-sell** — if any part of catalog > 24h stale, warn before sale. `PosCatalogStalenessService` actor + `PosCatalogStaleBannerView` dismissible amber banner with Sync CTA. (feat(§16.12): catalog staleness warning + stop-sell banner)
+- [x] **Stop-sell** — if any part of catalog > 24h stale, warn before sale. `PosCatalogStalenessService` actor + `PosCatalogStaleBannerView` dismissible amber banner with Sync CTA. (feat(§16.12): catalog staleness warning + stop-sell banner 55ba3fb8)
 
 ### 16.13 Hardware integration points (see §17 for detail)
 - [ ] Barcode scanner (camera + MFi Socket Mobile / Zebra).
@@ -2043,7 +2043,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [ ] Bluetooth scale (deli / weighted items).
 
 ### 16.14 iPad-specific POS
-- [x] **3-column layout** — catalog + cart + customer panel. `PosIPadCustomerPanel` persistent trailing column; avatar + loyalty/tax-exempt chips; find/create CTAs on walk-in. (feat(§16.14): iPad 3-column customer panel)
+- [x] **3-column layout** — catalog + cart + customer panel. `PosIPadCustomerPanel` persistent trailing column; avatar + loyalty/tax-exempt chips; find/create CTAs on walk-in. (feat(§16.14): iPad 3-column customer panel 55ba3fb8)
 - [x] **Customer-facing display** — `CFDBridge` + `CFDView` + `CFDIdleView` + `CFDSettingsView`. iPad/Mac only; hidden on iPhone. Liquid Glass header/footer. A11y. Reduce Motion. Tests ≥80%. (Phase 5 §16)
 - [x] **Magic Keyboard shortcuts** — ⌘N (new custom line), ⌘⇧R (return), ⌘P (pay/charge), ⌘K (customer pick), ⌘H (hold), ⌘⇧H (resume holds), ⌘⇧D (discount), ⌘⇧T (tip), ⌘⇧F (fee), ⌘⇧⌫ (clear cart). ⌘F search focus + ⌘⇧V void deferred.
 - [ ] **Apple Pencil** — tap to add to cart, double-tap for 2, hover for preview on iPad Pro.
@@ -2107,27 +2107,27 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 ### 16.20 Split tender revision (post-phase §16)
 - [x] **AppliedTendersListView** — removable tenders; inline amount edit; manager PIN gate after checkout committed. (feat(ios post-phase §16))
 
-- [x] Checkout sheet has "Gift receipt" switch. `GiftReceiptCheckoutSheet` + `GiftReceiptCheckoutViewModel`. (feat(§16): gift receipt checkout sheet)
-- [x] Content: item names + qty present; prices hidden; totals hidden. `GiftReceiptGenerator.buildPayload` zeroes all monetary fields. (feat(§16): gift receipt generator strips prices)
-- [x] Return-by date + policy printed on gift receipt. Dynamic footer with `returnByDays` from `GiftReceiptOptions`. (feat(§16): gift receipt return-by date footer)
+- [x] Checkout sheet has "Gift receipt" switch. `GiftReceiptCheckoutSheet` + `GiftReceiptCheckoutViewModel`. (feat(§16): gift receipt checkout sheet 55ba3fb8)
+- [x] Content: item names + qty present; prices hidden; totals hidden. `GiftReceiptGenerator.buildPayload` zeroes all monetary fields. (feat(§16): gift receipt generator strips prices 55ba3fb8)
+- [x] Return-by date + policy printed on gift receipt. Dynamic footer with `returnByDays` from `GiftReceiptOptions`. (feat(§16): gift receipt return-by date footer 55ba3fb8)
 - [ ] QR with scoped code: enables one-time return without revealing price to recipient
-- [x] Channels: print + email + SMS + AirDrop. `GiftReceiptChannel` enum + picker in checkout sheet. (feat(§16): gift receipt channel picker)
-- [x] Return handling: gift return credits store credit (§40) by default unless paid-for matches card on file. `GiftReceiptReturnCredit` enum + picker. (feat(§16): gift receipt return credit picker)
-- [x] Partial gift receipt via per-line toggle. `GiftReceiptOptions.includedLineIds` + per-line toggle in sheet. (feat(§16): partial gift receipt line selection)
+- [x] Channels: print + email + SMS + AirDrop. `GiftReceiptChannel` enum + picker in checkout sheet. (feat(§16): gift receipt channel picker 55ba3fb8)
+- [x] Return handling: gift return credits store credit (§40) by default unless paid-for matches card on file. `GiftReceiptReturnCredit` enum + picker. (feat(§16): gift receipt return credit picker 55ba3fb8)
+- [x] Partial gift receipt via per-line toggle. `GiftReceiptOptions.includedLineIds` + per-line toggle in sheet. (feat(§16): partial gift receipt line selection 55ba3fb8)
 - [x] Types: percentage off (whole cart / line / category) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Types: fixed $ off (whole cart / line) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Types: Buy-X-get-Y (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Types: tiered ("10% off $50+, 15% off $100+, 20% off $200+") (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [x] Types: first-time customer. `DiscountRule.firstTimeCustomerOnly` + `DiscountContext.isFirstTimeCustomer` gate. (feat(§16): discount first-time customer gate)
-- [x] Types: loyalty tier (§38). `DiscountRule.requiredLoyaltyTier` + `DiscountContext.customerLoyaltyTier` gate. (feat(§16): discount loyalty tier gate)
-- [x] Types: employee discount by role. `DiscountRule.requiredEmployeeRole` + `DiscountContext.cashierRole` gate. (feat(§16): discount employee role gate)
+- [x] Types: first-time customer. `DiscountRule.firstTimeCustomerOnly` + `DiscountContext.isFirstTimeCustomer` gate. (feat(§16): discount first-time customer gate 55ba3fb8)
+- [x] Types: loyalty tier (§38). `DiscountRule.requiredLoyaltyTier` + `DiscountContext.customerLoyaltyTier` gate. (feat(§16): discount loyalty tier gate 55ba3fb8)
+- [x] Types: employee discount by role. `DiscountRule.requiredEmployeeRole` + `DiscountContext.cashierRole` gate. (feat(§16): discount employee role gate 55ba3fb8)
 - [x] Stacking: configurable stackable vs exclusive (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [x] Stacking order: percentage before fixed before tax (tenant-configurable). `DiscountStackOrder` enum `.percentBeforeFixed`/`.fixedBeforePercent` with `displayName`. (feat(§16): discount stacking order enum)
+- [x] Stacking order: percentage before fixed before tax (tenant-configurable). `DiscountStackOrder` enum `.percentBeforeFixed`/`.fixedBeforePercent` with `displayName`. (feat(§16): discount stacking order enum 55ba3fb8)
 - [x] Limits: per customer, per day, per campaign (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Limits: min purchase threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [x] Limits: excluded categories. `DiscountRule.excludedCategories: Set<String>` + engine skip in `applyToLine`. (feat(§16): discount excluded categories)
-- [x] Auto-apply on each cart change without staff action. `DiscountAutoApplyService` actor evaluates on each cart change. (feat(§16): discount auto-apply service)
-- [x] Banner shows "N discounts applied". `DiscountAutoApplyResult.bannerText` + `showBanner` flag. (feat(§16): discount auto-apply banner)
+- [x] Limits: excluded categories. `DiscountRule.excludedCategories: Set<String>` + engine skip in `applyToLine`. (feat(§16): discount excluded categories 55ba3fb8)
+- [x] Auto-apply on each cart change without staff action. `DiscountAutoApplyService` actor evaluates on each cart change. (feat(§16): discount auto-apply service 55ba3fb8)
+- [x] Banner shows "N discounts applied". `DiscountAutoApplyResult.bannerText` + `showBanner` flag. (feat(§16): discount auto-apply banner 55ba3fb8)
 - [ ] Manual override: cashier adds ad-hoc discount (if permitted) → reason prompt + audit
 - [x] Manager PIN required above threshold (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Server validation: iOS optimistic, server re-validates to prevent fraud
@@ -2136,7 +2136,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Model: discount rule linkage (§16) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: valid from/to (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Model: usage limit (total + per customer) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [x] Model: channel restriction (any / online only / in-store only). `DiscountChannel` enum + `DiscountRule.channel` + engine gate. (feat(§16): discount channel restriction model)
+- [x] Model: channel restriction (any / online only / in-store only). `DiscountChannel` enum + `DiscountRule.channel` + engine gate. (feat(§16): discount channel restriction model 55ba3fb8)
 - [x] POS checkout sheet has "Coupon" field with live validation showing discount applied (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] QR coupons: printable/emailable QR containing code; scan at checkout auto-fills
 - [ ] Abuse prevention: rate-limit attempts per device
@@ -2145,8 +2145,8 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Time-based: happy hour 3-5pm = 10% off services; weekend pricing adjustments (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Volume: buy 3 cases 5% off each, buy 5 cases 10% (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Customer-group: wholesale pricing for B2B tier (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [x] Location-based: per-location pricing overrides (metro vs suburb). `PricingRuleType.locationOverride` + `PricingRule.targetLocationSlug/locationDiscountPercent` + engine method. (feat(§16): pricing location override)
-- [x] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier. `PricingRuleType.promotionWindow` + `PromotionWindowBannerView` with live countdown. (feat(§16): pricing promotion window + cashier countdown)
+- [x] Location-based: per-location pricing overrides (metro vs suburb). `PricingRuleType.locationOverride` + `PricingRule.targetLocationSlug/locationDiscountPercent` + engine method. (feat(§16): pricing location override 55ba3fb8)
+- [x] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier. `PricingRuleType.promotionWindow` + `PromotionWindowBannerView` with live countdown. (feat(§16): pricing promotion window + cashier countdown 55ba3fb8)
 - [x] UI at Settings → Pricing rules (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [ ] Rule list with priority order
 - [ ] Live preview: "Apply to sample cart" simulator
