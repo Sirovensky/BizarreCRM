@@ -20,7 +20,7 @@ export function StepReceipts({ pending, onUpdate, onComplete, onCancel }: SubSte
         icon={<Receipt className="h-7 w-7 text-primary-600 dark:text-primary-400" />}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {/* Edit column */}
         <div className="space-y-4 rounded-2xl border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800">
           <div>

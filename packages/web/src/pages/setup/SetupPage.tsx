@@ -2,34 +2,32 @@ import { useState, useCallback, useEffect } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2 } from 'lucide-react';
-import { settingsApi } from '@/api/endpoints';
+import { settingsApi, authApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
-import { usePlanStore } from '@/stores/planStore';
 import type { ExtraCardId, PendingWrites, WizardPhase } from './wizardTypes';
 import { StepWelcome } from './steps/StepWelcome';
 import { StepStoreInfo } from './steps/StepStoreInfo';
-import { StepTrialInfo } from './steps/StepTrialInfo';
 import { ExtrasHub } from './ExtrasHub';
 import { StepBusinessHours } from './steps/StepBusinessHours';
 import { StepTax } from './steps/StepTax';
 import { StepLogo } from './steps/StepLogo';
 import { StepReceipts } from './steps/StepReceipts';
 import { StepImport } from './steps/StepImport';
+import { StepImportHandoff } from './steps/StepImportHandoff';
 import { StepSmsProvider } from './steps/StepSmsProvider';
 import { StepEmailSmtp } from './steps/StepEmailSmtp';
 import { StepDefaultStatuses } from './steps/StepDefaultStatuses';
 import { StepReview } from './steps/StepReview';
-import { StepShopType } from './steps/StepShopType';
 import { SkipToDashboard } from './SkipToDashboard';
 
 /**
  * First-run setup wizard shell.
  *
  * State machine:
- *   welcome -> store -> trialInfo -> hub -> review -> done
+ *   welcome -> store -> hub -> review -> done
  *
- * Mandatory phases (welcome, store) run linearly with validation. trialInfo
- * is purely informational. Hub is non-sequential — user picks any extras.
+ * Mandatory phases (welcome, store) run linearly with validation.
+ * Hub is non-sequential — user picks any extras.
  * Review shows the summary and flushes everything via a single PUT /settings/config.
  *
  * Skip can be triggered from any phase via the SkipToDashboard button; the
@@ -47,15 +45,6 @@ export function SetupPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { setTheme } = useUiStore();
-  const fetchPlan = usePlanStore((s) => s.fetchPlan);
-
-  // Populate planStore on mount so StepTrialInfo reflects the live trial status.
-  // SetupPage renders outside AppShell (which is the normal fetchPlan trigger),
-  // so without this call planStore stays at hasFetched=false / trialActive=false
-  // and the trial info step always shows the "inactive" warning.
-  useEffect(() => {
-    fetchPlan();
-  }, [fetchPlan]);
 
   // Short-circuit: if the wizard gate already decided this user doesn't belong here,
   // redirect them. This handles the case where someone manually navigates to /setup
@@ -74,6 +63,21 @@ export function SetupPage() {
   const setupCompleted = setupData?.data?.data?.setup_completed;
   const existingStoreName = setupData?.data?.data?.store_name;
 
+  // SSW1: read setup_wizard_skip_count from auth-setup-status so Skip can increment it.
+  const { data: authSetupData } = useQuery<{
+    data: { success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } };
+  }>({
+    queryKey: ['auth-setup-status'],
+    queryFn: () => authApi.setupStatus(),
+    staleTime: 10_000,
+  });
+
   // Wizard state
   const [phase, setPhase] = useState<WizardPhase>('welcome');
   const [activeCard, setActiveCard] = useState<ExtraCardId | null>(null);
@@ -89,8 +93,7 @@ export function SetupPage() {
   // ── Phase transitions ────────────────────────────────────────────
   const goWelcome = useCallback(() => setPhase('welcome'), []);
   const goStore = useCallback(() => setPhase('store'), []);
-  const goShopType = useCallback(() => setPhase('shopType'), []);
-  const goTrialInfo = useCallback(() => setPhase('trialInfo'), []);
+  const goImportHandoff = useCallback(() => setPhase('importHandoff'), []);
   const goHub = useCallback(() => { setPhase('hub'); setActiveCard(null); }, []);
   const goReview = useCallback(() => { setPhase('review'); setActiveCard(null); }, []);
 
@@ -108,43 +111,63 @@ export function SetupPage() {
   // ── Commit / skip ────────────────────────────────────────────────
   /**
    * Flush the pending bundle to the server as a single PUT /settings/config.
-   * Also writes wizard_completed as 'true' or 'skipped'. On success, refetches
-   * the setup-status query and navigates to the dashboard.
+   *
+   * Complete: writes non-empty pending values + setup_wizard_completed='true'.
+   * Skip: writes non-empty pending values + setup_wizard_skipped_at (ISO timestamp)
+   *       + setup_wizard_skip_count (current + 1). Empty / null / undefined values
+   *       in `pending` are intentionally omitted so the server can apply defaults.
+   *
+   * Both modes also write the legacy wizard_completed key for Gate 2 compatibility.
+   * After either mode, navigates to /dashboard.
    */
   const flushAndExit = useCallback(async (mode: 'complete' | 'skip') => {
-    // WEB-S4-018: when skipping from the welcome step, require at least a store
-    // name so we don't POST an empty string that overwrites any existing value.
-    if (mode === 'skip' && phase === 'welcome' && !pending.store_name?.trim()) {
-      setError('Please enter a store name before skipping, or type one above and then skip.');
-      return;
-    }
     setSaving(true);
     setError('');
     try {
+      // Only flush keys that have an actual value — empty strings, null, and
+      // undefined are deliberately excluded so the server applies its own defaults.
       const writes: Record<string, string> = {};
       for (const [key, value] of Object.entries(pending)) {
         if (value !== undefined && value !== null && value !== '') {
           writes[key] = String(value);
         }
       }
-      writes.wizard_completed = mode === 'complete' ? 'true' : 'skipped';
-      // Mandatory fields aren't strictly required on skip but we still write whatever we have
+
+      if (mode === 'complete') {
+        // Mark wizard done via both new and legacy keys.
+        writes.setup_wizard_completed = 'true';
+        writes.wizard_completed = 'true';
+      } else {
+        // Skip: record the timestamp and bump the skip counter.
+        const currentSkipCount = authSetupData?.data?.data?.setupWizardSkipCount ?? 0;
+        writes.setup_wizard_skipped_at = new Date().toISOString();
+        writes.setup_wizard_skip_count = String(currentSkipCount + 1);
+        writes.wizard_completed = 'skipped';
+      }
+
       await settingsApi.updateConfig(writes);
-      // Persist theme to localStorage as well (uiStore already does this when setTheme is called,
-      // but if the user changed theme via StepWelcome we already called setTheme there; this is
-      // belt-and-suspenders).
+
+      // Persist theme to localStorage as well (uiStore already does this when
+      // setTheme is called, but if the user changed theme via StepWelcome we
+      // already called setTheme there; this is belt-and-suspenders).
       if (pending.theme) setTheme(pending.theme);
-      // Refetch setup-status so the wizard gate in App.tsx sees the new value
-      await queryClient.refetchQueries({ queryKey: ['setup-status'] });
+
+      // Refetch both setup-status queries so the wizard gates in App.tsx see
+      // the updated values and don't redirect back to /setup immediately.
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['setup-status'] }),
+        queryClient.refetchQueries({ queryKey: ['auth-setup-status'] }),
+      ]);
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+
       setPhase('done');
-      navigate('/', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to save setup. Please try again.');
     } finally {
       setSaving(false);
     }
-  }, [pending, phase, setTheme, queryClient, navigate]);
+  }, [pending, authSetupData, setTheme, queryClient, navigate]);
 
   const handleSkip = useCallback(() => flushAndExit('skip'), [flushAndExit]);
   const handleComplete = useCallback(() => flushAndExit('complete'), [flushAndExit]);
@@ -190,13 +213,10 @@ export function SetupPage() {
       return <StepWelcome {...stepProps} onNext={goStore} onBack={() => {}} />;
     }
     if (phase === 'store') {
-      return <StepStoreInfo {...stepProps} onNext={goShopType} onBack={goWelcome} />;
+      return <StepStoreInfo {...stepProps} onNext={goImportHandoff} onBack={goWelcome} />;
     }
-    if (phase === 'shopType') {
-      return <StepShopType {...stepProps} onNext={goTrialInfo} onBack={goStore} />;
-    }
-    if (phase === 'trialInfo') {
-      return <StepTrialInfo {...stepProps} onNext={goHub} onBack={goShopType} />;
+    if (phase === 'importHandoff') {
+      return <StepImportHandoff {...stepProps} onNext={goHub} onBack={goStore} />;
     }
     if (phase === 'review') {
       return (
@@ -241,7 +261,7 @@ export function SetupPage() {
           completedCards={completedCards}
           onOpenCard={openCard}
           onFinish={goReview}
-          onBack={goTrialInfo}
+          onBack={goStore}
         />
       );
     }
@@ -250,16 +270,6 @@ export function SetupPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-950 dark:to-surface-900">
-      {/* WEB-S4-015: stable overlay spinner during status re-check so navigating
-          back to /setup after partial completion doesn't flash the welcome step
-          while the query resolves. The overlay sits above all content so the
-          user sees a smooth transition instead of a layout jump. */}
-      {checkingStatus && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-50/80 backdrop-blur-sm dark:bg-surface-950/80">
-          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
-        </div>
-      )}
-
       {/* Top bar with phase indicator + skip */}
       <div className="sticky top-0 z-10 border-b border-surface-200 bg-white/80 backdrop-blur dark:border-surface-700 dark:bg-surface-900/80">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-3">
@@ -294,8 +304,7 @@ function PhaseIndicator({ phase }: { phase: WizardPhase }) {
   const steps: Array<{ id: WizardPhase; label: string }> = [
     { id: 'welcome', label: 'Welcome' },
     { id: 'store', label: 'Store info' },
-    { id: 'shopType', label: 'Shop type' },
-    { id: 'trialInfo', label: 'Trial' },
+    { id: 'importHandoff', label: 'Import' },
     { id: 'hub', label: 'Extras' },
     { id: 'review', label: 'Done' },
   ];

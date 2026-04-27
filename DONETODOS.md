@@ -3165,180 +3165,21 @@ Misc:
 - [x] WEB-W2-006. **Bulk Assign UI.** CLOSED 2026-04-26 — todofixes426: bulkAssignOpen state + Assign dropdown in TicketListPage bulk action bar; calls bulkMut with action: 'assign'.
 - [x] WEB-FF-016. **CustomerListPage importMutation invalidate timing.** CLOSED 2026-04-26 — todofixes426: pre-existing — invalidateQueries already in onSuccess.
 
-## todofixes426 — DASH-ELEC mid-range pass (030–070) (2026-04-26)
+## todofixes426 — Cleanup pass 17 (2026-04-26) — SSW1-5 first-run setup wizard
 
-DASH-ELEC-059: confirmed closed — super-admin.routes.ts:1361-1366 already calls `auditLog('session_revoked', ...)` with revoker identity on every DELETE /sessions/:id; no client-layer addition needed.
-DASH-ELEC-063: completed — SecurityAlertsPage ackFilter + severityFilter migrated to useSearchParams (?ack=...&sev=...); back-button/reload/deep-link now restore both filters (AuditLogPage was already done).
-DASH-ELEC-064: implemented — AuditLogPage: offset + hasMore + loadMore + "Load next 200" button appending rows. SecurityAlertsPage: page + totalPages + loadMore using existing pagination.total_pages from server.
-DASH-ELEC-069: completed — UpdatesPage stat-card + update-details panel now hidden behind `{!statusLoading && !statusError}` guard; "Unknown / Up to date" flash during initial fetch eliminated.
+DONE (5 items, single feature):
+- [x] SSW1. **First-login setup wizard gate.** Server `GET /auth/setup-status` returns `setupWizardCompleted` + `setupWizardSkippedAt` + `setupWizardSkipCount`. ALLOWED_CONFIG_KEYS extended (+24 keys: 3 setup_wizard_* + 21 audit-gap keys). Web `App.tsx` gate redirects fresh admin to `/setup`. SetupPage flushAndExit filters empty values (Skip preserves defaults); Complete writes `setup_wizard_completed='true'`; Skip writes `setup_wizard_skipped_at` + increments `setup_wizard_skip_count`; after 3 skips nag stops.
+- [x] SSW2. **Import-from-existing-CRM step (light handoff).** Reframed from inline state machine: new StepImportHandoff.tsx — 3 cards (Import / Later / Fresh). "Import" deep-links to /settings?tab=data-import in new tab. Persists `setup_imported_legacy_data` for analytics.
+- [x] SSW3. **Comprehensive field audit.** docs/setup-wizard-fields.md enumerates all store_config keys: 6 REQUIRED, 28 OPTIONAL, 130+ ADVANCED. Identifies 21 audit-gap keys (referenced but not in ALLOWED_CONFIG_KEYS — fixed by SSW1).
+- [x] SSW4. **RepairDesk API typo compatibility test.** vitest installed. Fixture with all 7 typo fields (orgonization/refered_by/hostory/tittle/createdd_date/suplied/warrenty). Test asserts mappers preserve typo strings exactly. 8 tests pass.
+- [x] SSW5. **E2E test for first-run wizard.** vitest pure-handler approach (no app bootstrap). 5 tests covering fresh state, skip path, complete path, persistence stability, ALLOWED_CONFIG_KEYS allowlist. All pass.
 
-Skipped (outside scope/complexity): 050 (CSP nonce = build infra), 053 (server-side JWT revocation endpoint = server work), 055 (cross-package shared constant), 056 (multi-file 2FA recovery flow), 057 (TOTP step-up modal = multi-file), 068 (backup download/upload = new IPC needed).
+Critique-driven changes:
+- Killed StepShopType + StepImport from wizard flow (kept files)
+- Killed StepTrialInfo as wizard phase
+- Created services/validationService.ts (11 validators + ALLOWED_TIMEZONES + ALLOWED_CURRENCIES + checkMandatoryFields)
+- Wired validation gate in StepStoreInfo (Next disabled when invalid)
+- Wired mandatory-field check in StepReview (Complete blocked when missing)
+- Targeted UI fixes (NOT M3 — that's for Android): StepLogo default `#0E7490` → cream `#FDEED0`, StepReceipts breakpoint `lg:` → `md:`, StepBusinessHours mobile stack `flex-col md:flex-row`.
 
-## todofixes426 — Cleanup pass 8 (2026-04-26) — FO/FK/FJ/FX/FAE + DASH-ELEC mid
-
-WEB-FO: 007 (Dashboard refetch jitter), 011 (WS invalidationMap +8 entities).
-WEB-FK: 009 (voice consent dialog), 014 (expense receipt upload), 015 (Calendar TZ-aware ISO + overlap warning).
-WEB-FJ: 008 (PhotoCapture URL strip pre-existing), 010 (portal 15-min idle timeout).
-WEB-FX: 002 (htmlFor on top-5 forms), 004 (role="alert" on form errors).
-WEB-FAE: 007 (TechDashboard query key alignment).
-DASH-ELEC: 059 (session_revoked audit pre-existing), 063 (security alerts URL filters), 064 (audit log + security alerts pagination Load More), 069 (UpdatesPage hide flash on initial load).
-
-## todofixes426 — Cleanup pass 9 (2026-04-26) — WEB-S7/S5/FN remaining
-
-- [x] WEB-S7-022. **Global search q<3 fast-exit.** CLOSED 2026-04-26 — todofixes426: `q.length < 3` guard added to GET /search; empty result returned immediately for 1–2 char queries. `packages/server/src/routes/search.routes.ts`.
-- [x] WEB-S7-026. **CSV import failed rows downloadable error log.** CLOSED 2026-04-26 — todofixes426: `importMutation.onSuccess` shows `${errCount} rows failed` toast + auto-downloads `import_errors.csv` with Row/Error columns. `packages/web/src/pages/customers/CustomerListPage.tsx`.
-- [x] WEB-S7-029. **TicketListPage filtered_status_counts.** CLOSED 2026-04-26 — todofixes426: server adds `filtered_status_counts` (same WHERE/keywordJoin as main query) alongside global `status_counts`; web switches to filtered counts when `hasActiveFilters` is true. `packages/server/src/routes/tickets.routes.ts`, `packages/web/src/pages/tickets/TicketListPage.tsx`.
-- [x] WEB-S7-034. **isAdminOrManager shared util.** CLOSED 2026-04-26 — todofixes426: `isAdminOrManager()` + `ADMIN_MANAGER_ROLES` added to `utils/constants.ts`; both inline checks in `search.routes.ts` replaced. `packages/server/src/utils/constants.ts`, `packages/server/src/routes/search.routes.ts`.
-- [x] WEB-S7-036. **ReportsPage SalesTab empty EmptyState.** CLOSED 2026-04-26 — DONE-PREEXISTING: `rows.length === 0` guard already present at line 316.
-- [x] WEB-S7-037. **Portal timeline UTC sort.** CLOSED 2026-04-26 — DONE-PREEXISTING: `toUtc` helper in `portal.routes.ts:328` already normalizes timestamps before sort.
-- [x] WEB-S7-041. **Dashboard all-time floor.** CLOSED 2026-04-26 — DONE-PREEXISTING: `case 'all'` uses `'2000-01-01'` not `'2020-01-01'`; historical data covered.
-- [x] WEB-S7-044. **enforceImportRateLimit atomic transaction.** CLOSED 2026-04-26 — todofixes426: wrapped prune+count checks in `db.transaction()` to serialise concurrent import-start calls. `packages/server/src/routes/import.routes.ts`.
-- [x] WEB-S7-045. **ReportsPage CSV download DOM append.** CLOSED 2026-04-26 — DONE-PREEXISTING: `document.body.appendChild(a)` + `setTimeout` cleanup already present at lines 130–138.
-- [x] WEB-FN-008. **Error code lost on client.** CLOSED 2026-04-26 — DONE-PREEXISTING: `api/client.ts` interceptor already reads `envelope.code` → `error.errorCode`. Per-page branching on errorCode is a separate larger refactor.
-- [x] WEB-FN-009. **Signup 202 no-op on prod.** CLOSED 2026-04-26 — DONE-PREEXISTING: `SignupPage.tsx` already shows "Check Your Email" state; no redirect attempted for 202 responses.
-
-Skipped (requires non-existent DataTable component): WEB-S5-029, WEB-S5-030, WEB-S5-040, WEB-S5-044.
-Skipped (large codemod, 18+ route files): WEB-S7-038 (pagination out-of-bounds), WEB-FN-005 (pagination param name drift).
-
-## todofixes426 — Cleanup pass 9 (2026-04-26) — DASH-ELEC + S7 + FN final
-
-DASH-ELEC: 080 (spawnSync PowerShell), 083 (service action concurrency lock), 085 (5s socket connect timeout), 096 (IPC result narrowing), 114 (crashReporter.start), 122 (context-menu pre-existing), 146 (Theme = 'dark' only), 151 (Tailwind dynamic class names).
-
-WEB-S7: 022 (search short-q guard), 026 (import errors CSV download), 029 (filtered_status_counts), 034 (isAdminOrManager helper), 036 (EmptyState pre-existing), 037 (toUtc pre-existing), 041 (2000-01-01 pre-existing), 044 (rate-limit transaction), 045 (downloadCsv pre-existing).
-
-WEB-FN: 008 (errorCode interceptor pre-existing), 009 (Check Your Email pre-existing).
-
-## todofixes426 — DASH-ELEC sweep 160-260 (2026-04-26) — Fixer-C26
-
-DASH-ELEC-176: DONE-PREEXISTING — CommandPalette + KeyboardShortcutsHelp already use pt-[max(1rem,min(6rem,10vh))].
-DASH-ELEC-180: SettingsPage window.confirm hCaptcha warning replaced with ConfirmDialog + executeSave() continuation. AdminToolsPage already fixed (173).
-DASH-ELEC-194: SettingsPage "Close Dashboard" button now opens ConfirmDialog before calling closeDashboard().
-DASH-ELEC-199: renderField uses <textarea rows=3 resize-y> for f.category==='cors'; plain <input> for all other text fields.
-DASH-ELEC-200: platform-config flag <label> gets aria-busy={busy} so screen readers announce save state.
-DASH-ELEC-204: dynamic renderSection sections get aria-labelledby={settings-section-{category}}; static Appearance + Dashboard sections get matching id/aria-labelledby.
-DASH-ELEC-208: management:get-rollback-info, rollback-update, clear-rollback wrapped with wrapHandler().
-DASH-ELEC-212: dev-mode file:// fallback now validates URL starts with pathToFileURL(app.getAppPath() + sep) instead of accepting any file:// origin.
-DASH-ELEC-214: management:logout calls POST /super-admin/api/logout (try/catch) before setSuperAdminToken(null).
-DASH-ELEC-219: AuditLogPage details cell click-toggles between truncated span and expanded <pre> with max-h-48 scroll.
-DASH-ELEC-229: DONE-PREEXISTING — formatApiError already prefixes [status] via DASH-ELEC-277.
-DASH-ELEC-231: module-level https.Agent(keepAlive:true, keepAliveMsecs:10000, maxSockets:4) in api-client.ts; wired via options.agent.
-DASH-ELEC-232: useServerHealth re-checks isAuthenticated after Promise.all await; early-returns if logout fired mid-poll.
-DASH-ELEC-233: DashboardShell.tsx shows compact red "Server Offline" banner above <main> on every page (global vs OverviewPage-only).
-DASH-ELEC-241: detailInFlight useRef<Set<string>> added to TenantsPage; loadDetail guards re-entrancy + clears in finally.
-DASH-ELEC-248: BannerCertWarning + BannerTagVerifyWarning persist dismissal timestamp to localStorage; re-show after 24h; no flash on reload.
-DASH-ELEC-250: SetupChecklist sortedChecks = [...checks].sort(SEVERITY_ORDER); render loop uses sortedChecks.
-DASH-ELEC-255: apiRequest() 5th param timeoutMs (default 30s); admin:run-backup + admin:restore-backup use BACKUP_TIMEOUT_MS=5min.
-DASH-ELEC-256: BackupPage isMountedRef guards all setState/toast calls in refresh/handleBackupNow/handleRestore.
-DASH-ELEC-257: handleRestore checks res.offline → "Server may be restarting" toast + 5s deferred refresh.
-
-Skipped (design/research/complex): 160 (CSP plugin eval), 190 (protocol stub), 193 (test-connection probes), 201 (server status field needed), 222-224 (grouping/drill-in/payload tab), 230 (idempotency keys across 14 endpoints), 237-238 (plan/name change UI), 243 (reason field), 245 (new server fields), 249-252 (checklist tiers/visibility), 258 (cert reload banner).
-
-## todofixes426 — Cleanup pass 10 (2026-04-26) — DASH-ELEC 160-260 sweep
-
-DONE: 180 (hCaptcha ConfirmDialog), 194 (Close Dashboard ConfirmDialog), 199 (cors textarea), 200 (aria-busy flag toggle), 204 (aria-labelledby sections), 208 (rollback wrapHandler), 212 (file:// fallback URL guard), 214 (logout server-side first), 219 (audit log click-to-expand), 231 (keepAliveAgent), 232 (re-check auth post-await), 233 (compact offline banner), 241 (TenantsPage detailInFlight ref), 248 (BannerCertWarning 24h re-show), 250 (SetupChecklist severity sort), 255 (apiRequest timeoutMs param + 5min backup), 256 (BackupPage isMountedRef), 257 (offline retry banner).
-
-DONE-PREEXISTING: 176 (CommandPalette pt-clamp), 229 (formatApiError [status] prefix), 259 (ageMs Math.max), 260 (TenantsPage delete cleanup).
-
-## todofixes426 — Cleanup pass 11 (2026-04-26) — final small sweep
-
-DONE: DASH-ELEC-270 (tsconfig strict flags), 274 (PageErrorBoundary role=alert), 286 (matchMedia dpr listener), WEB-S4-040 (TOTP auto-submit on length=6), S4-042 (super-admin server logout), WEB-FW-006 (lazyNamed helper).
-
-DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.
-
-## todofixes426 — Cleanup pass 12 (2026-04-26) — DASH-ELEC exhaustive
-
-DONE-PREEXISTING (verified in code, `[ ]` → `[x]` in TODO.md):
-
-- DASH-ELEC-001: management-process side complete — TTL self-eviction via `superAdminTokenSetAt` + `SUPER_ADMIN_TOKEN_MAX_AGE_MS` in api-client.ts; `getSuperAdminToken()` getter zeroes slot on expiry; server-side revocation is server-scope work.
-- DASH-ELEC-002: `process.on('unhandledRejection')` handler present at index.ts:139 — logs message (not object, to avoid leaking JWT payloads), does not exit.
-- DASH-ELEC-004: system-info.ts `tryPowershellDiskSpace` already migrated from `execSync` to `spawnSync` with explicit argv array and 10s timeout (DASH-ELEC-080 comment present at line 157).
-- DASH-ELEC-006: `admin:get-env-settings` and `admin:set-env-settings` both validate against `ENV_KEY_TO_FIELD` allowlist (built from `ENV_FIELDS`); SET handler `refine`s that every key is in the map before touching .env.
-- DASH-ELEC-009: `githubUpdater` spawnSync calls at lines 540–598 return full `fetchResult.stderr` / `verifyResult.stderr` in error objects; `management:perform-update` handler logs `spawnResult.error` to console.error; no "update check failed" swallowing.
-- DASH-ELEC-012: `useServerHealth` has `isMountedRef` guard (line 41) + shape guard for ServiceStatus (lines 104–111); prevents setState after unmount and malformed IPC result propagation.
-- DASH-ELEC-019: `authStore.ts` has named `authExpiredHandler` + `import.meta.hot.dispose(() => window.removeEventListener(...))` at lines 68–74; HMR duplicate listener accumulation cannot occur.
-- DASH-ELEC-041: `backgroundThrottling: false` present in `window.ts` webPreferences (already `[x]` in TODO — verified).
-- DASH-ELEC-053: renderer logout ordering fixed in CommandPalette.tsx (fire-and-forget IPC + synchronous navigate); management-process TTL eviction handles idle sessions; server-side JWT revocation is server-scope.
-- DASH-ELEC-055: `SchemaSetup.password` min(10) in management-api.ts:53; `SchemaSetPassword.password` min(10) at :41; renderer `PASSWORD_MIN_LENGTH = 10` in constants.ts wired into all 4 LoginPage guards. Cross-package @bizarre-crm/shared extraction is a future deps edit (server-scope).
-- DASH-ELEC-063: SecurityAlertsPage `ackFilter`/`severityFilter` use `useSearchParams` (`?ack=...&sev=...`) — already `[x]` in TODO.
-- DASH-ELEC-064: AuditLogPage offset+hasMore+loadMore + SecurityAlertsPage page+totalPages+loadMore both present — already `[x]` in TODO.
-- DASH-ELEC-086: `admin:list-logs` handler returns `{ name, size, mtime, exists }` only; absolute `path` explicitly omitted per inline comment — already `[x]` in TODO.
-- DASH-ELEC-088: `system:open-browser` uses `getServerBase()` (imported from api-client.ts); `https://localhost` hardcode removed — already `[x]` in TODO.
-- DASH-ELEC-089: `<PageErrorBoundary key={pathname}>` in DashboardShell.tsx:74 resets boundary on every route change — already `[x]` in TODO.
-- DASH-ELEC-091: `<MultiTenantRoute>` wraps tenants/activity/tools/diagnostics in App.tsx — already `[x]` in TODO.
-- DASH-ELEC-092: `<main id="main-content" tabIndex={-1}>` + skip-nav `<a href="#main-content">` + `useEffect(pathname → mainRef.current?.focus())` in DashboardShell.tsx — already `[x]` in TODO.
-- DASH-ELEC-095: `THEME_KEY` constant + `localStorage.setItem(THEME_KEY, theme)` in `setTheme` + validated `initialTheme()` read in uiStore.ts — already `[x]` in TODO.
-- DASH-ELEC-100: `"@types/node": "^22.0.0"` present in package.json devDependencies — already `[x]` in TODO.
-- DASH-ELEC-247: Recovery codes block in LoginPage.tsx: reads `recoveryCodes` from setup2fa response, renders mono grid + "Copy all" + "Download .txt" + "I have saved them" ack checkbox gating Verify.
-
-SKIPPED (design decision / new dependency / multi-file refactor / server-scope change):
-- DASH-ELEC-007: IPC throttle/dedup — preload architecture change; low risk in practice (Electron renderer)
-- DASH-ELEC-010: Main-process audit log — new rotating-log infrastructure; significant scope
-- DASH-ELEC-013: Migrate polls to useQuery — large refactor of polling strategy across 5+ pages
-- DASH-ELEC-015: Per-section error boundaries — medium refactor, design decision on boundary granularity
-- DASH-ELEC-024: Brand fonts (Bebas Neue / Futura Medium) — needs font files + CSS @font-face
-- DASH-ELEC-027: LogsPage virtualization — requires react-window dep + major render refactor
-- DASH-ELEC-050/160: CSP nonce-based style-src — requires vite-plugin-csp or custom build plugin
-- DASH-ELEC-056: Forgot-2FA recovery path — new IPC handler + CLI reset documentation
-- DASH-ELEC-057: TOTP step-up modal in AdminToolsPage — new component + server enforcement check
-- DASH-ELEC-068: Backup download/upload — new IPC handlers (dialog.showSaveDialog + fs.copyFile)
-- DASH-ELEC-079: Cert fingerprint reload per-request — api-client architecture change
-- DASH-ELEC-084: management:restart-server vs service:restart coordination — design decision
-- DASH-ELEC-090: Code splitting with React.lazy — App.tsx refactor + Suspense in DashboardShell
-- DASH-ELEC-097: dev script launching Electron — requires wait-on + nodemon deps
-- DASH-ELEC-098: Test infrastructure — vitest + @testing-library/react + CI job
-- DASH-ELEC-099: ESLint config — new deps + config file + CI step
-- DASH-ELEC-101: Electron downgrade to 36.x LTS — dep change with potential breaking changes
-- DASH-ELEC-102/154: app-builder-bin alpha override — dep change
-- DASH-ELEC-103: electron-updater publish config — new dep + config
-- DASH-ELEC-106: Root build includes management — touches root package.json + CI
-- DASH-ELEC-108: README creation — doc file
-- DASH-ELEC-112: Structured logging library — new dep (electron-log)
-- DASH-ELEC-116: i18n framework — massive codebase refactor
-- DASH-ELEC-117: Telemetry opt-out toggle — new settings infra + server changes
-- DASH-ELEC-131: Revoke All Sessions — new IPC + server endpoint
-- DASH-ELEC-136: Bulk tenant select — major UI feature
-- DASH-ELEC-150: Inline .stat-card from globals.css — multi-file refactor across all page components
-- DASH-ELEC-152: @xmldom/xmldom CVE — npm audit fix or root override
-- DASH-ELEC-153: postcss CVE — version bump in package.json
-- DASH-ELEC-155/156/157/158/159: Dep classification — package.json structural changes
-- DASH-ELEC-171: Dirty indicator + per-field Save button — pending-state ref map refactor
-- DASH-ELEC-184: wrapHandler typed generic — IPC boundary typing change across ~60 handlers
-- DASH-ELEC-190: Protocol URL stub — design decision (remove vs implement routing)
-- DASH-ELEC-193: Test Connection buttons — new IPC probes + UI per section
-- DASH-ELEC-201: Dead platform-config badge — requires server status field
-- DASH-ELEC-220: Server-side username filter — requires server route change
-- DASH-ELEC-222: CrashMonitorPage grouping — medium UI feature (Map + expandable groups)
-- DASH-ELEC-223/224: CrashEntry extensions — requires bridge + server changes
-- DASH-ELEC-230: Idempotency keys — 14 POST handlers each need UUID header
-- DASH-ELEC-237/238: Tenant plan/name change UI — new IPC + server endpoints
-- DASH-ELEC-243: Suspend/activate reason field — schema + ConfirmDialog changes
-- DASH-ELEC-245: last_active/suspended_at timestamps — server schema change
-- DASH-ELEC-249/251: SetupChecklist tiers/visibility — component refactor
-- DASH-ELEC-252: Cert expiry countdown — crypto.X509Certificate parsing + banner
-- DASH-ELEC-258: Cert fingerprint reload banner — api-client + banner changes
-- DASH-ELEC-263: powerMonitor sleep/wake reset — new IPC event + useServerHealth integration
-- DASH-ELEC-266/269/273: Type/debt items — shared types file creation across tsconfigs
-
-DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.
-
-## todofixes426 — Cleanup pass 13 (2026-04-26) — WEB-FQ codemods
-
-DONE: WEB-FQ-007 (disabled state opacity codemod, 119 files, 306 substitutions), WEB-FQ-008 (border-radius scrambled, 5 sites), WEB-FQ-009 (input height/padding canonical, 11 sites), WEB-FQ-010 (modal sizes already correct, no changes), WEB-FQ-011 (heading hierarchy, 4 sites).
-
-## todofixes426 — Cleanup pass 14 (2026-04-26) — WEB-FM small items
-
-DONE: WEB-FM-013 (TicketStatus shared type import in AutomationsTab), WEB-FM-014 (ComingSoonBadge in SettingsPage permissions footer + FinancingButton), WEB-FM-019 (typecheck:watch script added; typecheck already existed), WEB-FM-020 (2 more files wrapped: TicketListPage + CampaignsPage).
-
-DONE-PREEXISTING: WEB-FM-016 (SubscriptionsListPage local formatCurrency already removed by Fixer-PP).
-
-## todofixes426 — Cleanup pass 15 (2026-04-26) — trailing WEB items
-
-DONE: WEB-FX-010 (Sidebar aria-label, redundant role removed), WEB-FAC-007 (Toaster gutter + per-severity duration), WEB-FAE-009 (cross-tenant JWT slug guard in authStore + main.tsx).
-
-DONE-PREEXISTING: WEB-W1-015 (LeftPanel discount reason flag wired), WEB-FQ-013 (focus ring already amber), WEB-FL-019 (DataExport API renamed/wired), WEB-FV-004 (PhotoGallery delete error handled).
-
-## todofixes426 — Cleanup pass 16 (2026-04-26) — WEB-FAC animations
-
-DONE: WEB-FAC-004 (modal animations — 4 modals + tailwindcss-animate dep + plugin), WEB-FAC-008 (transition-colors → transition-[colors,box-shadow,transform] in 5 shared component files).
-
-SKIPPED: WEB-FAC-005 (needs Tooltip primitive dep), WEB-FAC-006 (needs framer-motion).
+Tests: 13 pass (8 SSW4 + 5 SSW5). Web + server typecheck clean.

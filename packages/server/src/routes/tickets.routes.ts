@@ -326,6 +326,7 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
     created_by: ticket.created_by,
     created_at: ticket.created_at,
     updated_at: ticket.updated_at,
+    tracking_token: ticket.tracking_token ?? null,
     customer: {
       id: ticket.customer_id,
       first_name: ticket.c_first_name,

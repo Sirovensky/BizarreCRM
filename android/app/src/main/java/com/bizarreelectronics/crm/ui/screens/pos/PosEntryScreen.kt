@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
@@ -63,6 +65,7 @@ fun PosEntryScreen(
     onNavigateToTicket: (Long) -> Unit = {},
     onNavigateToStoreCreditPayment: () -> Unit = {},
     viewModel: PosEntryViewModel = hiltViewModel(),
+    authPreferences: AuthPreferences? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -110,9 +113,34 @@ fun PosEntryScreen(
             searchFocusRequester.requestFocus()
         },
     ) {
+    // ── TopAppBar context values ──────────────────────────────────────────────
+    val storePillLabel = remember(authPreferences) {
+        val store = authPreferences?.storeName?.takeIf { it.isNotBlank() } ?: "Store #1"
+        val user = authPreferences?.userFirstName?.takeIf { it.isNotBlank() }
+            ?: authPreferences?.username?.takeIf { it.isNotBlank() }
+        if (user != null) "$store · $user" else store
+    }
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         contentWindowInsets = WindowInsets(0),
+        topBar = {
+            BrandTopAppBar(
+                title = "POS",
+                actions = {
+                    SuggestionChip(
+                        onClick = { /* TODO: location / user picker */ },
+                        label = {
+                            Text(
+                                storePillLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        modifier = Modifier.height(32.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                },
+            )
+        },
     ) { innerPadding ->
     // statusBarsPadding pushes the entire POS-entry surface below the
     // system status bar so the customer banner / clock no longer overlap.
@@ -178,10 +206,7 @@ fun PosEntryScreen(
             active = searchExpanded,
             onActiveChange = { searchExpanded = it },
             placeholder = {
-                Text(
-                    if (state.attachedCustomer != null) "Scan or search parts..."
-                    else "Search customer or scan..."
-                )
+                Text("Customer, part, or ticket…")
             },
             leadingIcon = {
                 Icon(

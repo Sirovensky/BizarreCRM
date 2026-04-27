@@ -120,13 +120,32 @@ const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => (
 // components/shared/LoadingScreen.tsx — see import above.
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, user } = useAuthStore();
   const location = useLocation();
   const { data: setupData, isLoading: setupLoading, isError: setupError, error: setupErrorObj, refetch: refetchSetup } = useQuery<
     { data: { success: boolean; data: { setup_completed: boolean; store_name: string | null; wizard_completed: string | null } } }
   >({
     queryKey: ['setup-status'],
     queryFn: () => settingsApi.getSetupStatus(),
+    staleTime: 30_000,
+    enabled: isAuthenticated,
+    retry: 1,
+  });
+
+  // SSW1: Gate 3 — reads setup_wizard_* keys via authApi.setupStatus() (distinct
+  // from the settings/setup-status query above). Fires only when the user is an
+  // admin, the wizard hasn't been completed, and skip count hasn't hit the limit (3).
+  const { data: authSetupData } = useQuery<
+    { data: { success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } } }
+  >({
+    queryKey: ['auth-setup-status'],
+    queryFn: () => authApi.setupStatus(),
     staleTime: 30_000,
     enabled: isAuthenticated,
     retry: 1,
@@ -161,7 +180,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Navigate to="/setup" replace />;
   }
 
-  // Gate 2 (NEW): setup_completed=true but wizard_completed is unset -> send to /setup.
+  // Gate 2 (existing): setup_completed=true but wizard_completed is unset -> send to /setup.
   // Valid wizard_completed values are 'true', 'skipped', or 'grandfathered' (set on
   // startup for pre-feature tenants). Any other falsy value (null / undefined / empty
   // string) means this is a brand-new post-feature tenant who hasn't been through the
@@ -176,6 +195,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     !location.pathname.startsWith('/setup')
   ) {
     return <Navigate to="/setup" replace />;
+  }
+
+  // Gate 3 (SSW1): setup_wizard_completed=false AND skip count < 3 AND user is admin.
+  // Uses the granular setup_wizard_* keys written by the new SetupPage handlers.
+  // Only fires when authSetupData has loaded (undefined = query still in-flight → don't block).
+  if (authSetupData !== undefined && !location.pathname.startsWith('/setup')) {
+    const { setupWizardCompleted, setupWizardSkipCount } = authSetupData.data.data;
+    const isAdmin = user?.role === 'admin';
+    if (!setupWizardCompleted && setupWizardSkipCount < 3 && isAdmin) {
+      return <Navigate to="/setup" replace />;
+    }
   }
 
   return <>{children}</>;

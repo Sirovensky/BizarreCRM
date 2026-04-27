@@ -15,14 +15,9 @@ import { api } from '@/api/client';
  */
 export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepProps) {
   const [logoUrl, setLogoUrl] = useState(pending.store_logo || '');
-  const [color, setColor] = useState(pending.theme_primary_color || '#0E7490');
+  const [color, setColor] = useState(pending.theme_primary_color || '#FDEED0');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
-  // WEB-S4-012: track text-input value separately so user can type without
-  // updating the color picker until the hex is valid
-  const [colorInput, setColorInput] = useState(pending.theme_primary_color || '#0E7490');
-  const [colorError, setColorError] = useState('');
-  const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
 
   // WEB-FG-014 (Fixer-B17 2026-04-25): the `accept=` attr is a hint, not a
   // guard — a `.svg` (XSS via inline <script>) or a renamed `evil.exe` will
@@ -91,22 +86,7 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
 
   const handleColorChange = (c: string) => {
     setColor(c);
-    setColorInput(c);
-    setColorError('');
     onUpdate({ theme_primary_color: c });
-  };
-
-  const handleColorTextChange = (raw: string) => {
-    setColorInput(raw);
-    if (!raw || HEX_RE.test(raw)) {
-      setColorError('');
-      if (raw) {
-        setColor(raw);
-        onUpdate({ theme_primary_color: raw });
-      }
-    } else {
-      setColorError('Must be a valid 6-digit hex color (e.g. #FDEED0)');
-    }
   };
 
   return (
@@ -154,18 +134,13 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
               onChange={(e) => handleColorChange(e.target.value)}
               className="h-10 w-14 cursor-pointer rounded-lg border border-surface-300"
             />
-            {/* WEB-S4-012: hex validation — only commit valid values */}
-            <div className="flex-1">
-              <input
-                type="text"
-                value={colorInput}
-                onChange={(e) => handleColorTextChange(e.target.value)}
-                placeholder="#0E7490"
-                aria-invalid={!!colorError}
-                className={`w-full rounded-lg border bg-surface-50 px-4 py-2 text-sm text-surface-900 focus-visible:outline-none focus-visible:ring-1 dark:bg-surface-700 dark:text-surface-100 ${colorError ? 'border-red-400 focus-visible:border-red-500 focus-visible:ring-red-400 dark:border-red-500/60' : 'border-surface-300 focus-visible:border-primary-500 focus-visible:ring-primary-400 dark:border-surface-600'}`}
-              />
-              {colorError && <p role="alert" className="mt-1 text-xs text-red-500">{colorError}</p>}
-            </div>
+            <input
+              type="text"
+              value={color}
+              onChange={(e) => handleColorChange(e.target.value)}
+              placeholder="#FDEED0"
+              className="flex-1 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+            />
           </div>
         </div>
 
