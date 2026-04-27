@@ -257,8 +257,8 @@ public struct InventoryDetailView: View {
                     AutoReorderRuleCard(item: resp.item, api: api)
                     // §6.2 Bin location
                     BinLocationCard(item: resp.item, api: api)
-                    // §6.2 Used in tickets placeholder — deep link when ticket module ships
-                    UsedInTicketsCard(itemId: resp.item.id)
+                    // §6.2 Used in tickets — recent tickets that consumed this part
+                    UsedInTicketsCard(itemId: resp.item.id, api: api)
                 }
                 .padding(BrandSpacing.base)
             }
@@ -597,22 +597,98 @@ private struct ItemPhotosCard: View {
 /// Shows a note that this item can be linked from the Tickets module.
 /// Real data wired when `GET /inventory/:id/tickets` server endpoint ships.
 /// Maps to §81 endpoint catalog for future wiring.
+// MARK: - §6.2 Used in Tickets Card
+
+/// §6.2 Lists recent tickets that consumed this inventory part.
+/// Calls `GET /api/v1/tickets?part_inventory_id=:id` (limit 10).
+/// Graceful fallback on 404 / not-implemented so the card stays quiet.
 private struct UsedInTicketsCard: View {
     let itemId: Int64
+    let api: APIClient?
+
+    @State private var tickets: [TicketSummary] = []
+    @State private var isLoading: Bool = false
+    @State private var failed: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Used in Tickets").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: "wrench.and.screwdriver").foregroundStyle(.bizarreOnSurfaceMuted).accessibilityHidden(true)
-                Text("Ticket history will appear here when available.")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            Text("Used in Tickets")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .accessibilityLabel("Loading ticket history")
+            } else if tickets.isEmpty {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(failed ? "Couldn't load ticket history." : "No tickets found that used this part.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .accessibilityLabel(failed ? "Couldn't load ticket history" : "No tickets used this part")
+            } else {
+                ForEach(tickets) { ticket in
+                    ticketRow(ticket)
+                }
             }
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .accessibilityLabel("No ticket history available yet for this item")
         }
         .cardBackground()
+        .task { await load() }
+    }
+
+    private func load() async {
+        guard let api else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let resp = try await api.ticketsByInventoryItem(itemId: itemId, limit: 10)
+            tickets = resp.tickets
+        } catch {
+            AppLog.ui.info("UsedInTickets load skipped for item \(itemId): \(error.localizedDescription, privacy: .public)")
+            failed = true
+        }
+    }
+
+    private func ticketRow(_ ticket: TicketSummary) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("#\(ticket.orderId)")
+                    .font(.brandMono(size: 13))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+                if let name = ticket.customer?.displayName, !name.isEmpty {
+                    Text(name)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+            Spacer()
+            if let status = ticket.status {
+                Text(status.name)
+                    .font(.brandLabelLarge())
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .foregroundStyle(.white)
+                    .background(statusColor(status), in: Capsule())
+            }
+        }
+        .padding(.vertical, BrandSpacing.xxs)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Ticket #\(ticket.orderId)\(ticket.customer.map { ", \($0.displayName)" } ?? "")\(ticket.status.map { ", status: \($0.name)" } ?? "")")
+    }
+
+    private func statusColor(_ status: TicketSummary.Status) -> Color {
+        switch status.group {
+        case .complete:   return .bizarreSuccess
+        case .cancelled:  return .bizarreError
+        case .waiting:    return .bizarreWarning
+        case .inProgress: return .bizarreOrange
+        }
     }
 }
 

@@ -985,7 +985,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Tabs** — All / Products / Parts. NOT SERVICES - as they are not inventorable. We should however have a settings menu for services to setup the devices types, manufacturers, etc. (ae5435bf)
 - [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms). (ae5435bf — keyword passed to server, debounce unchanged from prior impl)
 - [x] **Filters** (collapsible glass drawer): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock. (ae5435bf — `InventoryFilterDrawer.swift` + `InventoryAdvancedFilter` DTO)
-- [ ] **Columns picker** (iPad/Mac) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user.
+- [x] **Columns picker** (iPad/Mac) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user. (`InventoryColumnsPicker.swift` — `InventoryColumnSet` with `UserDefaults` persistence; `InventoryColumnsPickerSheet` toggle list; `InventoryListView` toolbar "Columns" button iPad/Mac only. feat(§6.1) confirmed b7)
 - [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (ae5435bf — `InventorySortOption` + toolbar Menu)
 - [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (ae5435bf — `CriticalLowPulse` modifier)
 - [x] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT). (ae5435bf — adjust icon → `InventoryAdjustSheet`)
@@ -1009,7 +1009,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each.
 - [x] **Reorder / Restock** action — opens quick form to record stock-in or draft PO. (`InventoryDetailView` toolbar "Restock" button ⌘⇧R → `confirmationDialog` with "Record stock-in" → `InventoryAdjustSheet` or "Draft purchase order" → `PurchaseOrderComposeView`. feat(§6.2) b7)
 - [x] **Barcode display** — Code-128 + QR via CoreImage; `.textSelection(.enabled)` on SKU/UPC. (`InventoryDetailView` `BarcodeCard` — `CICode128BarcodeGenerator` for SKU + `CIQRCodeGenerator` for UPC; both with `.textSelection(.enabled)` on raw string. feat(§6.2) confirmed b7)
-- [ ] **Used in tickets** — recent tickets that consumed this part; tap → ticket.
+- [x] **Used in tickets** — recent tickets that consumed this part; tap → ticket. (`InventoryDetailView` `UsedInTicketsCard` — async loads via `GET /api/v1/tickets?part_inventory_id=:id`; shows ticket #, customer name, status pill; graceful 404/error fallback. feat(§6.2) b7)
 - [x] **Cost vs retail variance analysis** card (margin %). (`InventoryDetailView` `VarianceCard` — cost / retail / margin $ / margin % tiles; color-coded green ≥30%, yellow ≥10%, red <10%. feat(§6.2) confirmed b7)
 - [ ] **Tax class** — editable (admin only).
 - [x] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`. (`InventoryDetailView` `ItemPhotosCard` — AsyncImage primary photo + Upload CTA; full lightbox pinch-zoom is Phase 4+ polish. feat(§6.2) confirmed b7)

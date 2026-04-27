@@ -263,6 +263,17 @@ public extension APIClient {
         }
         return try await get("/api/v1/tickets", query: items, as: TicketsListResponse.self)
     }
+
+    /// §6.2 Used-in-tickets — recent tickets that consumed a specific inventory item.
+    /// Server: `GET /api/v1/tickets?part_inventory_id=:id&pagesize=10`
+    func ticketsByInventoryItem(itemId: Int64, limit: Int = 10) async throws -> TicketsListResponse {
+        let query = [
+            URLQueryItem(name: "part_inventory_id", value: String(itemId)),
+            URLQueryItem(name: "pagesize", value: String(limit)),
+            URLQueryItem(name: "sort", value: "newest")
+        ]
+        return try await get("/api/v1/tickets", query: query, as: TicketsListResponse.self)
+    }
 }
 
 // MARK: - Note operations
