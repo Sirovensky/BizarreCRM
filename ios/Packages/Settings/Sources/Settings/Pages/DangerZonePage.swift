@@ -37,8 +37,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isSigning = false }
         guard let api else { return }
         do {
-            struct RevokeBody: Encodable, Sendable { var revokeAll: Bool }
-            _ = try await api.post("/auth/revoke-all", body: RevokeBody(revokeAll: true), as: EmptyResponse.self)
+            try await api.settingsRevokeAllSessions()
             successMessage = "All other sessions signed out."
             errorMessage = nil
         } catch {
@@ -51,8 +50,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isResetting = false }
         guard let api else { return }
         do {
-            struct ResetBody: Encodable, Sendable { var confirm: Bool }
-            _ = try await api.post("/tenant/reset-demo", body: ResetBody(confirm: true), as: EmptyResponse.self)
+            try await api.settingsResetDemo()
             successMessage = "Demo data reset."
             errorMessage = nil
         } catch {
@@ -69,12 +67,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isDeleting = false }
         guard let api else { return }
         do {
-            struct DeleteBody: Encodable, Sendable { var managerPin: String; var confirm: Bool }
-            _ = try await api.post(
-                "/tenant/delete",
-                body: DeleteBody(managerPin: managerPIN, confirm: true),
-                as: EmptyResponse.self
-            )
+            try await api.settingsDeleteTenant(pin: managerPIN)
             successMessage = "Tenant deletion initiated."
             errorMessage = nil
             managerPIN = ""

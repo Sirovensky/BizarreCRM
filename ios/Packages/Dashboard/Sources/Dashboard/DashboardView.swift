@@ -48,8 +48,8 @@ public struct DashboardView: View {
     private var content: some View {
         switch vm.state {
         case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // §3.1 Skeleton loaders — glass shimmer ≤300ms
+            DashboardSkeletonView()
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .failed:
             // When offline with no cached data, show the offline empty state.
@@ -117,25 +117,54 @@ private struct LoadedBody: View {
         )
     }
 
-    // Compact stat tiles — muted hierarchy.
-    // iPhone: 2-column grid (adaptive minimum 140 pt).
-    // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §3.1 Compact stat tiles — mirroring the web tile set.
+    // iPhone: 2-column adaptive grid.
+    // iPad (regular-width): 3-column fixed. Mac: 4-column.
     private var secondaryGrid: some View {
         let s = snapshot.summary
-        let tiles: [StatTile] = [
-            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
-        ]
+        let k = snapshot.kpis
 
-        let columns: [GridItem] = Platform.isCompact
+        // Build the full tile set — only show KPI tiles when data is available.
+        var tiles: [StatTile] = [
+            .init(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
+            .init(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver"),
+            .init(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal"),
+            .init(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar"),
+        ]
+        if let low = s.lowStockCount {
+            tiles.append(.init(label: "Low stock",    value: "\(low)", icon: "exclamationmark.triangle"))
+        }
+        if let k {
+            tiles += [
+                .init(label: "Tax",           value: Self.money(k.tax),          icon: "percent"),
+                .init(label: "Discounts",     value: Self.money(k.discounts),    icon: "tag"),
+                .init(label: "COGS",          value: Self.money(k.cogs),         icon: "shippingbox"),
+                .init(label: "Net profit",    value: Self.money(k.netProfit),    icon: "chart.line.uptrend.xyaxis"),
+                .init(label: "Refunds",       value: Self.money(k.refunds),      icon: "arrow.uturn.backward"),
+                .init(label: "Expenses",      value: Self.money(k.expenses),     icon: "creditcard"),
+                .init(label: "Receivables",   value: Self.money(k.receivables),  icon: "clock.badge.exclamationmark"),
+            ]
+        }
+        tiles.append(.init(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox.fill"))
+
+        // Column count: iPhone = 2-col adaptive; iPad = 3-col; Mac = 4-col.
+        let columns: [GridItem]
+        #if os(macOS)
+        columns = [
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+        ]
+        #else
+        columns = Platform.isCompact
             ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
             : [
                 GridItem(.flexible(), spacing: BrandSpacing.md),
                 GridItem(.flexible(), spacing: BrandSpacing.md),
                 GridItem(.flexible(), spacing: BrandSpacing.md),
               ]
+        #endif
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
             ForEach(tiles) { tile in

@@ -25,22 +25,6 @@ public struct TaxRate: Identifiable, Equatable, Sendable {
     }
 }
 
-struct TaxRateResponse: Codable, Sendable {
-    var id: String
-    var name: String
-    var rate: Double
-    var applyToAll: Bool?
-    var isExempt: Bool?
-    var isArchived: Bool?
-}
-
-struct TaxRateRequest: Encodable, Sendable {
-    var name: String
-    var rate: Double
-    var applyToAll: Bool
-    var isExempt: Bool
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -76,7 +60,7 @@ public final class TaxSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let response: [TaxRateResponse] = try await api.get("/tax-rates", as: [TaxRateResponse].self)
+            let response = try await api.settingsTaxRates()
             taxRates = response.map {
                 TaxRate(
                     id: $0.id, name: $0.name, rate: $0.rate,
@@ -114,16 +98,16 @@ public final class TaxSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = TaxRateRequest(
-                name: draftName,
-                rate: value,
-                applyToAll: draftApplyToAll,
-                isExempt: draftIsExempt
-            )
             if let existing = editingRate {
-                _ = try await api.patch("/tax-rates/\(existing.id)", body: body, as: TaxRateResponse.self)
+                _ = try await api.settingsUpdateTaxRate(
+                    id: existing.id, name: draftName, rate: value,
+                    applyToAll: draftApplyToAll, isExempt: draftIsExempt
+                )
             } else {
-                _ = try await api.post("/tax-rates", body: body, as: TaxRateResponse.self)
+                _ = try await api.settingsCreateTaxRate(
+                    name: draftName, rate: value,
+                    applyToAll: draftApplyToAll, isExempt: draftIsExempt
+                )
             }
             showAddSheet = false
             await load()
@@ -135,8 +119,10 @@ public final class TaxSettingsViewModel: Sendable {
     func archiveRate(_ rate: TaxRate) async {
         guard let api else { return }
         do {
-            let body = TaxRateRequest(name: rate.name, rate: rate.rate, applyToAll: rate.applyToAll, isExempt: true)
-            _ = try await api.patch("/tax-rates/\(rate.id)", body: body, as: TaxRateResponse.self)
+            _ = try await api.settingsUpdateTaxRate(
+                id: rate.id, name: rate.name, rate: rate.rate,
+                applyToAll: rate.applyToAll, isExempt: true
+            )
             await load()
         } catch {
             errorMessage = error.localizedDescription

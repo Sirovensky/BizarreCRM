@@ -1,11 +1,12 @@
 import Foundation
 
 /// Mirrors `GET /api/v1/reports/dashboard`. Server route:
-///   packages/server/src/routes/reports.routes.ts:31
+///   packages/server/src/routes/reports.routes.ts:52
 ///
-/// Only decoding fields we actually render on the iOS Dashboard MVP. Extra
-/// keys are fine because JSONDecoder ignores unknown fields by default.
+/// Decodes fields rendered on the iOS Dashboard. Extra keys are ignored
+/// by JSONDecoder by default.
 public struct DashboardSummary: Decodable, Sendable {
+    // Core ticket metrics
     public let openTickets: Int
     public let revenueToday: Double
     public let closedToday: Int
@@ -14,10 +15,16 @@ public struct DashboardSummary: Decodable, Sendable {
     public let avgRepairHours: Double?
     public let inventoryValue: Double
 
+    // §3.1 expanded web-parity tiles — returned by GET /reports/dashboard
+    // (server added these fields; decode defensively with defaults)
+    public let lowStockCount: Int?
+    public let revenueTrend: Double?          // MoM delta %
+
     public init(openTickets: Int = 0, revenueToday: Double = 0,
                 closedToday: Int = 0, ticketsCreatedToday: Int = 0,
                 appointmentsToday: Int = 0, avgRepairHours: Double? = nil,
-                inventoryValue: Double = 0) {
+                inventoryValue: Double = 0,
+                lowStockCount: Int? = nil, revenueTrend: Double? = nil) {
         self.openTickets = openTickets
         self.revenueToday = revenueToday
         self.closedToday = closedToday
@@ -25,6 +32,39 @@ public struct DashboardSummary: Decodable, Sendable {
         self.appointmentsToday = appointmentsToday
         self.avgRepairHours = avgRepairHours
         self.inventoryValue = inventoryValue
+        self.lowStockCount = lowStockCount
+        self.revenueTrend = revenueTrend
+    }
+}
+
+/// Mirrors `GET /api/v1/reports/dashboard-kpis`. Server route:
+///   packages/server/src/routes/reports.routes.ts:289
+///
+/// Returns the extended financial KPI set used by the web dashboard tiles.
+/// §3.1: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables.
+public struct DashboardKPIs: Decodable, Sendable {
+    public let totalSales: Double
+    public let tax: Double
+    public let discounts: Double
+    public let cogs: Double
+    public let netProfit: Double
+    public let refunds: Double
+    public let expenses: Double
+    public let receivables: Double
+    public let openTickets: Int?
+
+    public init(totalSales: Double = 0, tax: Double = 0, discounts: Double = 0,
+                cogs: Double = 0, netProfit: Double = 0, refunds: Double = 0,
+                expenses: Double = 0, receivables: Double = 0, openTickets: Int? = nil) {
+        self.totalSales = totalSales
+        self.tax = tax
+        self.discounts = discounts
+        self.cogs = cogs
+        self.netProfit = netProfit
+        self.refunds = refunds
+        self.expenses = expenses
+        self.receivables = receivables
+        self.openTickets = openTickets
     }
 }
 
@@ -70,6 +110,12 @@ public extension APIClient {
 
     func needsAttention() async throws -> NeedsAttention {
         try await get("/api/v1/reports/needs-attention", as: NeedsAttention.self)
+    }
+
+    /// §3.1 — Extended KPI set for web-parity tiles.
+    /// Calls `GET /api/v1/reports/dashboard-kpis`.
+    func dashboardKPIs() async throws -> DashboardKPIs {
+        try await get("/api/v1/reports/dashboard-kpis", as: DashboardKPIs.self)
     }
 
     // MARK: - §59 Financial Dashboard — owner-PL summary

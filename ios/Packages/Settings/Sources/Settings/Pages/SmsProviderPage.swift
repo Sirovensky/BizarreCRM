@@ -20,14 +20,6 @@ public enum SmsProvider: String, CaseIterable, Sendable {
     }
 }
 
-struct SmsSettingsResponse: Codable, Sendable {
-    var provider: String?
-    var fromNumber: String?
-    var twilioAccountSid: String?
-    var twilioAuthToken: String?
-    var a2pStatus: String?
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -57,7 +49,7 @@ public final class SmsProviderViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let resp: SmsSettingsResponse = try await api.get("/settings/sms", as: SmsSettingsResponse.self)
+            let resp = try await api.settingsSms()
             selectedProvider = SmsProvider(rawValue: resp.provider ?? "") ?? .bizarreCRMManaged
             fromNumber = resp.fromNumber ?? ""
             twilioAccountSid = resp.twilioAccountSid ?? ""
@@ -73,14 +65,16 @@ public final class SmsProviderViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = SmsSettingsResponse(
+            let body = SmsSettingsWire(
                 provider: selectedProvider.rawValue,
                 fromNumber: fromNumber,
                 twilioAccountSid: twilioAccountSid,
                 twilioAuthToken: twilioAuthToken,
+                bandwidthAccountId: nil,
+                bandwidthApplicationId: nil,
                 a2pStatus: nil
             )
-            _ = try await api.put("/settings/sms", body: body, as: SmsSettingsResponse.self)
+            _ = try await api.settingsSaveSms(body)
             successMessage = "SMS settings saved."
             errorMessage = nil
         } catch {
@@ -93,8 +87,7 @@ public final class SmsProviderViewModel: Sendable {
         defer { isSendingTest = false }
         guard let api else { return }
         do {
-            struct TestSmsBody: Encodable, Sendable { var test: Bool }
-            _ = try await api.post("/settings/sms/test", body: TestSmsBody(test: true), as: EmptyResponse.self)
+            try await api.settingsSmsTestSend()
             successMessage = "Test SMS sent to your number."
             errorMessage = nil
         } catch {
