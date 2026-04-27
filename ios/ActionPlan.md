@@ -904,11 +904,11 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Dupe detection on create: same phone / same email / similar name + address
 - [x] Suggest merge at entry
 - [x] Side-by-side record comparison merge UI
-- [ ] Per-field pick-winner or combine
-- [ ] Combine all contact methods (phones + emails)
-- [ ] Migrate tickets, invoices, notes, tags, SMS threads, payments to survivor
-- [ ] Tombstone loser record with audit reference
-- [ ] 24h unmerge window, permanent thereafter (audit preserves trail)
+- [x] Per-field pick-winner or combine — `CustomerMergeEnhancements.swift` `applyFieldPreferences(keepId:secondary:summary:)`: for any row where `winner == .secondary`, issues `PATCH /customers/:keepId` with that field's value. (b7e6b70e)
+- [x] Combine all contact methods (phones + emails) — `MergeContactCombiner.combine(...)` dedupes + merges phone rows from primary (`CustomerDetail.phones`) and secondary (`CustomerSummary.mobile/phone`), PATCHes `extra_phones` + `extra_emails` onto survivor. (b7e6b70e)
+- [x] Migrate tickets, invoices, notes, tags, SMS threads, payments to survivor — server-side on `POST /customers/merge`; `MergeMigrationSummary` DTO surfaces `migrated_tickets/invoices/notes/sms_threads/payments/tags` counts in post-merge banner. (b7e6b70e)
+- [x] Tombstone loser record with audit reference — `MergeMigrationSummary.tombstoneAuditRef` (e.g. `"merge:3428→2991"`) surfaced from server; `CustomerUnmergeService` uses the ref for unmerge within 24h window. (b7e6b70e)
+- [x] 24h unmerge window, permanent thereafter (audit preserves trail) — `CustomerUnmergeService.unmerge(tombstoneAuditRef:)`: `POST /customers/unmerge`; HTTP 409 → `.windowExpired` result shown to staff as "Permanent — audit trail preserved". (b7e6b70e)
 - [x] Settings → Data → Run dedup scan → lists candidates
 - [x] Manager batch review of dedup candidates
 - [x] Optional auto-merge when 100% phone + email match
@@ -932,21 +932,21 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Fields: category + severity + description + linked ticket
 - [x] Resolution flow: assignee + due date + escalation path
 - [x] Status: open / investigating / resolved / rejected
-- [ ] Required root cause on resolve: product / service / communication / billing / other
-- [ ] Aggregate root causes for trend analysis
-- [ ] SLA: response within 24h / resolution within 7d, with breach alerts
+- [x] Required root cause on resolve: product / service / communication / billing / other — `ComplaintDetailSheet` root cause `Picker` + `resolveCustomerComplaint(complaintId:rootCause:)` already wired in `CustomerComplaintView.swift`; confirmed complete. (b7e6b70e)
+- [x] Aggregate root causes for trend analysis — `ComplaintRootCauseTrendView` bar chart (Charts framework) + percentage list; `GET /complaints/root-cause-summary?period=30d/90d/365d`; tenant-wide or per-customer. (b7e6b70e)
+- [x] SLA: response within 24h / resolution within 7d, with breach alerts — `ComplaintSLAService` actor: `checkBreach(complaint:)` → `.responseBreached`/`.resolutionBreached`; `ComplaintSLABreachBadge` inline badge; `fetchBreaches(customerId:)` for batch check. (b7e6b70e)
 - [ ] Optional public share of resolution via customer tracking page
-- [ ] Full audit history; immutable once closed
-- [ ] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only
-- [ ] Internal-only notes hidden from customer-facing docs
+- [x] Full audit history; immutable once closed — `ComplaintAuditHistoryView` vertical timeline + `ComplaintAuditEvent` model; `GET /complaints/:id/audit`; immutability documented in UI footer and enforced server-side. (b7e6b70e)
+- [x] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only — `CustomerNoteType` enum + `CustomerAddNoteSheet` type picker; each type maps to `note_type` field on `POST /customers/:id/notes`. (b7e6b70e)
+- [x] Internal-only notes hidden from customer-facing docs — `CustomerNoteType.internalOnly.isAlwaysInternal` flag; server receives `note_type=internal_only` and excludes from customer-facing PDF/SMS/email. (b7e6b70e)
 - [ ] Pin critical notes to customer header (max 3)
 - [ ] @mention teammate → push notification + link
 - [ ] @ticket backlinks
-- [ ] Internal-only flag hides note from SMS/email auto-include
-- [ ] Role-gate sensitive notes (manager only)
-- [ ] Quick-insert templates (e.g. "Called, left voicemail", "Reviewed estimate")
-- [ ] Edit history: edits logged; previous version viewable
-- [ ] A11y: rich text accessible via VoiceOver element-by-element
+- [x] Internal-only flag hides note from SMS/email auto-include — same as L941: `note_type=internal_only` sent in `createCustomerNoteV2`; server enforces exclusion from auto-include. (b7e6b70e)
+- [x] Role-gate sensitive notes (manager only) — `CustomerAddNoteSheet.isManagerOnly` toggle → `is_manager_only: true` in `createCustomerNoteV2` body; server enforces visibility gate. (b7e6b70e)
+- [x] Quick-insert templates (e.g. "Called, left voicemail", "Reviewed estimate") — `CustomerNoteTemplate.defaults` (8 templates); `NoteTemplatePickerSheet` in `CustomerAddNoteSheet` toolbar; prefills body + note type. (b7e6b70e)
+- [x] Edit history: edits logged; previous version viewable — `NoteEditHistorySheet` + `CustomerNoteVersion` model; `GET /notes/:id/versions`; versions listed chronologically with editor name + timestamp. (b7e6b70e)
+- [x] A11y: rich text accessible via VoiceOver element-by-element — `CustomerAddNoteSheet` `TextEditor` has `.accessibilityLabel`/`.accessibilityHint`; `NoteEditHistorySheet` list rows use `.accessibilityElement(children: .combine)` with descriptive labels. (b7e6b70e)
 - [ ] Per-customer file list (PDF, images, spreadsheets, waivers, warranty docs)
 - [ ] Tags + search on files
 - [ ] Upload sources: Camera / Photos / Files picker / iCloud / external drive
@@ -5282,7 +5282,7 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy. `MembershipCancelSheet` + `CancelPolicy` enum. (agent-4 batch-5, 7616aac3)
 - [x] Cadence: 30 / 14 / 7 / 1 day before expiry. `MembershipRenewalReminderView` shows fire dates relative to `nextBillingAt`. (agent-4 batch-5, 7616aac3)
 - [x] Channels: push + SMS + email (configurable per member). `MembershipRenewalChannelSettingsView` + `MembershipRenewalChannelSettings`. (agent-4 batch-6)
-- [ ] Auto-renew: if enrolled, card on file charged on renewal date
+- [x] Auto-renew: if enrolled, card on file charged on renewal date — `MembershipAutoRenewView` + `MembershipAutoRenewViewModel`: toggle auto-renew, card-on-file summary (`CardOnFile` model), last charge result banner (`MembershipChargeResult`), renewal countdown, manager manual trigger. `GET /memberships/:id/card-on-file`, `GET /memberships/:id/last-charge`, `POST /memberships/:id/renew`. (b7e6b70e)
 - [x] Notify success/failure of auto-renew
 - [x] Grace period: 7 days post-expiry retain benefits + soft reminder. `MembershipGraceAndReactivationView` (grace countdown, benefits-active indicator). (agent-4 batch-6)
 - [x] After grace: benefits suspended. `MembershipStatus.expired` + `.perksActive = false`; card shows "Benefits suspended". (agent-4 batch-6)
