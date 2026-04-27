@@ -579,6 +579,12 @@ class LoginViewModel @Inject constructor(
             domainSsoDetected = false,
             domainSsoProviderId = null,
         )
+        // 2026-04-26 — bug fix: persist typed username to AuthPreferences so a
+        // failed login (or any VM/activity recreation) re-seeds the field on
+        // next composition via the init() path at line ~394. Without this,
+        // a wrong-password error followed by recomposition could surface an
+        // empty Username field.
+        authPreferences.username = value
         // §2.20 L449 — if the username looks like an email, debounce a domain check
         val atIdx = value.indexOf('@')
         if (atIdx > 0) {
