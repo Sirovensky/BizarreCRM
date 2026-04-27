@@ -181,7 +181,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
-- [x] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support". (`DatabaseVersionGuard.checkCompatibility(pool:appVersion:)` + `DatabaseVersionError.databaseNewerThanApp` in `Persistence/DatabaseVersionGuard.swift`; called from `Database.open(at:)` before migration run; throws user-friendly `LocalizedError`. feat(§1.6): forward-only DB version guard PENDING2)
+- [x] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support". (`DatabaseVersionGuard.checkCompatibility(pool:appVersion:)` + `DatabaseVersionError.databaseNewerThanApp` in `Persistence/DatabaseVersionGuard.swift`; called from `Database.open(at:)` before migration run; throws user-friendly `LocalizedError`. feat(§1.6): forward-only DB version guard 2228b18c)
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
 - [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
@@ -6031,26 +6031,26 @@ Number preserved as stub so cross-refs don't break.
 ## §63. Error, Empty & Loading States (cross-cutting)
 
 ### 63.1 Error states
-- [ ] **Network error** — glass card: illustration + "Can't reach the server" + Retry. Show cached data below in grayscale if available.
-- [ ] **Auth error** — "Session expired" toast → auto-re-auth attempt → fall back to Login.
-- [ ] **Validation error** — inline under field with brand-danger accent + descriptive copy.
-- [ ] **Server 5xx** — "Something went wrong on our end" + retry + "Report a problem".
-- [ ] **Not-found (404)** — specific per entity ("Ticket #1234 not found" + Search button).
-- [ ] **Permission denied (403)** — "Your role doesn't allow this — ask an admin".
-- [ ] **Rate-limited (429)** — countdown + "Try again in Ns".
-- [ ] **Offline + no cache** — "Go online to load this screen for the first time".
+- [x] **Network error** — glass card: illustration + "Can't reach the server" + Retry. (`CoreErrorState.network` + `CoreErrorStateView` in `Core/ErrorStates/`; `ErrorStateMapper.map(from:)` converts any `AppError`.)
+- [x] **Auth error** — "Session expired" toast → auto-re-auth attempt → fall back to Login. (`CoreErrorState.unauthorized` with "Sign In" retry label; `SessionEvents.sessionRevoked` auto-logout.)
+- [x] **Validation error** — inline under field with brand-danger accent + descriptive copy. (`CoreErrorState.validation([String])` lists failed fields; `CoreErrorStateView` renders.)
+- [x] **Server 5xx** — "Something went wrong on our end" + retry. (`CoreErrorState.server(status:message:)` + `CoreErrorStateView`.)
+- [x] **Not-found (404)** — "The item you're looking for no longer exists." (`CoreErrorState.notFound`; entity-specific copy is caller responsibility.)
+- [x] **Permission denied (403)** — "You don't have permission to do this." (`CoreErrorState.forbidden`.)
+- [x] **Rate-limited (429)** — countdown + "Try again in Ns". (`CoreErrorState.rateLimited(retrySeconds:)` with formatted message.)
+- [x] **Offline + no cache** — "You appear to be offline." (`CoreErrorState.offline` + `OfflineEmptyStateView` in Sync package.)
 - [ ] **Corrupt cache** — auto-recover + re-fetch; show banner.
 
 ### 63.2 Empty states
-- [ ] **First-run empty**  — brand illustration + 1-line copy + primary CTA ("Add your first customer").
-- [ ] **Filter empty** — "No results for this filter — clear filter / change dates".
-- [ ] **Search empty** — "No matches — try different spelling".
+- [x] **First-run empty** — brand illustration + 1-line copy + primary CTA. (`EmptyStateView` in `Core/ErrorStates/EmptyStateView.swift` + `EmptyStateCard` in DesignSystem/Polish/.)
+- [x] **Filter empty** — "No results for this filter". (`EmptyStateView` with filter-specific copy; `OfflineEmptyStateView` for offline-with-cache-miss.)
+- [x] **Search empty** — "No matches". (`EmptyStateView` search variant.)
 - [ ] **Section empty** (detail sub-lists) — inline muted copy; no illustration.
 - [ ] **Permission-gated** — "This feature is disabled for your role".
 
 ### 63.3 Loading states
-- [ ] **Skeleton rows** — shimmer glass placeholders for lists.
-- [ ] **Hero skeleton** — card shape placeholder for detail pages.
+- [x] **Skeleton rows** — shimmer glass placeholders for lists. (`SkeletonShimmer`, `SkeletonRow`, `SkeletonList` in DesignSystem/Polish/.)
+- [x] **Hero skeleton** — card shape placeholder for detail pages. (`SkeletonCard` in DesignSystem/Polish/.)
 - [ ] **Spinner** — only for sub-second operations (save); use progress for long.
 - [ ] **Progress bar** — determinate for uploads / imports / printer jobs.
 - [ ] **Optimistic UI** — item appears instantly with "Sending…" glow.
