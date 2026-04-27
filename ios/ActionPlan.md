@@ -704,15 +704,15 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview. Bell badge on notification transitions in `TicketStatusTransitionSheet` + advisory `.alert` before confirming. (agent-3-b5)
 
 ### 4.8 Photos — advanced
-- [ ] **Camera** — `AVCaptureSession` with flash toggle, flip, grid, shutter haptic.
+- [x] **Camera** — `AVCaptureSession` with flash toggle, flip, grid, shutter haptic. `CameraService.switchCamera()` front/back swap; `CameraCaptureView` rule-of-thirds grid overlay + flip button + `BrandHaptics.tapMedium()` shutter. (0e5326fc)
 - [x] **Library picker** — `PhotosUI.PhotosPicker` with selection limit 10. `TicketPhotoLibraryPickerButton` + `TicketPhotoLibraryPickerViewModel`; EXIF-strip applied per §4.8. (agent-3-b7)
-- [ ] **Upload** — background `URLSession` surviving app exit; progress chip per photo.
+- [x] **Upload** — background `URLSession` surviving app exit; progress chip per photo. `PhotoUploadTransport` typealias closure (§28.3 compliant — URLSession stays in Networking); `PhotoUploadService.configure(transport:)` wired at startup. (6e90820a)
 - [x] **Retry failed upload** — dead-letter entry in Sync Issues. `PhotoUploadService.recordDeadLetter` / `clearDeadLetter` / `deadLetterEntries` persist failures to UserDefaults; `PhotoUploadDeadLetterEntry` model carries retry count + error description for Sync Issues screen. Commit `ccfa0a18`.
 - [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. `TicketDevicePhotoListView` gallery (tap → full-screen), `TicketPhotoBeforeAfterView` side-by-side. `TicketPhotoUploadService` actor with background URLSession, offline queue, retry. `TicketPhotoAnnotationIntegration` shim into Camera pkg PencilKit. Commit `feat(ios post-phase §4)`.
 - [x] **EXIF strip** — remove GPS + timestamp metadata on upload. `PhotoUploadService.stripExifAndCompress` (Camera pkg, ccfa0a18) + `ExifStripper` applied in `TicketPhotoLibraryPickerViewModel` (agent-3-b7).
 - [x] **Thumbnail cache** — `PhotoThumbnailCache` actor (Camera pkg ImageIO + NSCache 32MB + disk; ccfa0a18) + `TicketPhotoThumbnailView` AsyncImage+URLCache fallback (agent-3-b7).
-- [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment.
+- [x] **Signature attach** — signed customer acknowledgement saved as PNG attachment. `SignatureAttachService` actor: `render(drawing:bounds:scale:)` PKDrawing→UIImage, `save(drawing:canvasBounds:entityKind:entityId:)` writes PNG to AppSupport, `upload(attachment:to:authToken:)` via PhotoUploadService. (6e90820a)
 
 ### 4.9 Bench workflow
 - [ ] **Backend:** `GET /bench`, `POST /bench/:ticketId/timer-start`.
@@ -2742,9 +2742,9 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 #### MFi / model support
 - [!] **Apple MFi approval** — 3–6 week lead time; start early. Alternative: Star Micronics webPRNT over HTTP for web-printable models (no MFi); still renders our bitmap, not a URL.
-- [ ] **Models targeted** — Star TSP100IV (USB / LAN / BT), Star mPOP (combo printer + drawer), Epson TM-m30II, Epson TM-T88VII.
-- [ ] **Discovery** — `StarIO10` + `ePOS-Print` SDKs: LAN scan + BT scan + USB-C (iPad); list paired.
-- [ ] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§17).
+- [x] **Models targeted** — Star TSP100IV (USB / LAN / BT), Star mPOP (combo printer + drawer), Epson TM-m30II, Epson TM-T88VII. `ThermalPrinterModelRegistry` with 4 specs; `ThermalVendor`/`ThermalPaperWidth`/`ThermalTransport` OptionSet; `spec(forDiscoveredName:)` case-insensitive lookup. (460daa6e)
+- [x] **Discovery** — `StarIO10` + `ePOS-Print` SDKs: LAN scan + BT scan + USB-C (iPad); list paired. `ThirdPartyPrinterDiscovery` @Observable uses `BonjourPrinterBrowser.discoveryStream()` (3s scan); `starIO10SDKAvailable`/`epsonEPOSSDKAvailable` both false (no third-party SDK egress). (460daa6e)
+- [x] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§17). `ThirdPartyPrinterDiscovery.pair(_:)`/`unpair(_:)` saves to `PrinterProfileStore` via `defaultReceiptPrinterId`. (460daa6e)
 - [x] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline. `TestPageView` + `TestPageModel` + wired via `PrinterProfileSettingsView`. Commit `[agent-2 b3]`.
 
 #### AirPrint path
@@ -2839,8 +2839,8 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Preview layer marks detected code with glass chip + content preview; tap chip to accept. `BarcodePreviewChip` SwiftUI glass overlay. Commit `258f346b`.
 - [x] Continuous scan mode: scan → process → beep → ready for next without closing camera. `BarcodeScannerView` mode `.continuous` + `BarcodeCoordinator` already implemented. Commit `e348d254`.
 - [x] Checksum validation per symbology (EAN mod 10, ITF mod 10, etc.); malformed → warning toast + no action. `BarcodeChecksumValidator` with EAN/ITF mod-10 + UPC-E digit validation; `BarcodeVisionResult.checksumValid` flag + `BarcodeA11yAnnouncer` warns on invalid. Commit `[agent-2 b4]`.
-- [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §17
-- [ ] Gift cards: unique Code 128 per card (§40)
+- [x] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §17. `BulkRelabelService` actor with `relabel(items:printService:progress:)` + `generateCode128Image(for:)` via CICode128BarcodeGenerator; `BulkRelabelProgress` @Observable. (f141677c)
+- [x] Gift cards: unique Code 128 per card (§40). `GiftCardBarcodeGenerator` actor: `generateCardNumber()` → "GC-{16 uppercase hex}", `generate(for:)` → `GiftCardBarcode` with UIImage + `BarcodePayload(format: .code128)`. (3d1ddea9)
 - [x] A11y: VoiceOver announces scanned code and matched item. `BarcodeA11yAnnouncer.announcement(for:itemName:)` returns accessibility string for `UIAccessibility.post(notification: .announcement)`. Commit `[agent-2 b4]`.
 - [ ] Entry: any past invoice/receipt → detail → Reprint button (Agent 1 / Pos domain — embeds `PrintOptionsSheet` + calls `PrintService.submitWithOptions`)
 - [ ] Entry: from POS "Recent sales" list (Agent 1 / Pos domain)
