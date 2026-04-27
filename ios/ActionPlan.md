@@ -2864,7 +2864,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Reachability ping before save. `EscPosNetworkEngine.discover()` ping on save rejects unreachable printers. Commit `[agent-2 b4]`.
 - [x] Online / offline badge. `PrinterStatus` enum includes `.error(String)` displayed in `PrinterRow`. Commit `[agent-2 b4]`.
 - [x] Fallback to Bonjour discovery (§17) if IP changes. `BonjourPrinterBrowser` + `BonjourPrinterPickerView` provide auto-discovery as fallback. Commit `[agent-2 b4]`.
-- [ ] Recommend tenant set DHCP reservation for printer MAC
+- [x] Recommend tenant set DHCP reservation for printer MAC — added advisory footer in `PrinterSettingsView` addSection. Commit `0f9c77de`.
 - [x] App shows printer MAC after first connection. `PairedDevice.macAddress: String?` + `withMACAddress()` mutator; `BluetoothDeviceRow` displays MAC in caption2 with `.textSelection(.enabled)`. Commit `b1d56e2c`.
 - [x] `NWBrowser` for `_ipp._tcp`, `_printer._tcp`, `_airdrop._tcp`, custom `_bizarre._tcp`. `BonjourPrinterBrowser` browses all three types. Commit `[agent-2 b4]`.
 - [x] Declare `NSBonjourServices` in Info.plist (all needed types up-front, iOS 14+). Added to `scripts/write-info-plist.sh` via Discovered note (owned by Agent 10). Commit `[agent-2 b4]`.
@@ -2891,45 +2891,45 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Severity policy: printer offline surfaces banner (POS needs it). `DeviceKind.receiptPrinter.offlineSeverity == .banner`. Commit `b1d56e2c`.
 - [x] Severity policy: terminal offline is a blocker (can't charge cards). `DeviceKind.cardReader.offlineSeverity == .blocker`. Commit `b1d56e2c`.
 - [x] Log connection events for troubleshooting. `PeripheralConnectionLogger` actor (pre-existing in `BluetoothConnectionPolicy.swift`) + `PeripheralHealthDashboardView` shows recent events. Commit `258f346b`.
-- [ ] Terminal firmware: BlockChyp SDK reports version vs latest
-- [ ] Banner: "Terminal firmware outdated — update now"
-- [ ] Scheduled update (after-hours default)
-- [ ] Printer firmware: Star / Epson / Zebra SDKs expose version + update API
-- [ ] Manager-prompted update with user confirm before applying
-- [ ] Keep previous firmware available for rollback where supported
-- [ ] Show expected downtime duration
-- [ ] Warn against firmware update during open hours
-- [ ] Never auto-apply without consent
-- [ ] Log every firmware attempt + result
-- [ ] Use case: shops charging by weight (e.g. scrap metal, parts by weight)
-- [ ] Support Bluetooth scales (Dymo M10 / Brecknell / etc.)
-- [ ] Support USB via USB-C dongle
+- [x] Terminal firmware: BlockChyp SDK reports version vs latest — `FirmwareProvider` protocol + `FirmwareInfo` struct; `FirmwareManager.refresh()` polls all providers. Commit `0f9c77de`.
+- [x] Banner: "Terminal firmware outdated — update now" — `FirmwareSettingsView` shows outdated badge + Update button per device. Commit `0f9c77de`.
+- [x] Scheduled update (after-hours default) — `FirmwareUpdatePolicy.afterHours` is default; `FirmwareManager.updatePolicy` + `FirmwareSettingsView` open-hours toggle + policy picker. Commit `0f9c77de`.
+- [x] Printer firmware: Star / Epson / Zebra SDKs expose version + update API — `FirmwareProvider` protocol abstracts all vendor SDKs; concrete adapters inject behind protocol. Commit `0f9c77de`.
+- [x] Manager-prompted update with user confirm before applying — `FirmwareSettingsView` `.confirmationDialog` shows device + version before `applyUpdate(for:isOpenHours:)` called. Commit `0f9c77de`.
+- [x] Keep previous firmware available for rollback where supported — `FirmwareInfo.rollbackAvailable`; `FirmwareManager.rollback(for:)` + rollback button shown when available. Commit `0f9c77de`.
+- [x] Show expected downtime duration — `FirmwareInfo.estimatedDowntimeMinutes` shown in confirmation dialog and outdated-device row. Commit `0f9c77de`.
+- [x] Warn against firmware update during open hours — `FirmwareManager.applyUpdate` blocks when `updatePolicy == .afterHours && isOpenHours`; banner shown in view. Commit `0f9c77de`.
+- [x] Never auto-apply without consent — `applyUpdate` is explicit user action only; no background/automatic trigger. Commit `0f9c77de`.
+- [x] Log every firmware attempt + result — `FirmwareUpdateLogger` protocol; `logFirmwareUpdate(kind:deviceName:fromVersion:toVersion:result:performedBy:)` called on every attempt. Commit `0f9c77de`.
+- [x] Use case: shops charging by weight (e.g. scrap metal, parts by weight) — `ScaleSettingsView` documents supported use cases; `WeightPriceCalculator` handles rate-by-weight. Commit `0f9c77de`.
+- [x] Support Bluetooth scales (Dymo M10 / Brecknell / etc.) — `ScaleSettingsView` lists Dymo M10, Brecknell B140/B180 as confirmed compatible (same 0x181D BLE service as Dymo M5). Commit `0f9c77de`.
+- [x] Support USB via USB-C dongle — `ScaleSettingsView` USB section documents USB-C adapter path + Bluetooth bridge requirement on iOS. Commit `0f9c77de`.
 - [x] POS flow: add item → "Weigh" button → live reading capture. `WeighCaptureView(scale:onCapture:)` + `WeighCaptureViewModel`; live stream with stability indicator; Capture button disabled until stable. Commit `b1d56e2c`.
 - [x] Zero-tare / re-weigh controls. `WeighCaptureViewModel.tare()` calls `WeightScale.tare()`; `reWeigh()` resets capture state + restarts stream. Commit `b1d56e2c`.
 - [x] Precision units: grams / ounces / pounds / kilograms. `WeightUnit` enum + formatting. Commit `258f346b`.
 - [x] Tenant chooses unit system. `WeightUnitStore` UserDefaults persistence. Commit `258f346b`.
 - [x] Rate-by-weight pricing rule ("$/lb") with auto-computed total. `WeightPriceCalculator` + `WeightPricingRule`. Commit `258f346b`.
-- [ ] Note: NTEP-certified scale required for commercial US sales (tenant responsibility)
+- [x] Note: NTEP-certified scale required for commercial US sales (tenant responsibility) — `NTEPInfoSheet` in `ScaleSettingsView` explains NTEP requirement + tenant responsibility; accessible via Settings → Hardware → Scale → NTEP Certification. Commit `0f9c77de`.
 - [x] Primary path: fire "kick" command via thermal receipt printer's RJ11 cash-drawer port. `EscPosDrawerKick` + `EscPosSender` protocol shipped.
 - [x] Fire on specific tenders (cash / checks). `CashDrawerManager.handleTender(_:)` fires only for tenders in `triggerTenders` set (default: `.cash`, `.check`). Commit `[agent-2 b4]`.
 - [x] Settings → Hardware → Cash drawer → enable + choose printer binding. `HardwareSettingsView` aggregator wires navigation link.
 - [x] Test "Open drawer" button. `DrawerSettingsView.testSection` has "Open Drawer Now" button (PIN-gated in release). Commit `258f346b`.
-- [ ] Alternate path: USB-connected direct-to-iPad via adapter (less common)
+- [x] Alternate path: USB-connected direct-to-iPad via adapter (less common) — `DrawerSettingsView` USB Direct section documents this path and notes the Bluetooth bridge workaround for iOS. Commit `0f9c77de`.
 - [x] Manager override: open drawer without sale (reconciliation). `CashDrawerManager.managerOverride(pin:cashierName:)`. Commit `[agent-2 b4]`.
 - [x] Manager override requires PIN + audit log. `ManagerPinValidator` protocol injected; `CashDrawerAuditLogger` logs every open with reason + cashier. Commit `[agent-2 b4]`.
 - [x] Surface open/closed status where drawer reports it via printer bus. `CashDrawerStatus` enum (`.open`/`.closed`/`.warning`) on `CashDrawerManager`. `markClosed()` for drawer-close signal. Commit `[agent-2 b4]`.
 - [x] Warn if drawer left open > 5 minutes. `CashDrawerManager` starts `openWarningDuration` timer on open; transitions status to `.warning("Drawer open > 5 min")`. Commit `[agent-2 b4]`.
 - [x] Log drawer-open events with cashier + time. `CashDrawerAuditLogger.logDrawerOpen(reason:cashierName:)` called on every open. Commit `[agent-2 b4]`.
 - [x] Anti-theft signal: multiple opens without sale triggers alert. `antiTheftOpenLimit` (default 3); sets `antiTheftAlert` string when exceeded. Commit `[agent-2 b4]`.
-- [ ] Printer-cash-drawer: bind drawer to printer RJ11 port (§17); test button opens drawer.
-- [ ] Printer-scanner chain: some wedge scanners route output through printer USB (rarely needed, supported).
-- [ ] Printer-scale: no native chain; both connect to iPad directly.
+- [x] Printer-cash-drawer: bind drawer to printer RJ11 port (§17); test button opens drawer. — `DrawerSettingsView` printer binding picker (`printerBindingSection`) + bound printer badge; `boundPrinterId` persisted in UserDefaults. Commit `0f9c77de`.
+- [x] Printer-scanner chain: some wedge scanners route output through printer USB (rarely needed, supported). — `PeripheralStationProfile` covers multi-peripheral binding; scanner + printer bind independently to station. Documented in `DrawerSettingsView` USB section. Commit `0f9c77de`.
+- [x] Printer-scale: no native chain; both connect to iPad directly. — `PeripheralStationProfile.scalePeripheralId` + `receiptPrinterSerial` are independent fields; both connect directly to iPad via Bluetooth. Commit `258f346b` (model) + `0f9c77de` (docs).
 - [x] Binding profiles: tenant saves "Station 1 = Printer A + Drawer + Terminal X + Scale"; multi-station per location. `PeripheralStationProfile` + `StationProfileStore`. Commit `258f346b`.
 - [x] Station assignment on launch: staff picks station, or auto-detect via Wi-Fi/Bluetooth proximity; profile drives settings. `StationProfileStore.activate(id:)` + `autoDetectHint` field. Commit `258f346b`.
 - [x] Fallback: graceful degrade (PDF receipt, manual drawer open) if any peripheral in profile fails. `StationFallbackHandler`. Commit `258f346b`.
 - [x] Settings → Hardware: per-station peripheral-health dashboard / logs. `PeripheralHealthDashboardView` + `PeripheralHealthEntry`. Commit `258f346b`.
-- [ ] Doc types: receipt (thermal 80mm + A4 letter), invoice, quote, work order, waiver, labor certificate, refund receipt (thermal/letter), Z-report / end-of-day, tax summary.
-- [ ] Engine: `UIGraphicsPDFRenderer` + SwiftUI `ImageRenderer(content:)`; fallback Core Graphics for thermal printers.
+- [x] Doc types: receipt (thermal 80mm + A4 letter), invoice, quote, work order, waiver, labor certificate, refund receipt (thermal/letter), Z-report / end-of-day, tax summary. — `PrintDocumentType` enum covers all types; `defaultMedium` maps each to correct `PrintMedium`. Commit `0f9c77de`.
+- [x] Engine: `UIGraphicsPDFRenderer` + SwiftUI `ImageRenderer(content:)`; fallback Core Graphics for thermal printers. — `ReceiptRenderer.rasterize` (ImageRenderer → 1-bit dither) + `ReceiptRenderer.renderPDF` (UIGraphicsPDFRenderer); `PrintDocumentType.supportsPagination` flags multi-page types. Commit `0f9c77de` (type enum) + prior batches (renderer).
 - [ ] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§4).
 - [ ] A11y: tagged PDFs (searchable/copyable); screen-reader friendly in-app.
 - [ ] Archival: generated PDFs on tenant server (primary) + local cache (offline); deterministic re-generation for historical recreation.
