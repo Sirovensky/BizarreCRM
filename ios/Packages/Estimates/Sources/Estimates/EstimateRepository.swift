@@ -8,6 +8,25 @@ import Networking
 /// this protocol abstracts the data layer for testability and caching.
 public protocol EstimateRepository: Sendable {
     func list(keyword: String?) async throws -> [Estimate]
+    /// §8.1 — filter by status tab + cursor pagination.
+    func listPage(
+        status: EstimateStatusFilter,
+        keyword: String?,
+        cursor: String?
+    ) async throws -> EstimatePageResult
+}
+
+// MARK: - EstimatePageResult
+
+/// One page of estimates with cursor forwarding.
+public struct EstimatePageResult: Sendable {
+    public let estimates: [Estimate]
+    public let nextCursor: String?
+
+    public init(estimates: [Estimate], nextCursor: String?) {
+        self.estimates = estimates
+        self.nextCursor = nextCursor
+    }
 }
 
 // MARK: - EstimateRepositoryImpl
@@ -24,5 +43,18 @@ public actor EstimateRepositoryImpl: EstimateRepository {
 
     public func list(keyword: String?) async throws -> [Estimate] {
         try await api.listEstimates(keyword: keyword)
+    }
+
+    public func listPage(
+        status: EstimateStatusFilter,
+        keyword: String?,
+        cursor: String?
+    ) async throws -> EstimatePageResult {
+        let resp = try await api.listEstimatesCursor(
+            status: status,
+            keyword: keyword,
+            cursor: cursor
+        )
+        return EstimatePageResult(estimates: resp.estimates, nextCursor: resp.nextCursor)
     }
 }

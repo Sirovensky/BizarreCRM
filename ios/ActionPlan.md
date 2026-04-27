@@ -1298,27 +1298,27 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Base list + is-expiring warning — shipped.
 - [x] Row a11y — combined utterance `orderId. customerName. total. [Status X]. [Expires in Nd | Valid until date]`. Selectable order IDs.
 - [x] **CachedRepository + offline** — `EstimateRepository` protocol + `EstimateRepositoryImpl` + `EstimateCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[Estimate]>`, `forceRefresh`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown offline + cache empty. `EstimateListViewModel` migrated from direct-API to repo pattern (legacy `api:` init preserved). Perf gate: 1000-row hot-read in < 15ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
-- [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
-- [ ] Filters — date range, customer, amount, validity.
-- [ ] Bulk actions — Send / Delete / Export.
-- [ ] Expiring-soon chip (pulse animation when ≤3 days).
-- [ ] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
-- [ ] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
+- [x] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+- [x] Filters — date range, customer, amount, validity.
+- [x] Bulk actions — Send / Delete / Export.
+- [x] Expiring-soon chip (pulse animation when ≤3 days).
+- [x] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
+- [x] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
 
 ### 8.2 Detail
-- [ ] **Header** — estimate # + status + valid-until date.
-- [ ] **Line items** + totals.
-- [ ] **Send** — SMS / email; body includes approval link (customer portal).
-- [ ] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (`PKCanvasView`).
-- [ ] **Reject** — reason required.
+- [x] **Header** — estimate # + status + valid-until date.
+- [x] **Line items** + totals.
+- [x] **Send** — SMS / email; body includes approval link (customer portal).
+- [x] **Approve** — `POST /estimates/:id/approve` (staff-assisted) with signature capture (`PKCanvasView`).
+- [x] **Reject** — reason required.
 - [x] **Convert to ticket** — `EstimateConvertSheet` + `EstimateConvertViewModel` (`POST /estimates/:id/convert-to-ticket`); sheet summary, conflict/validation error handling, dismiss+navigate on success. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
-- [ ] **Convert to invoice**.
-- [ ] **Versioning** — revise estimate; keep prior versions visible.
-- [ ] **Customer-facing PDF preview** — "See what customer sees" button.
+- [x] **Convert to invoice**.
+- [x] **Versioning** — revise estimate; keep prior versions visible.
+- [x] **Customer-facing PDF preview** — "See what customer sees" button.
 
 ### 8.3 Create
 - [x] Same structure as invoice + validity window.
-- [ ] Convert from lead (prefill).
+- [x] Convert from lead (prefill).
 - [ ] Line items from repair-pricing services + inventory parts + free-form.
 - [ ] Idempotency key.
 

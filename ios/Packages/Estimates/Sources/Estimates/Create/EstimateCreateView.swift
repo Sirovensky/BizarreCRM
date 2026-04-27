@@ -18,6 +18,16 @@ public struct EstimateCreateView: View {
         _vm = State(wrappedValue: EstimateCreateViewModel(api: api))
     }
 
+    /// §8.3 — Create an estimate prefilled from a lead detail (has customerId).
+    public init(api: APIClient, prefillFromLeadDetail lead: LeadDetail) {
+        _vm = State(wrappedValue: EstimateCreateViewModel(api: api, prefillFromLeadDetail: lead))
+    }
+
+    /// §8.3 — Create an estimate prefilled from a lead summary (no customerId; user picks customer).
+    public init(api: APIClient, prefillFromLead lead: Lead) {
+        _vm = State(wrappedValue: EstimateCreateViewModel(api: api, prefillFromLead: lead))
+    }
+
     public var body: some View {
         if Platform.isCompact {
             compactLayout
