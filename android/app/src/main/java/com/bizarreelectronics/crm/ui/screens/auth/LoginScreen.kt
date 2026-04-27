@@ -2076,6 +2076,12 @@ fun LoginScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
+        // 2026-04-26 audit: explicitly opt out of safeDrawing IME consumption.
+        // Default contentWindowInsets=safeDrawing folded the IME inset into
+        // innerPadding AND .imePadding() added it again, causing a visible
+        // dark gap between the form and the soft keyboard. Now Scaffold only
+        // pads for system bars; .imePadding() below handles IME exclusively.
+        contentWindowInsets = WindowInsets.systemBars,
     ) { innerPadding ->
     Box(
         modifier = Modifier.fillMaxSize().padding(innerPadding)
@@ -2093,30 +2099,37 @@ fun LoginScreen(
         // Connect button + footer row under the IME on shorter phones (screens 07/08).
         contentAlignment = Alignment.TopCenter,
     ) {
+        // 2026-04-26 — when IME is visible, collapse top spacing + hide
+        // wordmark+tagline so the form fields shift up into view without
+        // requiring the user to scroll.
+        @OptIn(ExperimentalLayoutApi::class)
+        val imeVisible = WindowInsets.isImeVisible
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)
-                .padding(horizontal = 16.dp, vertical = 24.dp)
+                .padding(horizontal = 16.dp, vertical = if (imeVisible) 8.dp else 24.dp)
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Logo / App name — small top breathing room replaces the old 80dp pin.
-            Spacer(Modifier.height(32.dp))
-            // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
-            Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
-                Text(
-                    "Bizarre CRM",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 2,
-                    softWrap = true,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Electronics Repair Management",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Spacer(Modifier.height(if (imeVisible) 4.dp else 32.dp))
+            if (!imeVisible) {
+                // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
+                Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+                    Text(
+                        "Bizarre CRM",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 2,
+                        softWrap = true,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Electronics Repair Management",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             // Sanctioned WaveDivider placement — one branded moment under wordmark
             // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
