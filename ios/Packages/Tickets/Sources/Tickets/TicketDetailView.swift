@@ -94,6 +94,49 @@ public struct TicketDetailView: View {
             Text("This permanently removes the ticket and all associated data.")
         }
         .onChange(of: vm.wasDeleted) { _, deleted in if deleted { dismiss() } }
+        // §4 — deleted-on-server banner
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if vm.deletedOnServerBanner {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "trash.circle.fill")
+                        .foregroundStyle(.white).accessibilityHidden(true)
+                    Text("Ticket removed.")
+                        .font(.brandBodyMedium()).foregroundStyle(.white)
+                    Spacer()
+                    Button("Close") { dismiss() }
+                        .font(.brandLabelLarge().bold()).foregroundStyle(.white)
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+                .background(Color.bizarreError)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Ticket was removed. Tap Close.")
+            }
+        }
+        // §4 — permission denied inline toast
+        .overlay(alignment: .bottom) {
+            if vm.permissionDeniedToast {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "lock.fill")
+                        .foregroundStyle(.white).accessibilityHidden(true)
+                    Text("Ask your admin to enable this.")
+                        .font(.brandBodyMedium()).foregroundStyle(.white)
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+                .background(.bizarreError.opacity(0.9), in: Capsule())
+                .padding(BrandSpacing.lg)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .onAppear {
+                    Task {
+                        try? await Task.sleep(for: .seconds(3))
+                        vm.permissionDeniedToast = false
+                    }
+                }
+                .accessibilityLabel("Permission denied: Ask your admin to enable this.")
+            }
+        }
+        .animation(.spring(duration: 0.25), value: vm.permissionDeniedToast)
         // §4.4 — concurrent-edit 409 banner
         .safeAreaInset(edge: .top, spacing: 0) {
             if vm.concurrentEditBanner {

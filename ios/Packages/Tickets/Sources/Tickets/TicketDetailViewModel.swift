@@ -21,6 +21,10 @@ public final class TicketDetailViewModel {
     public var wasDeleted: Bool = false
     public var concurrentEditBanner: Bool = false   // 409 stale edit detected
 
+    // §4 — specific error state variants for targeted UI
+    public var deletedOnServerBanner: Bool = false  // 404 after initial load
+    public var permissionDeniedToast: Bool = false  // 403 on action
+
     // §4.5 — action results
     public var convertedInvoiceId: Int64?
     public var duplicatedTicketId: Int64?
@@ -40,14 +44,26 @@ public final class TicketDetailViewModel {
         concurrentEditBanner = false
         do {
             state = .loaded(try await repo.detail(id: ticketId))
+            // Clear server-error banners on successful refresh
+            deletedOnServerBanner = false
         } catch {
-            let msg = error.localizedDescription
-            // 409 detection: server returns stale `updated_at` conflict
-            if msg.contains("409") || msg.lowercased().contains("conflict") {
+            let appError = AppError.from(error)
+            AppLog.ui.error("Ticket detail load failed: \(error.localizedDescription, privacy: .public)")
+            switch appError {
+            case .notFound:
+                // §4 — ticket was deleted on the server while viewing
+                deletedOnServerBanner = true
+                // Keep cached data visible; don't overwrite to .failed
+                if case .loading = state { state = .failed("Ticket no longer exists.") }
+            case .forbidden:
+                permissionDeniedToast = true
+                if case .loading = state { state = .failed("You don't have permission to view this ticket.") }
+            case .conflict:
+                // §4 — 409 stale edit detected
                 concurrentEditBanner = true
+            default:
+                state = .failed(error.localizedDescription)
             }
-            AppLog.ui.error("Ticket detail load failed: \(msg, privacy: .public)")
-            state = .failed(msg)
         }
     }
 
