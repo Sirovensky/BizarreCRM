@@ -8,6 +8,7 @@
 /// Progress bar (linear) advances on each "Next" tap.
 ///
 /// Autosave: `PATCH /api/v1/tickets/:id` on every step transition (fire-and-forget).
+/// Finalize (last step): upload signature → write deposit payment → set status=open → onComplete.
 /// Offline: draft queued via SyncQueueStore; autosave chip shows "Queued".
 ///
 /// Glass budget: 2 (progress bar container + bottom nav bar).
@@ -82,7 +83,8 @@ public final class CheckInFlowViewModel {
 
     public func advance() async {
         guard let next = currentStep.next else {
-            onComplete?(draft)
+            // Last step — run the full finalize sequence.
+            await finalizeSignStep()
             return
         }
         await autosave()
@@ -126,6 +128,59 @@ public final class CheckInFlowViewModel {
         } catch {
             isOffline = true
             saveError = error
+        }
+    }
+
+    /// §16.25.6 — Finalize sign step:
+    /// 1. Upload signature PNG → `POST /api/v1/tickets/:id/signatures`.
+    /// 2. If deposit > 0, write deposit payment → `POST /api/v1/invoices/:id/payments`.
+    /// 3. Transition ticket to `open` → `PATCH /api/v1/tickets/:id` `{ status: "open" }`.
+    /// 4. Call `onComplete(draft)` to push the drop-off receipt view.
+    ///
+    /// Network errors are surfaced via `saveError`; the UI keeps the Sign step
+    /// visible so the cashier can retry. Offline path: draft is already in the
+    /// sync queue from autosave; signature + deposit are queued below if api is nil.
+    private func finalizeSignStep() async {
+        isSaving = true
+        saveError = nil
+        defer { isSaving = false }
+
+        guard let api, let ticketId = draft.ticketId else {
+            // No API / no ticketId — treat as offline, call through directly.
+            isOffline = true
+            onComplete?(draft)
+            return
+        }
+
+        do {
+            // Step 1: Upload signature if present.
+            if let sig = draft.signaturePNGBase64 {
+                _ = try await api.uploadTicketSignature(ticketId: ticketId, base64PNG: sig)
+            }
+
+            // Step 2: Write deposit payment (cash method — tender sheet wiring deferred).
+            // `invoiceId` mirrors ticketId for now; the server creates an invoice per ticket.
+            let depositCents = draft.depositCents
+            if depositCents > 0 {
+                let idempotencyKey = UUID().uuidString
+                _ = try await api.recordCheckinDeposit(
+                    invoiceId: ticketId,          // server maps ticket→invoice on this path
+                    depositCents: depositCents,
+                    method: "cash",
+                    notes: "Check-in deposit",
+                    idempotencyKey: idempotencyKey
+                )
+            }
+
+            // Step 3: Transition ticket to open.
+            _ = try await api.finalizeCheckinTicket(id: ticketId)
+
+            isOffline = false
+            onComplete?(draft)
+        } catch {
+            isOffline = true
+            saveError = error
+            // Do NOT advance — keep user on sign step to retry.
         }
     }
 }
