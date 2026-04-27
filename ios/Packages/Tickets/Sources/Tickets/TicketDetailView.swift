@@ -20,6 +20,11 @@ public struct TicketDetailView: View {
     @State private var showingQRCode: Bool = false
     // §4.2 — Tab layout
     @State private var activeTab: TicketDetailTab = .actions
+    // §4.2 — Warranty/SLA badge VM (lazy-loaded)
+    @State private var warrantySLAVM: TicketWarrantySLAViewModel?
+    // §4.5 — Attach invoice / transfer location sheets
+    @State private var showingAttachInvoice: Bool = false
+    @State private var showingTransferLocation: Bool = false
     @Environment(\.dismiss) private var dismiss
     private let api: APIClient?
 
@@ -43,7 +48,24 @@ public struct TicketDetailView: View {
         }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await vm.load() }
+        .task {
+            await vm.load()
+            // §4.2 — Lazily init + load warranty/SLA VM after detail loaded
+            if let api, case .loaded(let detail) = vm.state {
+                let firstIMEI = detail.devices.first?.imei
+                let firstSerial = detail.devices.first?.serial
+                if firstIMEI != nil || firstSerial != nil {
+                    let wvm = TicketWarrantySLAViewModel(
+                        api: api,
+                        ticketId: detail.id,
+                        imei: firstIMEI,
+                        serial: firstSerial
+                    )
+                    warrantySLAVM = wvm
+                    await wvm.load()
+                }
+            }
+        }
         .refreshable { await vm.load() }
         .toolbar {
             toolbarItems
@@ -177,6 +199,24 @@ public struct TicketDetailView: View {
                 ))
             }
         }
+        // §4.5 — Attach to existing invoice
+        .sheet(isPresented: $showingAttachInvoice) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketAttachInvoiceSheet(
+                    api: api,
+                    ticketId: detail.id
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.5 — Transfer to another store / location
+        .sheet(isPresented: $showingTransferLocation) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketTransferLocationSheet(
+                    api: api,
+                    ticketId: detail.id
+                ) { Task { await vm.load() } }
+            }
+        }
     }
 
     private var navTitle: String {
@@ -234,6 +274,18 @@ public struct TicketDetailView: View {
                         Label("Convert to Invoice", systemImage: "doc.text")
                     }
                     .accessibilityIdentifier("ticket.convertToInvoice")
+
+                    // §4.5 — Attach to existing invoice
+                    Button { showingAttachInvoice = true } label: {
+                        Label("Attach to Invoice…", systemImage: "paperclip")
+                    }
+                    .accessibilityIdentifier("ticket.attachInvoice")
+
+                    // §4.5 — Transfer to another store
+                    Button { showingTransferLocation = true } label: {
+                        Label("Transfer to Location…", systemImage: "arrow.triangle.swap")
+                    }
+                    .accessibilityIdentifier("ticket.transferLocation")
 
                     // §4.5 — Duplicate
                     Button { Task { await vm.duplicateTicket() } } label: {
@@ -336,6 +388,15 @@ public struct TicketDetailView: View {
                     // §4.2 — Urgency chip in detail header
                     if let urgency = detail.urgency, !urgency.isEmpty {
                         DetailUrgencyChip(urgency: urgency)
+                    }
+
+                    // §4.2 — Warranty / SLA badge
+                    if let wvm = warrantySLAVM {
+                        TicketWarrantySLABadge(
+                            slaStatus: nil, // sla_status available on TicketSummary, not TicketDetail
+                            warrantyState: wvm.warrantyState
+                        )
+                        .padding(.horizontal, BrandSpacing.base)
                     }
 
                     InfoRow(detail: detail)
