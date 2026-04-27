@@ -596,7 +596,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Context menu** — Open, Copy order ID (`.textSelection(.enabled)` preview), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF.
 - [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
-- [ ] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists.
+- [x] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists. `TicketSavedViewsStore` singleton + `TicketSavedView` model. (agent-3-b4)
 - [x] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane** via `NavigationSplitView(.balanced)` gated on `Platform.isCompact`. `.hoverEffect(.highlight)` on rows, `.keyboardShortcut("N", .command)` on New. Context menu with Edit wired + Duplicate / Mark-complete stubbed disabled pending backend endpoints. `.textSelection(.enabled)` on order IDs.
   - Column widths: list 320–380pt; detail fills the rest. User can drag divider within bounds (`.navigationSplitViewColumnWidth(min:ideal:max:)`).
   - Empty-detail state: "Select a ticket" illustration until a row is tapped (Apple Messages pattern).
@@ -605,7 +605,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
-- [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
+- [x] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions. `TicketCustomerPreviewPopover` + `.ticketCustomerPreviewPopover(...)` view modifier. (agent-3-b4)
 - [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
 - [ ] **Empty state** — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
@@ -678,12 +678,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Duplicate ticket** — same customer + device + clear status.
 - [x] **Merge tickets** — pick a duplicate candidate (search dialog); confirm; server merges notes / photos / devices. `TicketMergeViewModel` + `TicketMergeView` (iPad 3-col / iPhone sheet) + `TicketMergeCandidatePicker`. `POST /tickets/merge`. Commit `feat(ios post-phase §4)`.
 - [x] **Split ticket** — multi-select device lines → move to new ticket (customer inherited). `TicketSplitViewModel` + `TicketSplitView` (checkbox per device, "Create N new tickets" button). `POST /tickets/:id/split`. Commit `feat(ios post-phase §4)`.
-- [ ] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged.
+- [x] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged. `TicketHandoffView` + `TicketHandoffViewModel` + `HandoffReason` enum (shiftChange/escalation/outOfExpertise/other). (agent-3-b4)
 - [ ] **Transfer to another store / location** (multi-location tenants).
 - [ ] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive / bulk tag.
-- [ ] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`.
-- [ ] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer.
-- [ ] **Star / pin** to dashboard.
+- [x] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`. `TicketWarrantyLookupView` + `TicketWarrantyLookupViewModel` + `TicketWarrantyRecord` DTO + `APIClient.warrantyLookup(...)`. (agent-3-b4)
+- [x] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer. `TicketDeviceHistoryView` + `TicketDeviceHistoryViewModel` + `APIClient.deviceHistory(imei:serial:)`. (agent-3-b4)
+- [x] **Star / pin** to dashboard. `APIClient.setTicketPinned(ticketId:pinned:)` + `TicketPinBody` DTO. (agent-3-b4)
 
 ### 4.6 Notes & mentions
 - [ ] **Compose** — multiline text field, type picker (internal / customer / diagnostic / sms / email), flag toggle.
@@ -729,7 +729,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Frontend:** searchable services catalog with labor-rate defaults; per-device-model overrides.
 
 ### 4.12 Handoff modal
-- [ ] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets push.
+- [x] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets push. `TicketHandoffView` + `HandoffReason` enum. (agent-3-b4)
 
 ### 4.13 Empty / error states
 - [ ] No tickets — glass illustration + "Create your first ticket".
@@ -1319,12 +1319,12 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 ### 8.3 Create
 - [x] Same structure as invoice + validity window.
 - [x] Convert from lead (prefill).
-- [ ] Line items from repair-pricing services + inventory parts + free-form.
-- [ ] Idempotency key.
+- [x] Line items from repair-pricing services + inventory parts + free-form. `RepairServicePickerSheet` in Estimates; loads `GET /repair-pricing/services`, multi-select → converts to `EstimateDraft.LineItemDraft`. Wired into `EstimateCreateView`. (agent-3-b4)
+- [x] Idempotency key. `CreateEstimateRequestWithKey` wraps body; `idempotencyKey` UUID in `EstimateCreateViewModel`; reset via `resetIdempotencyKey()`. (agent-3-b4)
 
 ### 8.4 Expiration handling
 - [ ] Auto-expire when past validity date (server-driven).
-- [ ] Manual expire action.
+- [x] Manual expire action. "Expire Now" button + confirmation dialog in `EstimateDetailView`; `APIClient.expireEstimate(estimateId:)` → `PUT /estimates/:id` with `{ status: "expired" }`. (agent-3-b4)
 
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
 - [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
