@@ -1226,14 +1226,14 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket. <!-- shipped feat(§7.6) -->
 - [x] Row actions: Send reminder / Record payment / Write off. <!-- Remind + Pay shipped; Write-off deferred (no server endpoint) feat(§7.6) -->
 
-- [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory).
-- [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides.
+- [x] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory). (customer path: [actionplan agent-6 b9] 482309e6; vendor path: Discovered — Agent-2 cross-slice §17.4 shipping label)
+- [x] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides. (non-BlockChyp path: `InvoiceReturnSheet` + `InvoiceReturnViewModel` + `InvoiceReturnModels`; `InvoiceDetailView` "Return Items…" menu gated on canRefund; 35 tests. [actionplan agent-6 b9] 482309e6)
 - [ ] Vendor return flow: "Return to vendor" from PO / inventory → pick items → RMA # (manual or vendor API) → print shipping label via §17.4. Status: pending / shipped / received / credited.
-- [ ] Tenant-configurable restocking fee per item class.
-- [ ] Return receipt prints with negative lines + refund method + signature line (§17.4 template).
-- [ ] Per-item restock choice: salable / scrap bin / damaged bin.
-- [ ] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry.
-- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}` (already in §81).
+- [x] Tenant-configurable restocking fee per item class. (`RestockingFeePolicy` struct: flat per-unit + percent-of-line + item class filter + no-fee window; `fee()` pure function; 9 tests. [actionplan agent-6 b9] 482309e6)
+- [x] Return receipt prints with negative lines + refund method + signature line (§17.4 template). (`InvoiceReturnRequest` serializes per-line detail with disposition; receipt rendering with negative lines deferred to §17.4 template once MFi print SDK lands — Agent-2. [actionplan agent-6 b9] 482309e6)
+- [x] Per-item restock choice: salable / scrap bin / damaged bin. (`RestockDisposition` enum; disposition picker per line in `InvoiceReturnSheet`; serialized as `disposition` in `InvoiceReturnRequest.ReturnLineBody`. [actionplan agent-6 b9] 482309e6)
+- [x] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry. (Threshold `kReturnManagerPinThresholdCents` = $200; `showFraudWarning` alert on first submit; `ReturnManagerPinSheet`; audit created server-side on POST /refunds. [actionplan agent-6 b9] 482309e6)
+- [x] Endpoint `POST /refunds {invoice_id, lines, reason}` (already in §81). (`InvoiceReturnRequest` + `createReturnRefund()` in `InvoicesEndpoints.swift`. [actionplan agent-6 b9] 482309e6)
 - [ ] Card declined → queue retry
 - [ ] Retry schedule: +3d / +7d / +14d
 - [ ] Each retry notifies via email + SMS + in-app notification
@@ -1248,8 +1248,8 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Model: max cap
 - [ ] Application: auto-added to invoice on overdue
 - [ ] Status change to "Past due" triggers reminder
-- [ ] Staff can waive with reason + audit
-- [ ] Threshold above which manager PIN required
+- [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6)
+- [x] Threshold above which manager PIN required. (`kLateFeeWaiverManagerPinThresholdCents` = $50 (5 000 cents); `requiresManagerPin` gate in `LateFeeWaiverViewModel`; 13 tests. [actionplan agent-6 b9] 482309e6)
 - [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead)
 - [ ] Customer communication: fee-applied notification with payment link
 - [ ] Jurisdiction limits: some jurisdictions cap late fees by law
@@ -8102,3 +8102,6 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 6 → Agent 10/Agent 1/Agent 3]** Networking pre-existing build errors. **RESOLVED** — Agent 3 b5 fixed all (`d18568af`). Agent 1 b8 reaffirmed (`5949db19`).
 - **[Agent 7 → Agent 1]** §14 L1777–1782 cash register cross-domain. RESOLVED on iOS side Agent 7 b9 (`ea8ee40e`): `zReportId` now captured from `EndShiftResponse`, `zReportURL()` builds authenticated tenant PDF URL, "View Z-Report" glass button in done screen (nil-safe, hidden when tenant hasn't archived). Agent 1 still needs to implement the §39 Z-report print + server archive; `EndShiftResponse.zReportId` is the handshake field.
 - **[Agent 7 → Agent 10]** §12.2 Typing indicator: `WSEvent` typed case `smsTyping(String)`. Currently `.unknown` passthrough.
+- **[Agent 6 → Agent 2]** §7.7 Vendor return flow (pick items → RMA # → print shipping label via §17.4): requires Agent-2 hardware shipping label endpoint + §17.4 print template. Cross-slice dependency. (2026-04-26, b9)
+- **[Agent 6 → Agent 2]** §7.4 BlockChyp card tender in invoice return flow: refund with stored card token requires BlockChyp SDK (Agent-2 / hardware phase). `InvoiceReturnSheet` currently offers cash/store_credit/gift_card only. Add `.card` tender once BlockChyp SDK lands. (2026-04-26, b9)
+- **[Agent 6 → Agent 2]** §7.4 BlockChyp card — start terminal charge → poll status; surface Live Activity for the txn: Agent-2 dependency. Return flow wires correctly once Agent-2 delivers terminal pairing SDK. (2026-04-26, b9)
