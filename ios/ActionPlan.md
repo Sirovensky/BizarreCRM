@@ -2822,17 +2822,17 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image. `AnnotationStamp` + `AnnotationStampPlacement`. Commit `258f346b`.
 - [x] Layers: base photo + annotation layer stored separately (revert-to-original possible); export flattens. `AnnotationLayer` struct. Commit `258f346b`.
 - [x] Apple Pencil: `PKCanvasView` / `PencilKit` pressure + tilt; palm rejection on iPad; double-tap Pencil toggles last tool. Squeeze toggles tool picker (Pencil Pro). `UIPencilInteraction` delegate wired. Commit `feat(ios phase-7 §4+§17.1)`.
-- [ ] Crop / rotate / auto-enhance (brightness / contrast).
-- [ ] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action.
-- [ ] AirPrint via `UIPrintInteractionController` handed a locally-rendered PDF file URL (never a web URL — Android regression lesson §17.4).
-- [ ] Paper sizes: Letter (US) / A4 (EU) / Legal / 4×6 receipt / 80mm thermal / 58mm thermal. Default per tenant in Settings → Printing.
+- [x] Crop / rotate / auto-enhance (brightness / contrast). `ImageEditService` actor: `crop(_:to:)`, `rotate(_:degrees:)`, `autoEnhance(_:)` via CIAutoAdjustment. Commit `b1d56e2c`.
+- [x] OCR via `VNRecognizeTextRequest`: "Copy text from image" context action. `ImageEditService.recognizeText(in:)` on-device only (`requiresOnDeviceRecognition`, sovereignty §28). Commit `b1d56e2c`.
+- [x] AirPrint via `UIPrintInteractionController` handed a locally-rendered PDF file URL (never a web URL — Android regression lesson §17.4). `AirPrintEngine` + `PrintService` both use local temp PDF. Commit `b1d56e2c`.
+- [x] Paper sizes: Letter (US) / A4 (EU) / Legal / 4×6 receipt / 80mm thermal / 58mm thermal. Default per tenant in Settings → Printing. `PrintMedium.legal` + `PrintMedium.tenantDefault` locale-based. Commit `b1d56e2c`.
 - [ ] Thermal printer via Star SDK + Epson ePOS SDK (Swift wrapper). Transports: MFi Bluetooth, Wi-Fi, USB (Lightning/USB-C). Multi-printer per station (§17).
-- [ ] `PrintService` class: queue with retries, toast "Print queued, 1 pending", reprint button in queue UI.
-- [ ] Cash-drawer kick via printer ESC opcode on cash tender (§17).
-- [ ] Preview always before print (first-page mini render).
-- [ ] PDF share-sheet fallback when no printer configured.
+- [x] `PrintService` class: queue with retries, toast "Print queued, 1 pending", reprint button in queue UI. `PrintService` @Observable wraps `PrintJobQueue`; `PrintOptionsSheet` provides printer/paper/copies/reason UI. Commit `b1d56e2c`.
+- [x] Cash-drawer kick via printer ESC opcode on cash tender (§17). `EscPosDrawerKick` + `CashDrawerManager.handleTender(_:)` already shipped; confirmed complete. Commit `b1d56e2c`.
+- [x] Preview always before print (first-page mini render). `PrintService.submit(_:previewImage:presenter:)` shows `PrintPreviewViewController` sheet before sending. Commit `b1d56e2c`.
+- [x] PDF share-sheet fallback when no printer configured. `PrintService.fallbackToShareSheet(_:from:)` → `UIActivityViewController` with temp PDF. Commit `b1d56e2c`.
 - [x] Receipt template editor (Settings → Printing): header logo + shop info + body (lines / totals / payment / tax) + footer (return policy, thank-you, QR lookup) + live preview. `ReceiptTemplateEditorView` + `ReceiptTemplate` + `ReceiptTemplateStore` + `ReceiptPreviewCard` live preview. iPhone: scroll form + preview; iPad: split pane. Persisted in UserDefaults. Commit `[agent-2 b4]`.
-- [ ] Print works offline — printer on local network or Bluetooth has no internet dependency.
+- [x] Print works offline — printer on local network or Bluetooth has no internet dependency. `PrintJobQueue` + `PrintService` use local-only ESC/POS/BT/AirPrint transports; no internet needed. `OfflineReceiptPrintRegressionTests` verify. Commit `b1d56e2c`.
 - [ ] Support symbologies: EAN-13/EAN-8, UPC-A/UPC-E, Code 128, Code 39, Code 93, ITF-14, DataMatrix, QR, Aztec, PDF417
 - [x] Priority per use-case: Inventory SKU Code 128 primary + QR secondary; retail EAN-13/UPC-A auto-detect; IMEI/serial Code 128 or bare numeric; loaner/asset tag QR with scan-to-view URL. `BarcodeVisionScanner` + `VNBarcodeSymbology.useCasePriority` document priority per symbology. Commit `[agent-2 b4]`.
 - [x] Scanner via `VNBarcodeObservation`: recognize all formats concurrently. `BarcodeVisionScanner` actor with `VNDetectBarcodesRequest` + all 11 symbologies concurrently. Commit `[agent-2 b4]`.
@@ -2850,7 +2850,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Tenant-configurable: require reason for reprints older than 7 days (e.g. "Customer lost it", "Accountant request")
 - [ ] Audit entry (§50) per reprint
 - [ ] Fallback: no printer → PDF share
-- [ ] Entry from customer detail / ticket detail → "Scan document"
+- [x] Entry from customer detail / ticket detail → "Scan document". `DocumentScanButton(entityKind:entityId:onFinished:)` presents `DocumentScannerView` as sheet; gracefully disabled when `VNDocumentCameraViewController.isSupported == false`. Commit `b1d56e2c`.
 - [x] Use `VNDocumentCameraViewController`. `DocumentScanner` UIViewControllerRepresentable + `DocumentScanViewModel` + `DocumentScanPreviewView`. Camera/DocScan/. Commit 468fe08.
 - [x] Multi-page scan with auto-crop + perspective correction — VisionKit handles perspective; pages collected via `VNDocumentCameraScan.imageOfPage(at:)`.
 - [x] Reorder / delete pages before save — `DocumentScanPreviewView` List with `.onMove`/`.onDelete`; `DocumentScanViewModel.movePages`/`deletePage`.
@@ -2865,7 +2865,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Online / offline badge. `PrinterStatus` enum includes `.error(String)` displayed in `PrinterRow`. Commit `[agent-2 b4]`.
 - [x] Fallback to Bonjour discovery (§17) if IP changes. `BonjourPrinterBrowser` + `BonjourPrinterPickerView` provide auto-discovery as fallback. Commit `[agent-2 b4]`.
 - [ ] Recommend tenant set DHCP reservation for printer MAC
-- [ ] App shows printer MAC after first connection
+- [x] App shows printer MAC after first connection. `PairedDevice.macAddress: String?` + `withMACAddress()` mutator; `BluetoothDeviceRow` displays MAC in caption2 with `.textSelection(.enabled)`. Commit `b1d56e2c`.
 - [x] `NWBrowser` for `_ipp._tcp`, `_printer._tcp`, `_airdrop._tcp`, custom `_bizarre._tcp`. `BonjourPrinterBrowser` browses all three types. Commit `[agent-2 b4]`.
 - [x] Declare `NSBonjourServices` in Info.plist (all needed types up-front, iOS 14+). Added to `scripts/write-info-plist.sh` via Discovered note (owned by Agent 10). Commit `[agent-2 b4]`.
 - [x] `NSLocalNetworkUsageDescription` explains local-network use. Already in `scripts/write-info-plist.sh` per §17.7. Commit `[agent-2 b4]`.
@@ -2883,13 +2883,13 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Surface peripheral battery level where published. `BluetoothDevice.batteryPercent` + `BluetoothBatteryMonitor` GATT 0x180F/0x2A19 reader. Commit `258f346b`.
 - [x] Low-battery warning. `BluetoothBatteryMonitor` emits `BluetoothBatteryWarning.lowBattery` when percent < 20. Commit `258f346b`.
 - [x] Warn when multiple clients share one peripheral. `BluetoothBatteryMonitor.checkMultiClientRisk()` emits `.multipleClientsDetected` warning. Commit `258f346b`.
-- [ ] Auto-retry on disconnect every 5s up to 30s
-- [ ] After 30s, surface "Printer offline" banner
-- [ ] Exponential backoff: sustained offline → every 60s to save battery
-- [ ] Manual "Reconnect" button bypasses backoff
-- [ ] Severity policy: scanner offline silent (badge only)
-- [ ] Severity policy: printer offline surfaces banner (POS needs it)
-- [ ] Severity policy: terminal offline is a blocker (can't charge cards)
+- [x] Auto-retry on disconnect every 5s up to 30s. `PeripheralReconnectCoordinator` + `BluetoothRetryPolicy(shortRetryCount:6, shortRetryInterval:5s)`. Commit `b1d56e2c`.
+- [x] After 30s, surface "Printer offline" banner. `PeripheralOfflineState.bannerMessage` + `OfflineSeverity.banner`. Commit `b1d56e2c`.
+- [x] Exponential backoff: sustained offline → every 60s to save battery. `BluetoothRetryPolicy(longRetryInterval:60s)`. Commit `b1d56e2c`.
+- [x] Manual "Reconnect" button bypasses backoff. `PeripheralReconnectCoordinator.manualReconnect()` cancels retry loop and attempts immediately. Commit `b1d56e2c`.
+- [x] Severity policy: scanner offline silent (badge only). `DeviceKind.scanner.offlineSeverity == .silent` in `BluetoothConnectionPolicy`. Commit `b1d56e2c`.
+- [x] Severity policy: printer offline surfaces banner (POS needs it). `DeviceKind.receiptPrinter.offlineSeverity == .banner`. Commit `b1d56e2c`.
+- [x] Severity policy: terminal offline is a blocker (can't charge cards). `DeviceKind.cardReader.offlineSeverity == .blocker`. Commit `b1d56e2c`.
 - [x] Log connection events for troubleshooting. `PeripheralConnectionLogger` actor (pre-existing in `BluetoothConnectionPolicy.swift`) + `PeripheralHealthDashboardView` shows recent events. Commit `258f346b`.
 - [ ] Terminal firmware: BlockChyp SDK reports version vs latest
 - [ ] Banner: "Terminal firmware outdated — update now"
@@ -2904,8 +2904,8 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Use case: shops charging by weight (e.g. scrap metal, parts by weight)
 - [ ] Support Bluetooth scales (Dymo M10 / Brecknell / etc.)
 - [ ] Support USB via USB-C dongle
-- [ ] POS flow: add item → "Weigh" button → live reading capture
-- [ ] Zero-tare / re-weigh controls
+- [x] POS flow: add item → "Weigh" button → live reading capture. `WeighCaptureView(scale:onCapture:)` + `WeighCaptureViewModel`; live stream with stability indicator; Capture button disabled until stable. Commit `b1d56e2c`.
+- [x] Zero-tare / re-weigh controls. `WeighCaptureViewModel.tare()` calls `WeightScale.tare()`; `reWeigh()` resets capture state + restarts stream. Commit `b1d56e2c`.
 - [x] Precision units: grams / ounces / pounds / kilograms. `WeightUnit` enum + formatting. Commit `258f346b`.
 - [x] Tenant chooses unit system. `WeightUnitStore` UserDefaults persistence. Commit `258f346b`.
 - [x] Rate-by-weight pricing rule ("$/lb") with auto-computed total. `WeightPriceCalculator` + `WeightPricingRule`. Commit `258f346b`.
