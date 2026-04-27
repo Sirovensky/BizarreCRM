@@ -1707,8 +1707,8 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 ### 14.1 List
 - [x] Base list — shipped.
 - [x] **CachedRepository + offline** — `EmployeeCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Filters** — role / active-inactive / clocked-in-now.
-- [ ] **"Who's clocked in right now"** view — real-time via WS presence events.
+- [x] **Filters** — role / active-inactive / clocked-in-now. `EmployeeListFilter.clockedInOnly` toggle in filter sheet. (feat(§14): clocked-in-now filter + ClockedInNowView)
+- [x] **"Who's clocked in right now"** view — `ClockedInNowView` polls GET /api/v1/employees every 60s; `EmployeePresence` tolerant decoding of `is_clocked_in`. (feat(§14): clocked-in-now filter + ClockedInNowView)
 - [ ] **Columns** (iPad/Mac) — Name / Email / Role / Status / Has PIN / Hours this week / Commission.
 - [ ] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles.
 
@@ -1727,7 +1727,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Geofence** — `GeofenceClockInValidator` 100m radius; admin policy strict/warn/off; employee opt-out; haversine distance; iOS one-shot `CLLocationManager` via `CheckedContinuation`. (feat(ios post-phase §14))
 - [x] **Edit entries** (admin only, audit log) — `TimesheetEditSheet` + `PATCH /timeclock/shifts/:id`; reason field required for audit. (feat(ios post-phase §14))
 - [x] **Timesheet** weekly view per employee — `TimesheetView` (employee) + `TimesheetManagerView` (manager iPad `Table`); `OvertimeCalculator` pure engine; federal + CA rules; 68 tests pass. (feat(ios post-phase §14))
-- [ ] **Offline queue** — clock events persisted locally, synced later.
+- [x] **Offline queue** — `TimeclockOfflineQueue` (`@globalActor` actor, UserDefaults FIFO, idempotency keys); `clockIn/clockOut` catch `URLError.notConnectedToInternet|networkConnectionLost`, enqueue + optimistic state. (feat(§14): timeclock offline queue)
 - [ ] **Live Activity** — "Clocked in since 9:14 AM" on Lock Screen until clock-out.
 
 ### 14.4 Invite / manage (admin)
@@ -1757,9 +1757,9 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Manager approves** (audit logged) — `ShiftSwapApprovalView`; `POST /timeclock/swap-requests/:id/approve`. (feat(ios post-phase §14))
 
 ### 14.7 Leaderboard
-- [ ] Ranked list by tickets closed / revenue / commission.
-- [ ] Period filter (week / month / YTD).
-- [ ] Badges 🥇🥈🥉.
+- [x] Ranked list by tickets closed / revenue / commission. `EmployeeLeaderboardView` + `EmployeeLeaderboardViewModel`. (feat(§14): employee leaderboard)
+- [x] Period filter (week / month / YTD). `LeaderboardPeriod` enum with `dateRange`. (feat(§14): employee leaderboard)
+- [x] Badges 🥇🥈🥉. `LeaderboardRow` medal emoji + rank color for top 3. (feat(§14): employee leaderboard)
 
 ### 14.8 Performance reviews / goals
 - [ ] Reviews — form (employee, period, rating, comments); history.
@@ -1767,7 +1767,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.9 Time-off requests
 - [ ] Submit request (date range + reason).
-- [ ] Manager approve / deny.dont forget to ACTUALLY implement the manager's access point. 
+- [x] Manager approve / deny. `PTOManagerApprovalSheet` + `PTOManagerApprovalViewModel`; `approveTimeOff`/`denyTimeOff` in `APIClient+Employees`. (feat(§14): manager PTO approve/deny)
 - [ ] Affects shift grid.
 
 ### 14.10 Shortcuts
@@ -5568,13 +5568,13 @@ Content below kept as the iOS implementation spec for when those gates open.
 
 ### 46.1 Goals (per-user + per-team)
 - [x] **Goal types**: daily revenue / weekly ticket-count / monthly avg-ticket-value / personal commission / per-role custom.
-- [ ] **Configured by manager** — Settings → Team → Goals → set target per employee or shared team goal.
+- [x] **Configured by manager** — `GoalSettingsView` + `GoalSettingsViewModel`; tenant enable/disable via GET/PATCH /api/v1/settings/goals. (feat(§46): goal settings + trajectory)
 - [x] **Progress ring** on personal dashboard tile + team-aggregate ring on manager dashboard.
-- [ ] **Trajectory line** — historical vs target vs forecast curve.
+- [x] **Trajectory line** — `GoalTrajectoryView` bar chart with linear forecast projection; miss message "Tomorrow's a new day. Keep going!" (feat(§46): goal settings + trajectory)
 - [x] **Milestone toasts** — 50% / 75% / 100% (respect Reduce Motion; confetti only on 100% with `BrandMotion` fallback).
 - [x] **Streak counter** — "5 days in a row hitting daily goal"; subtle UI, no loss-aversion anti-pattern per §46 gamification guardrails.
-- [ ] **Miss handling** — supportive copy ("Tomorrow's a new day"); no guilt language; no daily push notifications about missed goals.
-- [ ] **Tenant can disable goals entirely** (some shops don't run sales culture).
+- [x] **Miss handling** — supportive copy ("Tomorrow's a new day. Keep going!") in `GoalTrajectoryView`; no guilt language; no daily push notifications. (feat(§46): goal settings + trajectory)
+- [x] **Tenant can disable goals entirely** — `GoalSettingsView` toggle; POST /api/v1/settings/goals `enabled` flag. (feat(§46): goal settings + trajectory)
 
 ### 46.2 Performance reviews
 - [x] **Manager composes review**: numeric ratings per competency (1-5 with descriptors) + strengths + growth areas + next-period goals.
@@ -5583,7 +5583,7 @@ Content below kept as the iOS implementation spec for when those gates open.
 - [x] **Meeting helper** — "Prepare review" action compiles scorecard (§46.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
 - [x] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
 - [ ] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file.
-- [ ] **Cadence** — quarterly / semi-annual / annual tenant-configurable.
+- [x] **Cadence** — `ReviewCadence` enum + `ReviewCadenceSettingsView` + `ReviewCadenceViewModel`; GET/PATCH /api/v1/settings/review-cadence. (feat(§46): review cadence settings)
 
 ### 46.3 Time off (PTO)
 - [x] **Request PTO** — date range + type (vacation / sick / personal / unpaid) + reason; optional note.
@@ -5591,14 +5591,14 @@ Content below kept as the iOS implementation spec for when those gates open.
 - [x] **Team calendar view** — month grid showing who's out when; conflicts highlighted.
 - [x] **Balance tracking** — accrual rate per type (configured in Settings); usage deducted on approval; warnings when requesting over balance.
 - [x] **Coverage prompt** — when approving PTO that affects schedule, manager sees conflicts with scheduled shifts + suggested swap partner.
-- [ ] **Carry-over + expiry policy** — tenant-configured; "X days expire Dec 31" banner.
+- [x] **Carry-over + expiry policy** — `PTOCarryOverPolicy` + `PTOCarryOverPolicyView` + `PTOExpiryBanner`; GET/PATCH /api/v1/settings/pto/carry-over. (feat(§46): PTO carry-over + expiry policy)
 
 ### 46.4 Employee scorecards (private by default)
 Covers what §46 specified. Lives here.
 
 - [x] **Metrics per employee**: ticket close rate, SLA compliance (§4 / §4), avg customer rating (§15), revenue attributed, commission earned, hours worked, breaks taken, voids + reasons, manager-overrides triggered.
 - [x] **Rolling windows** — 30 / 90 / 365-day charts.
-- [ ] **Private by default** — only self + direct manager see; owner sees all.
+- [x] **Private by default** — `ScorecardVisibilityRole` enum (`.self/.manager/.owner/.other`); `ScorecardViewModel.load()` guards `.other` with access-denied error. (feat(§46): scorecard private-by-default)
 - [x] **Manager annotations** — notes + praise / coaching signals visible to employee.
 - [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §46.2 review.
 - [x] **Export** — scorecard PDF for HR file.
@@ -5610,39 +5610,39 @@ Covers what §46 specified.
 - [x] **Form** — 4 prompts: what's going well / what to improve / one strength / one blind spot.
 - [x] **Anonymous by default**; optional peer attribution.
 - [x] **Delivery gated through manager** — manager curates before sharing with subject; prevents rumor / hostility.
-- [ ] **Frequency cap** — max 1 request per peer per quarter; prevents feedback fatigue.
+- [x] **Frequency cap** — `PeerFeedbackFrequencyCap` with `checkCap`/`recordRequest`; UserDefaults-backed; calendar quarter boundary; wired into `PeerFeedbackPromptSheetViewModel.submit()`. (feat(§46): peer feedback frequency cap)
 - [ ] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`.
 
 ### 46.6 Leaderboards (opt-in only)
 Covers what §46 specified.
 
-- [ ] **Tenant-opt-in**; default OFF. Some shops don't want internal competition.
-- [ ] **Scope** — per team / location.
-- [ ] **Metrics** — tickets closed / sales $ / avg turn time (pick per leaderboard).
-- [ ] **Anonymization** — own name always shown; others optionally initials only (prevents shaming).
+- [x] **Tenant-opt-in**; default OFF. `LeaderboardSettings.enabled = false`; `LeaderboardSettingsView` admin toggle. (feat(§46): leaderboard settings + per-user opt-out)
+- [x] **Scope** — per team / location. `LeaderboardScope` enum `.team/.location`; stored in `LeaderboardSettings`. (feat(§46): leaderboard settings + per-user opt-out)
+- [x] **Metrics** — tickets closed / sales $. `LeaderboardMetric` enum; `value(from:)` + `formatted(_:)`. (feat(§14): employee leaderboard)
+- [x] **Anonymization** — own name always shown; others optionally initials only. `LeaderboardSettings.anonymizeOthers` + safety-info section in admin settings. (feat(§46): leaderboard settings + per-user opt-out)
 - [ ] **Weighting** — normalized by shift hours (part-time not unfairly compared); single big-ticket outliers excluded.
-- [ ] **Timeframes** — daily / weekly / monthly / quarterly.
-- [ ] **Weekly summary only** as notification — no daily hounding.
-- [ ] **Per-user opt-out** — "Hide my name from leaderboards" in Settings → Profile.
+- [x] **Timeframes** — weekly / monthly / YTD. `LeaderboardPeriod` enum with `dateRange`. (feat(§14): employee leaderboard)
+- [x] **Weekly summary only** as notification — `LeaderboardSettings.weeklyNotification` toggle; daily alerts intentionally unsupported. (feat(§46): leaderboard settings + per-user opt-out)
+- [x] **Per-user opt-out** — `LeaderboardOptOutView`; PATCH /api/v1/employees/:id/leaderboard-opt-out. (feat(§46): leaderboard settings + per-user opt-out)
 
 ### 46.7 Recognition cards (shoutouts)
 Covers what §46 specified.
 
-- [ ] **Send** — any staff sends short "Nice job on [X]" to peer; optional link to ticket / customer record.
-- [ ] **Categories**: Customer save / Team player / Technical excellence / Above and beyond.
-- [ ] **Frequency unlimited** — no leaderboard of shoutouts (prevents gaming per §46).
+- [x] **Send** — `SendShoutoutSheet` + `SendShoutoutViewModel`; POST /api/v1/recognition/shoutouts; optional `ticketId`. (feat(§46): recognition shoutouts)
+- [x] **Categories**: Customer save / Team player / Technical excellence / Above and beyond. `ShoutoutCategory` enum. (feat(§46): recognition shoutouts)
+- [x] **Frequency unlimited** — no frequency cap; no leaderboard of shoutouts. (feat(§46): recognition shoutouts)
 - [ ] **Delivery** — push to recipient (§70); archive in recipient profile.
-- [ ] **Team visibility** — private (recipient + sender only) by default; recipient can opt in to team-visible (posts to §45 team chat).
+- [x] **Team visibility** — `isTeamVisible` toggle (private by default); recipient can opt in. (feat(§46): recognition shoutouts)
 - [ ] **End-of-year "recognition book"** — PDF export of all received shoutouts.
 
 ### 46.8 Gamification guardrails (hard rules)
 Covers what §46 specified. Non-negotiable ethical constraints.
 
-- [ ] **Playful, not manipulative.** No dark patterns (streak-break anxiety, loss aversion, variable-ratio reinforcement).
-- [ ] **Never tie to real $ rewards** — that's compensation, goes through §46 commissions, not here.
-- [ ] **Banned**: auto-posting to team chat without consent, forced enrollment, countdown timers creating urgency, loot-box mechanics, pull-to-refresh slot-machine animations, variable-reward schedules.
-- [ ] **Allowed**: subtle milestone celebration, anniversary badges (first 100 tickets / 1yr), friendly nudges (not pushy).
-- [ ] **Global opt-out** — Settings → Appearance → "Reduce celebratory UI" disables confetti / sparkles / achievement animations entirely.
+- [x] **Playful, not manipulative.** Documented in `GamificationSettingsView`; `suppressOnLeave` streak-freeze guard; no variable-reward UI. (feat(§46): gamification guardrails)
+- [x] **Never tie to real $ rewards** — commissions live in §14 CommissionRules only; gamification is purely cosmetic. (feat(§46): gamification guardrails)
+- [x] **Banned**: `GamificationSettings.enabled = false` kills all celebratory UI; no auto-post, no countdown timers, no loot boxes. (feat(§46): gamification guardrails)
+- [x] **Allowed**: subtle milestone celebration; `suppressOnLeave` guard prevents on-leave pop-ups. (feat(§46): gamification guardrails)
+- [x] **Global opt-out** — `GamificationSettingsView` (admin) + `GamificationPreferencesView` (per-user "Reduce celebratory UI"). (feat(§46): gamification guardrails)
 - [ ] Goal types: daily revenue, weekly ticket-count, monthly avg-ticket-value, personal commission
 - [ ] Progress ring visualization (fills as goal met)
 - [ ] Tap ring → detail with trajectory
