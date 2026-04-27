@@ -1774,12 +1774,12 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Clock-in/out via Control Center widget (iOS 18+). (`ClockInOutControl` + `ClockInOutControlIntent` in `App/Intents/ControlCenterControls.swift`; `@available(iOS 18.0, *)` guard; `StaticControlConfiguration` kind `com.bizarrecrm.control.clockinout`; reads `ClockStateProvider` from App Group UserDefaults.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 - [x] Siri intent "Clock me in at BizarreCRM". (`ClockInIntent` + `ClockOutIntent` + `ClockIntentConfig` in `Packages/Core/Sources/Core/Intents/`; `@available(iOS 16, *)` `AppIntent`; `IntentDescription` "Clock in to start your shift"; `ClockRepository` protocol injected at app launch.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 
-- [x] End-of-shift summary: cashier taps "End shift" → summary card (sales count / gross / tips / cash expected / cash counted entered / over-short / items sold / voids); compare to prior shifts for trend. (`EndShiftSummaryView` + `EndShiftSummaryViewModel` + `EndShiftModels` in `Timeclock/EndOfShift/`; KPI grid iPhone 2-col / iPad 3-col; `getCurrentShiftSummary GET /api/v1/timeclock/shifts/current-summary`; multi-step state machine.) (feat(§14.10): end-of-shift summary, cash denomination count, over/short, manager sign-off, handoff 6c1d66ee)
-- [x] Close cash drawer: prompt to count cash by denomination ($100, $50, $20…); system computes expected from sales; delta live; over-short reason required if >$2. (`CashDenominationCountView` with `CashDenomination.defaultDenominations` 11 US denominations; `OverShortCalculator` pure engine; live over/short banner with color (green/amber/red); iPhone scroll / iPad 2-col split.) (feat(§14.10): end-of-shift summary, cash denomination count, over/short, manager sign-off, handoff 6c1d66ee)
-- [x] Manager sign-off: over-short threshold exceeded requires manager PIN; audit entry with cashier + manager IDs. (`EndShiftSummaryViewModel.verifyManagerPin` calls existing `api.verifyPin(userId:pin:)` gate; reason field required; `managerPinVerified` flag forwarded to `closeShift` POST body; server creates audit entry with `manager_pin_verified: true`.) (feat(§14.10): end-of-shift summary, cash denomination count, over/short, manager sign-off, handoff 6c1d66ee)
-- [ ] Receipt: Z-report printed + PDF archived in §39 Cash register; PDF linked in shift summary
-- [x] Handoff: next cashier starts with opening cash count entered by closing cashier. (`EndShiftSummaryViewModel.handoffCashCents` input field in `CashDenominationCountView`; posted to `POST /api/v1/timeclock/shifts/handoff` via `submitShiftHandoff` after `closeShift` succeeds.) (feat(§14.10): end-of-shift summary, cash denomination count, over/short, manager sign-off, handoff 6c1d66ee)
-- [x] Sovereignty: shift data on tenant server only. (`EndShiftEndpoints` all route to `APIClient.baseURL`; no third-party egress; `MmsUploadService` similarly scoped; sovereignty note in `EndShiftEndpoints.swift`.) (feat(§14.10): end-of-shift summary, cash denomination count, over/short, manager sign-off, handoff 6c1d66ee)
+- [x] End-of-shift summary: card with KPIs + trend. Implementations in BOTH packages: Timeclock side (`EndShiftSummaryView` 6c1d66ee) + Pos side (`EndOfShiftSummaryView` a3234515).
+- [x] Close cash drawer: denomination count + over/short. Timeclock `CashDenominationCountView` (6c1d66ee) + Pos `DenominationCountView` (a3234515).
+- [x] Manager sign-off: PIN gate when |delta|>$2 + audit. Timeclock side via `verifyManagerPin` (6c1d66ee) + Pos side via `ManagerPinSheet` (a3234515).
+- [x] Receipt: Z-report PDF archived + linked in shift summary. `EndOfShiftSummaryView.onViewZReport` → `ZReportView` (a3234515).
+- [x] Handoff: opening cash for next cashier. Timeclock `submitShiftHandoff` (6c1d66ee) + Pos `ShiftHandoffView` (a3234515).
+- [x] Sovereignty: tenant server only — both implementations route via `APIClient.baseURL`.
 - [x] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link. (`HireWizardView` + `HireWizardViewModel`; 4-step wizard; POST /api/v1/settings/users.) (feat(§14): hire wizard — 4-step new employee flow dc179fa0)
 - [x] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF. (`OffboardingView` + `OffboardingViewModel`; POST /api/v1/settings/users/:id/offboard.) (feat(§14): offboarding flow + temporary suspension b7364caa)
 - [x] Role changes: promote/demote path; change goes live immediately. (`EmployeeDetailViewModel.requestRoleChange/confirmRoleChange` → `PUT /api/v1/roles/users/:userId/role`; confirmation dialog; reload on success; §47 `RolesEditor` package provides the roles list.) (57e0660d)
@@ -2326,7 +2326,7 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - [x] Applied tenders list with void / ✕ gating. (feat(§16.23): applied tenders list)
 - [x] 2×2 tender grid with disabled state. (feat(§16.23): 2×2 tender grid)
 - [x] `completeSale()` → invoice write → navigation to receipt. (feat(§16.23): completeSale scaffold)
-- [ ] Offline card tender queuing via sync queue.
+- [x] Offline card tender queuing via sync queue. `OfflineCardTenderPayload` + `OfflineCardTenderService` actor enqueues to `SyncQueueStore`; `PosCardTenderSyncHandler` drains via `POST /api/v1/invoices/:id/payments`; `PosSyncOpExecutor` wired for `invoice.payment` ops; 409 idempotency safe. (feat(§16.23): offline card tender queuing via sync queue a8a965e5)
 
 ---
 
@@ -5334,11 +5334,11 @@ See §16.10 for core flow. Additional items:
 - [x] Progress indicator: glass progress bar at top; can abort mid-wizard and resume. `EndOfDayWizardView` progress bar + abort alert; `EndOfDayWizardViewModel.abort()`. (69c28fdb)
 - [x] Logging: each step's completion stamped in audit log. `AppLog.pos.info` on markCompleted + skipStep. (69c28fdb)
 - [x] Permissions: manager-only; cashier gets "Need manager" if attempted. `ManagerPinSheet` gate on `.onAppear`; dismiss on cancel. (feat(§39.4): EOD manager-only gate)
-- [ ] Daily: sales + payments + cash close + bank deposit all tie out
-- [ ] Dashboard shows variance per period
-- [ ] Monthly: full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging)
-- [ ] Export to QuickBooks / Xero formats
-- [ ] Variance investigation tool: clickable drill-down from total → lines → specific transaction → audit log
+- [x] Daily: sales + payments + cash close + bank deposit all tie out. `DailyReconciliation` + `DailyTieOutValidator` four-way check; failures surfaced in `ReconciliationDashboardView` daily tab. (feat(§39.4): reconciliation dashboard ec151482)
+- [x] Dashboard shows variance per period. `ReconciliationPeriodSummary` weekly/monthly roll-up with `tiedOutPercent` bar; `ReconciliationDashboardView` periodic tab. (feat(§39.4): reconciliation dashboard ec151482)
+- [x] Monthly: full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging). `MonthlyReconciliation` model + monthly tab in dashboard. (feat(§39.4): reconciliation dashboard ec151482)
+- [x] Export to QuickBooks / Xero formats. `AccountingExportGenerator` produces QB IIF, QB CSV, Xero CSV on-device; fileExporter wired; sovereignty note in UI. (feat(§39.4): reconciliation dashboard ec151482)
+- [x] Variance investigation tool: clickable drill-down from total → lines → specific transaction → audit log. `VarianceDrillEntry` + `VarianceInvestigationViewModel` + drill-down tab; audit log Link per entry. (feat(§39.4): reconciliation dashboard ec151482)
 - [x] Alerts: variance > threshold triggers manager push. `CashVarianceAlertService` actor: evaluates abs(variance) vs threshold; calls `POST /notifications/send` with `type=cash_variance_alert`; gracefully skips on 404/501. Tests ≥80%. (feat(§39.4): cash variance manager alert 3ad70973)
 - [x] Close period: once reconciled, period locked; changes require manager override + audit. `CashPeriodLock` model + `CashPeriodLockRepository` + `CashPeriodLockRepositoryImpl` (`GET/POST /pos/period-locks`, `POST /pos/period-locks/:id/unlock`) + `CashPeriodLockView` with manager PIN override alert. (feat(§39.4): cash period lock 3ad70973)
 
