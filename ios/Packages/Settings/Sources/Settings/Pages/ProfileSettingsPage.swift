@@ -32,6 +32,14 @@ public final class ProfileSettingsViewModel: Sendable {
     var newPassword: String = ""
     var confirmPassword: String = ""
 
+    // MARK: §19.1 Change email
+    var showChangeEmailSheet: Bool = false
+    /// Non-nil when a change-email verification is pending (user submitted but hasn't clicked link yet).
+    var pendingEmailChange: String? {
+        get { UserDefaults.standard.string(forKey: "profile.pendingEmailChange") }
+        set { UserDefaults.standard.set(newValue, forKey: "profile.pendingEmailChange") }
+    }
+
     // MARK: State
     var isLoading: Bool = false
     var isSaving: Bool = false
@@ -69,7 +77,7 @@ public final class ProfileSettingsViewModel: Sendable {
         jobTitle != savedJobTitle
     }
 
-    private let api: APIClient?
+    let api: APIClient?
 
     public init(api: APIClient? = nil) {
         self.api = api
@@ -307,14 +315,32 @@ public struct ProfileSettingsPage: View {
             }
 
             Section("Contact") {
-                TextField("Email", text: $vm.email)
-                    #if canImport(UIKit)
-                    .textContentType(.emailAddress)
-                    .keyboardType(.emailAddress)
-                    .autocapitalization(.none)
-                    #endif
-                    .accessibilityLabel("Email")
-                    .accessibilityIdentifier("profile.email")
+                // §19.1 Email — read-only display; tap "Change email" to start flow
+                HStack {
+                    Text(vm.email.isEmpty ? "No email set" : vm.email)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(vm.email.isEmpty ? .bizarreOnSurfaceMuted : .bizarreOnSurface)
+                    Spacer()
+                    Button("Change") {
+                        vm.showChangeEmailSheet = true
+                    }
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOrange)
+                    .accessibilityLabel("Change email address")
+                    .accessibilityIdentifier("profile.changeEmail")
+                }
+                .accessibilityElement(children: .combine)
+
+                // §19.1 Pending verification banner
+                if let pending = vm.pendingEmailChange {
+                    PendingEmailVerificationBanner(newEmail: pending) {
+                        // Resend: re-show the sheet pre-filled
+                        vm.showChangeEmailSheet = true
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
+                }
+
                 TextField("Phone", text: $vm.phone)
                     #if canImport(UIKit)
                     .textContentType(.telephoneNumber)
@@ -322,6 +348,17 @@ public struct ProfileSettingsPage: View {
                     #endif
                     .accessibilityLabel("Phone")
                     .accessibilityIdentifier("profile.phone")
+            }
+            .sheet(isPresented: $vm.showChangeEmailSheet) {
+                if let api = vm.api {
+                    ChangeEmailSheet(api: api) { success in
+                        if success {
+                            // Store pending state; banner appears until verify link clicked
+                            vm.pendingEmailChange = vm.email   // placeholder until user types new email
+                            vm.successMessage = "Verification email sent. Check your inbox."
+                        }
+                    }
+                }
             }
 
             Section {
@@ -383,7 +420,7 @@ public struct ProfileSettingsPage: View {
                 .accessibilityIdentifier("profile.signOutEverywhere")
             } footer: {
                 Text("Signs out this device and all other devices where you are currently logged in.")
-                    .font(.brandBodySmall())
+                    .font(.brandLabelSmall())
             }
 
             if let msg = vm.errorMessage {

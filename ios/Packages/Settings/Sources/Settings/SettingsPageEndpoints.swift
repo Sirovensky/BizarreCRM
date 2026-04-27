@@ -141,6 +141,16 @@ public extension APIClient {
         )
     }
 
+    // §19.1 Change email — POST /api/v1/auth/change-email
+    // Server sends a verification link to newEmail; the address is only swapped after the user clicks it.
+    func settingsRequestEmailChange(newEmail: String, currentPassword: String) async throws {
+        _ = try await post(
+            "/api/v1/auth/change-email",
+            body: ChangeEmailRequestWire(newEmail: newEmail, password: currentPassword),
+            as: EmptyResponse.self
+        )
+    }
+
     // §19.1 Avatar upload — POST /api/v1/auth/me/avatar (multipart-form or JSON base64).
     // Uses base64 JSON body to avoid needing multipart implementation here.
     func settingsUploadAvatar(data: Data) async throws -> AvatarUploadResponse {
@@ -153,6 +163,14 @@ public extension APIClient {
     func settingsRemoveAvatar() async throws {
         try await delete("/api/v1/auth/me/avatar")
     }
+}
+
+// MARK: - Change email wire type
+
+private struct ChangeEmailRequestWire: Encodable, Sendable {
+    let newEmail: String
+    let password: String
+    enum CodingKeys: String, CodingKey { case newEmail = "new_email"; case password }
 }
 
 // MARK: - Avatar wire types
