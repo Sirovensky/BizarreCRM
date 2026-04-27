@@ -1033,9 +1033,9 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Deactivate** — keep history, hide from POS. (`InventoryDetailView.deactivate()` via `DELETE /api/v1/inventory/:id`; sets is_active=0 on server; confirmationDialog warns. feat(§6.4) b5)
 
 ### 6.5 Scan to lookup
-- [ ] **Tab-bar quick scan** / Dashboard FAB scan → VisionKit → resolves barcode → item detail. If POS session open → add to cart.
-- [ ] **HID-scanner support** — accept external Bluetooth scanner input via hidden `TextField` with focus + IME-send detection (Android parity). Detect rapid keystrokes (intra-key <50ms) → buffer until Enter → submit.
-- [ ] **Vibrate haptic** on successful scan.
+- [x] **Tab-bar quick scan** / Dashboard FAB scan → VisionKit → resolves barcode → item detail. If POS session open → add to cart. (`QuickScan/InventoryQuickScanSheet.swift` — `InventoryQuickScanViewModel` states idle/loading/found/notFound/error; camera scanner fills background; result overlay glass banner; found card taps → `InventoryDetailView` via `navigationDestination`; `InventoryListView` toolbar `barcode.viewfinder` button ⌘⇧B. feat(§6.5) b7)
+- [x] **HID-scanner support** — accept external Bluetooth scanner input via hidden `TextField` with focus + IME-send detection (Android parity). Detect rapid keystrokes (intra-key <50ms) → buffer until Enter → submit. (`HIDScannerField.swift` — zero-height focused TextField; 200ms debounce timer; Enter/newline immediate commit; ≥4 char gate. feat(§6.5) confirmed b7)
+- [x] **Vibrate haptic** on successful scan. (`HIDScannerField.commitBuffer()` — `UIImpactFeedbackGenerator(.medium).impactOccurred()` on each successful scan. feat(§6.5) confirmed b7)
 
 ### 6.6 Stocktake / audit
 - [x] **Sessions list** — `ReceivingListView` (open PO list); `StocktakeStartView` picks scope → `POST /inventory/stocktake/start`. (feat(ios phase-4 §6))

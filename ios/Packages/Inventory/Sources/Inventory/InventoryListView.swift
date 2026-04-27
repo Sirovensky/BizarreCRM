@@ -24,6 +24,8 @@ public struct InventoryListView: View {
     @State private var adjustTargetName: String = ""
     /// §6.5 HID scanner — toast shown when barcode resolves to nothing
     @State private var hidScanErrorMessage: String?
+    /// §6.5 Tab-bar / toolbar quick scan — presents camera scanner sheet
+    @State private var showingQuickScan: Bool = false
     /// §6.1 Columns picker (iPad/Mac) — persisted column visibility set
     @State private var columnSet: InventoryColumnSet = .load()
     @State private var showingColumnsPicker: Bool = false
@@ -140,6 +142,12 @@ public struct InventoryListView: View {
                     )
                 }
             }
+            // §6.5 Quick scan sheet
+            .sheet(isPresented: $showingQuickScan) {
+                if let api {
+                    InventoryQuickScanSheet(api: api)
+                }
+            }
         }
     }
 
@@ -212,6 +220,12 @@ public struct InventoryListView: View {
             .sheet(isPresented: $showingColumnsPicker) {
                 InventoryColumnsPickerSheet(columnSet: $columnSet)
                     .presentationDetents([.medium])
+            }
+            // §6.5 Quick scan sheet
+            .sheet(isPresented: $showingQuickScan) {
+                if let api {
+                    InventoryQuickScanSheet(api: api)
+                }
             }
         } detail: {
             if let id = selected {
@@ -322,6 +336,16 @@ public struct InventoryListView: View {
             }
             .keyboardShortcut("N", modifiers: .command)
             .accessibilityLabel("New item")
+            .disabled(api == nil)
+        }
+        // §6.5 Tab-bar / toolbar quick scan — opens camera scanner to resolve barcode → item detail
+        ToolbarItem(placement: .primaryAction) {
+            Button { showingQuickScan = true } label: {
+                Image(systemName: "barcode.viewfinder")
+            }
+            .keyboardShortcut("B", modifiers: [.command, .shift])
+            .accessibilityLabel("Quick scan barcode")
+            .accessibilityIdentifier("inventory.quickscan")
             .disabled(api == nil)
         }
         // §6.1 Sort menu
