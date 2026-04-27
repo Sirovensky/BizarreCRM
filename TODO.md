@@ -24,17 +24,10 @@ type: project
 - [ ] WEB-W1-004. **`ticket_default_view` client-only, `kanban` option unimplemented but marked live.** — flip to `coming_soon` until kanban default works, or add server-side default-view persistence.
 - [ ] WEB-W1-006. **`ticket_default_pagination` key-name drift between save and read.** — verify save key matches consumed key in `tickets.routes.ts`.
 - [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
-- [ ] WEB-W1-015. **`pos_show_discount_reason` dead.** — wire into POS discount modal (require reason input when true).
 
 ## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
 
 ### P0 (blocks workflow / data loss)
-- [ ] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route — likely 404.**
-  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` or `TicketActions.tsx`
-  - Fix: confirm endpoint in `tickets.routes.ts`; if missing, add `POST /tickets/:id/clone-warranty` that copies ticket with `is_warranty=true` and parent reference.
-- [ ] WEB-W2-004. **Ticket merge dialog calls unverified route — likely 404.**
-  - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` (merge dialog)
-  - Fix: implement `POST /tickets/merge` that consolidates devices/notes/payments under target ticket id and soft-deletes source.
 
 ### P1 (silent no-op / broken feature)
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
@@ -44,12 +37,12 @@ type: project
   - Fix: add Assign action wired to existing bulk endpoint.
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
   - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
-- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
-  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
   - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
   - Fix: type assignee field as `number | null`; route accepts null.
   - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
   - Fix: normalize to `notes` in DB + payload + display.
+- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
+  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
 - [ ] WEB-W2-011. **Activity filter tabs are client-side only — incomplete if backend paginates.**
   - File: `packages/web/src/pages/tickets/TicketNotes.tsx`
   - Fix: pass filter as query param to activity endpoint; rebuild filtering server-side.
@@ -135,9 +128,6 @@ type: project
   - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 68 (`refetchInterval: 5_000`) — comment says "only while visible" but `document.visibilityState` check is missing
   - Fix: add `refetchIntervalInBackground: false` to the query options (TanStack Query v5 default) or add a `visibilitychange` listener that pauses refetch.
 
-- [ ] WEB-S6-027. **GoalsPage: goal edit absent — goals can only be created or deleted, not modified (target value, dates, employee assignment).**
-  - File: `packages/web/src/pages/team/GoalsPage.tsx` — no edit button or modal
-  - Fix: add edit button per goal row; re-use create form in edit mode; PUT to `/team/goals/:id`.
 
 ### P2 (UX / cosmetic / missing polish)
 

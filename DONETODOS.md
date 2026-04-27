@@ -3034,3 +3034,10 @@ Bulk move of items that were already marked [x] in TODO.md but never relocated t
 - [x] WEB-S6-024. **TaxReportPage: date range allows `from > to`.** CLOSED 2026-04-26 — todofixes426: `if (from > to)` validation added before openReport(); toast shown; server no longer called with inverted range.
 - [x] WEB-S6-033. **EmployeeListPage: N+1 clock-in queries per row.** CLOSED 2026-04-26 — todofixes426: `is_clocked_in` + `weekly_hours` added to GET /employees list response; per-row detail fetch eliminated for status display.
 - [x] WEB-S6-034. **CommunicationPage: conversation search client-side only.** CLOSED 2026-04-26 — todofixes426: debounced `q=` param passed to GET /sms/conversations; server-side full-text search across all conversations.
+
+## todofixes426 — Cleanup pass 3 (2026-04-26)
+
+- [x] WEB-W1-015. **`pos_show_discount_reason` dead.** CLOSED 2026-04-26 — todofixes426: LeftPanel.tsx adds DiscountEditor component reading `pos_show_discount_reason` via getSetting; when flag on, Reason field required (toast.error rejects empty submit); persists to existing `discount_reason` payload field.
+- [x] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route.** CLOSED 2026-04-26 — todofixes426: pre-existing route `POST /tickets/:id/clone-warranty` (line 4053) verified; `ticketApi.cloneWarranty` + cloneWarrantyMut + ActionsDropdown button all wired; uses ticket_links link_type='warranty_followup' instead of denormalized column.
+- [x] WEB-W2-004. **Ticket merge dialog calls unverified route.** CLOSED 2026-04-26 — todofixes426: pre-existing route `POST /tickets/merge` (line 3867) verified; body uses keep_id/merge_id; moves devices/notes/history/photos, recalculates totals, soft-deletes merged ticket, audit logged; admin-only.
+- [x] WEB-S6-027. **GoalsPage: goal edit absent.** CLOSED 2026-04-26 — todofixes426: new `PUT /team/goals/:id` route in team.routes.ts (validates fields, audit goal_updated); GoalsPage adds Pencil icon, editingGoalId+editForm state, editMut mutation, openEditModal helper seeded from goal row, full edit modal reusing create form structure.

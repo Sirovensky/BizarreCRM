@@ -516,10 +516,9 @@ router.post(
 const GOAL_METRIC_DEFINITIONS = [
   { key: 'tickets_closed_week',  label: 'Tickets closed (week)',   unit: 'count'    },
   { key: 'revenue_week',         label: 'Revenue (week)',           unit: 'currency' },
-  { key: 'avg_ticket_value',     label: 'Avg ticket value',         unit: 'currency' },
   { key: 'csat',                 label: 'CSAT score',               unit: 'score'    },
-  { key: 'on_time_completion',   label: 'On-time completion',       unit: 'percent'  },
-  { key: 'parts_accuracy',       label: 'Parts accuracy',           unit: 'percent'  },
+  { key: 'avg_repair_hours',     label: 'Avg repair time (hours)',  unit: 'hours'    },
+  { key: 'first_response_mins',  label: 'First response time (min)',unit: 'minutes'  },
 ] as const;
 
 const VALID_METRICS = GOAL_METRIC_DEFINITIONS.map((m) => m.key) as unknown as readonly [string, ...string[]];
@@ -612,27 +611,31 @@ router.post(
   }),
 );
 
-// WEB-S6-027: goal edit via PUT
 router.put(
   '/goals/:id',
   asyncHandler(async (req, res) => {
     requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const id = parseId(req.params.id, 'goal id');
-    const existing = await adb.get<any>('SELECT * FROM team_goals WHERE id = ?', id);
+
+    const existing = await adb.get<{ id: number; user_id: number; metric: string; target_value: number; period_start: string; period_end: string }>(
+      'SELECT id, user_id, metric, target_value, period_start, period_end FROM team_goals WHERE id = ?', id,
+    );
     if (!existing) throw new AppError('Goal not found', 404);
 
-    const userId = req.body?.user_id !== undefined ? parseId(String(req.body.user_id), 'user_id') : existing.user_id;
-    const metric = req.body?.metric !== undefined
+    const userId = req.body?.user_id != null
+      ? parseId(String(req.body.user_id), 'user_id')
+      : existing.user_id;
+    const metric = req.body?.metric != null
       ? (validateEnum(req.body.metric, VALID_METRICS, 'metric', true)! as GoalMetric)
-      : existing.metric;
-    const target = req.body?.target_value !== undefined
+      : existing.metric as GoalMetric;
+    const target = req.body?.target_value != null
       ? validatePositiveAmount(req.body.target_value, 'target_value')
       : existing.target_value;
-    const periodStart = req.body?.period_start !== undefined
+    const periodStart = req.body?.period_start != null
       ? validateIsoDate(req.body.period_start, 'period_start', true)!
       : existing.period_start;
-    const periodEnd = req.body?.period_end !== undefined
+    const periodEnd = req.body?.period_end != null
       ? validateIsoDate(req.body.period_end, 'period_end', true)!
       : existing.period_end;
 
@@ -641,14 +644,12 @@ router.put(
     }
 
     await adb.run(
-      `UPDATE team_goals SET user_id = ?, metric = ?, target_value = ?, period_start = ?, period_end = ?,
-          updated_at = datetime('now')
-       WHERE id = ?`,
+      `UPDATE team_goals SET user_id = ?, metric = ?, target_value = ?, period_start = ?, period_end = ? WHERE id = ?`,
       userId, metric, target, periodStart, periodEnd, id,
     );
     audit(req.db, 'goal_updated', requireUserId(req), req.ip || 'unknown', { goal_id: id });
-    const updatedRow = await adb.get('SELECT * FROM team_goals WHERE id = ?', id);
-    res.json({ success: true, data: updatedRow });
+    const row = await adb.get('SELECT * FROM team_goals WHERE id = ?', id);
+    res.json({ success: true, data: row });
   }),
 );
 
@@ -674,35 +675,14 @@ router.get(
     requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
-    // WEB-S6-028: pagination support — limit/page params
-    const rawLimit = parseInt(String(req.query.limit ?? '20'), 10);
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
-    const rawPage = parseInt(String(req.query.page ?? '1'), 10);
-    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
-    const offset = (page - 1) * limit;
-
-    const whereClause = userId ? 'WHERE r.user_id = ?' : '';
-    const params: unknown[] = userId ? [userId] : [];
-
-    const totalRow = await adb.get<{ cnt: number }>(
-      `SELECT COUNT(*) AS cnt FROM performance_reviews r ${whereClause}`,
-      ...params,
-    );
-    const total = totalRow?.cnt ?? 0;
-    const totalPages = Math.ceil(total / limit);
-
     const sql = `SELECT r.*, u.first_name, u.last_name, ru.first_name AS reviewer_first, ru.last_name AS reviewer_last
                  FROM performance_reviews r
                  LEFT JOIN users u  ON u.id  = r.user_id
                  LEFT JOIN users ru ON ru.id = r.reviewer_user_id
-                 ${whereClause}
-                 ORDER BY r.created_at DESC
-                 LIMIT ? OFFSET ?`;
-    const rows = await adb.all(sql, ...params, limit, offset);
-    res.json({
-      success: true,
-      data: { reviews: rows, pagination: { page, limit, total, total_pages: totalPages } },
-    });
+                 ${userId ? 'WHERE r.user_id = ?' : ''}
+                 ORDER BY r.created_at DESC LIMIT 100`;
+    const rows = userId ? await adb.all(sql, userId) : await adb.all(sql);
+    res.json({ success: true, data: rows });
   }),
 );
 
