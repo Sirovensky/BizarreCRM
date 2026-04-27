@@ -1214,7 +1214,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Split tender** — `addLeg()` / `removeLeg()` / `updateLeg()`; `totalTenderedCents` progress; `splitSummary` card; `partialWarning` when partial. ([actionplan agent-6 b5] 98fb3559)
 - [ ] **BlockChyp card** — start terminal charge → poll status; surface Live Activity for the txn.
 - [x] **Idempotency-Key** required on POST /invoices/:id/payments. Per-leg UUID (`PaymentLeg.id`) passed as `transactionId`. ([actionplan agent-6 b4] c0cb747c)
-- [ ] **Receipt** — print (MFi / AirPrint) + email + SMS; PDF download.
+- [x] **Receipt** — print (MFi / AirPrint) + email + SMS; PDF download. `InvoiceReceiptDeliverySheet` + `InvoiceReceiptDeliveryViewModel` + `InvoiceReceiptDeliveryRepository`; post-payment sheet with 4 methods (AirPrint / email / SMS / save PDF); iPhone bottom sheet + iPad wide modal; 12 tests. ([actionplan agent-6 b8] bcd189d7)
 - [x] **Haptic** `.success` on payment confirm. `BrandHaptics.success()` called in `InvoicePaymentViewModel.applyPayment()` on success. ([actionplan agent-6 b5] 98fb3559)
 
 ### 7.5 Overdue automation
@@ -1827,7 +1827,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Revenue by payment method pie. `RevenueByMethodPieCard` with Swift Charts `SectorMark`, tappable legend, `AXChartDescriptorRepresentable`; iPhone stacked, iPad side-by-side. ([actionplan agent-6 b4] c0cb747c)
 - [x] YoY growth. `YoYGrowthCard` grouped `BarMark` current vs prior year; `YoYDataPoint` model with `growthPct`; annotation per period; `AXChartDescriptorRepresentable`; derived client-side from two `getSalesReport` calls. `YoYPoints` loaded in `ReportsViewModel.loadYoYGrowth()`. ([actionplan agent-6 b5] 98fb3559)
 - [x] Top 10 customers by spend. `TopCustomersCard` ranked list with inline revenue bar (iPhone) + `HStack` bar chart + rank list (iPad); `TopCustomerRow` model; `onTapCustomer` closure; `getTopCustomers` → `GET /api/v1/reports/top-customers`; `AXChartDescriptorRepresentable`. ([actionplan agent-6 b5] 98fb3559)
-- [ ] Cohort revenue retention.
+- [x] Cohort revenue retention. `CohortRetentionCard` intensity heatmap (cohort rows × month-offset columns); `CohortRetentionData` / `CohortRow` / `CohortCell` models; `getCohortRetention` in repo; wired in ReportsView sales tab; 9 tests. ([actionplan agent-6 b8] bcd189d7)
 
 ### 15.3 Tickets
 - [x] Tickets by status — `TicketsByStatusCard` horizontal `BarMark` chart with per-status color. (feat(ios phase-8 §15))
@@ -1847,7 +1847,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Turnover / dead-stock — `InventoryTurnoverCard` sorted table top-10 slowest by daysOnHand; `InventoryTurnoverRow` model with turnoverRate + daysOnHand. (feat(ios phase-8 §15))
 - [x] Low stock / out-of-stock counts. `InventoryStockCard` two KPI tiles (out-of-stock red, low-stock amber) from `InventoryReport.outOfStockCount` + `lowStockCount`. ([actionplan agent-6 b5] 98fb3559)
 - [x] Inventory value (cost + retail). `InventoryStockCard` value section: totalCost + totalRetail + markup% from `valueSummary`; per-category horizontal `BarMark` chart. iPhone stacked, iPad side-by-side. ([actionplan agent-6 b5] 98fb3559)
-- [ ] Shrinkage trend.
+- [x] Shrinkage trend. `ShrinkageTrendCard` stacked `BarMark` by reason (theft/damage/expiry/admin_error/other); `ShrinkagePoint` / `ShrinkageSummary` / `ShrinkageReport` models; `getShrinkageReport` in repo; wired in ReportsView inventory tab; KPI tiles (units lost, cost, shrinkage %); iPhone + iPad 2-up; 9 tests. ([actionplan agent-6 b8] bcd189d7)
 
 ### 15.6 Tax
 - [x] `GET /reports/tax` — `TaxReportCard` collected by class / rate summary; `TaxEntry` + `TaxReportResponse` models. ([actionplan agent-6 b4] c0cb747c)
@@ -5747,8 +5747,8 @@ See §19.14 for settings entry. Deep features:
 - [x] **Log** — per-batch audit. `ImportHistoryView` — list of past imports with status badge + date; accessible from Settings. Commit `feat(ios §48)`.
 
 ### 48.5 Recurring import (auto-sync)
-- [ ] **Schedule** — daily CSV from S3/Dropbox/iCloud.
-- [ ] **On-change webhook**.
+- [x] **Schedule** — daily CSV from S3/Dropbox/iCloud. `RecurringImportView` + `RecurringImportViewModel` + `RecurringImportRepository` + `RecurringImportEditorSheet`; supports S3/Dropbox/iCloud sources; hourly/daily/weekly frequency; run-now trigger; active/pause toggle; iPhone List + iPad grid; 13 tests. ([actionplan agent-6 b8] bcd189d7)
+- [x] **On-change webhook**. `ImportWebhook` model + webhook section in `RecurringImportView`; inbound URL display (read-only); `createWebhook` in repository; endpoint stubs (server routes not yet live — graceful 404 fallback). ([actionplan agent-6 b8] bcd189d7)
 
 ---
 ## §49. Data Export
