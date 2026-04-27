@@ -42,8 +42,22 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 
     var passwordsMatch: Bool { newPassword == confirmPassword && !newPassword.isEmpty }
+
+    // Tracks the server-side last-loaded state to compute true dirty flag.
+    private var savedFirstName: String = ""
+    private var savedLastName: String = ""
+    private var savedDisplayName: String = ""
+    private var savedEmail: String = ""
+    private var savedPhone: String = ""
+    private var savedJobTitle: String = ""
+
     var isDirty: Bool {
-        !firstName.isEmpty || !lastName.isEmpty || !displayName.isEmpty
+        firstName != savedFirstName ||
+        lastName != savedLastName ||
+        displayName != savedDisplayName ||
+        email != savedEmail ||
+        phone != savedPhone ||
+        jobTitle != savedJobTitle
     }
 
     private let api: APIClient?
@@ -57,13 +71,20 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let profile: UserProfileResponse = try await api.get("/auth/me", as: UserProfileResponse.self)
+            let profile = try await api.settingsMe()
             firstName = profile.firstName ?? ""
             lastName = profile.lastName ?? ""
             displayName = profile.displayName ?? ""
             email = profile.email ?? ""
             phone = profile.phone ?? ""
             jobTitle = profile.jobTitle ?? ""
+            // Snapshot loaded state for dirty tracking
+            savedFirstName = firstName
+            savedLastName = lastName
+            savedDisplayName = displayName
+            savedEmail = email
+            savedPhone = phone
+            savedJobTitle = jobTitle
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -74,7 +95,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = UserProfileUpdateRequest(
+            let body = UserProfileWire(
                 firstName: firstName,
                 lastName: lastName,
                 displayName: displayName,
@@ -82,12 +103,29 @@ public final class ProfileSettingsViewModel: Sendable {
                 phone: phone,
                 jobTitle: jobTitle
             )
-            _ = try await api.patch("/auth/me", body: body, as: UserProfileResponse.self)
+            _ = try await api.settingsSaveMe(body)
+            // Update saved snapshot
+            savedFirstName = firstName
+            savedLastName = lastName
+            savedDisplayName = displayName
+            savedEmail = email
+            savedPhone = phone
+            savedJobTitle = jobTitle
             successMessage = "Profile saved."
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func discardChanges() {
+        firstName = savedFirstName
+        lastName = savedLastName
+        displayName = savedDisplayName
+        email = savedEmail
+        phone = savedPhone
+        jobTitle = savedJobTitle
+        errorMessage = nil
     }
 
     func changePassword() async {
@@ -99,11 +137,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = ChangePasswordRequest(
-                currentPassword: currentPassword,
-                newPassword: newPassword
-            )
-            _ = try await api.put("/auth/change-password", body: body, as: EmptyResponse.self)
+            try await api.settingsChangePassword(current: currentPassword, new: newPassword)
             successMessage = "Password updated."
             currentPassword = ""
             newPassword = ""
@@ -116,32 +150,7 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 }
 
-// MARK: - Response models
-
-struct UserProfileResponse: Decodable, Sendable {
-    var firstName: String?
-    var lastName: String?
-    var displayName: String?
-    var email: String?
-    var phone: String?
-    var jobTitle: String?
-}
-
-struct UserProfileUpdateRequest: Encodable, Sendable {
-    var firstName: String
-    var lastName: String
-    var displayName: String
-    var email: String
-    var phone: String
-    var jobTitle: String
-}
-
-struct ChangePasswordRequest: Encodable, Sendable {
-    var currentPassword: String
-    var newPassword: String
-}
-
-// Note: EmptyResponse is provided by the Networking package.
+// Note: Wire types (UserProfileWire, EmptyResponse) live in SettingsPageEndpoints.swift / Networking.
 
 // MARK: - View
 
@@ -261,13 +270,11 @@ public struct ProfileSettingsPage: View {
         #endif
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Save") { Task { await vm.save() } }
-                    .disabled(vm.isSaving)
-                    .accessibilityIdentifier("profile.save")
-            }
-        }
+        .unsavedChangesBanner(
+            isDirty: vm.isDirty,
+            onSave: { await vm.save() },
+            onDiscard: { vm.discardChanges() }
+        )
         .task { await vm.load() }
         .overlay {
             if vm.isLoading {

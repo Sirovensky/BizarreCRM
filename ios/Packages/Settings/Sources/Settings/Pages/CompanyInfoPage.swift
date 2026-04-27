@@ -36,7 +36,7 @@ public final class CompanyInfoViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let info: CompanyInfoResponse = try await api.get("/tenant/company", as: CompanyInfoResponse.self)
+            let info = try await api.settingsCompanyInfo()
             legalName = info.legalName ?? ""
             dba = info.dba ?? ""
             address = info.address ?? ""
@@ -56,12 +56,12 @@ public final class CompanyInfoViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = CompanyInfoRequest(
+            let body = CompanyInfoWire(
                 legalName: legalName, dba: dba,
                 address: address, city: city, state: state, zip: zip,
                 phone: phone, website: website, ein: ein
             )
-            _ = try await api.patch("/tenant/company", body: body, as: CompanyInfoResponse.self)
+            _ = try await api.settingsSaveCompanyInfo(body)
             successMessage = "Company info saved."
             errorMessage = nil
         } catch {
@@ -70,31 +70,10 @@ public final class CompanyInfoViewModel: Sendable {
     }
 }
 
-// MARK: - Response models
+// MARK: - Response models (re-exported from SettingsPageEndpoints.swift)
 
-struct CompanyInfoResponse: Decodable, Sendable {
-    var legalName: String?
-    var dba: String?
-    var address: String?
-    var city: String?
-    var state: String?
-    var zip: String?
-    var phone: String?
-    var website: String?
-    var ein: String?
-}
-
-struct CompanyInfoRequest: Encodable, Sendable {
-    var legalName: String
-    var dba: String
-    var address: String
-    var city: String
-    var state: String
-    var zip: String
-    var phone: String
-    var website: String
-    var ein: String
-}
+// CompanyInfoWire is declared in SettingsPageEndpoints.swift and is visible
+// within the Settings module — no re-declaration needed here.
 
 // MARK: - View
 

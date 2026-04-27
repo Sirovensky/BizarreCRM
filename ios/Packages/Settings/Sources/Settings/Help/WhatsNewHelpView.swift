@@ -51,10 +51,12 @@ final class WhatsNewViewModel {
             return
         }
         do {
-            let version = Platform.appVersion
-            let query = [URLQueryItem(name: "version", value: version)]
-            let list = try await api.get("/app/changelog", query: query, as: [ChangelogEntry].self)
-            entries = list
+            let list = try await api.settingsChangelog(since: Platform.appVersion)
+            // Map wire type → local ChangelogEntry (field names differ slightly)
+            entries = list.map { w in
+                ChangelogEntry(id: w.id, version: w.version, date: w.date,
+                               highlights: [w.body], readMoreURL: nil)
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

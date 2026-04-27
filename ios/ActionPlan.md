@@ -449,15 +449,15 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — shipped.
-- [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
-- [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (`DashboardEndpoints.swift` DashboardKPIs + dashboardKPIs(); `DashboardView.swift` secondaryGrid; `DashboardRepository.swift` parallel fetch; 4dcf7c71)
+- [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (`Dashboard/DashboardTileDestination.swift` public enum + `DashboardView.onTileTap` callback; `StatTileCard` Button when handler present; DISCOVERED: `DeepLinkRoute` in Core needs `.ticketList(filter:)` / `.inventoryList(filter:)` / `.appointmentList(filter:)` cases — Agent 10 wires App-layer routing to `onTileTap`; b39fb1c1)
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
-- [ ] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present.
-- [ ] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column.
+- [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
+- [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
-- [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
+- [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (`Dashboard/DashboardNewTenantEmptyState.swift`; `isNewTenantSnapshot()` helper; wired via onCreateTicket/onImportData on DashboardView.init; a964a315)
 
 ### 3.2 Business-intelligence widgets (mirror web)
 - [ ] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`).
@@ -475,7 +475,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
 - [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
-- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
+- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`DashboardView.swift` AttentionAllClearView; sparkle icon; shown when attention items total to 0 and tenant has data; a964a315)
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [ ] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web).
@@ -1645,9 +1645,9 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Mark all read** action (glass toolbar button).
 - [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
 - [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
-- [ ] **Group by day** (glass day-header).
+- [x] **Group by day** (glass day-header). (`NotificationListView.swift` uses `NotificationDaySectionBuilder.build(from:)` + `DayHeader` private view per section; c28bece8)
 - [ ] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
-- [ ] **Empty state** — "All caught up. Nothing new." illustration.
+- [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListView.swift` emptyState(icon:text:) → "You're all caught up" + `bell.slash` icon; shown when items empty + online; pre-existing impl)
 
 ### 13.2 Push pipeline
 - [x] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
@@ -3006,10 +3006,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
-- [ ] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable.
-- [ ] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone."
-- [ ] **Loading state** — skeleton rows in glass cards.
-- [ ] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation).
+- [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.swift` emptyStateWithRecent; "Try a phone number, ticket ID, SKU, IMEI, or name." + recent searches chips; pre-existing impl)
+- [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.swift` noResultsView; pre-existing impl)
+- [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.swift` skeletonView with SkeletonRow shimmer; pre-existing impl)
+- [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 300ms `Task.sleep` + `searchTask?.cancel()`; pre-existing impl)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
@@ -3073,11 +3073,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `GET/PUT /settings/security`, `GET/PUT /settings/notifications`, `GET/PUT /settings/organization`, `GET /settings/integrations`, `GET/PUT /settings/tickets`, `GET/PUT /settings/invoices`, `GET/PUT /settings/tax`, `GET/PUT /settings/payment`, `GET/PUT /settings/sms`, `GET/PUT /settings/automations`, `GET/PUT /settings/membership`, `GET/PUT /settings/customer-groups`, `GET/PUT /settings/roles`, `GET/PUT /settings/statuses`, `GET/PUT /settings/conditions`, `GET/PUT /settings/device-templates`, `GET/PUT /settings/repair-pricing`, `GET /audit-logs`, `GET /billing`._
 
 ### 19.0 Shell
-- [ ] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`).
-- [ ] **iPhone** — `List` of categories → push to individual tab views.
-- [ ] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`.
-- [ ] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field.
-- [ ] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty.
+- [x] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`). (`Settings/SettingsView.swift` iPadLayout; 3-col NavigationSplitView with sidebar + content + detail; 4dcf7c71)
+- [x] **iPhone** — `List` of categories → push to individual tab views. (`Settings/SettingsView.swift` iPhoneLayout + NavigationStack; 4dcf7c71)
+- [x] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`. (`SettingsView.swift` isAdmin guard; iPadSections admin section gated; 4dcf7c71)
+- [x] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field. (`Settings/Search/SettingsSearchView.swift` + `SettingsSearchViewModel` + `SettingsSearchIndex`; 4dcf7c71)
+- [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (`Settings/UnsavedChangesBanner.swift`; `.unsavedChangesBanner(isDirty:onSave:onDiscard:)` modifier; wired into ProfileSettingsPage; 4dcf7c71)
 
 ### 19.1 Profile
 - [ ] **Avatar** — circular tap → action sheet (Camera / Library / Remove).
@@ -3566,7 +3566,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
 - [x] **`TICKET_STATUS_CHANGED`** — Open.
 - [x] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
-- [ ] **`PAYMENT_FAILED`** — Open / Retry charge.
+- [x] **`PAYMENT_FAILED`** — Open / Retry charge. (`NotificationCategories.swift` paymentFailedCategory; NotificationCategoryID.paymentFailed + paymentFailedView/paymentFailedRetry action IDs; 3 tests; f658027b)
 - [x] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
 - [x] **`MENTION`** — Reply.
 - [x] **`LOW_STOCK`** — Reorder / Dismiss.

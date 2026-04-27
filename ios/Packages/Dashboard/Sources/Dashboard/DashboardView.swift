@@ -12,19 +12,45 @@ public struct DashboardView: View {
     @State private var vm: DashboardViewModel
     @State private var clockVM: ClockInOutViewModel
 
+    /// Called when the user taps a KPI tile. The App layer should handle
+    /// navigation to the filtered list (e.g. push Tickets with `status_group=open`).
+    ///
+    /// If `nil`, tile taps do nothing (non-interactive appearance).
+    ///
+    /// **Wiring note (Discovered §3.1):** `DeepLinkRoute` in Core does not yet
+    /// have filtered-list cases; Agent 10 must add `.ticketList(filter:)`,
+    /// `.inventoryList(filter:)`, etc. before this callback can use deep-link
+    /// routing. The callback interface is stable; App-layer wiring can follow.
+    public var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
+
+    /// §3.1 / §3.14 New-tenant empty state CTA — "Create your first ticket".
+    public var onCreateTicket: (() -> Void)?
+
+    /// §3.1 / §3.14 New-tenant empty state CTA — "Import data".
+    public var onImportData: (() -> Void)?
+
     /// - Parameters:
     ///   - repo: Dashboard data repository.
     ///   - api: APIClient for all network calls (timeclock included).
     ///   - userIdProvider: Closure that returns the current user's ID for
     ///     timeclock calls. Defaults to `{ 0 }` — a placeholder until
     ///     `GET /auth/me` is wired (TODO post-phase-11).
+    ///   - onTileTap: Called when the user taps a KPI tile. Nil = non-interactive.
+    ///   - onCreateTicket: Called from the new-tenant empty state CTA. Nil hides button.
+    ///   - onImportData: Called from the new-tenant empty state CTA. Nil hides button.
     public init(
         repo: DashboardRepository,
         api: APIClient,
-        userIdProvider: (@Sendable () async -> Int64)? = nil
+        userIdProvider: (@Sendable () async -> Int64)? = nil,
+        onTileTap: (@MainActor (DashboardTileDestination) -> Void)? = nil,
+        onCreateTicket: (() -> Void)? = nil,
+        onImportData: (() -> Void)? = nil
     ) {
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
         _clockVM = State(wrappedValue: ClockInOutViewModel(api: api, userIdProvider: userIdProvider))
+        self.onTileTap = onTileTap
+        self.onCreateTicket = onCreateTicket
+        self.onImportData = onImportData
     }
 
     public var body: some View {
@@ -48,8 +74,8 @@ public struct DashboardView: View {
     private var content: some View {
         switch vm.state {
         case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // §3.1 Skeleton loaders — glass shimmer ≤300ms
+            DashboardSkeletonView()
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .failed:
             // When offline with no cached data, show the offline empty state.
@@ -64,8 +90,14 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(snapshot: snapshot, clockVM: clockVM)
-                .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            LoadedBody(
+                snapshot: snapshot,
+                clockVM: clockVM,
+                onTileTap: onTileTap,
+                onCreateTicket: onCreateTicket,
+                onImportData: onImportData
+            )
+            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
 }
@@ -75,14 +107,28 @@ public struct DashboardView: View {
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
+    var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
+    var onCreateTicket: (() -> Void)?
+    var onImportData: (() -> Void)?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                 greeting
                 ClockInOutTile(vm: clockVM)
-                heroCard
-                secondaryGrid
+
+                // §3.1 / §3.14 — New-tenant empty state replaces KPI grid
+                // when the shop has never had any activity.
+                if isNewTenantSnapshot(snapshot) {
+                    DashboardNewTenantEmptyState(
+                        onCreateTicket: onCreateTicket,
+                        onImportData: onImportData
+                    )
+                } else {
+                    heroCard
+                    secondaryGrid
+                }
+
                 attentionCard
             }
             .padding(.horizontal, BrandSpacing.base)
@@ -117,29 +163,65 @@ private struct LoadedBody: View {
         )
     }
 
-    // Compact stat tiles — muted hierarchy.
-    // iPhone: 2-column grid (adaptive minimum 140 pt).
-    // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §3.1 Compact stat tiles — mirroring the web tile set.
+    // iPhone: 2-column adaptive grid.
+    // iPad (regular-width): 3-column fixed. Mac: 4-column.
     private var secondaryGrid: some View {
         let s = snapshot.summary
-        let tiles: [StatTile] = [
-            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle"),
-            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal"),
-            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar"),
-            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox"),
-        ]
+        let k = snapshot.kpis
 
-        let columns: [GridItem] = Platform.isCompact
+        // Build the full tile set — only show KPI tiles when data is available.
+        // §3.1 Tile taps: each tile carries a destination; onTileTap fires when tapped.
+        var tiles: [StatTile] = [
+            .init(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle",              destination: .revenueToday),
+            .init(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver",        destination: .ticketList(filter: "status_group=open")),
+            .init(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal",                destination: .ticketList(filter: "status_group=closed&closed_today=true")),
+            .init(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar",                      destination: .appointmentList(filter: "date=today")),
+        ]
+        if let low = s.lowStockCount {
+            tiles.append(.init(label: "Low stock",    value: "\(low)", icon: "exclamationmark.triangle",  destination: .inventoryList(filter: "low_stock=true")))
+        }
+        if let k {
+            tiles += [
+                .init(label: "Tax",           value: Self.money(k.tax),          icon: "percent",                        destination: .reports(name: "tax")),
+                .init(label: "Discounts",     value: Self.money(k.discounts),    icon: "tag",                            destination: .reports(name: "discounts")),
+                .init(label: "COGS",          value: Self.money(k.cogs),         icon: "shippingbox",                    destination: .reports(name: "cogs")),
+                .init(label: "Net profit",    value: Self.money(k.netProfit),    icon: "chart.line.uptrend.xyaxis",      destination: .reports(name: "net-profit")),
+                .init(label: "Refunds",       value: Self.money(k.refunds),      icon: "arrow.uturn.backward",           destination: .reports(name: "refunds")),
+                .init(label: "Expenses",      value: Self.money(k.expenses),     icon: "creditcard",                     destination: .reports(name: "expenses")),
+                .init(label: "Receivables",   value: Self.money(k.receivables),  icon: "clock.badge.exclamationmark",    destination: .reports(name: "receivables")),
+            ]
+        }
+        tiles.append(.init(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox.fill", destination: .inventoryList(filter: "")))
+
+        // Column count: iPhone = 2-col adaptive; iPad = 3-col; Mac = 4-col.
+        let columns: [GridItem]
+        #if os(macOS)
+        columns = [
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+            GridItem(.flexible(), spacing: BrandSpacing.md),
+        ]
+        #else
+        columns = Platform.isCompact
             ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
             : [
                 GridItem(.flexible(), spacing: BrandSpacing.md),
                 GridItem(.flexible(), spacing: BrandSpacing.md),
                 GridItem(.flexible(), spacing: BrandSpacing.md),
               ]
+        #endif
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
             ForEach(tiles) { tile in
-                StatTileCard(tile: tile)
+                StatTileCard(
+                    tile: tile,
+                    onTap: tile.destination.flatMap { dest -> (@MainActor () -> Void)? in
+                        guard let handler = onTileTap else { return nil }
+                        return { @MainActor in handler(dest) }
+                    }
+                )
             }
         }
     }
@@ -157,6 +239,10 @@ private struct LoadedBody: View {
 
         if total > 0 {
             AttentionCard(items: items)
+        } else if !isNewTenantSnapshot(snapshot) {
+            // §3.3 — "All clear" empty state: only shown when there's real
+            // data but nothing needs attention (not on a brand-new tenant).
+            AttentionAllClearView()
         }
     }
 
@@ -214,12 +300,33 @@ private struct StatTile: Identifiable {
     let label: String
     let value: String
     let icon: String
+    /// Navigation destination for tile taps. Nil = non-tappable tile.
+    let destination: DashboardTileDestination?
+
+    init(label: String, value: String, icon: String, destination: DashboardTileDestination? = nil) {
+        self.label = label
+        self.value = value
+        self.icon = icon
+        self.destination = destination
+    }
 }
 
 private struct StatTileCard: View {
     let tile: StatTile
+    var onTap: (@MainActor () -> Void)?
 
     var body: some View {
+        if let onTap {
+            Button { onTap() } label: { tileContent }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityHint("Navigate to \(tile.label.lowercased())")
+        } else {
+            tileContent
+        }
+    }
+
+    private var tileContent: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xs) {
             Image(systemName: tile.icon)
                 .font(.system(size: 16, weight: .regular))
@@ -319,6 +426,39 @@ private struct AttentionRow: View {
             }
             #endif
         }
+    }
+}
+
+// MARK: - Attention all-clear
+
+/// §3.3 — Shown in the Needs Attention section when there are no urgent items.
+/// Plain surface, no glass on content.
+private struct AttentionAllClearView: View {
+    var body: some View {
+        HStack(spacing: BrandSpacing.md) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 20, weight: .light))
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text("All clear")
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Nothing needs your attention right now.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+        }
+        .padding(BrandSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+        )
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("All clear. Nothing needs your attention right now.")
     }
 }
 
