@@ -103,9 +103,41 @@ public struct NeedsAttention: Decodable, Sendable {
     }
 }
 
+// MARK: - Top-services payload (for TopSkusWidget — §3.2)
+
+/// Minimal decode of `GET /api/v1/reports/dashboard` — only `top_services` field.
+/// Declared in Networking so TopSkusWidget can call `api.dashboardTopServices()` from
+/// a proper Endpoints file (§20 containment rule).
+public struct DashboardTopServicesPayload: Decodable, Sendable {
+    public let topServices: [TopServiceEntry]
+
+    public init(topServices: [TopServiceEntry] = []) { self.topServices = topServices }
+
+    enum CodingKeys: String, CodingKey { case topServices = "top_services" }
+}
+
+public struct TopServiceEntry: Decodable, Sendable, Identifiable {
+    public let name: String
+    public let count: Int
+    public let revenue: Double
+    public var id: String { name }
+
+    public init(name: String, count: Int, revenue: Double) {
+        self.name = name; self.count = count; self.revenue = revenue
+    }
+
+    enum CodingKeys: String, CodingKey { case name, count, revenue }
+}
+
 public extension APIClient {
     func dashboardSummary() async throws -> DashboardSummary {
         try await get("/api/v1/reports/dashboard", as: DashboardSummary.self)
+    }
+
+    /// §3.2 Top services — sourced from `GET /api/v1/reports/dashboard`.
+    func dashboardTopServices() async throws -> [TopServiceEntry] {
+        let payload = try await get("/api/v1/reports/dashboard", as: DashboardTopServicesPayload.self)
+        return payload.topServices
     }
 
     func needsAttention() async throws -> NeedsAttention {

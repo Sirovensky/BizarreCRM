@@ -9,43 +9,8 @@ import DesignSystem
 //   GET /api/v1/reports/dashboard → data.top_services[]
 //   Server shape: { name, count, revenue }  (reports.routes.ts line ~194)
 
-// MARK: - Models
-
-public struct TopServiceEntry: Decodable, Sendable, Identifiable {
-    public let name: String
-    public let count: Int
-    public let revenue: Double
-    public var id: String { name }
-
-    public init(name: String, count: Int, revenue: Double) {
-        self.name = name; self.count = count; self.revenue = revenue
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.name    = (try? c.decode(String.self, forKey: .name))    ?? ""
-        self.count   = (try? c.decode(Int.self,    forKey: .count))   ?? 0
-        self.revenue = (try? c.decode(Double.self, forKey: .revenue)) ?? 0
-    }
-
-    enum CodingKeys: String, CodingKey { case name, count, revenue }
-}
-
-// Minimal decode of the /dashboard response — only top_services field
-private struct DashboardTopServicesPayload: Decodable, Sendable {
-    let topServices: [TopServiceEntry]
-
-    init(topServices: [TopServiceEntry] = []) { self.topServices = topServices }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.topServices = (try? c.decode([TopServiceEntry].self, forKey: .topServices)) ?? []
-    }
-
-    enum CodingKeys: String, CodingKey { case topServices = "top_services" }
-}
-
 // MARK: - ViewModel
+// TopServiceEntry and DashboardTopServicesPayload live in Networking/DashboardEndpoints.swift (§20)
 
 @MainActor
 @Observable
@@ -63,8 +28,9 @@ public final class TopSkusViewModel {
         guard case .idle = state else { return }
         state = .loading
         do {
-            let payload = try await api.get("/api/v1/reports/dashboard", as: DashboardTopServicesPayload.self)
-            state = .loaded(payload.topServices)
+            // Uses APIClient.dashboardTopServices() (§20 containment — DashboardEndpoints.swift)
+            let entries = try await api.dashboardTopServices()
+            state = .loaded(entries)
         } catch {
             state = .failed(error.localizedDescription)
         }
