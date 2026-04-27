@@ -108,6 +108,7 @@ public struct EmployeeListView: View {
     @State private var vm: EmployeeListViewModel
     @State private var showCommissionRules: Bool = false
     @State private var showFilters: Bool = false
+    @State private var showClockedInNow: Bool = false
     @State private var selectedEmployee: Employee?
     @State private var showInvite: Bool = false    // §14.4 Invite
     private let api: APIClient
@@ -141,6 +142,16 @@ public struct EmployeeListView: View {
             .sheet(isPresented: $showFilters) {
                 EmployeeFilterSheet(vm: vm)
             }
+            .sheet(isPresented: $showClockedInNow) {
+                NavigationStack {
+                    ClockedInNowView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showClockedInNow = false }
+                            }
+                        }
+                }
+            }
             .task { await vm.load() }
             .refreshable { await vm.forceRefresh() }
         }
@@ -161,6 +172,16 @@ public struct EmployeeListView: View {
             }
             .sheet(isPresented: $showFilters) {
                 EmployeeFilterSheet(vm: vm)
+            }
+            .sheet(isPresented: $showClockedInNow) {
+                NavigationStack {
+                    ClockedInNowView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showClockedInNow = false }
+                            }
+                        }
+                }
             }
             .task { await vm.load() }
             .refreshable { await vm.forceRefresh() }
@@ -352,6 +373,14 @@ public struct EmployeeListView: View {
         }
         ToolbarItem(placement: .automatic) {
             Button {
+                showClockedInNow = true
+            } label: {
+                Image(systemName: "clock.badge.checkmark")
+            }
+            .accessibilityLabel("Who's clocked in now")
+        }
+        ToolbarItem(placement: .automatic) {
+            Button {
                 showFilters = true
             } label: {
                 Image(systemName: vm.filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
@@ -445,6 +474,8 @@ struct EmployeeFilterSheet: View {
                 Section("Status") {
                     Toggle("Show inactive employees", isOn: $vm.filter.showInactive)
                         .accessibilityLabel("Include inactive employees in list")
+                    Toggle("Clocked in now only", isOn: $vm.filter.clockedInOnly)
+                        .accessibilityLabel("Show only employees currently clocked in")
                 }
 
                 Section("Search") {
