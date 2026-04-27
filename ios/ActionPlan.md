@@ -175,9 +175,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 ### 1.6 Environment & config
 - [x] `project.yml` + `xcodegen` + `write-info-plist.sh` — shipped.
 - [x] **`Info.plist` key audit** — drop empty `UISceneDelegateClassName` (removes console noise). <!-- shipped bcbccaa8 [actionplan agent-10] -->
-- [ ] `ITSAppUsesNonExemptEncryption = false` (HTTPS is exempt).
-- [ ] Required usage-description strings: Camera, Photos, Photos-add, FaceID, Bluetooth, Contacts, Location-when-in-use (tech dispatch), Microphone (SMS voice memo — optional), Calendars (EventKit appointments mirror).
-- [ ] `UIBackgroundModes`: `remote-notification`, `processing`, `fetch`.
+- [x] `ITSAppUsesNonExemptEncryption = false` (HTTPS is exempt). <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] Required usage-description strings: Camera, Photos, Photos-add, FaceID, Bluetooth, Contacts, Location-when-in-use (tech dispatch), Microphone (SMS voice memo — optional), Calendars (EventKit appointments mirror). <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `UIBackgroundModes`: `remote-notification`, `processing`, `fetch`. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
@@ -286,7 +286,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **iPad layout** — keypad centered in `.brandGlass` card, max-width 420, not full-width.
 
 ### 2.6 Biometric (Face ID / Touch ID / Optic ID)
-- [ ] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`.
+- [x] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] **Enable toggle** — login-offer step persists via `BiometricPreference`. Settings toggle follow-up.
 - [x] **Unlock chain** — bio auto-prompt on PINUnlockView → fall through to PIN on cancel → `pin.reauth` on revoke.
 - [x] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`. (bef1335b)
@@ -4234,30 +4234,30 @@ Tasks:
 - [ ] **Certificate rotation** — remote config of pin list with 30-day overlap.
 
 ### 28.4 Privacy manifest
-- [ ] **`PrivacyInfo.xcprivacy`** — audited per release; declares API usage:
+- [x] **`PrivacyInfo.xcprivacy`** — audited per release; declares API usage: <!-- shipped ac159516 [actionplan agent-10 b2] -->
   - `NSPrivacyAccessedAPITypeFileTimestamp` (reason: `CA92.1`)
   - `NSPrivacyAccessedAPITypeDiskSpace` (`E174.1`)
   - `NSPrivacyAccessedAPITypeSystemBootTime` (`35F9.1`)
   - `NSPrivacyAccessedAPITypeUserDefaults` (`CA92.1`)
 - [ ] **Third-party SDK manifests** — BlockChyp, Starscream, Nuke, GRDB bundle their own; we aggregate.
-- [ ] **Tracking domains** — none.
-- [ ] **Data types collected** — coarse location (POS geofence), device ID (IDFV for analytics, opt-in), contact info (customer records — tenant data, not device user's).
+- [x] **Tracking domains** — none. <!-- shipped ac159516 [actionplan agent-10 b2] NSPrivacyTrackingDomains: [] in PrivacyInfo.xcprivacy -->
+- [x] **Data types collected** — coarse location (POS geofence), device ID (IDFV for analytics, opt-in), contact info (customer records — tenant data, not device user's). <!-- shipped ac159516 [actionplan agent-10 b2] NSPrivacyCollectedDataTypes declared -->
 
 ### 28.5 Required usage descriptions (Info.plist)
-- [ ] `NSCameraUsageDescription` — "Capture ticket photos, receipts, and customer avatars."
-- [ ] `NSPhotoLibraryUsageDescription` — "Attach existing photos to tickets and expenses."
-- [ ] `NSPhotoLibraryAddUsageDescription` — "Save generated receipts and reports to your photo library."
-- [ ] `NSMicrophoneUsageDescription` — "Record voice messages in SMS."
-- [ ] `NSLocationWhenInUseUsageDescription` — "Verify you're at the shop when clocking in."
-- [ ] `NSContactsUsageDescription` — "Import contacts when creating new customers."
-- [ ] `NSFaceIDUsageDescription` — "Sign you in quickly with Face ID."
-- [ ] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, barcode scanner, and weight scale." (Card reader is NOT Bluetooth — BlockChyp uses IP only per §17.3.)
-- [ ] `NSLocalNetworkUsageDescription` — "Find printers and terminals on your network."
+- [x] `NSCameraUsageDescription` — "Capture ticket photos, receipts, and customer avatars." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSPhotoLibraryUsageDescription` — "Attach existing photos to tickets and expenses." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSPhotoLibraryAddUsageDescription` — "Save generated receipts and reports to your photo library." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSMicrophoneUsageDescription` — "Record voice messages in SMS." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSLocationWhenInUseUsageDescription` — "Verify you're at the shop when clocking in." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSContactsUsageDescription` — "Import contacts when creating new customers." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSFaceIDUsageDescription` — "Unlock BizarreCRM with Face ID." <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, barcode scanner, and weight scale." (Card reader is NOT Bluetooth — BlockChyp uses IP only per §17.3.) <!-- shipped ac159516 [actionplan agent-10 b2] -->
+- [x] `NSLocalNetworkUsageDescription` — "Find printers and terminals on your network." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [ ] `NFCReaderUsageDescription` — "Read device serial tags."
-- [ ] `NSCalendarsUsageDescription` — "Sync appointments with your calendar."
+- [x] `NSCalendarsUsageDescription` — "Sync appointments with your calendar." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.6 Export compliance
-- [ ] **`ITSAppUsesNonExemptEncryption = false`** — only use HTTPS + standard Apple crypto; skip export-compliance paperwork.
+- [x] **`ITSAppUsesNonExemptEncryption = false`** — only use HTTPS + standard Apple crypto; skip export-compliance paperwork. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.7 Logging redaction
 - [ ] **`privacySensitive()`** on password, PIN, SSN fields.
@@ -8091,10 +8091,10 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 5]** §11 Expenses `MileageEntrySheet`: direct `api.post("/api/v1/expenses/mileage")` call violates §20 containment rule — needs extraction to `MileageRepository`. **RESOLVED** in Agent 5 batch 2 (`3b4b6d64`).
 - **[Agent 5]** §11 Expenses `RecurringExpenseRunner`: direct `api.post/delete` calls violate §20 containment rule. **RESOLVED** in Agent 5 batch 2 (`3b4b6d64`).
 - **[Agent 5 → Agent 10]** §6 Pre-existing Core macOS build failure: `EnvironmentBanner.swift`, `LoadingStateView.swift`, `CoreErrorStateView.swift`, `MacHoverEffects.swift` in `Packages/Core/Sources/Core/` use UIKit-only APIs without `#if canImport(UIKit)` guard. **RESOLVED** in Agent 10 batch 1 (`bcbccaa8`) — `Color(.systemBackground)` → `Color.primary.opacity(x)`, `.insetGrouped` removed, `hoverEffect` guarded `#if os(iOS)`.
-- **[Agent 8 → Agent 10]** (2026-04-26, bef1335b) `NSFaceIDUsageDescription` for §2.6 biometric login: `ios/scripts/write-info-plist.sh` + `ios/App/Resources/Info.plist`. Add `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`. **OPEN** — Agent 10 b1 updated the script for fonts but did not add Face ID key. Pending Agent 10 b2.
-- **[Agent 2 → Agent 10]** (2026-04-26, agent-2 b4) `NSBonjourServices` for Bonjour printer discovery: `ios/scripts/write-info-plist.sh` needs `NSBonjourServices` array containing `_ipp._tcp`, `_printer._tcp`, `_bizarre._tcp` for iOS 14+ local network permission to work with `NWBrowser`. **OPEN** — pending Agent 10 b2.
+- **[Agent 8 → Agent 10]** (2026-04-26, bef1335b) `NSFaceIDUsageDescription` for §2.6 biometric login: `ios/scripts/write-info-plist.sh` + `ios/App/Resources/Info.plist`. **RESOLVED** in Agent 10 batch 2 (`ac159516`) — key was already in the script (b1), text updated to "Unlock BizarreCRM with Face ID.", §2.6/§28.5 flipped.
+- **[Agent 2 → Agent 10]** (2026-04-26, agent-2 b4) `NSBonjourServices` for Bonjour printer discovery: `ios/scripts/write-info-plist.sh` needs `NSBonjourServices` array containing `_ipp._tcp`, `_printer._tcp`, `_bizarre._tcp` for iOS 14+ local network permission to work with `NWBrowser`. **OPEN** — pending Agent 10 next batch.
 - **[Agent 9 → Agent 10]** (2026-04-26, agent-9 b3) ControlCenter widgets need `com.apple.developer.control-center.extension` entitlement + new extension target in `project.yml`. Code is gated `#if swift(>=5.10)` so doesn't break build. **OPEN** — pending Agent 10.
-- **[Agent 10 → Agent 4 / Agent 7 / Agent 2]** sdk-ban.sh 53 pre-existing violations across `Packages/Marketing/` (agent-4), `Packages/Communications/` (agent-7), `Packages/Pos/` (agent-1). All are `APIClient.get/post/patch/delete` calls outside `*Repository/*Endpoints` files (§20 containment). Each owning agent should sweep their package next batch. **OPEN.**
-- **[Agent 10]** 4 Core sdk-ban violations: `TenantServerAnalyticsSinkTests.swift` bare `URLSession(` (§28.3) + `TelemetrySinkProtocol.swift` `.post(` outside repository. Agent 10 b2 work item.
+- **[Agent 10 → Agent 4 / Agent 7 / Agent 2]** sdk-ban.sh 53 pre-existing violations across `Packages/Marketing/`, `Packages/Communications/`, `Packages/Pos/`. **PARTIALLY RESOLVED** — Agent 10 b2 fixed Core (4); 26 remain (Agent 4 dropped Marketing 30→20 in b3 uncommitted). Continue sweep.
+- **[Agent 10]** 4 Core sdk-ban violations: `TenantServerAnalyticsSinkTests.swift` bare `URLSession(` (§28.3) + `TelemetrySinkProtocol.swift` `.post(` outside repository. **RESOLVED** in Agent 10 batch 2 (`ac159516`) — renamed `StubAnalyticsURLSession` → `AnalyticsSinkStub`, rewrote doc comment.
 - **[Agent 10]** `Motion/MotionCatalog.swift` already extends `BrandMotion` with `sharedElement` + `pulse` as `public extension BrandMotion` — base enum redeclaration causes `invalid redeclaration` errors. Note for any future motion token additions.
 - **[Agent 10]** Multipart binary JPEG handling: `MultipartFormDataTests.swift:120` previously crashed on `String(data:encoding:.utf8)!` for binary content. **RESOLVED** in `bcbccaa8` (ISO-Latin-1 fallback).
