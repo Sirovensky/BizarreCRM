@@ -31,20 +31,6 @@ public struct TopServiceEntry: Decodable, Sendable, Identifiable {
     enum CodingKeys: String, CodingKey { case name, count, revenue }
 }
 
-// Minimal decode of the /dashboard response — only top_services field
-private struct DashboardTopServicesPayload: Decodable, Sendable {
-    let topServices: [TopServiceEntry]
-
-    init(topServices: [TopServiceEntry] = []) { self.topServices = topServices }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.topServices = (try? c.decode([TopServiceEntry].self, forKey: .topServices)) ?? []
-    }
-
-    enum CodingKeys: String, CodingKey { case topServices = "top_services" }
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -63,7 +49,7 @@ public final class TopSkusViewModel {
         guard case .idle = state else { return }
         state = .loading
         do {
-            let payload = try await api.get("/api/v1/reports/dashboard", as: DashboardTopServicesPayload.self)
+            let payload = try await api.fetchDashboardTopServices()
             state = .loaded(payload.topServices)
         } catch {
             state = .failed(error.localizedDescription)

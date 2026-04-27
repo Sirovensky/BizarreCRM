@@ -6,13 +6,6 @@ import Networking
 import MessageUI
 #endif
 
-// MARK: - SupportContactResponse
-
-private struct SupportContactResponse: Decodable, Sendable {
-    let email: String
-    let name: String?
-}
-
 // MARK: - SupportEmailViewModel
 
 @MainActor
@@ -45,7 +38,7 @@ final class SupportEmailViewModel {
         // Resolve support contact from server
         guard let api else { return }
         do {
-            let contact = try await api.get("/tenants/me/support-contact", as: SupportContactResponse.self)
+            let contact = try await api.fetchSupportContact()
             supportEmail = contact.email
         } catch {
             loadError = error.localizedDescription

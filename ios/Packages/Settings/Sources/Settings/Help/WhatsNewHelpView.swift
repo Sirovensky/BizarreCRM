@@ -52,8 +52,7 @@ final class WhatsNewViewModel {
         }
         do {
             let version = Platform.appVersion
-            let query = [URLQueryItem(name: "version", value: version)]
-            let list = try await api.get("/app/changelog", query: query, as: [ChangelogEntry].self)
+            let list = try await api.fetchChangelog(version: version)
             entries = list
         } catch {
             errorMessage = error.localizedDescription

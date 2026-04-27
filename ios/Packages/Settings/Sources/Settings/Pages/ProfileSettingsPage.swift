@@ -57,7 +57,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let profile: UserProfileResponse = try await api.get("/auth/me", as: UserProfileResponse.self)
+            let profile = try await api.fetchUserProfile()
             firstName = profile.firstName ?? ""
             lastName = profile.lastName ?? ""
             displayName = profile.displayName ?? ""
@@ -74,7 +74,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = UserProfileUpdateRequest(
+            let body = UserProfileUpdateDTO(
                 firstName: firstName,
                 lastName: lastName,
                 displayName: displayName,
@@ -82,7 +82,7 @@ public final class ProfileSettingsViewModel: Sendable {
                 phone: phone,
                 jobTitle: jobTitle
             )
-            _ = try await api.patch("/auth/me", body: body, as: UserProfileResponse.self)
+            _ = try await api.updateUserProfile(body)
             successMessage = "Profile saved."
             errorMessage = nil
         } catch {
@@ -99,11 +99,11 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = ChangePasswordRequest(
+            let body = ChangePasswordDTO(
                 currentPassword: currentPassword,
                 newPassword: newPassword
             )
-            _ = try await api.put("/auth/change-password", body: body, as: EmptyResponse.self)
+            try await api.changePassword(body)
             successMessage = "Password updated."
             currentPassword = ""
             newPassword = ""
@@ -115,33 +115,6 @@ public final class ProfileSettingsViewModel: Sendable {
         }
     }
 }
-
-// MARK: - Response models
-
-struct UserProfileResponse: Decodable, Sendable {
-    var firstName: String?
-    var lastName: String?
-    var displayName: String?
-    var email: String?
-    var phone: String?
-    var jobTitle: String?
-}
-
-struct UserProfileUpdateRequest: Encodable, Sendable {
-    var firstName: String
-    var lastName: String
-    var displayName: String
-    var email: String
-    var phone: String
-    var jobTitle: String
-}
-
-struct ChangePasswordRequest: Encodable, Sendable {
-    var currentPassword: String
-    var newPassword: String
-}
-
-// Note: EmptyResponse is provided by the Networking package.
 
 // MARK: - View
 

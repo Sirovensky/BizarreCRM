@@ -22,16 +22,6 @@ public struct PaymentMethodSettings: Equatable, Sendable {
     )
 }
 
-struct PaymentSettingsResponse: Codable, Sendable {
-    var cashEnabled: Bool?
-    var cardEnabled: Bool?
-    var giftCardEnabled: Bool?
-    var storeCreditEnabled: Bool?
-    var checkEnabled: Bool?
-    var blockChypApiKey: String?
-    var blockChypTerminalName: String?
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -56,7 +46,7 @@ public final class PaymentMethodsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let resp: PaymentSettingsResponse = try await api.get("/settings/payment", as: PaymentSettingsResponse.self)
+            let resp = try await api.fetchPaymentSettings()
             settings = PaymentMethodSettings(
                 cashEnabled: resp.cashEnabled ?? true,
                 cardEnabled: resp.cardEnabled ?? true,
@@ -76,7 +66,7 @@ public final class PaymentMethodsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = PaymentSettingsResponse(
+            let body = PaymentSettingsDTO(
                 cashEnabled: settings.cashEnabled,
                 cardEnabled: settings.cardEnabled,
                 giftCardEnabled: settings.giftCardEnabled,
@@ -85,7 +75,7 @@ public final class PaymentMethodsViewModel: Sendable {
                 blockChypApiKey: settings.blockChypApiKey,
                 blockChypTerminalName: settings.blockChypTerminalName
             )
-            _ = try await api.put("/settings/payment", body: body, as: PaymentSettingsResponse.self)
+            _ = try await api.savePaymentSettings(body)
             successMessage = "Payment settings saved."
             errorMessage = nil
         } catch {

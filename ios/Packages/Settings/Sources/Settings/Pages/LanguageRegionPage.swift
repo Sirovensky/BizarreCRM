@@ -4,16 +4,6 @@ import Core
 import DesignSystem
 import Networking
 
-// MARK: - Models
-
-struct LanguageRegionResponse: Codable, Sendable {
-    var locale: String?
-    var timezone: String?
-    var currency: String?
-    var dateFormat: String?
-    var numberFormat: String?
-}
-
 // MARK: - ViewModel
 
 @MainActor
@@ -62,9 +52,7 @@ public final class LanguageRegionViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let resp: LanguageRegionResponse = try await api.get(
-                "/settings/organization", as: LanguageRegionResponse.self
-            )
+            let resp = try await api.fetchLanguageRegionSettings()
             locale = resp.locale ?? Locale.current.identifier
             timezone = resp.timezone ?? TimeZone.current.identifier
             currency = resp.currency ?? "USD"
@@ -80,11 +68,11 @@ public final class LanguageRegionViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = LanguageRegionResponse(
+            let body = LanguageRegionSettings(
                 locale: locale, timezone: timezone,
                 currency: currency, dateFormat: dateFormat, numberFormat: numberFormat
             )
-            _ = try await api.put("/settings/organization", body: body, as: LanguageRegionResponse.self)
+            _ = try await api.saveLanguageRegionSettings(body)
             successMessage = "Language & Region saved."
             errorMessage = nil
         } catch {
