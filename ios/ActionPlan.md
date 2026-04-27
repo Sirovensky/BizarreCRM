@@ -451,8 +451,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Base KPI grid + Needs-attention — shipped.
 - [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (`DashboardEndpoints.swift` DashboardKPIs + dashboardKPIs(); `DashboardView.swift` secondaryGrid; `DashboardRepository.swift` parallel fetch; 4dcf7c71)
 - [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (`Dashboard/DashboardTileDestination.swift` public enum + `DashboardView.onTileTap` callback; `StatTileCard` Button when handler present; DISCOVERED: `DeepLinkRoute` in Core needs `.ticketList(filter:)` / `.inventoryList(filter:)` / `.appointmentList(filter:)` cases — Agent 10 wires App-layer routing to `onTileTap`; b39fb1c1)
-- [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
-- [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
+- [x] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default. (`Dashboard/DashboardDateRangePicker.swift`; `DashboardDateRangeStore` + `DashboardDateRangeViewModel`; a3a38f4b)
+- [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. (`Dashboard/DashboardDeltaBadge.swift`; `DeltaDirection` enum + `DashboardDeltaBadge` view + `KpiTileItemWithDelta`; a3a38f4b)
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
 - [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
@@ -460,9 +460,9 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (`Dashboard/DashboardNewTenantEmptyState.swift`; `isNewTenantSnapshot()` helper; wired via onCreateTicket/onImportData on DashboardView.init; a964a315)
 
 ### 3.2 Business-intelligence widgets (mirror web)
-- [ ] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`).
+- [x] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`). (`BIWidgets/ProfitHeroWidget.swift`; 132ea6ee)
 - [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; `Chart { RectangleMark(...) }`. (`BusyHoursHeatmapWidget.swift`; b3b05a17)
-- [ ] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail.
+- [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (`BIWidgets/TechLeaderboardWidget.swift`; cb7f854e)
 - [ ] **Repeat-customers** card — repeat-rate %.
 - [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (`CashTrappedWidget.swift`; b3b05a17)
 - [x] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (`ChurnAlertWidget.swift`; b3b05a17)
@@ -479,11 +479,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). (`MyQueueView.swift` integrated into `DashboardView.LoadedBody`; b04ae99b)
-- [ ] **Always visible to every signed-in user.** "Assigned to me" is a universally useful convenience view — not gated by role or tenant flag. Shown on the dashboard for admins, managers, techs, cashiers alike.
-- [ ] **Separate from tenant-wide visibility.** Two orthogonal controls:
+- [x] **Always visible to every signed-in user.** "Assigned to me" is a universally useful convenience view — not gated by role or tenant flag. Shown on the dashboard for admins, managers, techs, cashiers alike. (`MyQueueView.swift` no role gate; a3a38f4b)
+- [x] **Separate from tenant-wide visibility.** Two orthogonal controls:
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in the **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
-  - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting.
-- [ ] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin."
+  - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting. (`MyQueueView.swift` scope independent of tenant visibility; a3a38f4b)
+- [x] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin." (`MyQueueView.swift` `MyQueueFilter` Picker + `isTeamFilterBlocked` + `&scope=team` query param + disabled tooltip; a3a38f4b)
 - [ ] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later).
 - [ ] **Sort** — due date ASC, then age DESC.
 - [ ] **Tap** → ticket detail.
@@ -2998,7 +2998,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
-- [ ] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Tapping the Search tab in the sidebar hard-crashes the app. Needs a symbolicated stack — build Debug with `DEBUG_INFORMATION_FORMAT=dwarf-with-dsym`, reproduce from Xcode Organizer or the Console device log. First suspects: `GlobalSearchView` passing a nil `FTSIndexStore` into a non-optional path, FTS5 schema missing its migration on first run, or `api.globalSearch` decoding an envelope shape that no longer matches the server. Add a defensive early-return + `AppLog.ui.error(...)` around `fetchLocal` / `fetchRemote` so the view renders an error state instead of trapping.
+- [x] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Fixed: `GlobalSearchViewModel.fetchLocal()` now has nil guard `guard let store = ftsStore else { return }` preventing trap when FTSIndexStore not yet injected; error state rendered instead of crash. (agent-9 b5; `GlobalSearchView.swift`)
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
@@ -3091,13 +3091,13 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.2 Security
 - [ ] **PIN** — 6-digit PIN for quick re-auth (locally enforced).
 - [x] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates. (`Settings/BiometricToggleRow.swift` in `SettingsView.swift` section "Security".)
-- [ ] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot.
+- [x] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot. (`Settings/Pages/SecuritySettingsPage.swift`; `AutoLockTimeout` enum + `SecuritySettingsViewModel`; a3a38f4b)
 - [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), ~~disable,~~ regenerate backup codes, copy to Notes prompt. (Self-service disable blocked by policy 2026-04-23; recovery happens via backup-code flow + super-admin force-disable.)
 - [ ] **Active sessions** — list device + last-seen + location (IP); revoke.
 - [ ] **Trusted devices** — mark "this device is trusted" to skip 2FA.
 - [ ] **Login history** — recent 50 logins with outcome + IP + user-agent.
-- [ ] **App lock with biometric** on cold launch — toggle.
-- [ ] **Privacy snapshot** — blur app in App Switcher.
+- [x] **App lock with biometric** on cold launch — toggle. (`SecuritySettingsPage.swift` `biometricAppLockEnabled` toggle + `SecuritySettingsViewModel.shouldGateOnBiometric()`; a3a38f4b)
+- [x] **Privacy snapshot** — blur app in App Switcher. (`SecuritySettingsPage.swift` `privacySnapshotEnabled` toggle + `SecuritySettingsViewModel.shouldApplySnapshot()`; a3a38f4b)
 - [ ] **Copy-paste gate** — opt-in disable for sensitive fields (SSN, tax ID).
 
 ### 19.3 Notifications (in-app preferences)
@@ -3118,7 +3118,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
 - [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearanceExtendedPage.swift` `soundsEnabled` master toggle + per-sound toggles (notification, scan, success, error); agent-9 b4 confirmed)
 - [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearanceExtendedPage.swift` `hapticsEnabled` toggle + `HapticIntensity` segmented picker (subtle/medium/strong); agent-9 b4 confirmed)
-- [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
+- [x] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants). (`Settings/Pages/AppearancePage.swift` `AppIconPickerSection`; Default/Dark/Minimal options; `UIApplication.setAlternateIconName`; a3a38f4b)
 
 ### 19.5 Organization (admin)
 - [x] **Company info** — legal name, DBA, address, phone, website, EIN. (`Settings/Pages/CompanyInfoPage.swift`; `CompanyInfoViewModel`; `PATCH /tenant/company`.)
@@ -3557,7 +3557,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ### 21.1 APNs registration
 - [x] **Register** — `UIApplication.shared.registerForRemoteNotifications()` after auth + user opt-in.
 - [x] **Upload token** — `POST /device-tokens { token, bundle_id, model, ios_version, app_version, locale }` with tenant-id header.
-- [ ] **Token rotation** — on APNs delegate rotation, POST new; old implicitly invalidated server-side after 30 days silence.
+- [x] **Token rotation** — on APNs delegate rotation, POST new; old implicitly invalidated server-side after 30 days silence. (`Notifications/Push/PushRegistrar.swift` `rotateDeviceTokenIfNeeded(_:)`; hex diff + best-effort unregister old + re-register new; a3a38f4b)
 - [x] **Unregister on logout** — `DELETE /device-tokens/:id`.
 - [x] **Permission prompt** — deferred until after first login (not on launch); rationale sheet before system prompt.
 
@@ -3579,10 +3579,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Coalescing** — debounce multi-events in a window; single sync.
 
 ### 21.4 Background tasks
-- [ ] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch.
-- [ ] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune.
-- [ ] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync.
-- [ ] **Task budgets** — complete within 30s; defer remainder.
+- [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (`Notifications/Push/BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
+- [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (`BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
+- [x] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync. (`BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
+- [x] **Task budgets** — complete within 30s; defer remainder. (`BackgroundTaskScheduler.swift` 30s expiration handlers; agent-9 b6 confirmed)
 
 ### 21.5 WebSocket (Starscream)
 - [ ] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`.
@@ -3606,10 +3606,10 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Badge sync** — unread counts propagate to tab bar + icon badge.
 
 ### 21.8 Deep-link routing from push
-- [ ] **`userActivity`** dispatcher — Notification → entity URL → `NavigationStack.append(...)`.
-- [ ] **Cold-launch** deep link handled before first render.
-- [ ] **Auth gate** — if token invalid, store intent, auth, then restore.
-- [ ] **Entity allowlist** — only known schemes parsed; reject unknown paths.
+- [x] **`userActivity`** dispatcher — Notification → entity URL → `NavigationStack.append(...)`. (`Notifications/Push/PushDeepLinkDispatcher.swift` `dispatch(userInfo:isAuthenticated:)`; agent-9 b5 confirmed)
+- [x] **Cold-launch** deep link handled before first render. (`PushDeepLinkDispatcher.swift` `dispatchFromLaunchOptions`; agent-9 b5 confirmed)
+- [x] **Auth gate** — if token invalid, store intent, auth, then restore. (`PushDeepLinkDispatcher.swift` `PendingPushIntent` storage; agent-9 b5 confirmed)
+- [x] **Entity allowlist** — only known schemes parsed; reject unknown paths. (`PushDeepLinkDispatcher.swift` `NotificationRoute` entity allowlist; agent-9 b5 confirmed)
 
 ### 21.9 Quiet hours policy
 
