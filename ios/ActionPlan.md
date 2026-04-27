@@ -838,28 +838,28 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 ### 5.2 Detail
 - [x] Base (analytics / recent tickets / notes) — shipped.
 - [x] **Tabs** (mirror web): Info / Tickets / Invoices / Communications / Assets. `CustomerDetailTabsView` + `CustomerDetailTab` enum; iPhone `TabView`, iPad `NavigationSplitView` column gated on `Platform.isCompact`. (agent-4 batch-2)
-- [ ] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star.
+- [x] **Header** — avatar + name + LTV tier chip + health-score ring + VIP star. `CustomerDetailHeader` with SmallHealthRing + LTV tier chip + VIP star overlay. (agent-4 batch-4, 26985090)
 - [x] **Health score** — `GET /crm/customers/:id/health-score` → 0–100 ring (green ≥70 / amber ≥40 / red <40); tap ring → explanation sheet (recency / frequency / spend components); "Recalculate" button → `POST /crm/customers/:id/health-score/recalculate`. `CustomerHealthExplainerSheet` + animated `HealthRing`. (agent-4 batch-2)
 - [x] **LTV tier** — `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk); tap → explanation. `CustomerLTVExplainerSheet` with tier thresholds table. (agent-4 batch-2)
 - [ ] **Photo mementos** — recent repair photos gallery (horizontal scroll).
-- [ ] **Contact card** — phones (multi, labeled), emails (multi), address (tap → Maps.app), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields.
+- [x] **Contact card** — phones (multi, labeled), emails (multi), address (tap → Maps.app), birthday, tags, organization, communication preferences (SMS/email/call opt-in chips), custom fields. `CustomerFullContactCard` multi-phone/email + address→Maps. (agent-4 batch-4, c5d6bdcb)
 - [x] **Quick-action row** — glass chips: Call · SMS · Email · FaceTime · New ticket · New invoice. `CustomerQuickActionRow` with `.ultraThinMaterial` Capsule chips, `UIApplication.shared.open()` for `tel:`/`sms:`/`mailto:`/`facetime:` URLs, `.hoverEffect(.highlight)`. (agent-4 batch-2)
 - [x] **Tickets tab** — `GET /customers/:id/tickets`; infinite scroll; status chips; tap → ticket detail. `CustomerTicketsTabView` wired to `api.customerRecentTickets`. (agent-4 batch-2)
 - [x] **Invoices tab** — `GET /customers/:id/invoices`; status filter; tap → invoice. `CustomerInvoicesTabView` + `CustomerInvoiceSummary` DTO + `customerInvoices(id:)` endpoint. (agent-4 batch-2)
 - [x] **Communications tab** — `GET /customers/:id/communications`; unified SMS / email / call log timeline; "Send new SMS / email" CTAs. `CustomerCommsTabView` + `CustomerCommEntry` DTO + `customerCommunications(id:)` endpoint. (agent-4 batch-2)
-- [ ] **Assets tab** — `GET /customers/:id/assets`; devices owned (ever on a ticket); add asset (`POST /customers/:id/assets`); tap device → device-history.
+- [x] **Assets tab** — `GET /customers/:id/assets`; devices owned (ever on a ticket); add asset (`POST /customers/:id/assets`); tap device → device-history. `CustomerAssetsTabView` wired to `CustomerAssetsRepositoryImpl`. (agent-4 batch-4, c5d6bdcb)
 - [x] **Balance / credit** — sum of unpaid invoices + store credit balance (`GET /refunds/credits/:customerId`). CTA "Apply credit" if > 0. `CustomerBalanceCard` + `CustomerCreditBalance` DTO + `customerCreditBalance(customerId:)` endpoint. (agent-4 batch-2)
-- [ ] **Membership** — if tenant has memberships (§38), show tier + perks.
-- [ ] **Share vCard** — generate `.vcf` via `CNContactVCardSerialization` → share sheet (iPhone), `.fileExporter` (Mac).
-- [ ] **Add to iOS Contacts** — `CNContactViewController` prefilled.
-- [ ] **Delete customer** — confirm dialog + warning if open tickets (offer reassign-or-cancel flow).
+- [x] **Membership** — if tenant has memberships (§38), show tier + perks. `CustomerMembershipCard` async-loads from `/api/v1/memberships/customer/:id`. (agent-4 batch-4, c5d6bdcb)
+- [x] **Share vCard** — generate `.vcf` via `CNContactVCardSerialization` → share sheet (iPhone), `.fileExporter` (Mac). `CustomerVCardActions`. (agent-4 batch-4, c5d6bdcb)
+- [x] **Add to iOS Contacts** — `CNContactViewController` prefilled. `CustomerVCardActions`. (agent-4 batch-4, c5d6bdcb)
+- [x] **Delete customer** — confirm dialog + warning if open tickets (offer reassign-or-cancel flow). `CustomerDeleteButton` with `.confirmationDialog`. (agent-4 batch-4, ae280403)
 
 ### 5.3 Create
 - [x] Full create form shipped (first/last/phone/email/organization/address/city/state/zip/notes) — see `Customers/CustomerCreateView`.
 - [ ] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
 - [x] **Phone normalize** — uses shared `PhoneFormatter` in Core.
 - [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway. `CustomerDuplicateChecker` actor + `CustomerDuplicateCheckViewModel` + `CustomerDuplicateAlertSheet`. (agent-4 batch-2)
-- [ ] **Import from Contacts** — `CNContactPickerViewController` prefills form.
+- [x] **Import from Contacts** — `CNContactPickerViewController` prefills form. `ImportFromContactsButton` in toolbar. (agent-4 batch-4, 517cbca3)
 - [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
 - [x] **Idempotency** + offline temp-ID handling — network-class failure enqueues `customer.create` with UUID idempotency key; `createdId = -1` sentinel for pending UI.
 
@@ -1371,7 +1371,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Basic fields** — first/last name, phone, email, company, title, source, value, next action + date, assigned-to. (partial — `LeadDetailView.swift` `contactCard` + `metaCard` render phone/email/company; title/value/next-action date deferred.)
 - [x] **Lead score** — `LeadScoreCalculator` (pure, weighted factors: engagement/velocity/budget/timeline/source), `LeadScore` model, `LeadScoreBadge` (Red<30/Amber/Green). 18 XCTests pass. (`Scoring/` — feat(ios post-phase §9))
 - [x] **Status workflow** — transition dropdown; Lost → reason dialog (required). `LeadStatusTransitionSheet` + `LeadStatusTransitionViewModel` (state machine per status, "lost" routes to existing `LostReasonSheet`). (agent-4 batch-2)
-- [ ] **Activity timeline** — calls, SMS, email, appointments, property changes.
+- [x] **Activity timeline** — calls, SMS, email, appointments, property changes. `LeadActivityTimelineView` + `LeadActivityEntry` model. (agent-4 batch-4, 94581122)
 - [ ] **Related tickets / estimates** (if any).
 - [ ] **Communications** — SMS + email + call log; send CTAs.
 - [ ] **Notes** — @mentions.
@@ -1383,7 +1383,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 
 ### 9.4 Create
 - [x] Minimal form — shipped.
-- [ ] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields.
+- [x] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields. Company/title/value/stage/follow-up DatePicker in `LeadCreateView`. (agent-4 batch-4, ae7d89ad)
 - [ ] **Offline create** + reconcile.
 
 ### 9.5 Lost-reason modal
@@ -5196,7 +5196,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Post-service SMS survey** — `CSATSurveyView` (5-star + comment, POST /surveys/csat) + `NPSSurveyView` (0-10 + chips + free-text, POST /surveys/nps). `SurveyAutoSender` handles 24h-delayed push trigger.
 - [x] **Response tracking** — `GET /surveys/responses`. `SurveyResponsesView` (iPhone `NavigationStack` + iPad `NavigationSplitView`), `SurveyResponsesViewModel` with kind filter, `SurveyResponseRow` score-colored by CSAT/NPS thresholds, `APIClient.surveyResponses(kind:pageSize:)` extension. (agent-4 batch-2)
 - [x] **Detractor alert** — `DetractorAlertView` (manager-role push `kind:"survey.detractor"`) with Call / SMS / Assign CTAs.
-- [ ] **NPS dashboard** — score + trend + themes.
+- [x] **NPS dashboard** — score + trend + themes. `NPSDashboardView` with LineMark/AreaMark chart, promoter/passive/detractor distribution, theme chips. (agent-4 batch-4, 9b6f31bb)
 
 ### 37.4 Referrals
 - [x] **Referral code** per customer — `ReferralCode` model + `ReferralService.getOrGenerateCode`.
@@ -5210,7 +5210,7 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Review platforms** — `ReviewPlatform` enum (google/yelp/facebook/other); `ReviewSettingsView` admin URL editor.
 
 ### 37.6 Public profile / landing
-- [ ] **Share my shop** — generates short URL with intake form + reviews.
+- [x] **Share my shop** — generates short URL with intake form + reviews. `ShareMyShopView` with CIFilter QR, link cards, `UIActivityViewController`. (agent-4 batch-4, e6b8714a)
 - [ ] Campaign types: SMS blast, email blast, in-app banner. (Postcard integration is stretch; push-to-app-users handled via §70.)
 - [ ] Audience builder: segment by tag / last-visit window / LTV tier / device type / service history / birthday month; save + reuse segments.
 - [ ] Scheduler: send now / send at time / recurring (weekly newsletter) / triggered (birthday auto-send).
@@ -5277,8 +5277,8 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Plan builder in Settings → Memberships: name / cadence (monthly / quarterly / annual) / price / included-services count / auto-renew toggle. `LoyaltyPlanSettingsView` + `PlanEditorSheet` + `RuleEditorSheet`. Commit `feat(ios phase-8 §38)`.
 - [x] Enroll flow from Customer detail → Plans tab → Enroll; `MembershipEnrollSheet` wired to `MembershipSubscriptionManager`. Card tokenization deferred (BlockChyp §17.3). Commit `feat(ios phase-8 §38)`.
 - [ ] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
-- [ ] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption.
-- [ ] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify.
+- [x] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption. `MembershipServiceLedgerView` + `ServiceLedgerEntry`. (agent-4 batch-4, 5d16a1bc)
+- [x] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify. `MembershipDunningView` + retry/cancel actions. (agent-4 batch-4, ef28cbc8)
 - [ ] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy.
 - [ ] Cadence: 30 / 14 / 7 / 1 day before expiry
 - [ ] Channels: push + SMS + email (configurable per member)
