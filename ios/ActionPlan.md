@@ -4517,10 +4517,10 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 
 ### 30.2 Spacing (8-pt grid)
 - [x] **Tokens**: `xxs (2)`, `xs (4)`, `sm (8)`, `md (12)`, `base (16)`, `lg (24)`, `xl (32)`, `xxl (48)`, `xxxl (72)`. <!-- shipped bcbccaa8 BrandSpacing.swift; xxxl is 64 in impl (72 noted as target, additive diff acceptable) -->
-- [x] **Density mode** — "compact" multiplies by 0.85 globally. <!-- shipped PLACEHOLDER_SHA [actionplan agent-10 b2] DesignTokens.Density.compactMultiplier + .scaled(_:compact:) -->
+- [x] **Density mode** — "compact" multiplies by 0.85 globally. <!-- shipped 16c58843 [actionplan agent-10 b2] DesignTokens.Density.compactMultiplier + .scaled(_:compact:) -->
 
 ### 30.3 Radius
-- [x] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`. <!-- shipped bcbccaa8 DesignTokens.Radius (xs/sm/md/lg/xl/pill); capsule alias added PLACEHOLDER_SHA [agent-10 b2] -->
+- [x] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`. <!-- shipped bcbccaa8 DesignTokens.Radius (xs/sm/md/lg/xl/pill); capsule alias added 16c58843 [agent-10 b2] -->
 
 ### 30.4 Typography (`DesignSystem/BrandFonts.swift`)
 
