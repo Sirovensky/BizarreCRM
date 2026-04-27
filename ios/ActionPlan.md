@@ -1007,13 +1007,13 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier. (`Detail/InventoryDetailCards.swift` `AutoReorderRuleCard` — threshold + qty TextFields; `PATCH /api/v1/inventory/:id/reorder-rule`; success checkmark animation. feat(§6/§10) b5ae5c51)
 - [x] **Bin location** — text field + picker (Settings → Inventory → Bin Locations). (`Detail/InventoryDetailCards.swift` `BinLocationCard` — monospaced TextField, `PATCH /api/v1/inventory/:id`; success animation. feat(§6/§10) b5ae5c51)
 - [ ] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each.
-- [ ] **Reorder / Restock** action — opens quick form to record stock-in or draft PO.
-- [ ] **Barcode display** — Code-128 + QR via CoreImage; `.textSelection(.enabled)` on SKU/UPC.
+- [x] **Reorder / Restock** action — opens quick form to record stock-in or draft PO. (`InventoryDetailView` toolbar "Restock" button ⌘⇧R → `confirmationDialog` with "Record stock-in" → `InventoryAdjustSheet` or "Draft purchase order" → `PurchaseOrderComposeView`. feat(§6.2) b7)
+- [x] **Barcode display** — Code-128 + QR via CoreImage; `.textSelection(.enabled)` on SKU/UPC. (`InventoryDetailView` `BarcodeCard` — `CICode128BarcodeGenerator` for SKU + `CIQRCodeGenerator` for UPC; both with `.textSelection(.enabled)` on raw string. feat(§6.2) confirmed b7)
 - [ ] **Used in tickets** — recent tickets that consumed this part; tap → ticket.
-- [ ] **Cost vs retail variance analysis** card (margin %).
+- [x] **Cost vs retail variance analysis** card (margin %). (`InventoryDetailView` `VarianceCard` — cost / retail / margin $ / margin % tiles; color-coded green ≥30%, yellow ≥10%, red <10%. feat(§6.2) confirmed b7)
 - [ ] **Tax class** — editable (admin only).
-- [ ] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`.
-- [ ] **Edit / Deactivate / Delete** buttons.
+- [x] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`. (`InventoryDetailView` `ItemPhotosCard` — AsyncImage primary photo + Upload CTA; full lightbox pinch-zoom is Phase 4+ polish. feat(§6.2) confirmed b7)
+- [x] **Edit / Deactivate / Delete** buttons. (`InventoryDetailView` toolbar — Edit ⌘E sheet; Deactivate + Delete confirmationDialogs; `deactivate()` + `deleteItem()` async. feat(§6.2) confirmed b7)
 
 ### 6.3 Create
 - [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part / service), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag — shipped via `Inventory/InventoryCreateView` + `InventoryFormView`.

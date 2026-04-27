@@ -15,6 +15,9 @@ public struct InventoryDetailView: View {
     @State private var isDeactivating: Bool = false
     @State private var isDeleting: Bool = false
     @State private var actionError: String?
+    // §6.2 Reorder / Restock action
+    @State private var showingRestockActionSheet: Bool = false
+    @State private var showingDraftPO: Bool = false
     private let api: APIClient?
     /// Called after delete so parent can pop.
     private let onDeleted: (() -> Void)?
@@ -86,6 +89,27 @@ public struct InventoryDetailView: View {
         } message: {
             Text(actionError ?? "")
         }
+        // §6.2 Restock: action sheet chooses Record Stock-in vs Draft PO
+        .confirmationDialog(
+            "Restock",
+            isPresented: $showingRestockActionSheet,
+            titleVisibility: .visible
+        ) {
+            Button("Record stock-in") { showingAdjust = true }
+            if api != nil {
+                Button("Draft purchase order") { showingDraftPO = true }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose how to add stock for this item.")
+        }
+        .sheet(isPresented: $showingDraftPO) {
+            if let api {
+                PurchaseOrderComposeView(api: api) {
+                    Task { await vm.load() }
+                }
+            }
+        }
     }
 
     // MARK: - Toolbar
@@ -108,6 +132,15 @@ public struct InventoryDetailView: View {
                 .keyboardShortcut("A", modifiers: .command)
                 .accessibilityLabel("Adjust stock quantity")
                 .accessibilityIdentifier("inventory.detail.adjust")
+            }
+            // §6.2 Reorder / Restock — quick form to record stock-in or draft PO
+            ToolbarItem(placement: .secondaryAction) {
+                Button { showingRestockActionSheet = true } label: {
+                    Label("Restock", systemImage: "arrow.down.box")
+                }
+                .keyboardShortcut("R", modifiers: [.command, .shift])
+                .accessibilityLabel("Restock: record stock-in or draft purchase order")
+                .accessibilityIdentifier("inventory.detail.restock")
             }
             ToolbarItem(placement: .secondaryAction) {
                 Button {
