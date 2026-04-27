@@ -135,24 +135,33 @@ public struct CustomerNoteV2: Decodable, Identifiable, Sendable {
     public let authorName: String?
     public let createdAt: String
     public let editCount: Int
+    /// §5 L944 — @ticket backlink: ticket ID this note is linked to (optional).
+    public let linkedTicketId: Int64?
+    /// §5 L944 — Ticket number string for display (e.g. "TKT-4521"), populated server-side.
+    public let linkedTicketRef: String?
 
     enum CodingKeys: String, CodingKey {
         case id, body
-        case noteType      = "note_type"
-        case isPinned      = "is_pinned"
-        case isInternalOnly = "is_internal_only"
-        case isManagerOnly = "is_manager_only"
-        case authorName    = "author_name"
-        case createdAt     = "created_at"
-        case editCount     = "edit_count"
+        case noteType        = "note_type"
+        case isPinned        = "is_pinned"
+        case isInternalOnly  = "is_internal_only"
+        case isManagerOnly   = "is_manager_only"
+        case authorName      = "author_name"
+        case createdAt       = "created_at"
+        case editCount       = "edit_count"
+        case linkedTicketId  = "linked_ticket_id"
+        case linkedTicketRef = "linked_ticket_ref"
     }
 }
 
-// MARK: - Add Note Sheet (enhanced) — §5 L940/L941/L945/L946/L947
+// MARK: - Add Note Sheet (enhanced) — §5 L940/L941/L944/L945/L946/L947
 
 public struct CustomerAddNoteSheet: View {
     let customerId: Int64
     let api: APIClient
+    /// Optional ticket ID to pre-link when opening from a ticket context.
+    var preLinkedTicketId: Int64?
+    var preLinkedTicketRef: String?
     var onSaved: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
@@ -163,10 +172,20 @@ public struct CustomerAddNoteSheet: View {
     @State private var showingTemplates = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    /// §5 L944 — @ticket backlink
+    @State private var linkedTicketIdInput: String = ""
 
-    public init(customerId: Int64, api: APIClient, onSaved: (() -> Void)? = nil) {
+    public init(
+        customerId: Int64,
+        api: APIClient,
+        preLinkedTicketId: Int64? = nil,
+        preLinkedTicketRef: String? = nil,
+        onSaved: (() -> Void)? = nil
+    ) {
         self.customerId = customerId
         self.api = api
+        self.preLinkedTicketId = preLinkedTicketId
+        self.preLinkedTicketRef = preLinkedTicketRef
         self.onSaved = onSaved
     }
 
@@ -174,6 +193,12 @@ public struct CustomerAddNoteSheet: View {
 
     private var isValid: Bool {
         !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var resolvedLinkedTicketId: Int64? {
+        // Prefer pre-linked (from caller context); fall back to manual entry.
+        if let id = preLinkedTicketId { return id }
+        return Int64(linkedTicketIdInput.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     public var body: some View {
@@ -217,6 +242,37 @@ public struct CustomerAddNoteSheet: View {
                         .tint(.bizarreTeal)
                         .accessibilityLabel("Insert template")
                     }
+                }
+
+                // §5 L944 — @ticket backlink
+                Section {
+                    if let pre = preLinkedTicketRef {
+                        // Pre-linked from ticket context — display only
+                        LabeledContent("Linked ticket") {
+                            HStack(spacing: BrandSpacing.xs) {
+                                Image(systemName: "ticket")
+                                    .foregroundStyle(.bizarreOrange)
+                                    .accessibilityHidden(true)
+                                Text(pre)
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOrange)
+                            }
+                        }
+                        .accessibilityLabel("Linked to ticket \(pre)")
+                    } else {
+                        LabeledContent("Link to ticket (optional)") {
+                            TextField("Ticket ID", text: $linkedTicketIdInput)
+                                .multilineTextAlignment(.trailing)
+                                .font(.brandMono(size: 14))
+                                .accessibilityLabel("Ticket ID to link this note to")
+                                .accessibilityHint("Enter a ticket ID number to create a backlink")
+                        }
+                    }
+                } header: {
+                    Text("Ticket Backlink")
+                } footer: {
+                    Text("Link this note to a ticket so it appears in the ticket history.")
+                        .font(.brandLabelSmall())
                 }
 
                 // Visibility flags (§5 L941/L945/L946)
@@ -290,7 +346,8 @@ public struct CustomerAddNoteSheet: View {
                 customerId: customerId,
                 body: trimmed,
                 noteType: noteType,
-                isManagerOnly: isManagerOnly
+                isManagerOnly: isManagerOnly,
+                linkedTicketId: resolvedLinkedTicketId
             )
             onSaved?()
             dismiss()
@@ -410,16 +467,19 @@ public struct NoteEditHistorySheet: View {
 
 extension APIClient {
     /// `POST /api/v1/customers/:id/notes` — create note with type + visibility flags.
+    /// §5 L944: `linked_ticket_id` wires the @ticket backlink (optional).
     public func createCustomerNoteV2(
         customerId: Int64,
         body: String,
         noteType: CustomerNoteType,
-        isManagerOnly: Bool
+        isManagerOnly: Bool,
+        linkedTicketId: Int64? = nil
     ) async throws {
         struct Body: Encodable {
             let body: String
             let note_type: String
             let is_manager_only: Bool
+            let linked_ticket_id: Int64?
             // is_internal_only is derived server-side from note_type == "internal_only"
         }
         try await post(
@@ -427,7 +487,8 @@ extension APIClient {
             body: Body(
                 body: body,
                 note_type: noteType.rawValue,
-                is_manager_only: isManagerOnly
+                is_manager_only: isManagerOnly,
+                linked_ticket_id: linkedTicketId
             ),
             as: EmptyResponse.self
         )

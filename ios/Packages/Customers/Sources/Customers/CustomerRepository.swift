@@ -7,6 +7,9 @@ public protocol CustomerRepository: Sendable {
     /// Cursor-paginated fetch (§5.1). Returns a page of customers plus the next cursor.
     func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage
 
+    /// `POST /api/v1/customers` — create a new customer from a Contacts import candidate.
+    func createFromContact(_ req: ContactImportCreateRequest) async throws
+
     /// `PUT /api/v1/customers/:id` — update editable fields and return the
     /// refreshed detail snapshot.  On success the caller should replace its
     /// local `CustomerDetail` with the returned value.
@@ -19,6 +22,26 @@ public protocol CustomerRepository: Sendable {
     /// `DELETE /api/v1/customers/bulk` — delete many customers (§5.6).
     @discardableResult
     func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult
+}
+
+// MARK: - Contacts import request
+
+public struct ContactImportCreateRequest: Encodable, Sendable {
+    public let first_name: String
+    public let last_name: String
+    public let phone: String?
+    public let email: String?
+    public let organization: String?
+    public let address1: String?
+
+    public init(firstName: String, lastName: String, phone: String?, email: String?, organization: String?, address1: String?) {
+        self.first_name = firstName
+        self.last_name = lastName
+        self.phone = phone
+        self.email = email
+        self.organization = organization
+        self.address1 = address1
+    }
 }
 
 public actor CustomerRepositoryImpl: CustomerRepository {
@@ -34,6 +57,10 @@ public actor CustomerRepositoryImpl: CustomerRepository {
 
     public func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
         try await api.listCustomersCursor(cursor: cursor, query: query)
+    }
+
+    public func createFromContact(_ req: ContactImportCreateRequest) async throws {
+        try await api.createCustomerFromContact(req)
     }
 
     public func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {

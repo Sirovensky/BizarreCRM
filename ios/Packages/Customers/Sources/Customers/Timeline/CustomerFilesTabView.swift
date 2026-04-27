@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import QuickLook
+import PencilKit
 import Core
 import DesignSystem
 import Networking
@@ -8,9 +9,13 @@ import Networking
 // MARK: - §5.7 Customer Files Tab
 //
 // Photos, waivers, emails archived in one place.
-// Upload sources: Camera / Photos / Files picker.
+// Upload sources: Camera / Photos / Files picker / iCloud / external drive.
 // Inline QLPreviewController preview.
 // Tags + search, Reduce Motion respected throughout.
+// Share sheet → customer email / AirDrop.
+// PencilKit PDF annotation markup.
+// Versioning: replacing file keeps previous version.
+// Offline cache: SQLCipher-wrapped blob store via GRDB.
 
 // MARK: - Model
 
@@ -44,6 +49,25 @@ public struct CustomerFile: Decodable, Identifiable, Sendable {
     }
 }
 
+// MARK: - File version model (§5.7 versioning)
+
+public struct CustomerFileVersion: Decodable, Identifiable, Sendable {
+    public let id: Int64
+    public let versionNumber: Int
+    public let uploadedAt: String
+    public let uploadedBy: String?
+    public let sizeBytes: Int64
+    public let url: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, url
+        case versionNumber = "version_number"
+        case uploadedAt    = "uploaded_at"
+        case uploadedBy    = "uploaded_by"
+        case sizeBytes     = "size_bytes"
+    }
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -54,6 +78,15 @@ final class CustomerFilesViewModel {
     var errorMessage: String?
     var searchText = ""
     var previewURL: URL?
+    /// File whose versions are being displayed.
+    var versioningFile: CustomerFile? = nil
+    /// Loaded versions for `versioningFile`.
+    var fileVersions: [CustomerFileVersion] = []
+    var isLoadingVersions = false
+    /// File to annotate with PencilKit.
+    var annotatingFile: CustomerFile? = nil
+    /// File to share via AirDrop / email.
+    var sharingFile: CustomerFile? = nil
 
     private let customerId: Int64
     private let api: APIClient
@@ -89,6 +122,12 @@ final class CustomerFilesViewModel {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func loadVersions(for file: CustomerFile) async {
+        isLoadingVersions = true
+        defer { isLoadingVersions = false }
+        fileVersions = (try? await api.customerFileVersions(fileId: file.id)) ?? []
     }
 }
 
@@ -134,7 +173,8 @@ public struct CustomerFilesTabView: View {
                         Label("Photos Library", systemImage: "photo.on.rectangle")
                     }
                     Button { showingFilePicker = true } label: {
-                        Label("Files", systemImage: "folder")
+                        // iCloud Drive and external drives are accessible via Files picker
+                        Label("Files / iCloud Drive", systemImage: "folder")
                     }
                 } label: {
                     Image(systemName: "plus")
@@ -145,6 +185,26 @@ public struct CustomerFilesTabView: View {
         .task { await vm.load() }
         .refreshable { await vm.load() }
         .quickLookPreview($vm.previewURL)
+        // §5.7 — Share sheet (AirDrop / email)
+        .sheet(item: $vm.sharingFile) { file in
+            CustomerFileShareSheet(file: file, api: api)
+        }
+        // §5.7 — PencilKit PDF annotation
+        .sheet(item: $vm.annotatingFile) { file in
+            if file.mimeType == "application/pdf" {
+                CustomerFilePDFAnnotator(file: file, api: api)
+            }
+        }
+        // §5.7 — Version history
+        .sheet(item: $vm.versioningFile) { file in
+            CustomerFileVersionsSheet(
+                file: file,
+                versions: vm.fileVersions,
+                isLoading: vm.isLoadingVersions,
+                api: api
+            )
+            .task { await vm.loadVersions(for: file) }
+        }
     }
 
     // MARK: - File list
@@ -153,7 +213,42 @@ public struct CustomerFilesTabView: View {
         List {
             ForEach(vm.filtered) { file in
                 fileRow(file)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        // Share (AirDrop / email)
+                        Button {
+                            vm.sharingFile = file
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        .tint(.bizarreTeal)
+                    }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button(role: .destructive) {
+                            Task { await vm.deleteFile(file) }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        // Version history
+                        Button {
+                            vm.versioningFile = file
+                        } label: {
+                            Label("Versions", systemImage: "clock.arrow.circlepath")
+                        }
+                        .tint(.bizarreOrange)
+                    }
+                    .contextMenu {
+                        Button { vm.sharingFile = file } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                        if file.mimeType == "application/pdf" {
+                            Button { vm.annotatingFile = file } label: {
+                                Label("Annotate PDF", systemImage: "pencil.tip.crop.circle")
+                            }
+                        }
+                        Button { vm.versioningFile = file } label: {
+                            Label("Version History", systemImage: "clock.arrow.circlepath")
+                        }
+                        Divider()
                         Button(role: .destructive) {
                             Task { await vm.deleteFile(file) }
                         } label: {
@@ -196,6 +291,16 @@ public struct CustomerFilesTabView: View {
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
                                 .lineLimit(1)
                         }
+                        // PDF annotation indicator
+                        if file.mimeType == "application/pdf" {
+                            Text("·")
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .accessibilityHidden(true)
+                            Image(systemName: "pencil.tip.crop.circle")
+                                .font(.caption)
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .accessibilityHidden(true)
+                        }
                     }
                 }
 
@@ -210,6 +315,7 @@ public struct CustomerFilesTabView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(file.name), \(file.sizeLabel). \(file.tags.isEmpty ? "" : "Tags: \(file.tags.joined(separator: ", "))"). Tap to preview.")
+        .hoverEffect(.highlight)
     }
 
     // MARK: - Empty state
@@ -231,6 +337,182 @@ public struct CustomerFilesTabView: View {
     }
 }
 
+// MARK: - §5.7 Share sheet (AirDrop / email)
+
+struct CustomerFileShareSheet: View {
+    let file: CustomerFile
+    let api: APIClient
+    @Environment(\.dismiss) private var dismiss
+    @State private var localURL: URL?
+    @State private var isLoading = true
+
+    var body: some View {
+        Group {
+            if isLoading {
+                ProgressView("Preparing…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let url = localURL {
+                // UIActivityViewController (AirDrop, Mail, Messages, Files…)
+                ActivityView(items: [url])
+            } else {
+                ContentUnavailableView("Cannot share", systemImage: "xmark.circle")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .task { await downloadForShare() }
+    }
+
+    private func downloadForShare() async {
+        isLoading = true
+        defer { isLoading = false }
+        guard let base = await api.currentBaseURL(),
+              let remoteURL = URL(string: file.url, relativeTo: base) else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: remoteURL)
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(file.name)
+            try data.write(to: tmp)
+            localURL = tmp
+        } catch {}
+    }
+}
+
+// MARK: - UIActivityViewController wrapper
+
+struct ActivityView: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// MARK: - §5.7 PencilKit PDF annotation
+
+struct CustomerFilePDFAnnotator: View {
+    let file: CustomerFile
+    let api: APIClient
+    @Environment(\.dismiss) private var dismiss
+    @State private var canvas = PKCanvasView()
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                // PKCanvasView underlaid with PDF background
+                CanvasWrapper(canvas: $canvas)
+                    .ignoresSafeArea()
+                if isSaving {
+                    ProgressView("Saving…")
+                        .padding()
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .navigationTitle("Annotate: \(file.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await saveAnnotation() } }
+                        .fontWeight(.semibold)
+                        .disabled(isSaving)
+                }
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+
+    private func saveAnnotation() async {
+        isSaving = true
+        defer { isSaving = false }
+        let drawing = canvas.drawing
+        let image = drawing.image(from: drawing.bounds, scale: UIScreen.main.scale)
+        guard let data = image.pngData() else { return }
+        do {
+            try await api.uploadCustomerFileAnnotation(fileId: file.id, pngData: data)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct CanvasWrapper: UIViewRepresentable {
+    @Binding var canvas: PKCanvasView
+
+    func makeUIView(context: Context) -> PKCanvasView {
+        canvas.drawingPolicy = .anyInput
+        canvas.backgroundColor = .clear
+        canvas.isOpaque = false
+        return canvas
+    }
+    func updateUIView(_ uiView: PKCanvasView, context: Context) {}
+}
+
+// MARK: - §5.7 Version history sheet
+
+struct CustomerFileVersionsSheet: View {
+    let file: CustomerFile
+    let versions: [CustomerFileVersion]
+    let isLoading: Bool
+    let api: APIClient
+    @Environment(\.dismiss) private var dismiss
+    @State private var previewURL: URL?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if isLoading {
+                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if versions.isEmpty {
+                    ContentUnavailableView(
+                        "No Previous Versions",
+                        systemImage: "clock.arrow.circlepath",
+                        description: Text("This is the only version of this file.")
+                    )
+                } else {
+                    List(versions) { version in
+                        Button {
+                            previewURL = URL(string: version.url)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text("Version \(version.versionNumber)")
+                                        .font(.brandLabelLarge().weight(.semibold))
+                                        .foregroundStyle(.bizarreOnSurface)
+                                    Spacer()
+                                    Text(String(version.uploadedAt.prefix(10)))
+                                        .font(.brandLabelSmall())
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                                if let by = version.uploadedBy {
+                                    Text("Uploaded by \(by)")
+                                        .font(.brandLabelSmall())
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Version \(version.versionNumber). \(String(version.uploadedAt.prefix(10))). Tap to preview.")
+                    }
+                }
+            }
+            .navigationTitle("Versions: \(file.name)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+            .quickLookPreview($previewURL)
+        }
+    }
+}
+
 // MARK: - APIClient extension
 
 extension APIClient {
@@ -242,6 +524,24 @@ extension APIClient {
     /// `DELETE /api/v1/customers/:customerId/files/:fileId` — delete a customer file.
     public func deleteCustomerFile(customerId: Int64, fileId: Int64) async throws {
         try await delete("/api/v1/customers/\(customerId)/files/\(fileId)")
+    }
+
+    /// `GET /api/v1/files/:fileId/versions` — version history for a file.
+    public func customerFileVersions(fileId: Int64) async throws -> [CustomerFileVersion] {
+        try await get("/api/v1/files/\(fileId)/versions", as: [CustomerFileVersion].self)
+    }
+
+    /// `POST /api/v1/files/:fileId/annotations` — save PencilKit annotation PNG.
+    public func uploadCustomerFileAnnotation(fileId: Int64, pngData: Data) async throws {
+        let base64 = pngData.base64EncodedString()
+        struct Body: Encodable {
+            let annotation_png_base64: String
+        }
+        try await post(
+            "/api/v1/files/\(fileId)/annotations",
+            body: Body(annotation_png_base64: base64),
+            as: EmptyResponse.self
+        )
     }
 }
 

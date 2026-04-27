@@ -211,6 +211,14 @@ public extension APIClient {
     func listCustomerTags() async throws -> [String] {
         try await get("/api/v1/customers/tags", as: [String].self)
     }
+
+    // MARK: §5.3 — Contacts bulk import (L961/L965)
+
+    /// `POST /api/v1/customers` — create a single customer from a Contacts import candidate.
+    /// Called by `CustomerRepositoryImpl.createFromContact(_:)`.
+    func createCustomerFromContact(_ req: some Encodable & Sendable) async throws {
+        try await post("/api/v1/customers", body: req, as: EmptyResponse.self)
+    }
 }
 
 // MARK: - §5.4 CustomerTagSegmentDTO

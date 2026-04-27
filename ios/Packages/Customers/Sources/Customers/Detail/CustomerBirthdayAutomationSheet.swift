@@ -22,6 +22,24 @@ public struct CustomerBirthdayAutomationPrefs: Codable, Sendable {
     public var preferredChannel: BirthdayChannel?
     /// Exclude from full promo if visited in last N days (nil = use tenant default).
     public var recentVisitExclusionDays: Int?
+    /// Whether to inject a unique coupon code (§37) with 7-day expiry in the birthday message.
+    public var injectCoupon: Bool
+    /// Template ID for the coupon to inject (tenant-configured; nil = use tenant default).
+    public var couponTemplateId: String?
+
+    public init(
+        optedIn: Bool = false,
+        preferredChannel: BirthdayChannel? = nil,
+        recentVisitExclusionDays: Int? = nil,
+        injectCoupon: Bool = false,
+        couponTemplateId: String? = nil
+    ) {
+        self.optedIn = optedIn
+        self.preferredChannel = preferredChannel
+        self.recentVisitExclusionDays = recentVisitExclusionDays
+        self.injectCoupon = injectCoupon
+        self.couponTemplateId = couponTemplateId
+    }
 
     public enum BirthdayChannel: String, Codable, Sendable, CaseIterable {
         case sms    = "sms"
@@ -43,6 +61,8 @@ public struct CustomerBirthdayAutomationPrefs: Codable, Sendable {
         case optedIn               = "opted_in"
         case preferredChannel      = "preferred_channel"
         case recentVisitExclusionDays = "recent_visit_exclusion_days"
+        case injectCoupon          = "inject_coupon"
+        case couponTemplateId      = "coupon_template_id"
     }
 }
 
@@ -134,8 +154,41 @@ public struct CustomerBirthdayAutomationSheet: View {
                             .font(.brandLabelSmall())
                     }
 
+                    // §5 — Inject unique coupon (§37) per recipient with 7-day expiry
                     Section {
-                        LabeledContent("Coupon", value: "Unique 7-day coupon injected server-side")
+                        Toggle(isOn: $prefs.injectCoupon) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Inject Unique Coupon")
+                                    .font(.brandBodyMedium())
+                                Text("Generate a one-time code per recipient (7-day expiry)")
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                        }
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Inject unique coupon with 7-day expiry")
+
+                        if prefs.injectCoupon {
+                            HStack {
+                                Text("Coupon template")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                Spacer()
+                                Text(prefs.couponTemplateId ?? "Tenant default")
+                                    .font(.brandLabelLarge())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Coupon template: \(prefs.couponTemplateId ?? "Tenant default")")
+                        }
+                    } header: {
+                        Text("Coupon")
+                    } footer: {
+                        Text("The server generates a unique code per recipient and embeds it in the birthday message. The code expires 7 days after the customer's birthday.")
+                            .font(.brandLabelSmall())
+                    }
+
+                    Section {
                         LabeledContent("Age-derived features", value: "Off by default")
                         LabeledContent("Birthday in lists", value: "Never shown")
                     } header: {
