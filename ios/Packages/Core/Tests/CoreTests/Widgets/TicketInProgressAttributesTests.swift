@@ -2,6 +2,8 @@ import XCTest
 @testable import Core
 
 // MARK: - §24.3 TicketInProgressAttributes tests
+// TicketInProgressAttributes uses ActivityKit which is iOS-only.
+#if os(iOS)
 
 final class TicketInProgressAttributesTests: XCTestCase {
 
@@ -49,3 +51,5 @@ final class TicketInProgressAttributesTests: XCTestCase {
         XCTAssertNotEqual(a, c)
     }
 }
+
+#endif // os(iOS)

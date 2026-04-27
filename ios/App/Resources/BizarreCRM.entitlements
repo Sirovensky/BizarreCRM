@@ -16,5 +16,7 @@
     <array>
         <string>applinks:app.bizarrecrm.com</string>
     </array>
+    <key>com.apple.developer.control-center.extension</key>
+    <true/>
 </dict>
 </plist>

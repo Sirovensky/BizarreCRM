@@ -283,9 +283,10 @@ final class MacWindowCommandsTests: XCTestCase {
 
         // Verify closures can be stored and called — the Commands value is
         // opaque so we can't inspect its tree without a full SwiftUI host.
-        let onNew: @Sendable () -> Void   = { newCalled = true }
-        let onSave: @Sendable () -> Void  = { saveCalled = true }
-        let onClose: @Sendable () -> Void = { closeCalled = true }
+        // Not @Sendable: these closures mutate local vars in a single-threaded test.
+        let onNew: () -> Void   = { newCalled = true }
+        let onSave: () -> Void  = { saveCalled = true }
+        let onClose: () -> Void = { closeCalled = true }
 
         onNew()
         onSave()
@@ -300,8 +301,8 @@ final class MacWindowCommandsTests: XCTestCase {
         var undoCalled = false
         var redoCalled = false
 
-        let onUndo: @Sendable () -> Void = { undoCalled = true }
-        let onRedo: @Sendable () -> Void = { redoCalled = true }
+        let onUndo: () -> Void = { undoCalled = true }
+        let onRedo: () -> Void = { redoCalled = true }
 
         onUndo()
         onRedo()
@@ -315,9 +316,9 @@ final class MacWindowCommandsTests: XCTestCase {
         var findCalled = false
         var paletteCalled = false
 
-        let onRefresh: @Sendable () -> Void       = { refreshCalled = true }
-        let onFind: @Sendable () -> Void          = { findCalled = true }
-        let onPalette: @Sendable () -> Void       = { paletteCalled = true }
+        let onRefresh: () -> Void = { refreshCalled = true }
+        let onFind: () -> Void    = { findCalled = true }
+        let onPalette: () -> Void = { paletteCalled = true }
 
         onRefresh()
         onFind()
