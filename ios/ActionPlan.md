@@ -1552,17 +1552,17 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] Bubbles + composer + POST /sms/send — shipped.
 - [x] **Real-time WS** — new message arrives without refresh; animate in with spring. (`SmsThreadViewModelWS` extension iterates `WebSocketClient.events` AsyncStream; on `smsReceived(SmsDTO)` compares timestamp + calls `load()`, sets `newMessageId`) (9d7d9584)
 - [x] **Delivery status** icons per message — sent / delivered / failed / scheduled. (`MessageDeliveryStatusIcon` maps status string → SF Symbol; sent/delivered/failed/scheduled/sending/simulated) (9d7d9584)
-- [ ] **Read receipts** (if server supports).
-- [ ] **Typing indicator** (if supported).
+- [x] **Read receipts** (if server supports). (`ReadReceiptView` displays ISO-8601 `read_at` timestamp under outbound messages; `SmsMessage.readAt` decoded from server `read_at` field; nil-safe — no indicator when server doesn't provide.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
+- [x] **Typing indicator** (if supported). (`TypingIndicatorView` 3-dot animated bubble; `SmsThreadViewModel.isRemoteTyping` + `typingClearTask` auto-clear 5s; `SmsThreadViewModelWS` routes `WSEvent.unknown("sms.typing*")` to `handleTypingEvent()`; Reduce Motion falls back to static "…" label.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload.
 - [x] **Canned responses / templates** — `MessageTemplateListView` + `MessageTemplateEditorView` (CRUD: `GET/POST/PATCH/DELETE /message-templates`); `TemplateRenderer` pure substitution helper; `{first_name}` / `{ticket_no}` / `{amount}` / `{date}` / `{company}` variable chips; live preview; channel (SMS/Email) + category filters; injectable picker closure for future in-composer surfacing. In-composer chips + hotkeys remain `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [x] **In-composer dynamic-var chip bar** — `SmsComposerView` + `SmsComposerViewModel`; chip bar with `{first_name}` / `{ticket_no}` / `{total}` / `{due_date}` / `{tech_name}` / `{appointment_time}` / `{shop_name}`; insert-at-cursor; live preview via `TemplateRenderer`; "Load template" picker. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
-- [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
-- [ ] **Emoji picker**.
+- [x] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer. (`SmsLinkPickerSheet` + `SmsLinkPickerViewModel`; 3-tab (Tickets / Invoices / Pay links); lazy per-tab load; `SmsLinkPickerItem.linkToken(baseURL:)` generates token; `APIClient+Communications` adds `listTicketPickerItems`, `listInvoicePickerItems`, `listPaymentLinkPickerItems`.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
+- [x] **Emoji picker**. (`EmojiPickerButton` + `EmojiPickerPopover`; curated 24-emoji grid in a popover; appends emoji to draft; Reduce Motion compatible; `BrandHaptics.tap()` on selection.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 - [x] **Schedule send** — date/time picker for future delivery. (`ScheduleSendSheet` DatePicker graphical; `SmsThreadViewModel.scheduledSendAt`; `sendSmsScheduled()` + `SmsSendScheduledRequest` in `SmsThreadEndpoints`; schedule clears after send; 5 XCTest assertions) (9d7d9584)
 - [ ] **Voice memo** (if MMS supported) — record AAC inline; bubble plays audio.
 - [x] **Long-press message** → context menu — Copy, Reply, Forward, Create ticket from this, Flag, Delete. (`MessageContextMenuModifier` + `.messageContextMenu(...)` ViewModifier in `Communications/Sms/Thread/MessageContextMenu.swift`.) (feat(§12): long-press message context menu + off-hours auto-reply indicator dd7c6321)
-- [ ] **Create customer from thread** — if phone not associated.
+- [x] **Create customer from thread** — if phone not associated. (`CreateCustomerFromThreadSheet` + `CreateCustomerFromThreadViewModel`; pre-fills phone from thread; first name required; optional last name + email; `POST /api/v1/customers` via `createCustomerFromThread` in `APIClient+Communications`.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 - [x] **Character counter** + SMS-segments display (160 / 70 unicode). (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [x] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers. (`SmsThreadViewModel.appendComplianceFooter`; prepends "\n\nReply STOP to opt out" to message body before send) (9d7d9584)
 - [x] **Off-hours auto-reply** indicator when enabled. (`OffHoursIndicator` + `OffHoursAutoReplyChecker` in `Communications/Sms/Thread/OffHoursIndicator.swift`.) (feat(§12): long-press message context menu + off-hours auto-reply indicator dd7c6321)
@@ -1771,8 +1771,8 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Affects shift grid. (`TimeOffRequestsSidebarViewModel.onApproved` callback → `ShiftSchedulePostViewModel.addApprovedPTOBlock` re-runs `ShiftScheduleConflictChecker`.) (feat(§14.6): iPad drag-drop shift rearrange + §14.9 PTO-affects-shift-grid d364a040)
 
 ### 14.10 Shortcuts
-- [ ] Clock-in/out via Control Center widget (iOS 18+).
-- [ ] Siri intent "Clock me in at BizarreCRM".
+- [x] Clock-in/out via Control Center widget (iOS 18+). (`ClockInOutControl` + `ClockInOutControlIntent` in `App/Intents/ControlCenterControls.swift`; `@available(iOS 18.0, *)` guard; `StaticControlConfiguration` kind `com.bizarrecrm.control.clockinout`; reads `ClockStateProvider` from App Group UserDefaults.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
+- [x] Siri intent "Clock me in at BizarreCRM". (`ClockInIntent` + `ClockOutIntent` + `ClockIntentConfig` in `Packages/Core/Sources/Core/Intents/`; `@available(iOS 16, *)` `AppIntent`; `IntentDescription` "Clock in to start your shift"; `ClockRepository` protocol injected at app launch.) (feat(§12): read receipts + typing indicator + create-customer + emoji picker + link picker e9f215e1)
 
 - [ ] End-of-shift summary: cashier taps "End shift" → summary card (sales count / gross / tips / cash expected / cash counted entered / over-short / items sold / voids); compare to prior shifts for trend
 - [ ] Close cash drawer: prompt to count cash by denomination ($100, $50, $20…); system computes expected from sales; delta live; over-short reason required if >$2
@@ -1784,28 +1784,28 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF. (`OffboardingView` + `OffboardingViewModel`; POST /api/v1/settings/users/:id/offboard.) (feat(§14): offboarding flow + temporary suspension b7364caa)
 - [x] Role changes: promote/demote path; change goes live immediately. (`EmployeeDetailViewModel.requestRoleChange/confirmRoleChange` → `PUT /api/v1/roles/users/:userId/role`; confirmation dialog; reload on success; §47 `RolesEditor` package provides the roles list.) (57e0660d)
 - [x] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume. (`TemporarySuspensionView` + `TemporarySuspensionViewModel`; PATCH /api/v1/settings/users/:id { is_suspended }.) (feat(§14): offboarding flow + temporary suspension b7364caa)
-- [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export
-- [ ] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken
-- [ ] Private by default: self + manager; owner sees all
-- [ ] Manager annotations with notes + praise / coaching signals, visible to employee
-- [ ] Rolling trend windows: 30 / 90 / 365d with chart per metric
-- [ ] "Prepare review" button compiles scorecard + self-review form + manager notes into PDF for HR file
-- [ ] Distinguish objective hard metrics from subjective manager rating
-- [ ] Subjective 1-5 scale with descriptors
-- [ ] Staff can request feedback from 1-3 peers during review cycle
-- [ ] Form with 4 prompts: going well / to improve / one strength / one blind spot
-- [ ] Anonymous by default; peer can opt to attribute
-- [ ] Delivery to manager who curates before sharing with subject (prevents rumor / hostility)
-- [ ] Frequency cap: max once / quarter per peer requested
-- [ ] A11y: long-form text input with voice dictation
-- [ ] Peer-to-peer shoutouts with optional ticket attachment
-- [ ] Shoutouts appear in peer's profile + team chat (if opted)
-- [ ] Categories: "Customer save" / "Team player" / "Technical excellence" / "Above and beyond"
-- [ ] Unlimited sending; no leaderboard of shoutouts (avoid gaming)
-- [ ] Recipient gets push notification
-- [ ] Archive received shoutouts in profile
-- [ ] End-of-year "recognition book" PDF export
-- [ ] Privacy options: private (sender + recipient) or team-visible (recipient opt-in)
+- [x] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export. (`ReferenceLetterExportService` + `ReferenceLetterView` + `ReferenceLetterViewModel` in `Employees/ReferenceLetter/`; UIGraphicsPDFRenderer; letterhead + customizable body + performance summary table; share sheet export; on-device only, §32 sovereignty.) (feat(§14): reference letter PDF export 4652078b)
+- [x] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken (Covered by §46.4: `ScorecardView` + `EmployeeScorecard.swift` + `ScorecardEndpoints`)
+- [x] Private by default: self + manager; owner sees all (Covered by §46.4: `ScorecardVisibilityRole` enum + `.other` access-denied guard in `ScorecardViewModel`)
+- [x] Manager annotations with notes + praise / coaching signals, visible to employee (Covered by §46.4: `ScorecardManagerNotesSheet` + manager annotations section in `ScorecardView`)
+- [x] Rolling trend windows: 30 / 90 / 365d with chart per metric (Covered by §46.4: rolling windows in `ScorecardView` metrics section)
+- [x] "Prepare review" button compiles scorecard + self-review form + manager notes into PDF for HR file (Covered by §46.2: `ReviewMeetingHelperView` + "Prepare review" action + PDF)
+- [x] Distinguish objective hard metrics from subjective manager rating (Covered by §46.4: `ScorecardMetricKind` + `ScorecardMetricClassifier.kind(for:)`)
+- [x] Subjective 1-5 scale with descriptors (Covered by §46.2: `PerformanceReviewComposeView` numeric ratings 1-5 with descriptors)
+- [x] Staff can request feedback from 1-3 peers during review cycle (Covered by §46.5: `PeerFeedbackPromptSheet` + frequency cap 1-3 peers)
+- [x] Form with 4 prompts: going well / to improve / one strength / one blind spot (Covered by §46.5: `PeerFeedbackPromptSheet` 4 prompts)
+- [x] Anonymous by default; peer can opt to attribute (Covered by §46.5: anonymous by default with attribution toggle)
+- [x] Delivery to manager who curates before sharing with subject (prevents rumor / hostility) (Covered by §46.5: `PeerFeedbackRepository` delivery gated through manager)
+- [x] Frequency cap: max once / quarter per peer requested (Covered by §46.5: `PeerFeedbackFrequencyCap` calendar quarter boundary)
+- [x] A11y: long-form text input with voice dictation (Covered by §46.5: `VoiceDictationButton` + `DictationSession` + `DictationTextEditor` in `PeerFeedbackPromptSheet`)
+- [x] Peer-to-peer shoutouts with optional ticket attachment (Covered by §46.7: `SendShoutoutSheet` + optional `ticketId`)
+- [x] Shoutouts appear in peer's profile + team chat (if opted) (Covered by §46.7: `ReceivedShoutoutsView` + `isTeamVisible` toggle)
+- [x] Categories: "Customer save" / "Team player" / "Technical excellence" / "Above and beyond" (Covered by §46.7: `ShoutoutCategory` enum)
+- [x] Unlimited sending; no leaderboard of shoutouts (avoid gaming) (Covered by §46.7: no frequency cap on sends; no shoutout leaderboard)
+- [x] Recipient gets push notification (Covered by §46.7: push wired via §70 notification category by Agent 9)
+- [x] Archive received shoutouts in profile (Covered by §46.7: `ReceivedShoutoutsView` + `listReceivedShoutouts`)
+- [x] End-of-year "recognition book" PDF export (Covered by §46.7: `RecognitionBookExportService.generatePDF`)
+- [x] Privacy options: private (sender + recipient) or team-visible (recipient opt-in) (Covered by §46.7: `isTeamVisible` toggle + private by default)
 
 ---
 ## §15. Reports & Analytics
@@ -8100,3 +8100,5 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 10]** Multipart binary JPEG handling: `MultipartFormDataTests.swift:120` previously crashed on `String(data:encoding:.utf8)!` for binary content. **RESOLVED** in `bcbccaa8` (ISO-Latin-1 fallback).
 - **[Agent 10]** (2026-04-27, b4) Pre-existing runtime test failures in Core: `AnalyticsPIIGuardTests`, `CoreErrorStateTests`, `ErrorCopyTests`, `DeepLinkDestinationTests`, `PseudoLocaleGeneratorTests`, `SensitiveFieldRedactorTests`, `FixtureLoaderTests`. **OPEN** — Agent 10 b5.
 - **[Agent 6 → Agent 10/Agent 1/Agent 3]** (2026-04-27, agent-6 b4) Networking pre-existing build errors: `APIClient+Estimates.swift:306` `EmptyBody` not `Decodable` (Agent 3); `APIClient+Pos.swift:259/274` struct-in-generic-func (Agent 1); `WebSocketConnection.swift:40/46` missing explicit `self` (Agent 10). Plus 12 sdk-ban violations in `Pos/PosSyncOpExecutor.swift` + `Pos/Coupons/CouponListView.swift` (Agent 1).
+- **[Agent 7 → Agent 1]** (2026-04-26, agent-7 b7) §14 lines 1777–1782 (end-of-shift summary, cash drawer count, manager sign-off, Z-report, handoff, sovereignty) appear in §14 but reference cash register / Z-report workflow which belongs to §39 Cash Register (Agent 1). These tasks cannot be implemented by Agent 7. Pending Agent 1 batch.
+- **[Agent 7 → Agent 10]** (2026-04-26, agent-7 b7) §12.2 Typing indicator: `WSEvent` enum in `Packages/Networking/Sources/Networking/WebSocketClient.swift` (Agent 10 owned) needs a new `case smsTyping(String)` decoded from server event type `"sms.typing"` (payload: `{ phone: String }`). Currently handled via `WSEvent.unknown` passthrough. Agent 10 should add the typed case and agent-7 can remove the `unknown` workaround.
