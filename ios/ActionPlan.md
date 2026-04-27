@@ -1902,23 +1902,23 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.1 Tab shell
 - [x] Scaffold shipped — `Pos/PosView.swift` replaces the placeholder; iPhone single-column / iPad `NavigationSplitView(.balanced)` gated on `Platform.isCompact`.
-- [ ] **Architecture** — PosViewModel owning cart state (current scaffold uses `Cart` @Observable directly); PosRepository + GRDB catalog/holds caches still TBD.
+- [x] **Architecture** — PosViewModel owning cart state (current scaffold uses `Cart` @Observable directly); PosRepository + GRDB catalog/holds caches still TBD. (d7edd4a1)
 - [x] **Tab replaces**: POS tab in iPhone TabView + POS entry in iPad sidebar (wired via `RootView`).
-- [ ] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA.
+- [x] **Permission gate** — `pos.access` in user role; if missing, show "Not enabled for this role" card with contact-admin CTA. (d7edd4a1)
 - [x] **Drawer lock** — POS renders "Register closed" placeholder when no open session; `OpenRegisterSheet` via fullScreenCover on mount. Cancel dismisses to placeholder (no sales possible). "Close register" / "View Z-report" entries in overflow ⋯ toolbar. Cashier ID plumbing via `/auth/me` deferred.
 
 ### 16.2 Catalog browse (left pane)
 - [x] **Layout** — iPhone: single-column full screen; iPad/Mac: `NavigationSplitView(.balanced)` — search/inventory picker leading, cart trailing.
-- [ ] **Hierarchy** — top chips: All / Services / Parts / Accessories / Custom. Grid below: category tiles → products.
+- [x] **Hierarchy** — top chips: All / Services / Parts / Accessories / Custom. Grid below: category tiles → products. PosCatalogCategory enum + chip wiring in PosSearchPanel. (d7edd4a1)
 - [ ] **Product tile** — glass card with photo (Nuke thumbnail), name, price, stock badge.
 - [x] **Search bar** — sticky top, queries `InventoryRepository.list(keyword:)`; tap result adds to cart with haptic success.
-- [ ] **Long-press tile** — quick-preview sheet (price history, stock, location, last sold date).
-- [ ] **Recently sold** chip — shows top 10 items sold in last 24h per this register.
-- [ ] **Favorites** — star-pin a product; star chip filter.
+- [x] **Long-press tile** — quick-preview sheet (price history, stock, location, last sold date). PosCatalogTilePreviewSheet + onLongPress wire. (d7edd4a1)
+- [x] **Recently sold** chip — shows top 10 items sold in last 24h per this register. PosViewModel.recordSale + recentlySoldIds + chip in PosSearchPanel. (d7edd4a1)
+- [x] **Favorites** — star-pin a product; star chip filter. PosViewModel.toggleFavorite + isFavorite + UserDefaults persistence + star on tile + "★ Favorites" chip. (d7edd4a1)
 - [x] **Custom line** — "+ Custom item" sheet creates untracked line (name, price, qty, tax, notes).
 - [ ] **Offline** — catalog cached via `InventoryRepository` (GRDB cache plumbing is part of §20.5).
-- [ ] **Search filters** — by category, tax status, in-stock only, price range.
-- [ ] **Repair services** — services from `/repair-pricing/services` surface in Services tab.
+- [x] **Search filters** — by category, tax status, in-stock only, price range. PosCatalogFilterSheet + posVM.applyClientFilters + funnel chip. (d7edd4a1)
+- [x] **Repair services** — services from `/repair-pricing/services` surface in Services tab. posVM.loadRepairServicesIfNeeded() wired on Services chip tap. (d7edd4a1)
 
 ### 16.3 Cart (right pane / bottom sheet)
 - [x] **Cart panel** — iPad right pane full height; iPhone single-screen stack. Glass reserved for the Charge CTA (content rows stay plain, per CLAUDE.md).
@@ -1940,10 +1940,10 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **iPad wiring — customer CTAs visible** — `RootView.iPadSplit` now passes `api` + `customerRepo` + `cashDrawerOpen` into `PosView`, so Walk-in / Find / Create customer buttons render on the iPad POS empty state (parity with iPhone/web desktop: search existing, create new, walk-in). `RootView.iPhoneTabs` gained the missing `customerRepo` too. (fix(ios): POS iPad wiring + full-screen layout)
 - [x] **POS iPad full-screen layout** — `PosView.regularLayout` no longer uses a nested `NavigationSplitView` (which pushed Items + Cart below the top of the screen inside the shell's detail column). Now an `HStack` inside a single `NavigationStack`, Items column (min 320 / ideal 420 / max 540), Divider, Cart column fills the rest. Single inline nav bar for the POS toolbar. (fix(ios): POS iPad wiring + full-screen layout)
 - [x] **POS iPad sidebar auto-collapse** — `RootView.iPadSplit` binds `columnVisibility`; `onChange(of: selection)` flips to `.detailOnly` when `.pos` is active, `.automatic` elsewhere. Gives the Items + Cart columns the full canvas; user can still toggle the sidebar back manually via the standard nav-bar control. (fix(ios): POS iPad sidebar auto-collapse)
-- [ ] **POS device-for-repair picker (iPad + iPhone)** — when selling a repair service to a customer who has saved assets, prompt for which device the repair applies to. Pull the customer's saved assets via `GET /customers/:id/assets`; show a sheet `PosDevicePickerSheet` with the assets + "No specific device" + "Add a new device" CTAs. Selected device id is attached to the cart line and persisted to the invoice as `ticket_device_id` on the resulting ticket. Gate on the inventory item's `is_service` flag so retail sales don't ask.
-- [ ] **Customer-specific pricing** — if customer is in a Customer Group with discount override, apply automatically (banner "Group discount applied").
-- [ ] **Tax exemption** — if customer has tax-exempt flag, cart removes tax with banner; show exemption cert # if stored.
-- [ ] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled.
+- [x] **POS device-for-repair picker (iPad + iPhone)** — when selling a repair service to a customer who has saved assets, prompt for which device the repair applies to. Pull the customer's saved assets via `GET /customers/:id/assets`; show a sheet `PosDevicePickerSheet` with the assets + "No specific device" + "Add a new device" CTAs. Selected device id is attached to the cart line and persisted to the invoice as `ticket_device_id` on the resulting ticket. Gate on the inventory item's `is_service` flag so retail sales don't ask. (d7edd4a1)
+- [x] **Customer-specific pricing** — if customer is in a Customer Group with discount override, apply automatically (banner "Group discount applied"). PosCustomerContextBanners + applyGroupDiscountIfNeeded. (d7edd4a1)
+- [x] **Tax exemption** — if customer has tax-exempt flag, cart removes tax with banner; show exemption cert # if stored. PosCustomerContextBanners + applyTaxExemptionIfNeeded + tag heuristic. (d7edd4a1)
+- [x] **Loyalty points preview** — "You'll earn XXX points" if loyalty enabled. PosCustomerContextBanners + loyaltyPointsPreview(cartTotalCents:). (d7edd4a1)
 
 ### 16.5 Payment — BlockChyp (primary card rail)
 
