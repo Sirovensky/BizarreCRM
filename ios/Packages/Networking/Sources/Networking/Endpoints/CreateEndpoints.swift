@@ -282,27 +282,72 @@ public extension APIClient {
 
 // MARK: — Invoice create
 
-/// `POST /api/v1/invoices` — minimal required fields.
-/// Server: packages/server/src/routes/invoices.routes.ts.
+/// A single line item for `POST /api/v1/invoices`.
+/// Server: invoices.routes.ts:445 — validates quantity > 0, unit_price >= 0.
+public struct InvoiceLineItemRequest: Encodable, Sendable, Hashable {
+    public let inventoryItemId: Int64?
+    public let description: String
+    public let quantity: Int
+    public let unitPrice: Double
+    public let taxAmount: Double
+    public let lineDiscount: Double
+
+    public init(
+        inventoryItemId: Int64? = nil,
+        description: String,
+        quantity: Int = 1,
+        unitPrice: Double,
+        taxAmount: Double = 0,
+        lineDiscount: Double = 0
+    ) {
+        self.inventoryItemId = inventoryItemId
+        self.description = description
+        self.quantity = quantity
+        self.unitPrice = unitPrice
+        self.taxAmount = taxAmount
+        self.lineDiscount = lineDiscount
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case description, quantity
+        case inventoryItemId = "inventory_item_id"
+        case unitPrice       = "unit_price"
+        case taxAmount       = "tax_amount"
+        case lineDiscount    = "line_discount"
+    }
+}
+
+/// `POST /api/v1/invoices` — full create including line items.
+/// Server: packages/server/src/routes/invoices.routes.ts:378.
 public struct CreateInvoiceRequest: Encodable, Sendable {
     public let customerId: Int64
     public let ticketId: Int64?
     public let notes: String?
     public let dueOn: String?    // YYYY-MM-DD
+    public let discount: Double?
+    public let discountReason: String?
+    public let lineItems: [InvoiceLineItemRequest]
 
     public init(customerId: Int64, ticketId: Int64? = nil,
-                notes: String? = nil, dueOn: String? = nil) {
+                notes: String? = nil, dueOn: String? = nil,
+                discount: Double? = nil, discountReason: String? = nil,
+                lineItems: [InvoiceLineItemRequest] = []) {
         self.customerId = customerId
         self.ticketId = ticketId
         self.notes = notes
         self.dueOn = dueOn
+        self.discount = discount
+        self.discountReason = discountReason
+        self.lineItems = lineItems
     }
 
     enum CodingKeys: String, CodingKey {
-        case notes
-        case customerId = "customer_id"
-        case ticketId   = "ticket_id"
-        case dueOn      = "due_on"
+        case notes, discount
+        case customerId    = "customer_id"
+        case ticketId      = "ticket_id"
+        case dueOn         = "due_on"
+        case discountReason = "discount_reason"
+        case lineItems     = "line_items"
     }
 }
 
