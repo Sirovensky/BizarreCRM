@@ -21,9 +21,40 @@ import Core
 //   3. EXIF orientation is baked into pixel geometry (consistent display).
 //   4. Image is compressed to ≤ 1.5 MB.
 //
-// After sanitisation the bytes land in a background URLSession upload task that
-// survives app exit. A progress publisher updates the UI; dead-letter entries are
-// written to disk for the Sync Issues screen.
+// After sanitisation the sanitised bytes are handed to a `PhotoUploadTransport`
+// (§28.3 / §20 containment: the Camera package NEVER constructs URLSession — that
+// lives in Networking/Sources/Networking/ where the approved background URLSession
+// is configured). The Networking layer implements `PhotoUploadTransport` and
+// registers a concrete implementation (via DI / AppServices).
+// Progress updates flow back via the returned `PhotoUploadProgress` observable.
+
+// MARK: - PhotoUploadTransport
+
+/// Contract that the Networking layer must implement to perform the actual HTTP
+/// upload. Defined here (Camera) so the Camera package stays independent of
+/// Networking — the Networking package provides a concrete implementation.
+///
+/// §28.3 — URLSession construction lives exclusively in `Networking/Sources/Networking/`.
+/// §4.8  — "background URLSession surviving app exit; progress chip per photo."
+///
+/// - Parameters:
+///   - data:         Sanitised JPEG bytes.
+///   - uploadURL:    Multipart POST endpoint.
+///   - photoId:      Correlation UUID.
+///   - entityKind:   For logging / dead-letter.
+///   - entityId:     For logging / dead-letter.
+///   - authToken:    Bearer token.
+///   - progress:     Progress object to update as bytes are sent.
+/// - Throws: Any networking error.
+public typealias PhotoUploadTransport = @Sendable (
+    _ data: Data,
+    _ uploadURL: URL,
+    _ photoId: UUID,
+    _ entityKind: String,
+    _ entityId: String,
+    _ authToken: String,
+    _ progress: PhotoUploadProgress
+) async throws -> Void
 
 // MARK: - PhotoUploadProgress
 
@@ -74,9 +105,14 @@ public struct PhotoUploadDeadLetterEntry: Codable, Sendable, Identifiable {
 
 // MARK: - PhotoUploadService
 
-/// Sanitises and enqueues photo uploads with background URLSession.
+/// Sanitises and enqueues photo uploads via the injected `PhotoUploadTransport`.
 ///
 /// Thread-safe: all mutable state accessed inside the actor.
+///
+/// §4.8 — "Upload — background URLSession surviving app exit; progress chip per photo."
+/// The actual HTTP transport is provided by the Networking layer at app-startup via
+/// `PhotoUploadService.shared.configure(transport:)`. This keeps the Camera package
+/// free of any URLSession construction (§28.3 containment rule).
 public actor PhotoUploadService {
 
     // MARK: - Constants
@@ -92,6 +128,8 @@ public actor PhotoUploadService {
     // MARK: - Private state
 
     private var deadLetter: [UUID: PhotoUploadDeadLetterEntry] = [:]
+    /// Injected by the Networking layer at app startup.
+    private var transport: PhotoUploadTransport?
 
     // MARK: - Init
 
@@ -101,6 +139,23 @@ public actor PhotoUploadService {
            let decoded = try? JSONDecoder().decode([UUID: PhotoUploadDeadLetterEntry].self, from: data) {
             self.deadLetter = decoded
         }
+    }
+
+    // MARK: - Configuration
+
+    /// Must be called at app startup (from `AppServices` or DI container) before
+    /// any upload is attempted.
+    ///
+    /// The Networking layer provides a closure backed by a background `URLSession`
+    /// (configured in `Networking/Sources/Networking/`).
+    ///
+    /// ```swift
+    /// // In AppServices.swift (or Container+Registrations):
+    /// await PhotoUploadService.shared.configure(transport: BackgroundPhotoUploader.shared.upload)
+    /// ```
+    public func configure(transport: @escaping PhotoUploadTransport) {
+        self.transport = transport
+        AppLog.ui.info("PhotoUploadService: transport configured")
     }
 
     // MARK: - Public API
@@ -173,6 +228,72 @@ public actor PhotoUploadService {
         return result
     }
 
+    // MARK: - Background upload
+
+    /// Sanitises `data` and enqueues it for background upload via the configured transport.
+    ///
+    /// §4.8 — "Upload — background URLSession surviving app exit; progress chip per photo."
+    ///
+    /// The transport closure is provided by the Networking layer and uses a background
+    /// `URLSession` (configured in `Networking/Sources/Networking/` per §28.3 containment).
+    ///
+    /// - Parameters:
+    ///   - data:        Raw image bytes from `CameraService.capturePhoto()` or `PhotosPicker`.
+    ///   - uploadURL:   Server endpoint (e.g. `POST /api/v1/tickets/{id}/photos`).
+    ///   - photoId:     Caller-generated UUID used to correlate progress updates.
+    ///   - entityKind:  e.g. `"ticket"`, `"customer"` — for dead-letter context.
+    ///   - entityId:    Entity identifier string — for dead-letter context.
+    ///   - authToken:   Bearer token for `Authorization: Bearer <token>`.
+    /// - Returns: A `PhotoUploadProgress` observable that the caller binds to the UI chip.
+    /// - Throws: `PhotoUploadError.transportNotConfigured` when `configure(transport:)` was
+    ///   not called before the first upload.
+    public func uploadPhoto(
+        data: Data,
+        to uploadURL: URL,
+        photoId: UUID = UUID(),
+        entityKind: String,
+        entityId: String,
+        authToken: String
+    ) async throws -> PhotoUploadProgress {
+        guard let transport = transport else {
+            throw PhotoUploadError.transportNotConfigured
+        }
+
+        // Sanitise first (EXIF strip + compress).
+        let sanitised = try await stripExifAndCompress(data)
+
+        // Create the progress tracker — the transport updates it as bytes are sent.
+        let progress = PhotoUploadProgress(photoId: photoId)
+
+        // Kick off the upload via the Networking-provided transport.
+        // The transport is async and may run in background; it must update `progress`
+        // as data is sent and set `isComplete = true` on completion.
+        Task {
+            do {
+                try await transport(sanitised, uploadURL, photoId, entityKind, entityId, authToken, progress)
+                await MainActor.run {
+                    progress.fractionCompleted = 1.0
+                    progress.isComplete = true
+                }
+                AppLog.ui.info("PhotoUploadService: upload complete for photo \(photoId)")
+            } catch {
+                await MainActor.run {
+                    progress.error = error
+                    progress.isComplete = true
+                }
+                await recordDeadLetter(
+                    photoId: photoId,
+                    entityKind: entityKind,
+                    entityId: entityId,
+                    localPath: uploadURL.path,
+                    error: error
+                )
+            }
+        }
+
+        return progress
+    }
+
     // MARK: - Dead-letter management
 
     /// All entries waiting for retry.
@@ -243,12 +364,15 @@ public enum PhotoUploadError: Error, LocalizedError, Sendable {
     case decodeFailed
     case encodeFailed
     case uploadFailed(String)
+    case transportNotConfigured
 
     public var errorDescription: String? {
         switch self {
         case .decodeFailed:         return "Could not decode image data for upload."
         case .encodeFailed:         return "Could not encode image data for upload."
         case .uploadFailed(let d):  return "Photo upload failed: \(d)"
+        case .transportNotConfigured:
+            return "Photo upload transport not configured. Call PhotoUploadService.shared.configure(transport:) at app startup."
         }
     }
 }
