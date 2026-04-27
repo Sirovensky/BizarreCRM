@@ -66,7 +66,13 @@ public final class EscPosNetworkEngine: PrintEngine {
     private func buildBytes(for job: PrintJob) throws -> Data {
         switch job.payload {
         case .receipt(let payload):
-            return EscPosCommandBuilder.receipt(payload)
+            var data = EscPosCommandBuilder.receipt(payload)
+            // §17.4 — ESC/POS opcodes appended after rasterized bitmap, not in view.
+            // Drawer-kick fires only on cash-tender receipts where the caller sets kickDrawer.
+            if job.kickDrawer {
+                data.append(contentsOf: EscPosCommandBuilder.drawerKick())
+            }
+            return data
         case .barcode(let payload):
             var data = EscPosCommandBuilder.initialize()
             data.append(contentsOf: EscPosCommandBuilder.align(.center))
