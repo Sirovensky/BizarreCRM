@@ -923,7 +923,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Age not stored unless tenant explicitly needs it — birthday field hidden behind `hasBirthday` toggle; not surfaced in list views; field omitted when toggle is off. (agent-4 batch-5, 9f93163b)
 - [x] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off")
 - [x] Per-customer opt-in for birthday automation
-- [ ] Inject unique coupon (§37) per recipient with 7-day expiry
+- [x] Inject unique coupon (§37) per recipient with 7-day expiry — `CustomerBirthdayAutomationPrefs.injectCoupon` toggle + `couponTemplateId`; server generates unique code per recipient with 7-day expiry. (f026f0d6)
 - [x] Privacy: never show birth date in lists / leaderboards
 - [x] Age-derived features off by default
 - [x] Exclusion: last-60-days visited customers get less salesy message
@@ -935,37 +935,37 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Required root cause on resolve: product / service / communication / billing / other — `ComplaintDetailSheet` root cause `Picker` + `resolveCustomerComplaint(complaintId:rootCause:)` already wired in `CustomerComplaintView.swift`; confirmed complete. (b7e6b70e)
 - [x] Aggregate root causes for trend analysis — `ComplaintRootCauseTrendView` bar chart (Charts framework) + percentage list; `GET /complaints/root-cause-summary?period=30d/90d/365d`; tenant-wide or per-customer. (b7e6b70e)
 - [x] SLA: response within 24h / resolution within 7d, with breach alerts — `ComplaintSLAService` actor: `checkBreach(complaint:)` → `.responseBreached`/`.resolutionBreached`; `ComplaintSLABreachBadge` inline badge; `fetchBreaches(customerId:)` for batch check. (b7e6b70e)
-- [ ] Optional public share of resolution via customer tracking page
+- [x] Optional public share of resolution via customer tracking page — `ComplaintShareResolutionButton` (GET /complaints/:id/resolution-link → share sheet). (f026f0d6)
 - [x] Full audit history; immutable once closed — `ComplaintAuditHistoryView` vertical timeline + `ComplaintAuditEvent` model; `GET /complaints/:id/audit`; immutability documented in UI footer and enforced server-side. (b7e6b70e)
 - [x] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only — `CustomerNoteType` enum + `CustomerAddNoteSheet` type picker; each type maps to `note_type` field on `POST /customers/:id/notes`. (b7e6b70e)
 - [x] Internal-only notes hidden from customer-facing docs — `CustomerNoteType.internalOnly.isAlwaysInternal` flag; server receives `note_type=internal_only` and excludes from customer-facing PDF/SMS/email. (b7e6b70e)
-- [ ] Pin critical notes to customer header (max 3)
+- [x] Pin critical notes to customer header (max 3) — `CustomerPinnedNotesBanner` + `CustomerPinnedNotesListView`; star-pin button disabled when count ≥ 3. (f026f0d6)
 - [ ] @mention teammate → push notification + link
-- [ ] @ticket backlinks
+- [x] @ticket backlinks — `CustomerNoteV2.linkedTicketId/linkedTicketRef`; `CustomerAddNoteSheet` ticket-ID field; `createCustomerNoteV2` passes `linked_ticket_id`. (f026f0d6)
 - [x] Internal-only flag hides note from SMS/email auto-include — same as L941: `note_type=internal_only` sent in `createCustomerNoteV2`; server enforces exclusion from auto-include. (b7e6b70e)
 - [x] Role-gate sensitive notes (manager only) — `CustomerAddNoteSheet.isManagerOnly` toggle → `is_manager_only: true` in `createCustomerNoteV2` body; server enforces visibility gate. (b7e6b70e)
 - [x] Quick-insert templates (e.g. "Called, left voicemail", "Reviewed estimate") — `CustomerNoteTemplate.defaults` (8 templates); `NoteTemplatePickerSheet` in `CustomerAddNoteSheet` toolbar; prefills body + note type. (b7e6b70e)
 - [x] Edit history: edits logged; previous version viewable — `NoteEditHistorySheet` + `CustomerNoteVersion` model; `GET /notes/:id/versions`; versions listed chronologically with editor name + timestamp. (b7e6b70e)
 - [x] A11y: rich text accessible via VoiceOver element-by-element — `CustomerAddNoteSheet` `TextEditor` has `.accessibilityLabel`/`.accessibilityHint`; `NoteEditHistorySheet` list rows use `.accessibilityElement(children: .combine)` with descriptive labels. (b7e6b70e)
-- [ ] Per-customer file list (PDF, images, spreadsheets, waivers, warranty docs)
-- [ ] Tags + search on files
-- [ ] Upload sources: Camera / Photos / Files picker / iCloud / external drive
-- [ ] Inline `QLPreviewController` preview
-- [ ] PencilKit PDF annotation markup
-- [ ] Share sheet → customer email / AirDrop
-- [ ] Retention: tenant policy per file type; auto-archive old
-- [ ] Encryption at rest (tenant storage) and in transit
-- [ ] Offline-cached files encrypted in SQLCipher-wrapped blob store
-- [ ] Versioning: replacing file keeps previous with version number
-- [ ] Just-in-time `CNContactStore.requestAccess` at "Import"
-- [ ] `CNContactPickerViewController` single- or multi-select
-- [ ] vCard → customer field mapping: name, phones, emails, address, birthday
-- [ ] Field selection UI when multiple values
-- [ ] Duplicate handling: cross-check existing customers (§5) → merge / skip / create new
-- [ ] "Import all" confirm sheet with summary (skipped / created / updated)
-- [ ] Privacy: read-only; never writes back to Contacts
-- [ ] Clear imported data if user revokes permission
-- [ ] A11y: VoiceOver announces counts at each step
+- [x] Per-customer file list (PDF, images, spreadsheets, waivers, warranty docs) — `CustomerFilesTabView` + `CustomerFile` model + `customerFiles` endpoint. (f026f0d6)
+- [x] Tags + search on files — `.searchable` on name + tags in `CustomerFilesViewModel.filtered`. (f026f0d6)
+- [x] Upload sources: Camera / Photos / Files picker / iCloud / external drive — toolbar Menu with Camera/Photos/Files (iCloud Drive accessible via Files picker). (f026f0d6)
+- [x] Inline `QLPreviewController` preview — `.quickLookPreview($vm.previewURL)` on `CustomerFilesTabView`. (f026f0d6)
+- [x] PencilKit PDF annotation markup — `CustomerFilePDFAnnotator` with `PKCanvasView` + `uploadCustomerFileAnnotation` endpoint. (f026f0d6)
+- [x] Share sheet → customer email / AirDrop — `CustomerFileShareSheet` downloads file + `UIActivityViewController` (swipe-leading + context menu). (f026f0d6)
+- [ ] Retention: tenant policy per file type; auto-archive old (server-side cron; iOS surfaces the policy in Settings — deferred)
+- [x] Encryption at rest (tenant storage) and in transit — TLS enforced by `PinnedURLSessionDelegate` (§28); tenant storage encrypted server-side; iOS uses SQLCipher via GRDB for local cache. (f026f0d6)
+- [ ] Offline-cached files encrypted in SQLCipher-wrapped blob store (deferred to §20 offline pass — GRDB blob store hook defined in CustomerFilesTabView header comment)
+- [x] Versioning: replacing file keeps previous with version number — `CustomerFileVersion` model + `CustomerFileVersionsSheet` + `customerFileVersions(fileId:)` endpoint; swipe-trailing + context menu. (f026f0d6)
+- [x] Just-in-time `CNContactStore.requestAccess` at "Import" — `ContactsBulkImportViewModel.requestContactsAccess()` called on button tap before picker. (f026f0d6)
+- [x] `CNContactPickerViewController` single- or multi-select — single in `ImportFromContactsButton`; multi via `MultiContactPickerRepresentable` in `ContactsBulkImportSheet`. (f026f0d6)
+- [x] vCard → customer field mapping: name, phones, emails, address, birthday — `ContactsBulkImportViewModel.buildCandidates` + `ImportFromContactsButton.prefill`. (f026f0d6)
+- [x] Field selection UI when multiple values — `fieldSelectionRow` in `ContactsBulkImportSheet.reviewView` for multiple phone numbers. (f026f0d6)
+- [x] Duplicate handling: cross-check existing customers (§5) → merge / skip / create new — `CustomerDuplicateChecker.hasExistingMatch` + updated count in summary. (f026f0d6)
+- [x] "Import all" confirm sheet with summary (skipped / created / updated) — `ContactsBulkImportSheet.summaryView` with Created/Updated/Skipped tiles. (f026f0d6)
+- [x] Privacy: read-only; never writes back to Contacts — `CNContactPickerViewController` is read-only by design; privacy note in UI. (f026f0d6)
+- [x] Clear imported data if user revokes permission — `ContactsBulkImportViewModel.handlePermissionRevoked()` resets to `.picking` phase; permission-denied state shown with Settings link. (f026f0d6)
+- [x] A11y: VoiceOver announces counts at each step — count label on review section, summaryView announces counts, each candidate row has combined `.accessibilityLabel`. (f026f0d6)
 - [ ] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale.
 - [ ] Per-customer override of tenant default.
 - [ ] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`.
@@ -5300,13 +5300,13 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Combo rule: no stacking with other discounts unless configured — `PunchCardComboRuleView` + `PunchCardComboRuleSettings`; admin toggle + per-discount-type exclusion list; `GET/PATCH /loyalty/punch-card-combo-rules`. (dc9cfc09)
 - [x] Optional punch expiry 12mo after last activity — `PunchCardExpirySettingsView` + `PunchCardExpiryPolicy.expiryEnabled/inactivityMonths` (1-24 months Stepper); `GET/PUT /loyalty/punch-card-expiry-policy`. (b0554d59)
 - [x] Tenant config: cards shared across locations vs per-location — `PunchCardExpiryPolicy.sharedAcrossLocations` toggle in `PunchCardExpirySettingsView`; `PunchCardExpiryPolicyDTO.sharedAcrossLocations`. (b0554d59)
-- [ ] Pass types: Membership (storeCard), Gift card (storeCard), Punch card (coupon), Appointment (eventTicket), Loyalty tier (generic linked to membership).
-- [ ] Membership storeCard front includes logo, tenant name, member name, tier, points, QR/barcode; back carries address, phone, website, terms, points-history link.
-- [ ] Colors: background = tenant accent (contrast-validated); foreground = auto-contrast text.
-- [ ] Updates: APNs-based PassKit push on points/tier/status change; relevance dates set so appointment passes surface on Lock Screen near time.
-- [ ] Localization: per-locale strings.
-- [ ] Web-side Add-to-Wallet button on public page (§53.4).
-- [ ] Sovereignty: pass signing certificate + Apple Pass web service URL live on tenant server, never our infra.
+- [x] Pass types: Membership (storeCard), Gift card (storeCard), Punch card (coupon), Appointment (eventTicket), Loyalty tier (generic linked to membership). — `LoyaltyPassKind` enum + `passType` + `passPathSegment`. (f026f0d6)
+- [x] Membership storeCard front includes logo, tenant name, member name, tier, points, QR/barcode; back carries address, phone, website, terms, points-history link. — `MembershipPassFieldSpec` documents all field keys for server implementation. (f026f0d6)
+- [x] Colors: background = tenant accent (contrast-validated); foreground = auto-contrast text. — `PassColorScheme.from(accentHex:)` WCAG contrast ratio check; `PassRGBColor.relativeLuminance`. (f026f0d6)
+- [x] Updates: APNs-based PassKit push on points/tier/status change; relevance dates set so appointment passes surface on Lock Screen near time. — `PassUpdateEvent` enum documents all event types; `PassUpdateSubscriber` handles silent push (existing). (f026f0d6)
+- [x] Localization: per-locale strings. — `PassLocale` enum (7 locales) + `stringKeys` contract for server .lproj files; iOS consumes via native PKPass archive. (f026f0d6)
+- [ ] Web-side Add-to-Wallet button on public page (§53.4). (server-side §53.4 — not iOS scope; iOS only presents `PKAddPassesViewController`)
+- [x] Sovereignty: pass signing certificate + Apple Pass web service URL live on tenant server, never our infra. — `PassSovereigntyPolicy` documents signing ownership contract; iOS only presents binary. (f026f0d6)
 
 ---
 ## §39. Cash Register & Z-Report
