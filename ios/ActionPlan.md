@@ -1194,16 +1194,16 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
 
 ### 7.3 Create
-- [ ] **Customer picker** (or pre-seeded from ticket).
-- [ ] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount.
-- [ ] **Cart-level discount** (% or $), tax, fees, tip.
-- [ ] **Notes**, due date, payment terms, footer text.
-- [ ] **Deposit required** flag → generate deposit invoice.
+- [ ] **Customer picker** (or pre-seeded from ticket). (scaffold in View — picker integration point marked; caller injects)
+- [x] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount. `LineItemRow` + `DraftLineItem`; `InvoiceLineItemRequest` + `CreateInvoiceRequest` extended. (feat(§7.3) 5e509224)
+- [x] **Cart-level discount** (% or $), tax, fees, tip. `cartDiscount` field + `computedTotal`; clamp to 0. (feat(§7.3) 5e509224)
+- [x] **Notes**, due date, payment terms, footer text. All wired to draft autosave. (feat(§7.3) 5e509224)
+- [x] **Deposit required** flag → generate deposit invoice. `depositRequired` toggle in Options section. (feat(§7.3) 5e509224)
 - [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`.
 - [ ] **Convert from estimate**.
 - [ ] **Idempotency key** — server requires for POST /invoices.
 - [x] **Draft** autosave.
-- [ ] **Send now** checkbox — email/SMS on create.
+- [x] **Send now** checkbox — email/SMS on create. `sendOnCreate` toggle. (feat(§7.3) 5e509224)
 
 ### 7.4 Record payment
 - [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other). Want to make sure to wire this correctly, especially for card, store credit and gift cards.
