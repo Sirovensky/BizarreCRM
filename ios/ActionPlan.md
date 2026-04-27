@@ -302,14 +302,14 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Setup token** (staff invite link) — captured from Universal Link `bizarrecrm.com/setup/:token`, passed on body.
 
 ### 2.8 Forgot password + recovery
-- [ ] **Request reset** — `POST /auth/forgot-password` with `{ email }`.
+- [x] **Request reset** — `POST /auth/forgot-password` with `{ email }`. (`LoginFlow.submitForgotPassword()` + `forgotPasswordPanel` in `LoginFlowView`)
 - [ ] **Complete reset** — `POST /auth/reset-password` with `{ token, password }`, reached via Universal Link `app.bizarrecrm.com/reset-password/:token`.
 - [ ] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step.
 - [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
 
 ### 2.9 Change password (in-app)
-- [ ] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
-- [ ] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option.
+- [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`. (`ChangePasswordEndpoints.swift` + `ChangePasswordViewModel` + `ChangePasswordView`)
+- [x] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option. (`ChangePasswordView` with `PasswordStrengthMeter` + success/dismiss flow)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
 - [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up a 13-step wizard mirroring web (/setup).
@@ -331,11 +331,11 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
 
 ### 2.13 Security polish
-- [ ] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds.
-- [ ] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`).
-- [ ] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`).
+- [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (`ChangePINView`, `ChangePasswordView` + `LoginFlowView` `BrandSecureField` already applies it)
+- [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (`AuthScreenshotBlur.swift` — `SensitiveScreenBlurModifier` applied to setPasswordPanel + twoFactorSetupPanel)
+- [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (`OTPPasteboardCleaner.copy()` + `clearIfSensitive()` on TOTP field disappear)
 - [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
-- [ ] Challenge token expires silently after 10min → prompt restart login.
+- [x] Challenge token expires silently after 10min → prompt restart login. (`ChallengeTokenExpiry.start()` wired in `LoginFlow` at all challenge step transitions)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
 - [ ] Requires device passcode + management PIN to enable/disable
@@ -5148,10 +5148,10 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
 ### 36.3 Persistence
-- [ ] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard.
-- [ ] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking).
-- [ ] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step.
-- [ ] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged.
+- [x] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard. (`SetupWizardViewModel.loadServerState()` + `SetupResumeBanner` on Dashboard)
+- [x] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking). (`SetupResumeBanner` is non-blocking; dismissible; `deferWizard()` posts `.setupStatusDeferred`)
+- [x] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step. (`loadServerState()` fetches `GET /setup/status` and sets `currentStep` from server)
+- [x] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged. (`SetupWizardViewModel.isMVPComplete` + `mvpStepsRemaining`)
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
 - [ ] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address.
