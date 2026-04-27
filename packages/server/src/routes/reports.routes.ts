@@ -1469,6 +1469,7 @@ router.get('/comparison', requireFeature('advancedReports'), asyncHandler(async 
 // ─── ENR-R10: Saved Report Presets CRUD ─────────────────────────────────────
 
 router.get('/presets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const reportType = req.query.report_type as string | undefined;
@@ -1490,6 +1491,7 @@ router.get('/presets', asyncHandler(async (req, res) => {
 }));
 
 router.post('/presets', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const { name, report_type, filters, is_default } = req.body;
@@ -1522,6 +1524,7 @@ router.post('/presets', asyncHandler(async (req, res) => {
 }));
 
 router.put('/presets/:presetId', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const presetId = validateId(req.params.presetId, 'presetId');
@@ -1578,6 +1581,7 @@ router.put('/presets/:presetId', asyncHandler(async (req, res) => {
 }));
 
 router.delete('/presets/:presetId', asyncHandler(async (req, res) => {
+  requireAdminOrManager(req);
   const adb = req.asyncDb;
   const userId = req.user!.id;
   const presetId = validateId(req.params.presetId, 'presetId');

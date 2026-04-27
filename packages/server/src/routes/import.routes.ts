@@ -346,6 +346,7 @@ router.post(
 router.get(
   '/repairdesk/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -436,6 +437,7 @@ router.post(
 router.get(
   '/history',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const page = parsePage(req.query.page);
     const pageSize = parsePageSize(req.query.pagesize, 20);
@@ -722,6 +724,7 @@ router.post(
 router.get(
   '/repairshopr/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -1050,6 +1053,7 @@ router.post(
 router.get(
   '/myrepairapp/status',
   asyncHandler(async (req, res) => {
+    if (req.user?.role !== 'admin') throw new AppError('Admin access required', 403, ERROR_CODES.ERR_PERM_ADMIN_REQUIRED);
     const adb = req.asyncDb;
     const runs = await adb.all(`
       SELECT * FROM import_runs
@@ -1588,6 +1592,7 @@ router.post(
 router.get(
   '/oauth/status',
   asyncHandler(async (req, res) => {
+    requireAdmin(req);
     const adb = req.asyncDb;
     // Load from memory or DB (SCAN-805: decrypt on read)
     if (!rdAccessToken) {

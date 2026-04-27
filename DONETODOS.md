@@ -3092,3 +3092,18 @@ DASH-ELEC: 002 (unhandledRejection pre-existing), 004 (execSync doc), 006 (env-s
 WEB-S5 (mostly pre-existing verified): 008/009/010/016/020/023/026/033/034/035/036/037/038/042/043.
 
 All items grep-verified in code before move.
+
+## todofixes426 — Cleanup pass 7 (2026-04-26) — S8 security + FL wiring
+
+WEB-S8 security role gates:
+- [x] WEB-S8-002. **Import status routes admin-only.** CLOSED — added 403 admin gate to GET /repairdesk/status + GET /history.
+- [x] WEB-S8-003. **repairshopr+myrepairapp status admin gate.** CLOSED — same admin gate added.
+- [x] WEB-S8-008. **tv-display PII admin/manager-only.** CLOSED — restricted to admin/manager role.
+- [x] WEB-S8-016. **reports/presets admin/manager-only.** CLOSED — requireAdminOrManager added to all 4 preset handlers.
+- [x] WEB-S8-030. **catalog OAuth status admin-only.** CLOSED — requireAdmin added.
+- [x] WEB-S8-037. **catalog sync rate-limit.** CLOSED — consumeWindowRate 3/hour per admin + 429 Retry-After.
+
+WEB-FL wiring:
+- [x] WEB-FL-011. **CommissionPeriodLock orphan.** CLOSED — new PayrollPage.tsx + /team/payroll route + Sidebar Payroll link.
+- [x] WEB-FL-013. **TrackingPage no i18n.** CLOSED — usePortalI18n hook wired; timeline.* dictionary keys used.
+- [x] WEB-FL-014. **TrackingPage + PhotoCapturePage raw axios.** CLOSED — replaced 7 raw axios.* with shared `api` client.

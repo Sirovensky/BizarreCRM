@@ -117,6 +117,7 @@ const navSections: NavSection[] = [
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
       { label: 'Goals', path: '/team/goals', icon: Trophy },
+      { label: 'Payroll', path: '/team/payroll', icon: DollarSign, adminOnly: true },
       { label: 'Performance Reviews', path: '/team/reviews', icon: Award, adminOnly: true },
     ],
   },

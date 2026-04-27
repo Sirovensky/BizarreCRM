@@ -80,6 +80,7 @@ const RolesMatrixPage = lazy(() => import('./pages/team/RolesMatrixPage').then(m
 const TeamChatPage = lazy(() => import('./pages/team/TeamChatPage').then(m => ({ default: m.TeamChatPage })));
 const PerformanceReviewsPage = lazy(() => import('./pages/team/PerformanceReviewsPage').then(m => ({ default: m.PerformanceReviewsPage })));
 const GoalsPage = lazy(() => import('./pages/team/GoalsPage').then(m => ({ default: m.GoalsPage })));
+const PayrollPage = lazy(() => import('./pages/team/PayrollPage').then(m => ({ default: m.PayrollPage })));
 // Marketing / Growth enrichment pages (§54).
 const CampaignsPage = lazy(() => import('./pages/marketing/CampaignsPage').then(m => ({ default: m.CampaignsPage })));
 const SegmentsPage = lazy(() => import('./pages/marketing/SegmentsPage').then(m => ({ default: m.SegmentsPage })));
@@ -482,6 +483,7 @@ export default function App() {
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
+                    <Route path="/team/payroll" element={<RequireRole roles={['admin', 'manager']}><PayrollPage /></RequireRole>} />
                     {/* Gift Cards (§ orphan). */}
                     <Route path="/gift-cards" element={<GiftCardsListPage />} />
                     <Route path="/gift-cards/:id" element={<GiftCardDetailPage />} />

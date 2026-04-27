@@ -1556,8 +1556,12 @@ router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) =>
 
 // ===================================================================
 // GET /tv-display - Simplified view for shop TV
+// WEB-S8-008: restrict to admin/manager — exposes customer PII + tech names
 // ===================================================================
 router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    throw new AppError('Admin or manager access required', 403);
+  }
   const adb = req.asyncDb;
   // Single query joining ticket_devices via GROUP_CONCAT — eliminates the
   // previous Promise.all N-per-ticket round-trips for device names.

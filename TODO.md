@@ -1613,24 +1613,24 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 ## Web Audit Wave-WEB-2026-04-24 Search S8 — RBAC + backend route gaps
 
 
-- [ ] WEB-S8-002. **`GET /api/v1/import/repairdesk/status` and `GET /api/v1/import/history` have no role check — any authenticated user (technician, cashier) can read all import run history, including error logs that may contain sensitive API-response fragments.** `packages/server/src/routes/import.routes.ts` lines 346, 436. Fix: add `if (req.user?.role !== 'admin') throw new AppError(…, 403)` at the top of both handlers, identical to the guard on `/start` (line 230).
+- [x] WEB-S8-002. CLOSED 2026-04-26 — todofixes426. **`GET /api/v1/import/repairdesk/status` and `GET /api/v1/import/history` have no role check — any authenticated user (technician, cashier) can read all import run history, including error logs that may contain sensitive API-response fragments.** `packages/server/src/routes/import.routes.ts` lines 346, 436. Fix: add `if (req.user?.role !== 'admin') throw new AppError(…, 403)` at the top of both handlers, identical to the guard on `/start` (line 230).
 
-- [ ] WEB-S8-003. **`GET /api/v1/import/repairshopr/status` and `GET /api/v1/import/myrepairapp/status` same gap as WEB-S8-002.** `packages/server/src/routes/import.routes.ts` lines 722, 1052. Fix: add admin role gate matching `/repairdesk/status`.
-
-
+- [x] WEB-S8-003. CLOSED 2026-04-26 — todofixes426. **`GET /api/v1/import/repairshopr/status` and `GET /api/v1/import/myrepairapp/status` same gap as WEB-S8-002.** `packages/server/src/routes/import.routes.ts` lines 722, 1052. Fix: add admin role gate matching `/repairdesk/status`.
 
 
 
-- [ ] WEB-S8-008. **`GET /api/v1/tickets/tv-display` (inside `tickets.routes.ts`, served under `authMiddleware`) returns `customer_first_name` and `assigned_tech` full name — the data that `tv.routes.ts` deliberately redacted for the unauthenticated TV endpoint is re-exposed here to any authenticated role.** `packages/server/src/routes/tickets.routes.ts` lines 1632–1664. Fix: either restrict to `requireAdminOrManager` or redact PII to match the public TV board shape.
 
 
+- [x] WEB-S8-008. CLOSED 2026-04-26 — todofixes426. **`GET /api/v1/tickets/tv-display` (inside `tickets.routes.ts`, served under `authMiddleware`) returns `customer_first_name` and `assigned_tech` full name — the data that `tv.routes.ts` deliberately redacted for the unauthenticated TV endpoint is re-exposed here to any authenticated role.** `packages/server/src/routes/tickets.routes.ts` lines 1632–1664. Fix: restricted to `requireAdminOrManager` (option a).
 
 
 
 
 
 
-- [ ] WEB-S8-016. **`GET /api/v1/reports/presets`, `POST /api/v1/reports/presets`, `PUT /api/v1/reports/presets/:presetId`, `DELETE /api/v1/reports/presets/:presetId` — no role check beyond `authMiddleware`. Any user can create/read/update/delete report presets. The PUT and DELETE check `user_id = req.user.id` ownership correctly, but GET lists all presets for the current user regardless of role — a cashier saving presets for financial reports they cannot see is a UX inconsistency.** `packages/server/src/routes/reports.routes.ts` lines 1471–1600. P2: no data leak, minor inconsistency. Fix: accept current behavior or add `requireAdminOrManager` to constrain preset creation to report-eligible roles.
+
+
+- [x] WEB-S8-016. CLOSED 2026-04-26 — todofixes426. **`GET /api/v1/reports/presets`, `POST /api/v1/reports/presets`, `PUT /api/v1/reports/presets/:presetId`, `DELETE /api/v1/reports/presets/:presetId` — no role check beyond `authMiddleware`. Any user can create/read/update/delete report presets. The PUT and DELETE check `user_id = req.user.id` ownership correctly, but GET lists all presets for the current user regardless of role — a cashier saving presets for financial reports they cannot see is a UX inconsistency.** `packages/server/src/routes/reports.routes.ts` lines 1471–1600. Fix: `requireAdminOrManager` added to all four preset handlers.
 
 
 - [x] WEB-S8-018. CLOSED 2026-04-25 — f7781356. **`GET /api/v1/roles/permission-keys` has no auth check beyond the global `authMiddleware` — any authenticated user can retrieve the full list of permission key strings.** `packages/server/src/routes/roles.routes.ts` line 116. Low sensitivity (no values, just names) but unnecessarily exposed. Fix: add `requireAdmin(req)` to match all sibling routes.
@@ -1655,7 +1655,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 - [x] WEB-S8-029. CLOSED 2026-04-25 — f7781356. **`POST /api/v1/import/myrepairapp/nuclear` validates password re-entry but the `confirm` field check (`confirm !== 'NUCLEAR'`) runs BEFORE the role check — a non-admin can probe whether the endpoint exists by omitting `confirm` and getting a 400 (not 403). Minor information leak.** `packages/server/src/routes/import.routes.ts` lines 1135–1154. Fix: move the role check to line 1 of the handler, before any other validation.
 
-- [ ] WEB-S8-030. **`GET /api/v1/import/oauth/status` — reads the current RD OAuth token status without a role check; any authenticated user can confirm whether an OAuth token is active and read its expiry time.** `packages/server/src/routes/import.routes.ts` line 1588. Fix: add `requireAdmin(req)`.
+- [x] WEB-S8-030. CLOSED 2026-04-26 — todofixes426. **`GET /api/v1/import/oauth/status` — reads the current RD OAuth token status without a role check; any authenticated user can confirm whether an OAuth token is active and read its expiry time.** `packages/server/src/routes/import.routes.ts` line 1588. Fix: `requireAdmin(req)` added.
 
 - [x] WEB-S8-031. CLOSED 2026-04-24 — 18a2d442. **`GET /api/v1/gift-cards/` (list) — no permission gate beyond `authMiddleware`; any staff user can list all gift cards including recipient names and current balances.** `packages/server/src/routes/giftCards.routes.ts` line 104. Fix: add `requirePermission('gift_cards.issue')` or a new `gift_cards.view` permission.
 
@@ -1669,7 +1669,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 - [x] WEB-S8-036. CLOSED 2026-04-24 — e3321a6e. **Rate limiting missing on `POST /api/v1/catalog/live-search` — each call triggers an outbound HTTP scrape against a supplier site. No per-user, no per-tenant, no global cap.** `packages/server/src/routes/catalog.routes.ts` line 587. A single compromised JWT can generate unbounded scrape traffic. Fix: add `consumeWindowRate(req.db, 'catalog_live_search', String(req.user!.id), 10, 60_000)`.
 
-- [ ] WEB-S8-037. **`POST /api/v1/catalog/sync` (trigger supplier catalog scrape) has `adminOnly` guard but no rate limit — an admin session can fire unlimited scrape jobs back-to-back (there is a per-source in-progress lock, but a rapid retry loop floods the `scrape_jobs` table with failed rows).** `packages/server/src/routes/catalog.routes.ts` line 230. Fix: add `consumeWindowRate(req.db, 'catalog_sync', String(req.user!.id), 3, 3_600_000)` (3 per hour).
+- [x] WEB-S8-037. CLOSED 2026-04-26 — todofixes426. **`POST /api/v1/catalog/sync` (trigger supplier catalog scrape) has `adminOnly` guard but no rate limit — an admin session can fire unlimited scrape jobs back-to-back (there is a per-source in-progress lock, but a rapid retry loop floods the `scrape_jobs` table with failed rows).** `packages/server/src/routes/catalog.routes.ts` line 230. Fix: `consumeWindowRate(req.db, 'catalog_sync', String(req.user!.id), 3, 3_600_000)` added (3 per hour per admin).
 
 - [x] WEB-S8-038. CLOSED 2026-04-25 — 7a5d4da8. **`GET /api/v1/settings/audit-logs` uses plain `async (req, res)` without `asyncHandler` — all other `adminOnly` handlers in settings use plain async too.** `packages/server/src/routes/settings.routes.ts` line 1807. Covered by a broader pattern; the audit-log endpoint is especially important. Fix: wrap with `asyncHandler`.
 
@@ -2012,17 +2012,11 @@ Key patterns: (1) Systemic absence of `requirePermission` on read-only inventory
 - [x] WEB-FL-010. **[MED] Dead UI components — QuickAddInput + BalanceBadge exported but zero importers.** Scanned every `import.*X` in web/src — `components/inventory/QuickAddInput.tsx` and `components/billing/BalanceBadge.tsx` are imported by NOTHING. Both have working implementations + headers describing their intended use ("BalanceBadge — small pill shown next to a customer's name in lists") but the integration was never finished. Bundle bloat + maintenance cost for unreachable code. — Fixer-B7 2026-04-25: re-confirmed zero importers, deleted both files plus the now-empty `components/inventory/` directory.
   <!-- meta: scope=web/components; files=packages/web/src/components/inventory/QuickAddInput.tsx,packages/web/src/components/billing/BalanceBadge.tsx; fix=delete-files-OR-finish-integration-on-CustomerListPage-and-InventoryListPage -->
 
-- [ ] WEB-FL-011. **[MED] CommissionPeriodLock component built but no route uses it.** `components/team/CommissionPeriodLock.tsx` (line 4-8 header: "Drop-in for the payroll page or settings; also re-used by GoalsPage") — nothing imports it. There's no payroll page (no `/team/payroll` route in App.tsx) and GoalsPage doesn't import it. Server endpoints `/team/payroll/periods` + `/payroll/lock/:periodId` + `/payroll/export.csv` exist (`server/src/routes/team.routes.ts:751-906`) — wired server-side, dead client-side.
-  <!-- meta: scope=web/components/team+server; files=packages/web/src/components/team/CommissionPeriodLock.tsx,packages/server/src/routes/team.routes.ts:751-906; fix=add-PayrollPage-route-and-Sidebar-Team-section-link-OR-mount-component-inside-existing-Team-page -->
 
 - [x] WEB-FL-012. **[MED] Header notification routes drop entity_types: estimate, payment, gift_card, voice, lead-appointment.** `Header.tsx:178-186` only maps `ticket` -> `/tickets`, `invoice` -> `/invoices`, `customer` -> `/customers`, `inventory` -> `/inventory`, `lead` -> `/leads`. Server creates notifications for at least estimates/payments/gift cards/voice (grep `entity_type` in services). Operator clicks a notification of an unmapped type — `routes[notif.entity_type]` is undefined, the `if (base)` guard silently no-ops, dropdown closes, nothing happens. Looks like a broken click. — Fixed Fixer-B8 2026-04-25.
   <!-- meta: scope=web/components/layout; files=packages/web/src/components/layout/Header.tsx:177-187; fix=add-estimate->/estimates+payment->/invoices+gift_card->/gift-cards+voice->/voice -->
 
-- [ ] WEB-FL-013. **[MED] portal/i18n.ts not consumed by /track TrackingPage despite existing dictionary keys for timeline/queue/photos.** `pages/portal/i18n.ts` defines EN+ES `timeline.*` / `queue.*` / `photos.*` / `pay.*` / `review.*` strings (217 lines), used by `pages/portal/*` only. `TrackingPage.tsx` (the public-facing tracking page at `/track`) is hard-coded English with `text-slate-*` strings — same data shape as portal but no i18n. Spanish-speaking customer landing on /track via SMS link has zero translation. Already flagged dark-mode (FC-003); add i18n parity.
-  <!-- meta: scope=web/pages/tracking+portal; files=packages/web/src/pages/tracking/TrackingPage.tsx,packages/web/src/pages/portal/i18n.ts; fix=import-useT+wrap-English-strings-in-t()+add-LanguageSwitcher-mount-on-track-page -->
 
-- [ ] WEB-FL-014. **[MED] TrackingPage bypasses api/client — direct axios.get('/api/v1/...') hard-codes prefix + skips token + interceptors.** Lines 115, 153, 171, 194, 231, 253: 6 raw `axios.get/post('/api/v1/...')` calls instead of the shared `api/client.ts` with baseURL, request_id, error normalizer, refresh-token interceptor. Public tracking page is unauth so token isn't needed, but the `/api/v1/portal/embed/config` call (115) is the same endpoint portalApi uses with proper client; CSP nonce + correlation IDs + retry are skipped. Same pattern in `photo-capture/PhotoCapturePage.tsx:71` (`axios.post/api/v1/tickets/${id}/photos`).
-  <!-- meta: scope=web/pages/tracking+photo-capture; files=packages/web/src/pages/tracking/TrackingPage.tsx:115,153,171,194,231,253,packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:71; fix=use-api/client-or-create-publicApi-wrapper+drop-/api/v1-prefix-and-let-baseURL-handle-it -->
 
 - [ ] WEB-FL-015. **[MED] LandingPage covered in inline-styles — 60+ `style={{...}}` literals on JSX, no Tailwind, full HTML-mockup leak.** `pages/landing/LandingPage.tsx` lines 33, 34, 101-126, 275, 293, 313, 481 etc. — `padding`, `fontSize`, `background`, `color`, `borderRadius`, `boxShadow` all inline. Diverges from the rest of the app (Tailwind utility-first), defeats Tailwind's PurgeCSS for landing-page styles, harder to dark-mode. Pattern: HTML mockup was hand-pasted as JSX without conversion.
   <!-- meta: scope=web/pages/landing; files=packages/web/src/pages/landing/LandingPage.tsx; fix=convert-style={{}}-to-className=""-Tailwind-utilities+kill-arbitrary-rgba()-with-bg-black/50-tokens -->

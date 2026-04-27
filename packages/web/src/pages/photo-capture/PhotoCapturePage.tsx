@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Camera, Upload, CheckCircle2, X, Loader2, ImageIcon, AlertCircle } from 'lucide-react';
-import axios from 'axios';
+import { api } from '@/api/client';
 import toast from 'react-hot-toast';
 
 export function PhotoCapturePage() {
@@ -100,7 +100,7 @@ export function PhotoCapturePage() {
       photos.forEach((p) => formData.append('photos', p.file));
       formData.append('ticket_device_id', deviceId);
       formData.append('type', 'pre');
-      await axios.post(`/api/v1/tickets/${ticketId}/photos`, formData, {
+      await api.post(`/tickets/${ticketId}/photos`, formData, {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' },
       });
       setUploaded(true);
