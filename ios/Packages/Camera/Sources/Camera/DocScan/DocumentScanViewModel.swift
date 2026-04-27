@@ -3,6 +3,7 @@ import Foundation
 import Observation
 import PDFKit
 import UIKit
+import Core
 
 // MARK: - DocumentScanViewModel
 
@@ -58,11 +59,23 @@ public final class DocumentScanViewModel {
         return nil
     }
 
+    // MARK: - Auto-classification state (§17 DocScan)
+
+    /// Suggested document tag from the auto-classifier. `nil` until OCR + classification runs.
+    public private(set) var suggestedTag: DocumentTag?
+    /// Classification confidence (0–1). `nil` until classification runs.
+    public private(set) var classificationConfidence: Double?
+
+    // MARK: - Private
+
     /// Injected uploader — takes PDF `Data`, returns the attachment URL.
     private let uploader: @Sendable (Data) async throws -> String
 
     /// On-device OCR service (Vision framework only; no external egress).
     private let ocrService = DocumentOCRService()
+
+    /// On-device document classifier (keyword-based, §17).
+    private let classifier = DocumentAutoClassifier()
 
     // MARK: - Init
 
@@ -132,12 +145,39 @@ public final class DocumentScanViewModel {
         ocrState = .running
         do {
             let result = try await ocrService.extractText(from: pages)
-            ocrState = result.isEmpty
-                ? .done(text: "")
-                : .done(text: result.fullText)
+            let text = result.isEmpty ? "" : result.fullText
+            ocrState = .done(text: text)
+            // §17 auto-classification: run classifier on extracted text.
+            if !text.isEmpty {
+                let (tag, confidence) = classifier.classify(text: text)
+                suggestedTag = tag != .other ? tag : nil
+                classificationConfidence = tag != .other ? confidence : nil
+                AppLog.camera.info("DocumentScanViewModel: auto-classified as \(tag.rawValue, privacy: .public) confidence=\(confidence)")
+            }
         } catch {
             ocrState = .failed(message: error.localizedDescription)
         }
+    }
+
+    // MARK: - Bulk append (§17 DocScan)
+
+    /// Append pages from another scan session to the current document.
+    ///
+    /// §17: "Bulk append multiple scans to single file"
+    ///
+    /// - Parameter newPages: Pages from a subsequent `VNDocumentCameraViewController` session.
+    public func appendPages(_ newPages: [UIImage]) {
+        pages = pages + newPages
+        // Reset OCR/classification state since content changed.
+        ocrState = .idle
+        suggestedTag = nil
+        classificationConfidence = nil
+        AppLog.camera.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(pages.count)")
+    }
+
+    /// Accept the suggested tag (caller stores it in their model).
+    public func acceptSuggestedTag() -> DocumentTag? {
+        suggestedTag
     }
 
     // MARK: - Upload
@@ -164,6 +204,8 @@ public final class DocumentScanViewModel {
         pages = []
         uploadState = .idle
         ocrState = .idle
+        suggestedTag = nil
+        classificationConfidence = nil
     }
 
     // MARK: - Private: PDF assembly
