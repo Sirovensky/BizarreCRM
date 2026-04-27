@@ -232,6 +232,8 @@ private struct BluetoothDeviceRow: View {
     let onDisconnect: () -> Void
     let onRename: () -> Void
     let onForget: () -> Void
+    /// MAC address from the paired-device record (shown after first connection).
+    var macAddress: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -246,6 +248,14 @@ private struct BluetoothDeviceRow: View {
                 Text(kindLabel)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                // §17 "App shows printer MAC after first connection"
+                if let mac = macAddress {
+                    Text(mac)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("MAC address: \(mac)")
+                }
                 batteryIndicator
             }
 

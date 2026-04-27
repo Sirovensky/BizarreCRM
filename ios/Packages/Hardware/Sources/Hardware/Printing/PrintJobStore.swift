@@ -222,5 +222,66 @@ public final class PrinterProfileStore {
         guard let data = try? JSONEncoder().encode(all) else { return }
         UserDefaults.standard.set(data, forKey: Self.key)
     }
+
+    // MARK: - Active printer helpers (for PrintService)
+
+    /// The active receipt printer for this station, if one has been selected and persisted.
+    /// Returns nil when no printer is configured → callers should fall back to PDF share sheet.
+    public var activeReceiptPrinter: Printer? {
+        guard let printerId = currentProfile.defaultReceiptPrinterId else { return nil }
+        return loadPrinter(id: printerId)
+    }
+
+    // MARK: - Printer catalogue (lightweight UserDefaults store)
+
+    private static let printerCatalogueKey = "com.bizarrecrm.hardware.printerCatalogue"
+
+    /// Persist a `Printer` so it can be retrieved by ID later.
+    public func persist(printer: Printer) {
+        var catalogue = loadCatalogue()
+        catalogue[printer.id] = printer
+        let data = catalogue.values.map { p -> [String: String] in
+            var dict = ["id": p.id, "name": p.name, "kind": p.kind.rawValue]
+            switch p.connection {
+            case .airPrint(let url):        dict["conn"] = "airprint:\(url.absoluteString)"
+            case .network(let h, let p_):   dict["conn"] = "net:\(h):\(p_)"
+            case .bluetoothMFi(let id_):    dict["conn"] = "mfi:\(id_)"
+            }
+            return dict
+        }
+        guard let encoded = try? JSONSerialization.data(withJSONObject: data) else { return }
+        UserDefaults.standard.set(encoded, forKey: Self.printerCatalogueKey)
+    }
+
+    private func loadPrinter(id: String) -> Printer? {
+        loadCatalogue()[id]
+    }
+
+    private func loadCatalogue() -> [String: Printer] {
+        guard let data = UserDefaults.standard.data(forKey: Self.printerCatalogueKey),
+              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: String]]
+        else { return [:] }
+        var result: [String: Printer] = [:]
+        for dict in array {
+            guard let id = dict["id"],
+                  let name = dict["name"],
+                  let kindRaw = dict["kind"],
+                  let kind = PrinterKind(rawValue: kindRaw),
+                  let connStr = dict["conn"] else { continue }
+            let conn: PrinterConnection
+            if connStr.hasPrefix("airprint:"), let url = URL(string: String(connStr.dropFirst("airprint:".count))) {
+                conn = .airPrint(url: url)
+            } else if connStr.hasPrefix("net:") {
+                let parts = connStr.dropFirst("net:".count).split(separator: ":", maxSplits: 1)
+                if parts.count == 2, let port = Int(parts[1]) {
+                    conn = .network(host: String(parts[0]), port: port)
+                } else { continue }
+            } else if connStr.hasPrefix("mfi:") {
+                conn = .bluetoothMFi(id: String(connStr.dropFirst("mfi:".count)))
+            } else { continue }
+            result[id] = Printer(id: id, name: name, kind: kind, connection: conn)
+        }
+        return result
+    }
 }
 #endif
