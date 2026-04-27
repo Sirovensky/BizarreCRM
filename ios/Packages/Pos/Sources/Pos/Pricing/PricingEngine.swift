@@ -103,12 +103,15 @@ public actor PricingEngine {
 
         guard !cart.items.isEmpty, !rules.isEmpty else { return .empty }
 
-        let eligible = rules.filter { rule in
-            guard rule.isValid(at: now) else { return false }
-            // Promotion window: must also be admin-enabled.
-            if rule.type == .promotionWindow { return rule.promotionActive }
-            return true
-        }
+        // Sort by priority ascending (lower = first match wins per §16 conflict resolution).
+        let eligible = rules
+            .filter { rule in
+                guard rule.isValid(at: now) else { return false }
+                // Promotion window: must also be admin-enabled.
+                if rule.type == .promotionWindow { return rule.promotionActive }
+                return true
+            }
+            .sorted { $0.priority < $1.priority }
         guard !eligible.isEmpty else { return .empty }
 
         var allAdjustments: [UUID: [PricingAdjustment]] = [:]

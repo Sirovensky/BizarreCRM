@@ -139,6 +139,12 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
     public var validTo: Date?
     public var enabled: Bool
 
+    // MARK: - Priority (lower = evaluated first)
+
+    /// Evaluation priority — lower integer wins (first matching rule wins per §16 conflict
+    /// resolution). Default `0` = highest priority. Used by `PricingRulesListView` drag-to-reorder.
+    public var priority: Int
+
     // MARK: - Init
 
     public init(
@@ -161,7 +167,8 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
         promotionDiscountPercent: Double? = nil,
         validFrom: Date? = nil,
         validTo: Date? = nil,
-        enabled: Bool = true
+        enabled: Bool = true,
+        priority: Int = 0
     ) {
         self.id = id
         self.name = name
@@ -183,6 +190,7 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
         self.validFrom = validFrom
         self.validTo = validTo
         self.enabled = enabled
+        self.priority = priority
     }
 
     // MARK: - Validity helper
@@ -195,7 +203,7 @@ public struct PricingRule: Codable, Sendable, Identifiable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, type, enabled, tiers
+        case id, name, type, enabled, tiers, priority
         case targetSku                  = "target_sku"
         case targetCategory             = "target_category"
         case targetSegment              = "target_segment"

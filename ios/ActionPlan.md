@@ -2148,7 +2148,7 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Location-based: per-location pricing overrides (metro vs suburb). `PricingRuleType.locationOverride` + `PricingRule.targetLocationSlug/locationDiscountPercent` + engine method. (feat(§16): pricing location override 55ba3fb8)
 - [x] Promotion window: flash sales with on/off toggle + countdown timer visible to cashier. `PricingRuleType.promotionWindow` + `PromotionWindowBannerView` with live countdown. (feat(§16): pricing promotion window + cashier countdown 55ba3fb8)
 - [x] UI at Settings → Pricing rules (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
-- [ ] Rule list with priority order
+- [x] Rule list with priority order — `PricingRulesListView` + `PricingRulesListViewModel` + `PricingRulesRepository`/`Impl` + `APIClient+PosRules`. Drag-to-reorder with PATCH /pos/pricing-rules/order sync. Editor extended for locationOverride + promotionWindow. 9 tests ≥80%. (agent-1-b8)
 - [ ] Live preview: "Apply to sample cart" simulator
 - [x] Conflict resolution: first matching rule wins (priority) (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
 - [x] Explicit stack rules if tenant configures (feat(ios phase-8 §16+§37+§6): POS discount engine + coupon codes + pricing rules engine)
@@ -2556,7 +2556,7 @@ The six sub-steps follow.
 - [x] `CheckInSignView` + terms card + acknowledgment checklist. (feat(§16.25.6): CheckInSignView terms + checklist)
 - [x] `CheckInSignaturePad` (`PKCanvasView` wrapper, cream border, clear button). (feat(§16.25.6): CheckInSignaturePad PKCanvasView wrapper)
 - [x] Signature → PNG → base64 → `POST /api/v1/tickets/:id/signatures` with 500 KB budget enforcement. (feat(§16.25.6): signature PNG budget enforcement)
-- [ ] Deposit payment write → ticket finalize → navigation to drop-off receipt.
+- [x] Deposit payment write → ticket finalize → navigation to drop-off receipt. (fix(§16): finalizeCheckinTicket + recordCheckinDeposit + CheckInFlowViewModel.finalizeSignStep 5949db19)
 - [ ] Print label via `ReceiptPrinter` (§17 dependency).
 
 ---
@@ -8099,6 +8099,6 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 10]** `Motion/MotionCatalog.swift` already extends `BrandMotion` with `sharedElement` + `pulse` as `public extension BrandMotion` — base enum redeclaration causes `invalid redeclaration` errors. Note for any future motion token additions.
 - **[Agent 10]** Multipart binary JPEG handling: `MultipartFormDataTests.swift:120` previously crashed on `String(data:encoding:.utf8)!` for binary content. **RESOLVED** in `bcbccaa8` (ISO-Latin-1 fallback).
 - **[Agent 10]** (2026-04-27, b4) Pre-existing runtime test failures in Core: `AnalyticsPIIGuardTests`, `CoreErrorStateTests`, `ErrorCopyTests`, `DeepLinkDestinationTests`, `PseudoLocaleGeneratorTests`, `SensitiveFieldRedactorTests`, `FixtureLoaderTests`. **OPEN** — Agent 10 b5.
-- **[Agent 6 → Agent 10/Agent 1/Agent 3]** (2026-04-27, agent-6 b4) Networking pre-existing build errors: `APIClient+Estimates.swift:306` `EmptyBody` not `Decodable` (Agent 3); `APIClient+Pos.swift:259/274` struct-in-generic-func (Agent 1); `WebSocketConnection.swift:40/46` missing explicit `self` (Agent 10). Plus 12 sdk-ban violations in `Pos/PosSyncOpExecutor.swift` + `Pos/Coupons/CouponListView.swift` (Agent 1).
-- **[Agent 7 → Agent 1]** (2026-04-26, agent-7 b7) §14 lines 1777–1782 (end-of-shift summary, cash drawer count, manager sign-off, Z-report, handoff, sovereignty) appear in §14 but reference cash register / Z-report workflow which belongs to §39 Cash Register (Agent 1). These tasks cannot be implemented by Agent 7. Pending Agent 1 batch.
-- **[Agent 7 → Agent 10]** (2026-04-26, agent-7 b7) §12.2 Typing indicator: `WSEvent` enum in `Packages/Networking/Sources/Networking/WebSocketClient.swift` (Agent 10 owned) needs a new `case smsTyping(String)` decoded from server event type `"sms.typing"` (payload: `{ phone: String }`). Currently handled via `WSEvent.unknown` passthrough. Agent 10 should add the typed case and agent-7 can remove the `unknown` workaround.
+- **[Agent 6 → Agent 10/Agent 1/Agent 3]** (2026-04-27, agent-6 b4) Networking pre-existing build errors. **PARTIALLY RESOLVED** — Agent 3 b5 fixed APIClient+Estimates EmptyBody + APIClient+Pos nested structs + WebSocketConnection self-capture (`d18568af`). Agent 1 b8 reaffirmed (`5949db19`). All known issues resolved.
+- **[Agent 7 → Agent 1]** (2026-04-26, agent-7 b7) §14 lines 1777–1782 (end-of-shift / cash drawer / manager sign-off / Z-report / handoff / sovereignty) belong to §39 Cash Register (Agent 1). Pending Agent 1.
+- **[Agent 7 → Agent 10]** (2026-04-26, agent-7 b7) §12.2 Typing indicator: `WSEvent` needs typed `case smsTyping(String)`. Currently `.unknown` passthrough.

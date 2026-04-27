@@ -43,6 +43,15 @@ public final class PricingRuleEditorViewModel {
     // segmentPrice
     public var segmentPercentInput: String = ""  // 0–100
 
+    // locationOverride
+    public var locationSlugInput: String = ""
+    public var locationDiscountPercentInput: String = ""  // 0–100
+
+    // promotionWindow
+    public var promotionLabelInput: String = ""
+    public var promotionDiscountPercentInput: String = ""  // 0–100
+    public var promotionActive: Bool = false
+
     public var validFrom: Date? = nil
     public var validTo: Date? = nil
 
@@ -101,6 +110,11 @@ public final class PricingRuleEditorViewModel {
             freeQuantity: Int(freeQtyInput),
             tiers: tiers.isEmpty ? nil : tiers,
             segmentDiscountPercent: Double(segmentPercentInput).map { $0 / 100 },
+            targetLocationSlug: locationSlugInput.isEmpty ? nil : locationSlugInput,
+            locationDiscountPercent: Double(locationDiscountPercentInput).map { $0 / 100 },
+            promotionActive: promotionActive,
+            promotionLabel: promotionLabelInput.isEmpty ? nil : promotionLabelInput,
+            promotionDiscountPercent: Double(promotionDiscountPercentInput).map { $0 / 100 },
             validFrom: validFrom,
             validTo: validTo,
             enabled: enabled
@@ -125,6 +139,11 @@ public final class PricingRuleEditorViewModel {
         freeQtyInput = rule.freeQuantity.map { String($0) } ?? ""
         tiers = rule.tiers ?? []
         segmentPercentInput = rule.segmentDiscountPercent.map { String(format: "%.1f", $0 * 100) } ?? ""
+        locationSlugInput = rule.targetLocationSlug ?? ""
+        locationDiscountPercentInput = rule.locationDiscountPercent.map { String(format: "%.1f", $0 * 100) } ?? ""
+        promotionActive = rule.promotionActive
+        promotionLabelInput = rule.promotionLabel ?? ""
+        promotionDiscountPercentInput = rule.promotionDiscountPercent.map { String(format: "%.1f", $0 * 100) } ?? ""
     }
 }
 
@@ -315,6 +334,44 @@ public struct PricingRuleEditorView: View {
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
             }
+
+        case .locationOverride:
+            Section("Location Override") {
+                TextField("Location slug (e.g. metro-nyc)", text: $vm.locationSlugInput)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .accessibilityIdentifier("pricingRuleEditor.locationSlug")
+                HStack {
+                    Text("Discount %")
+                    Spacer()
+                    TextField("e.g. 5", text: $vm.locationDiscountPercentInput)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .accessibilityIdentifier("pricingRuleEditor.locationDiscountPercent")
+                    Text("%")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+
+        case .promotionWindow:
+            Section("Promotion Window") {
+                TextField("Flash sale label (optional)", text: $vm.promotionLabelInput)
+                    .accessibilityIdentifier("pricingRuleEditor.promotionLabel")
+                HStack {
+                    Text("Discount %")
+                    Spacer()
+                    TextField("e.g. 20", text: $vm.promotionDiscountPercentInput)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 80)
+                        .accessibilityIdentifier("pricingRuleEditor.promotionDiscountPercent")
+                    Text("%")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                Toggle("Promotion active", isOn: $vm.promotionActive)
+                    .accessibilityIdentifier("pricingRuleEditor.promotionActive")
+            }
         }
     }
 
@@ -337,10 +394,12 @@ public struct PricingRuleEditorView: View {
 private extension PricingRuleType {
     var displayName: String {
         switch self {
-        case .bulkBundle:    return "Bulk Bundle (N for $X)"
-        case .bogo:          return "BOGO (Buy X Get Y Free)"
-        case .tieredVolume:  return "Tiered Volume Pricing"
-        case .segmentPrice:  return "Customer Segment Price"
+        case .bulkBundle:       return "Bulk Bundle (N for $X)"
+        case .bogo:             return "BOGO (Buy X Get Y Free)"
+        case .tieredVolume:     return "Tiered Volume Pricing"
+        case .segmentPrice:     return "Customer Segment Price"
+        case .locationOverride: return "Location Override"
+        case .promotionWindow:  return "Promotion Window"
         }
     }
 }
