@@ -3214,3 +3214,9 @@ DASH-ELEC-256: BackupPage isMountedRef guards all setState/toast calls in refres
 DASH-ELEC-257: handleRestore checks res.offline → "Server may be restarting" toast + 5s deferred refresh.
 
 Skipped (design/research/complex): 160 (CSP plugin eval), 190 (protocol stub), 193 (test-connection probes), 201 (server status field needed), 222-224 (grouping/drill-in/payload tab), 230 (idempotency keys across 14 endpoints), 237-238 (plan/name change UI), 243 (reason field), 245 (new server fields), 249-252 (checklist tiers/visibility), 258 (cert reload banner).
+
+## todofixes426 — Cleanup pass 10 (2026-04-26) — DASH-ELEC 160-260 sweep
+
+DONE: 180 (hCaptcha ConfirmDialog), 194 (Close Dashboard ConfirmDialog), 199 (cors textarea), 200 (aria-busy flag toggle), 204 (aria-labelledby sections), 208 (rollback wrapHandler), 212 (file:// fallback URL guard), 214 (logout server-side first), 219 (audit log click-to-expand), 231 (keepAliveAgent), 232 (re-check auth post-await), 233 (compact offline banner), 241 (TenantsPage detailInFlight ref), 248 (BannerCertWarning 24h re-show), 250 (SetupChecklist severity sort), 255 (apiRequest timeoutMs param + 5min backup), 256 (BackupPage isMountedRef), 257 (offline retry banner).
+
+DONE-PREEXISTING: 176 (CommandPalette pt-clamp), 229 (formatApiError [status] prefix), 259 (ageMs Math.max), 260 (TenantsPage delete cleanup).

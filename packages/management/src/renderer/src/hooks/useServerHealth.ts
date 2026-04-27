@@ -61,6 +61,14 @@ export function useServerHealth(): void {
           pollingRef.current = false;
           return;
         }
+        // DASH-ELEC-232: also re-check auth state after the await — a logout
+        // that fires while the request is in-flight would otherwise cause stale
+        // stats to overwrite the cleared store and keep the offline/online
+        // banner visible on the post-logout login screen.
+        if (!useAuthStore.getState().isAuthenticated) {
+          pollingRef.current = false;
+          return;
+        }
 
         if (statsRes.success && statsRes.data) {
           useServerStore.getState().setStats(statsRes.data);

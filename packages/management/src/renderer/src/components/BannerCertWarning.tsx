@@ -13,10 +13,25 @@ import { useState, useEffect } from 'react';
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 
+// DASH-ELEC-248: persist dismissal to localStorage; re-show after 24h or on
+// a fresh cold-start (page reload without a stored timestamp).
+const LS_KEY = 'banner-cert-warning-dismissed-at';
+const RESHOW_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function isSuppressed(): boolean {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return false;
+    return Date.now() - Number(raw) < RESHOW_MS;
+  } catch {
+    return false;
+  }
+}
+
 export function BannerCertWarning() {
   const [pinningEnabled, setPinningEnabled] = useState<boolean | null>(null);
   const [reason, setReason] = useState<string | undefined>(undefined);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => isSuppressed());
 
   useEffect(() => {
     getAPI().system.getCertPinningStatus().then((res) => {
@@ -32,6 +47,11 @@ export function BannerCertWarning() {
       setPinningEnabled(true);
     });
   }, []);
+
+  function handleDismiss() {
+    try { localStorage.setItem(LS_KEY, String(Date.now())); } catch { /* ignore */ }
+    setDismissed(true);
+  }
 
   // Hide when pinning is enabled, status unknown (null), or user dismissed.
   if (pinningEnabled !== false || dismissed) return null;
@@ -52,7 +72,7 @@ export function BannerCertWarning() {
         </span>
       </div>
       <button
-        onClick={() => setDismissed(true)}
+        onClick={handleDismiss}
         className="flex-shrink-0 text-amber-500 hover:text-amber-300 transition-colors"
         aria-label="Dismiss"
       >

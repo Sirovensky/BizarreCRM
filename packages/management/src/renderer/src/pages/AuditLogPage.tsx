@@ -22,6 +22,8 @@ const PAGE_SIZE = 200;
 export function AuditLogPage() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // DASH-ELEC-219: track which row has its details expanded.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   // DASH-ELEC-064: offset-based pagination so installations with 50k+ entries
   // don't silently truncate at 200. Resets to 0 when filters change.
   const [offset, setOffset] = useState(0);
@@ -257,7 +259,21 @@ export function AuditLogPage() {
                       {e.action}
                     </button>
                   </td>
-                  <td className="py-1.5 px-2 text-surface-400 max-w-xs truncate" title={e.details}>{e.details}</td>
+                  {/* DASH-ELEC-219: click truncated details to expand inline. */}
+                  <td
+                    className="py-1.5 px-2 text-surface-400 max-w-xs"
+                    onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                  >
+                    {expandedId === e.id ? (
+                      <pre className="whitespace-pre-wrap break-all font-mono text-[10px] max-w-sm max-h-48 overflow-y-auto bg-surface-950 border border-surface-800 rounded p-1.5 cursor-pointer">
+                        {e.details}
+                      </pre>
+                    ) : (
+                      <span className="truncate block cursor-pointer hover:text-surface-200" title="Click to expand">
+                        {e.details}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 font-mono text-surface-500">
                     {e.ip_address ? (
                       <CopyText value={e.ip_address}>{e.ip_address}</CopyText>

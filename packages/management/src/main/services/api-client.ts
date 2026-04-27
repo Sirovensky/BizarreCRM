@@ -233,6 +233,15 @@ export interface ApiResult<T = unknown> {
   };
 }
 
+// DASH-ELEC-231: reuse TCP connections so each IPC → API round-trip doesn't
+// pay a full TLS handshake cost (~700+ per hour with default 10s poll).
+// keepAliveMsecs=10_000 keeps idle sockets warm between dashboard polls.
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10_000,
+  maxSockets: 4,
+});
+
 let superAdminToken: string | null = null;
 // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): track when the in-memory token
 // was set so we can hard-cap its lifetime even when the renderer never calls
@@ -264,11 +273,14 @@ export function getSuperAdminToken(): string | null {
   return superAdminToken;
 }
 
+// DASH-ELEC-255: long-running operations (backup, restore) need a much larger
+// timeout than the default 30 s. Callers supply timeoutMs to override.
 export function apiRequest<T = unknown>(
   method: string,
   endpoint: string,
   body: unknown = null,
-  authType: 'authenticated' | 'none' = 'authenticated'
+  authType: 'authenticated' | 'none' = 'authenticated',
+  timeoutMs: number = REQUEST_TIMEOUT,
 ): Promise<ApiResult<T>> {
   return new Promise((resolve, reject) => {
     const base = getServerBase();
@@ -301,6 +313,8 @@ export function apiRequest<T = unknown>(
       port: url.port || 443,
       path: url.pathname + url.search,
       rejectUnauthorized: !acceptSelfSigned,
+      // DASH-ELEC-231: reuse TLS connections via the shared keep-alive agent.
+      agent: keepAliveAgent,
       // @audit-fixed: explicit `servername` so SNI matches the URL hostname
       // even when an upstream HTTPS agent overrides the default. Without
       // this, a future change that swaps SERVER_BASE for a non-loopback
@@ -364,7 +378,7 @@ export function apiRequest<T = unknown>(
       // a slow body read. The req.setTimeout below guards the idle phase.
       socket.on('connect', () => socket.setTimeout(0));
     });
-    req.setTimeout(REQUEST_TIMEOUT, () => {
+    req.setTimeout(timeoutMs, () => {
       req.destroy();
       reject(new Error('Request timeout'));
     });
