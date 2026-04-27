@@ -165,6 +165,64 @@ public extension APIClient {
         ]
         return try await get("/api/v1/owner-pl/summary", query: query, as: OwnerPLSummaryWire.self)
     }
+
+    // MARK: - §3.7 Announcements
+    /// Fetch system announcements since `lastSeenId`. Returns [] if the endpoint doesn't exist yet.
+    func systemAnnouncements(since lastSeenId: Int? = nil) async throws -> [SystemAnnouncement] {
+        var query: [URLQueryItem] = []
+        if let id = lastSeenId {
+            query.append(URLQueryItem(name: "since", value: "\(id)"))
+        }
+        return try await get("/api/v1/system/announcements", query: query, as: [SystemAnnouncement].self)
+    }
+
+    // MARK: - §3.12 SMS unread count
+    /// Quick count used by the Unread-SMS tile and tab badge. Returns 0 on failure.
+    func smsUnreadCount() async throws -> Int {
+        let payload = try await get("/api/v1/sms/unread-count", as: SmsUnreadCountPayload.self)
+        return payload.count
+    }
+}
+
+// MARK: - §3.7 Announcement model
+
+public struct SystemAnnouncement: Decodable, Identifiable, Sendable {
+    public let id: Int
+    public let title: String
+    public let body: String
+    public let createdAt: String
+
+    public init(id: Int, title: String, body: String, createdAt: String = "") {
+        self.id = id; self.title = title; self.body = body; self.createdAt = createdAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id        = (try? c.decode(Int.self,    forKey: .id))        ?? 0
+        self.title     = (try? c.decode(String.self, forKey: .title))     ?? ""
+        self.body      = (try? c.decode(String.self, forKey: .body))      ?? ""
+        self.createdAt = (try? c.decode(String.self, forKey: .createdAt)) ?? ""
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, body
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - §3.12 SMS unread count payload
+
+public struct SmsUnreadCountPayload: Decodable, Sendable {
+    public let count: Int
+
+    public init(count: Int = 0) { self.count = count }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.count = (try? c.decode(Int.self, forKey: .count)) ?? 0
+    }
+
+    enum CodingKeys: String, CodingKey { case count }
 }
 
 // MARK: - Wire DTOs for GET /api/v1/owner-pl/summary

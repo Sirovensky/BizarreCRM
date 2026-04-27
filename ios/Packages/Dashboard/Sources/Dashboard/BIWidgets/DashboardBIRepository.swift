@@ -11,6 +11,9 @@ import Networking
 //   GET /api/v1/reports/repeat-customers     — line 2245  → RepeatCustomersPayload
 //   GET /api/v1/reports/cash-trapped         — line 2381  → CashTrappedPayload
 //   GET /api/v1/reports/churn               — line 2538  → ChurnPayload
+//   GET /api/v1/reports/busy-hours           — ticket volume × hour × day heatmap  → BusyHoursPayload
+//   GET /api/v1/reports/forecast             — projected revenue (LineMark + confidence band) → ForecastPayload
+//   GET /api/v1/tickets/missing-parts        — parts with low stock blocking open tickets → MissingPartsPayload
 
 // MARK: - Protocol
 
@@ -20,6 +23,9 @@ public protocol DashboardBIRepository: Sendable {
     func fetchTopCustomers() async throws -> RepeatCustomersPayload
     func fetchCashTrapped() async throws -> CashTrappedPayload
     func fetchChurn() async throws -> ChurnPayload
+    func fetchBusyHours() async throws -> BusyHoursPayload
+    func fetchForecast() async throws -> ForecastPayload
+    func fetchMissingParts() async throws -> MissingPartsPayload
 }
 
 // MARK: - Live implementation
@@ -50,6 +56,18 @@ public actor DashboardBIRepositoryImpl: DashboardBIRepository {
 
     public func fetchChurn() async throws -> ChurnPayload {
         try await api.get("/api/v1/reports/churn", as: ChurnPayload.self)
+    }
+
+    public func fetchBusyHours() async throws -> BusyHoursPayload {
+        try await api.get("/api/v1/reports/busy-hours", as: BusyHoursPayload.self)
+    }
+
+    public func fetchForecast() async throws -> ForecastPayload {
+        try await api.get("/api/v1/reports/forecast", as: ForecastPayload.self)
+    }
+
+    public func fetchMissingParts() async throws -> MissingPartsPayload {
+        try await api.get("/api/v1/tickets/missing-parts", as: MissingPartsPayload.self)
     }
 }
 
@@ -332,5 +350,136 @@ public struct ChurnCustomer: Decodable, Sendable, Identifiable {
         case customerId    = "customer_id"; case name
         case daysInactive  = "days_inactive"
         case lifetimeSpent = "lifetime_spent"
+    }
+}
+
+// GET /api/v1/reports/busy-hours → data.cells[]
+// Each cell: { day_of_week (0=Sun…6=Sat), hour (0–23), ticket_count }
+public struct BusyHoursPayload: Decodable, Sendable {
+    public let cells: [BusyHoursCell]
+
+    public init(cells: [BusyHoursCell] = []) { self.cells = cells }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.cells = (try? c.decode([BusyHoursCell].self, forKey: .cells)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case cells }
+}
+
+public struct BusyHoursCell: Decodable, Sendable, Identifiable {
+    public let dayOfWeek: Int   // 0 = Sun, 6 = Sat
+    public let hour: Int        // 0–23
+    public let ticketCount: Int
+    public var id: String { "\(dayOfWeek)-\(hour)" }
+
+    public init(dayOfWeek: Int, hour: Int, ticketCount: Int) {
+        self.dayOfWeek = dayOfWeek; self.hour = hour; self.ticketCount = ticketCount
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.dayOfWeek   = (try? c.decode(Int.self, forKey: .dayOfWeek))   ?? 0
+        self.hour        = (try? c.decode(Int.self, forKey: .hour))        ?? 0
+        self.ticketCount = (try? c.decode(Int.self, forKey: .ticketCount)) ?? 0
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case dayOfWeek   = "day_of_week"
+        case hour
+        case ticketCount = "ticket_count"
+    }
+}
+
+// GET /api/v1/reports/forecast → data.series[]
+// Each point: { date (YYYY-MM), projected, lower, upper }
+public struct ForecastPayload: Decodable, Sendable {
+    public let series: [ForecastPoint]
+
+    public init(series: [ForecastPoint] = []) { self.series = series }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.series = (try? c.decode([ForecastPoint].self, forKey: .series)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey { case series }
+}
+
+public struct ForecastPoint: Decodable, Sendable, Identifiable {
+    public let date: String       // "YYYY-MM"
+    public let projected: Double  // point estimate
+    public let lower: Double      // 80% confidence lower bound
+    public let upper: Double      // 80% confidence upper bound
+    public let isActual: Bool     // true for historical months, false for future
+    public var id: String { date }
+
+    public init(date: String, projected: Double, lower: Double, upper: Double, isActual: Bool = false) {
+        self.date = date; self.projected = projected
+        self.lower = lower; self.upper = upper; self.isActual = isActual
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.date      = (try? c.decode(String.self, forKey: .date))      ?? ""
+        self.projected = (try? c.decode(Double.self, forKey: .projected)) ?? 0
+        self.lower     = (try? c.decode(Double.self, forKey: .lower))     ?? 0
+        self.upper     = (try? c.decode(Double.self, forKey: .upper))     ?? 0
+        self.isActual  = (try? c.decode(Bool.self,   forKey: .isActual))  ?? false
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case date, projected, lower, upper
+        case isActual = "is_actual"
+    }
+}
+
+// GET /api/v1/tickets/missing-parts → data.tickets[] (tickets blocked on missing stock)
+public struct MissingPartsPayload: Decodable, Sendable {
+    public let tickets: [MissingPartsTicket]
+    public let totalBlocked: Int
+
+    public init(tickets: [MissingPartsTicket] = [], totalBlocked: Int = 0) {
+        self.tickets = tickets; self.totalBlocked = totalBlocked
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.tickets      = (try? c.decode([MissingPartsTicket].self, forKey: .tickets))      ?? []
+        self.totalBlocked = (try? c.decode(Int.self,                  forKey: .totalBlocked)) ?? 0
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case tickets
+        case totalBlocked = "total_blocked"
+    }
+}
+
+public struct MissingPartsTicket: Decodable, Sendable, Identifiable {
+    public let ticketId: Int
+    public let orderId: String
+    public let customerName: String?
+    public let missingParts: [String]   // part names
+    public var id: Int { ticketId }
+
+    public init(ticketId: Int, orderId: String, customerName: String?, missingParts: [String]) {
+        self.ticketId = ticketId; self.orderId = orderId
+        self.customerName = customerName; self.missingParts = missingParts
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.ticketId     = (try? c.decode(Int.self,    forKey: .ticketId))     ?? 0
+        self.orderId      = (try? c.decode(String.self, forKey: .orderId))      ?? ""
+        self.customerName = try? c.decode(String.self, forKey: .customerName)
+        self.missingParts = (try? c.decode([String].self, forKey: .missingParts)) ?? []
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case ticketId     = "ticket_id"
+        case orderId      = "order_id"
+        case customerName = "customer_name"
+        case missingParts = "missing_parts"
     }
 }
