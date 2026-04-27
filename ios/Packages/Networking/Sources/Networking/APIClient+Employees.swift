@@ -318,6 +318,34 @@ public extension APIClient {
         let body = ResendInviteBody(resendInvite: true)
         return try await put("/api/v1/settings/users/\(userId)", body: body, as: Employee.self)
     }
+
+    // MARK: - Time-off approve / deny (manager)
+
+    /// POST /api/v1/time-off/:id/approve — approve a time-off request (manager only).
+    func approveTimeOff(id: Int64) async throws -> TimeOffRequest {
+        try await post(
+            "/api/v1/time-off/\(id)/approve",
+            body: EmptyBody(),
+            as: TimeOffRequest.self
+        )
+    }
+
+    /// POST /api/v1/time-off/:id/deny — deny a time-off request (manager only).
+    /// - Parameter reason: Optional denial reason surfaced to the employee.
+    func denyTimeOff(id: Int64, reason: String?) async throws -> TimeOffRequest {
+        let body = DenyTimeOffBody(reason: reason)
+        return try await post(
+            "/api/v1/time-off/\(id)/deny",
+            body: body,
+            as: TimeOffRequest.self
+        )
+    }
+}
+
+private struct DenyTimeOffBody: Encodable, Sendable {
+    let reason: String?
+
+    enum CodingKeys: String, CodingKey { case reason }
 }
 
 // MARK: - Employee detail model
