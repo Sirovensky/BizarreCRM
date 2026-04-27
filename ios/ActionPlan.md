@@ -990,9 +990,9 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (ae5435bf — `CriticalLowPulse` modifier)
 - [x] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT). (ae5435bf — adjust icon → `InventoryAdjustSheet`)
 - [x] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels. (`BatchEditSheet` + `BatchEditViewModel` — price %, category, tags, bulk delete (`POST /inventory/items/batch-delete`), CSV export via `InventoryCSVDocument: FileDocument` + `.fileExporter`; confirmationDialog for delete; Print labels deferred to §6.8 label-print. feat(§6.1) b7)
-- [ ] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch.
+- [x] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch. (feat(§6.1): InventoryReceiveItemsSheet — 12e1c70c)
 - [ ] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion.
-- [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
+- [x] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted. (feat(§6.1): InventoryImportCSVSheet — 21d47122)
 - [ ] **Mass label print** — multi-select → label printer (AirPrint or MFi).
 - [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (ae5435bf)
 - [x] **Cost price hidden** from non-admin roles (server returns null). (`Detail/InventoryDetailCards.swift` `CostPriceHiddenBadge` shown in `InventoryDetailView` when `costPrice == nil`; lock icon + "Cost price (admin only)" label. feat(§6/§10) b5ae5c51)
@@ -1000,18 +1000,18 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements — shipped.
-- [ ] **Full movement history — cursor-based, offline-first** (same contract as top-of-doc rule + §20.5, scoped per-SKU). GRDB `inventory_movement` table keyed by SKU + movement_id; detail view reads via `ValueObservation`. `sync_state` stored per-SKU: `{ cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. Online scroll-to-bottom triggers `GET /inventory/:sku/movements?cursor=&limit=50`. Offline shows cached range with banner "History from X to Y — older rows require sync". Silent-push or WS broadcast inserts new movements at top via `updated_at` anchor so current scroll position preserved. Same four footer states as entity lists. Never use `total_pages`.
+- [x] **Full movement history — cursor-based, offline-first** (same contract as top-of-doc rule + §20.5, scoped per-SKU). `InventoryMovementHistoryView` + `InventoryMovementHistoryViewModel`; `GET /api/v1/inventory/:id/movements?cursor=&limit=50`; load-more footer; offline banner; "View all" link from detail. (feat(§6.2): InventoryMovementHistoryView — cae2f475)
 - [x] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail. (`Detail/InventoryDetailCards.swift` `PriceHistoryCard` — AreaMark + LineMark, cost/retail toggle Picker, AXChartDescriptor; graceful fallback when endpoint absent. feat(§6/§10) b5ae5c51)
 - [x] **Sales history** — last 30d sold qty × revenue line chart. (`Detail/InventoryDetailCards.swift` `SalesHistoryCard` — 30d BarMark, total units + revenue tiles; graceful fallback. feat(§6/§10) b5ae5c51)
 - [x] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time. (`Detail/InventoryDetailCards.swift` `SupplierPanelCard` — tel:/mailto: Links, lead time days, `GET /api/v1/inventory/:id/supplier`; fallback to supplierName on model. feat(§6/§10) b5ae5c51)
 - [x] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier. (`Detail/InventoryDetailCards.swift` `AutoReorderRuleCard` — threshold + qty TextFields; `PATCH /api/v1/inventory/:id/reorder-rule`; success checkmark animation. feat(§6/§10) b5ae5c51)
 - [x] **Bin location** — text field + picker (Settings → Inventory → Bin Locations). (`Detail/InventoryDetailCards.swift` `BinLocationCard` — monospaced TextField, `PATCH /api/v1/inventory/:id`; success animation. feat(§6/§10) b5ae5c51)
-- [ ] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each.
+- [x] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each. (`ItemSerialsCard` — status chip, invoice#, sold date; rendered when `isSerialized==1`. feat(§6.2): fa048dcc)
 - [x] **Reorder / Restock** action — opens quick form to record stock-in or draft PO. (`InventoryDetailView` toolbar "Restock" button ⌘⇧R → `confirmationDialog` with "Record stock-in" → `InventoryAdjustSheet` or "Draft purchase order" → `PurchaseOrderComposeView`. feat(§6.2) b7)
 - [x] **Barcode display** — Code-128 + QR via CoreImage; `.textSelection(.enabled)` on SKU/UPC. (`InventoryDetailView` `BarcodeCard` — `CICode128BarcodeGenerator` for SKU + `CIQRCodeGenerator` for UPC; both with `.textSelection(.enabled)` on raw string. feat(§6.2) confirmed b7)
 - [x] **Used in tickets** — recent tickets that consumed this part; tap → ticket. (`InventoryDetailView` `UsedInTicketsCard` — async loads via `GET /api/v1/tickets?part_inventory_id=:id`; shows ticket #, customer name, status pill; graceful 404/error fallback. feat(§6.2) b7)
 - [x] **Cost vs retail variance analysis** card (margin %). (`InventoryDetailView` `VarianceCard` — cost / retail / margin $ / margin % tiles; color-coded green ≥30%, yellow ≥10%, red <10%. feat(§6.2) confirmed b7)
-- [ ] **Tax class** — editable (admin only).
+- [x] **Tax class** — editable (admin only). (`InventoryTaxClassCard` — Picker + PATCH /api/v1/inventory/:id `{ tax_class }`; nil = hidden from non-admin. feat(§6.2): bf81a0ec)
 - [x] **Photos** — gallery; tap → lightbox; upload via `POST /inventory/:id/image`. (`InventoryDetailView` `ItemPhotosCard` — AsyncImage primary photo + Upload CTA; full lightbox pinch-zoom is Phase 4+ polish. feat(§6.2) confirmed b7)
 - [x] **Edit / Deactivate / Delete** buttons. (`InventoryDetailView` toolbar — Edit ⌘E sheet; Deactivate + Delete confirmationDialogs; `deactivate()` + `deleteItem()` async. feat(§6.2) confirmed b7)
 
@@ -1460,12 +1460,12 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] `RecurrenceConflictResolver` — expand all instances, check each against existing. (`Recurring/RecurrenceConflictResolver.swift`)
 - [x] `RecurrenceEditOptionsSheet` — scope: this / this+future / all. (`Recurring/RecurrenceEditOptionsSheet.swift`)
 
-- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool).
+- [x] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). (`AppointmentTypePolicy` — 5 types, default durations, requiredResources; auto-applied on type change in `AppointmentCreateFullViewModel`. feat(§10): 38e93367)
 - [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.
 - [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`).
 - [ ] iPad drag-drop calendar (mandatory big-screen); iPhone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict.
 - [ ] Multi-location view: combine or filter by location.
-- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy.
+- [x] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. (`CustomerNoShowRecord` + `NoShowDepositPolicy` + `NoShowPolicySettingsView` + `CustomerNoShowBadge`; GET/PATCH `/api/v1/settings/no-show-policy`. feat(§10): 0e24bc34)
 
 ---
 ## §11. Expenses
