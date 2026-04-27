@@ -6,7 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatTime } from '@/utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -69,12 +69,6 @@ const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language ||
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(_employeeLocale, {
-    hour: 'numeric', minute: '2-digit',
   });
 }
 

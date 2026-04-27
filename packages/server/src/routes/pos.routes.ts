@@ -374,6 +374,45 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
   let subtotal = 0;
   let total_tax = 0;
 
+  // WEB-S7-016: batch-fetch all inventory rows before the loop to avoid N+1.
+  // First pass — validate IDs and quantities, collect unique item IDs.
+  const itemInvIds: number[] = [];
+  for (const item of items) {
+    const qty = validateIntegerQuantity(item?.quantity ?? 1, 'line item quantity');
+    if (qty < 1) throw new AppError('line item quantity must be at least 1', 400);
+    const invId = Number(item?.inventory_item_id);
+    if (!Number.isFinite(invId) || invId <= 0) {
+      throw new AppError('inventory_item_id is required for POS line items', 400);
+    }
+    itemInvIds.push(invId);
+  }
+
+  const invPlaceholders = itemInvIds.map(() => '?').join(',');
+  const invRows = await adb.all<{
+    id: number;
+    name: string;
+    retail_price: number;
+    item_type: string;
+    tax_class_id: number | null;
+    tax_inclusive: number;
+  }>(
+    `SELECT id, name, retail_price, item_type, tax_class_id, tax_inclusive
+       FROM inventory_items WHERE id IN (${invPlaceholders}) AND is_active = 1`,
+    ...itemInvIds,
+  );
+  const invMap = new Map(invRows.map((r) => [r.id, r]));
+
+  const uniqueTaxClassIds = [...new Set(invRows.map((r) => r.tax_class_id).filter((id): id is number => id !== null))];
+  const taxClassMap = new Map<number, number>();
+  if (uniqueTaxClassIds.length > 0) {
+    const tcPlaceholders = uniqueTaxClassIds.map(() => '?').join(',');
+    const tcRows = await adb.all<{ id: number; rate: number }>(
+      `SELECT id, rate FROM tax_classes WHERE id IN (${tcPlaceholders})`,
+      ...uniqueTaxClassIds,
+    );
+    for (const tc of tcRows) taxClassMap.set(tc.id, tc.rate);
+  }
+
   for (const item of items) {
     // POS5: reject 2.7 → 2 truncation. validateIntegerQuantity throws on
     // non-integer or out-of-range.
@@ -385,18 +424,7 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
       throw new AppError('inventory_item_id is required for POS line items', 400);
     }
 
-    const inv = await adb.get<{
-      id: number;
-      name: string;
-      retail_price: number;
-      item_type: string;
-      tax_class_id: number | null;
-      tax_inclusive: number;
-    }>(
-      `SELECT id, name, retail_price, item_type, tax_class_id, tax_inclusive
-         FROM inventory_items WHERE id = ? AND is_active = 1`,
-      invId,
-    );
+    const inv = invMap.get(invId);
     if (!inv) throw new AppError(`Item ${invId} not found`, 404);
 
     // POS1 fix: server-authoritative unit price.
@@ -418,11 +446,7 @@ router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (r
     // Tax on net (discounted) line, respecting tax_inclusive flag.
     let lineTax = 0;
     if (inv.tax_class_id && !inv.tax_inclusive) {
-      const taxClass = await adb.get<{ rate: number }>(
-        'SELECT rate FROM tax_classes WHERE id = ?',
-        inv.tax_class_id,
-      );
-      const rate = taxClass ? Number(taxClass.rate) / 100 : 0;
+      const rate = (taxClassMap.get(inv.tax_class_id) ?? 0) / 100;
       lineTax = roundCents(lineNet * rate);
     }
 

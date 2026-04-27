@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
+import { formatTime } from '@/utils/format';
 
 // ─── Types ───────────────────────────────────────────────────────
 interface Appointment {
@@ -48,15 +49,6 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
-// WEB-FF-011 (Fixer-FFF 2026-04-25): drop hardcoded 'en-US' so non-US tenants
-// see locale-appropriate compact dates (e.g. "24 Apr" instead of "Apr 24") and
-// 24h time where the locale prefers it. `undefined` lets Intl pick the
-// browser's runtime locale — the same behaviour the shared formatDate helpers
-// in utils/format.ts use. The compact format-options stay so the calendar grid
-// keeps its tight layout.
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
 
 function formatDateShort(date: Date) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });

@@ -186,6 +186,7 @@ router.get(
 
     // For sorting by computed columns, wrap in subquery
     const orderColumn = ['total_spent', 'ticket_count'].includes(safeSortBy) ? safeSortBy : `c.${safeSortBy}`;
+    const nullsLast = ['total_spent', 'outstanding_balance', 'ticket_count'].includes(safeSortBy) ? ' NULLS LAST' : '';
 
     // Fetch page
     const dataSql = `
@@ -201,7 +202,7 @@ router.get(
       ${ftsJoin}
       LEFT JOIN customer_groups cg ON cg.id = c.customer_group_id
       ${whereClause}
-      ORDER BY ${orderColumn} ${sortOrder}
+      ORDER BY ${orderColumn} ${sortOrder}${nullsLast}
       LIMIT ? OFFSET ?
     `;
 

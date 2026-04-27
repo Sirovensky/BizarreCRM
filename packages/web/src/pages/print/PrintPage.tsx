@@ -17,7 +17,7 @@ import { useQuery } from '@tanstack/react-query';
 import DOMPurify from 'dompurify';
 import { ticketApi, settingsApi } from '@/api/endpoints';
 import JsBarcode from 'jsbarcode'; // eslint-disable-line
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatDate, formatDateTime, formatPhone } from '@/utils/format';
 
 type PaperSize = 'receipt80' | 'receipt58' | 'label' | 'letter';
 
@@ -155,27 +155,6 @@ function isSafeSignature(value: string | null | undefined): boolean {
 
 /* ── Helpers ─────────────────────────────────────────────── */
 
-function formatDate(d: string | null | undefined) {
-  if (!d) return '';
-  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
-  return new Date(d).toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-function formatDateTime(d: string | null | undefined) {
-  if (!d) return '';
-  const locale = (typeof navigator !== 'undefined' ? navigator.language : undefined) || 'en-US';
-  const dt = new Date(d);
-  return dt.toLocaleDateString(locale, { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' (' + dt.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) + ')';
-}
-
-function formatPhone(p: string | null | undefined) {
-  if (!p) return '';
-  const digits = p.replace(/\D/g, '');
-  if (digits.length === 10) return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
-  if (digits.length === 11) return `+${digits[0]} (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
-  return p;
-}
 
 function money(v: number | null | undefined) {
   return formatCurrency(v ?? 0);
