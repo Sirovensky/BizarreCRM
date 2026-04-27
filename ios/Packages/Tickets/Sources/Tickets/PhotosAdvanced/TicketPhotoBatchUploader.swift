@@ -50,6 +50,10 @@ public struct BatchUploadResult: Sendable {
 
 /// Coordinates concurrent batch uploads with per-item progress reporting.
 /// Route confirmed: `POST /tickets/:id/photos` (tickets.routes.ts:2431).
+///
+/// URLSession is never constructed here — all network I/O is delegated to
+/// `APIClient.uploadTicketPhoto(...)` which lives in the approved Networking
+/// package (§28.3 containment).
 public actor TicketPhotoBatchUploader {
 
     // MARK: State
@@ -115,38 +119,18 @@ public actor TicketPhotoBatchUploader {
     private func uploadItem(_ item: BatchPhotoItem) async -> (UUID, BatchItemProgress) {
         progress[item.id] = .uploading(fraction: 0.0)
 
-        guard let baseURL = await api.currentBaseURL() else {
-            return (item.id, .failed(reason: "Server URL not configured."))
-        }
-
-        let endpoint = baseURL.appendingPathComponent("/api/v1/tickets/\(item.ticketId)/photos")
-        let boundary = UUID().uuidString
-        let body = buildMultipart(item: item, boundary: boundary)
-
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue(
-            "multipart/form-data; boundary=\(boundary)",
-            forHTTPHeaderField: "Content-Type"
-        )
-        request.httpBody = body
-
-        progress[item.id] = .uploading(fraction: 0.5)
-
+        let sessionId = "com.bizarrecrm.batch.\(item.id)"
         do {
-            let sessionConfig = URLSessionConfiguration.background(
-                withIdentifier: "com.bizarrecrm.batch.\(item.id)"
+            progress[item.id] = .uploading(fraction: 0.5)
+
+            // §28.3: URLSession construction delegated to Networking package.
+            let data = try await api.uploadTicketPhoto(
+                imageData: item.imageData,
+                fileName: item.fileName,
+                ticketId: item.ticketId,
+                photoType: item.photoType,
+                sessionIdentifier: sessionId
             )
-            sessionConfig.waitsForConnectivity = true
-            let session = URLSession(configuration: sessionConfig)
-
-            let (data, response) = try await session.data(for: request)
-
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode >= 400 {
-                let msg = String(data: data, encoding: .utf8) ?? "HTTP \(httpResponse.statusCode)"
-                return (item.id, .failed(reason: msg))
-            }
 
             struct UploadedPhoto: Decodable {
                 let url: String?
@@ -161,25 +145,5 @@ public actor TicketPhotoBatchUploader {
         } catch {
             return (item.id, .failed(reason: error.localizedDescription))
         }
-    }
-
-    // MARK: - Multipart builder
-
-    private func buildMultipart(item: BatchPhotoItem, boundary: String) -> Data {
-        var body = Data()
-        let nl = "\r\n"
-        func str(_ s: String) { body.append(Data(s.utf8)) }
-        str("--\(boundary)\(nl)")
-        str("Content-Disposition: form-data; name=\"photos\"; filename=\"\(item.fileName)\"\(nl)")
-        str("Content-Type: image/jpeg\(nl)")
-        str("Content-Length: \(item.imageData.count)\(nl)\(nl)")
-        body.append(item.imageData)
-        str("\(nl)")
-        // type field
-        str("--\(boundary)\(nl)")
-        str("Content-Disposition: form-data; name=\"type\"\(nl)\(nl)")
-        str(item.photoType)
-        str("\(nl)--\(boundary)--\(nl)")
-        return body
     }
 }
