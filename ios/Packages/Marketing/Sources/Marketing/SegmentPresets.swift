@@ -7,7 +7,9 @@ public enum SegmentPresets {
         public let rule: SegmentRuleGroup
     }
 
-    public static let all: [Preset] = [vips, dormant, new, highLTV, `repeat`, atRisk]
+    /// §37 — Full preset library including birthday-month, LTV-tier, and service-history presets.
+    public static let all: [Preset] = [vips, dormant, new, highLTV, `repeat`, atRisk,
+                                       birthdayThisMonth, platinumTier, phoneRepairHistory]
 
     public static let vips = Preset(
         name: "VIPs",
@@ -51,6 +53,32 @@ public enum SegmentPresets {
         rule: SegmentRuleGroup(op: "AND", rules: [
             .leaf(field: "last_visit_days_ago", op: ">", value: "60"),
             .leaf(field: "ticket_count", op: ">", value: "2")
+        ])
+    )
+
+    // MARK: - §37 New audience builder presets
+
+    /// Customers whose birthday falls in the current calendar month.
+    public static let birthdayThisMonth = Preset(
+        name: "Birthday this month",
+        rule: SegmentRuleGroup(op: "AND", rules: [
+            .leaf(field: "birthday_month", op: "=", value: "\(Calendar.current.component(.month, from: Date()))")
+        ])
+    )
+
+    /// Customers in the Platinum LTV tier (highest value).
+    public static let platinumTier = Preset(
+        name: "Platinum tier",
+        rule: SegmentRuleGroup(op: "AND", rules: [
+            .leaf(field: "ltv_tier", op: "=", value: "platinum")
+        ])
+    )
+
+    /// Customers who have had at least one phone repair in service history.
+    public static let phoneRepairHistory = Preset(
+        name: "Phone repair customers",
+        rule: SegmentRuleGroup(op: "AND", rules: [
+            .leaf(field: "service_type", op: "contains", value: "phone")
         ])
     )
 }

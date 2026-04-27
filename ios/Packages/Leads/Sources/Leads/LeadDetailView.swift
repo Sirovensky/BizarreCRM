@@ -50,6 +50,8 @@ public struct LeadDetailView: View {
     @State private var showingEdit = false
     @State private var showingConvert = false
     @State private var showingStatusNote = false
+    // §9.3 — Schedule appointment pre-filled from lead
+    @State private var showingScheduleAppointment = false
 
     public init(api: APIClient, id: Int64) {
         self.api = api
@@ -90,6 +92,12 @@ public struct LeadDetailView: View {
                 }
             }
         }
+        // §9.3 — Schedule appointment sheet (pre-filled from lead)
+        .sheet(isPresented: $showingScheduleAppointment) {
+            if case .loaded(let detail) = vm.state {
+                LeadScheduleAppointmentSheet(api: api, lead: detail)
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -117,6 +125,13 @@ public struct LeadDetailView: View {
                     .keyboardShortcut("s", modifiers: [.command, .shift])
                     #endif
                 }
+                // §9.3 Schedule appointment pre-filled from lead.
+                Button {
+                    showingScheduleAppointment = true
+                } label: {
+                    Label("Schedule", systemImage: "calendar.badge.plus")
+                }
+                .accessibilityLabel("Schedule appointment for this lead")
                 Button {
                     showingEdit = true
                 } label: {
