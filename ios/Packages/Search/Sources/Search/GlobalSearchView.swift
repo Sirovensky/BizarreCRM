@@ -131,6 +131,9 @@ public struct GlobalSearchView: View {
     @State private var filters: SearchFilters = SearchFilters()
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// §18.1 — ⌘F focuses the search field. Flipping this bool is the simplest
+    /// way to re-focus `.searchable` without UIKit introspection.
+    @State private var searchFocused: Bool = false
 
     private let recentStore: RecentSearchStore?
     private let savedStore: SavedSearchStore?
@@ -155,10 +158,20 @@ public struct GlobalSearchView: View {
     // MARK: - Body
 
     public var body: some View {
-        if horizontalSizeClass == .regular {
-            ipadLayout
-        } else {
-            iphoneLayout
+        ZStack {
+            if horizontalSizeClass == .regular {
+                ipadLayout
+            } else {
+                iphoneLayout
+            }
+            // §18.1 — Invisible button captures ⌘F globally and flips searchFocused.
+            // The layouts use `.searchable(text:isPresented:)` which responds to
+            // the focused state flip on iPad/Mac. On iPhone the toolbar search
+            // icon uses the same toggle.
+            Button("") { searchFocused = true }
+                .opacity(0)
+                .accessibilityHidden(true)
+                .keyboardShortcut("f", modifiers: .command)
         }
     }
 

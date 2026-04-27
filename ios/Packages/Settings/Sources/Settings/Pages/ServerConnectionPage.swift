@@ -165,6 +165,27 @@ public struct ServerConnectionPage: View {
                 .accessibilityLabel("Connection failed: \(msg)")
             }
         }
+            // §65.1 — Universal Links transparency (agent-9 b5)
+            Section {
+                VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                    Label("Universal Links", systemImage: "link")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Text("Cloud-hosted tenants (*.bizarrecrm.com) open the app via HTTPS — Apple validates the AASA file once per device.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text("Self-hosted tenants use the bizarrecrm:// custom URI scheme instead. Apple entitlements are compiled per-domain, so per-tenant re-signing is not supported.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text("Public paths (/public/*) are excluded from the AASA so customers always see the web page, not the app.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .listRowBackground(Color.bizarreSurface1)
+            } header: {
+                Text("Deep links")
+            }
+        }
         .navigationTitle("Server Connection")
         #if canImport(UIKit)
         .listStyle(.insetGrouped)
