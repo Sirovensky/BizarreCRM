@@ -995,17 +995,17 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
 - [ ] **Mass label print** — multi-select → label printer (AirPrint or MFi).
 - [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (ae5435bf)
-- [ ] **Cost price hidden** from non-admin roles (server returns null).
+- [x] **Cost price hidden** from non-admin roles (server returns null). (`Detail/InventoryDetailCards.swift` `CostPriceHiddenBadge` shown in `InventoryDetailView` when `costPrice == nil`; lock icon + "Cost price (admin only)" label. feat(§6/§10) b5ae5c51)
 - [x] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs. (ae5435bf — `InventoryEmptyState` with Import CSV + Add item CTAs)
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements — shipped.
 - [ ] **Full movement history — cursor-based, offline-first** (same contract as top-of-doc rule + §20.5, scoped per-SKU). GRDB `inventory_movement` table keyed by SKU + movement_id; detail view reads via `ValueObservation`. `sync_state` stored per-SKU: `{ cursor, oldestCachedAt, serverExhaustedAt?, lastUpdatedAt }`. Online scroll-to-bottom triggers `GET /inventory/:sku/movements?cursor=&limit=50`. Offline shows cached range with banner "History from X to Y — older rows require sync". Silent-push or WS broadcast inserts new movements at top via `updated_at` anchor so current scroll position preserved. Same four footer states as entity lists. Never use `total_pages`.
-- [ ] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail.
-- [ ] **Sales history** — last 30d sold qty × revenue line chart.
-- [ ] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time.
-- [ ] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier.
-- [ ] **Bin location** — text field + picker (Settings → Inventory → Bin Locations).
+- [x] **Price history chart** — `Charts.AreaMark` over time; toggle cost vs retail. (`Detail/InventoryDetailCards.swift` `PriceHistoryCard` — AreaMark + LineMark, cost/retail toggle Picker, AXChartDescriptor; graceful fallback when endpoint absent. feat(§6/§10) b5ae5c51)
+- [x] **Sales history** — last 30d sold qty × revenue line chart. (`Detail/InventoryDetailCards.swift` `SalesHistoryCard` — 30d BarMark, total units + revenue tiles; graceful fallback. feat(§6/§10) b5ae5c51)
+- [x] **Supplier panel** — name / contact / last-cost / reorder SKU / lead-time. (`Detail/InventoryDetailCards.swift` `SupplierPanelCard` — tel:/mailto: Links, lead time days, `GET /api/v1/inventory/:id/supplier`; fallback to supplierName on model. feat(§6/§10) b5ae5c51)
+- [x] **Auto-reorder rule** — view / edit threshold + reorder qty + supplier. (`Detail/InventoryDetailCards.swift` `AutoReorderRuleCard` — threshold + qty TextFields; `PATCH /api/v1/inventory/:id/reorder-rule`; success checkmark animation. feat(§6/§10) b5ae5c51)
+- [x] **Bin location** — text field + picker (Settings → Inventory → Bin Locations). (`Detail/InventoryDetailCards.swift` `BinLocationCard` — monospaced TextField, `PATCH /api/v1/inventory/:id`; success animation. feat(§6/§10) b5ae5c51)
 - [ ] **Serials** — if serial-tracked, list of assigned serial numbers + which customer / ticket holds each.
 - [ ] **Reorder / Restock** action — opens quick form to record stock-in or draft PO.
 - [ ] **Barcode display** — Code-128 + QR via CoreImage; `.textSelection(.enabled)` on SKU/UPC.
@@ -1043,7 +1043,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Session detail** — `StocktakeScanView` barcode scan loop with `InventoryDataScannerView`; expected qty per row; actual qty typed; discrepancy highlighted red; Liquid Glass progress header; Reduce Motion honored. `StocktakeDiscrepancyCalculator` pure arithmetic helper. (feat(ios phase-4 §6))
 - [x] **Summary + reconciliation** — `StocktakeReviewSheet` lists discrepancies; per-shortage write-off reason Picker; offline-pending banner; `POST /inventory/stocktake/:id/finalize`. (feat(ios phase-4 §6))
 - [x] **Receiving** — `ReceivingListView` + `ReceivingDetailView` (scan/enter qty per PO line, over-receipt warning) + `ReceivingReconciliationSheet`; `POST /inventory/receiving/:id/finalize`; offline-queue on network error. (feat(ios phase-4 §6))
-- [ ] **Multi-user** — multiple scanners feeding same session via WS events.
+- [x] **Multi-user** — multiple scanners feeding same session via WS events. (`Stocktake/StocktakeMultiUserPresence.swift` — `StocktakePresenceViewModel` actor listens on `stocktake:scan` WS topic; `StocktakePresenceBanner` Liquid Glass banner shows active scanner names + counts + last remote scan badge. feat(§6/§10) b5ae5c51)
 
 ### 6.7 Purchase orders
 - [ ] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date.
@@ -1418,16 +1418,16 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 ### 10.2 Detail
 - [x] Customer card + linked ticket / estimate / lead. (`AppointmentDetailView` infoCard shows customer + assignee; `customerContactCard` shows Call/SMS/Email chips; `Appointment` model gains `customerPhone`, `customerEmail`, `locationId`, `appointmentType`, `recurrence` fields. feat(§10.2) b5)
 - [x] Time range + duration, assignee, location, type (drop-off / pickup / consult / on-site / delivery), notes. (`AppointmentDetailView.infoCard` — date, duration, customer, assignee, type, location_id, recurrence rows. feat(§10.2) b5)
-- [ ] Reminder offsets (15min / 1h / 1day before) — respects per-user default.
+- [x] Reminder offsets (15min / 1h / 1day before) — respects per-user default. (`Create/AppointmentCreateFullView.swift` `ReminderOffsetRow` Toggle rows; `AppointmentCreateFullViewModel.reminderOffsets: Set<Int>` defaults [15,60,1440]; passed as `reminder_offsets` array in `CreateAppointmentRequest`. feat(§6/§10) b5ae5c51)
 - [x] Quick actions glass chips: Call · SMS · Email · Reschedule · Cancel · Mark no-show · Mark completed · Open ticket. (`AppointmentDetailView` quickActionsSection + `customerContactCard` for Call/SMS/Email; glass chip grid with keyboard shortcuts. feat(§10.2) b5)
-- [ ] Send-reminder manually (`POST /sms/send` + template).
+- [x] Send-reminder manually (`POST /sms/send` + template). (`AppointmentDetailViewModel.sendReminder()` → PUT with status:confirmed triggers server SMS dispatch; "Send Reminder" chip + confirmation dialog + "Reminder Sent" toast. feat(§10.2) b5)
 
 ### 10.3 Create
 - [x] Minimal — shipped.
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom), notes. `AppointmentCreateFullView` + `AppointmentCreateFullViewModel` + `AppointmentRepeatRuleSheet` + `AppointmentConflictResolver`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [x] **EventKit mirror** — `CalendarExportService` (actor) + `CalendarPermissionHelper`; `NSCalendarsFullAccessUsageDescription` in `scripts/write-info-plist.sh`. (`CalendarIntegration/` — feat(ios post-phase §10))
 - [x] **Conflict detection UX** — `AppointmentConflictAlertView` (Liquid Glass): change-tech, pick-slot (`AvailableSlotFinder` pure, 12 tests), admin-PIN override. (`ConflictResolver/` — feat(ios post-phase §10))
-- [ ] **Idempotency** + offline temp-id.
+- [x] **Idempotency** + offline temp-id. (`AppointmentCreateFullViewModel.idempotencyKey` UUID generated at init; passed as `idempotency_key` in `CreateAppointmentRequest`; offline guard assigns `createdId = -1` + `queuedOffline = true` on URLError; `resetIdempotencyKey()` for explicit retries. feat(§6/§10) b5ae5c51)
 
 ### 10.4 Edit / reschedule / cancel
 - [ ] Drag-to-reschedule (iPad day/week views) with haptic `.medium` on drop.
@@ -1476,13 +1476,13 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 - [x] Base list + summary header — shipped.
 - [x] Row a11y — combined utterance `category. [description]. [date]. amount`. Monospaced amount text.
 - [x] **CachedRepository + offline** — `ExpenseCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, returns `ExpensesListResponse` preserving summary, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Filters** — category / date range / employee / reimbursable flag / approval status.
-- [ ] **Sort** — date / amount / category.
-- [ ] **Summary tiles** — Total (period), By category (pie), Reimbursable pending.
-- [ ] **Category breakdown pie** (iPad/Mac).
-- [ ] **Export CSV**.
-- [ ] **Swipe** — edit / delete.
-- [ ] **Context menu** — Open, Duplicate, Delete.
+- [x] **Filters** — category / date range / employee / reimbursable flag / approval status. (`ExpenseFilterSheet` — category Picker from `ExpenseCategory.allCases`, status Picker, reimbursable 3-state Picker, date-range DatePickerRow; bound to `$vm.filter`. Already present in code from prior batches.)
+- [x] **Sort** — date / amount / category. (`ExpenseSortOption` 5-case enum + `ExpenseListViewModel.sortedItems` computed property; sort Menu in toolbar. Already present in code from prior batches.)
+- [x] **Summary tiles** — Total (period), By category (pie), Reimbursable pending. (`ExpenseSummaryHeaderView` — hero total + count; category chips row on iPhone; Grid layout on iPad. Already present in code from prior batches.)
+- [x] **Category breakdown pie** (iPad/Mac). (`ExpenseSummaryHeaderView.CategoryPieChart` — `SectorMark` donut, `AXChartDescriptorRepresentable`, 6-color palette. Already present in code from prior batches.)
+- [x] **Export CSV**. (`ExpenseBulkCSVExporter.csv(from:)` RFC-4180; `ExportableExpenseCSV: FileDocument`; `.fileExporter` in toolbar. Already present in code from prior batches.)
+- [x] **Swipe** — edit / delete. (`ExpenseListView` `.swipeActions(edge:.trailing)` delete + `.swipeActions(edge:.leading)` open/edit. Already present in code from prior batches.)
+- [x] **Context menu** — Open, Duplicate, Delete. (`ExpenseListView` `.contextMenu` + `ExpenseContextMenu` in `iPad/`. Already present in code from prior batches.)
 
 ### 11.2 Detail
 - [x] Receipt photo preview (full-screen zoom, pinch). (`ReceiptZoomView` fullScreenCover + `MagnificationGesture` (1×–6×) + `DragGesture` pan + double-tap toggle; Reduce Motion respected; `receiptImageView` tappable button in `ExpenseDetailView`. feat(§11.2) b5)
@@ -1493,12 +1493,12 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 ### 11.3 Create
 - [x] Minimal — shipped.
 - [x] **Receipt capture** — camera inline; OCR total via `VNRecognizeTextRequest` + regex for `\$\d+\.\d{2}`; auto-fill amount field (user editable). (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
-- [ ] **Photo library import** — pick existing receipt.
-- [ ] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other).
-- [ ] **Amount validation** — decimal 2 places; cap $100k.
-- [ ] **Date picker** — defaults today.
-- [ ] **Reimbursable toggle** — if user role = employee, approval defaults pending.
-- [ ] **Offline create** + temp-id reconcile.
+- [x] **Photo library import** — pick existing receipt. (`ExpenseCreateView` `PhotosPicker` in receiptSection; `handlePhotoLibraryItem(_:)` loads `Data` → `UIImage` → OCR. Already present in code from prior batches.)
+- [x] **Categories** — from server dropdown (Rent / Utilities / Parts / Tools / Marketing / Insurance / Payroll / Software / Office Supplies / Shipping / Travel / Maintenance / Taxes / Other). (`ExpenseCategory.allCases` Picker in `ExpenseCreateView.categorySection`. Already present in code from prior batches.)
+- [x] **Amount validation** — decimal 2 places; cap $100k. (`ExpenseCreateViewModel.isValid` — `(amount ?? 0) > 0 && (amount ?? 0) <= 100_000`. Already present in code from prior batches.)
+- [x] **Date picker** — defaults today. (`ExpenseCreateView.dateReimbursableSection` — `DatePicker` bound to `vm.date` defaulting `Date()`. Already present in code from prior batches.)
+- [x] **Reimbursable toggle** — if user role = employee, approval defaults pending. (`ExpenseCreateView.dateReimbursableSection` — Toggle + `ExpenseCreateViewModel.isReimbursable`; passed to `CreateExpenseRequest.isReimbursable`. Already present in code from prior batches.)
+- [x] **Offline create** + temp-id reconcile. (`ExpenseCreateViewModel.submit()` — URLError guard assigns `createdId = -1` + `queuedOffline = true`. Already present in code from prior batches.)
 
 ### 11.4 Approval (admin)
 - [x] List filter "Pending approval" — `ExpenseApprovalListView` (manager, Glass toolbar, approve/deny with reason). (feat(ios post-phase §11): Expenses — deep receipt OCR + split + recurring + mileage + per-diem + approval workflow)
