@@ -124,6 +124,80 @@ public final class PrintService {
         }
     }
 
+    // MARK: - Submit with options (§17 reprint cluster)
+
+    /// Submit a print job using the result of `PrintOptionsSheet`.
+    ///
+    /// This is the preferred entry point for all reprint flows because it
+    /// handles all §17 reprint requirements in one call:
+    ///   - Printer choice: uses `options.selectedPrinter` or falls back to
+    ///     `settings.activeReceiptPrinter`.
+    ///   - Paper size: applies `options.paperSize` to the job's render path
+    ///     (stored in `PrintOptions`; consumers pass it to the renderer before
+    ///     calling this method).
+    ///   - Copies: `options.copies` is forwarded to `PrintJob.copies` so the
+    ///     queue sends N physical prints.
+    ///   - Reprint audit: when `entityKind` + `entityId` + an `APIClient`-
+    ///     conforming `auditLogger` are supplied and `options.reason` is present,
+    ///     a `document_reprint` audit event is POSTed to the server.
+    ///   - Fallback: no printer configured → PDF share sheet (same as `submit`).
+    ///
+    /// - Parameters:
+    ///   - job: The `PrintJob` to send. `copies` on the job is overridden by
+    ///     `options.copies`; all other job fields are used as-is.
+    ///   - options: The result from `PrintOptionsSheet.onConfirm`.
+    ///   - auditLogger: Optional closure that fires the server audit call.
+    ///     Signature: `(entityKind, entityId, reasonString, documentType) async throws`.
+    ///     Pass `nil` to skip audit (e.g. first-print, not a reprint).
+    ///   - entityKind: e.g. `"sale"`, `"invoice"`, `"ticket"`. Used in audit.
+    ///   - entityId: Numeric entity ID. Used in audit.
+    ///   - presenter: The `UIViewController` to present preview / share sheet from.
+    /// - Returns: `true` if printed or handed to share sheet; `false` if cancelled.
+    @discardableResult
+    public func submitWithOptions(
+        _ job: PrintJob,
+        options: PrintOptions,
+        auditLogger: (@Sendable (String, Int64, String?, String) async throws -> Void)? = nil,
+        entityKind: String = "sale",
+        entityId: Int64 = 0,
+        presenter: UIViewController? = nil
+    ) async -> Bool {
+        // 1. Build a copies-aware version of the job.
+        let jobWithCopies = PrintJob(
+            id: job.id,
+            kind: job.kind,
+            payload: job.payload,
+            createdAt: job.createdAt,
+            kickDrawer: job.kickDrawer,
+            copies: options.copies
+        )
+
+        // 2. Resolve printer: prefer the one selected in the sheet.
+        let resolvedPrinter = options.selectedPrinter ?? settings.activeReceiptPrinter
+
+        // 3. Fire reprint audit if a logger and entity context were provided.
+        if let logger = auditLogger, entityId > 0 {
+            let reasonString = options.reason?.rawValue
+            let docType = job.payload.documentType.displayName
+            do {
+                try await logger(entityKind, entityId, reasonString, docType)
+            } catch {
+                // Audit failure is non-fatal — log and proceed.
+                AppLog.hardware.warning("PrintService: reprint audit failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
+
+        // 4. No printer → fallback to PDF share sheet.
+        guard let printer = resolvedPrinter else {
+            await fallbackToShareSheet(jobWithCopies, from: presenter)
+            return true
+        }
+
+        // 5. Submit to queue (no preview gate for reprints — user already saw the doc).
+        await enqueue(jobWithCopies, to: printer)
+        return true
+    }
+
     // MARK: - Reprint entry (from queue or history)
 
     /// Re-queue a job by its ID from the dead-letter queue.

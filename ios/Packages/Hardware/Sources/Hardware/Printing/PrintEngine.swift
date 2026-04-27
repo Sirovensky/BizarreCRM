@@ -76,19 +76,24 @@ public struct PrintJob: Sendable {
     /// the print data and cut command. Only effective for thermal receipt printers
     /// that have a drawer connected via the RJ11 port. Defaults to `false`.
     public let kickDrawer: Bool
+    /// Number of copies to print. Must be ≥ 1; clamped on init. Defaults to 1.
+    /// The queue sends the same job to the engine `copies` times sequentially.
+    public let copies: Int
 
     public init(
         id: UUID = UUID(),
         kind: JobKind,
         payload: JobPayload,
         createdAt: Date = Date(),
-        kickDrawer: Bool = false
+        kickDrawer: Bool = false,
+        copies: Int = 1
     ) {
         self.id = id
         self.kind = kind
         self.payload = payload
         self.createdAt = createdAt
         self.kickDrawer = kickDrawer
+        self.copies = max(1, copies)
     }
 }
 

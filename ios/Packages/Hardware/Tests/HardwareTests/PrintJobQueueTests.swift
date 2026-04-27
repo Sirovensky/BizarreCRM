@@ -243,4 +243,55 @@ final class PrintJobQueueTests: XCTestCase {
         XCTAssertEqual(updated.status, .printing)
         XCTAssertEqual(updated.id, printer.id, "ID must be preserved")
     }
+
+    // MARK: - Copies support (§17 reprint options)
+
+    func test_enqueue_2copies_callsEngineExactlyTwice() async {
+        let engine = MockPrintEngine(failCount: 0)
+        let queue = PrintJobQueue(engine: engine, policy: .default)
+        let job = PrintJob(
+            kind: .receipt,
+            payload: Self.sampleJob().payload,
+            copies: 2
+        )
+        await queue.enqueue(job, to: Self.samplePrinter)
+
+        let pending = await queue.pendingCount
+        XCTAssertEqual(pending, 0, "All copies should have printed")
+        XCTAssertEqual(engine.printCallCount, 2, "Engine should be called once per copy")
+    }
+
+    func test_enqueue_3copies_callsEngineExactlyThreeTimes() async {
+        let engine = MockPrintEngine(failCount: 0)
+        let queue = PrintJobQueue(engine: engine, policy: .default)
+        let job = PrintJob(
+            kind: .label,
+            payload: Self.sampleJob().payload,
+            copies: 3
+        )
+        await queue.enqueue(job, to: Self.samplePrinter)
+
+        XCTAssertEqual(engine.printCallCount, 3)
+    }
+
+    func test_enqueue_copiesZero_treatedAs1() async {
+        let engine = MockPrintEngine(failCount: 0)
+        let queue = PrintJobQueue(engine: engine, policy: .default)
+        let job = PrintJob(
+            kind: .receipt,
+            payload: Self.sampleJob().payload,
+            copies: 0   // should be clamped to 1 in PrintJob.init
+        )
+        // copies == 0 is clamped to 1 by PrintJob, so engine called once.
+        await queue.enqueue(job, to: Self.samplePrinter)
+        XCTAssertEqual(engine.printCallCount, 1)
+    }
+
+    func test_enqueue_firstCopyKeepsOriginalJobId() async {
+        let engine = MockPrintEngine(failCount: 0)
+        let queue = PrintJobQueue(engine: engine, policy: .default)
+        let originalJob = PrintJob(kind: .receipt, payload: Self.sampleJob().payload, copies: 1)
+        await queue.enqueue(originalJob, to: Self.samplePrinter)
+        XCTAssertEqual(engine.lastJob?.id, originalJob.id, "First (and only) copy must keep original UUID")
+    }
 }

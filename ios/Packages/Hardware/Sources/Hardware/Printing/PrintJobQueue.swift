@@ -66,10 +66,31 @@ public actor PrintJobQueue {
     // MARK: Enqueue
 
     /// Add a job to the queue and trigger a drain pass.
+    ///
+    /// If `job.copies > 1`, the same job payload is enqueued `copies` times
+    /// as distinct entries (each gets a unique UUID) so the retry policy applies
+    /// independently per copy.
     public func enqueue(_ job: PrintJob, to printer: Printer) async {
-        let entry = QueueEntry(job: job, targetPrinter: printer)
-        pendingJobs.append(entry)
-        AppLog.hardware.info("PrintJobQueue: enqueued \(job.id, privacy: .public) (\(job.kind.rawValue)). Pending: \(self.pendingJobs.count)")
+        let count = max(1, job.copies)
+        for copyIndex in 0..<count {
+            // Each copy gets a unique UUID so dead-letter management stays per-entry.
+            let copyJob: PrintJob
+            if copyIndex == 0 {
+                copyJob = job   // first copy keeps original UUID (for audit linkage)
+            } else {
+                copyJob = PrintJob(
+                    id: UUID(),
+                    kind: job.kind,
+                    payload: job.payload,
+                    createdAt: job.createdAt,
+                    kickDrawer: job.kickDrawer,
+                    copies: 1   // each sub-job is a single physical copy
+                )
+            }
+            let entry = QueueEntry(job: copyJob, targetPrinter: printer)
+            pendingJobs.append(entry)
+        }
+        AppLog.hardware.info("PrintJobQueue: enqueued \(job.id, privacy: .public) (\(job.kind.rawValue)) ×\(count). Pending: \(self.pendingJobs.count)")
         await drain()
     }
 
