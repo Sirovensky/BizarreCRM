@@ -37,4 +37,21 @@ public enum AppLog {
     public static func redacted(_ input: String) -> String {
         LogRedactor.redact(input)
     }
+
+    // MARK: — §32.1 OSSignposter helpers
+
+    /// OSSignposter for sync cycles — wire to Instruments Time Profiler.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let id = AppLog.Signpost.sync.begin("sync_cycle")
+    /// defer { AppLog.Signpost.sync.end("sync_cycle", id) }
+    /// ```
+    public enum Signpost {
+        public static let sync        = OSSignposter(subsystem: subsystem, category: "sync")
+        public static let api         = OSSignposter(subsystem: subsystem, category: "networking")
+        public static let listRender  = OSSignposter(subsystem: subsystem, category: "ui")
+        public static let dbWrite     = OSSignposter(subsystem: subsystem, category: "db")
+        public static let imageLoad   = OSSignposter(subsystem: subsystem, category: "ui")
+    }
 }

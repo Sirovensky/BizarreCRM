@@ -1609,7 +1609,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Recording playback** — `GET /voice/calls/:id/recording` → `AVAudioPlayer`.
 - [ ] **Hangup** — `POST /voice/call/:id/hangup`.
 - [ ] **Transcription display** — if server provides.
-- [x] **Incoming call push** (PushKit VoIP) → CallKit UI. (`voip` UIBackgroundMode added to `write-info-plist.sh`; PushKit entitlement covered by existing `aps-environment`; unblocks CallKit wiring by Agent 7. feat(§12.10+§42.4): voip+bluetooth-central UIBackgroundModes COMMIT_SHA_PLACEHOLDER)
+- [x] **Incoming call push** (PushKit VoIP) → CallKit UI. (`voip` UIBackgroundMode added to `write-info-plist.sh`; PushKit entitlement covered by existing `aps-environment`; unblocks CallKit wiring by Agent 7. feat(§12.10+§42.4): voip+bluetooth-central UIBackgroundModes 18f052de)
 
 ### 12.11 Push → deep link
 - [x] Push notification on new inbound SMS with category `SMS_INBOUND`. (`SmsPushHandler.registerCategory()` in `Communications/Sms/Push/SmsPushHandler.swift`.) (feat(§12.11): SMS_INBOUND push category + deep-link handler f61841ce)
@@ -3523,7 +3523,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 
 ### 20.6 Connectivity detection
 - [x] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive). (`SyncManager.autoStart()` subscribes and triggers `syncNow()` on reconnect.)
-- [ ] **Offline banner** — glass chip at top of every screen when path == none.
+- [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier PENDING_COMMIT)
 - [ ] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override).
 - [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
 
@@ -4253,7 +4253,7 @@ Tasks:
 - [x] `NSFaceIDUsageDescription` — "Unlock BizarreCRM with Face ID." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, barcode scanner, and weight scale." (Card reader is NOT Bluetooth — BlockChyp uses IP only per §17.3.) <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `NSLocalNetworkUsageDescription` — "Find printers and terminals on your network." <!-- shipped ac159516 [actionplan agent-10 b2] -->
-- [x] `NFCReaderUsageDescription` — "Read device serial tags." <!-- feat(§28.5): NFCReaderUsageDescription in write-info-plist.sh COMMIT_SHA_PLACEHOLDER -->
+- [x] `NFCReaderUsageDescription` — "Read device serial tags." <!-- feat(§28.5): NFCReaderUsageDescription in write-info-plist.sh 18f052de -->
 - [x] `NSCalendarsUsageDescription` — "Sync appointments with your calendar." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.6 Export compliance
@@ -4277,7 +4277,7 @@ Three different iOS signals, three different defenses:
 | Sensitive input fields | — | **Yes, iOS 17+**: `UIView.isSecure = true` marks a view as content-protected; its pixels are excluded from screen-record capture AND from screenshots (replaced with black). Equivalent SwiftUI modifier pattern (via UIViewRepresentable wrapper) until Apple ships one. | Apply on PIN entry, OTP entry, PAN-masked displays, full-card reveal (not used but the plumbing exists). |
 
 Tasks:
-- [ ] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active.
+- [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay PENDING_COMMIT)
 - [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`.
 - [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
 - [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
@@ -4507,12 +4507,12 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 ## §30. Design System & Motion
 
 ### 30.1 Color tokens (`DesignSystem/Colors.swift`)
-- [ ] **Brand**: `brandPrimary` (orange), `brandSecondary` (teal), `brandTertiary` (magenta).
-- [ ] **Surfaces**: `surfaceBase` (dark near-black), `surfaceElevated`, `surfaceSunken`, `surfaceOverlay`.
-- [ ] **Text**: `text`, `textSecondary`, `textTertiary`, `textOnBrand`, `textMuted`.
-- [ ] **Dividers**: `divider`, `dividerStrong`.
-- [ ] **Status**: `success`, `warning`, `danger`, `info`.
-- [ ] **Glass tints**: `glassTintDark`, `glassTintLight`.
+- [x] **Brand**: `brandPrimary` (orange), `brandSecondary` (teal), `brandTertiary` (magenta). (`bizarrePrimary`, `bizarreTeal`, `bizarreMagenta` in `BrandColors.swift`. shipped bcbccaa8)
+- [x] **Surfaces**: `surfaceBase` (dark near-black), `surfaceElevated`, `surfaceSunken`, `surfaceOverlay`. (`bizarreSurfaceBase/Surface1/Surface2` in `BrandColors.swift`. shipped bcbccaa8)
+- [x] **Text**: `text`, `textSecondary`, `textTertiary`, `textOnBrand`, `textMuted`. (`bizarreText` + `bizarreTextSecondary` + `bizarreTextTertiary` + `bizarreTextOnBrand` + `bizarreTextMuted` added to `BrandColors.swift`. feat(§30.1): text + divider + glass tint color tokens PENDING_COMMIT)
+- [x] **Dividers**: `divider`, `dividerStrong`. (`bizarreDivider` + `bizarreDividerStrong` added to `BrandColors.swift`. feat(§30.1) PENDING_COMMIT)
+- [x] **Status**: `success`, `warning`, `danger`, `info`. (`bizarreSuccess/Warning/Danger/Info` in `BrandColors.swift`. shipped bcbccaa8)
+- [x] **Glass tints**: `glassTintDark`, `glassTintLight`. (`bizarreGlassTintDark` + `bizarreGlassTintLight` added to `BrandColors.swift`. feat(§30.1) PENDING_COMMIT)
 - [ ] **All tokens** — asset-catalog with light + dark + high-contrast variants.
 
 ### 30.2 Spacing (8-pt grid)
@@ -4808,7 +4808,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
 - [ ] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`.
 - [ ] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII.
-- [ ] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders.
+- [x] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders. (`AppLog.Signpost` enum in `Core/Logging/AppLog.swift` — `.sync`, `.api`, `.listRender`, `.dbWrite`, `.imageLoad` `OSSignposter` instances for Instruments Time Profiler. feat(§32.1): OSSignposter catalog PENDING_COMMIT)
 - [ ] **In-app viewer** — Settings → Diagnostics streams live log (filters by category/level).
 
 ### 32.2 MetricKit
@@ -5429,8 +5429,8 @@ See §16.10 for core flow. Additional items:
 - [ ] **Outbound recent calls** appear in native Phone app.
 
 ### 42.4 PushKit (VoIP push)
-- [x] **Server pushes VoIP** → iOS wakes app → CallKit invocation. (`voip` UIBackgroundMode added in `write-info-plist.sh`; `aps-environment` entitlement already present; Agent 7 CallKit wiring unblocked. feat(§42.4): voip UIBackgroundMode COMMIT_SHA_PLACEHOLDER)
-- [x] **Required entitlement**. (`aps-environment = development` already in `BizarreCRM.entitlements`; verified read-only. COMMIT_SHA_PLACEHOLDER)
+- [x] **Server pushes VoIP** → iOS wakes app → CallKit invocation. (`voip` UIBackgroundMode added in `write-info-plist.sh`; `aps-environment` entitlement already present; Agent 7 CallKit wiring unblocked. feat(§42.4): voip UIBackgroundMode 18f052de)
+- [x] **Required entitlement**. (`aps-environment = development` already in `BizarreCRM.entitlements`; verified read-only. 18f052de)
 
 ### 42.5 Voicemail
 - [x] **List + playback** — `VoicemailListView` + `VoicemailPlayerView` with `AVPlayer`, scrubber, play/pause, 1x/1.5x/2x speed chips, Reduce Motion aware.

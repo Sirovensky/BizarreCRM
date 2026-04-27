@@ -24,6 +24,30 @@ public extension Color {
     static let bizarreDanger             = Color("DangerRed",             bundle: .main)
     static let bizarreInfo               = Color("InfoBlue",              bundle: .main)
 
+    // MARK: - §30.1 Dividers
+    /// Subtle 1pt separator between list rows and surface sections.
+    static let bizarreDivider           = Color("Divider",              bundle: .main)
+    /// Stronger 1-2pt separator for section breaks and card edges.
+    static let bizarreDividerStrong     = Color("DividerStrong",        bundle: .main)
+
+    // MARK: - §30.1 Glass tints
+    /// Dark-mode glass tint overlay — very low opacity brand-warm dark.
+    static let bizarreGlassTintDark     = Color("GlassTintDark",        bundle: .main)
+    /// Light-mode glass tint overlay — very low opacity warm cream.
+    static let bizarreGlassTintLight    = Color("GlassTintLight",       bundle: .main)
+
+    // MARK: - §30.1 Text semantic aliases
+    /// Primary foreground text — alias of `bizarreOnSurface`.
+    static let bizarreText              = Color("OnSurface",            bundle: .main)
+    /// Secondary / muted text — alias of `bizarreOnSurfaceMuted`.
+    static let bizarreTextSecondary     = Color("OnSurfaceMuted",       bundle: .main)
+    /// Tertiary / disabled text — lower opacity OnSurface.
+    static let bizarreTextTertiary      = Color("TextTertiary",         bundle: .main)
+    /// Text on brand-primary fill.
+    static let bizarreTextOnBrand       = Color("OnBrandOrange",        bundle: .main)
+    /// Placeholder / inactive muted text.
+    static let bizarreTextMuted         = Color("OnSurfaceMuted",       bundle: .main)
+
     // MARK: - POS primary / on-primary aliases
     // Used by the repair-flow and tender CTAs to express colour intent without
     // hard-coding dark/light hex values. Wired to the existing orange tokens.
@@ -56,4 +80,16 @@ public extension ShapeStyle where Self == Color {
     static var bizarreDanger:          Color { .bizarreDanger }
     static var bizarreInfo:            Color { .bizarreInfo }
     static var bizarreOrangeBright:    Color { .bizarreOrangeBright }
+    // §30.1 Dividers
+    static var bizarreDivider:         Color { .bizarreDivider }
+    static var bizarreDividerStrong:   Color { .bizarreDividerStrong }
+    // §30.1 Glass tints
+    static var bizarreGlassTintDark:   Color { .bizarreGlassTintDark }
+    static var bizarreGlassTintLight:  Color { .bizarreGlassTintLight }
+    // §30.1 Text semantic aliases
+    static var bizarreText:            Color { .bizarreText }
+    static var bizarreTextSecondary:   Color { .bizarreTextSecondary }
+    static var bizarreTextTertiary:    Color { .bizarreTextTertiary }
+    static var bizarreTextOnBrand:     Color { .bizarreTextOnBrand }
+    static var bizarreTextMuted:       Color { .bizarreTextMuted }
 }
