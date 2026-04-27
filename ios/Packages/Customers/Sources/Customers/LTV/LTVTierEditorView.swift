@@ -244,7 +244,7 @@ final class LTVTierEditorViewModel {
         isLoading = true
         defer { isLoading = false }
         // Try to fetch tenant-specific thresholds; fall back silently.
-        if let policy: LTVPolicy = try? await api.get("/api/v1/tenant/ltv-policy", as: LTVPolicy.self) {
+        if let policy: LTVPolicy = try? await api.getLTVPolicy() {
             let t = LTVThresholds(
                 silverCents:   policy.silverCents,
                 goldCents:     policy.goldCents,
@@ -270,7 +270,7 @@ final class LTVTierEditorViewModel {
             perks:         allPerks
         )
         do {
-            let updated: LTVPolicy = try await api.patch("/api/v1/tenant/ltv-policy", body: body, as: LTVPolicy.self)
+            let updated = try await api.updateLTVPolicy(body)
             thresholds = LTVThresholds(
                 silverCents:   updated.silverCents,
                 goldCents:     updated.goldCents,
@@ -318,33 +318,4 @@ final class LTVTierEditorViewModel {
     }
 }
 
-// MARK: - API models
-
-private struct LTVPolicy: Codable, Sendable {
-    let silverCents:   Int
-    let goldCents:     Int
-    let platinumCents: Int
-    let perks:         [LTVPerk]?
-
-    enum CodingKeys: String, CodingKey {
-        case silverCents   = "silver_cents"
-        case goldCents     = "gold_cents"
-        case platinumCents = "platinum_cents"
-        case perks
-    }
-}
-
-private struct LTVPolicyPatch: Codable, Sendable {
-    let silverCents:   Int
-    let goldCents:     Int
-    let platinumCents: Int
-    let perks:         [LTVPerk]
-
-    enum CodingKeys: String, CodingKey {
-        case silverCents   = "silver_cents"
-        case goldCents     = "gold_cents"
-        case platinumCents = "platinum_cents"
-        case perks
-    }
-}
 #endif

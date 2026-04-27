@@ -57,7 +57,7 @@ public final class NPSSurveyViewModel {
             comment: freeText
         )
         do {
-            _ = try await api.post("surveys/nps", body: body, as: SurveySubmitResponse.self)
+            _ = try await api.submitNPS(body)
             didSubmit = true
         } catch {
             errorMessage = error.localizedDescription

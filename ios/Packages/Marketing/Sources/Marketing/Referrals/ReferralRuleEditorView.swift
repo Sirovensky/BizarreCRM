@@ -49,7 +49,7 @@ public final class ReferralRuleEditorViewModel {
         isSaving = true
         errorMessage = nil
         do {
-            _ = try await api.post("referrals/rule", body: rule, as: ReferralRule.self)
+            _ = try await api.saveReferralRule(rule)
             didSave = true
         } catch {
             errorMessage = error.localizedDescription

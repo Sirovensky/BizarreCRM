@@ -44,7 +44,7 @@ public final class ReviewSettingsViewModel {
             facebookURL: URL(string: facebookURL)
         )
         do {
-            _ = try await api.post("settings/review-platforms", body: settings, as: ReviewPlatformSettings.self)
+            _ = try await api.saveReviewPlatformSettings(settings)
             didSave = true
         } catch {
             errorMessage = error.localizedDescription

@@ -50,7 +50,7 @@ public final class CSATSurveyViewModel {
             comment: comment
         )
         do {
-            _ = try await api.post("surveys/csat", body: body, as: SurveySubmitResponse.self)
+            _ = try await api.submitCSAT(body)
             didSubmit = true
         } catch {
             errorMessage = error.localizedDescription
