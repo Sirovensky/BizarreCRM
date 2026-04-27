@@ -4047,6 +4047,133 @@ router.delete('/links/:linkId', requirePermission('tickets.edit'), asyncHandler(
 }));
 
 // ===================================================================
+// POST /:id/duplicate - Duplicate ticket (header + devices + parts)
+// ===================================================================
+router.post('/:id/duplicate', requirePermission('tickets.create'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const userId = req.user!.id;
+  const sourceId = validateId(req.params.id, 'id');
+
+  const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
+  if (!source) throw new AppError('Source ticket not found', 404);
+
+  const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+  const statusId = defaultStatus?.id ?? 1;
+
+  const dupSeq = allocateCounter(db, 'ticket_order_id');
+  const orderId = formatTicketOrderId(dupSeq);
+
+  const trackingToken = crypto.randomBytes(16).toString('hex');
+
+  const result = await adb.run(`
+    INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                         source, labels, is_warranty, created_by,
+                         tracking_token, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?, ?, ?)
+  `,
+    orderId,
+    source.customer_id,
+    statusId,
+    source.assigned_to,
+    source.discount ?? 0,
+    source.source,
+    source.labels ?? '[]',
+    userId,
+    trackingToken,
+    source.location_id ?? 1,
+    now(),
+    now(),
+  );
+
+  const newTicketId = Number(result.lastInsertRowid);
+
+  const devices = await adb.all<AnyRow>('SELECT * FROM ticket_devices WHERE ticket_id = ?', sourceId);
+  for (const dev of devices) {
+    const devResult = await adb.run(`
+      INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                  imei, serial, security_code, color, network, status_id, assigned_to,
+                                  service_id, price, line_discount, tax_amount, tax_class_id, tax_inclusive,
+                                  total, warranty, warranty_days, due_on, device_location,
+                                  additional_notes, pre_conditions, post_conditions,
+                                  created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      newTicketId,
+      dev.device_name,
+      dev.device_type,
+      dev.device_model_id,
+      dev.service_name,
+      dev.imei,
+      dev.serial,
+      dev.security_code,
+      dev.color,
+      dev.network,
+      statusId,
+      dev.assigned_to,
+      dev.service_id,
+      dev.price,
+      dev.line_discount,
+      dev.tax_amount,
+      dev.tax_class_id,
+      dev.tax_inclusive,
+      dev.total,
+      dev.warranty,
+      dev.warranty_days,
+      dev.due_on,
+      dev.device_location,
+      dev.additional_notes,
+      dev.pre_conditions ?? '[]',
+      dev.post_conditions ?? '[]',
+      now(),
+      now(),
+    );
+
+    const newDeviceId = Number(devResult.lastInsertRowid);
+
+    const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', dev.id);
+    for (const part of parts) {
+      await adb.run(`
+        INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial,
+                                         status, catalog_item_id, supplier_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)
+      `,
+        newDeviceId,
+        part.inventory_item_id,
+        part.quantity,
+        part.price,
+        part.warranty,
+        part.serial,
+        part.catalog_item_id ?? null,
+        part.supplier_url ?? null,
+        now(),
+        now(),
+      );
+    }
+  }
+
+  await recalcTicketTotalsAsync(adb, newTicketId);
+
+  const idA = Math.min(sourceId, newTicketId);
+  const idB = Math.max(sourceId, newTicketId);
+  await adb.run(
+    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)',
+    idA, idB, 'duplicate', userId,
+  );
+
+  await insertHistoryAsync(adb, newTicketId, userId, 'ticket_duplicated', `Duplicated from ticket #${source.order_id} (ID ${sourceId})`);
+  await insertHistoryAsync(adb, sourceId, userId, 'ticket_duplicated', `Duplicated to ticket #${orderId} (ID ${newTicketId})`);
+
+  audit(db, 'ticket_duplicated', userId, req.ip || 'unknown', { source_ticket_id: sourceId, new_ticket_id: newTicketId });
+
+  const ticket = await getFullTicketAsync(adb, newTicketId);
+
+  broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: ticket });
+}));
+
+// ===================================================================
 // POST /:id/clone-warranty - Clone ticket as warranty case
 // ===================================================================
 // SEC-H25: cloning a ticket creates a new ticket — gate behind tickets.create.

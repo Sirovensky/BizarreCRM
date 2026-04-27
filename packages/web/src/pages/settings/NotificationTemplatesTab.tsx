@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info, Clock } from 'lucide-react';
+import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -373,6 +372,51 @@ export function NotificationTemplatesTab() {
         )}
       </div>
 
+<<<<<<< Updated upstream
+=======
+      {/* Estimate Follow-Up + Lead Auto-Assign — AUDIT-WEB-009: Coming Soon */}
+      <div className="mt-8 card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <h3 className="font-semibold text-sm text-surface-900 dark:text-surface-100">Automation Settings</h3>
+        </div>
+        <div className="space-y-4">
+          {/* estimate_followup_days */}
+          <div className="flex items-center justify-between py-3 border-b border-surface-100 dark:border-surface-800">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-surface-900 dark:text-surface-100">Estimate Follow-Up Days</p>
+                <ComingSoonBadge status="coming_soon" compact />
+              </div>
+              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Days after estimate creation before sending a follow-up reminder. No cron job reads this yet.</p>
+            </div>
+            <input
+              type="number"
+              disabled
+              min={1}
+              placeholder="3"
+              className="w-20 px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed"
+            />
+          </div>
+          {/* lead_auto_assign */}
+          <div className="flex items-center justify-between py-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium text-surface-900 dark:text-surface-100">Auto-Assign Leads</p>
+                <ComingSoonBadge status="coming_soon" compact />
+              </div>
+              <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">Round-robin auto-assignment of incoming leads to staff. Assignment logic is not yet wired.</p>
+            </div>
+            <button
+              disabled
+              className="relative inline-flex h-6 w-11 rounded-full bg-surface-300 dark:bg-surface-600 opacity-50 cursor-not-allowed flex-shrink-0"
+              aria-disabled="true"
+            >
+              <span className="inline-block h-5 w-5 transform rounded-full bg-white shadow mt-0.5 translate-x-0.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Notification Digest — WEB-W1-031: Coming Soon */}
       <div className="mt-8 card p-5">
         <div className="flex items-center gap-2 mb-3">
@@ -411,6 +455,7 @@ export function NotificationTemplatesTab() {
         </div>
       </div>
 
+>>>>>>> Stashed changes
       {/* Edit Modal */}
       {editTemplate && (
         <EditTemplateModal

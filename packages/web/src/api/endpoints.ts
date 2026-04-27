@@ -226,6 +226,8 @@ export const ticketApi = {
   deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
   // Clone as warranty case
   cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
+  // Duplicate ticket (copies header + devices + parts, resets status)
+  duplicate: (id: number) => api.post(`/tickets/${id}/duplicate`),
   // AUDIT-WEB-002: mint a scoped short-lived photo-upload token for the QR URL.
   // Returns { token: string } — 30-minute JWT scoped to one ticket+device.
   getPhotoUploadToken: (ticketId: number, deviceId: number) =>
@@ -571,34 +573,6 @@ export const smsApi = {
   },
 };
 
-// ==================== Email ====================
-// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
-export interface EmailThread {
-  id: number;
-  customer_id?: number | null;
-  subject?: string | null;
-  from_address?: string | null;
-  last_message_at: string;
-  message_count?: number;
-  unread_count?: number;
-  first_name?: string | null;
-  last_name?: string | null;
-}
-
-export interface EmailThreadsPayload {
-  threads: EmailThread[];
-  enabled: boolean;
-  pagination?: { page: number; per_page: number; total: number; total_pages: number };
-}
-
-export const emailApi = {
-  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
-  threads: (params?: { page?: number; pagesize?: number }) =>
-    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
-  messages: (threadId: number) =>
-    api.get(`/email/threads/${threadId}/messages`),
-};
-
 // ==================== Voice / Click-to-Call ====================
 
 export interface VoiceCall {
@@ -629,6 +603,34 @@ export interface VoiceCallsResponse {
     pagination: { page: number; per_page: number; total: number; total_pages: number };
   };
 }
+
+// ==================== Email ====================
+// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
+export interface EmailThread {
+  id: number;
+  customer_id?: number | null;
+  subject?: string | null;
+  from_address?: string | null;
+  last_message_at: string;
+  message_count?: number;
+  unread_count?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+export interface EmailThreadsPayload {
+  threads: EmailThread[];
+  enabled: boolean;
+  pagination?: { page: number; per_page: number; total: number; total_pages: number };
+}
+
+export const emailApi = {
+  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
+  threads: (params?: { page?: number; pagesize?: number }) =>
+    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
+  messages: (threadId: number) =>
+    api.get(`/email/threads/${threadId}/messages`),
+};
 
 export const voiceApi = {
   call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
@@ -1079,7 +1081,9 @@ export const blockchypApi = {
   // exact bug SEC-M34 was trying to prevent. Pages should branch on
   // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
   // recording a "successful" payment.
-  processPayment: (invoiceId: number, tip?: number) => {
+  // WEB-W3-004: `amount` lets the caller charge a specific leg amount for
+  // split payments. When omitted the server charges the full remaining balance.
+  processPayment: (invoiceId: number, tip?: number, amount?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1109,7 +1113,7 @@ export const blockchypApi = {
       };
     }>(
       '/blockchyp/process-payment',
-      { invoiceId, tip, idempotency_key: idempotencyKey },
+      { invoiceId, tip, amount, idempotency_key: idempotencyKey },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>
@@ -1235,6 +1239,10 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
+
+  // WEB-W3-020: trigger immediate billing for a subscription (admin only)
+  runBilling: (id: number) =>
+    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================
