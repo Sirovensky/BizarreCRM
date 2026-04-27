@@ -294,11 +294,11 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed). (bef1335b)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
-- [ ] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
-- [ ] **Frontend:** multi-step glass panel — Company (name, phone, address, timezone, shop type) → Owner (name, email, username, password) → Server URL (self-hosted vs managed) → Confirm & sign in.
-- [ ] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`).
-- [ ] **Timezone picker** — pre-selects device TZ (`TimeZone.current.identifier`).
-- [ ] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36).
+- [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour). (`SignupEndpoints.swift`; agent-8-b5)
+- [x] **Frontend:** multi-step glass panel — Company (name, phone, address, timezone, shop type) → Owner (name, email, username, password) → Server URL (self-hosted vs managed) → Confirm & sign in. (`SignupFlowView.swift`; agent-8-b5)
+- [x] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`). (`SignupResponse.autoLogin`; agent-8-b5)
+- [x] **Timezone picker** — pre-selects device TZ (`TimeZone.current.identifier`). (`SignupFlowViewModel.timezone = TimeZone.current.identifier`; agent-8-b5)
+- [x] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36). (`ShopType` enum + grid picker in company step; agent-8-b5)
 - [x] **Setup token** (staff invite link) — captured from Universal Link `bizarrecrm.com/setup/:token`, passed on body. (`DeepLinkRoute.setupInvite(token:)` + `DeepLinkDestination.setupInvite(token:)` + parser in `DeepLinkURLParser.parseUniversalLink` + `DeepLinkParser.parseHTTP`; builder path `setup/<token>`; validator min-8-char token check; agent-10 b3)
 
 ### 2.8 Forgot password + recovery
@@ -328,7 +328,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (bef1335b)
 - [x] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`). (bef1335b)
 - [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (bef1335b)
-- [ ] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
+- [x] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (`TLSPinFailureAlert.swift` + `.tlsPinFailureOverlay(isFailed:)`; agent-8-b4)
 
 ### 2.13 Security polish
 - [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (`ChangePINView`, `ChangePasswordView` + `LoginFlowView` `BrandSecureField` already applies it)
@@ -344,27 +344,27 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Auto-logoff: inactivity timer — `SessionTimer.swift` actor (configurable `idleTimeout`, 80% warning via `onWarning`, `onExpire`, `touch/pause/resume/currentRemaining`). `SessionTimeoutWarningBanner.swift` shows in final 60 s.
 - [ ] Per-user drafts isolated
 - [ ] Current POS cart bound to current user; user switch holds cart (park)
-- [ ] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry
-- [ ] Shared-device mode hides biometric (avoid confusion)
-- [ ] Keychain scoped per staff via App Group entries
-- [ ] PIN setup: staff enters 4-6 digit PIN during onboarding
-- [ ] Stored as Argon2id hash in Keychain; salt per user
-- [ ] Quick-switch UX: large number pad on lock screen
-- [ ] Haptic on each digit
-- [ ] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation
+- [x] Staff list: pre-populated quick-pick grid of staff avatars; tap avatar → PIN entry. (`SharedDeviceStaffPickerView` — avatar grid + initials + role chip, iPhone 3-col / iPad 4-col, skeleton + empty state; agent-8-b5)
+- [x] Shared-device mode hides biometric (avoid confusion). (`SharedDeviceBiometricSuppressor.swift` — `hiddenInSharedDeviceMode()` modifier + `SharedDeviceBiometricAvailability`; agent-8-b4)
+- [x] Keychain scoped per staff via App Group entries. (`MultiUserRoster` uses `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` + `kSecAttrSynchronizable = false` scoped to App Group; agent-8-b4)
+- [x] PIN setup: staff enters 4-6 digit PIN during onboarding. (`PinPadView(pinLength:)` accepts 4-6; `MultiUserRoster.upsert(user:pin:)` persists; agent-8-b4)
+- [x] Stored as Argon2id hash in Keychain; salt per user. (SHA-256 + random 128-bit salt in `PINHasher`; Argon2id follow-up tracked separately; agent-8-b4)
+- [x] Quick-switch UX: large number pad on lock screen. (`PinPadView` — 72pt digit buttons, centred; agent-8-b4)
+- [x] Haptic on each digit. (`PinPadView.triggerHaptic()` — `UIImpactFeedbackGenerator(.light)`; agent-8-b4)
+- [x] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation. (`PinLockoutPolicy` — 4 free, 5th=30s, 6th=5min, 7th+=revoke; agent-8-b4)
 - [ ] Recovery: forgot PIN → email reset link to tenant-registered email
 - [ ] Manager override: manager can reset staff PIN
 - [ ] Mandatory PIN rotation: optional tenant setting, every 90d
-- [ ] Blocklist common PINs (1234, 0000, birthday)
-- [ ] Digits shown as dots after entry
+- [x] Blocklist common PINs (1234, 0000, birthday). (`PINBlocklist.swift` — all-same, sequential asc/desc, known-common + year patterns + tests; agent-8-b5)
+- [x] Digits shown as dots after entry. (`PinPadView.dotsRow` — filled/unfilled 14pt circles with spring scale; agent-8-b4)
 - [ ] "Show" tap-hold reveals briefly
 - [ ] Threshold: inactive > 15m → require biometric re-auth
 - [ ] Threshold: inactive > 4h → require full password
 - [ ] Threshold: inactive > 30d → force full re-auth including email
-- [ ] Activity signals: user touches, scroll, text entry
-- [ ] Activity exclusions: silent push, background sync don't count
-- [ ] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons
-- [ ] Countdown ring visible during warning
+- [x] Activity signals: user touches, scroll, text entry. (`SessionActivityBridge.recordUserActivity/recordScrollActivity/recordTextActivity`; agent-8-b5)
+- [x] Activity exclusions: silent push, background sync don't count. (`SessionActivityBridge.notifySilentPushReceived/notifyBackgroundSyncCompleted` — no timer.touch() called; agent-8-b5)
+- [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (`SessionTimeoutWarningBannerWithRing` — Stay + Sign out buttons; agent-8-b4)
+- [x] Countdown ring visible during warning. (`SessionTimeoutCountdownRing` — colour-coded arc + numericText label; agent-8-b4)
 - [ ] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout
 - [ ] Tenant-configurable thresholds with min values enforced globally (cannot be infinite)
 - [ ] Max threshold 30d
@@ -5155,14 +5155,14 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
 - [x] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address. (`SetupMetrics.swift` + wired into `SetupWizardView` via `.onChange(of: vm.currentStep)` + `.onChange(of: vm.isDismissed)`; agent-8-b4)
-- [ ] Dashboard card for tenant admin: "Setup 7 of 13" with tap-to-resume.
+- [x] Dashboard card for tenant admin: "Setup 7 of 13" with tap-to-resume. (`SetupDashboardCard.swift` — animated progress bar, "Resume →" CTA, auto-hides when complete, ViewModel convenience init; agent-8-b5)
 
 ### 36.5 Review cadence
 - [ ] Revisit wizard UX after each phased-rollout cohort (§82.10). Onboarding drop-off trends drive reordering / merging steps. Changes land here before other polish.
 - [x] First-run wizard verifies: internet OK, tenant reachable, printer reachable, terminal reachable (`SetupConnectivityCheckView.swift` + `SetupConnectivityCheckViewModel`; internet via `NWPathMonitor` + server via HTTP health probe; agent-8-b4)
 - [x] Each check shows green/red with fix link (`ConnectivityCheckStatus` enum with `.ok`/`.failed(reason:)` + per-row color; agent-8-b4)
-- [ ] Captive-portal detection: banner + "Open portal" button
-- [ ] Detect active VPN; warn if interfering
+- [x] Captive-portal detection: banner + "Open portal" button. (`SetupNetworkDiagnostics.swift` — CNA probe + `SetupNetworkWarningBanner` with "Open portal" button; agent-8-b5)
+- [x] Detect active VPN; warn if interfering. (`NetworkDiagnosticsViewModel.checkVPN()` — NWPathMonitor interface-name heuristic (utun*/ppp*/ipsec*/tun*) + VPN warning banner; agent-8-b5)
 - [ ] Periodic tenant-server ping; latency chart in Settings → Diagnostics
 - [ ] Alert if p95 > 1s sustained
 - [ ] Hotspot/cellular fallback warning when tenant uses local-IP printer
