@@ -245,7 +245,7 @@ export function LeadDetailPage() {
     if (to === from) return;
     queryClient.setQueriesData({ queryKey: ['lead', id] }, (old: any) => {
       if (!old) return old;
-      const clone = JSON.parse(JSON.stringify(old));
+      const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
       const rec = clone?.data?.data;
       if (rec) rec.status = to;
       return clone;

@@ -142,7 +142,7 @@ export function InvoiceDetailPage() {
     // Optimistically mark the invoice as voided so the UI updates instantly.
     queryClient.setQueriesData({ queryKey: ['invoice', id] }, (old: any) => {
       if (!old) return old;
-      const clone = JSON.parse(JSON.stringify(old));
+      const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
       const inv = clone?.data?.data;
       if (inv) inv.status = 'void';
       return clone;

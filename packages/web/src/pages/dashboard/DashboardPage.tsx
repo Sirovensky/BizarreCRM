@@ -1024,9 +1024,13 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
 function TechDashboard({ userId }: { userId: number }) {
   const navigate = useNavigate();
 
-  // Fetch only tickets assigned to this user
+  // Fetch only tickets assigned to this user.
+  // WEB-FAE-007 (Fixer-426B 2026-04-26): align key to ['team', 'my-queue'] so
+  // invalidations from TicketHandoffModal + TicketDetailPage (assign-out) hit
+  // this widget. Previously ['my-queue', userId] was a different shape and
+  // handoffs left stale rows until the 30s poll fired.
   const { data: queueData, isLoading: queueLoading } = useQuery({
-    queryKey: ['my-queue', userId],
+    queryKey: ['team', 'my-queue'],
     queryFn: () => ticketApi.myQueue(),
     refetchInterval: JITTER_30K,
     refetchIntervalInBackground: false,
@@ -1881,8 +1885,14 @@ function AdminOrManagerDashboard() {
   const needsAttention: NeedsAttentionData | null = attentionData?.data?.data ?? null;
 
   // Tech workload for manager emphasis
+  // WEB-FAE-008 (Fixer-426B 2026-04-26): include `role` in the queryKey so an
+  // admin/tech who logs in on the same tab after a manager doesn't briefly see
+  // the manager's cached workload data. With `enabled: role === 'manager'` the
+  // fetch is blocked for non-managers, but the stale cache under the un-scoped
+  // `['tech-workload']` key would still satisfy the query until gcTime (5min).
+  // Keying by role gives each role an isolated cache bucket.
   const { data: workloadData } = useQuery({
-    queryKey: ['tech-workload'],
+    queryKey: ['tech-workload', role],
     queryFn: () => reportApi.techWorkload(),
     enabled: role === 'manager',
     refetchInterval: JITTER_120K_G,

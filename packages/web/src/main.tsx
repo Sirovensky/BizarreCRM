@@ -287,6 +287,31 @@ if (typeof window !== 'undefined') {
       console.warn('[main] sessionStorage unavailable — chunk-reload sentinel skipped', err);
     }
   };
+  // WEB-FE-009 (Fixer-426B 2026-04-26): bfcache restore guard.
+  // Safari/Firefox may restore a tab from the back/forward cache (`pageshow`
+  // with `event.persisted === true`). The in-memory React Query cache (the
+  // module-scoped `queryClient` singleton) survives the restore. If staleTime
+  // hasn't elapsed the page re-renders with stale data from the *previous*
+  // user session — no refetch fires and the wrong user's data is briefly
+  // visible. Fix: on bfcache restore, force-invalidate all active queries so
+  // each of them revalidates before paint. If auth has expired (token gone),
+  // also clear the cache + hard-redirect to /login.
+  window.addEventListener('pageshow', (e: PageTransitionEvent) => {
+    if (!e.persisted) return; // normal forward nav — nothing to do
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      // Session gone while tab was in bfcache — wipe and redirect.
+      queryClient.clear();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.replace('/login');
+      }
+      return;
+    }
+    // Auth still valid — invalidate everything so the restored tab pulls fresh
+    // data before the user interacts. staleTime is intentionally bypassed here.
+    queryClient.invalidateQueries();
+  });
+
   window.addEventListener('unhandledrejection', (e) => {
     const reason = e.reason as { message?: string; name?: string } | undefined;
     const msg = reason?.message ?? String(reason ?? '');

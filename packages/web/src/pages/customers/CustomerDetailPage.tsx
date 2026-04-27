@@ -1159,7 +1159,10 @@ function InfoTab({
     onError: () => toast.error('Failed to update customer'),
   });
 
-  const updateField = (key: string, value: any) => {
+  // WEB-FB-012: `value` is typed broadly because the form mixes string and
+  // boolean fields; narrower overloads would require a discriminated union per
+  // field — disproportionate complexity for a pure-local form helper.
+  const updateField = (key: string, value: string | boolean) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -1299,7 +1302,7 @@ function InfoTab({
                   Additional Phones
                 </label>
                 <div className="space-y-1">
-                  {customer.phones.map((p: any) => (
+                  {(customer.phones as CustomerPhone[]).map((p) => (
                     <div
                       key={p.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1326,7 +1329,7 @@ function InfoTab({
                   Additional Emails
                 </label>
                 <div className="space-y-1">
-                  {customer.emails.map((em: any) => (
+                  {(customer.emails as CustomerEmail[]).map((em) => (
                     <div
                       key={em.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1487,6 +1490,49 @@ function InfoTab({
   );
 }
 
+// ==================== Typed shapes for tabs (WEB-FB-012) ====================
+// Local interfaces so a server field rename trips the TypeScript build instead
+// of silently producing stale/empty values in the rendered tab.
+
+interface CustomerTicketRow {
+  id: number;
+  created_at: string;
+  status?: { color?: string; name?: string };
+  devices?: Array<{ device_name?: string; service_name?: string; issue?: string }>;
+}
+
+interface CustomerInvoiceRow {
+  id: number;
+  order_id?: number | string;
+  status: string;
+  total?: number;
+  amount_paid?: number;
+  created_at: string;
+}
+
+interface CustomerCommunicationRow {
+  id?: number | string;
+  direction?: string;
+  comm_type?: string;
+  subject?: string;
+  body?: string;
+  created_at?: string;
+}
+
+interface CustomerPhone {
+  id: number;
+  phone: string;
+  label?: string;
+  is_primary?: boolean;
+}
+
+interface CustomerEmail {
+  id: number;
+  email: string;
+  label?: string;
+  is_primary?: boolean;
+}
+
 // ==================== Tickets Tab ====================
 
 function TicketsTab({ customerId }: { customerId: number }) {
@@ -1496,7 +1542,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getTickets(customerId),
   });
 
-  const tickets = data?.data?.data?.tickets || [];
+  const tickets: CustomerTicketRow[] = data?.data?.data?.tickets || [];
 
   if (isLoading) {
     return <TabSkeleton />;
@@ -1513,7 +1559,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
   }
 
   // Sort by created_at descending (newest first)
-  const sorted = [...tickets].sort((a: any, b: any) =>
+  const sorted = [...tickets].sort((a, b) =>
     new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
@@ -1528,7 +1574,7 @@ function TicketsTab({ customerId }: { customerId: number }) {
         <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-surface-200 dark:bg-surface-700" />
 
         <div className="space-y-0">
-          {sorted.map((ticket: any, idx: number) => {
+          {sorted.map((ticket, idx) => {
             const statusColor = ticket.status?.color || '#6b7280';
             const deviceName = ticket.devices?.[0]?.device_name || 'Unknown device';
             const serviceName = ticket.devices?.[0]?.service_name || ticket.devices?.[0]?.issue || '';
@@ -1604,7 +1650,7 @@ function InvoicesTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getInvoices(customerId),
   });
 
-  const invoices = data?.data?.data?.invoices || [];
+  const invoices: CustomerInvoiceRow[] = data?.data?.data?.invoices || [];
 
   if (isLoading) {
     return <TabSkeleton />;
@@ -1645,7 +1691,7 @@ function InvoicesTab({ customerId }: { customerId: number }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
-            {invoices.map((inv: any) => (
+            {invoices.map((inv) => (
               <tr
                 key={inv.id}
                 className="hover:bg-surface-50 dark:hover:bg-surface-800/50 transition-colors"
@@ -1689,7 +1735,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
     queryFn: () => customerApi.getCommunications(customerId),
     enabled: !!customerId,
   });
-  const communications: any[] = data?.data?.data?.communications || [];
+  const communications: CustomerCommunicationRow[] = data?.data?.data?.communications || [];
 
   if (isLoading) {
     return <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400" /></div>;
@@ -1703,7 +1749,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
 
   return (
     <div className="space-y-2 max-h-96 overflow-y-auto">
-      {communications.map((msg: any, i: number) => (
+      {communications.map((msg, i) => (
         <div key={msg.id || i} className={cn('flex', msg.direction === 'outbound' ? 'justify-end' : 'justify-start')}>
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',

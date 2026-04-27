@@ -43,6 +43,20 @@ function SectionHeader({ title }: { title: string }) {
   );
 }
 
+// WEB-FG-006 (Fixer-426B 2026-04-26): only PUT the keys this tab owns so a
+// concurrent save in another settings tab (e.g. SmsVoiceSettings) is not
+// clobbered. Previously `saveMutation.mutate(config)` sent the full getConfig()
+// payload and silently reverted any other tab's changes. Now we derive a patch
+// from only the keys this component touches.
+const POS_OWNED_KEYS = [
+  'pos_show_products', 'pos_show_repairs', 'pos_show_miscellaneous',
+  'pos_show_bundles', 'pos_show_out_of_stock', 'pos_show_invoice_notes',
+  'pos_show_outstanding_alert', 'pos_show_images', 'pos_show_discount_reason',
+  'pos_show_cost_price', 'checkin_default_category', 'checkin_auto_print_label',
+  'repair_require_customer', 'pos_require_pin_sale', 'pos_require_pin_ticket',
+  'pos_require_referral',
+] as const;
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function PosSettings() {
@@ -116,7 +130,14 @@ export function PosSettings() {
       <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
         <h3 className="font-semibold text-surface-900 dark:text-surface-100">Point of Sale Configuration</h3>
         <button
-          onClick={() => saveMutation.mutate(config)}
+          onClick={() => {
+            // Only PUT the keys this tab owns (WEB-FG-006).
+            const patch: Record<string, string> = {};
+            for (const k of POS_OWNED_KEYS) {
+              if (k in config) patch[k] = config[k];
+            }
+            saveMutation.mutate(patch);
+          }}
           disabled={!dirty || saveMutation.isPending}
           className={cn(
             'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',

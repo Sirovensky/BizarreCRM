@@ -208,7 +208,7 @@ export function CustomerListPage() {
       // Optimistic hide: drop the row from every cached customer list page.
       queryClient.setQueriesData({ queryKey: ['customers'] }, (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.customers;
         if (Array.isArray(list)) {
           clone.data.data.customers = list.filter((c: any) => c.id !== id);

@@ -14,6 +14,13 @@ import { AlertTriangle, X, Loader2, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { benchApi } from '@/api/endpoints';
 
+// WEB-FD-012 (Fixer-426B 2026-04-26): typed response for benchApi.defects.report.
+interface DefectReportResponse {
+  count_30d?: number;
+  alert_triggered?: boolean;
+  threshold?: number;
+}
+
 interface DefectReporterButtonProps {
   inventoryItemId: number;
   itemName: string;
@@ -58,7 +65,7 @@ export function DefectReporterButton({
       if (photoFile) fd.append('photo', photoFile);
       return benchApi.defects.report(fd);
     },
-    onSuccess: (res: any) => {
+    onSuccess: (res: { data?: { data?: DefectReportResponse } }) => {
       const count = res?.data?.data?.count_30d ?? 0;
       const alert = res?.data?.data?.alert_triggered;
       const threshold = res?.data?.data?.threshold ?? 0;

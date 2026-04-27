@@ -1,4 +1,21 @@
 
+### todofixes426 — WEB small remaining (FB/FD/FE/FG/FAE/FO/FAD batch) (2026-04-26)
+
+- [x] WEB-FB-003. **RepairsTab 30-site any-soup.** CLOSED 2026-04-26 — only idiomatic `catch (err: any)` remains; all 30 sites across RepairsTab/CustomerStep/UnifiedPosPage narrowed in prior passes. Closing.
+- [x] WEB-FB-012. **CustomerDetailPage tickets/invoices/communications renderers any-typed.** CLOSED 2026-04-26 — added `CustomerTicketRow`, `CustomerInvoiceRow`, `CustomerCommunicationRow`, `CustomerPhone`, `CustomerEmail` local interfaces; all `.map((x:any))` and array vars typed. `packages/web/src/pages/customers/CustomerDetailPage.tsx`.
+- [x] WEB-FD-012. **BenchTimer/DeviceTemplatePicker/DefectReporterButton `(res: any)` in onSuccess.** CLOSED 2026-04-26 — `BenchStopResponse`, `ApplyTemplateResponse`, `DefectReportResponse` interfaces added; casts replaced. `BenchTimer.tsx`, `DeviceTemplatePicker.tsx`, `DefectReporterButton.tsx`.
+- [x] WEB-FE-009. **bfcache restore leaks prior user's query cache.** CLOSED 2026-04-26 — `pageshow` handler in `main.tsx`: token gone → `queryClient.clear()` + redirect `/login`; token present → `queryClient.invalidateQueries()`.
+- [x] WEB-FG-006. **PosSettings over-posts full config on save.** CLOSED 2026-04-26 — `POS_OWNED_KEYS` const; save button builds patch from owned keys only. `packages/web/src/pages/settings/PosSettings.tsx`.
+- [x] WEB-FAE-007. **my-queue queryKey shape mismatch across dashboard/page/modal.** CLOSED 2026-04-26 — `DashboardPage` TechDashboard aligned to `['team','my-queue']`; all three components now share the same key shape; handoff invalidations reach the widget.
+- [x] WEB-FAE-008. **tech-workload queryKey missing role — stale manager cache shown to non-managers.** CLOSED 2026-04-26 — `queryKey: ['tech-workload', role]`. `DashboardPage.tsx`.
+- [x] WEB-FO-010. **refetchOnWindowFocus globally false — shared-workflow views stale on alt-tab.** CLOSED 2026-04-26 — opted in three queries: KanbanBoard `['tickets','kanban']`, MyQueuePage `['team','my-queue']`, CommunicationPage `['sms-conversations',...]`.
+- [x] WEB-FO-012. **JSON.parse(JSON.stringify) deep-clone drops Dates/undefined.** CLOSED 2026-04-26 — 8 remaining sites (TicketListPage×3, TicketSidebar, TicketNotes, CommunicationPage×2) + InvoiceDetailPage, CustomerListPage, LeadListPage, LeadDetailPage swapped to `structuredClone`. All sites now use native deep-clone.
+- [x] WEB-FO-014. **BenchTimer sleep-wake anchor drift.** CLOSED 2026-04-26 — `visibilitychange` listener calls `refetch()` on visible; dep-array `elapsed_seconds` change restarts tick effect with fresh anchor. `BenchTimer.tsx`.
+- [x] WEB-FAD-004. **WS reconnect: no attempt cap + no jitter.** CLOSED 2026-04-26 — `MAX_RECONNECT_ATTEMPTS=10` + `reconnectAttemptsRef`; `setWsOffline(true)` on cap; ±25% jitter added; reset on auth-ready/visibility/auth-cleared. `isWsOffline` exposed on `useWsStore`. `useWebSocket.ts`.
+- [x] WEB-FAD-005. **CatalogPage polls unconditionally.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FH-020 Fixer-B5 already added `hasActiveJob ? 5000 : false`).
+- [x] WEB-FAD-007. **CommunicationPage SMS double-poll.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FO-008 Fixer-B18 already dropped both refetchIntervals).
+- [x] WEB-FAD-008. **Three SMS unread pollers compounding.** CLOSED 2026-04-26 — DONE-PREEXISTING (all three pollers eliminated in prior passes).
+
 ### todofixes426 — WEB-S4 auth/portal/print/landing + WEB-FC type fixes (2026-04-26)
 
 - [x] WEB-S4-006. **LoginPage no hCaptcha widget in Forgot panel.** CLOSED 2026-04-26 — todofixes426: `forgotFailCount` + lazy hCaptcha script load + widget rendered after first failure; `captcha_token` sent on subsequent requests; `authApi.forgotPassword` accepts optional 2nd arg.
@@ -3172,3 +3189,28 @@ DASH-ELEC: 080 (spawnSync PowerShell), 083 (service action concurrency lock), 08
 WEB-S7: 022 (search short-q guard), 026 (import errors CSV download), 029 (filtered_status_counts), 034 (isAdminOrManager helper), 036 (EmptyState pre-existing), 037 (toUtc pre-existing), 041 (2000-01-01 pre-existing), 044 (rate-limit transaction), 045 (downloadCsv pre-existing).
 
 WEB-FN: 008 (errorCode interceptor pre-existing), 009 (Check Your Email pre-existing).
+
+## todofixes426 — DASH-ELEC sweep 160-260 (2026-04-26) — Fixer-C26
+
+DASH-ELEC-176: DONE-PREEXISTING — CommandPalette + KeyboardShortcutsHelp already use pt-[max(1rem,min(6rem,10vh))].
+DASH-ELEC-180: SettingsPage window.confirm hCaptcha warning replaced with ConfirmDialog + executeSave() continuation. AdminToolsPage already fixed (173).
+DASH-ELEC-194: SettingsPage "Close Dashboard" button now opens ConfirmDialog before calling closeDashboard().
+DASH-ELEC-199: renderField uses <textarea rows=3 resize-y> for f.category==='cors'; plain <input> for all other text fields.
+DASH-ELEC-200: platform-config flag <label> gets aria-busy={busy} so screen readers announce save state.
+DASH-ELEC-204: dynamic renderSection sections get aria-labelledby={settings-section-{category}}; static Appearance + Dashboard sections get matching id/aria-labelledby.
+DASH-ELEC-208: management:get-rollback-info, rollback-update, clear-rollback wrapped with wrapHandler().
+DASH-ELEC-212: dev-mode file:// fallback now validates URL starts with pathToFileURL(app.getAppPath() + sep) instead of accepting any file:// origin.
+DASH-ELEC-214: management:logout calls POST /super-admin/api/logout (try/catch) before setSuperAdminToken(null).
+DASH-ELEC-219: AuditLogPage details cell click-toggles between truncated span and expanded <pre> with max-h-48 scroll.
+DASH-ELEC-229: DONE-PREEXISTING — formatApiError already prefixes [status] via DASH-ELEC-277.
+DASH-ELEC-231: module-level https.Agent(keepAlive:true, keepAliveMsecs:10000, maxSockets:4) in api-client.ts; wired via options.agent.
+DASH-ELEC-232: useServerHealth re-checks isAuthenticated after Promise.all await; early-returns if logout fired mid-poll.
+DASH-ELEC-233: DashboardShell.tsx shows compact red "Server Offline" banner above <main> on every page (global vs OverviewPage-only).
+DASH-ELEC-241: detailInFlight useRef<Set<string>> added to TenantsPage; loadDetail guards re-entrancy + clears in finally.
+DASH-ELEC-248: BannerCertWarning + BannerTagVerifyWarning persist dismissal timestamp to localStorage; re-show after 24h; no flash on reload.
+DASH-ELEC-250: SetupChecklist sortedChecks = [...checks].sort(SEVERITY_ORDER); render loop uses sortedChecks.
+DASH-ELEC-255: apiRequest() 5th param timeoutMs (default 30s); admin:run-backup + admin:restore-backup use BACKUP_TIMEOUT_MS=5min.
+DASH-ELEC-256: BackupPage isMountedRef guards all setState/toast calls in refresh/handleBackupNow/handleRestore.
+DASH-ELEC-257: handleRestore checks res.offline → "Server may be restarting" toast + 5s deferred refresh.
+
+Skipped (design/research/complex): 160 (CSP plugin eval), 190 (protocol stub), 193 (test-connection probes), 201 (server status field needed), 222-224 (grouping/drill-in/payload tab), 230 (idempotency keys across 14 endpoints), 237-238 (plan/name change UI), 243 (reason field), 245 (new server fields), 249-252 (checklist tiers/visibility), 258 (cert reload banner).

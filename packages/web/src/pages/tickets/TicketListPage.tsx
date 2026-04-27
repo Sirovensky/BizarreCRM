@@ -918,7 +918,7 @@ export function TicketListPage() {
       const prev = queryClient.getQueryData(['tickets', ticketParams]);
       queryClient.setQueryData(['tickets', ticketParams], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets || [];
         const t = list.find((t: any) => t.id === ticketId);
         if (t) {
@@ -981,7 +981,7 @@ export function TicketListPage() {
       // Optimistic hide: drop the row from every cached tickets list page.
       queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets;
         if (Array.isArray(list)) {
           const filtered = list.filter((t: any) => t.id !== id);
@@ -1036,7 +1036,7 @@ export function TicketListPage() {
       const prev = queryClient.getQueryData(['tickets', ticketParams]);
       queryClient.setQueryData(['tickets', ticketParams], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.tickets || clone?.data?.tickets || [];
         const t = list.find((t: any) => t.id === id);
         if (t) t.is_pinned = !t.is_pinned;

@@ -458,7 +458,7 @@ export function LeadListPage() {
     (id: number, name?: string) => {
       queryClient.setQueriesData({ queryKey: ['leads'] }, (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.leads || clone?.data?.leads;
         if (Array.isArray(list)) {
           const filtered = list.filter((l: any) => l.id !== id);

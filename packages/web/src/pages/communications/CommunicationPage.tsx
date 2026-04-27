@@ -1165,6 +1165,9 @@ export function CommunicationPage() {
   // poll was duplicating the same work plus burning a steady request/min on
   // every open Communications tab. WS reconnect on visibilitychange picks up
   // any messages missed while hidden.
+  // WEB-FO-010 (Fixer-426B 2026-04-26): opt in to refetchOnWindowFocus.
+  // The conversation list is shared-workflow state (multiple staff tabs) so a
+  // tech returning from another app should see newly received threads.
   const { data: convData, isLoading: convLoading } = useQuery({
     // WEB-S6-034: include debouncedSearch in the cache key so a new search
     // triggers a fresh server-side fetch.
@@ -1176,6 +1179,7 @@ export function CommunicationPage() {
       return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
     },
     staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
@@ -1292,7 +1296,7 @@ export function CommunicationPage() {
       const prev = queryClient.getQueryData(['sms-conversations']);
       queryClient.setQueryData(['sms-conversations'], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.conversations ?? [];
         const c = list.find((c: any) => c.conv_phone === phone);
         if (c) c.is_flagged = !c.is_flagged;
@@ -1313,7 +1317,7 @@ export function CommunicationPage() {
       const prev = queryClient.getQueryData(['sms-conversations']);
       queryClient.setQueryData(['sms-conversations'], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const list = clone?.data?.data?.conversations ?? [];
         const c = list.find((c: any) => c.conv_phone === phone);
         if (c) c.is_pinned = !c.is_pinned;

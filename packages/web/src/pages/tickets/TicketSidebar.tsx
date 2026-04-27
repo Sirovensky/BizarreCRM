@@ -423,7 +423,7 @@ export function TicketSidebar({
       const prev = queryClient.getQueryData(['ticket', ticketId]);
       queryClient.setQueryData(['ticket', ticketId], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const t = clone?.data?.data;
         if (t) {
           t.assigned_to = userId;

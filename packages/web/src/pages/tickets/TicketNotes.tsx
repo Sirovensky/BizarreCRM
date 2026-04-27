@@ -71,7 +71,7 @@ export function TicketNotes({
       const tempId = -Date.now();
       queryClient.setQueryData(['ticket', ticketId], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const t = clone?.data?.data;
         if (t) {
           const noteType = (vars.type === 'diagnostic' || vars.type === 'email' || vars.type === 'customer')

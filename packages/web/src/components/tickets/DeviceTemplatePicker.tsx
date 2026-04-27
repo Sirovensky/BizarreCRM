@@ -18,6 +18,11 @@ import toast from 'react-hot-toast';
 import { deviceTemplateApi } from '@/api/endpoints';
 import { formatCents } from '@/utils/format';
 
+// WEB-FD-012 (Fixer-426B 2026-04-26): typed response for applyToTicket.
+interface ApplyTemplateResponse {
+  inserted_parts?: number;
+}
+
 interface DeviceTemplatePickerProps {
   ticketId: number;
   ticketDeviceId?: number;
@@ -85,7 +90,7 @@ export function DeviceTemplatePicker({
   const applyMut = useMutation({
     mutationFn: (templateId: number) =>
       deviceTemplateApi.applyToTicket(templateId, ticketId, ticketDeviceId),
-    onSuccess: (res: any) => {
+    onSuccess: (res: { data?: { data?: ApplyTemplateResponse } }) => {
       const inserted = res?.data?.data?.inserted_parts ?? 0;
       toast.success(`Template applied — ${inserted} part(s) added`);
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
