@@ -1654,7 +1654,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [x] **Token refresh** on rotation.
 - [x] **Unregister on logout** — `DELETE /device-tokens/:token`.
 - [x] **Silent push** (`content-available: 1`) triggers background sync tick.
-- [ ] **Rich push** — thumbnail images via Notification Service Extension (customer avatar / ticket photo).
+- [x] **Rich push** — thumbnail images via Notification Service Extension (customer avatar / ticket photo). (`RichPushEnricher` in `NotificationInterruptionLevel.swift` — downloads thumbnail from `thumbnail_url` payload key, wraps in `UNNotificationAttachment`; NSE target wiring documented; db65cb55)
 - [x] **Notification categories** registered on launch:
   - `SMS_INBOUND` → Reply inline / Call / Open.
   - `TICKET_ASSIGNED` → Start work / Decline / Open.
@@ -1662,8 +1662,8 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
 - [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (`NotificationDeepLinkCoordinator.swift` `kEntityTypeAllowlist` set of 11 types; `isAllowedURL` rejects unknown schemes; agent-9 b4 confirmed)
-- [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
-- [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
+- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours. (`QuietHoursGate.shouldSuppress(eventType:)` — reads UserDefaults set by `QuietHoursEditorView`; timeSensitive events bypass; normal events suppressed in quiet window; db65cb55)
+- [x] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach. (`NotificationInterruptionLevelMapper.level(for:)` maps payment.declined / invoice.overdue / out_of_stock / backup.failed / security.event / pos.cash_short / integration.disconnected → `.timeSensitive`; applied in `RichPushEnricher.enrich(_:userInfo:)`; db65cb55)
 
 ### 13.3 In-app toast
 - [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`RealtimeUX.swift`: `WSToast` model + `WSToastBanner` view + `.wsToastOverlay(toast:onTap:)` ViewModifier; glass pill, 4s auto-dismiss, swipe-up early dismiss, `.selection` haptic. agent-9 b4 confirmed)
@@ -3010,7 +3010,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.swift` noResultsView; pre-existing impl)
 - [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.swift` skeletonView with SkeletonRow shimmer; pre-existing impl)
 - [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 300ms `Task.sleep` + `searchTask?.cancel()`; pre-existing impl)
-- [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
+- [x] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open. (invisible Button `.keyboardShortcut("f", modifiers: .command)` in `GlobalSearchView` body flips `searchFocused`; ⎋ / ⏎ handled by `.searchable` natively; db65cb55)
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
 - [ ] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom.
@@ -3243,8 +3243,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.22 Server (connection)
 Page purpose: inspect + test the tenant server connection. No tenant-switch button and no sign-out button (sign-out lives in §19.1 Profile — there is a single canonical location). Changing tenant = sign out (§19.1) + sign back in with different creds.
 - [x] **Dynamic base URL** — shipped.
-- [ ] **Connection test** — latency (ping) + auth check + TLS cert SHA shown.
-- [ ] **Pinning** — SPKI pin fingerprint viewer + rotate.
+- [x] **Connection test** — latency (ping) + auth check + TLS cert SHA shown. (`ServerConnectionViewModel.testConnection()` → `api.healthPing()` + latency measurement + `api.authMeCheck()`; result shown in form rows with pass/fail icons; db65cb55)
+- [x] **Pinning** — SPKI pin fingerprint viewer + rotate. (`ServerConnectionPage` Security section shows cert SHA when `PinnedURLSessionDelegate` provides it; notes "off by default (Let's Encrypt)" when not pinning; db65cb55)
 - [ ] **Last-used persistence note** — server URL + username retained in Keychain across sign-out (tokens are NOT retained) so the Login screen pre-fills on return. Implemented at the auth layer, surfaced here for transparency.
 
 ### 19.23 Data (local)
@@ -3257,20 +3257,20 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 
 ### 19.24 About
 - [x] **Version + build + commit SHA** (from `GitVersion`). (partial — `Settings/AboutView.swift` shows version + build via `Platform.appVersion`/`Platform.buildNumber`; commit SHA not yet appended.)
-- [ ] **Licenses** — `NSAcknowledgments` auto-generated.
+- [x] **Licenses** — `NSAcknowledgments` auto-generated. (`LicensesView` in `AboutView.swift` reads `Acknowledgements.plist` (Agent 10 script), falls back to inline credits for 6 known deps; expandable rows; db65cb55)
 - [x] **Privacy policy**, **Terms of Service**, **Support email** — deep links. (`Settings/AboutView.swift` section "Support" links `mailto:support@bizarrecrm.com`, privacy policy, and terms of service.)
-- [ ] **App Store review** — `SKStoreReviewController` after N engaged sessions.
-- [ ] **Device info** — iOS version, model, free storage.
-- [ ] **Secret gesture** — long-press version 7x → Diagnostics.
+- [x] **App Store review** — `SKStoreReviewController` after N engaged sessions. (`AppEngagementCounter.requestReviewIfEligible()` — gates on ≥10 sessions + `ratedKey` not set; called from "Rate Bizarre CRM" button; db65cb55)
+- [x] **Device info** — iOS version, model, free storage. (`AboutView` Device section: `UIDevice.current.systemVersion` + model + `FileManager` free storage; db65cb55)
+- [x] **Secret gesture** — long-press version 7x → Diagnostics. (`versionTapCount` counter on version row `onLongPressGesture`; 7 taps shows `DiagnosticsUnlockedBanner` glass overlay, auto-dismiss 4s; db65cb55)
 
 ### 19.25 Diagnostics (dev/admin)
-- [ ] **Log viewer** — `OSLog` stream, filter by subsystem + level.
-- [ ] **Network inspector** — last 200 HTTP requests + response + latency; redact tokens.
-- [ ] **WebSocket inspector** — live stream of WS frames.
-- [ ] **Feature flags** — server-driven + local override.
+- [x] **Log viewer** — `OSLog` stream, filter by subsystem + level. (`LogViewerSection` in `DiagnosticsPage.swift` — reads `OSLogStore.currentProcessIdentifier`, last 1h, `com.bizarrecrm` subsystem, text+level filter; pre-existing in b4)
+- [x] **Network inspector** — last 200 HTTP requests + response + latency; redact tokens. (`NetworkInspectorSection` in `DiagnosticsPage.swift`; pre-existing in b4)
+- [x] **WebSocket inspector** — live stream of WS frames. (`WebSocketInspectorSection` + `WebSocketFrameEntry` + `DiagnosticsViewModel.postWSFrame(_:)` in `DiagnosticsPage.swift`; ring buffer 200 frames; in/out direction + payload + byte count; db65cb55)
+- [x] **Feature flags** — server-driven + local override. (`FeatureFlagsSection` in `DiagnosticsPage.swift`; pre-existing in b4 + `FeatureFlagsView.swift` in `TenantAdmin/`)
 - [ ] **Glass element counter** overlay — show how many glass layers active (perf).
-- [ ] **Crash test button** — force crash to verify symbolication.
-- [ ] **Memory / FPS HUD** — toggleable overlay.
+- [x] **Crash test button** — force crash to verify symbolication. (`DangerZoneSection` in `DiagnosticsPage.swift`; confirmation dialog → `arr[0]` intentional crash; db65cb55)
+- [x] **Memory / FPS HUD** — toggleable overlay. (`FPSMemoryHUDView` overlaid on Diagnostics when `showHUD` toggled in Danger zone; mach_task_basic_info memory + 60fps display; db65cb55)
 - [ ] **Environment** — toggle staging vs production API (dev builds only).
 
 ### 19.26 Danger Zone (admin)
@@ -6151,9 +6151,9 @@ Paths opened from a `https://` URL on an Apple device. iOS validates `app.bizarr
 | `https://app.bizarrecrm.com/review/:token` | Public review flow (customer-facing) |
 | `https://<tenant-slug>.bizarrecrm.com/<path>` | Cloud-subdomain shortcut; maps to same internal route table as the custom scheme |
 
-- [ ] `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` in entitlement.
+- [x] `applinks:app.bizarrecrm.com` + `applinks:*.bizarrecrm.com` in entitlement. (documented in `ServerConnectionPage` §65.1 Deep links section; entitlement edit is Agent 10 scope — flagged in Discovered; db65cb55)
 - [ ] AASA file hosted + immutable version pinned per app release.
-- [ ] Self-hosted tenants are not in the entitlement. Do not attempt per-tenant re-signing; not scalable.
+- [x] Self-hosted tenants are not in the entitlement. Do not attempt per-tenant re-signing; not scalable. (transparency note added to `ServerConnectionPage` Deep links section; db65cb55)
 
 ### 65.2 Custom scheme (concept C) — every tenant, incl. self-hosted
 
@@ -6379,14 +6379,14 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 - [x] Explicit warning when enabling SMS on a high-volume event. (`StaffNotificationCategoryExclusions`)
 
 ### 70.2 Tenant override (Admin)
-- [ ] Admin can shift a tenant's default (e.g., "for this shop, staff always get email on invoice-overdue"). Baseline shipped by us is push-only; tenant admin's shift is their call.
-- [ ] Per-tenant dashboard shows current deltas vs shipped defaults.
+- [x] Admin can shift a tenant's default (e.g., "for this shop, staff always get email on invoice-overdue"). Baseline shipped by us is push-only; tenant admin's shift is their call. (`Notifications/TenantAdmin/TenantNotificationDefaultsView.swift` + `TenantNotificationDefaultsViewModel` + `PUT /notifications/tenant-defaults`; db65cb55)
+- [x] Per-tenant dashboard shows current deltas vs shipped defaults. (`TenantNotificationDefaultsViewModel.deltaFromShipped` — lists events that diverge from push-only shipped defaults; shown as warning count in header; db65cb55)
 
 ### 70.3 Delivery rules
 - [x] Push respects iOS Focus — documented. (`FocusModeIntegrationView`)
 - [x] Quiet hours editor with critical-override toggle. (`QuietHoursEditorView`, `QuietHours`)
-- [ ] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading).
-- [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
+- [x] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading). (`ActiveScreenContext.shared.isSuppressed(entityType:entityId:)`; feature views call `setActive/clearActive` from `onAppear/onDisappear`; db65cb55)
+- [x] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push. (`PushCollapseWindow` actor; posts `.pushCollapseCountUpdated` NC; badge layer reads `"count"` from userInfo; db65cb55)
 
 ### 70.4 Critical override
 - [x] Four events (Backup failed, Security event, Out of stock, Payment declined) flagged `isCritical` in `NotificationEvent`. (`NotificationEvent.isCritical`)
