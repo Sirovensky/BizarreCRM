@@ -1561,11 +1561,11 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Emoji picker**.
 - [x] **Schedule send** — date/time picker for future delivery. (`ScheduleSendSheet` DatePicker graphical; `SmsThreadViewModel.scheduledSendAt`; `sendSmsScheduled()` + `SmsSendScheduledRequest` in `SmsThreadEndpoints`; schedule clears after send; 5 XCTest assertions) (9d7d9584)
 - [ ] **Voice memo** (if MMS supported) — record AAC inline; bubble plays audio.
-- [ ] **Long-press message** → context menu — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
+- [x] **Long-press message** → context menu — Copy, Reply, Forward, Create ticket from this, Flag, Delete. (`MessageContextMenuModifier` + `.messageContextMenu(...)` ViewModifier in `Communications/Sms/Thread/MessageContextMenu.swift`.) (feat(§12): long-press message context menu + off-hours auto-reply indicator dd7c6321)
 - [ ] **Create customer from thread** — if phone not associated.
 - [x] **Character counter** + SMS-segments display (160 / 70 unicode). (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [x] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers. (`SmsThreadViewModel.appendComplianceFooter`; prepends "\n\nReply STOP to opt out" to message body before send) (9d7d9584)
-- [ ] **Off-hours auto-reply** indicator when enabled.
+- [x] **Off-hours auto-reply** indicator when enabled. (`OffHoursIndicator` + `OffHoursAutoReplyChecker` in `Communications/Sms/Thread/OffHoursIndicator.swift`.) (feat(§12): long-press message context menu + off-hours auto-reply indicator dd7c6321)
 
 ### 12.3 PATCH helpers
 - [x] Add PATCH method to `APIClient` — shipped (`Networking/APIClient.swift` exposes `patch<T,B>(_:body:as:)`).
@@ -1612,9 +1612,9 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Incoming call push** (PushKit VoIP) → CallKit UI.
 
 ### 12.11 Push → deep link
-- [ ] Push notification on new inbound SMS with category `SMS_INBOUND`.
-- [ ] Actions: Reply (inline text input via `UNTextInputNotificationAction`), Open, Call.
-- [ ] Tap → SMS thread.
+- [x] Push notification on new inbound SMS with category `SMS_INBOUND`. (`SmsPushHandler.registerCategory()` in `Communications/Sms/Push/SmsPushHandler.swift`.) (feat(§12.11): SMS_INBOUND push category + deep-link handler f61841ce)
+- [x] Actions: Reply (inline text input via `UNTextInputNotificationAction`), Open, Call. (`SmsPushHandler.registerCategory()` registers all three actions.) (feat(§12.11): SMS_INBOUND push category + deep-link handler f61841ce)
+- [x] Tap → SMS thread. (`SmsPushHandler.handleResponse(_:)` posts `openThreadNotification`.) (feat(§12.11): SMS_INBOUND push category + deep-link handler f61841ce)
 
 ### 12.12 Bulk SMS / campaigns (cross-links §37)
 - [ ] Compose campaign to a segment; TCPA compliance check; preview.
@@ -1714,10 +1714,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.2 Detail
 - [ ] Role, wage/salary (admin-only), contact, schedule.
-- [ ] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers.
+- [x] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers. (`EmployeePerformanceTilesView` + `PerformanceTile` in `Employees/Detail/EmployeePerformanceTilesView.swift`; SMS sent + NPS show "--" until §74 server fields ship.) (feat(§14.2): performance tiles + PIN management view + PIN endpoints c936800f)
 - [x] **Commissions** — `CommissionRulesListView` + `CommissionRuleEditorSheet` (admin CRUD: `GET/POST/PATCH/DELETE /commissions/rules`; percentage/flat, cap, minTicketValue + tenure conditions); `CommissionReportView` (employee-facing, `GET /commissions/reports/:employeeId`); `CommissionCalculator` pure engine (percentage, flat, capped, min-threshold, tenure gate). Lock-period (admin) remains `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [x] **Schedule** — upcoming shifts + time-off. (`EmployeeDetailViewModel.load` async-lets `listShifts(userId:fromDate:toDate:)` next 14 days + `listTimeOffRequests(userId:)` for pending/approved; `scheduleCard` in `EmployeeDetailView` shows up to 3 shifts + time-off rows with `ShiftRow` / `TimeOffRow` helpers; both have a11y labels.) (see batch-3 commit)
-- [ ] **PIN management** — view (as set?) / change / clear.
+- [x] **PIN management** — view (as set?) / change / clear. (`PinManagementView` + `PinManagementViewModel`; `getPinStatus/setEmployeePin/clearEmployeePin` in `APIClient+Employees`.) (feat(§14.2): performance tiles + PIN management view + PIN endpoints c936800f)
 - [x] **Deactivate** — soft-delete; grey out future logins. (`EmployeeDetailView` deactivate/reactivate confirm dialogs; `EmployeeDetailViewModel.confirmDeactivate/confirmReactivate` → `PUT /api/v1/settings/users/:id`; inactive employees greyed in list via `EmployeeListFilter.activeOnly`.) (57e0660d)
 
 ### 14.3 Timeclock
@@ -1728,7 +1728,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Edit entries** (admin only, audit log) — `TimesheetEditSheet` + `PATCH /timeclock/shifts/:id`; reason field required for audit. (feat(ios post-phase §14))
 - [x] **Timesheet** weekly view per employee — `TimesheetView` (employee) + `TimesheetManagerView` (manager iPad `Table`); `OvertimeCalculator` pure engine; federal + CA rules; 68 tests pass. (feat(ios post-phase §14))
 - [x] **Offline queue** — `TimeclockOfflineQueue` (`@globalActor` actor, UserDefaults FIFO, idempotency keys); `clockIn/clockOut` catch `URLError.notConnectedToInternet|networkConnectionLost`, enqueue + optimistic state. (feat(§14): timeclock offline queue)
-- [ ] **Live Activity** — "Clocked in since 9:14 AM" on Lock Screen until clock-out.
+- [x] **Live Activity** — "Clocked in since 9:14 AM" on Lock Screen until clock-out. (`ClockInAttributes` + `ClockInLiveActivityManager` in `Timeclock/LiveActivity/ClockInLiveActivity.swift`; guarded by `#if canImport(ActivityKit)`; requires `NSSupportsLiveActivities` in Info.plist.) (feat(§14.3): ClockIn Live Activity — lock screen elapsed timer 32d7c68d)
 
 ### 14.4 Invite / manage (admin)
 - [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. The server may not have an email if self hosted though - lets make sure we account for that. (`InviteEmployeeSheet` + `InviteEmployeeViewModel`; targets `POST /api/v1/settings/users` admin endpoint; email optional with self-hosted footer note; role picker; `deriveUsername()` auto; 9 XCTest assertions; `inviteEmployee()` in `APIClient+Employees`) (9d7d9584)
@@ -1747,7 +1747,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Week grid** (7 columns, employees rows) — `ShiftSchedulePostView` (iPhone list / iPad horizontal grid); `ShiftScheduleConflictChecker` pure engine (double-booking + PTO overlap); `ShiftPublishBanner` Liquid Glass sticky footer; `POST /team/shifts`, `GET /team/shifts`. (feat(ios post-phase §14))
 - [x] Tap empty cell → add shift; tap filled → edit — `AddShiftSheet` inline. (feat(ios post-phase §14))
 - [x] Shift modal — employee, start/end, role, notes — `CreateScheduledShiftBody`. (feat(ios post-phase §14))
-- [ ] Time-off requests sidebar — approve / deny (manager).
+- [x] Time-off requests sidebar — approve / deny (manager). (`TimeOffRequestsSidebar` + `TimeOffRequestsSidebarViewModel`; uses existing `approveTimeOff`/`denyTimeOff` + new `listPendingTimeOffRequests`.) (feat(§14.6): time-off requests sidebar — approve/deny manager view 29529c39)
 - [x] Publish week → notifies team — `POST /team/shifts/publish`; `ShiftPublishBanner` confirm. (feat(ios post-phase §14))
 - [ ] Drag-drop rearrange (iPad).
 
@@ -1780,10 +1780,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Receipt: Z-report printed + PDF archived in §39 Cash register; PDF linked in shift summary
 - [ ] Handoff: next cashier starts with opening cash count entered by closing cashier
 - [ ] Sovereignty: shift data on tenant server only
-- [ ] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link
-- [ ] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF
+- [x] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link. (`HireWizardView` + `HireWizardViewModel`; 4-step wizard; POST /api/v1/settings/users.) (feat(§14): hire wizard — 4-step new employee flow dc179fa0)
+- [x] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF. (`OffboardingView` + `OffboardingViewModel`; POST /api/v1/settings/users/:id/offboard.) (feat(§14): offboarding flow + temporary suspension b7364caa)
 - [ ] Role changes: promote/demote path; change goes live immediately
-- [ ] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume
+- [x] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume. (`TemporarySuspensionView` + `TemporarySuspensionViewModel`; PATCH /api/v1/settings/users/:id { is_suspended }.) (feat(§14): offboarding flow + temporary suspension b7364caa)
 - [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export
 - [ ] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken
 - [ ] Private by default: self + manager; owner sees all
@@ -5620,7 +5620,7 @@ Covers what §46 specified.
 - [x] **Scope** — per team / location. `LeaderboardScope` enum `.team/.location`; stored in `LeaderboardSettings`. (feat(§46): leaderboard settings + per-user opt-out)
 - [x] **Metrics** — tickets closed / sales $. `LeaderboardMetric` enum; `value(from:)` + `formatted(_:)`. (feat(§14): employee leaderboard)
 - [x] **Anonymization** — own name always shown; others optionally initials only. `LeaderboardSettings.anonymizeOthers` + safety-info section in admin settings. (feat(§46): leaderboard settings + per-user opt-out)
-- [ ] **Weighting** — normalized by shift hours (part-time not unfairly compared); single big-ticket outliers excluded.
+- [x] **Weighting** — normalized by shift hours (part-time not unfairly compared); single big-ticket outliers excluded. (`LeaderboardWeighting` pure engine in `Employees/Leaderboard/LeaderboardWeighting.swift`; `rank(_:)` normalizes + excludes outliers > 3× median.) (feat(§46.6): leaderboard weighting — normalize by hours, exclude outliers 223450bf)
 - [x] **Timeframes** — weekly / monthly / YTD. `LeaderboardPeriod` enum with `dateRange`. (feat(§14): employee leaderboard)
 - [x] **Weekly summary only** as notification — `LeaderboardSettings.weeklyNotification` toggle; daily alerts intentionally unsupported. (feat(§46): leaderboard settings + per-user opt-out)
 - [x] **Per-user opt-out** — `LeaderboardOptOutView`; PATCH /api/v1/employees/:id/leaderboard-opt-out. (feat(§46): leaderboard settings + per-user opt-out)
@@ -5631,7 +5631,7 @@ Covers what §46 specified.
 - [x] **Send** — `SendShoutoutSheet` + `SendShoutoutViewModel`; POST /api/v1/recognition/shoutouts; optional `ticketId`. (feat(§46): recognition shoutouts)
 - [x] **Categories**: Customer save / Team player / Technical excellence / Above and beyond. `ShoutoutCategory` enum. (feat(§46): recognition shoutouts)
 - [x] **Frequency unlimited** — no frequency cap; no leaderboard of shoutouts. (feat(§46): recognition shoutouts)
-- [ ] **Delivery** — push to recipient (§70); archive in recipient profile.
+- [x] **Delivery** — push to recipient (§70); archive in recipient profile. (`ReceivedShoutoutsView` + `ReceivedShoutoutsViewModel`; `listReceivedShoutouts` API; push notification wired via §70 notification category by Agent 9.) (feat(§46.7): received shoutouts archive in recipient profile d46591cf)
 - [x] **Team visibility** — `isTeamVisible` toggle (private by default); recipient can opt in. (feat(§46): recognition shoutouts)
 - [x] **End-of-year "recognition book"** — PDF export of all received shoutouts. (`RecognitionBookExportService.generatePDF` via `UIGraphicsPDFRenderer`; cover page + 4-per-page shoutout cards; `RecognitionBookButton` in `RecognitionShoutoutView` toolbar.) (feat(§46.7): recognition book PDF export)
 
