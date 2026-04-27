@@ -15,7 +15,7 @@ import { api } from '@/api/client';
  */
 export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepProps) {
   const [logoUrl, setLogoUrl] = useState(pending.store_logo || '');
-  const [color, setColor] = useState(pending.theme_primary_color || '#0E7490');
+  const [color, setColor] = useState(pending.theme_primary_color || '#FDEED0');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
 
@@ -138,7 +138,7 @@ export function StepLogo({ pending, onUpdate, onComplete, onCancel }: SubStepPro
               type="text"
               value={color}
               onChange={(e) => handleColorChange(e.target.value)}
-              placeholder="#0E7490"
+              placeholder="#FDEED0"
               className="flex-1 rounded-lg border border-surface-300 bg-surface-50 px-4 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>

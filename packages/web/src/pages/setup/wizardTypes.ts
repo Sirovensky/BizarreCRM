@@ -10,13 +10,14 @@
  */
 
 export type WizardPhase =
-  | 'welcome'    // Step 1 — store name + theme (mandatory)
-  | 'store'      // Step 2 — address/phone/email/timezone/currency (mandatory)
-  | 'shopType'   // Step 2.5 — shop type picker (audit section 42) — skippable
-  | 'trialInfo'  // Step 3 — 14-day Pro trial info (informational)
-  | 'hub'        // Extras hub — non-linear card grid
-  | 'review'     // Final summary
-  | 'done';      // Redirect to dashboard fires
+  | 'welcome'        // Step 1 — store name + theme (mandatory)
+  | 'store'          // Step 2 — address/phone/email/timezone/currency (mandatory)
+  | 'shopType'       // Step 2.5 — shop type picker (audit section 42) — skippable
+  | 'importHandoff'  // Step 3 — legacy data / import intent handoff card
+  | 'trialInfo'      // Step 4 — 14-day Pro trial info (informational)
+  | 'hub'            // Extras hub — non-linear card grid
+  | 'review'         // Final summary
+  | 'done';          // Redirect to dashboard fires
 
 export type ExtraCardId =
   | 'hours'
@@ -85,6 +86,9 @@ export interface PendingWrites {
   smtp_user?: string;
   smtp_pass?: string;
   smtp_from?: string;
+
+  // Import handoff step
+  setup_imported_legacy_data?: 'will_import' | 'later' | 'fresh';
 
   // Final flag — always written last
   wizard_completed?: 'true' | 'skipped';

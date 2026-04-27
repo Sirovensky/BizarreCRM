@@ -65,7 +65,7 @@ export function StepBusinessHours({ pending, onUpdate, onComplete, onCancel }: S
         {DAY_LABELS.map(([day, label]) => {
           const h = hours[day];
           return (
-            <div key={day} className="flex items-center gap-3">
+            <div key={day} className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
               <label className="flex w-28 items-center gap-2 text-sm text-surface-700 dark:text-surface-300">
                 <input
                   type="checkbox"

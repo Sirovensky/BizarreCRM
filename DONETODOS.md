@@ -3096,3 +3096,22 @@ Misc:
 - [x] WEB-FE-014. **aria-invalid on high-traffic forms.** CLOSED 2026-04-26 — todofixes426: added aria-invalid + aria-describedby across InvoiceDetail, EstimateList, Loaners forms; Login/Customer/Signup pre-existing.
 - [x] WEB-W2-006. **Bulk Assign UI.** CLOSED 2026-04-26 — todofixes426: bulkAssignOpen state + Assign dropdown in TicketListPage bulk action bar; calls bulkMut with action: 'assign'.
 - [x] WEB-FF-016. **CustomerListPage importMutation invalidate timing.** CLOSED 2026-04-26 — todofixes426: pre-existing — invalidateQueries already in onSuccess.
+
+## todofixes426 — Cleanup pass 17 (2026-04-26) — SSW1-5 first-run setup wizard
+
+DONE (5 items, single feature):
+- [x] SSW1. **First-login setup wizard gate.** Server `GET /auth/setup-status` returns `setupWizardCompleted` + `setupWizardSkippedAt` + `setupWizardSkipCount`. ALLOWED_CONFIG_KEYS extended (+24 keys: 3 setup_wizard_* + 21 audit-gap keys). Web `App.tsx` gate redirects fresh admin to `/setup`. SetupPage flushAndExit filters empty values (Skip preserves defaults); Complete writes `setup_wizard_completed='true'`; Skip writes `setup_wizard_skipped_at` + increments `setup_wizard_skip_count`; after 3 skips nag stops.
+- [x] SSW2. **Import-from-existing-CRM step (light handoff).** Reframed from inline state machine: new StepImportHandoff.tsx — 3 cards (Import / Later / Fresh). "Import" deep-links to /settings?tab=data-import in new tab. Persists `setup_imported_legacy_data` for analytics.
+- [x] SSW3. **Comprehensive field audit.** docs/setup-wizard-fields.md enumerates all store_config keys: 6 REQUIRED, 28 OPTIONAL, 130+ ADVANCED. Identifies 21 audit-gap keys (referenced but not in ALLOWED_CONFIG_KEYS — fixed by SSW1).
+- [x] SSW4. **RepairDesk API typo compatibility test.** vitest installed. Fixture with all 7 typo fields (orgonization/refered_by/hostory/tittle/createdd_date/suplied/warrenty). Test asserts mappers preserve typo strings exactly. 8 tests pass.
+- [x] SSW5. **E2E test for first-run wizard.** vitest pure-handler approach (no app bootstrap). 5 tests covering fresh state, skip path, complete path, persistence stability, ALLOWED_CONFIG_KEYS allowlist. All pass.
+
+Critique-driven changes:
+- Killed StepShopType + StepImport from wizard flow (kept files)
+- Killed StepTrialInfo as wizard phase
+- Created services/validationService.ts (11 validators + ALLOWED_TIMEZONES + ALLOWED_CURRENCIES + checkMandatoryFields)
+- Wired validation gate in StepStoreInfo (Next disabled when invalid)
+- Wired mandatory-field check in StepReview (Complete blocked when missing)
+- Targeted UI fixes (NOT M3 — that's for Android): StepLogo default `#0E7490` → cream `#FDEED0`, StepReceipts breakpoint `lg:` → `md:`, StepBusinessHours mobile stack `flex-col md:flex-row`.
+
+Tests: 13 pass (8 SSW4 + 5 SSW5). Web + server typecheck clean.

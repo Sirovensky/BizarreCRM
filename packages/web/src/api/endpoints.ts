@@ -47,7 +47,13 @@ interface AuthSwitchResponse {
 // ==================== Auth ====================
 export const authApi = {
   setupStatus: () =>
-    api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
+    api.get<{ success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } }>(
       '/auth/setup-status',
     ),
   setup: (data: {
