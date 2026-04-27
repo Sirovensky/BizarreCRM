@@ -618,7 +618,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12). `TicketAssigneePickerSheet` + wired in `TicketDetailView`. (agent-3-b8)
 - [x] **Totals panel** — subtotal, tax, discount, paid, balance due; `.textSelection(.enabled)` on total; `TotalsCard` now computes `totalPaid` + `balanceDue` from `payments` array. (578aa4e4)
 - [x] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel. `TicketDeviceSheet` + `DevicesSectionWithActions` in `TicketDetailView`. (agent-3-b8)
-- [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement).
+- [x] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement). `TicketDeviceChecklistSheet` + `TicketDeviceChecklistViewModel`. (agent-3-b9 aeba0378)
 - [x] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated. `TicketDeviceServicesSheet` + `ServiceLineDraft`. (agent-3-b8)
 - [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
 - [x] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight. "Add note" button wired to `TicketNoteComposeView` in Notes tab. (agent-3-b8)
@@ -631,8 +631,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42). `TicketRelatedSidebar` gated on `!Platform.isCompact`. (agent-3-b8)
 - [x] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2). `BenchTimerToggleCard` in Actions tab wired to `BenchTimerView`. (agent-3-b8)
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
-- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
-- [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
+- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]". Also: permission-denied glass toast (auto-dismiss 3s), 409 stale-edit banner, `deletedOnServerBanner` + `permissionDeniedToast` flags in `TicketDetailViewModel`. (agent-3-b9 a8e6232a)
+- [x] **Permission-gated actions** — hide destructive actions when user lacks role. Delete admin-only; Archive/Convert-to-invoice manager+. `TicketQuickActionsContent` + `TicketRowSwipeActions` `userRole` param. (agent-3-b9 4b78014d)
 
 ### 4.3 Create — full-fidelity multi-step
 - [x] Minimal create shipped (customer + single device) — `Tickets/TicketCreateView`.
@@ -642,7 +642,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **iPhone:** full-screen cover with top progress indicator (glass); each step own view.
 - [ ] **iPad:** 2-column sheet (left: step list, right: active step content); `Done` / `Back` in toolbar.
 - [ ] **Customer picker** — search existing (`GET /customers/search`) + "New customer" inline mini-form (see §5.3); recent customers list.
-- [ ] **Device catalog** — `GET /catalog/manufacturers` + `GET /catalog/devices?keyword=&manufacturer=` drive hierarchical picker. Pre-populate common-repair suggestions from `GET /device-templates`.
+- [x] **Device catalog** — `GET /catalog/manufacturers` + `GET /catalog/devices?keyword=&manufacturer=` drive hierarchical picker. Pre-populate common-repair suggestions from `GET /device-templates`. `CatalogDevicePickerSheet` + `CatalogDevicePickerViewModel`; iPhone NavigationStack / iPad NavigationSplitView. (agent-3-b9 325c6310)
 - [ ] **Device intake photos** — camera + library; 0..N; drag-to-reorder (iPad) / long-press-reorder (iPhone).
 - [ ] **Pre-conditions checklist** — checkboxes (from server or tenant default); required signed on bench start.
 - [x] **Services / parts picker** — quick-add tiles (top 5 services from `GET /pos-enrich/quick-add`) + full catalog search + barcode scan (VisionKit). Tap inventory part → adds to cart; tap service → adds with default labor rate from `GET /repair-pricing/services`. `TicketCreateServicePickerSheet` wired in `DevicesStepView`. (agent-3-b8)
@@ -650,12 +650,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Deposit** — "Collect deposit now" → inline POS charge (see §16) or "Mark deposit pending". Deposit amount shown on header.
 - [ ] **Assignee picker** — employee grid filtered by role / clocked-in; "Assign to me" shortcut.
 - [ ] **Due date** — default = tenant rule from `GET /settings/store` (+N business days); custom via `DatePicker`.
-- [ ] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`). - we should rethink the types completely though, and maybe have custom types availabel
-- [ ] **Tags / labels** — multi-chip picker.
+- [x] **Service type** — Walk-in / Mail-in / On-site / Pick-up / Drop-off (from `GET /settings/store`). `TicketServiceType` enum + Picker(.menu) in `ScheduleStepView`. (agent-3-b9 325c6310)
+- [x] **Tags / labels** — multi-chip picker. ScrollView chip HStack + Add tag TextField in `ScheduleStepView`. (agent-3-b9 325c6310)
 - [ ] **Source / referral** — dropdown (source list from server).
-- [ ] **Source-ticket linking** — pre-seed from existing ticket (convert-from-estimate flow).
+- [x] **Source-ticket linking** — pre-seed from existing ticket (convert-from-estimate flow). `sourceTicketId` param on `TicketCreateFlowViewModel.init`; forwarded in `CreateTicketFullRequest`. (agent-3-b9 325c6310)
 - [ ] **Review screen** — summary card with all fields; "Edit" jumps back to step; Big `.brandGlassProminent` "Create ticket" CTA.
-- [ ] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry.
+- [x] **Idempotency key** — client generates UUID, sent as `idempotency_key` body field (API client has no headers param) to avoid duplicate creates on retry. `resetIdempotencyKey()` on success. (agent-3-b9 325c6310)
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
 - [x] **Validation** — per-step inline glass error toasts; block next until required fields valid. `stepValidationMessage` in `TicketCreateFlowViewModel` + `CreateFlowValidationToast` in `TicketCreateFlowView`. (agent-3-b5)
@@ -745,7 +745,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Audit log entry per signature: timestamp + IP + device fingerprint + waiver version + actor (tenant staff who presented).
 - [ ] Re-sign on waiver-text change: existing customers re-sign on next interaction; version tracked per §64 template versioning.
 - [ ] Default state set (tenant-customizable): Intake → Diagnostic → Awaiting Approval → Awaiting Parts → In Repair → QA → Ready for Pickup → Completed → Archived. Branches: Cancelled, Un-repairable, Warranty Return.
-- [ ] Transition rules editable in Settings → Ticket statuses (§19.16): optional per-transition prerequisites (photo required / pre-conditions signed / deposit collected / quote approved). Blocked transitions show inline error "Can't mark Ready — no photo."
+- [x] Transition rules editable in Settings → Ticket statuses (§19.16): optional per-transition prerequisites (photo required / pre-conditions signed / deposit collected / quote approved). Blocked transitions show inline error "Can't mark Ready — no photo." `TransitionPrerequisite` + `TicketStateMachine.checkPrerequisites()` + `TicketStatusTransitionSheet` gates. (agent-3-b9 aeba0378)
 - [ ] Triggers on transition: auto-SMS (e.g., Ready for Pickup → text customer per §12 template); assignment-change audit log; idle-alert push to manager after > 7d in `Awaiting Parts`.
 - [ ] Bulk transitions via multi-select → "Move to Ready" menu; rules enforced per-ticket; skipped ones shown in summary.
 - [ ] Rollback: admin-only; creates audit entry with reason.
@@ -1328,17 +1328,17 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
 - [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
-- [ ] iOS push to staff on sign: "Quote #42 signed by Acme Corp — convert to ticket?" Deep-link opens quote; one-tap convert to ticket (§8).
+- [x] iOS push to staff on sign: "Quote #42 signed by Acme Corp — convert to ticket?" Deep-link opens quote; one-tap convert to ticket (§8). `EstimateSignedPushHandler` + `EstimateSignedNotificationCategory`; Agent 9 registers UNNotificationCategory. (agent-3-b9 cc09c77e)
 - [ ] Signable within N days (tenant-configured); expired → "Quote expired — contact shop" page.
 - [ ] Audit: each open / sign event logged with IP + user-agent + timestamp.
 - [ ] Each edit creates new version; prior retained
-- [ ] Version number visible on UI (e.g. "v3")
+- [x] Version number visible on UI (e.g. "v3") — version badge Capsule on estimate list rows when `versionNumber > 1`. (agent-3-b9 cc09c77e)
 - [ ] Only "sent" versions archived for audit; drafts freely edited
 - [x] Side-by-side diff of v-n vs v-n+1 — `EstimateVersionDiff.compute(older:newer:)` pure function + `EstimateVersionDiffView`; context-menu "Compare with latest" in `EstimateVersionsView`. (agent-3-b8)
 - [x] Highlight adds / removes / price changes — green "+", red "−" strikethrough, amber "Δ" badges in `EstimateVersionDiffView`. (agent-3-b8)
-- [ ] Customer approval tied to specific version
+- [x] Customer approval tied to specific version — `approvedVersionNumber` on Estimate DTO; version-mismatch warning banner. (agent-3-b8/b9)
 - [x] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?"). `versionWarningBanner` in `EstimateDetailView`; `approvedVersionNumber` field on `Estimate` DTO. (agent-3-b7)
-- [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate)
+- [x] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate). `convertEstimateToTicketWithVersion(estimateId:approvedVersionId:)` → POST body `approved_version_id`; `EstimateConvertViewModel` passes it; `EstimateConvertSheet` shows "Converting v2" label. (agent-3-b9 cc09c77e)
 - [ ] Reuse same versioning machinery for receipt templates + waivers (§4.6)
 
 ---
