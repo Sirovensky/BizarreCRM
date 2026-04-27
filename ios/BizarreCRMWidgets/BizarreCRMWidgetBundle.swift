@@ -18,6 +18,8 @@ struct BizarreCRMWidgetBundle: WidgetBundle {
         OpenTicketsWidget()
         TodaysRevenueWidget()
         AppointmentsNextWidget()
+        // §24.1 Extra Large — iPad full dashboard mirror (6 tiles + open ticket list)
+        DashboardMirrorWidget()
         // Lock Screen complications
         LockScreenComplicationsWidget()
         // Live Activities
