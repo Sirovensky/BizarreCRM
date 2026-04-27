@@ -44,6 +44,27 @@ public enum Platform {
     public static var supportsNativeBarcodeScan: Bool { !isMac }
     public static var supportsBluetoothClassicPrinter: Bool { !isMac }
 
+    // MARK: - §23.1 Mac feature gates
+
+    /// NFC reader API is unavailable on macOS ("Designed for iPad").
+    public static var supportsNFC: Bool { !isMac }
+
+    /// CoreHaptics / Taptic Engine is unavailable on macOS.
+    /// Call sites no-op haptic calls when this is false.
+    public static var supportsHapticEngine: Bool { !isMac }
+
+    /// AirPrint is the Mac-compatible printer path; MFi Bluetooth printers
+    /// use iOS-only CBCentralManager (unavailable on Mac).
+    /// Feature owners gate `HardwarePrinting.sendRaw(_:)` on this flag.
+    public static var requiresAirPrintOnMac: Bool { isMac }
+
+    /// Continuity Camera lets users pick up an iPhone camera from a Mac.
+    /// Show a hint to use this instead of native camera scan on Mac.
+    public static var suggestsContinuityCamera: Bool { isMac }
+
+    /// Minimum window width / height for the Mac scene (§23.2).
+    public static var macMinWindowSize: CGSize { CGSize(width: 900, height: 600) }
+
     public static var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
     }
