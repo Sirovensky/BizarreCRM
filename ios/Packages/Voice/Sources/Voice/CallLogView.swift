@@ -129,7 +129,7 @@ public struct CallLogView: View {
         if let id = selectedCallId,
            case .loaded(let calls) = viewModel.state,
            let entry = calls.first(where: { $0.id == id }) {
-            CallDetailView(entry: entry)
+            CallDetailView(entry: entry, api: api)
         } else {
             VStack(spacing: DesignTokens.Spacing.lg) {
                 Image(systemName: "phone.badge.waveform")
@@ -323,6 +323,23 @@ extension View {
 
 private struct CallDetailView: View {
     let entry: CallLogEntry
+    let api: APIClient
+
+    @State private var showRecordingPlayer: Bool = false
+
+    /// Resolved absolute URL for the recording.
+    ///
+    /// The DTO `recordingUrl` may be:
+    /// - An absolute HTTPS URL from the provider → used directly.
+    /// - A relative `/uploads/...` path from the server → prepended with `APIClient.currentBaseURL()`.
+    private var resolvedRecordingURL: URL? {
+        guard let urlStr = entry.recordingUrl else { return nil }
+        if let absolute = URL(string: urlStr), absolute.scheme != nil {
+            return absolute
+        }
+        guard let base = api.currentBaseURL() else { return nil }
+        return URL(string: urlStr, relativeTo: base)?.absoluteURL
+    }
 
     var body: some View {
         ScrollView {
@@ -358,6 +375,19 @@ private struct CallDetailView: View {
                     transcriptSection(text)
                 }
 
+                // Recording playback — §42.1
+                if resolvedRecordingURL != nil {
+                    Button {
+                        showRecordingPlayer = true
+                    } label: {
+                        Label("Play Recording", systemImage: "waveform")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.brandGlass)
+                    .keyboardShortcut("r", modifiers: .command)
+                    .accessibilityLabel("Play call recording")
+                }
+
                 // Call back button
                 Button {
                     CallQuickAction.placeCall(to: entry.phoneNumber)
@@ -375,6 +405,13 @@ private struct CallDetailView: View {
         }
         .navigationTitle(entry.customerName ?? entry.phoneNumber)
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showRecordingPlayer) {
+            if let url = resolvedRecordingURL {
+                CallRecordingPlayerView(entry: entry, recordingURL: url) {
+                    showRecordingPlayer = false
+                }
+            }
+        }
     }
 
     private var metaSection: some View {
