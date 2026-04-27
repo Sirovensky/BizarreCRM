@@ -15,6 +15,15 @@ public struct InvoiceDetailView: View {
     @State private var isCloning = false
     @State private var cloneError: String?
     @State private var clonedInvoiceId: Int64?
+    // §7.2 SMS
+    @State private var showSMSSheet = false
+    // §7.2 Share PDF + AirPrint
+    @State private var pdfURL: URL?
+    @State private var isGeneratingPDF = false
+    @State private var pdfError: String?
+    @State private var showSharePDF = false
+    @State private var showAirPrint = false
+    @ObservationIgnored private let printService = InvoicePrintService()
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private let repo: InvoiceDetailRepository
@@ -131,6 +140,35 @@ public struct InvoiceDetailView: View {
         } message: {
             Text(cloneError ?? "Unknown error")
         }
+        // §7.2 PDF error alert
+        .alert("PDF Error", isPresented: Binding(
+            get: { pdfError != nil },
+            set: { if !$0 { pdfError = nil } }
+        )) {
+            Button("OK") { pdfError = nil }
+        } message: {
+            Text(pdfError ?? "Unknown error")
+        }
+        // §7.2 Send by SMS sheet
+        .sheet(isPresented: $showSMSSheet) {
+            if case let .loaded(inv) = vm.state {
+                InvoiceSMSSheet(
+                    vm: InvoiceSMSViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        orderId: inv.orderId,
+                        customerPhone: inv.customerPhone,
+                        paymentLinkURL: nil
+                    )
+                ) { showSMSSheet = false }
+            }
+        }
+        // §7.2 Share PDF
+        .sheet(isPresented: $showSharePDF) {
+            if let url = pdfURL {
+                ShareSheet(items: [url])
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -171,6 +209,34 @@ public struct InvoiceDetailView: View {
                             Label("Email Receipt", systemImage: "envelope")
                         }
                         .accessibilityLabel("Email receipt to customer")
+                        // §7.2 Send by SMS
+                        if let phone = inv.customerPhone, !phone.isEmpty {
+                            Button {
+                                showSMSSheet = true
+                            } label: {
+                                Label("Send by SMS", systemImage: "message")
+                            }
+                            .accessibilityLabel("Send invoice by SMS")
+                        }
+                        // §7.2 Share PDF
+                        Button {
+                            Task { await generateAndSharePDF(inv) }
+                        } label: {
+                            if isGeneratingPDF {
+                                Label("Generating…", systemImage: "doc.richtext")
+                            } else {
+                                Label("Share PDF", systemImage: "square.and.arrow.up")
+                            }
+                        }
+                        .disabled(isGeneratingPDF)
+                        .accessibilityLabel("Share invoice as PDF")
+                        // §7.2 AirPrint
+                        Button {
+                            Task { await generateAndPrint(inv) }
+                        } label: {
+                            Label("Print", systemImage: "printer")
+                        }
+                        .accessibilityLabel("Print invoice via AirPrint")
                         // §7.2 Credit note
                         if (inv.amountPaid ?? 0) > 0 {
                             Button {
@@ -198,6 +264,52 @@ public struct InvoiceDetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: - §7.2 Share PDF action
+
+    @MainActor
+    private func generateAndSharePDF(_ inv: InvoiceDetail) async {
+        guard !isGeneratingPDF else { return }
+        isGeneratingPDF = true
+        pdfError = nil
+        defer { isGeneratingPDF = false }
+        do {
+            let url = try await printService.generatePDF(invoice: inv)
+            pdfURL = url
+            showSharePDF = true
+        } catch {
+            pdfError = error.localizedDescription
+            AppLog.ui.error("Invoice PDF generation failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - §7.2 AirPrint action
+
+    @MainActor
+    private func generateAndPrint(_ inv: InvoiceDetail) async {
+        guard !isGeneratingPDF else { return }
+        isGeneratingPDF = true
+        pdfError = nil
+        defer { isGeneratingPDF = false }
+        do {
+            let url = try await printService.generatePDF(invoice: inv)
+            await presentAirPrint(pdfURL: url)
+        } catch {
+            pdfError = error.localizedDescription
+            AppLog.ui.error("Invoice AirPrint failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    @MainActor
+    private func presentAirPrint(pdfURL: URL) async {
+        let info = UIPrintInfo(dictionary: nil)
+        info.jobName = "Invoice"
+        info.outputType = .general
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = info
+        controller.printingItem = pdfURL
+        controller.present(animated: true, completionHandler: nil)
     }
 
     // MARK: - §7.2 Clone invoice action
@@ -251,6 +363,11 @@ public struct InvoiceDetailView: View {
                     }
                     // §7.7 Payment history section
                     InvoicePaymentHistoryView(entries: buildPaymentHistory(from: inv))
+                    // §7.2 Timeline — every status change, payment, note, send
+                    let timelineEvents = buildInvoiceTimeline(from: inv)
+                    if !timelineEvents.isEmpty {
+                        InvoiceTimelineView(events: timelineEvents)
+                    }
                 }
                 .padding(BrandSpacing.base)
             }
@@ -534,5 +651,15 @@ private func formatMoney(_ v: Double) -> String {
     f.numberStyle = .currency
     f.currencyCode = "USD"
     return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+}
+
+// MARK: - §7.2 ShareSheet shim
+
+private struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 #endif
