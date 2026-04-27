@@ -23,6 +23,8 @@ public struct InvoiceDetailView: View {
     @State private var clonedInvoiceId: Int64?
     // §7.2 SMS
     @State private var showSMSSheet = false
+    // §7.7 Customer return flow
+    @State private var showReturnSheet = false
     // §7.4 Post-payment receipt delivery sheet
     @State private var showReceiptDelivery = false
     @State private var lastPaymentCents: Int = 0
@@ -224,6 +226,32 @@ public struct InvoiceDetailView: View {
                 ShareSheet(items: [url])
             }
         }
+        // §7.7 Customer return flow sheet
+        .sheet(isPresented: $showReturnSheet) {
+            if case let .loaded(inv) = vm.state {
+                let custId = inv.customerId ?? 0
+                let returnLines: [InvoiceReturnLine] = (inv.lineItems ?? []).map { item in
+                    InvoiceReturnLine(
+                        id: item.id,
+                        displayName: item.displayName,
+                        sku: item.sku,
+                        originalQty: Int((item.quantity ?? 1).rounded()),
+                        unitPriceCents: Int(((item.unitPrice ?? 0) * 100).rounded())
+                    )
+                }
+                InvoiceReturnSheet(
+                    vm: InvoiceReturnViewModel(
+                        api: api,
+                        invoiceId: inv.id,
+                        customerId: custId,
+                        lines: returnLines
+                    )
+                ) { _ in
+                    showReturnSheet = false
+                    Task { await vm.load() }
+                }
+            }
+        }
     }
 
     @ToolbarContentBuilder
@@ -318,6 +346,16 @@ public struct InvoiceDetailView: View {
                                 Label("Convert Overpayment to Credit", systemImage: "arrow.left.arrow.right.circle")
                             }
                             .accessibilityLabel("Convert overpayment to credit note")
+                        }
+                        // §7.7 Return items (customer return flow)
+                        if inv.canRefund {
+                            Divider()
+                            Button {
+                                showReturnSheet = true
+                            } label: {
+                                Label("Return Items…", systemImage: "return")
+                            }
+                            .accessibilityLabel("Return items on this invoice")
                         }
                         // §7.2 Clone invoice
                         Button {

@@ -339,10 +339,77 @@ public struct CreateRefundResponse: Decodable, Sendable {
     }
 }
 
+// MARK: - §7.7 Customer return request (with per-line detail)
+// Extends the existing POST /api/v1/refunds endpoint with an optional `lines` array.
+// Server persists line-level data and creates an audit entry on every submission.
+
+public struct InvoiceReturnRequest: Encodable, Sendable {
+    /// Invoice being returned against.
+    public let invoiceId: Int64
+    /// Customer receiving the credit.
+    public let customerId: Int64
+    /// Total refund amount in dollars (net of restocking fees).
+    public let amount: Double
+    /// Return refund method (cash / store_credit / gift_card).
+    public let method: String
+    /// Human-readable return reason.
+    public let reason: String?
+    /// Per-line return detail.
+    public let lines: [ReturnLineBody]
+
+    public struct ReturnLineBody: Encodable, Sendable {
+        public let lineItemId: Int64
+        public let qty: Int
+        /// Disposition: "salable" | "scrap" | "damaged"
+        public let disposition: String
+
+        public init(lineItemId: Int64, qty: Int, disposition: String) {
+            self.lineItemId = lineItemId
+            self.qty = qty
+            self.disposition = disposition
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case qty, disposition
+            case lineItemId = "line_item_id"
+        }
+    }
+
+    public init(
+        invoiceId: Int64,
+        customerId: Int64,
+        amount: Double,
+        method: String,
+        reason: String?,
+        lines: [ReturnLineBody]
+    ) {
+        self.invoiceId = invoiceId
+        self.customerId = customerId
+        self.amount = amount
+        self.method = method
+        self.reason = reason
+        self.lines = lines
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case amount, method, reason, lines
+        case invoiceId  = "invoice_id"
+        case customerId = "customer_id"
+    }
+}
+
 public extension APIClient {
     /// `POST /api/v1/refunds`
     /// Creates a pending refund. Separate approval step required: PATCH /api/v1/refunds/:id/approve
     func createRefund(body: CreateRefundRequest) async throws -> CreateRefundResponse {
+        try await post("/api/v1/refunds", body: body, as: CreateRefundResponse.self)
+    }
+
+    /// `POST /api/v1/refunds` — §7.7 customer return flow with per-line detail.
+    /// Body: { invoice_id, customer_id, amount, method, reason, lines: [{ line_item_id, qty, disposition }] }
+    /// `lines` field extends the existing refunds endpoint (server must accept and pass through).
+    /// Audit entry is created server-side on every submission.
+    func createReturnRefund(body: InvoiceReturnRequest) async throws -> CreateRefundResponse {
         try await post("/api/v1/refunds", body: body, as: CreateRefundResponse.self)
     }
 }
