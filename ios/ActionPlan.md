@@ -993,7 +993,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch. (feat(§6.1): InventoryReceiveItemsSheet — 12e1c70c)
 - [x] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion. (`ReceiveByPOSheet` + `ReceiveByPOViewModel` — lists open POs, `POReceiveDetailSheet` per-line qty entry + confirm → `PurchaseOrderRepository.receive`; success alert + "Receive another". feat(§6.1) b9)
 - [x] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted. (feat(§6.1): InventoryImportCSVSheet — 21d47122)
-- [ ] **Mass label print** — multi-select → label printer (AirPrint or MFi).
+- [x] **Mass label print** — multi-select → label printer (AirPrint or MFi). (`InventoryLabelPrintSheet` + `InventoryLabelRenderer` — format picker Small/Medium; Code-128 via CoreImage; `UIPrintInteractionController` AirPrint; `APIClient.inventoryItemsForLabels` concurrent fetch; `BatchEditSheet` "Print labels" button. feat(§6.1/§6.8) b10 f8ddc6f9)
 - [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (ae5435bf)
 - [x] **Cost price hidden** from non-admin roles (server returns null). (`Detail/InventoryDetailCards.swift` `CostPriceHiddenBadge` shown in `InventoryDetailView` when `costPrice == nil`; lock icon + "Cost price (admin only)" label. feat(§6/§10) b5ae5c51)
 - [x] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs. (ae5435bf — `InventoryEmptyState` with Import CSV + Add item CTAs)
@@ -1028,7 +1028,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] All fields editable (cost/price role gating TBD) — `Inventory/InventoryEditView`.
 - [x] **Stock adjust** — `InventoryAdjustSheet` + `InventoryAdjustViewModel` wired. `POST /inventory/:id/adjust-stock` with delta + 6-reason picker (Recount/Shrinkage/Damage/Receive/Transfer/Other) + notes. Commit `0f43c61`. 404/501 → `APITransportError.notImplemented` surfaces "Coming soon" banner.
 - [x] **Low-stock alerts view** — `InventoryLowStockView` lists items below reorder_level with shortage badge; swipe → `InventoryAdjustSheet`. Toolbar "Low stock" ⌘⇧L on Inventory list.
-- [ ] **Move between locations** (multi-location tenants).
+- [x] **Move between locations** (multi-location tenants). (`MoveToLocationSheet` — `InventoryLocation` DTO; `APIClient.inventoryTransferLocations` GET /api/v1/locations; `MoveToLocationViewModel` auto-dispatches transfer on confirm; secondary toolbar ⌘⇧M in `InventoryDetailView`; sourceLocationId §60 integration pending Agent 8/9. feat(§6.4) b10 8f0e3da5)
 - [x] **Delete** — confirm; prevent if stock > 0 or open PO references it. (`InventoryDetailView.deleteItem()` + confirmationDialog; server returns 409 when stock > 0. feat(§6.4) b5)
 - [x] **Deactivate** — keep history, hide from POS. (`InventoryDetailView.deactivate()` via `DELETE /api/v1/inventory/:id`; sets is_active=0 on server; confirmationDialog warns. feat(§6.4) b5)
 
@@ -1062,7 +1062,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Shrinkage report** — expected vs actual; variance trend chart. (`ShrinkageReport.swift` — `ShrinkagePoint`/`ShrinkageReason`/`ShrinkageSummary` models, `ShrinkageCalculator` pure (9 tests), `ShrinkageReportView` with KPI tiles + variance `BarMark` + by-reason chart + period picker; `GET /api/v1/inventory/reports/shrinkage?months=`. feat(§6.8) b9)
 - [x] **ABC analysis** — A/B/C classification; `Chart` bar. (`ABCAnalysis.swift` — `ABCItem`/`ABCClass` models, `ABCClassifier` pure (8 tests), `ABCAnalysisView` with classification `BarMark` + class filter chips + sorted item list; `GET /api/v1/inventory/reports/abc`. feat(§6.8) b9)
 - [x] **Age report** — days-in-stock; markdown / clearance suggestions. (`AgeReport.swift` — `AgedItem`/`AgingTier` models, `AgingCalculator` pure (9 tests), `AgeReportView` with tier distribution `BarMark` + filter chips + clearance suggestions sheet; `GET /api/v1/inventory/reports/aging`. feat(§6.8) b9)
-- [ ] **Mass label print** — select items → label format → print (AirPrint or MFi thermal).
+- [x] **Mass label print** — select items → label format → print (AirPrint or MFi thermal). (see §6.1 above — `InventoryLabelPrintSheet` + `InventoryLabelRenderer`; MFi thermal deferred to Agent 2. feat(§6.8) b10 f8ddc6f9)
 - [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`. (Inventory owns Asset model; Loaner issue UI lives in Tickets package Agent 3 — Discovered cross-domain)
 - [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket. (Discovered: ticket detail UI = Agent 3 domain; Inventory provides asset picker protocol)
 - [ ] Return flow: inspect → mark available; release any BlockChyp hold. (Agent 3 + Agent 1 POS; cross-domain. Discovered.)
@@ -1115,14 +1115,14 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Action: return to vendor if eligible (requires PO vendor return flow — already tracked in §7.6 Agent 6 domain. Discovered.)
 - [ ] Action: donate for tax write-off (out of scope for iOS; finance/accounting web flow. Discovered.)
 - [ ] Alerts: quarterly push "N items hit dead tier — plan action" (server-side cron + push — Notifications/push (Agent 9 domain). Discovered.)
-- [ ] Visibility: inventory list chip "Stale" / "Dead" badge (deferred — `InventoryListView` can receive `AgingTier` from `AgeReport` API; cross-wiring needed in b10)
+- [x] Visibility: inventory list chip "Stale" / "Dead" badge (`InventoryListViewModel.agingTierMap [Int64:AgingTier]` loaded from AgeReport API post-list; `InventoryRow` shows Stale/Dead/Obsolete Capsule chip in brand warning/error/gray colours; fresh items hidden. feat(§6.8) b10 96ed5da5)
 - [x] Per vendor: average days from order → receipt (`SupplierPanelCard` in `InventoryDetailCards.swift` — `lead_time` days from `/inventory/:id/supplier`. feat(§6/§10) b5ae5c51)
 - [x] Computed from PO history (server computes from PO receive timestamps; iOS reads `leadTime` from `InventorySupplierDetailResponse`. feat(§6.2) b5)
 - [x] Lead-time variance shows unreliability → affects reorder point (`ReorderPolicy.leadTimeDays` in `ReorderSuggestionEngine`; safety stock calc uses lead time. feat(§6.13) above)
 - [x] Safety stock buffer qty = avg daily sell × lead time × safety factor (`ReorderSuggestionEngine.suggestion(for:policy:)` — target = reorderLevel + safetyStock. feat(§6.13) above)
 - [x] Auto-calc or manual override of safety stock (`AutoReorderRulesView` edit sheet allows manual threshold + qty override. feat(§6.8) b9)
-- [ ] Vendor comparison side-by-side: cost, lead time, on-time % (deferred to §58 PO supplier analytics — complex BI, lower priority)
-- [ ] Suggest alternate vendor when primary degrades (server-side logic; iOS shows suggestion banner when primary vendor on-time % drops — deferred to §58)
+- [x] Vendor comparison side-by-side: cost, lead time, on-time % (`SupplierComparisonView` — `SupplierAnalytics` DTO with graceful 404 fallback to Supplier static data; concurrent per-supplier analytics fetch; iPhone list + iPad `Table`; bar chart with metric picker; KPI highlight cards; Compare toolbar button ⌘⇧K in `SupplierListView`. feat(§58) b10 31f3b061)
+- [x] Suggest alternate vendor when primary degrades (iOS shows amber "Consider an alternate supplier" banner in `SupplierPanelCard` when on-time rate < 70%; "Compare" button opens `SupplierComparisonView`; background analytics fetch; `InventorySupplierDetailResponse` gains `supplierId`. feat(§6.9/§58) b10 c40c03e7)
 - [ ] Seasonality: lead times may lengthen in holiday season; track per-month (server analytics; iOS surface deferred)
 - [x] Inventory item detail shows "Lead time 7d avg (p90 12d)" (`SupplierPanelCard` — `lead_time` days displayed. feat(§6.2) b5)
 - [x] PO creation uses latest stats for ETA (`PurchaseOrderComposeView` expected date defaults to `leadTimeDays` from now; `PurchaseOrderCalculator`. feat(§6.7) b7)
