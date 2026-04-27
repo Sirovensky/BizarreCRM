@@ -185,4 +185,71 @@ public extension APIClient {
     func deleteCustomer(id: Int64) async throws {
         try await delete("/api/v1/customers/\(id)")
     }
+
+    // MARK: §5.4 — Tag segments
+
+    /// `GET /api/v1/customer-segments` — list saved tag-combo segments.
+    func listCustomerSegments() async throws -> [CustomerTagSegmentDTO] {
+        try await get("/api/v1/customer-segments", as: [CustomerTagSegmentDTO].self)
+    }
+
+    /// `POST /api/v1/customer-segments` or `PUT /api/v1/customer-segments/:id` — upsert a segment.
+    @discardableResult
+    func saveCustomerSegment(_ segment: CustomerTagSegmentDTO) async throws -> CustomerTagSegmentDTO {
+        if segment.id.isEmpty || segment.id == UUID().uuidString {
+            return try await post("/api/v1/customer-segments", body: segment, as: CustomerTagSegmentDTO.self)
+        }
+        return try await put("/api/v1/customer-segments/\(segment.id)", body: segment, as: CustomerTagSegmentDTO.self)
+    }
+
+    /// `DELETE /api/v1/customer-segments/:id` — delete a saved segment.
+    func deleteCustomerSegment(id: String) async throws {
+        try await delete("/api/v1/customer-segments/\(id)")
+    }
+
+    /// `GET /api/v1/customers/tags` — all tags used across tenant customers.
+    func listCustomerTags() async throws -> [String] {
+        try await get("/api/v1/customers/tags", as: [String].self)
+    }
+}
+
+// MARK: - §5.4 CustomerTagSegmentDTO
+
+/// Network-layer DTO that mirrors `CustomerTagSegment` in the Customers package.
+/// Using a separate DTO here avoids a circular dependency between Networking and Customers.
+public struct CustomerTagSegmentDTO: Codable, Sendable, Identifiable {
+    public let id: String
+    public var name: String
+    public var requiredTags: [String]
+    public var anyTags: [String]
+    public var maxDaysSinceLastVisit: Int?
+    public var minLTVCents: Int?
+    public var createdAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case requiredTags = "required_tags"
+        case anyTags = "any_tags"
+        case maxDaysSinceLastVisit = "max_days_since_last_visit"
+        case minLTVCents = "min_ltv_cents"
+        case createdAt = "created_at"
+    }
+
+    public init(
+        id: String = "",
+        name: String,
+        requiredTags: [String] = [],
+        anyTags: [String] = [],
+        maxDaysSinceLastVisit: Int? = nil,
+        minLTVCents: Int? = nil,
+        createdAt: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.requiredTags = requiredTags
+        self.anyTags = anyTags
+        self.maxDaysSinceLastVisit = maxDaysSinceLastVisit
+        self.minLTVCents = minLTVCents
+        self.createdAt = createdAt
+    }
 }

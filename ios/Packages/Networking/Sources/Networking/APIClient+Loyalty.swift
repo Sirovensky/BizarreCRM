@@ -74,4 +74,38 @@ public extension APIClient {
             as: MembershipRedeemResultDTO.self
         )
     }
+
+    // MARK: §38.5 — Punch card expiry policy
+
+    /// `GET /loyalty/punch-card-expiry-policy` — load tenant punch card expiry + location-sharing policy.
+    func getPunchCardExpiryPolicy() async throws -> PunchCardExpiryPolicyDTO {
+        try await get("/loyalty/punch-card-expiry-policy", as: PunchCardExpiryPolicyDTO.self)
+    }
+
+    /// `PUT /loyalty/punch-card-expiry-policy` — save tenant punch card expiry + location-sharing policy.
+    @discardableResult
+    func savePunchCardExpiryPolicy(_ policy: PunchCardExpiryPolicyDTO) async throws -> PunchCardExpiryPolicyDTO {
+        try await put("/loyalty/punch-card-expiry-policy", body: policy, as: PunchCardExpiryPolicyDTO.self)
+    }
+}
+
+// MARK: - PunchCardExpiryPolicyDTO
+
+/// Networking DTO for §38.5 punch card expiry + location-sharing policy.
+public struct PunchCardExpiryPolicyDTO: Codable, Sendable {
+    public var expiryEnabled: Bool
+    public var inactivityMonths: Int
+    public var sharedAcrossLocations: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case expiryEnabled = "expiry_enabled"
+        case inactivityMonths = "inactivity_months"
+        case sharedAcrossLocations = "shared_across_locations"
+    }
+
+    public init(expiryEnabled: Bool = false, inactivityMonths: Int = 12, sharedAcrossLocations: Bool = true) {
+        self.expiryEnabled = expiryEnabled
+        self.inactivityMonths = inactivityMonths
+        self.sharedAcrossLocations = sharedAcrossLocations
+    }
 }
