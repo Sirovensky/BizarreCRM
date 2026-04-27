@@ -59,6 +59,52 @@ router.get('/manufacturers', asyncHandler(async (req, res) => {
   res.json({ success: true, data: rows });
 }));
 
+// ─── Device categories (Android chip-row + web type picker source) ──────────
+const CATEGORY_LABELS: Record<string, string> = {
+  phone: 'Phone',
+  tablet: 'Tablet',
+  laptop: 'Laptop',
+  desktop: 'Desktop',
+  tv: 'TV',
+  'game-console': 'Game Console',
+  console: 'Console',
+  watch: 'Watch',
+  smartwatch: 'Smartwatch',
+  drone: 'Drone',
+  other: 'Other',
+};
+const CANONICAL_FALLBACK = ['phone', 'tablet', 'laptop', 'tv', 'game-console', 'desktop'];
+
+router.get('/categories', asyncHandler(async (_req, res) => {
+  const adb = _req.asyncDb;
+  const rows = await adb.all(`
+    SELECT category AS slug, COUNT(*) AS count
+    FROM device_models
+    WHERE category IS NOT NULL AND TRIM(category) != ''
+    GROUP BY category
+    ORDER BY count DESC, category ASC
+  `);
+  type Row = { slug: string; count: number };
+  const seen = new Set<string>();
+  const result: Array<{ slug: string; label: string; count: number }> = [];
+  for (const r of rows as Row[]) {
+    const slug = String(r.slug).toLowerCase().trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    result.push({
+      slug,
+      label: CATEGORY_LABELS[slug] ?? slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      count: Number(r.count) || 0,
+    });
+  }
+  for (const slug of CANONICAL_FALLBACK) {
+    if (seen.has(slug)) continue;
+    seen.add(slug);
+    result.push({ slug, label: CATEGORY_LABELS[slug] ?? slug, count: 0 });
+  }
+  res.json({ success: true, data: result });
+}));
+
 // ─── Device models ───────────────────────────────────────────────────────────
 
 router.get('/devices', asyncHandler(async (req, res) => {

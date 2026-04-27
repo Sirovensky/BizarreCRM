@@ -6,9 +6,23 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Query
 
+/**
+ * Server: GET /catalog/categories — distinct device categories with display
+ * labels + counts. Refreshed on app start so chip-row pickers stay in sync
+ * with the tenant catalog (no hardcoded list).
+ */
+data class DeviceCategoryItem(
+    val slug: String,
+    val label: String,
+    val count: Int = 0,
+)
+
 interface CatalogApi {
     @GET("catalog/manufacturers")
     suspend fun getManufacturers(): ApiResponse<List<ManufacturerItem>>
+
+    @GET("catalog/categories")
+    suspend fun getCategories(): ApiResponse<List<DeviceCategoryItem>>
 
     @GET("catalog/devices")
     suspend fun searchDevices(

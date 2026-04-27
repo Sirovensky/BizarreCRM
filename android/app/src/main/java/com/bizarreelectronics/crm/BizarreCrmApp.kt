@@ -66,6 +66,9 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
     @Inject
     lateinit var draftStore: DraftStore
 
+    @Inject
+    lateinit var deviceCategoryRepository: com.bizarreelectronics.crm.data.repository.DeviceCategoryRepository
+
     // AND-035: use Dispatchers.Default so the scope does not hold the Main
     // thread dispatcher alive. The observeReconnect collector is pure state
     // logic (no UI writes) — any UI-touching work must dispatch explicitly
@@ -127,6 +130,9 @@ class BizarreCrmApp : Application(), Configuration.Provider, SingletonImageLoade
                 }
             }
         }
+        // 2026-04-26 — refresh device-category chip-row source on every app
+        // start so the POS Add-Device picker mirrors tenant catalog changes.
+        appScope.launch { deviceCategoryRepository.refresh() }
         // §1.6 — process foreground/background hooks. ON_START fires whenever
         // the user comes back to the app from another task; we use it to
         // re-validate the session + kick a delta sync so screens never linger
