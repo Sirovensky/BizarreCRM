@@ -198,6 +198,7 @@ public struct OwnerPLView: View {
                 .chartYAxisLabel("$K", position: .leading)
                 .frame(height: 220)
                 .accessibilityLabel("Revenue vs expenses bar chart by period")
+                .accessibilityChartDescriptor(OwnerPLChartDescriptor(buckets: s.timeSeries))
             }
         }
         .padding(BrandSpacing.base)
@@ -440,5 +441,51 @@ public struct OwnerPLView: View {
     private var strokeBorder: some View {
         RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
             .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+    }
+}
+
+// MARK: - AXChartDescriptorRepresentable for Owner P&L time-series chart
+
+private struct OwnerPLChartDescriptor: AXChartDescriptorRepresentable {
+    let buckets: [PLTimeBucket]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let revenueAxis = AXNumericDataAxisDescriptor(
+            title: "Revenue ($)",
+            range: 0...max(1, Double(buckets.map(\.revenueCents).max() ?? 0) / 100.0),
+            gridlinePositions: []
+        ) { value in String(format: "$%.0f", value) }
+
+        let expensesAxis = AXNumericDataAxisDescriptor(
+            title: "Expenses ($)",
+            range: 0...max(1, Double(buckets.map(\.expenseCents).max() ?? 0) / 100.0),
+            gridlinePositions: []
+        ) { value in String(format: "$%.0f", value) }
+
+        let revenueSeries = AXDataSeriesDescriptor(
+            name: "Revenue",
+            isContinuous: false,
+            dataPoints: buckets.map { b in
+                AXDataPoint(x: b.bucket, y: b.revenueDollars,
+                            label: "\(b.bucket): \(String(format: "$%.0f", b.revenueDollars)) revenue")
+            }
+        )
+        let expensesSeries = AXDataSeriesDescriptor(
+            name: "Expenses",
+            isContinuous: false,
+            dataPoints: buckets.map { b in
+                AXDataPoint(x: b.bucket, y: b.expenseDollars,
+                            label: "\(b.bucket): \(String(format: "$%.0f", b.expenseDollars)) expenses")
+            }
+        )
+
+        return AXChartDescriptor(
+            title: "Revenue vs Expenses by Period",
+            summary: "Grouped bar chart comparing revenue and expenses across \(buckets.count) periods.",
+            xAxis: AXCategoricalDataAxisDescriptor(title: "Period", categoryOrder: buckets.map(\.bucket)),
+            yAxis: revenueAxis,
+            additionalAxes: [expensesAxis],
+            series: [revenueSeries, expensesSeries]
+        )
     }
 }
