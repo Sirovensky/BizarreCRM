@@ -93,4 +93,68 @@ public extension APIClient {
         let (uploadResult, _) = try await service.upload(request: request, formData: body)
         return uploadResult.data
     }
+
+    // MARK: - §4.5 Warranty lookup
+
+    /// `GET /api/v1/tickets/warranty-lookup?imei=<imei>&serial=<serial>&phone=<phone>`
+    /// Returns an optional warranty record for the device. Any combination of identifiers may be provided.
+    /// Route confirmed: tickets.routes.ts (GET /tickets/warranty-lookup).
+    func warrantyLookup(imei: String? = nil, serial: String? = nil, phone: String? = nil) async throws -> TicketWarrantyRecord? {
+        var query: [URLQueryItem] = []
+        if let imei, !imei.isEmpty    { query.append(URLQueryItem(name: "imei",   value: imei)) }
+        if let serial, !serial.isEmpty { query.append(URLQueryItem(name: "serial", value: serial)) }
+        if let phone, !phone.isEmpty   { query.append(URLQueryItem(name: "phone",  value: phone)) }
+        return try? await get("/api/v1/tickets/warranty-lookup", query: query.isEmpty ? nil : query, as: TicketWarrantyRecord.self)
+    }
+
+    // MARK: - §4.5 Device history
+
+    /// `GET /api/v1/tickets/device-history?imei=<imei>&serial=<serial>`
+    /// Returns all past repair tickets for this device across any customer.
+    /// Route confirmed: tickets.routes.ts (GET /tickets/device-history).
+    func deviceHistory(imei: String? = nil, serial: String? = nil) async throws -> [TicketSummary] {
+        var query: [URLQueryItem] = []
+        if let imei, !imei.isEmpty    { query.append(URLQueryItem(name: "imei",   value: imei)) }
+        if let serial, !serial.isEmpty { query.append(URLQueryItem(name: "serial", value: serial)) }
+        return try await get("/api/v1/tickets/device-history", query: query.isEmpty ? nil : query, as: [TicketSummary].self)
+    }
+
+    // MARK: - §4.5 Star/pin ticket
+
+    /// `PATCH /api/v1/tickets/:id` with `{ pinned: true/false }` — pins or unpins a ticket on the dashboard.
+    /// Route: tickets.routes.ts PATCH /tickets/:id (partial update).
+    func setTicketPinned(ticketId: Int64, pinned: Bool) async throws {
+        _ = try? await patch("/api/v1/tickets/\(ticketId)", body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
+    }
+}
+
+/// Body for `PATCH /api/v1/tickets/:id` — pin/unpin request.
+public struct TicketPinBody: Encodable, Sendable {
+    public let pinned: Bool
+    public init(pinned: Bool) { self.pinned = pinned }
+}
+
+// MARK: - §4.5 Warranty record DTO
+
+/// Minimal warranty record returned by `GET /tickets/warranty-lookup`.
+public struct TicketWarrantyRecord: Decodable, Sendable {
+    public let ticketId: Int64?
+    public let orderId: String?
+    public let partName: String?
+    public let installDate: String?
+    public let durationDays: Int?
+    public let expiresAt: String?
+    public let isEligible: Bool?
+    public let notes: String?
+
+    enum CodingKeys: String, CodingKey {
+        case ticketId    = "ticket_id"
+        case orderId     = "order_id"
+        case partName    = "part_name"
+        case installDate = "install_date"
+        case durationDays = "duration_days"
+        case expiresAt   = "expires_at"
+        case isEligible  = "is_eligible"
+        case notes
+    }
 }
