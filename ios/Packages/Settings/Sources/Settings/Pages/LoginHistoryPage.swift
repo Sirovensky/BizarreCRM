@@ -43,9 +43,9 @@ public final class LoginHistoryViewModel {
     public var isLoading: Bool = false
     public var errorMessage: String?
 
-    private let api: APIClientProtocol
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
@@ -54,41 +54,22 @@ public final class LoginHistoryViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let wire: [LoginRecordWire] = try await api.get("auth/login-history?limit=50")
-            records = wire.compactMap(\.toModel)
+            guard let api else { return }
+            let wire = try await api.securityLoginHistory(limit: 50)
+            records = wire.compactMap { w in
+                guard let outcome = LoginRecord.Outcome(rawValue: w.outcome) else { return nil }
+                return LoginRecord(
+                    id: w.id,
+                    outcome: outcome,
+                    ipAddress: w.ipAddress,
+                    userAgent: w.userAgent,
+                    occurredAt: w.occurredAt,
+                    location: w.location
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-}
-
-// MARK: - Wire
-
-private struct LoginRecordWire: Decodable {
-    let id: String
-    let outcome: String
-    let ip_address: String
-    let user_agent: String
-    let occurred_at: String
-    let location: String?
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    var toModel: LoginRecord? {
-        guard let outcome = LoginRecord.Outcome(rawValue: outcome),
-              let date = Self.iso.date(from: occurred_at) else { return nil }
-        return LoginRecord(
-            id: id,
-            outcome: outcome,
-            ipAddress: ip_address,
-            userAgent: user_agent,
-            occurredAt: date,
-            location: location
-        )
     }
 }
 
@@ -105,7 +86,7 @@ public struct LoginHistoryPage: View {
         return f
     }()
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         _vm = State(initialValue: LoginHistoryViewModel(api: api))
     }
 

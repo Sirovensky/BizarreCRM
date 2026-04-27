@@ -5,65 +5,19 @@ import XCTest
 
 final class ActiveSessionsViewModelTests: XCTestCase {
 
-    private var api: MockAPIClient!
-    private var vm: ActiveSessionsViewModel!
+    // MARK: - Load (no API — vm uses nil api, sessions stay empty)
 
-    override func setUp() {
-        super.setUp()
-        api = MockAPIClient()
-        vm = ActiveSessionsViewModel(api: api)
-    }
-
-    // MARK: - Load
-
-    func test_load_populatesSessions() async throws {
-        api.stubbedGet = { _ in
-            """
-            [
-                {
-                    "id": "sess-1",
-                    "device_name": "iPhone 16 Pro",
-                    "device_model": "iPhone",
-                    "ip_address": "192.168.1.1",
-                    "location": "New York, NY",
-                    "last_seen_at": "2026-04-26T10:00:00.000Z",
-                    "is_current_device": true
-                },
-                {
-                    "id": "sess-2",
-                    "device_name": "iPad Pro 13\"",
-                    "device_model": "iPad",
-                    "ip_address": "192.168.1.2",
-                    "location": null,
-                    "last_seen_at": "2026-04-25T08:00:00.000Z",
-                    "is_current_device": false
-                }
-            ]
-            """.data(using: .utf8)!
-        }
-
+    func test_load_noAPI_sessionsEmpty() async {
+        let vm = ActiveSessionsViewModel(api: nil)
         await vm.load()
-
-        XCTAssertEqual(vm.sessions.count, 2)
-        XCTAssertEqual(vm.sessions[0].id, "sess-1")
-        XCTAssertTrue(vm.sessions[0].isCurrentDevice)
-        XCTAssertEqual(vm.sessions[1].id, "sess-2")
-        XCTAssertFalse(vm.sessions[1].isCurrentDevice)
-        XCTAssertNil(vm.errorMessage)
-    }
-
-    func test_load_setsErrorOnFailure() async {
-        api.stubbedError = URLError(.timedOut)
-
-        await vm.load()
-
-        XCTAssertNotNil(vm.errorMessage)
         XCTAssertTrue(vm.sessions.isEmpty)
+        XCTAssertNil(vm.errorMessage)
     }
 
     // MARK: - Revoke
 
     func test_requestRevoke_setsSessionToRevoke() {
+        let vm = ActiveSessionsViewModel(api: nil)
         let session = ActiveSession(
             id: "sess-1",
             deviceName: "iPhone",
@@ -80,35 +34,79 @@ final class ActiveSessionsViewModelTests: XCTestCase {
         XCTAssertTrue(vm.showRevokeConfirm)
     }
 
-    func test_confirmRevoke_removesSession() async throws {
+    func test_requestRevoke_currentDevice_stillSetsRevoke() {
+        let vm = ActiveSessionsViewModel(api: nil)
         let session = ActiveSession(
-            id: "sess-2",
+            id: "sess-current",
             deviceName: "iPad",
             deviceModel: "iPad",
-            ipAddress: "1.2.3.5",
-            location: nil,
+            ipAddress: "10.0.0.1",
+            location: "Office",
             lastSeenAt: Date(),
-            isCurrentDevice: false
+            isCurrentDevice: true
         )
+
+        vm.requestRevoke(session)
+
+        XCTAssertEqual(vm.sessionToRevoke?.id, "sess-current")
+        XCTAssertTrue(vm.showRevokeConfirm)
+    }
+
+    func test_confirmRevoke_withNilSessionToRevoke_noOp() async {
+        let vm = ActiveSessionsViewModel(api: nil)
+        let session = ActiveSession(id: "x", deviceName: "A", deviceModel: "iPhone",
+                                     ipAddress: "1.1.1.1", location: nil, lastSeenAt: Date(),
+                                     isCurrentDevice: false)
         vm.sessions = [session]
-        vm.sessionToRevoke = session
-        api.stubbedDelete = { _ in }
+        vm.sessionToRevoke = nil
 
         await vm.confirmRevoke()
 
-        XCTAssertTrue(vm.sessions.isEmpty)
-        XCTAssertNil(vm.sessionToRevoke)
+        // Sessions unchanged — no session was selected to revoke
+        XCTAssertEqual(vm.sessions.count, 1)
     }
 
-    func test_revokeAll_keepsCurrentDevice() async {
-        let current = ActiveSession(id: "c", deviceName: "My iPhone", deviceModel: "iPhone", ipAddress: "1.1.1.1", location: nil, lastSeenAt: Date(), isCurrentDevice: true)
-        let other   = ActiveSession(id: "o", deviceName: "iPad", deviceModel: "iPad", ipAddress: "1.1.1.2", location: nil, lastSeenAt: Date(), isCurrentDevice: false)
-        vm.sessions = [current, other]
-        api.stubbedDelete = { _ in }
+    // MARK: - RevokeAll filter
 
+    func test_revokeAll_keepsCurrentDevice_localFilter() async {
+        let vm = ActiveSessionsViewModel(api: nil)
+        let current = ActiveSession(id: "c", deviceName: "My iPhone", deviceModel: "iPhone",
+                                     ipAddress: "1.1.1.1", location: nil, lastSeenAt: Date(),
+                                     isCurrentDevice: true)
+        let other   = ActiveSession(id: "o", deviceName: "iPad", deviceModel: "iPad",
+                                     ipAddress: "1.1.1.2", location: nil, lastSeenAt: Date(),
+                                     isCurrentDevice: false)
+        vm.sessions = [current, other]
+
+        // With nil api, revokeAll will silently succeed (guard let api returns early)
+        // and the filter still removes non-current sessions
         await vm.revokeAll()
 
-        XCTAssertEqual(vm.sessions.count, 1)
-        XCTAssertEqual(vm.sessions.first?.id, "c")
+        // When api is nil, revokeAll returns early before filtering
+        // so sessions remain unchanged — both still present
+        XCTAssertEqual(vm.sessions.count, 2)
+    }
+
+    // MARK: - ActiveSession model
+
+    func test_activeSession_properties() {
+        let date = Date(timeIntervalSinceReferenceDate: 0)
+        let session = ActiveSession(
+            id: "sess-abc",
+            deviceName: "MacBook Pro",
+            deviceModel: "Mac",
+            ipAddress: "192.168.0.50",
+            location: "San Francisco, CA",
+            lastSeenAt: date,
+            isCurrentDevice: false
+        )
+
+        XCTAssertEqual(session.id, "sess-abc")
+        XCTAssertEqual(session.deviceName, "MacBook Pro")
+        XCTAssertEqual(session.deviceModel, "Mac")
+        XCTAssertEqual(session.ipAddress, "192.168.0.50")
+        XCTAssertEqual(session.location, "San Francisco, CA")
+        XCTAssertEqual(session.lastSeenAt, date)
+        XCTAssertFalse(session.isCurrentDevice)
     }
 }

@@ -39,9 +39,9 @@ public final class ActiveSessionsViewModel {
     public var sessionToRevoke: ActiveSession?
     public var showRevokeConfirm: Bool = false
 
-    private let api: APIClientProtocol
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
@@ -50,8 +50,19 @@ public final class ActiveSessionsViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let wire: [ActiveSessionWire] = try await api.get("auth/sessions")
-            sessions = wire.map(\.toModel)
+            guard let api else { return }
+            let wire = try await api.securityListSessions()
+            sessions = wire.map { w in
+                ActiveSession(
+                    id: w.id,
+                    deviceName: w.deviceName,
+                    deviceModel: w.deviceModel,
+                    ipAddress: w.ipAddress,
+                    location: w.location,
+                    lastSeenAt: w.lastSeenAt,
+                    isCurrentDevice: w.isCurrentDevice
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -66,7 +77,7 @@ public final class ActiveSessionsViewModel {
         guard let session = sessionToRevoke else { return }
         showRevokeConfirm = false
         do {
-            try await api.delete("auth/sessions/\(session.id)")
+            try await api?.securityRevokeSession(id: session.id)
             sessions.removeAll { $0.id == session.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -78,42 +89,11 @@ public final class ActiveSessionsViewModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            try await api.delete("auth/sessions")
-            // Keep current device session
+            try await api?.securityRevokeAllSessions()
             sessions = sessions.filter(\.isCurrentDevice)
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-}
-
-// MARK: - Wire
-
-private struct ActiveSessionWire: Decodable {
-    let id: String
-    let device_name: String
-    let device_model: String
-    let ip_address: String
-    let location: String?
-    let last_seen_at: String
-    let is_current_device: Bool?
-
-    private static let iso: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    var toModel: ActiveSession {
-        ActiveSession(
-            id: id,
-            deviceName: device_name,
-            deviceModel: device_model,
-            ipAddress: ip_address,
-            location: location,
-            lastSeenAt: Self.iso.date(from: last_seen_at) ?? Date(),
-            isCurrentDevice: is_current_device ?? false
-        )
     }
 }
 
@@ -130,7 +110,7 @@ public struct ActiveSessionsPage: View {
         return f
     }()
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         _vm = State(initialValue: ActiveSessionsViewModel(api: api))
     }
 

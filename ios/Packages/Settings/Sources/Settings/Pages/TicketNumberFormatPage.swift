@@ -93,20 +93,21 @@ public final class TicketNumberFormatViewModel {
 
     public var isDirty: Bool { config != savedConfig }
 
-    private let api: APIClientProtocol
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
     public func load() async {
         isLoading = true
         defer { isLoading = false }
+        guard let api else { return }
         do {
-            let wire: TicketNumberFormatWire = try await api.get("settings/tickets/number-format")
+            let wire = try await api.settingsGetTicketNumberFormat()
             let loaded = TicketNumberFormatConfig(
-                format: wire.format ?? TicketNumberFormatConfig.defaults.format,
-                seqReset: TicketNumberFormatConfig.SeqReset(rawValue: wire.seq_reset ?? "never") ?? .never
+                format: wire.format,
+                seqReset: TicketNumberFormatConfig.SeqReset(rawValue: wire.seqReset) ?? .never
             )
             config = loaded
             savedConfig = loaded
@@ -120,9 +121,9 @@ public final class TicketNumberFormatViewModel {
         errorMessage = nil
         successMessage = nil
         defer { isSaving = false }
+        guard let api else { return }
         do {
-            let body = TicketNumberFormatWire(format: config.format, seq_reset: config.seqReset.rawValue)
-            try await api.put("settings/tickets/number-format", body: body)
+            _ = try await api.settingsPutTicketNumberFormat(format: config.format, seqReset: config.seqReset.rawValue)
             savedConfig = config
             successMessage = "Format saved."
         } catch {
@@ -133,13 +134,6 @@ public final class TicketNumberFormatViewModel {
     public func discard() {
         config = savedConfig
     }
-}
-
-// MARK: - Wire
-
-private struct TicketNumberFormatWire: Codable {
-    let format: String?
-    let seq_reset: String?
 }
 
 // MARK: - View
@@ -158,7 +152,7 @@ public struct TicketNumberFormatPage: View {
         ("{SEQ:N}", "Zero-padded seq, e.g. {SEQ:5} → 00123"),
     ]
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         _vm = State(initialValue: TicketNumberFormatViewModel(api: api))
     }
 

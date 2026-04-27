@@ -18,15 +18,16 @@ public final class LogoUploadViewModel {
     public var errorMessage: String?
     public var successMessage: String?
 
-    private let api: APIClientProtocol
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
     public func loadExisting() async {
+        guard let api else { return }
         do {
-            let wire: LogoWire = try await api.get("settings/organization/logo")
+            let wire = try await api.settingsGetLogoURL()
             logoURL = wire.url.flatMap { URL(string: $0) }
         } catch {
             // No logo set yet — that's fine
@@ -34,21 +35,16 @@ public final class LogoUploadViewModel {
     }
 
     public func handleSelection() async {
-        guard let item = selectedItem else { return }
-        isLoading: do {
-            isUploading = true
-            errorMessage = nil
-            defer { isUploading = false }
+        guard let item = selectedItem, let api else { return }
+        isUploading = true
+        errorMessage = nil
+        defer { isUploading = false }
+        do {
             guard let data = try await item.loadTransferable(type: Data.self) else {
                 errorMessage = "Could not read selected image."
                 return
             }
-            let wire: LogoUploadResponseWire = try await api.upload(
-                path: "settings/organization/logo",
-                data: data,
-                mimeType: "image/png",
-                fieldName: "logo"
-            )
+            let wire = try await api.settingsUploadLogo(data, mimeType: "image/jpeg")
             logoURL = wire.url.flatMap { URL(string: $0) }
             successMessage = "Logo updated."
         } catch {
@@ -57,11 +53,12 @@ public final class LogoUploadViewModel {
     }
 
     public func deleteLogo() async {
+        guard let api else { return }
         isUploading = true
         errorMessage = nil
         defer { isUploading = false }
         do {
-            try await api.delete("settings/organization/logo")
+            try await api.settingsDeleteLogo()
             logoURL = nil
             successMessage = "Logo removed."
         } catch {
@@ -70,23 +67,13 @@ public final class LogoUploadViewModel {
     }
 }
 
-// MARK: - Wire
-
-private struct LogoWire: Decodable {
-    let url: String?
-}
-
-private struct LogoUploadResponseWire: Decodable {
-    let url: String?
-}
-
 // MARK: - View
 
 public struct LogoUploadView: View {
 
     @State private var vm: LogoUploadViewModel
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         _vm = State(initialValue: LogoUploadViewModel(api: api))
     }
 

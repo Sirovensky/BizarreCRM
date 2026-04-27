@@ -9,22 +9,13 @@ import Core
 
 // MARK: - Model
 
-public struct TrustedDevice: Identifiable, Decodable, Sendable {
+public struct TrustedDevice: Identifiable, Sendable {
     public let id: String
     public let deviceName: String
     public let deviceModel: String
     public let trustedAt: Date
     public let expiresAt: Date
     public let isCurrentDevice: Bool
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case deviceName = "device_name"
-        case deviceModel = "device_model"
-        case trustedAt = "trusted_at"
-        case expiresAt = "expires_at"
-        case isCurrentDevice = "is_current_device"
-    }
 }
 
 // MARK: - ViewModel
@@ -37,15 +28,9 @@ public final class TrustedDevicesViewModel {
     public var errorMessage: String?
     public var isTrustingCurrent: Bool = false
 
-    private let api: APIClientProtocol
-    private let decoder: JSONDecoder = {
-        let d = JSONDecoder()
-        d.keyDecodingStrategy = .convertFromSnakeCase
-        d.dateDecodingStrategy = .iso8601
-        return d
-    }()
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
@@ -54,8 +39,18 @@ public final class TrustedDevicesViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            let data: Data = try await api.get("auth/trusted-devices")
-            devices = try decoder.decode([TrustedDevice].self, from: data)
+            guard let api else { return }
+            let wire = try await api.securityListTrustedDevices()
+            devices = wire.map { w in
+                TrustedDevice(
+                    id: w.id,
+                    deviceName: w.deviceName,
+                    deviceModel: w.deviceModel,
+                    trustedAt: w.trustedAt,
+                    expiresAt: w.expiresAt,
+                    isCurrentDevice: w.isCurrentDevice
+                )
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -65,7 +60,7 @@ public final class TrustedDevicesViewModel {
         isTrustingCurrent = true
         defer { isTrustingCurrent = false }
         do {
-            let _: Data = try await api.post("auth/trusted-devices/current", body: EmptyBody())
+            try await api?.securityTrustCurrentDevice()
             await load()
         } catch {
             errorMessage = error.localizedDescription
@@ -74,7 +69,7 @@ public final class TrustedDevicesViewModel {
 
     public func revoke(_ device: TrustedDevice) async {
         do {
-            try await api.delete("auth/trusted-devices/\(device.id)")
+            try await api?.securityRevokeTrustedDevice(id: device.id)
             devices.removeAll { $0.id == device.id }
         } catch {
             errorMessage = error.localizedDescription
@@ -88,7 +83,7 @@ public struct TrustedDevicesPage: View {
 
     @State private var vm: TrustedDevicesViewModel
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         _vm = State(wrappedValue: TrustedDevicesViewModel(api: api))
     }
 
@@ -235,7 +230,7 @@ private struct TrustedDeviceRow: View {
 
 // MARK: - Helpers
 
-private struct EmptyBody: Encodable {}
+// EmptyBody removed — auth calls go through SecuritySettingsEndpoints.swift
 
 #if DEBUG
 #Preview("Trusted Devices") {

@@ -14,16 +14,11 @@ import Core
 
 // MARK: - Model
 
-public struct TOTPSetupResponse: Decodable, Sendable {
+/// Local response model mapped from `TOTPSetupWire` in SecuritySettingsEndpoints.
+public struct TOTPSetupResponse: Sendable {
     public let secret: String
     public let qrURL: URL
     public let backupCodes: [String]
-
-    enum CodingKeys: String, CodingKey {
-        case secret
-        case qrURL = "qr_url"
-        case backupCodes = "backup_codes"
-    }
 }
 
 // MARK: - ViewModel
@@ -45,9 +40,9 @@ public final class TOTPEnrollmentViewModel {
     public var verifyError: String?
     public var didCopyBackupCodes: Bool = false
 
-    private let api: APIClientProtocol
+    private let api: APIClient?
 
-    public init(api: APIClientProtocol) {
+    public init(api: APIClient? = nil) {
         self.api = api
     }
 
@@ -56,11 +51,13 @@ public final class TOTPEnrollmentViewModel {
     public func startSetup() async {
         step = .loading
         do {
-            let data: Data = try await api.post("auth/totp/setup", body: EmptyBody())
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            let response = try decoder.decode(TOTPSetupResponse.self, from: data)
-            step = .scanQR(response)
+            guard let api else { return }
+            let wire = try await api.securityTotpSetup()
+            guard let qrURL = URL(string: wire.qrURL) else {
+                step = .error("Invalid QR URL from server")
+                return
+            }
+            step = .scanQR(TOTPSetupResponse(secret: wire.secret, qrURL: qrURL, backupCodes: wire.backupCodes))
         } catch {
             step = .error(error.localizedDescription)
         }
@@ -75,8 +72,7 @@ public final class TOTPEnrollmentViewModel {
         verifyError = nil
         defer { isConfirming = false }
         do {
-            let body = ["secret": secret, "code": codeInput]
-            let _: Data = try await api.post("auth/totp/verify", body: body)
+            try await api?.securityTotpVerify(secret: secret, code: codeInput)
             step = .showBackupCodes(backupCodes)
         } catch {
             verifyError = "Incorrect code — try again."
@@ -102,7 +98,7 @@ public struct TOTPEnrollmentSheet: View {
     public var onEnrolled: () -> Void
     public var onCancel: () -> Void
 
-    public init(api: APIClientProtocol, onEnrolled: @escaping () -> Void, onCancel: @escaping () -> Void) {
+    public init(api: APIClient? = nil, onEnrolled: @escaping () -> Void, onCancel: @escaping () -> Void) {
         _vm = State(wrappedValue: TOTPEnrollmentViewModel(api: api))
         self.onEnrolled = onEnrolled
         self.onCancel = onCancel
@@ -302,7 +298,7 @@ private struct BackupCodesStep: View {
 
 // MARK: - Helpers
 
-private struct EmptyBody: Encodable {}
+// TOTP calls now route through SecuritySettingsEndpoints.swift
 
 #if DEBUG
 #Preview("TOTP Enrollment") {
