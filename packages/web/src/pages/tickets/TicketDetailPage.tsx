@@ -361,6 +361,16 @@ export function TicketDetailPage() {
     onError: () => toast.error('Failed to clone ticket as warranty'),
   });
 
+  const duplicateMut = useMutation({
+    mutationFn: () => ticketApi.duplicate(ticketId),
+    onSuccess: (res) => {
+      const newTicket = res?.data?.data;
+      toast.success('Ticket duplicated');
+      if (newTicket?.id) navigate(`/tickets/${newTicket.id}`);
+    },
+    onError: () => toast.error('Failed to duplicate ticket'),
+  });
+
   const currentUser = useAuthStore((s) => s.user);
 
   // ─── UI state ─────────────────────────────────────────────────────
@@ -490,6 +500,7 @@ export function TicketDetailPage() {
           setShowMerge(true);
         }}
         onCloneWarranty={() => cloneWarrantyMut.mutate()}
+        onDuplicate={() => duplicateMut.mutate()}
         onHandoff={() => setShowHandoff(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}

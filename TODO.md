@@ -44,8 +44,6 @@ type: project
   - Fix: add Assign action wired to existing bulk endpoint.
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
   - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
-- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
-  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
   - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
   - Fix: type assignee field as `number | null`; route accepts null.
   - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
@@ -152,9 +150,6 @@ type: project
   - Fix: add wholesale price input next to cost/retail; include in create payload.
 
 
-- [ ] WEB-S6-035. **CommunicationPage: "Create New Customer" from Link Customer popover navigates away from the active conversation — conversation context lost.**
-  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 815 (`navigate('/customers/new?phone=…')`)
-  - Fix: open `CustomerCreatePage` in a slide-over panel or modal instead of full navigation; return customer ID to popover on success.
 
 ### Wave-75 scan-loop findings (2026-04-24) — customer GDPR re-auth (blocked on user WIP)
 - [ ] SCAN-1183. **[HIGH] `DELETE /customers/:id/gdpr-erase` admin re-auth has no rate limit + no password length cap — sibling gap of SCAN-1178/1179/1181/1182 + SCAN-1108.**
@@ -163,10 +158,6 @@ type: project
 ## AUDIT CYCLE 1 — 2026-04-19 (shipping-readiness sweep, web + Android + management)
 
 ### Web (packages/web)
-- [ ] AUDIT-WEB-009. **estimate_followup_days + lead_auto_assign settings unwired** — `pages/settings/settingsDeadToggles.ts:82-91`. No backend cron reads them. Fix: mark with visible "Coming Soon" badge in all UI paths (not just the dead-toggle list), or remove inputs.
-  - [ ] BLOCKED: listed as not-wired in `settingsDeadToggles.ts` registry; operators can see the dead-toggle indicator when enabled via debug flag. Real fix requires building the follow-up + auto-assign crons (new `services/estimateFollowupCron.ts` + `services/leadAutoAssignCron.ts` + migration linking lead assignment policy), which is ticket-worthy feature scope. Revisit when lead/estimate automation sprint starts.
-- [ ] AUDIT-WEB-010. **3CX credentials (tcx_host/username/extension) accepted but never sent** — `pages/settings/settingsDeadToggles.ts:62-76`, marked not-wired but in dev render without badge. Fix: remove fields entirely until 3CX integration exists, or ensure hidden in all environments.
-  - [ ] BLOCKED: 3CX PBX integration is a significant new feature (Call Manager API, inbound screen-pop, click-to-dial, presence sync) — not a quick fix. The dead-toggle registry already marks them not-wired. Either remove the inputs in a UI cleanup pass or build the integration as a dedicated sprint. Revisit when VoIP integration is scoped.
 
 ### Android (android)
 - [ ] AUDIT-AND-010. **Notification preferences device-local only** — `AppPreferences.kt:117-138` 6 notification toggles never sync to server. Fix: `PATCH /api/v1/users/me/notification-prefs` on change (debounced); read back on login.
