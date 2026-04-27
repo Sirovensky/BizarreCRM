@@ -77,6 +77,7 @@ public enum AppointmentViewMode: String, CaseIterable, Identifiable {
     case agenda = "Agenda"
     case day    = "Day"
     case week   = "Week"
+    case month  = "Month"
 
     public var id: String { rawValue }
 
@@ -85,6 +86,7 @@ public enum AppointmentViewMode: String, CaseIterable, Identifiable {
         case .agenda: return "list.bullet"
         case .day:    return "calendar.day.timeline.left"
         case .week:   return "calendar"
+        case .month:  return "calendar.badge.plus"
         }
     }
 }
@@ -114,6 +116,8 @@ public struct AppointmentListView: View {
     // §10.1 filter sheet
     @State private var showingFilter: Bool = false
     @State private var activeFilter: AppointmentListFilter = .init()
+    // §10.1 month view — selected day; nil = show all month
+    @State private var selectedMonthDate: Date? = nil
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
@@ -309,6 +313,9 @@ public struct AppointmentListView: View {
                 } else {
                     AppointmentCalendarGridView(api: api)
                 }
+            case .month:
+                // §10.1 Month view — dot-per-day grid; tap day → agenda filtered to that date
+                AppointmentMonthView(appointments: filteredItems, selectedDate: $selectedMonthDate)
             }
         }
     }
@@ -585,5 +592,194 @@ public struct AppointmentFilterSheet: View {
                 .accessibilityLabel("Clear all filters")
             }
         }
+    }
+}
+
+// MARK: - §10.1 Month view
+
+/// Calendar-style month grid where each day shows a dot badge for the number of
+/// appointments on that day. Tapping a day cell selects it and scrolls the
+/// agenda below to that date's events.
+public struct AppointmentMonthView: View {
+    public let appointments: [Appointment]
+    @Binding public var selectedDate: Date?
+
+    @State private var displayMonth: Date = {
+        var cal = Calendar.current
+        let comps = cal.dateComponents([.year, .month], from: Date())
+        return cal.date(from: comps) ?? Date()
+    }()
+
+    private var cal: Calendar { Calendar.current }
+
+    private var daysInMonth: [Date?] {
+        guard let range = cal.range(of: .day, in: .month, for: displayMonth),
+              let firstDay = cal.date(from: cal.dateComponents([.year, .month], from: displayMonth))
+        else { return [] }
+        let weekdayOffset = (cal.component(.weekday, from: firstDay) - cal.firstWeekday + 7) % 7
+        var days: [Date?] = Array(repeating: nil, count: weekdayOffset)
+        for day in range {
+            let d = cal.date(byAdding: .day, value: day - 1, to: firstDay)
+            days.append(d)
+        }
+        // Pad to full weeks
+        let remainder = days.count % 7
+        if remainder != 0 { days += Array(repeating: nil, count: 7 - remainder) }
+        return days
+    }
+
+    private func appointmentCount(for date: Date) -> Int {
+        appointments.filter { appt in
+            guard let raw = appt.startTime, let d = Row.parse(raw) else { return false }
+            return cal.isDate(d, inSameDayAs: date)
+        }.count
+    }
+
+    private var monthTitle: String {
+        let df = DateFormatter()
+        df.dateFormat = "MMMM yyyy"
+        return df.string(from: displayMonth)
+    }
+
+    public var body: some View {
+        VStack(spacing: 0) {
+            // Month navigation header
+            HStack {
+                Button {
+                    displayMonth = cal.date(byAdding: .month, value: -1, to: displayMonth) ?? displayMonth
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Previous month")
+
+                Spacer()
+
+                Text(monthTitle)
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer()
+
+                Button {
+                    displayMonth = cal.date(byAdding: .month, value: 1, to: displayMonth) ?? displayMonth
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Next month")
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
+
+            // Day-of-week header row
+            let symbols = cal.veryShortWeekdaySymbols
+            let ordered = Array((cal.firstWeekday - 1..<7) + (0..<cal.firstWeekday - 1))
+                .map { symbols[$0] }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 0) {
+                ForEach(ordered, id: \.self) { sym in
+                    Text(sym)
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.xxs)
+                        .accessibilityHidden(true)
+                }
+                ForEach(Array(daysInMonth.enumerated()), id: \.offset) { _, day in
+                    if let day {
+                        DayCell(
+                            date: day,
+                            count: appointmentCount(for: day),
+                            isSelected: selectedDate.map { cal.isDate($0, inSameDayAs: day) } ?? false,
+                            isToday: cal.isDateInToday(day)
+                        ) {
+                            selectedDate = (selectedDate.map { cal.isDate($0, inSameDayAs: day) } ?? false)
+                                ? nil : day
+                        }
+                    } else {
+                        Color.clear.frame(height: 44)
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+
+            Divider()
+                .padding(.top, BrandSpacing.xs)
+
+            // Agenda for selected day (or all if no selection)
+            let dayItems: [Appointment] = selectedDate.map { sel in
+                appointments.filter { appt in
+                    guard let raw = appt.startTime, let d = Row.parse(raw) else { return false }
+                    return cal.isDate(d, inSameDayAs: sel)
+                }
+            } ?? appointments
+
+            if dayItems.isEmpty {
+                Text(selectedDate != nil ? "No appointments this day" : "No appointments this month")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(BrandSpacing.lg)
+            } else {
+                List {
+                    ForEach(dayItems) { appt in
+                        Row(appointment: appt)
+                            .listRowBackground(Color.bizarreSurface1)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+            }
+        }
+        .background(Color.bizarreSurfaceBase)
+    }
+}
+
+private struct DayCell: View {
+    let date: Date
+    let count: Int
+    let isSelected: Bool
+    let isToday: Bool
+    let onTap: () -> Void
+
+    private var dayNumber: String {
+        let df = DateFormatter()
+        df.dateFormat = "d"
+        return df.string(from: date)
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            VStack(spacing: 2) {
+                ZStack {
+                    Circle()
+                        .fill(isSelected ? Color.bizarreOrange : (isToday ? Color.bizarreOrange.opacity(0.15) : Color.clear))
+                        .frame(width: 32, height: 32)
+                    Text(dayNumber)
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(isSelected ? .white : (isToday ? .bizarreOrange : .bizarreOnSurface))
+                        .monospacedDigit()
+                }
+                // Dot badge — 1 dot per appointment, max 3
+                if count > 0 {
+                    HStack(spacing: 2) {
+                        ForEach(0..<min(count, 3), id: \.self) { _ in
+                            Circle()
+                                .fill(isSelected ? Color.white : Color.bizarreOrange)
+                                .frame(width: 4, height: 4)
+                        }
+                    }
+                } else {
+                    Spacer().frame(height: 6)
+                }
+            }
+            .frame(height: 44)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(dayNumber), \(count) appointment\(count == 1 ? "" : "s")\(isToday ? ", today" : "")")
     }
 }

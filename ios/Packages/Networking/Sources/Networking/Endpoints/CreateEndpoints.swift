@@ -99,15 +99,19 @@ public struct CreateAppointmentRequest: Encodable, Sendable {
     public let customerId: Int64?
     public let leadId: Int64?
     public let notes: String?
+    /// §10.3 idempotency key — server ignores duplicate submissions within 24h.
+    public let idempotencyKey: String?
 
     public init(title: String, startTime: String, endTime: String? = nil,
-                customerId: Int64? = nil, leadId: Int64? = nil, notes: String? = nil) {
+                customerId: Int64? = nil, leadId: Int64? = nil, notes: String? = nil,
+                idempotencyKey: String? = nil) {
         self.title = title
         self.startTime = startTime
         self.endTime = endTime
         self.customerId = customerId
         self.leadId = leadId
         self.notes = notes
+        self.idempotencyKey = idempotencyKey
     }
 
     enum CodingKeys: String, CodingKey {
@@ -116,6 +120,7 @@ public struct CreateAppointmentRequest: Encodable, Sendable {
         case endTime = "end_time"
         case customerId = "customer_id"
         case leadId = "lead_id"
+        case idempotencyKey = "idempotency_key"
     }
 }
 

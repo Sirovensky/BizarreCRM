@@ -52,6 +52,8 @@ public final class AppointmentCreateFullViewModel {
     public private(set) var errorMessage: String?
     public private(set) var createdId: Int64?
     public private(set) var conflictWarning: Bool = false
+    /// §10.3 offline temp-id — set to -1 when network unavailable; list reconciles on next sync.
+    public private(set) var queuedOffline: Bool = false
 
     // MARK: - Draft auto-save (stored as title/notes/dates)
 
@@ -60,11 +62,19 @@ public final class AppointmentCreateFullViewModel {
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var draftTask: Task<Void, Never>?
     @ObservationIgnored private var slotLoadTask: Task<Void, Never>?
+    /// §10.3 idempotency key — generated once per create session; re-used on retry.
+    @ObservationIgnored private var idempotencyKey: String = UUID().uuidString
 
     // MARK: - Init
 
     public init(api: APIClient) {
         self.api = api
+    }
+
+    /// Reset idempotency key — call when the user explicitly starts a new attempt
+    /// (e.g. after fixing a conflict rather than retrying the same submission).
+    public func resetIdempotencyKey() {
+        idempotencyKey = UUID().uuidString
     }
 
     // MARK: - Validation
@@ -173,13 +183,23 @@ public final class AppointmentCreateFullViewModel {
             startTime: slot.start,
             endTime: slot.end,
             customerId: cid,
-            notes: notes.isEmpty ? nil : notes
+            notes: notes.isEmpty ? nil : notes,
+            idempotencyKey: idempotencyKey
         )
 
         do {
             let created = try await api.createAppointment(req)
             createdId = created.id
+            queuedOffline = false
             draftSavedAt = nil
+            // New key so a subsequent create (different appointment) is fresh
+            idempotencyKey = UUID().uuidString
+        } catch let urlErr as URLError
+            where urlErr.code == .notConnectedToInternet || urlErr.code == .networkConnectionLost {
+            // §10.3 offline temp-id — assign sentinel -1 and mark for later sync
+            AppLog.ui.notice("Appointment create queued offline (idempotencyKey=\(idempotencyKey))")
+            createdId = -1
+            queuedOffline = true
         } catch {
             let appError = AppError.from(error)
             errorMessage = Self.message(for: appError)

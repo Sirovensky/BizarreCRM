@@ -24,6 +24,9 @@ public struct InventoryListView: View {
     @State private var adjustTargetName: String = ""
     /// §6.5 HID scanner — toast shown when barcode resolves to nothing
     @State private var hidScanErrorMessage: String?
+    /// §6.1 Columns picker (iPad/Mac) — persisted column visibility set
+    @State private var columnSet: InventoryColumnSet = .load()
+    @State private var showingColumnsPicker: Bool = false
     private let detailRepo: InventoryDetailRepository
     private let api: APIClient?
 
@@ -205,6 +208,11 @@ public struct InventoryListView: View {
                     )
                 }
             }
+            // §6.1 Columns picker sheet (iPad/Mac)
+            .sheet(isPresented: $showingColumnsPicker) {
+                InventoryColumnsPickerSheet(columnSet: $columnSet)
+                    .presentationDetents([.medium])
+            }
         } detail: {
             if let id = selected {
                 NavigationStack {
@@ -371,6 +379,16 @@ public struct InventoryListView: View {
         }
         ToolbarItem(placement: .status) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+        // §6.1 Columns picker — iPad/Mac only
+        if !Platform.isCompact {
+            ToolbarItem(placement: .secondaryAction) {
+                Button { showingColumnsPicker = true } label: {
+                    Label("Columns", systemImage: "tablecells")
+                }
+                .accessibilityLabel("Choose visible columns")
+                .accessibilityIdentifier("inventory.columns")
+            }
         }
     }
 
