@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalFocusManager
@@ -2814,6 +2815,15 @@ private fun CredentialsStep(
     // adds an informational banner when it completes.
     LaunchedEffect(Unit) { viewModel.probeSetupStatus() }
 
+    // 2026-04-26 — auto-focus Username when transitioning from Server → Sign In
+    // so the IME stays open instead of closing + re-animating the wordmark.
+    val usernameFocus = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    LaunchedEffect(Unit) {
+        usernameFocus.requestFocus()
+        keyboardController?.show()
+    }
+
     // §2.1 — transparent probe overlay: ≤400ms loading indicator per spec.
     // Shown while the probe is in flight. Does NOT block the form fields.
     if (state.isProbing) {
@@ -3045,7 +3055,7 @@ private fun CredentialsStep(
         onValueChange = viewModel::updateUsername,
         label = { Text("Username") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().focusRequester(usernameFocus),
         isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
         // LOGIN-MOCK-177: inline username validation
