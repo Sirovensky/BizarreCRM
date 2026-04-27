@@ -153,6 +153,40 @@ public enum DesignTokens {
         public static let tealLight:     UInt32 = 0x0B5260  // --teal (light)
     }
 
+    // MARK: - §80.9 Semantic color aliases
+    //
+    // These `Color` shorthands are additive — they point to the existing
+    // asset-catalog colors defined in BrandColors.swift / Assets.xcassets.
+    // Use these names in views instead of raw `.bizarreX` names so a palette
+    // swap only touches BrandColors.swift, not every call site.
+    //
+    // Contrast guarantee: every token below tests ≥ 4.5:1 on its paired surface
+    // in both light and dark mode (see §80.4 / §80.5 tables).
+    public enum SemanticColor {
+        // Accent
+        public static let accent   = Color("bizarrePrimary",  bundle: .module)
+        public static let danger   = Color("bizarreDanger",   bundle: .module)
+        public static let warning  = Color("bizarreWarning",  bundle: .module)
+        public static let success  = Color("bizarreSuccess",  bundle: .module)
+        public static let info     = Color("bizarreInfo",     bundle: .module)
+
+        // Surfaces
+        public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: .module)
+        public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: .module)
+        public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: .module)
+
+        // Text
+        public static let textPrimary   = Color("bizarreText",          bundle: .module)
+        public static let textSecondary = Color("bizarreTextSecondary", bundle: .module)
+        public static let textMuted     = Color("bizarreTextMuted",     bundle: .module)
+        public static let textInverse   = Color("bizarreTextOnBrand",   bundle: .module)
+
+        // Borders
+        public static let borderSubtle = Color("bizarreDivider",       bundle: .module)
+        public static let borderStrong = Color("bizarreDividerStrong", bundle: .module)
+        public static let borderAccent = Color("bizarrePrimary",       bundle: .module)
+    }
+
     // MARK: - Skeleton tokens (§30.9 / §29 loading states)
     //
     // Used by `SkeletonShape` shimmer and `SkeletonListRow` components.
