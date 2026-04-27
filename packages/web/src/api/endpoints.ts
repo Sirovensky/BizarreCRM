@@ -1204,6 +1204,10 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
+
+  // WEB-W3-020: trigger immediate billing for a subscription (admin only)
+  runBilling: (id: number) =>
+    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================

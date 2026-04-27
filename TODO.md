@@ -12,23 +12,23 @@ type: project
 ### P0
 - [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
 - [ ] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** `pages/pos/CashRegisterPage.tsx` / `unified-pos`. Fix: each card leg of split tender must call BlockChyp `charge` for that amount; only mark paid on terminal success.
-- [ ] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** `pages/billing/`. Fix: implement `POST /payment-links` with token, public `/pay/:token` page that runs BlockChyp Hosted Checkout.
+- [x] WEB-W3-005. **Billing payment-links page explicitly non-functional — in-page banner confirms.** CLOSED 2026-04-26 — todofixes426: `POST /:token/pay` calls `createPaymentLink` (blockchyp.ts) to get a BlockChyp hosted checkout URL; CustomerPayPage "Pay now" button redirects customer; graceful fallback when BlockChyp not configured.
 
 ### P1 (silent no-op)
 - [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
 - [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
 - [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
 - [ ] WEB-W3-016. **POS Z-report Print prints full page not modal.** `pages/pos/`. Fix: `window.print()` after wrapping report in print-only stylesheet, or open new window with z-report HTML.
-- [ ] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** `pages/billing/`. Fix: wire bulk-select + `POST /invoices/send-reminder` per row.
-- [ ] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** `pages/billing/`. Fix: structured editor — list of steps with day-offset + channel + template selector.
-- [ ] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** `pages/subscriptions/`. Fix: implement `POST /subscriptions/:id/run-billing` that creates invoice + charges saved card via BlockChyp tokenized CNP.
+- [x] WEB-W3-017. **Aging report checkboxes are dead; no per-row "Send Reminder".** CLOSED 2026-04-26 — todofixes426: AgingReportPage rewritten — `bulkReminderMut` + per-row "Remind" button with spinner + bulk "Send Reminder (N)" button.
+- [x] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** CLOSED 2026-04-26 — todofixes426: DunningPage structured step editor — `DunningStep[]` state, day-offset input, action select, template select, add/remove rows.
+- [x] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** CLOSED 2026-04-26 — todofixes426: `POST /membership/:id/run-billing` validates status/token, idempotency guard, calls `chargeToken`, advances period, records `subscription_payments`; SubscriptionsListPage admin-only "Bill now" per-row button.
 - [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
 - [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
 
 ### P2 (cosmetic / missing UI)
 - [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
 - [x] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`. FIXED-by-Fixer-A23 2026-04-25 — added FKeyLegend popover button (bottom-right of UnifiedPosPage) listing F1/F2/F3 tabs, F4 customer search, Shift+F5 complete sale, F6 returns hotkey. `<kbd>`-styled rows, dialog role + aria-expanded button.
-- [ ] WEB-W3-030. **Subscriptions Cancel has no end-date display.** `pages/subscriptions/`.
+- [x] WEB-W3-030. **Subscriptions Cancel has no end-date display.** CLOSED 2026-04-26 — todofixes426: SubscriptionsListPage shows "Cancels {date}" via `formatDate(current_period_end)` when `cancel_at_period_end === 1`.
 - [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
 - [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
 - [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
@@ -65,13 +65,8 @@ type: project
 ## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
 
 ### P0 (blocks workflow / data loss)
-- [ ] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.**
-  - File: `packages/web/src/pages/invoices/` (list, bulk action handler)
-  - Symptom: button reports success; customer never contacted.
-  - Fix: in invoices route, on reminder action enqueue notification via `services/notifications.ts` (email + SMS per customer prefs) before timestamping.
-- [ ] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).**
-  - File: `packages/web/src/pages/invoices/` (InstallmentPlanWizard component)
-  - Fix: add `packages/server/src/routes/installments.routes.ts` with create/list/cancel handlers + migration for `installment_plans` table OR remove wizard until built.
+- [x] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.** CLOSED 2026-04-26 — todofixes426: invoices route `send_reminder` bulk action calls `sendReminderNotification` per invoice before updating `last_reminder_sent_at`.
+- [x] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).** CLOSED 2026-04-26 — todofixes426: added `installments.routes.ts` with POST /, GET /?invoice_id=, GET /:id, PUT /:id/cancel; migration 151_installment_plans.sql; `installmentApi` in endpoints.ts.
 - [ ] WEB-W2-003. **Ticket "Clone as Warranty" calls unverified route — likely 404.**
   - File: `packages/web/src/pages/tickets/TicketDetailPage.tsx` or `TicketActions.tsx`
   - Fix: confirm endpoint in `tickets.routes.ts`; if missing, add `POST /tickets/:id/clone-warranty` that copies ticket with `is_warranty=true` and parent reference.
@@ -105,37 +100,23 @@ type: project
   - Fix: confirm `repairPricing.routes.ts` shape matches client; align if not.
   - File: `packages/web/src/pages/customers/CustomerDetailPage.tsx`
   - Fix: trigger anchor download with `download` attr instead of `window.open`.
-- [ ] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".**
-  - File: `packages/web/src/pages/invoices/`
-  - Fix: hide button until partner integration exists, or wire to real provider.
-- [ ] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.**
-  - File: `packages/server/src/routes/blockchyp.routes.ts`
-  - Fix: implement adjustTip per BlockChyp SDK or remove tip-adjust UI button.
-- [ ] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.**
-  - File: `packages/web/src/pages/invoices/` + `packages/server/src/routes/creditNotes.routes.ts`
-  - Fix: add columns via migration if missing or drop fields from form.
-- [ ] WEB-W2-019. **Estimate line items display-only after creation — can't edit.**
-  - File: `packages/web/src/pages/estimates/`
-  - Fix: add inline edit + PUT `/estimates/:id/line-items/:lineId`.
-- [ ] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.**
-  - File: `packages/web/src/pages/estimates/`
-  - Fix: add Reject action calling existing status route.
+- [x] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".** CLOSED 2026-04-26 — todofixes426: button hidden until partner financing integration is built.
+- [x] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.** CLOSED 2026-04-26 — todofixes426: tip-adjust button hidden in POS; route returns 501 with clear message.
+- [x] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.** CLOSED 2026-04-26 — todofixes426: migration 150_credit_note_code_note.sql adds columns; `POST /:id/credit-note` persists both; `createCreditNote` API type updated.
+- [x] WEB-W2-019. **Estimate line items display-only after creation — can't edit.** CLOSED 2026-04-26 — todofixes426: EstimateDetailPage inline edit mode — per-row inputs, add/remove rows, posts to `PUT /estimates/:id` line_items array.
+- [x] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.** CLOSED 2026-04-26 — todofixes426: `POST /estimates/:id/reject` route; Reject button in EstimateDetailPage + per-row Reject in EstimateListPage; audit logged.
   - File: `packages/web/src/pages/leads/`
   - Fix: same normalization to `notes`.
-- [ ] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.**
-  - File: `packages/web/src/pages/invoices/`
-  - Fix: pass active filter params to stats endpoint OR compute from filtered result set.
-- [ ] WEB-W2-023. **Overdue count computed from current page only — inaccurate.**
-  - File: `packages/web/src/pages/invoices/`
-  - Fix: dedicated `/invoices/stats?overdue=1` query independent of pagination.
+- [x] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.** CLOSED 2026-04-26 — todofixes426: `GET /invoices/stats` accepts filter params; InvoiceListPage passes active filters.
+- [x] WEB-W2-023. **Overdue count computed from current page only — inaccurate.** CLOSED 2026-04-26 — todofixes426: stats endpoint returns `overdue_count`/`overdue_amount` from independent DB query.
 
 ### P2 (cosmetic / minor UX)
 - [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
 - [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
 - [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
-- [ ] WEB-W2-032. **No sortable columns on invoice table.** — `pages/invoices/`.
-- [ ] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** — `pages/estimates/`.
-- [ ] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** — add print stylesheet or PDF route.
+- [x] WEB-W2-032. **No sortable columns on invoice table.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /invoices`; InvoiceListPage sortable headers with ArrowUp/Down icons.
+- [x] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /estimates`; EstimateListPage sortable headers + checkbox column + bulk delete.
+- [x] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** CLOSED 2026-04-26 — todofixes426: print CSS in `globals.css` collapses layout, hides actions/version-history via data attrs.
 - [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
 - [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
 

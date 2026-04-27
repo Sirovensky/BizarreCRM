@@ -1,4 +1,24 @@
 
+### todofixes426 — Billing / Estimates / Invoices / Subscriptions batch (2026-04-26)
+
+- [x] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.** CLOSED 2026-04-26 — todofixes426: invoices route `send_reminder` bulk action calls `sendReminderNotification` per invoice before updating `last_reminder_sent_at`.
+- [x] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).** CLOSED 2026-04-26 — todofixes426: added `installments.routes.ts` with POST /, GET /?invoice_id=, GET /:id, PUT /:id/cancel; migration 151_installment_plans.sql; `installmentApi` in endpoints.ts.
+- [x] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".** CLOSED 2026-04-26 — todofixes426: button hidden until partner financing integration is built.
+- [x] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.** CLOSED 2026-04-26 — todofixes426: tip-adjust button hidden in POS; route returns 501 with clear message.
+- [x] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.** CLOSED 2026-04-26 — todofixes426: migration 150_credit_note_code_note.sql adds columns; `POST /:id/credit-note` persists both; `createCreditNote` API type updated.
+- [x] WEB-W2-019. **Estimate line items display-only after creation — can't edit.** CLOSED 2026-04-26 — todofixes426: EstimateDetailPage inline edit mode — per-row inputs, add/remove rows, posts to `PUT /estimates/:id` line_items array.
+- [x] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.** CLOSED 2026-04-26 — todofixes426: `POST /estimates/:id/reject` route; Reject button in EstimateDetailPage + per-row Reject in EstimateListPage; audit logged.
+- [x] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.** CLOSED 2026-04-26 — todofixes426: `GET /invoices/stats` accepts filter params; InvoiceListPage passes active filters.
+- [x] WEB-W2-023. **Overdue count computed from current page only — inaccurate.** CLOSED 2026-04-26 — todofixes426: stats endpoint returns `overdue_count`/`overdue_amount` from independent DB query.
+- [x] WEB-W2-032. **No sortable columns on invoice table.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /invoices`; InvoiceListPage sortable headers with ArrowUp/Down icons.
+- [x] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /estimates`; EstimateListPage sortable headers + checkbox column + bulk delete.
+- [x] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** CLOSED 2026-04-26 — todofixes426: print CSS in `globals.css` collapses layout, hides actions/version-history via data attrs.
+- [x] WEB-W3-005. **Billing payment-links page explicitly non-functional.** CLOSED 2026-04-26 — todofixes426: `POST /:token/pay` calls `createPaymentLink` (blockchyp.ts) to get a BlockChyp hosted checkout URL; CustomerPayPage "Pay now" button redirects customer; graceful fallback when BlockChyp not configured.
+- [x] WEB-W3-017. **Aging report checkboxes dead; no per-row "Send Reminder".** CLOSED 2026-04-26 — todofixes426: AgingReportPage rewritten — `bulkReminderMut` + per-row "Remind" button with spinner + bulk "Send Reminder (N)" button.
+- [x] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** CLOSED 2026-04-26 — todofixes426: DunningPage structured step editor — `DunningStep[]` state, day-offset input, action select, template select, add/remove rows.
+- [x] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** CLOSED 2026-04-26 — todofixes426: `POST /membership/:id/run-billing` validates status/token, idempotency guard, calls `chargeToken`, advances period, records `subscription_payments`; SubscriptionsListPage admin-only "Bill now" per-row button.
+- [x] WEB-W3-030. **Subscriptions Cancel has no end-date display.** CLOSED 2026-04-26 — todofixes426: SubscriptionsListPage shows "Cancels {date}" via `formatDate(current_period_end)` when `cancel_at_period_end === 1`.
+
 ### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix L (asyncHandler codemod + S8 P2 cleanup)
 
 - [x] WEB-S8-018. **roles/permission-keys admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /permission-keys; previously any authenticated user could enumerate all permission key strings.
