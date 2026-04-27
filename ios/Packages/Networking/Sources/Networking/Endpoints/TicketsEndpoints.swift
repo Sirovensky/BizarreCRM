@@ -62,6 +62,8 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
     public let slaStatus: String?
     public let urgency: String?
     public let latestSms: LatestSms?
+    /// ISO-8601 date string, e.g. `"2026-05-02T14:00:00.000Z"`. Nil when no due date set.
+    public let dueOn: String?
 
     public struct Customer: Decodable, Sendable, Hashable {
         public let id: Int64
@@ -161,12 +163,13 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         case slaStatus = "sla_status"
         case urgency
         case latestSms = "latest_sms"
+        case dueOn = "due_on"
     }
 }
 
 /// Client-side filter chips — §4.1 spec: All / Open / On hold / Closed / Cancelled / Active.
 /// Mapped to server query params in the repository.
-public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
+public enum TicketListFilter: String, CaseIterable, Codable, Sendable, Identifiable {
     case all
     case open
     case onHold

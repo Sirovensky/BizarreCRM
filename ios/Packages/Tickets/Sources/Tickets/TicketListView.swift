@@ -13,6 +13,7 @@ public struct TicketListView: View {
     @State private var selected: Int64?
     @State private var showingCreate: Bool = false
     @State private var showingSortMenu: Bool = false
+    @State private var showingExport: Bool = false
     private let repo: TicketRepository
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
@@ -95,10 +96,16 @@ public struct TicketListView: View {
                 newTicketToolbar
                 sortToolbarItem
                 stalenessToolbarItem
+                exportToolbarItem
             }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
                     TicketCreateView(api: api, customerRepo: customerRepo)
+                }
+            }
+            .sheet(isPresented: $showingExport) {
+                if let api {
+                    TicketExportView(api: api, filter: vm.filter, keyword: vm.searchQuery.isEmpty ? nil : vm.searchQuery, sort: vm.sort)
                 }
             }
         }
@@ -127,11 +134,17 @@ public struct TicketListView: View {
                 sortToolbarItem
                 stalenessToolbarItem
                 columnPickerToolbarItem
+                exportToolbarItem
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
                     TicketCreateView(api: api, customerRepo: customerRepo)
+                }
+            }
+            .sheet(isPresented: $showingExport) {
+                if let api {
+                    TicketExportView(api: api, filter: vm.filter, keyword: vm.searchQuery.isEmpty ? nil : vm.searchQuery, sort: vm.sort)
                 }
             }
         } detail: {
@@ -210,6 +223,19 @@ public struct TicketListView: View {
                 Label("Columns", systemImage: "slider.horizontal.3")
             }
             .accessibilityLabel("Column and density settings")
+        }
+    }
+
+    /// §4.1 — Export CSV toolbar item.
+    private var exportToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                showingExport = true
+            } label: {
+                Label("Export CSV", systemImage: "arrow.down.doc")
+            }
+            .disabled(api == nil)
+            .accessibilityLabel("Export tickets as CSV")
         }
     }
 
@@ -362,6 +388,11 @@ private struct TicketRow: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .monospacedDigit()
 
+                // §4.1 — Row age / due-date badge (red/amber/yellow/gray)
+                if let dueOn = ticket.dueOn {
+                    DueDateBadge(isoDateString: dueOn)
+                }
+
                 // §4.1 — SLA badge color indicator
                 if let sla = ticket.slaStatus, !sla.isEmpty {
                     SLABadge(status: sla)
@@ -378,7 +409,7 @@ private struct TicketRow: View {
                 customer: ticket.customer?.displayName ?? "",
                 device: ticket.firstDevice?.deviceName ?? "",
                 status: ticket.status?.name ?? "",
-                dueAt: nil
+                dueAt: ticket.dueOn
             )
         )
         .accessibilityHint(RowAccessibilityFormatter.ticketRowHint)
@@ -473,6 +504,75 @@ private struct SLABadge: View {
         case "warning":  return .bizarreOrange
         default:         return .bizarreOnSurfaceMuted
         }
+    }
+}
+
+// MARK: - §4.1 Row age / due-date badge
+
+/// Compact badge showing days until (or since) the ticket due date.
+/// Color scheme mirrors Android My Queue:
+///   red     — overdue (past due date)
+///   amber   — due within 24 hours
+///   yellow  — due within 3 days
+///   gray    — due in 3+ days or undetermined
+private struct DueDateBadge: View {
+    let isoDateString: String
+
+    private static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let iso8601Short: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private var dueDate: Date? {
+        Self.iso8601.date(from: isoDateString) ?? Self.iso8601Short.date(from: isoDateString)
+    }
+
+    private var daysUntilDue: Int? {
+        guard let due = dueDate else { return nil }
+        let seconds = due.timeIntervalSinceNow
+        return Int(seconds / 86400)
+    }
+
+    var body: some View {
+        if let days = daysUntilDue {
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(dotColor(days: days))
+                    .frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
+                Text(label(days: days))
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(dotColor(days: days))
+            }
+            .accessibilityLabel(a11yLabel(days: days))
+        }
+    }
+
+    private func label(days: Int) -> String {
+        if days < 0  { return "\(-days)d overdue" }
+        if days == 0 { return "Due today" }
+        if days == 1 { return "Due tomorrow" }
+        return "Due in \(days)d"
+    }
+
+    private func a11yLabel(days: Int) -> String {
+        if days < 0  { return "Overdue by \(-days) day\(-days == 1 ? "" : "s")" }
+        if days == 0 { return "Due today" }
+        if days == 1 { return "Due tomorrow" }
+        return "Due in \(days) days"
+    }
+
+    private func dotColor(days: Int) -> Color {
+        if days < 0  { return .bizarreError }
+        if days == 0 { return .bizarreOrange }
+        if days <= 3 { return Color(red: 0.93, green: 0.76, blue: 0.18) } // amber
+        return .bizarreOnSurfaceMuted
     }
 }
 
