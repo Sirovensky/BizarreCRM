@@ -11,6 +11,8 @@ import Networking
 public struct LeadPipelineView: View {
     @State private var vm: LeadPipelineViewModel
     @State private var selectedStage: PipelineStage = .new
+    @State private var archiveTarget: PipelineStage? = nil
+    @State private var showingArchiveConfirm: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(api: APIClient) {
@@ -39,6 +41,57 @@ public struct LeadPipelineView: View {
         #endif
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .toolbar {
+            // §9.2 Bulk archive won/lost
+            ToolbarItem(placement: .secondaryAction) {
+                Menu {
+                    let wonCount = vm.leads(in: .won).count
+                    let lostCount = vm.leads(in: .lost).count
+                    Button {
+                        archiveTarget = .won
+                        showingArchiveConfirm = true
+                    } label: {
+                        Label(
+                            "Archive Won (\(wonCount))",
+                            systemImage: "archivebox"
+                        )
+                    }
+                    .disabled(wonCount == 0)
+                    .accessibilityLabel("Archive all \(wonCount) won leads")
+
+                    Button(role: .destructive) {
+                        archiveTarget = .lost
+                        showingArchiveConfirm = true
+                    } label: {
+                        Label(
+                            "Archive Lost (\(lostCount))",
+                            systemImage: "archivebox"
+                        )
+                    }
+                    .disabled(lostCount == 0)
+                    .accessibilityLabel("Archive all \(lostCount) lost leads")
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
+                }
+                .accessibilityLabel("Bulk archive won or lost leads")
+            }
+        }
+        .confirmationDialog(
+            archiveTarget == .won
+                ? "Archive \(vm.leads(in: .won).count) Won lead\(vm.leads(in: .won).count == 1 ? "" : "s")?"
+                : "Archive \(vm.leads(in: .lost).count) Lost lead\(vm.leads(in: .lost).count == 1 ? "" : "s")?",
+            isPresented: $showingArchiveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Archive", role: .destructive) {
+                if let target = archiveTarget {
+                    Task { await vm.bulkArchive(stage: target) }
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will move all leads from the \(archiveTarget?.displayName ?? "") column to Archived. This can be undone from the lead detail.")
+        }
     }
 
     // MARK: - iPhone layout
