@@ -126,6 +126,66 @@ public extension APIClient {
     func setTicketPinned(ticketId: Int64, pinned: Bool) async throws {
         _ = try? await patch("/api/v1/tickets/\(ticketId)", body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
     }
+
+    // MARK: - §4.1 Export CSV
+
+    /// Builds the full export URL for `GET /api/v1/tickets/export`.
+    /// Route confirmed: tickets.routes.ts line 1619.
+    /// The caller uses this URL with `SFSafariViewController` (iPhone/iPad) or
+    /// `.fileExporter` (Mac) — the server streams CSV with Content-Disposition:attachment.
+    func exportTicketsURL(
+        filter: TicketListFilter = .all,
+        keyword: String? = nil,
+        sort: TicketSortOrder = .newest
+    ) async -> URL? {
+        guard let base = await currentBaseURL() else { return nil }
+        var items = filter.queryItems
+        items.append(sort.queryItem)
+        if let keyword, !keyword.isEmpty {
+            items.append(URLQueryItem(name: "keyword", value: keyword))
+        }
+        var comps = URLComponents(url: base.appendingPathComponent("/api/v1/tickets/export"),
+                                  resolvingAgainstBaseURL: false)
+        comps?.queryItems = items.isEmpty ? nil : items
+        return comps?.url
+    }
+
+    // MARK: - §4.5 Attach to existing invoice
+
+    /// `POST /api/v1/tickets/:id/attach-invoice` — attaches this ticket to an existing invoice.
+    func attachTicketToInvoice(ticketId: Int64, invoiceId: Int64) async throws {
+        _ = try? await post(
+            "/api/v1/tickets/\(ticketId)/attach-invoice",
+            body: TicketAttachInvoiceBody(invoiceId: invoiceId),
+            as: CreatedResource.self
+        )
+    }
+
+    // MARK: - §4.5 Transfer to another store
+
+    /// `POST /api/v1/tickets/:id/transfer` — transfers ticket to another location.
+    func transferTicket(ticketId: Int64, toLocationId: Int64, reason: String?) async throws {
+        _ = try? await post(
+            "/api/v1/tickets/\(ticketId)/transfer",
+            body: TicketTransferBody(locationId: toLocationId, reason: reason),
+            as: CreatedResource.self
+        )
+    }
+}
+
+// MARK: - §4.5 Body helpers
+
+/// Body for `POST /api/v1/tickets/:id/attach-invoice`.
+struct TicketAttachInvoiceBody: Encodable, Sendable {
+    let invoiceId: Int64
+    enum CodingKeys: String, CodingKey { case invoiceId = "invoice_id" }
+}
+
+/// Body for `POST /api/v1/tickets/:id/transfer`.
+struct TicketTransferBody: Encodable, Sendable {
+    let locationId: Int64
+    let reason: String?
+    enum CodingKeys: String, CodingKey { case locationId = "location_id"; case reason }
 }
 
 /// Body for `PATCH /api/v1/tickets/:id` — pin/unpin request.
