@@ -450,7 +450,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — shipped.
 - [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (`DashboardEndpoints.swift` DashboardKPIs + dashboardKPIs(); `DashboardView.swift` secondaryGrid; `DashboardRepository.swift` parallel fetch; 4dcf7c71)
-- [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (`Dashboard/DashboardTileDestination.swift` public enum + `DashboardView.onTileTap` callback; `StatTileCard` Button when handler present; DISCOVERED: `DeepLinkRoute` in Core needs `.ticketList(filter:)` / `.inventoryList(filter:)` / `.appointmentList(filter:)` cases — Agent 10 wires App-layer routing to `onTileTap`; b39fb1c1)
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
