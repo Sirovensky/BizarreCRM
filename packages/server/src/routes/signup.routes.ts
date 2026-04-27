@@ -749,6 +749,109 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   }
 }));
 
+// ─── POST /signup/verify/dev-skip ──────────────────────────────────
+// WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
+//
+// Outbound email is not yet wired in this build, so the wizard's
+// email-verification step in StepVerifyEmail can't actually receive a
+// code. To unblock end-to-end dogfooding of the SaaS-mode wizard, this
+// endpoint short-circuits the token-link step: given a slug + adminEmail
+// matching a pending signup, it provisions the tenant immediately as if
+// the email had been verified.
+//
+// Gated behind BOTH:
+//   process.env.NODE_ENV !== 'production'
+//   process.env.WIZARD_DEV_SKIP_EMAIL === '1'
+//
+// Returns 404 (not 403) in production so it's indistinguishable from a
+// route that doesn't exist. Audit-logs every call regardless of outcome.
+//
+// REMOVAL: tracked as TODO `WIZARD-EMAIL-1`. Delete this entire handler,
+// the matching button in StepVerifyEmail.tsx, and the env-var check once
+// SMTP is wired and the real /verify/:token flow is dogfooded.
+router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response): Promise<void> => {
+  // Gate 1 — production hard-block. 404 not 403 to avoid surfacing existence.
+  if (process.env.NODE_ENV === 'production' || process.env.WIZARD_DEV_SKIP_EMAIL !== '1') {
+    res.status(404).json({ success: false, message: 'Not found' });
+    return;
+  }
+  if (!config.multiTenant) {
+    res.status(404).json({ success: false, message: 'Not available' });
+    return;
+  }
+
+  const slug = String(req.body?.slug || '').trim().toLowerCase();
+  const adminEmail = String(req.body?.adminEmail || req.body?.email || '').trim().toLowerCase();
+  if (!slug || !adminEmail) {
+    res.status(400).json({ success: false, message: 'slug and adminEmail are required' });
+    return;
+  }
+
+  // Find the pending entry by (slug + email). Token is irrelevant on this path.
+  let matchedToken: string | null = null;
+  let matchedEntry: ReturnType<typeof pendingSignups.get> = undefined;
+  for (const [token, entry] of pendingSignups) {
+    if (entry.slug === slug && entry.adminEmail.toLowerCase() === adminEmail) {
+      matchedToken = token;
+      matchedEntry = entry;
+      break;
+    }
+  }
+  if (!matchedToken || !matchedEntry) {
+    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
+      slug, adminEmail, reason: 'no_matching_pending_entry',
+    });
+    res.status(404).json({ success: false, message: 'No pending signup found for that slug + email' });
+    return;
+  }
+
+  // Same single-use guarantee as the real /verify/:token path.
+  pendingSignups.delete(matchedToken);
+
+  const result = await provisionTenant({
+    slug: matchedEntry.slug,
+    name: matchedEntry.shopName,
+    adminEmail: matchedEntry.adminEmail,
+    adminPassword: matchedEntry.adminPassword,
+    adminFirstName: matchedEntry.adminFirstName,
+    adminLastName: matchedEntry.adminLastName,
+  });
+
+  if (!result.success) {
+    audit(req.db, 'signup_dev_skip_failed', null, req.ip || 'unknown', {
+      slug, adminEmail, reason: result.error,
+    });
+    res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
+    return;
+  }
+
+  audit(req.db, 'signup_dev_skip_succeeded', null, req.ip || 'unknown', {
+    slug: result.slug, email: matchedEntry.adminEmail,
+  });
+  logger.warn('[WIZARD-EMAIL-1] dev-skip endpoint used — REMOVE BEFORE PRODUCTION', {
+    slug: result.slug, adminEmail,
+  });
+
+  // Issue tokens just like the real /verify path does.
+  const tokenResult = await issueSignupTokens(result.slug!, req, res);
+  const tenantUrl = `https://${result.slug}.${config.baseDomain}`;
+
+  res.status(201).json({
+    success: true,
+    data: {
+      tenant_id: result.tenantId,
+      slug: result.slug,
+      url: tenantUrl,
+      message: 'Shop created (dev-skip).',
+      ...(tokenResult && {
+        accessToken: tokenResult.accessToken,
+        user: tokenResult.user,
+        tenant: { id: result.tenantId, slug: result.slug, name: matchedEntry.shopName },
+      }),
+    },
+  });
+}));
+
 // ─── GET /signup/check-slug/:slug ──────────────────────────────────
 // PT6: Rate-limited and returns a generic shape. We no longer distinguish
 // between "reserved", "invalid format", and "taken" — all unavailable
