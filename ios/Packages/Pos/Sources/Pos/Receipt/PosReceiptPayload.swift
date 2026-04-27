@@ -80,6 +80,21 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// in teal and an "Open ticket #NNNN" secondary CTA button.
     public let linkedRepairTicketId: Int64?
 
+    // MARK: - §16.12 — Offline sale watermark
+
+    /// `true` when this sale was captured while the device was offline.
+    /// The receipt screen shows an amber "OFFLINE" watermark and the message
+    /// "Sent when reconnected" until `syncedAt` is non-nil.
+    ///
+    /// The watermark is cleared (set to `false`) when the sync drain loop
+    /// confirms the server received the sale and sets `syncedAt`.
+    public let capturedOffline: Bool
+
+    /// UTC timestamp set by the sync drain loop when the server confirms the
+    /// sale. When non-nil the "OFFLINE" watermark is replaced with
+    /// "Synced \(syncedAt.formatted())". Nil means the sale has not yet synced.
+    public let syncedAt: Date?
+
     // MARK: - Init
 
     public init(
@@ -96,7 +111,9 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyPointsTotal: Int? = nil,
         loyaltyNextTierPoints: Int? = nil,
         signedTicketId: Int64? = nil,
-        linkedRepairTicketId: Int64? = nil
+        linkedRepairTicketId: Int64? = nil,
+        capturedOffline: Bool = false,
+        syncedAt: Date? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
@@ -112,5 +129,7 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
         self.linkedRepairTicketId = linkedRepairTicketId
+        self.capturedOffline = capturedOffline
+        self.syncedAt = syncedAt
     }
 }

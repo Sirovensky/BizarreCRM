@@ -581,6 +581,9 @@ public struct PosReceiptView: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("pos.receipt.methodLabel")
+
+            // §16.12 — OFFLINE watermark (visible until sale syncs)
+            offlineWatermark
         }
         .padding(.vertical, BrandSpacing.xl)
         .padding(.horizontal, BrandSpacing.lg)
@@ -604,6 +607,62 @@ public struct PosReceiptView: View {
         .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 24))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("pos.receipt.hero")
+    }
+
+    // MARK: - §16.12 — OFFLINE watermark
+
+    /// Amber "OFFLINE" badge shown in the hero when `capturedOffline == true`
+    /// and the sale has not yet synced to the server (`syncedAt == nil`).
+    ///
+    /// State machine:
+    /// - `capturedOffline == false`: hidden (normal online sale).
+    /// - `capturedOffline == true, syncedAt == nil`: amber "OFFLINE — Sent when reconnected".
+    /// - `capturedOffline == true, syncedAt != nil`: success "Synced" chip with timestamp.
+    ///
+    /// The `PosReceiptViewModel` is responsible for updating `payload.syncedAt`
+    /// when the sync drain loop confirms the server received the sale. Until then
+    /// the amber watermark remains visible on reprints.
+    @ViewBuilder
+    private var offlineWatermark: some View {
+        if vm.payload.capturedOffline {
+            if let syncedAt = vm.payload.syncedAt {
+                // Post-sync: success chip
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.bizarreSuccess)
+                    Text("Synced \(syncedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.bizarreSuccess)
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreSuccess.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreSuccess.opacity(0.30), lineWidth: 1))
+                .accessibilityLabel("Sale synced \(syncedAt.formatted())")
+                .accessibilityIdentifier("pos.receipt.syncedChip")
+            } else {
+                // Pre-sync: amber "OFFLINE" watermark
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.bizarreWarning)
+                    Text("OFFLINE")
+                        .font(.system(size: 11, weight: .heavy))
+                        .foregroundStyle(Color.bizarreWarning)
+                        .kerning(1.2)
+                    Text("· Sent when reconnected")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(Color.bizarreWarning.opacity(0.8))
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+                .overlay(Capsule().strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 1))
+                .accessibilityLabel("Sale captured offline. Will be sent to the server when reconnected.")
+                .accessibilityIdentifier("pos.receipt.offlineWatermark")
+            }
+        }
     }
 
     /// Label combining method + received + change for cash transactions.
