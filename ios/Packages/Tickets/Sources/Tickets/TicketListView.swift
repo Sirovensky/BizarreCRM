@@ -177,11 +177,15 @@ public struct TicketListView: View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let err = vm.errorMessage {
+            // §4.13: Network error on list — keep cached data visible (handled above when tickets non-empty)
             TicketErrorState(message: err) { Task { await vm.load() } }
         } else if vm.tickets.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "tickets")
         } else if vm.tickets.isEmpty {
-            TicketEmptyState(hint: emptyHint)
+            // §4.13: No tickets empty glass illustration + "Create one." CTA
+            TicketEmptyState(hint: emptyHint, showCreate: vm.filter == .all && searchText.isEmpty) {
+                showingCreate = true
+            }
         } else {
             List(selection: Binding<Int64?>(
                 get: { Platform.isCompact ? nil : selected },
@@ -192,8 +196,16 @@ public struct TicketListView: View {
                         .listRowBackground(Color.bizarreSurface1)
                         .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
                         .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
-                        // contextMenu is applied inside ticketRow via TicketQuickActionsContent
                 }
+                // §4.1 Footer state row
+                ListFooterRow(
+                    count: vm.tickets.count,
+                    isLoading: vm.isRefreshing,
+                    lastSyncedAt: vm.lastSyncedAt,
+                    isOffline: !Reachability.shared.isOnline
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -247,31 +259,103 @@ public struct TicketListView: View {
     private var emptyHint: String {
         if !searchText.isEmpty { return "No results for \"\(searchText)\"." }
         switch vm.filter {
-        case .all:        return "Create a ticket to get started."
+        case .all:        return "No tickets yet. Create one."
         case .myTickets:  return "No tickets are assigned to you."
         case .open:       return "Nothing open right now."
-        case .inProgress: return "No tickets in progress."
-        case .waiting:    return "Nothing waiting."
+        case .onHold:     return "Nothing on hold."
+        case .active:     return "No active tickets."
         case .closed:     return "Nothing closed yet."
+        case .cancelled:  return "Nothing cancelled."
         }
     }
 
+    // MARK: - §4.1 Filter chips (All / Open / On Hold / Active / Closed / Cancelled)
+
     private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.xs) {
-                ForEach(TicketListFilter.allCases) { option in
-                    FilterChip(
-                        label: option.displayName,
-                        selected: vm.filter == option
-                    ) {
-                        Task { await vm.applyFilter(option) }
+        VStack(spacing: 0) {
+            // Status group chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketListFilter.allCases) { option in
+                        FilterChip(
+                            label: option.displayName,
+                            selected: vm.filter == option
+                        ) {
+                            Task { await vm.applyFilter(option) }
+                        }
                     }
                 }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
+            .scrollClipDisabled()
+
+            // §4.1 Urgency chips (Critical / High / Medium / Normal / Low)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketUrgencyFilter.allCases) { urgency in
+                        UrgencyChip(
+                            urgency: urgency,
+                            selected: vm.urgencyFilter == urgency
+                        ) {
+                            Task { await vm.applyUrgency(urgency) }
+                        }
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
         }
-        .scrollClipDisabled()
+    }
+}
+
+// MARK: - §4.1 Urgency chip
+
+private struct UrgencyChip: View {
+    let urgency: TicketUrgencyFilter
+    let selected: Bool
+    let action: () -> Void
+
+    /// Map the urgency level to a SwiftUI semantic color.
+    private var dotColor: Color {
+        switch urgency {
+        case .critical: return Color(UIColor.systemRed)
+        case .high:     return Color(UIColor.systemOrange)
+        case .medium:   return Color(UIColor.systemYellow)
+        case .normal:   return Color(UIColor.systemGreen)
+        case .low:      return Color(UIColor.systemGray)
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                Text(urgency.displayName)
+                    .font(.brandLabelLarge())
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
+            .background(
+                selected ? dotColor.opacity(0.25) : Color.bizarreSurface1,
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        selected ? dotColor : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: selected ? 1.0 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(urgency.displayName)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
@@ -411,22 +495,39 @@ private struct TicketErrorState: View {
     }
 }
 
+/// §4.13: Glass illustration empty state with optional "Create one." CTA.
 private struct TicketEmptyState: View {
     let hint: String
+    var showCreate: Bool = false
+    var onCreate: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "tray")
-                .font(.system(size: 24, weight: .regular))
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.system(size: 42, weight: .light))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
+                .padding(.bottom, BrandSpacing.xs)
             Text(hint)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, BrandSpacing.lg)
+                .padding(.horizontal, BrandSpacing.xl)
+            if showCreate, let onCreate {
+                Button(action: onCreate) {
+                    Text("Create a Ticket")
+                        .font(.brandLabelLarge())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                        .foregroundStyle(.white)
+                        .background(Color.bizarreOrange, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Create your first ticket")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -444,6 +545,59 @@ private struct EmptyTicketDetailPlaceholder: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
+    }
+}
+
+/// §4.1 Footer states: Loading… / Showing N / End of list / Offline — N cached, last synced Xh ago.
+private struct ListFooterRow: View {
+    let count: Int
+    let isLoading: Bool
+    let lastSyncedAt: Date?
+    let isOffline: Bool
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Spacer()
+            content
+            Spacer()
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            HStack(spacing: BrandSpacing.xs) {
+                ProgressView().scaleEffect(0.7)
+                Text("Loading…")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        } else if isOffline {
+            Text(offlineLabel)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreWarning)
+                .multilineTextAlignment(.center)
+        } else if count > 0 {
+            Text("Showing \(count) tickets")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+    }
+
+    private var offlineLabel: String {
+        var parts = ["\(count) cached"]
+        if let synced = lastSyncedAt {
+            let hrs = Int(Date().timeIntervalSince(synced) / 3600)
+            if hrs < 1 {
+                let mins = Int(Date().timeIntervalSince(synced) / 60)
+                parts.append("last synced \(max(mins, 1))m ago")
+            } else {
+                parts.append("last synced \(hrs)h ago")
+            }
+        }
+        return "Offline — " + parts.joined(separator: ", ")
     }
 }
 #endif

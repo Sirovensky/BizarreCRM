@@ -11,6 +11,8 @@ public final class TicketListViewModel {
     public private(set) var isRefreshing: Bool = false
     public private(set) var errorMessage: String?
     public var filter: TicketListFilter = .all
+    /// §4.1 Urgency chip filter; nil = no urgency filter applied.
+    public var urgencyFilter: TicketUrgencyFilter? = nil
     public var searchQuery: String = ""
     /// Exposed for `StalenessIndicator` in the toolbar.
     public var lastSyncedAt: Date?
@@ -34,25 +36,17 @@ public final class TicketListViewModel {
     public func refresh() async {
         isRefreshing = true
         defer { isRefreshing = false }
-        if let cached = cachedRepo {
-            do {
-                let results = try await cached.forceRefresh(
-                    filter: filter,
-                    keyword: searchQuery.isEmpty ? nil : searchQuery
-                )
-                tickets = results
-                lastSyncedAt = await cached.lastSyncedAt
-            } catch {
-                AppLog.ui.error("Ticket force-refresh failed: \(error.localizedDescription, privacy: .public)")
-                errorMessage = error.localizedDescription
-            }
-        } else {
-            await fetch()
-        }
+        await fetch()
     }
 
     public func applyFilter(_ newFilter: TicketListFilter) async {
         filter = newFilter
+        await fetch()
+    }
+
+    /// §4.1: toggle urgency chip; tapping the active one clears it.
+    public func applyUrgency(_ u: TicketUrgencyFilter) async {
+        urgencyFilter = (urgencyFilter == u) ? nil : u
         await fetch()
     }
 
@@ -100,6 +94,7 @@ public final class TicketListViewModel {
         do {
             let results = try await repo.list(
                 filter: filter,
+                urgency: urgencyFilter,
                 keyword: searchQuery.isEmpty ? nil : searchQuery
             )
             tickets = results

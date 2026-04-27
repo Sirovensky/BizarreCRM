@@ -7,6 +7,7 @@ import Networking
 
 /// Detail view for a single estimate.
 /// §8.2: header, line items, totals, approve/reject actions, convert-to-ticket.
+/// §8.4: manual expire action (marks estimate as expired via PUT /estimates/:id).
 /// iPhone: vertical scroll + bottom-sheet actions.
 /// iPad: multi-column layout with actions sidebar.
 public struct EstimateDetailView: View {
@@ -15,6 +16,9 @@ public struct EstimateDetailView: View {
     private let onTicketCreated: @MainActor (Int64) -> Void
 
     @State private var showConvertSheet: Bool = false
+    @State private var showExpireConfirm: Bool = false
+    @State private var isExpiring: Bool = false
+    @State private var expireErrorMessage: String?
     #if canImport(UIKit)
     @State private var showSignSheet: Bool = false
     #endif
@@ -313,6 +317,7 @@ public struct EstimateDetailView: View {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
             let isSigned = (status == "signed")
+            let isAlreadyExpired = (status == "expired")
 
             Button {
                 showConvertSheet = true
@@ -335,12 +340,63 @@ public struct EstimateDetailView: View {
             }
             .buttonStyle(.bordered)
             .disabled(isSigned)
-            .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate a signature link to send to customer")
+            .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate and share signature link")
             .keyboardShortcut("g", modifiers: [.command, .shift])
             #endif
+
+            // §8.4 Manual expire action
+            if !isAlreadyExpired && !isConverted {
+                Button(role: .destructive) {
+                    showExpireConfirm = true
+                } label: {
+                    Label(isExpiring ? "Expiring…" : "Expire Estimate",
+                          systemImage: "clock.badge.xmark")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.bordered)
+                .disabled(isExpiring)
+                .accessibilityLabel("Mark this estimate as expired")
+                .confirmationDialog("Expire this estimate?",
+                                    isPresented: $showExpireConfirm,
+                                    titleVisibility: .visible) {
+                    Button("Expire", role: .destructive) {
+                        Task { await manualExpire() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The estimate will be marked as expired and can no longer be approved.")
+                }
+            }
+
+            if let errMsg = expireErrorMessage {
+                Text(errMsg)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreError)
+            }
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+    }
+
+    // MARK: - §8.4 Manual expire
+
+    private func manualExpire() async {
+        isExpiring = true
+        expireErrorMessage = nil
+        defer { isExpiring = false }
+        do {
+            // PUT /api/v1/estimates/:id with { status: "expired" }
+            struct ExpireBody: Encodable { let status: String }
+            _ = try await api.put(
+                "/api/v1/estimates/\(estimate.id)",
+                body: ExpireBody(status: "expired"),
+                as: Estimate.self
+            )
+            AppLog.ui.info("Estimate \(estimate.id) manually expired.")
+        } catch {
+            expireErrorMessage = "Could not expire: \(error.localizedDescription)"
+            AppLog.ui.error("Manual expire failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Toolbars
@@ -351,6 +407,7 @@ public struct EstimateDetailView: View {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
             let isSigned = (status == "signed")
+            let isAlreadyExpired = (status == "expired")
             Menu {
                 Button {
                     showConvertSheet = true
@@ -367,10 +424,29 @@ public struct EstimateDetailView: View {
                 }
                 .disabled(isSigned)
                 #endif
+
+                // §8.4 Manual expire
+                if !isAlreadyExpired && !isConverted {
+                    Button(role: .destructive) {
+                        showExpireConfirm = true
+                    } label: {
+                        Label("Expire Estimate", systemImage: "clock.badge.xmark")
+                    }
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("Estimate actions")
+            .confirmationDialog("Expire this estimate?",
+                                isPresented: $showExpireConfirm,
+                                titleVisibility: .visible) {
+                Button("Expire", role: .destructive) {
+                    Task { await manualExpire() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The estimate will be marked as expired.")
+            }
         }
     }
 

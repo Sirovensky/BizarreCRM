@@ -87,6 +87,8 @@ public final class TicketEditDeepViewModel {
     public private(set) var didSave: Bool = false
     public private(set) var didArchive: Bool = false
     public private(set) var queuedOffline: Bool = false
+    /// §4.4: set when the server returns 409 Conflict (stale `updated_at`).
+    public private(set) var hasConcurrentEditConflict: Bool = false
 
     // MARK: — Dependencies
 
@@ -177,10 +179,15 @@ public final class TicketEditDeepViewModel {
                 await applyTransition(transition)
             }
             await clearDraft()
+            hasConcurrentEditConflict = false
             didSave = true
         } catch {
             if TicketOfflineQueue.isNetworkError(error) {
                 await enqueueOffline(req)
+            } else if case APITransportError.httpStatus(409, _) = error {
+                // §4.4: concurrent-edit detection — server returns 409 on stale updated_at.
+                hasConcurrentEditConflict = true
+                AppLog.ui.warning("Ticket edit 409 conflict: ticket=\(self.ticketId)")
             } else {
                 AppLog.ui.error("Ticket edit failed: \(error.localizedDescription, privacy: .public)")
                 errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription

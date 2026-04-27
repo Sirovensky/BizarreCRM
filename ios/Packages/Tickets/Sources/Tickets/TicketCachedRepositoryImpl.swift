@@ -10,7 +10,13 @@ public protocol TicketCachedRepository: TicketRepository {
     var lastSyncedAt: Date? { get async }
 
     /// Bypass the cache and fetch fresh data. Called on pull-to-refresh.
-    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary]
+    func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary]
+}
+
+public extension TicketCachedRepository {
+    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+        try await forceRefresh(filter: filter, urgency: nil, keyword: keyword)
+    }
 }
 
 // MARK: - TicketCachedRepositoryImpl
@@ -53,21 +59,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     public var lastSyncedAt: Date? { latestSyncedAt }
 
     /// Returns cache if fresh; else fetches and caches.
-    public func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
+    public func list(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
         if let entry = cache[key] {
             let age = Date().timeIntervalSince(entry.fetchedAt)
             if age <= Double(maxAgeSeconds) {
                 return entry.tickets
             }
         }
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Always fetches from remote. Used by pull-to-refresh.
-    public func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+    public func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Pass-through — detail view calls this directly; no caching needed for MVP.
@@ -77,12 +83,12 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
 
     // MARK: - Private
 
-    private func cacheKey(filter: TicketListFilter, keyword: String?) -> String {
-        "\(filter.rawValue)|\(keyword ?? "")"
+    private func cacheKey(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) -> String {
+        "\(filter.rawValue)|\(urgency?.rawValue ?? "")|\(keyword ?? "")"
     }
 
-    private func fetch(filter: TicketListFilter, keyword: String?, key: String) async throws -> [TicketSummary] {
-        let tickets = try await remote.list(filter: filter, keyword: keyword)
+    private func fetch(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?, key: String) async throws -> [TicketSummary] {
+        let tickets = try await remote.list(filter: filter, urgency: urgency, keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)
         latestSyncedAt = now

@@ -72,6 +72,18 @@ public struct TicketEditDeepView: View {
                     .animation(reduceMotion ? .none : BrandMotion.offlineBanner, value: pendingBanner)
             }
         }
+        // §4.4 + §4.13: 409 concurrent-edit conflict banner — "This ticket changed. [Reload]"
+        .overlay(alignment: .bottom) {
+            if vm.hasConcurrentEditConflict {
+                ConcurrentEditConflictBanner {
+                    dismiss()    // Reload = dismiss edit; caller refreshes detail.
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.xl)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(reduceMotion ? .none : BrandMotion.standard, value: vm.hasConcurrentEditConflict)
+            }
+        }
     }
 
     // MARK: — iPhone layout
@@ -371,6 +383,41 @@ private struct LabeledFormField: View {
 extension TicketEditDeepViewModel {
     func autoSaver_cancel() {
         autoSaver.cancelPending()
+    }
+}
+
+// MARK: - §4.13 Concurrent-edit conflict banner
+
+/// Glass pill shown when the server returns 409 (stale `updated_at`).
+/// "This ticket changed. [Reload]"
+private struct ConcurrentEditConflictBanner: View {
+    let onReload: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.bizarreWarning)
+                .accessibilityHidden(true)
+            Text("This ticket changed.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer(minLength: 0)
+            Button("Reload", action: onReload)
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOrange)
+                .accessibilityLabel("Reload ticket to see latest changes")
+        }
+        .padding(.horizontal, BrandSpacing.lg)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreWarning.opacity(0.4), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 6, y: 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Conflict: this ticket was changed by someone else. Tap Reload to refresh.")
     }
 }
 #endif

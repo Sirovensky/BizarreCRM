@@ -165,13 +165,15 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
 }
 
 /// Client-side filter chips. Mapped to server query params in the repository.
+/// §4.1: All / Open / On hold / Closed / Cancelled / Active (mirrors server `status_group`).
 public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
     case all
     case myTickets
     case open
-    case inProgress
-    case waiting
+    case onHold
+    case active
     case closed
+    case cancelled
 
     public var id: String { rawValue }
 
@@ -180,9 +182,10 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
         case .all:        return "All"
         case .myTickets:  return "My Tickets"
         case .open:       return "Open"
-        case .inProgress: return "In Progress"
-        case .waiting:    return "Waiting"
+        case .onHold:     return "On Hold"
+        case .active:     return "Active"
         case .closed:     return "Closed"
+        case .cancelled:  return "Cancelled"
         }
     }
 
@@ -196,20 +199,67 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
             return [URLQueryItem(name: "assigned_to", value: "me")]
         case .open:
             return [URLQueryItem(name: "status_group", value: "open")]
-        case .inProgress:
-            return [URLQueryItem(name: "status_group", value: "active")]
-        case .waiting:
+        case .onHold:
             return [URLQueryItem(name: "status_group", value: "on_hold")]
+        case .active:
+            return [URLQueryItem(name: "status_group", value: "active")]
         case .closed:
             return [URLQueryItem(name: "status_group", value: "closed")]
+        case .cancelled:
+            return [URLQueryItem(name: "status_group", value: "cancelled")]
         }
     }
 }
 
+/// §4.1 Urgency filter chips — Critical / High / Medium / Normal / Low.
+/// Maps to `urgency` query param on `GET /tickets`.
+public enum TicketUrgencyFilter: String, CaseIterable, Sendable, Identifiable {
+    case critical
+    case high
+    case medium
+    case normal
+    case low
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .critical: return "Critical"
+        case .high:     return "High"
+        case .medium:   return "Medium"
+        case .normal:   return "Normal"
+        case .low:      return "Low"
+        }
+    }
+
+    /// System color name used for urgency dot (maps to semantic colors on iOS).
+    /// Matches Android TicketUrgencyChip color assignment.
+    public var systemColorName: String {
+        switch self {
+        case .critical: return "systemRed"
+        case .high:     return "systemOrange"
+        case .medium:   return "systemYellow"
+        case .normal:   return "systemGreen"
+        case .low:      return "systemGray"
+        }
+    }
+
+    public var queryItem: URLQueryItem {
+        URLQueryItem(name: "urgency", value: rawValue)
+    }
+}
+
 public extension APIClient {
-    func listTickets(filter: TicketListFilter = .all, keyword: String? = nil, pageSize: Int = 50) async throws -> TicketsListResponse {
+    /// §4.1: list tickets with status-group filter + optional urgency filter.
+    func listTickets(
+        filter: TicketListFilter = .all,
+        urgency: TicketUrgencyFilter? = nil,
+        keyword: String? = nil,
+        pageSize: Int = 50
+    ) async throws -> TicketsListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
+        if let urgency { items.append(urgency.queryItem) }
         if let keyword, !keyword.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: keyword))
         }

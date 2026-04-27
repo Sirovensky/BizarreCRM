@@ -5,6 +5,31 @@ import DesignSystem
 import Networking
 import Sync
 
+// MARK: - §8.1 Estimate status filter
+
+/// §8.1 Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+public enum EstimateStatusFilter: String, CaseIterable, Sendable, Identifiable {
+    case all, draft, sent, approved, rejected, expired, converted
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .all:       return "All"
+        case .draft:     return "Draft"
+        case .sent:      return "Sent"
+        case .approved:  return "Approved"
+        case .rejected:  return "Rejected"
+        case .expired:   return "Expired"
+        case .converted: return "Converted"
+        }
+    }
+
+    public var serverValue: String? { self == .all ? nil : rawValue }
+}
+
+// MARK: - EstimateListViewModel
+
 @MainActor
 @Observable
 public final class EstimateListViewModel {
@@ -12,6 +37,8 @@ public final class EstimateListViewModel {
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    /// §8.1 Active status tab.
+    public var statusFilter: EstimateStatusFilter = .all
 
     // Phase-3: staleness + offline
     public private(set) var lastSyncedAt: Date?
@@ -35,6 +62,11 @@ public final class EstimateListViewModel {
         await fetch(forceRemote: true)
     }
 
+    public func applyStatusFilter(_ f: EstimateStatusFilter) async {
+        statusFilter = f
+        await fetch(forceRemote: false)
+    }
+
     public func onSearchChange(_ q: String) {
         searchQuery = q
         searchTask?.cancel()
@@ -47,22 +79,26 @@ public final class EstimateListViewModel {
 
     private func fetch(forceRemote: Bool) async {
         errorMessage = nil
+        let keyword = searchQuery.isEmpty ? nil : searchQuery
         do {
+            var all: [Estimate]
             if let cached = repo as? EstimateCachedRepositoryImpl {
                 let result: CachedResult<[Estimate]>
                 if forceRemote {
-                    result = try await cached.forceRefresh(
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
-                    )
+                    result = try await cached.forceRefresh(keyword: keyword)
                 } else {
-                    result = try await cached.cachedList(
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
-                    )
+                    result = try await cached.cachedList(keyword: keyword)
                 }
-                items = result.value
+                all = result.value
                 lastSyncedAt = result.lastSyncedAt
             } else {
-                items = try await repo.list(keyword: searchQuery.isEmpty ? nil : searchQuery)
+                all = try await repo.list(keyword: keyword)
+            }
+            // §8.1: client-side status tab filter
+            if let sv = statusFilter.serverValue {
+                items = all.filter { ($0.status ?? "").lowercased() == sv }
+            } else {
+                items = all
             }
         } catch {
             AppLog.ui.error("Estimates load failed: \(error.localizedDescription, privacy: .public)")
@@ -152,36 +188,60 @@ public struct EstimateListView: View {
 
     @ViewBuilder
     private var content: some View {
-        if vm.isLoading {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let err = vm.errorMessage {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
-                    .accessibilityHidden(true)
-                Text("Couldn't load estimates").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-                Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
-                Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
+        VStack(spacing: 0) {
+            // §8.1 Status tabs chip row
+            statusTabChips
+
+            if vm.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let err = vm.errorMessage {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                        .accessibilityHidden(true)
+                    Text("Couldn't load estimates").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                    Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
+                    Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if vm.items.isEmpty && vm.isOffline {
+                OfflineEmptyStateView(entityName: "estimates")
+            } else if vm.items.isEmpty {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(searchText.isEmpty ? "No estimates" : "No results")
+                        .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List {
+                    ForEach(vm.items) { est in
+                        Row(estimate: est).listRowBackground(Color.bizarreSurface1)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if vm.items.isEmpty && vm.isOffline {
-            OfflineEmptyStateView(entityName: "estimates")
-        } else if vm.items.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(searchText.isEmpty ? "No estimates" : "No results")
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            List {
-                ForEach(vm.items) { est in
-                    Row(estimate: est).listRowBackground(Color.bizarreSurface1)
+        }
+    }
+
+    /// §8.1 Status tab chips — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+    private var statusTabChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                ForEach(EstimateStatusFilter.allCases) { tab in
+                    EstimateStatusChip(
+                        label: tab.displayName,
+                        selected: vm.statusFilter == tab
+                    ) {
+                        Task { await vm.applyStatusFilter(tab) }
+                    }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
         }
+        .scrollClipDisabled()
     }
 
     private struct Row: View {
@@ -243,5 +303,34 @@ public struct EstimateListView: View {
         }
 
         private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
+    }
+}
+
+// MARK: - EstimateStatusChip
+
+private struct EstimateStatusChip: View {
+    let label: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.xs)
+                .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
+                .background(
+                    selected ? Color.bizarreOrange : Color.bizarreSurface1,
+                    in: Capsule()
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.bizarreOutline.opacity(selected ? 0 : 0.4), lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
