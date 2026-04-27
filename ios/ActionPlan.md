@@ -4359,7 +4359,7 @@ Rules:
 ### 29.1 Launch time
 - [ ] **Cold launch** < 1500ms on iPhone 13; < 1000ms on iPhone 15 Pro; < 2500ms on iPhone SE (2022).
 - [x] **Deferred init** — analytics, feature flags, non-critical framework init moved to `Task.detached(priority: .background)`. (MetricKit + Heartbeat wired in `AppServices.restoreSession()` deferred block. feat(§29.1) ae5febcf)
-- [ ] **Lazy tabs** — only Home tab initialized on launch; others lazy.
+- [x] **Lazy tabs** — only Home tab initialized on launch; others lazy. (`iPhoneTabs.lazyTab(_:content:)` + `appearedTabs: Set<MainTab>` in `App/RootView.swift`; Dashboard eager; others render on first tap via `.onChange(of: selection)`. feat(§29.1): 3e29a0f4)
 - [ ] **Pre-main optimization** — minimal dynamic libraries; ≤ 10 frameworks.
 - [ ] **Splash to first frame** < 200ms.
 - [ ] **Warm launch** < 500ms.
@@ -4700,7 +4700,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
 - [ ] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers.
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
-- [ ] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion.
+- [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion. (`StaggeredAppearModifier` + `.staggeredAppear(index:trigger:)` in `DesignSystem/BrandMotion.swift`; Reduce Motion → opacity fade only. feat(§67): d8b0c172)
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).
 - [ ] Variant rules: `.fill` on active/selected, outline on inactive; default `.monochrome`, `.multicolor` for status (warning/error), `.hierarchical` for brand surfaces where depth helps.
 - [ ] Custom SF Symbols for brand glyphs (wrench-spark) in `Assets.xcassets/Symbols/`; naming `brand.wrench.spark`.
