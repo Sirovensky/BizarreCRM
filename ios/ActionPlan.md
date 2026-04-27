@@ -133,7 +133,7 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 - [x] **Token refresh on 401 with retry-of-original-request.** (`Networking/APIClient.swift` `performOnce` + `refreshSessionOnce()` single-flight `Task<Bool,Error>`; concurrent 401s queue behind same task; `AuthSessionRefresher` protocol wired via `AuthRefresher.swift`; failure posts `SessionEvents.sessionRevoked`.)
 - [ ] **Typed endpoint namespaces** — migrate each repository to an `Endpoint` enum (`Endpoints.Tickets.list(page:filter:)`) so path strings are not scattered across files.
 - [ ] **Multipart upload helper** (`APIClient.upload(_:to:fields:)`) for photos, receipts, avatars. Must use a background `URLSession` configuration so uploads survive app exit.
-- [x] **Retries with jitter** on transient network failures (5xx, URLError `.timedOut`, `.networkConnectionLost`). Respect `Retry-After` on 429. <!-- shipped [actionplan agent-10] -->
+- [x] **Retries with jitter** on transient network failures (5xx, URLError `.timedOut`, `.networkConnectionLost`). Respect `Retry-After` on 429. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] **Offline detection banner** driven by `NWPathMonitor` — sticky `.brandGlass` banner at the top of `NavigationStack`s with "Offline — changes will sync when connected" copy. (`Networking/Reachability.swift` + `DesignSystem/OfflineBanner.swift`. Retry button deferred.)
 
 ### 1.2 Pinning & TLS
@@ -174,11 +174,11 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 
 ### 1.6 Environment & config
 - [x] `project.yml` + `xcodegen` + `write-info-plist.sh` — shipped.
-- [x] **`Info.plist` key audit** — drop empty `UISceneDelegateClassName` (removes console noise). <!-- shipped [actionplan agent-10] -->
+- [x] **`Info.plist` key audit** — drop empty `UISceneDelegateClassName` (removes console noise). <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [ ] `ITSAppUsesNonExemptEncryption = false` (HTTPS is exempt).
 - [ ] Required usage-description strings: Camera, Photos, Photos-add, FaceID, Bluetooth, Contacts, Location-when-in-use (tech dispatch), Microphone (SMS voice memo — optional), Calendars (EventKit appointments mirror).
 - [ ] `UIBackgroundModes`: `remote-notification`, `processing`, `fetch`.
-- [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped [actionplan agent-10] -->
+- [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
 - [ ] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support".
@@ -4526,12 +4526,12 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 
 Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real brand fonts are Google Fonts loaded via Elementor: **Bebas Neue**, **League Spartan**, **Roboto**, **Roboto Slab**. Match the iOS app to the live brand identity rather than shipping a divergent palette.
 
-- [x] **Display / Title** — **Bebas Neue** Regular. Condensed all-caps display face; mirrors the brand web's nav + section titles. Use for large numbers on dashboards (revenue, ticket counts), screen headers, CTAs where we want brand voice. Letter-spacing +0.5–1.0 at small sizes; tight at large sizes. <!-- shipped [actionplan agent-10] -->
-- [x] **Body / UI** — **Roboto** (Regular / Medium / SemiBold). Workhorse for list rows, labels, form inputs, paragraphs. Replaces Inter. Falls back to SF Pro Text automatically via Dynamic Type system. <!-- shipped [actionplan agent-10] -->
-- [x] **Accent / Secondary headings** — **League Spartan** (SemiBold / Bold). Geometric sans used on bizarreelectronics.com for emphasis. Use sparingly: section subtitles, empty-state headlines, marketing-tone copy. Don't mix with Bebas in the same visual line. <!-- shipped [actionplan agent-10] -->
-- [x] **Mono** — **Roboto Mono** (Regular). IDs, SKUs, IMEI, barcodes, order numbers, log output. Keeps the Roboto family consistent instead of JetBrains Mono. `.monospacedDigit` variant for counters / totals so digits don't jitter. <!-- shipped [actionplan agent-10] -->
-- [x] **Slab accent (optional)** — **Roboto Slab** SemiBold. Keep in the available set because the brand web uses it; probably only in a single accent spot (e.g., invoice-total print header) to avoid visual noise in UI. <!-- shipped [actionplan agent-10] -->
-- [x] **Scale** — ties into §80.8 master typography table (rewritten to reflect this family swap): <!-- shipped [actionplan agent-10] -->
+- [x] **Display / Title** — **Bebas Neue** Regular. Condensed all-caps display face; mirrors the brand web's nav + section titles. Use for large numbers on dashboards (revenue, ticket counts), screen headers, CTAs where we want brand voice. Letter-spacing +0.5–1.0 at small sizes; tight at large sizes. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Body / UI** — **Roboto** (Regular / Medium / SemiBold). Workhorse for list rows, labels, form inputs, paragraphs. Replaces Inter. Falls back to SF Pro Text automatically via Dynamic Type system. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Accent / Secondary headings** — **League Spartan** (SemiBold / Bold). Geometric sans used on bizarreelectronics.com for emphasis. Use sparingly: section subtitles, empty-state headlines, marketing-tone copy. Don't mix with Bebas in the same visual line. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Mono** — **Roboto Mono** (Regular). IDs, SKUs, IMEI, barcodes, order numbers, log output. Keeps the Roboto family consistent instead of JetBrains Mono. `.monospacedDigit` variant for counters / totals so digits don't jitter. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Slab accent (optional)** — **Roboto Slab** SemiBold. Keep in the available set because the brand web uses it; probably only in a single accent spot (e.g., invoice-total print header) to avoid visual noise in UI. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Scale** — ties into §80.8 master typography table (rewritten to reflect this family swap): <!-- shipped bcbccaa8 [actionplan agent-10] -->
   - `largeTitle` 34 Bebas Neue Regular
   - `title1` 28 Bebas Neue Regular
   - `title2` 22 League Spartan SemiBold
@@ -4544,10 +4544,10 @@ Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real bra
   - `caption1` 12 Roboto Regular
   - `caption2` 11 Roboto Regular
   - `mono` 14 Roboto Mono
-- [x] **Dynamic Type** — each style keyed off a `Font.TextStyle` so iOS scaling honors user preference. <!-- shipped [actionplan agent-10] -->
-- [x] **`scripts/fetch-fonts.sh`** — fetches the four Google Fonts families (OFL license, safe to bundle). Replaces the previous Inter / Barlow Condensed / JetBrains Mono fetch. Old files cleaned from `App/Resources/Fonts/` on next `bash ios/scripts/gen.sh`. <!-- shipped [actionplan agent-10] -->
-- [x] **`UIAppFonts`** list in `scripts/write-info-plist.sh` updated: `BebasNeue-Regular.ttf`, `LeagueSpartan-Medium.ttf`, `LeagueSpartan-SemiBold.ttf`, `LeagueSpartan-Bold.ttf`, `Roboto-Regular.ttf`, `Roboto-Medium.ttf`, `Roboto-SemiBold.ttf`, `Roboto-Bold.ttf`, `RobotoMono-Regular.ttf`, `RobotoSlab-SemiBold.ttf`. <!-- shipped [actionplan agent-10] -->
-- [x] **Fallback** — if fonts missing (fetch-fonts.sh not run), use SF Pro + SF Mono; log a one-time dev-console warning. Never crash. <!-- shipped [actionplan agent-10] -->
+- [x] **Dynamic Type** — each style keyed off a `Font.TextStyle` so iOS scaling honors user preference. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`scripts/fetch-fonts.sh`** — fetches the four Google Fonts families (OFL license, safe to bundle). Replaces the previous Inter / Barlow Condensed / JetBrains Mono fetch. Old files cleaned from `App/Resources/Fonts/` on next `bash ios/scripts/gen.sh`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`UIAppFonts`** list in `scripts/write-info-plist.sh` updated: `BebasNeue-Regular.ttf`, `LeagueSpartan-Medium.ttf`, `LeagueSpartan-SemiBold.ttf`, `LeagueSpartan-Bold.ttf`, `Roboto-Regular.ttf`, `Roboto-Medium.ttf`, `Roboto-SemiBold.ttf`, `Roboto-Bold.ttf`, `RobotoMono-Regular.ttf`, `RobotoSlab-SemiBold.ttf`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Fallback** — if fonts missing (fetch-fonts.sh not run), use SF Pro + SF Mono; log a one-time dev-console warning. Never crash. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [ ] **Wordmark note** — the "BIZARRE!" logo wordmark on the web is a custom-drawn / SVG asset, NOT a typed font. Ship it as a vector asset in `Assets.xcassets/BrandMark.imageset/` (SVG + 1x/2x/3x PNG fallback), not by hand-typing "BIZARRE!" in a font.
 
 Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 already merged into §80.
@@ -4560,20 +4560,20 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] **Anti-patterns** — glass-on-glass, glass on content, glass on full-screen background; `#if DEBUG` asserts.
 
 ### 30.6 Motion (`DesignSystem/BrandMotion.swift`)
-- [x] **Tokens**: `.fab` (160ms spring), `.banner` (200ms), `.sheet` (340ms), `.tab` (220ms), `.chip` (120ms). <!-- shipped [actionplan agent-10] -->
-- [x] **Reduce Motion fallback** — each token returns `.easeInOut(duration: 0)` if a11y flag. <!-- shipped [actionplan agent-10] -->
+- [x] **Tokens**: `.fab` (160ms spring), `.banner` (200ms), `.sheet` (340ms), `.tab` (220ms), `.chip` (120ms). <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Reduce Motion fallback** — each token returns `.easeInOut(duration: 0)` if a11y flag. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [ ] **Spring** — `.interactiveSpring(response: 0.3, dampingFraction: 0.75)`.
 - [ ] **Shared element transition** — matchedGeometryEffect for detail push.
 - [ ] **Pulse** — used on "new" badges (scale 1.0 ↔ 1.05, 600ms).
 
 ### 30.7 Haptics (`DesignSystem/Haptics.swift`)
-- [x] **`.selection`** on picker / chip toggle. <!-- shipped [actionplan agent-10] -->
-- [x] **`.success`** on save / payment success. <!-- shipped [actionplan agent-10] -->
-- [x] **`.warning`** on validation error. <!-- shipped [actionplan agent-10] -->
-- [x] **`.error`** on hard failure. <!-- shipped [actionplan agent-10] -->
-- [x] **`.light impact`** on list item open. <!-- shipped [actionplan agent-10] -->
-- [x] **`.heavy impact`** on destructive confirm. <!-- shipped [actionplan agent-10] -->
-- [x] **Master toggle** in Settings; no-op on Mac. <!-- shipped [actionplan agent-10] -->
+- [x] **`.selection`** on picker / chip toggle. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`.success`** on save / payment success. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`.warning`** on validation error. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`.error`** on hard failure. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`.light impact`** on list item open. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`.heavy impact`** on destructive confirm. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **Master toggle** in Settings; no-op on Mac. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 
 ### 30.8 Icon system
 - [ ] **SF Symbols** primary — >99% of glyphs.
@@ -4587,16 +4587,16 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] **Lottie** animations for loading, errors, success — optional lightweight.
 
 ### 30.10 Component library (reusable)
-- [x] **`BrandButton(style: .primary/.secondary/.ghost/.destructive, size: .sm/.md/.lg)`**. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandCard`** — elevated surface with stroke + shadow. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandChip(status:)`** — status pill with icon + color. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandTextField`** — glass-adjacent with label, hint, error state. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandPicker`** — bottom sheet on iPhone, popover on iPad. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandEmpty(icon:title:subtitle:cta:)`**. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandLoading`** — skeleton placeholder. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandBadge`** — numeric + status dot. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandToast(kind:message:)`** — glass chip at top. <!-- shipped [actionplan agent-10] -->
-- [x] **`BrandBanner(kind:message:action:)`** — sticky top banner (offline, sync-pending). <!-- shipped [actionplan agent-10] -->
+- [x] **`BrandButton(style: .primary/.secondary/.ghost/.destructive, size: .sm/.md/.lg)`**. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandCard`** — elevated surface with stroke + shadow. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandChip(status:)`** — status pill with icon + color. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandTextField`** — glass-adjacent with label, hint, error state. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandPicker`** — bottom sheet on iPhone, popover on iPad. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandEmpty(icon:title:subtitle:cta:)`**. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandLoading`** — skeleton placeholder. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandBadge`** — numeric + status dot. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandToast(kind:message:)`** — glass chip at top. <!-- shipped bcbccaa8 [actionplan agent-10] -->
+- [x] **`BrandBanner(kind:message:action:)`** — sticky top banner (offline, sync-pending). <!-- shipped bcbccaa8 [actionplan agent-10] -->
 
 ### 30.11 Tone of voice
 - [ ] **Friendly + concise** copy.
@@ -4801,7 +4801,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Offline buffer** — events batched in GRDB `telemetry_queue`; flushed when online.
 - [ ] **Backpressure** — server returns 429 → back-off; drop oldest events past 10k cap.
 - [x] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails. (`ios/scripts/sdk-ban.sh` + `.github/workflows/ios-lint.yml`; dry-run passes clean on current tree.)
-- [x] **Privacy manifest audit** — `PrivacyInfo.xcprivacy` declares zero `NSPrivacyTrackingDomains`. <!-- verified [actionplan agent-10] -->
+- [x] **Privacy manifest audit** — `PrivacyInfo.xcprivacy` declares zero `NSPrivacyTrackingDomains`. <!-- verified bcbccaa8 [actionplan agent-10] -->
 - [ ] **Request signing** — telemetry requests bear same bearer token as regular API.
 
 ### 32.1 OSLog
