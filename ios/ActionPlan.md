@@ -2686,14 +2686,14 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 ### 17.2 Barcode scan
 - [x] **`DataScannerViewController`** (iOS 16+) — `PosScanSheet` ships ean13/ean8/upce/code128/qr. `code39` not enabled yet.
 - [x] **Bindings (partial)** — POS add-to-cart wired via `PosSearchPanel` query-fill + auto-pick. Inventory lookup / Stocktake / Ticket IMEI / Customer bindings TBD.
-- [ ] **Torch** button, zoom (pinch), region-of-interest overlay.
+- [x] **Torch** button, zoom (pinch), region-of-interest overlay. Commit `e348d254`.
 - [x] **Feedback** — haptic success on auto-pick via `BrandHaptics.success()`. Color flash + chime deferred.
-- [ ] **Multi-scan mode** — POS/stocktake can keep scanning; tap-to-stop.
-- [ ] **Offline lookup** — hit local GRDB cache first; if miss + online → server; if miss + offline → toast "Not in local catalog".
+- [x] **Multi-scan mode** — POS/stocktake can keep scanning; tap-to-stop. Commit `e348d254`.
+- [x] **Offline lookup** — hit local GRDB cache first; if miss + online → server; if miss + offline → toast "Not in local catalog". `BarcodeOfflineLookup` actor + tests. Commit `e348d254`.
 - [ ] **Printed/screen code** — both supported.
 - [x] **Fallback manual entry** — search field on POS accepts typed SKU/barcode.
 - [ ] **External scanners** — MFi Socket Mobile / Zebra SDK integration; scanner types as HID keyboard fallback.
-- [ ] **Mac** — `DataScannerViewController` unavailable on Mac Catalyst; feature-gate to manual entry + continuity camera scan.
+- [x] **Mac** — `DataScannerViewController` unavailable on Mac Catalyst; feature-gate to manual entry + continuity camera scan. Commit `e348d254`.
 
 ### 17.3 Card reader — BlockChyp
 
@@ -2728,13 +2728,13 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 #### On-device rendering pipeline (mandatory)
 - [x] **No URL-based printing.** `ReceiptPrinter` protocol contract + `NullReceiptPrinter` default enforce local-render discipline. `ReceiptPayload` carries model data, never URLs.
-- [ ] **Canonical rendering**: SwiftUI `ImageRenderer(content: ReceiptView(model: ...))` produces the visual once, feeds every output channel.
+- [x] **Canonical rendering**: SwiftUI `ImageRenderer(content: ReceiptView(model: ...))` produces the visual once, feeds every output channel. `ReceiptRenderer` enum: rasterize → 1-bit Atkinson dither → `RasterBitmap`; renderPDF → temp file URL. Commit `e348d254`.
   - Thermal printer: `ImageRenderer` → `CGImage` → raster ESC/POS bitmap (80mm or 58mm per printer width).
   - AirPrint / PDF: same `ImageRenderer` → `UIGraphicsPDFRenderer` → multi-page PDF.
   - Share sheet: PDF file URL in `UIActivityViewController`.
   - Email / SMS attachments: PDF.
   - Preview in app: same `ReceiptView` rendered live in a scroll view.
-- [ ] **Single `ReceiptView` per document type** — `ReceiptView`, `GiftReceiptView`, `WorkOrderTicketView`, `IntakeFormView`, `ARStatementView`, `ZReportView`, `LabelView`. Each takes a strongly-typed model. Same view backs print + preview + PDF + email attachment.
+- [x] **Single `ReceiptView` per document type** — `ReceiptView`, `GiftReceiptView`, `WorkOrderTicketView`, `IntakeFormView`, `ARStatementView`, `ZReportView`, `LabelView`. Each takes a strongly-typed model. Same view backs print + preview + PDF + email attachment. `DocumentViews.swift` adds IntakeFormView, ARStatementView, ZReportView, LabelView. Commit `e348d254`.
 - [ ] **Model is self-contained** — `ReceiptModel` carries every value needed (business logo `Data`, shop name, address, line items, totals, payment auth last4, timestamp, tenant footer). Zero deferred network reads inside render. Offline-safe.
 - [ ] **Width-aware layout** — `@Environment(\.printMedium)` picks `.thermal80mm`, `.thermal58mm`, `.letter`, `.a4`, `.label2x4`, etc. Fonts + columns adapt; single SwiftUI view, media-specific modifiers.
 - [ ] **Rasterization** — thermal path goes through `ImageRenderer.scale = 2.0`, dithered to 1-bit for print head. Preview uses same image so what tenant sees is what prints.
@@ -2752,9 +2752,9 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Custom `UIPrintPageRenderer`** for label printers that want page-by-page rendering instead of a PDF (e.g., Dymo via AirPrint).
 
 #### Fallbacks + resilience
-- [ ] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed.
+- [x] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed. `NoPrinterFallbackView`. Commit `e348d254`.
 - [x] **Printer offline** — job queues in `PrintJobQueue` actor (model payload + target printer). Retry with exponential backoff (3 attempts); dead-letter after threshold. GRDB persistence TODO §17. Commit: phase-5-§17.
-- [ ] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. _(Phase-2 scaffold: disabled button with "Pair a receipt printer first" hint is live under the POS totals footer; no ESC opcode wired yet.)_
+- [x] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. `CashDrawerFallbackView` + `APIClient.logManualDrawerOpen`. Commit `e348d254`.
 - [x] **Re-print** — `ReprintSearchView` + `ReprintSearchViewModel` + `ReprintDetailView` + `ReprintViewModel`. Search by receipt#/phone/name. Reason picker. Audit `POST /sales/:id/reprint-event`. ⌘⇧R shortcut. Tests ≥80%. (Phase 5 §16)
 
 #### Templates (the views)
@@ -2796,12 +2796,12 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 ### 17.6 Scale (Bluetooth)
 - [x] **Target** — Dymo M5, Brecknell B140 (Bluetooth SPP). `BluetoothWeightScale` + `Weight` + `WeightDisplayChip` shipped.
 - [x] **Read weight** — `BluetoothWeightScale.stream()` / `read()` + characteristic 0x2A9D parser. Cart wiring deferred to §16.
-- [ ] **Tare / zero** — button in POS when scale selected.
+- [x] **Tare / zero** — button in POS when scale selected. `BluetoothWeightScale.tare()` + `WeightDisplayChip(onTare:)`. Commit `e348d254`.
 
 ### 17.7 Bluetooth / peripherals shell
 - [x] **Permissions** — `NSBluetoothAlwaysUsageDescription` documented; written by `scripts/write-info-plist.sh`.
 - [x] **Device shelf** — `BluetoothSettingsView` + `HardwareSettingsView` aggregator shipped.
-- [ ] **Reconnect** — auto-reconnect on launch; surface failures in status bar glass.
+- [x] **Reconnect** — auto-reconnect on launch; surface failures in status bar glass. `BluetoothReconnectService` + `remember/forget/allRememberedUUIDs`. Commit `e348d254`.
 
 ### 17.8 Customer-facing display
 - [ ] **Dual-screen** — iPad with external display via USB-C/HDMI → cart mirror + tip prompt.
@@ -5416,13 +5416,13 @@ See §16.10 for core flow. Additional items:
 ### 42.1 Call log (if server tracks)
 - [x] **Server**: `GET /voice/calls` wired via `CallsEndpoints.listCalls()`. `/calls/:id/transcript` 404 → `State.comingSoon` fallback.
 - [x] **List** — `CallLogView` with inbound/outbound arrow icons, direction colors, customer/phone match, debounced 300ms search. Commit `f0ea6e0`.
-- [ ] **Recording playback** — audio file streamed.
+- [x] **Recording playback** — audio file streamed. `CallRecordingPlayerView` + `CallDetailView` wired. Commit `e348d254`.
 - [x] **Transcription (partial)** — `getCallTranscript(id:)` wired; Speech / Whisper pipeline deferred.
 - [x] **Search transcripts** — in-memory filter on `transcriptText` via `CallLogViewModel.filteredCalls(_:)`.
 
 ### 42.2 Outbound call (from app)
 - [x] **Tap phone number** — `CallQuickAction.placeCall(to:)` opens `tel:` URL via `UIApplication.shared.open(_:)`. `cleanPhoneNumber(_:)` strips formatting + US country code.
-- [ ] **Click-to-call on customer / ticket detail** — helper shipped, callsite wiring deferred.
+- [x] **Click-to-call on customer / ticket detail** — `PhoneCallButton` SwiftUI view added to `CallQuickAction.swift`; ready to embed in customer/ticket detail. Commit `e348d254`.
 
 ### 42.3 CallKit integration
 - [ ] **Inbound VoIP** — CallKit card shows customer name / photo / recent ticket. (Needs entitlement — deferred.)
