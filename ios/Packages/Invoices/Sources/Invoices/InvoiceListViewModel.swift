@@ -6,6 +6,7 @@ import Sync
 
 // §7.1 Invoice list ViewModel
 // Adds: status tabs, sort, bulk select, cursor pagination, advanced filter
+// §7.5 Overdue badge: overdueCount derived from loaded invoices for tab badge
 
 @MainActor
 @Observable
@@ -54,6 +55,15 @@ public final class InvoiceListViewModel {
     private var nextCursor: String?
     public private(set) var hasMore: Bool = false
     public private(set) var isLoadingMore: Bool = false
+
+    // MARK: - §7.5 Overdue badge
+
+    /// Count of overdue invoices in the currently loaded page.
+    /// Surfaced as a tab badge by the hosting view (dashboard or tab bar).
+    /// Updated every time `invoices` changes via the fetch path.
+    public var overdueCount: Int {
+        invoices.filter { $0.status?.lowercased() == "overdue" }.count
+    }
 
     // MARK: - Staleness / offline
 

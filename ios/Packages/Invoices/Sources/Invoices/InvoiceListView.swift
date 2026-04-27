@@ -7,6 +7,7 @@ import Networking
 import Sync
 
 // §7.1 Invoice list — status tabs, filters, sort, row chips, stats header, bulk, export CSV, context menu, pagination
+// §7.5 Deep-link navigation: push notification tap → .invoice(tenantSlug:id:) route → navigate to detail
 
 public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
@@ -41,6 +42,12 @@ public struct InvoiceListView: View {
             await vm.load()
         }
         .refreshable { await vm.refresh() }
+        // §7.5 Push notification deep-link: .invoice(tenantSlug:id:) → push detail onto NavigationStack
+        .onReceive(NotificationCenter.default.publisher(for: .invoiceDeepLinkNavigate)) { note in
+            guard let invoiceId = note.userInfo?["invoiceId"] as? Int64 else { return }
+            // Clear any stale path then push the target invoice
+            path = [invoiceId]
+        }
         .fileExporter(
             isPresented: Binding(
                 get: { csvExportItem != nil },
@@ -114,13 +121,15 @@ public struct InvoiceListView: View {
                     OfflineBanner(isOffline: true).padding(.top, BrandSpacing.xs)
                 }
             }
-            .navigationTitle("Invoices")
+            // §7.5 Overdue badge: shown in nav title area when overdue invoices exist
+            .navigationTitle(overdueNavTitle)
             .searchable(text: $searchText, prompt: "Search invoices")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationDestination(for: Int64.self) { id in
                 InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
             }
             .toolbar { toolbarItems }
+            .toolbar { overdueBadgeToolbarItem }
         }
     }
 
@@ -140,13 +149,15 @@ public struct InvoiceListView: View {
                         OfflineBanner(isOffline: true).padding(.top, BrandSpacing.xs)
                     }
                 }
-                .navigationTitle("Invoices")
+                // §7.5 Overdue badge in iPad sidebar title
+                .navigationTitle(overdueNavTitle)
                 .searchable(text: $searchText, prompt: "Search invoices")
                 .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
                 .navigationDestination(for: Int64.self) { id in
                     InvoiceDetailView(repo: detailRepo, invoiceId: id, api: api)
                 }
                 .toolbar { toolbarItems }
+                .toolbar { overdueBadgeToolbarItem }
             }
             .navigationSplitViewColumnWidth(min: 340, ideal: 400, max: 520)
         } detail: {
@@ -165,6 +176,39 @@ public struct InvoiceListView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+    }
+
+    // MARK: - §7.5 Overdue badge helpers
+
+    /// Navigation title including overdue count when non-zero.
+    /// e.g. "Invoices" or "Invoices (3 overdue)"
+    private var overdueNavTitle: String {
+        let count = vm.overdueCount
+        return count > 0 ? "Invoices (\(count) overdue)" : "Invoices"
+    }
+
+    /// Trailing toolbar item: shows an amber overdue badge pill when overdue invoices exist.
+    /// Tapping switches the status tab to Overdue to surface them immediately.
+    @ToolbarContentBuilder
+    private var overdueBadgeToolbarItem: some ToolbarContent {
+        if vm.overdueCount > 0 {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Task { await vm.applyStatusTab(.overdue) }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .foregroundStyle(Color.bizarreWarning)
+                        Text("\(vm.overdueCount) overdue")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(Color.bizarreWarning)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(vm.overdueCount) overdue invoice\(vm.overdueCount == 1 ? "" : "s"). Tap to filter.")
+                .accessibilityHint("Filters the list to show only overdue invoices")
+            }
+        }
     }
 
     // MARK: - Status tab bar (§7.1)
