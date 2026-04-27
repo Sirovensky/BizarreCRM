@@ -1016,7 +1016,7 @@ export function TicketListPage() {
 
   const { data: calendarData } = useQuery({
     queryKey: ['tickets-calendar', calStartDate, calEndDate],
-    queryFn: () => ticketApi.list({ pagesize: 100, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
+    queryFn: () => ticketApi.list({ pagesize: 500, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
     enabled: viewMode === 'calendar',
   });
   const calendarTickets: Ticket[] = calendarData?.data?.data?.tickets || calendarData?.data?.tickets || [];
@@ -1408,7 +1408,9 @@ export function TicketListPage() {
           <div className="flex flex-wrap items-center gap-2 pb-3 sm:pb-0">
             <div className="relative flex-1 min-w-[150px] max-w-xs">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+              <label htmlFor="tlist-search" className="sr-only">Search tickets</label>
               <input
+                id="tlist-search"
                 type="text"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
@@ -1449,7 +1451,9 @@ export function TicketListPage() {
             </div>
 
             {/* Status filter dropdown */}
+            <label htmlFor="tlist-filter-status" className="sr-only">Filter by status</label>
             <select
+              id="tlist-filter-status"
               value={statusFilter}
               onChange={(e) => setParam('status_id', e.target.value)}
               className="hidden sm:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
@@ -1462,7 +1466,10 @@ export function TicketListPage() {
 
             {/* Assigned To filter — CROSS1: hidden when assignment feature off */}
             {assignmentEnabled && (
+              <>
+              <label htmlFor="tlist-filter-assigned" className="sr-only">Filter by assigned tech</label>
               <select
+                id="tlist-filter-assigned"
                 value={assignedTo}
                 onChange={(e) => setParam('assigned_to', e.target.value)}
                 className="hidden md:block rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm text-surface-700 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
@@ -1473,6 +1480,7 @@ export function TicketListPage() {
                   <option key={u.id} value={u.id}>{u.first_name} {u.last_name}</option>
                 ))}
               </select>
+              </>
             )}
 
             {/* Saved filter presets */}

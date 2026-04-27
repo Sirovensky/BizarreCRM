@@ -1,17 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import * as api from './portalApi';
 
 function mapRegisterError(err: unknown): string {
   const status = (err as { response?: { status?: number } })?.response?.status;
-  if (status === 400) return 'Invalid or expired code — please check and try again';
+  if (status === 400) return 'Invalid information — please check your inputs';
   if (status === 401) return 'Registration failed — please try again';
   if (status === 409) return 'Account already exists — try signing in';
   if (status === 429) return 'Too many attempts — please wait a moment';
   if (status !== undefined && status >= 500) return 'Server error — please try again later';
   return 'Something went wrong';
 }
-
-const RESEND_COOLDOWN_SECONDS = 60;
 
 interface PortalRegisterProps {
   onRegistered: (token: string, customerName: string) => void;
@@ -28,26 +26,6 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
   const [pinConfirm, setPinConfirm] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  // WEB-S4-027: 60-second resend cooldown
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  function startCooldown() {
-    setResendCooldown(RESEND_COOLDOWN_SECONDS);
-    cooldownRef.current = setInterval(() => {
-      setResendCooldown(prev => {
-        if (prev <= 1) {
-          clearInterval(cooldownRef.current!);
-          cooldownRef.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }
-
-  // Clean up interval on unmount
-  useEffect(() => () => { if (cooldownRef.current) clearInterval(cooldownRef.current); }, []);
 
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +38,6 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
     try {
       await api.sendVerificationCode(phone.trim());
       setStep('code');
-      startCooldown();
     } catch (err: unknown) {
       setError(mapRegisterError(err));
     } finally {
@@ -68,38 +45,14 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
     }
   }
 
-  async function handleResendCode() {
-    if (resendCooldown > 0 || loading) return;
-    setError('');
-    setLoading(true);
-    try {
-      await api.sendVerificationCode(phone.trim());
-      setCode('');
-      startCooldown();
-    } catch (err: unknown) {
-      setError(mapRegisterError(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // WEB-S4-019: call backend to verify OTP before advancing to pin step
-  async function handleCodeComplete(e: React.FormEvent) {
+  function handleCodeComplete(e: React.FormEvent) {
     e.preventDefault();
     setError('');
     if (code.length !== 6) {
       setError('Please enter the 6-digit code from your SMS');
       return;
     }
-    setLoading(true);
-    try {
-      await api.verifyRegistrationCode(phone.trim(), code);
-      setStep('pin');
-    } catch (err: unknown) {
-      setError(mapRegisterError(err));
-    } finally {
-      setLoading(false);
-    }
+    setStep('pin');
   }
 
   async function handleSetPin(e: React.FormEvent) {
@@ -163,7 +116,7 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
           </div>
 
           {error && (
-            <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+            <div role="alert" aria-live="polite" className="mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">
               {error}
             </div>
           )}
@@ -211,27 +164,16 @@ export function PortalRegister({ onRegistered, onBack }: PortalRegisterProps) {
               </div>
               <button
                 type="submit"
-                disabled={loading}
-                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
+                className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors"
               >
-                {loading ? 'Verifying...' : 'Verify Code'}
+                Verify Code
               </button>
-              {/* WEB-S4-027: Resend button with 60s cooldown */}
-              <button
-                type="button"
-                onClick={handleResendCode}
-                disabled={resendCooldown > 0 || loading}
-                className="w-full text-sm text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {resendCooldown > 0 ? `Resend code in ${resendCooldown}s` : 'Resend code'}
-              </button>
-              {/* WEB-S4-027: back preserves phone so re-entry is not required */}
               <button
                 type="button"
                 onClick={() => { setStep('phone'); setCode(''); setError(''); }}
-                className="w-full text-xs text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"
+                className="w-full text-sm text-surface-500 dark:text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
               >
-                Change phone number
+                Didn't receive it? Go back
               </button>
             </form>
           )}

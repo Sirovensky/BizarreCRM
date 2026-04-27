@@ -206,7 +206,7 @@ function TerminationModal({ onClose }: TerminationModalProps) {
 
         <div className="px-5 py-4 space-y-4">
           {errorMessage && (
-            <div className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
+            <div role="alert" aria-live="polite" className="rounded-md bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">
               {errorMessage}
             </div>
           )}

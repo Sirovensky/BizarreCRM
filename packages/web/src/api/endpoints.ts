@@ -471,6 +471,17 @@ export const expenseApi = {
   update: (id: number, data: Partial<{ category: string; amount: number; description: string; date: string; location_id: number }>) =>
     api.put(`/expenses/${id}`, data),
   delete: (id: number) => api.delete(`/expenses/${id}`),
+  // WEB-FK-014: upload a receipt image for an existing expense.
+  // Route: POST /expenses/:expenseId/receipt  (multipart/form-data, field: "photo")
+  uploadReceipt: (expenseId: number, file: File) => {
+    const form = new FormData();
+    form.append('photo', file);
+    return api.post<{ success: boolean; data: { receipt_image_path: string } }>(
+      `/expenses/${expenseId}/receipt`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  },
 };
 
 // ==================== Reports ====================
@@ -594,6 +605,8 @@ export interface VoiceCall {
   conv_phone: string | null;
   entity_type: string | null;
   entity_id: number | null;
+  /** WEB-FK-009: 1 = caller was informed the call would be recorded; 0 or null = not disclosed. */
+  was_disclosed_to_caller?: number | null;
 }
 
 export interface VoiceCallsResponse {

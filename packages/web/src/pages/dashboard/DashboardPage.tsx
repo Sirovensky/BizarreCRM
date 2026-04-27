@@ -1,4 +1,25 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+
+// WEB-FO-007: stagger dashboard polling intervals so every useQuery call in
+// this module does not fire near-simultaneously every 60s (thundering herd).
+// Each call site captures the jittered value once at module-evaluation time
+// via a const, so a single component re-render does not re-roll the offset
+// and accidentally change the interval mid-session.
+function jitter(base: number): number {
+  return base + Math.floor(Math.random() * 5_000);
+}
+const JITTER_60K = jitter(60_000);
+const JITTER_60K_B = jitter(60_000);
+const JITTER_60K_C = jitter(60_000);
+const JITTER_120K = jitter(120_000);
+const JITTER_120K_B = jitter(120_000);
+const JITTER_120K_C = jitter(120_000);
+const JITTER_120K_D = jitter(120_000);
+const JITTER_120K_E = jitter(120_000);
+const JITTER_120K_F = jitter(120_000);
+const JITTER_120K_G = jitter(120_000);
+const JITTER_60K_D = jitter(60_000);
+const JITTER_30K = jitter(30_000);
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
@@ -1007,7 +1028,7 @@ function TechDashboard({ userId }: { userId: number }) {
   const { data: queueData, isLoading: queueLoading } = useQuery({
     queryKey: ['my-queue', userId],
     queryFn: () => ticketApi.myQueue(),
-    refetchInterval: 30_000,
+    refetchInterval: JITTER_30K,
     refetchIntervalInBackground: false,
   });
   const queue = queueData?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
@@ -1016,7 +1037,7 @@ function TechDashboard({ userId }: { userId: number }) {
   const { data: ticketsData, isLoading: ticketsLoading } = useQuery({
     queryKey: ['my-tickets', userId],
     queryFn: () => ticketApi.list({ assigned_to: userId, pagesize: 20 }),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K,
     refetchIntervalInBackground: false,
   });
   const myTickets = ticketsData?.data?.data?.tickets ?? ticketsData?.data?.data ?? [];
@@ -1025,7 +1046,7 @@ function TechDashboard({ userId }: { userId: number }) {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_B,
     refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
@@ -1344,7 +1365,7 @@ function TodaysAppointments() {
   const { data: apptData, isLoading } = useQuery({
     queryKey: ['todays-appointments', today],
     queryFn: () => leadApi.appointments({ from_date: today, to_date: tomorrow }),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K,
     refetchIntervalInBackground: false,
   });
 
@@ -1670,7 +1691,7 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
   const { data: salesKpiData, isLoading: salesLoading } = useQuery({
     queryKey: ['dashboard-kpis-7day', last7Range.from, last7Range.to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: last7Range.from, to_date: last7Range.to, employee_id: employeeId }),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_B,
     refetchIntervalInBackground: false,
   });
   const dailySales = salesKpiData?.data?.data?.daily_sales ?? [];
@@ -1805,7 +1826,7 @@ function AdminOrManagerDashboard() {
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['dashboard-kpis', from, to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: from, to_date: to, employee_id: employeeId }),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_C,
     refetchIntervalInBackground: false,
   });
 
@@ -1823,21 +1844,21 @@ function AdminOrManagerDashboard() {
   const { data: missingData } = useQuery({
     queryKey: ['missing-parts'],
     queryFn: () => missingPartsApi.list(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_C,
     refetchIntervalInBackground: false,
   });
 
   const { data: queueData } = useQuery({
     queryKey: ['order-queue-summary'],
     queryFn: () => catalogApi.getOrderQueueSummary(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_D,
     refetchIntervalInBackground: false,
   });
 
   const { data: queueItemsData } = useQuery({
     queryKey: ['order-queue-items'],
     queryFn: () => catalogApi.getOrderQueue('pending'),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_E,
     refetchIntervalInBackground: false,
   });
 
@@ -1845,7 +1866,7 @@ function AdminOrManagerDashboard() {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_D,
     refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
@@ -1854,7 +1875,7 @@ function AdminOrManagerDashboard() {
   const { data: attentionData, isLoading: attentionLoading } = useQuery({
     queryKey: ['needs-attention'],
     queryFn: () => reportApi.needsAttention(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_F,
     refetchIntervalInBackground: false,
   });
   const needsAttention: NeedsAttentionData | null = attentionData?.data?.data ?? null;
@@ -1864,7 +1885,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['tech-workload'],
     queryFn: () => reportApi.techWorkload(),
     enabled: role === 'manager',
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_G,
     refetchIntervalInBackground: false,
   });
   const techWorkload: any[] = workloadData?.data?.data ?? [];

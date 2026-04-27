@@ -3129,3 +3129,21 @@ Misc:
 - [x] WEB-FE-014. **aria-invalid on high-traffic forms.** CLOSED 2026-04-26 — todofixes426: added aria-invalid + aria-describedby across InvoiceDetail, EstimateList, Loaners forms; Login/Customer/Signup pre-existing.
 - [x] WEB-W2-006. **Bulk Assign UI.** CLOSED 2026-04-26 — todofixes426: bulkAssignOpen state + Assign dropdown in TicketListPage bulk action bar; calls bulkMut with action: 'assign'.
 - [x] WEB-FF-016. **CustomerListPage importMutation invalidate timing.** CLOSED 2026-04-26 — todofixes426: pre-existing — invalidateQueries already in onSuccess.
+
+## todofixes426 — DASH-ELEC mid-range pass (030–070) (2026-04-26)
+
+DASH-ELEC-059: confirmed closed — super-admin.routes.ts:1361-1366 already calls `auditLog('session_revoked', ...)` with revoker identity on every DELETE /sessions/:id; no client-layer addition needed.
+DASH-ELEC-063: completed — SecurityAlertsPage ackFilter + severityFilter migrated to useSearchParams (?ack=...&sev=...); back-button/reload/deep-link now restore both filters (AuditLogPage was already done).
+DASH-ELEC-064: implemented — AuditLogPage: offset + hasMore + loadMore + "Load next 200" button appending rows. SecurityAlertsPage: page + totalPages + loadMore using existing pagination.total_pages from server.
+DASH-ELEC-069: completed — UpdatesPage stat-card + update-details panel now hidden behind `{!statusLoading && !statusError}` guard; "Unknown / Up to date" flash during initial fetch eliminated.
+
+Skipped (outside scope/complexity): 050 (CSP nonce = build infra), 053 (server-side JWT revocation endpoint = server work), 055 (cross-package shared constant), 056 (multi-file 2FA recovery flow), 057 (TOTP step-up modal = multi-file), 068 (backup download/upload = new IPC needed).
+
+## todofixes426 — Cleanup pass 8 (2026-04-26) — FO/FK/FJ/FX/FAE + DASH-ELEC mid
+
+WEB-FO: 007 (Dashboard refetch jitter), 011 (WS invalidationMap +8 entities).
+WEB-FK: 009 (voice consent dialog), 014 (expense receipt upload), 015 (Calendar TZ-aware ISO + overlap warning).
+WEB-FJ: 008 (PhotoCapture URL strip pre-existing), 010 (portal 15-min idle timeout).
+WEB-FX: 002 (htmlFor on top-5 forms), 004 (role="alert" on form errors).
+WEB-FAE: 007 (TechDashboard query key alignment).
+DASH-ELEC: 059 (session_revoked audit pre-existing), 063 (security alerts URL filters), 064 (audit log + security alerts pagination Load More), 069 (UpdatesPage hide flash on initial load).

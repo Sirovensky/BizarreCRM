@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight, Receipt } from 'lucide-react';
+import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight, Receipt, Paperclip, ExternalLink } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
@@ -45,6 +45,8 @@ interface ExpenseRow {
   first_name?: string | null;
   last_name?: string | null;
   location_id?: number | null;
+  // WEB-FK-014: receipt path stored by expenseReceipts.routes.ts
+  receipt_image_path?: string | null;
   [key: string]: unknown;
 }
 
@@ -57,6 +59,9 @@ export function ExpensesPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
 
   const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: localToday() });
+  // WEB-FK-014: pending receipt file selected in the edit form.
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const receiptInputRef = useRef<HTMLInputElement | null>(null);
   // WEB-FF-007 (Fixer-A2 2026-04-25): track field-level errors so screen
   // readers get aria-invalid + aria-describedby on bad inputs instead of a
   // toast.error that's invisible to AT.
@@ -108,12 +113,20 @@ export function ExpensesPage() {
 
   const createMut = useMutation({
     mutationFn: (d: ExpenseFormPayload) => editingId ? expenseApi.update(editingId, d) : expenseApi.create(d),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       toast.success(editingId ? 'Expense updated' : 'Expense added');
+      // WEB-FK-014: upload receipt if a file was selected. For new expenses
+      // the route needs the just-created expense id from the response.
+      const savedId: number | undefined = editingId ?? (res?.data?.data as any)?.id;
+      if (receiptFile && savedId) {
+        receiptMut.mutate({ id: savedId, file: receiptFile });
+      }
       setShowAdd(false);
       setEditingId(null);
       setForm({ category: 'Other', amount: '', description: '', date: localToday() });
+      setReceiptFile(null);
+      if (receiptInputRef.current) receiptInputRef.current.value = '';
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
@@ -122,6 +135,16 @@ export function ExpensesPage() {
     mutationFn: (id: number) => expenseApi.delete(id),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['expenses'] }); toast.success('Expense deleted'); },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to delete expense'),
+  });
+
+  // WEB-FK-014: receipt upload mutation — runs after save when a file is selected.
+  const receiptMut = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => expenseApi.uploadReceipt(id, file),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      toast.success('Receipt uploaded');
+    },
+    onError: (e: any) => toast.error(e?.response?.data?.message || 'Receipt upload failed'),
   });
 
   const handleSubmit = () => {
@@ -148,6 +171,8 @@ export function ExpensesPage() {
   const handleEdit = (exp: ExpenseRow) => {
     setEditingId(exp.id);
     setForm({ category: exp.category, amount: String(exp.amount), description: exp.description || '', date: exp.date || '' });
+    setReceiptFile(null);
+    if (receiptInputRef.current) receiptInputRef.current.value = '';
     setShowAdd(true);
   };
 
@@ -159,7 +184,7 @@ export function ExpensesPage() {
           <p className="text-sm text-surface-500 dark:text-surface-400">Track business expenses</p>
         </div>
         <button
-          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: localToday() }); setShowAdd(true); }}
+          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: localToday() }); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; setShowAdd(true); }}
           className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add Expense
@@ -224,6 +249,8 @@ export function ExpensesPage() {
             if (e.target === e.currentTarget) {
               setShowAdd(false);
               setEditingId(null);
+              setReceiptFile(null);
+              if (receiptInputRef.current) receiptInputRef.current.value = '';
             }
           }}
         >
@@ -234,7 +261,7 @@ export function ExpensesPage() {
             </h3>
             <button
               type="button"
-              onClick={() => { setShowAdd(false); setEditingId(null); }}
+              onClick={() => { setShowAdd(false); setEditingId(null); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; }}
               aria-label="Close"
               className="p-1 rounded-md text-surface-400 hover:text-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 dark:hover:text-surface-200"
             >
@@ -273,9 +300,27 @@ export function ExpensesPage() {
             <input type="text" placeholder="Description" value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+            {/* WEB-FK-014: receipt upload — attaches after save, uses expenseReceipts route */}
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">
+                Receipt (image or PDF)
+              </label>
+              <input
+                ref={receiptInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setReceiptFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-surface-700 dark:text-surface-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-surface-100 file:text-surface-700 dark:file:bg-surface-700 dark:file:text-surface-300 hover:file:bg-surface-200 dark:hover:file:bg-surface-600"
+              />
+              {receiptFile && (
+                <p className="mt-1 text-xs text-surface-500 flex items-center gap-1">
+                  <Paperclip className="h-3 w-3" /> {receiptFile.name}
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex gap-2 mt-4 justify-end">
-            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); setReceiptFile(null); if (receiptInputRef.current) receiptInputRef.current.value = ''; }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
             <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
@@ -296,14 +341,15 @@ export function ExpensesPage() {
               <th className="px-4 py-3 font-medium text-surface-500">Description</th>
               <th className="px-4 py-3 font-medium text-surface-500">By</th>
               <th className="px-4 py-3 font-medium text-surface-500 text-right">Amount</th>
+              <th className="px-4 py-3 font-medium text-surface-500">Receipt</th>
               <th className="px-4 py-3 font-medium text-surface-500 text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
             {isLoading ? (
-              <tr><td colSpan={6} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400 mx-auto" /></td></tr>
+              <tr><td colSpan={7} className="text-center py-12"><Loader2 className="h-6 w-6 animate-spin text-surface-400 mx-auto" /></td></tr>
             ) : expenses.length === 0 ? (
-              <tr><td colSpan={6} className="text-center py-12">
+              <tr><td colSpan={7} className="text-center py-12">
                 <Receipt className="h-12 w-12 text-surface-300 dark:text-surface-600 mx-auto mb-3" />
                 <p className="text-sm font-medium text-surface-500 dark:text-surface-400">
                   {keyword || catFilter ? 'No expenses match your filters' : 'No expenses recorded yet'}
@@ -324,6 +370,21 @@ export function ExpensesPage() {
                   <td className="px-4 py-3 text-surface-600 dark:text-surface-400 max-w-xs truncate">{exp.description || '—'}</td>
                   <td className="px-4 py-3 text-surface-500 text-xs">{exp.first_name} {exp.last_name}</td>
                   <td className="px-4 py-3 text-right font-medium text-surface-900 dark:text-surface-100">{formatCurrency(Number(exp.amount) || 0)}</td>
+                  <td className="px-4 py-3">
+                    {exp.receipt_image_path ? (
+                      <a
+                        href={exp.receipt_image_path}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400"
+                        title="View receipt"
+                      >
+                        <ExternalLink className="h-3 w-3" /> View
+                      </a>
+                    ) : (
+                      <span className="text-xs text-surface-300 dark:text-surface-600">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button aria-label="Edit" onClick={() => handleEdit(exp)} className="p-1.5 rounded-md text-surface-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:text-amber-400 dark:hover:bg-amber-900/20">

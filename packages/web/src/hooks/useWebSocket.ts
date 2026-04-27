@@ -190,6 +190,60 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     // NOTE: WS_EVENTS.CUSTOMER_CREATED / CUSTOMER_UPDATED are defined in the
     // shared constants but the server never emits them. Removed from this map
     // to avoid silently accumulating dead entries.
+
+    // WEB-FO-011: additional entity invalidations. These event strings use the
+    // same snake_case convention as the server ws broadcast helpers. If the
+    // server doesn't emit a given event yet the entry is harmless (it never
+    // matches) but ensures the cache is kept fresh as soon as the server wires
+    // up the broadcast.
+    'customer:created': {
+      queryKeys: [['customers']],
+      toast: () => 'New customer added',
+    },
+    'customer:updated': {
+      queryKeys: [['customers']],
+      toast: undefined,
+    },
+    'payment:created': {
+      queryKeys: [['payments'], ['invoices'], ['dashboard']],
+      toast: undefined,
+    },
+    'payment:updated': {
+      queryKeys: [['payments'], ['invoices']],
+      toast: undefined,
+    },
+    'estimate:created': {
+      queryKeys: [['estimates']],
+      toast: () => 'New estimate created',
+    },
+    'estimate:updated': {
+      queryKeys: [['estimates']],
+      toast: undefined,
+    },
+    'expense:created': {
+      queryKeys: [['expenses']],
+      toast: undefined,
+    },
+    'expense:updated': {
+      queryKeys: [['expenses']],
+      toast: undefined,
+    },
+    'gift_card:created': {
+      queryKeys: [['gift-cards']],
+      toast: undefined,
+    },
+    'gift_card:updated': {
+      queryKeys: [['gift-cards']],
+      toast: undefined,
+    },
+    'automation:triggered': {
+      queryKeys: [['automations']],
+      toast: undefined,
+    },
+    'marketing:campaign_sent': {
+      queryKeys: [['marketing-campaigns']],
+      toast: undefined,
+    },
   };
 }
 

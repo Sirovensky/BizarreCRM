@@ -63,7 +63,6 @@ export function CustomerListPage() {
   const [searchInput, setSearchInput] = useState(keyword);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id?: number; name?: string }>({ open: false });
-  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Advanced filters
   const [showFilters, setShowFilters] = useState(false);
@@ -245,23 +244,6 @@ export function CustomerListPage() {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: () => toast.error('Failed to apply tag'),
-  });
-
-  const bulkDeleteMut = useMutation({
-    mutationFn: (ids: number[]) => customerApi.bulkDelete(ids),
-    onSuccess: (res) => {
-      const d = res?.data?.data;
-      toast.success(`Deleted ${d?.deleted ?? 0} customer${(d?.deleted ?? 0) !== 1 ? 's' : ''}`);
-      setSelected(new Set());
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
-    },
-    onError: (err: unknown) => {
-      const msg =
-        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
-        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-        ?? 'Failed to delete customers';
-      toast.error(msg);
-    },
   });
 
   function toggleSelectAll() {
@@ -597,7 +579,8 @@ export function CustomerListPage() {
       <div className="mb-3 shrink-0 flex items-center gap-2">
         <div className="relative max-w-md flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
-          <input type="text" placeholder="Search customers..." value={searchInput}
+          <label htmlFor="clist-search" className="sr-only">Search customers</label>
+          <input id="clist-search" type="text" placeholder="Search customers..." value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
         </div>
@@ -620,26 +603,26 @@ export function CustomerListPage() {
       {showFilters && (
         <div className="mb-3 p-4 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Customer Group</label>
-            <select value={groupId} onChange={e => setGroupId(e.target.value)}
+            <label htmlFor="clist-filter-group" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Customer Group</label>
+            <select id="clist-filter-group" value={groupId} onChange={e => setGroupId(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All Groups</option>
               {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
-            <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
+            <label htmlFor="clist-filter-from" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
+            <input id="clist-filter-from" type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
-            <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+            <label htmlFor="clist-filter-to" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
+            <input id="clist-filter-to" type="date" value={toDate} onChange={e => setToDate(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Open Tickets</label>
-            <select value={hasOpenTickets} onChange={e => setHasOpenTickets(e.target.value)}
+            <label htmlFor="clist-filter-open-tickets" className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Open Tickets</label>
+            <select id="clist-filter-open-tickets" value={hasOpenTickets} onChange={e => setHasOpenTickets(e.target.value)}
               className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All</option>
               <option value="1">Has Open Tickets</option>
@@ -695,22 +678,12 @@ export function CustomerListPage() {
                 </button>
               </div>
             ) : (
-              <>
-                <button
-                  onClick={() => setShowTagInput(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
-                >
-                  <Tag className="h-3.5 w-3.5" /> Tag Selected
-                </button>
-                <button
-                  onClick={() => setBulkDeleteConfirm(true)}
-                  disabled={bulkDeleteMut.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 shadow-sm transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-surface-800 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {bulkDeleteMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                  Delete Selected
-                </button>
-              </>
+              <button
+                onClick={() => setShowTagInput(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+              >
+                <Tag className="h-3.5 w-3.5" /> Tag Selected
+              </button>
             )}
             <button
               onClick={() => { setSelected(new Set()); setShowTagInput(false); setTagValue(''); }}
@@ -912,19 +885,6 @@ export function CustomerListPage() {
           setDeleteConfirm({ open: false });
         }}
         onCancel={() => setDeleteConfirm({ open: false })}
-      />
-
-      <ConfirmDialog
-        open={bulkDeleteConfirm}
-        title={`Delete ${selected.size} Customer${selected.size !== 1 ? 's' : ''}`}
-        message={`Permanently delete ${selected.size} selected customer${selected.size !== 1 ? 's' : ''}? Customers with open tickets or unpaid invoices will be blocked. This cannot be undone.`}
-        confirmLabel="Delete"
-        danger
-        onConfirm={() => {
-          setBulkDeleteConfirm(false);
-          bulkDeleteMut.mutate(Array.from(selected));
-        }}
-        onCancel={() => setBulkDeleteConfirm(false)}
       />
     </div>
   );
