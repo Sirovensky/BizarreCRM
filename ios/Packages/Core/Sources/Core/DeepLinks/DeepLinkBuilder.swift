@@ -134,6 +134,14 @@ public enum DeepLinkBuilder {
         case .magicLink(let slug, let token):
             let items = [URLQueryItem(name: "token", value: token)]
             return (slug, "auth/magic", items)
+
+        case .resetPassword(let token):
+            // Slug-free: `https://app.bizarrecrm.com/reset-password/<token>` (§2.8)
+            return (nil, "reset-password/\(pct(token))", nil)
+
+        case .setupInvite(let token):
+            // Slug-free: `https://app.bizarrecrm.com/setup/<token>` (§2.7)
+            return (nil, "setup/\(pct(token))", nil)
         }
     }
 

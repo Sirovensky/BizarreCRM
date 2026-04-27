@@ -35,6 +35,10 @@ public enum DeepLinkRoute: Sendable, Equatable {
 
     // Auth
     case magicLink(tenantSlug: String?, token: String)
+    /// Universal Link: `app.bizarrecrm.com/reset-password/:token` (§2.8)
+    case resetPassword(token: String)
+    /// Universal Link: `bizarrecrm.com/setup/:token` — staff invite (§2.7)
+    case setupInvite(token: String)
 
     // Non-app
     case safariExternal(URL)
@@ -129,6 +133,26 @@ public enum DeepLinkParser {
 
         // Strip leading "/" from path components.
         let parts = url.pathComponents.filter { $0 != "/" }
+
+        // MARK: Slug-free auth paths (§2.7 / §2.8)
+        // `reset-password/:token` and `setup/:token` live at the root of the
+        // universal link host — they carry no tenant slug.
+        if let first = parts.first {
+            switch first.lowercased() {
+            case "reset-password":
+                if let token = parts.count > 1 ? parts[1] : nil, !token.isEmpty {
+                    return .resetPassword(token: token)
+                }
+                return .unknown(url)
+            case "setup":
+                if let token = parts.count > 1 ? parts[1] : nil, !token.isEmpty {
+                    return .setupInvite(token: token)
+                }
+                return .unknown(url)
+            default:
+                break
+            }
+        }
 
         // For universal links the first segment is expected to be the slug,
         // same structure as the custom scheme.

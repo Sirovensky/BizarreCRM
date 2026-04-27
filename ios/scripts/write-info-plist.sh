@@ -115,6 +115,13 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <string>Verify you are at the shop when clocking in.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Discover your shop server and payment terminal on the local network.</string>
+    <!-- §17 / Discovered[Agent 2→10]: NWBrowser requires NSBonjourServices on iOS 14+ -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_ipp._tcp</string>
+        <string>_printer._tcp</string>
+        <string>_bizarre._tcp</string>
+    </array>
     <!-- §10.9 Calendar integration — required iOS 17+ -->
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Add appointments directly to your iOS Calendar.</string>

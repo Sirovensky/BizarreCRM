@@ -70,13 +70,27 @@ public enum DeepLinkURLParser {
             || rawPath.hasPrefix(publicPathPrefix + "/") { return nil }
 
         let parts = pathParts(from: url)
-        guard let slug = parts.first, !slug.isEmpty else { return nil }
+        guard let firstSegment = parts.first, !firstSegment.isEmpty else { return nil }
+
+        // MARK: Slug-free auth paths (§2.7 / §2.8)
+        // `reset-password/:token` and `setup/:token` live at the root — no slug.
+        switch firstSegment.lowercased() {
+        case "reset-password":
+            guard parts.count > 1, !parts[1].isEmpty else { return nil }
+            return .resetPassword(token: parts[1])
+        case "setup":
+            guard parts.count > 1, !parts[1].isEmpty else { return nil }
+            return .setupInvite(token: parts[1])
+        default:
+            break
+        }
 
         guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return nil
         }
 
         // Drop the leading slug segment before routing.
+        let slug = firstSegment
         let resourceParts = Array(parts.dropFirst())
         return route(
             slug: slug,

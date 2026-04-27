@@ -175,6 +175,12 @@ public enum DeepLinkValidator {
             }
             return .valid
 
+        case .resetPassword(let token), .setupInvite(let token):
+            guard token.count >= 8 else {
+                return .invalid(reason: "Auth token is too short (minimum 8 characters)")
+            }
+            return validateID(token, field: "token")
+
         case .dashboard, .posRoot, .posNewCart, .posReturn,
              .auditLogs, .notifications, .timeclock:
             return .valid

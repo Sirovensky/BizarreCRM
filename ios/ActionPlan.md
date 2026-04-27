@@ -299,11 +299,11 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Auto-login** — if server returns `accessToken` in setup response, skip login; else POST `/auth/login`. Verify server side (root TODO `SIGNUP-AUTO-LOGIN-TOKENS`).
 - [ ] **Timezone picker** — pre-selects device TZ (`TimeZone.current.identifier`).
 - [ ] **Shop type** — repair / retail / hybrid / other; drives defaults in Setup Wizard (see §36).
-- [ ] **Setup token** (staff invite link) — captured from Universal Link `bizarrecrm.com/setup/:token`, passed on body.
+- [x] **Setup token** (staff invite link) — captured from Universal Link `bizarrecrm.com/setup/:token`, passed on body. (`DeepLinkRoute.setupInvite(token:)` + `DeepLinkDestination.setupInvite(token:)` + parser in `DeepLinkURLParser.parseUniversalLink` + `DeepLinkParser.parseHTTP`; builder path `setup/<token>`; validator min-8-char token check; agent-10 b3)
 
 ### 2.8 Forgot password + recovery
 - [x] **Request reset** — `POST /auth/forgot-password` with `{ email }`. (`LoginFlow.submitForgotPassword()` + `forgotPasswordPanel` in `LoginFlowView`)
-- [ ] **Complete reset** — `POST /auth/reset-password` with `{ token, password }`, reached via Universal Link `app.bizarrecrm.com/reset-password/:token`.
+- [x] **Complete reset** — deep-link routing wired: `DeepLinkRoute.resetPassword(token:)` + `DeepLinkDestination.resetPassword(token:)` parsed from Universal Link `app.bizarrecrm.com/reset-password/:token`; builder + validator in place. UI/API layer (`POST /auth/reset-password`) remains for Agent 8. (agent-10 b3)
 - [ ] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step.
 - [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
 
@@ -8092,7 +8092,7 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 5]** §11 Expenses `RecurringExpenseRunner`: direct `api.post/delete` calls violate §20 containment rule. **RESOLVED** in Agent 5 batch 2 (`3b4b6d64`).
 - **[Agent 5 → Agent 10]** §6 Pre-existing Core macOS build failure: `EnvironmentBanner.swift`, `LoadingStateView.swift`, `CoreErrorStateView.swift`, `MacHoverEffects.swift` in `Packages/Core/Sources/Core/` use UIKit-only APIs without `#if canImport(UIKit)` guard. **RESOLVED** in Agent 10 batch 1 (`bcbccaa8`) — `Color(.systemBackground)` → `Color.primary.opacity(x)`, `.insetGrouped` removed, `hoverEffect` guarded `#if os(iOS)`.
 - **[Agent 8 → Agent 10]** (2026-04-26, bef1335b) `NSFaceIDUsageDescription`. **RESOLVED** in Agent 10 batch 2 (`ac159516`).
-- **[Agent 2 → Agent 10]** (2026-04-26, agent-2 b4) `NSBonjourServices` for Bonjour printer discovery in `write-info-plist.sh`. **OPEN** — pending Agent 10 next batch.
+- **[Agent 2 → Agent 10]** (2026-04-26, agent-2 b4) `NSBonjourServices` for Bonjour printer discovery in `write-info-plist.sh`. **RESOLVED** in Agent 10 batch 3 — added `_ipp._tcp`, `_printer._tcp`, `_bizarre._tcp` array.
 - **[Agent 9 → Agent 10]** (2026-04-26, agent-9 b3) ControlCenter widgets need `com.apple.developer.control-center.extension` entitlement + new extension target in `project.yml`. Code is gated `#if swift(>=5.10)` so doesn't break build. **OPEN** — pending Agent 10.
 - **[Agent 10 → Agent 4 / Agent 7 / Agent 2]** sdk-ban.sh 53 pre-existing violations. **PARTIALLY RESOLVED** — Agent 10 b2 fixed Core (4); Agent 4 b3 fixed Marketing+Loyalty+Customers (10). 20 remain in Pos/Communications/Tickets (Agents 1/7/3 sweeps).
 - **[Agent 10]** 4 Core sdk-ban violations. **RESOLVED** in Agent 10 batch 2 (`ac159516`).

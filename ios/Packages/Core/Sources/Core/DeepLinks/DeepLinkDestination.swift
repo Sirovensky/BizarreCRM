@@ -42,6 +42,10 @@ public enum DeepLinkDestination: Sendable, Equatable, Hashable {
 
     // MARK: Auth
     case magicLink(tenantSlug: String?, token: String)
+    /// Universal Link: `app.bizarrecrm.com/reset-password/:token` (§2.8)
+    case resetPassword(token: String)
+    /// Universal Link: `app.bizarrecrm.com/setup/:token` — staff invite (§2.7)
+    case setupInvite(token: String)
 }
 
 // MARK: - tenantSlug convenience
@@ -73,6 +77,8 @@ extension DeepLinkDestination {
             return slug
         case .magicLink(let slug, _):
             return slug
+        case .resetPassword, .setupInvite:
+            return nil
         }
     }
 }

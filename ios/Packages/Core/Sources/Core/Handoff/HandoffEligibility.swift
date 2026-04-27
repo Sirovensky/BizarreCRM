@@ -73,6 +73,8 @@ public enum HandoffEligibility {
         case .ticket, .customer, .invoice, .estimate:
             // Should not reach here — these are eligible.
             return nil
+        case .resetPassword, .setupInvite:
+            return "Auth flows are single-use and must not be transferred via Handoff"
         }
     }
 }
