@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
@@ -6,7 +6,7 @@ import {
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatTime } from '@/utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -22,6 +22,8 @@ interface Employee {
   permissions?: string;
   created_at: string;
   updated_at: string;
+  is_clocked_in?: number | boolean;
+  weekly_hours?: number;
 }
 
 interface EmployeeDetail extends Employee {
@@ -66,12 +68,6 @@ const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language ||
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(_employeeLocale, {
-    hour: 'numeric', minute: '2-digit',
   });
 }
 
@@ -363,16 +359,6 @@ export function EmployeeListPage() {
   });
   const employees: Employee[] = (listData?.data as any)?.data ?? [];
 
-  // Fetch detail for each employee to get clock status
-  const detailQueries = employees.map((emp) => ({
-    queryKey: ['employee-detail', emp.id],
-    queryFn: () => employeeApi.get(emp.id),
-    enabled: true,
-  }));
-  // Use individual queries for status
-  const employeeDetails = new Map<number, EmployeeDetail>();
-  // We'll fetch details within the table rendering via separate queries
-
   // Clock in mutation
   const clockInMutation = useMutation({
     mutationFn: ({ id, pin }: { id: number; pin: string }) => employeeApi.clockIn(id, pin),
@@ -498,27 +484,8 @@ function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
-  // Memoized — `getWeekRange()` returned fresh object identity on every
-  // render, so the `['employee-hours', ..., weekRange.from_date]` key drifted
-  // if a render crossed midnight (Date-based). Stable across this row's
-  // lifetime; weekly boundary crossing will be picked up on a page reload.
-  const weekRange = useMemo(() => getWeekRange(), []);
-
-  const { data: detailData } = useQuery({
-    queryKey: ['employee-detail', employee.id],
-    queryFn: () => employeeApi.get(employee.id),
-    staleTime: 30000,
-  });
-
-  const { data: hoursData } = useQuery({
-    queryKey: ['employee-hours', employee.id, weekRange.from_date],
-    queryFn: () => employeeApi.hours(employee.id, weekRange),
-    staleTime: 60000,
-  });
-
-  const detail = (detailData?.data as any)?.data as EmployeeDetail | undefined;
-  const weeklyHours = (hoursData?.data as any)?.data?.total_hours ?? 0;
-  const isClockedIn = detail?.is_clocked_in ?? false;
+  const isClockedIn = Boolean(employee.is_clocked_in);
+  const weeklyHours = employee.weekly_hours ?? 0;
 
   const roleClass = ROLE_COLORS[employee.role] ?? 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
 

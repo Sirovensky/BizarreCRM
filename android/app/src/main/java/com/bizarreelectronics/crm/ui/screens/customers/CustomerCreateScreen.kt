@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContactPage
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -120,6 +121,12 @@ data class CustomerCreateUiState(
 
     // Tag palette from server (tag label → Color)
     val tagPalette: Map<String, Color> = emptyMap(),
+
+    // §5.3 Barcode/QR card scan
+    /** True while a card-scan lookup is in flight (after scan → before result). */
+    val isScanLookingUp: Boolean = false,
+    /** Non-null when a scan identified an existing customer — navigate to them. */
+    val scannedExistingCustomerId: Long? = null,
 )
 
 @HiltViewModel
@@ -539,6 +546,48 @@ class CustomerCreateViewModel @Inject constructor(
         )
     }
 
+    // ── §5.3 Barcode/QR card scan ─────────────────────────────────────
+
+    /**
+     * Called when [CustomerCardScanSheet] surfaces a raw barcode/QR value from a
+     * tenant-printed customer card.
+     *
+     * Strategy:
+     * 1. If the value is a numeric string, treat it as a customer ID and search
+     *    directly; a QR card typically encodes the integer customer ID.
+     * 2. Otherwise, run a text search (covers phone-encoded on card, name-hash, etc.).
+     * 3. If exactly one result comes back navigate to that existing customer.
+     * 4. If zero results, silently dismiss and let the user create normally.
+     * 5. Network failure → no-op (let the user proceed with manual entry).
+     */
+    fun handleScannedCard(rawValue: String) {
+        val trimmed = rawValue.trim()
+        if (trimmed.isBlank()) return
+        _state.value = _state.value.copy(isScanLookingUp = true)
+        viewModelScope.launch {
+            try {
+                val results = customerApi.searchCustomers(trimmed).data ?: emptyList()
+                val singleMatch = if (results.size == 1) results.first() else null
+                // If the raw value is numeric, also try a direct ID match from results.
+                val idMatch = if (trimmed.all { it.isDigit() }) {
+                    val id = trimmed.toLongOrNull()
+                    results.firstOrNull { it.id == id }
+                } else null
+                val target = idMatch ?: singleMatch
+                _state.value = _state.value.copy(
+                    isScanLookingUp = false,
+                    scannedExistingCustomerId = target?.id,
+                )
+            } catch (_: Exception) {
+                _state.value = _state.value.copy(isScanLookingUp = false)
+            }
+        }
+    }
+
+    fun clearScannedExistingCustomer() {
+        _state.value = _state.value.copy(scannedExistingCustomerId = null)
+    }
+
     // ── Save ──────────────────────────────────────────────────────────
 
     /** Called by "Create anyway" button in the duplicate dialog. */
@@ -810,6 +859,31 @@ fun CustomerCreateScreen(
         viewModel.prefillFromContact(contact.displayName, contact.phone, contact.email)
     }
 
+    // ── §5.3 Barcode / QR card scan ───────────────────────────────────
+    var showScanSheet by remember { mutableStateOf(false) }
+
+    // Navigate to existing customer when scan lookup resolves a match
+    LaunchedEffect(state.scannedExistingCustomerId) {
+        val id = state.scannedExistingCustomerId ?: return@LaunchedEffect
+        viewModel.clearScannedExistingCustomer()
+        showScanSheet = false
+        onNavigateToCustomer(id)
+    }
+
+    // Show "not found" snackbar when scan lookup completed but found nothing (isScanLookingUp
+    // transitions false→false with scannedExistingCustomerId staying null indicates either
+    // no match or network error — we surface nothing; user just proceeds with creating).
+
+    if (showScanSheet) {
+        com.bizarreelectronics.crm.ui.screens.customers.components.CustomerCardScanSheet(
+            onScanned = { raw ->
+                showScanSheet = false
+                viewModel.handleScannedCard(raw)
+            },
+            onDismiss = { showScanSheet = false },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -821,7 +895,13 @@ fun CustomerCreateScreen(
                     }
                 },
                 actions = {
-                    if (state.isSubmitting) {
+                    // §5.3: scan customer card icon in top-bar
+                    if (!state.isSubmitting && !state.isScanLookingUp) {
+                        IconButton(onClick = { showScanSheet = true }) {
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan customer card")
+                        }
+                    }
+                    if (state.isScanLookingUp || state.isSubmitting) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                         Spacer(modifier = Modifier.width(16.dp))
                     } else {
@@ -856,6 +936,16 @@ fun CustomerCreateScreen(
                 Icon(Icons.Default.ContactPage, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Import from Contacts")
+            }
+
+            // ── §5.3 Scan customer card button ────────────────────────
+            OutlinedButton(
+                onClick = { showScanSheet = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Scan customer card")
             }
 
             HorizontalDivider()

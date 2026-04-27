@@ -33,6 +33,21 @@ type ColKey = (typeof ALL_COLUMNS)[number]['key'];
 
 const DEFAULT_VISIBLE: ColKey[] = ['sku', 'name', 'type', 'category', 'stock', 'cost', 'price'];
 
+interface InventoryImportRow {
+  name: string;
+  sku: string;
+  item_type: string;
+  category: string;
+  manufacturer: string;
+  cost_price: string;
+  retail_price: string;
+  in_stock: string;
+  reorder_level: string;
+  supplier_id: string;
+  description: string;
+  [key: string]: string;
+}
+
 export function InventoryListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -67,7 +82,7 @@ export function InventoryListPage() {
   const [priceAdjustReason, setPriceAdjustReason] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
-  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importPreview, setImportPreview] = useState<InventoryImportRow[]>([]);
 
   // Receive Items (scan-to-receive)
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -251,7 +266,7 @@ export function InventoryListPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: (csvItems: any[]) => inventoryApi.importCsv(csvItems),
+    mutationFn: (csvItems: InventoryImportRow[]) => inventoryApi.importCsv(csvItems),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       const d = res?.data?.data;

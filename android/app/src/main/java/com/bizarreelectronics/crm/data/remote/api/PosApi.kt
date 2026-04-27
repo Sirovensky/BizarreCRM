@@ -9,40 +9,37 @@ import retrofit2.http.POST
 
 // ─── Request / Response DTOs ─────────────────────────────────────────────────
 
+// 2026-04-26 — server contract names (matches POST /pos/sales handler):
+//   items[].inventory_item_id, items[].quantity, payment_amount (dollars),
+//   discount (dollars), tip (dollars). Previous Android schema (lines/item_id/
+//   qty/cents) drifted from web and the server rejected with 400 "No items
+//   in cart" because it destructured `items` not `lines`.
 data class PosCartLineDto(
     val id: String,
     val type: String,              // "inventory" | "service" | "custom"
-    @SerializedName("item_id") val itemId: Long?,
+    @SerializedName("inventory_item_id") val itemId: Long?,
     val name: String,
-    val qty: Int,
+    @SerializedName("quantity") val qty: Int,
     @SerializedName("unit_price_cents") val unitPriceCents: Long,
     @SerializedName("discount_cents") val discountCents: Long = 0L,
     @SerializedName("tax_class_id") val taxClassId: Long? = null,
     @SerializedName("tax_rate") val taxRate: Double = 0.0,
-    // POS-NOTES-001: server INSERT now includes notes column; max 1000 chars.
     val notes: String? = null,
 )
 
 data class PosSaleRequest(
     @SerializedName("idempotency_key") val idempotencyKey: String,
     @SerializedName("customer_id") val customerId: Long?,
-    val lines: List<PosCartLineDto>,
-    @SerializedName("cart_discount_cents") val cartDiscountCents: Long = 0L,
-    @SerializedName("tip_cents") val tipCents: Long = 0L,
+    @SerializedName("items") val lines: List<PosCartLineDto>,
+    /** dollars — server validatePrice. Convert from cents at call site. */
+    @SerializedName("discount") val discount: Double = 0.0,
+    @SerializedName("tip") val tip: Double = 0.0,
     @SerializedName("payment_method") val paymentMethod: String,
-    @SerializedName("payment_amount_cents") val paymentAmountCents: Long,
-    /** Multi-tender split: server prefers this when non-empty over the single
-     *  payment_method/payment_amount_cents pair. */
+    /** dollars — server validates payment_amount as dollars. */
+    @SerializedName("payment_amount") val paymentAmount: Double,
     val payments: List<PosPaymentDto>? = null,
-    /** When the cashier finalizes a Ready-for-pickup ticket the resulting
-     *  invoice gets attached so it shows up in the ticket's history. */
     @SerializedName("linked_ticket_id") val linkedTicketId: Long? = null,
     val notes: String? = null,
-    /**
-     * Per-jurisdiction tax breakdown keyed by jurisdictionId → taxCents.
-     * Populated by [PosTaxCalculator] before submission; null when the
-     * calculator is not yet wired to a real TenantTaxConfig (see TODO POS-TAX-MULTI-001).
-     */
     @SerializedName("tax_breakdown") val taxBreakdown: Map<String, Long>? = null,
 )
 

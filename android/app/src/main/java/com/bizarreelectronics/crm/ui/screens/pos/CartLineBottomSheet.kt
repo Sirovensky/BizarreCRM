@@ -90,11 +90,13 @@ fun CartLineBottomSheet(
                 DiscountChip.TEN_PCT -> subtotal * 10 / 100
                 DiscountChip.FLAT -> {
                     val dollars = flatInput.toDoubleOrNull() ?: 0.0
-                    (dollars * 100).toLong().coerceIn(0L, subtotal)
+                    // session 2026-04-26 — ROUND-ERROR: was .toLong() (truncation); Math.round gives HALF_UP
+                    Math.round(dollars * 100).coerceIn(0L, subtotal)
                 }
                 DiscountChip.CUSTOM -> {
                     val pct = customPctInput.toDoubleOrNull() ?: 0.0
-                    (subtotal * pct / 100).toLong().coerceIn(0L, subtotal)
+                    // session 2026-04-26 — ROUND-ERROR: was .toLong() (truncation); Math.round gives HALF_UP
+                    Math.round(subtotal * pct / 100).coerceIn(0L, subtotal)
                 }
                 null -> 0L
             }

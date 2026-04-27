@@ -44,12 +44,26 @@ class LanguageManager @Inject constructor(
      */
     data class Language(val tag: String, val displayName: String)
 
-    /** Ordered list of languages offered in the picker. Immutable. */
+    /**
+     * Ordered list of languages offered in the picker. Immutable.
+     *
+     * Phase-1 (§27.2): en, es, fr — scaffold translations present (values-es/, values-fr/).
+     * Phase-2 (§27.2): pt-BR, de, hi — stubs present; strings fall back to English until
+     * a translator populates the values-pt-rBR/, values-de/, values-hi/ files.
+     *
+     * displayName is shown in the *native* script of the language (per Android i18n convention)
+     * so users can identify their language even before switching.
+     */
     val availableLanguages: List<Language> = listOf(
         Language("system", "System default"),
         Language("en",     "English"),
+        // Phase-1 — scaffold translations present
         Language("es",     "Español"),
         Language("fr",     "Français"),
+        // Phase-2 stubs — untranslated; picker shows them so early adopters can test
+        Language("pt-BR",  "Português (Brasil)"),
+        Language("de",     "Deutsch"),
+        Language("hi",     "हिन्दी"),
     )
 
     private val _currentLanguage = MutableStateFlow(appPreferences.languageTag)

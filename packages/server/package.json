@@ -12,7 +12,8 @@
     "build": "tsc && node -e \"const fs=require('fs'); fs.copyFileSync('src/db/db-worker.mjs','dist/db/db-worker.mjs'); fs.cpSync('src/db/migrations','dist/db/migrations',{recursive:true});\"",
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
-    "seed": "tsx src/db/seed.ts"
+    "seed": "tsx src/db/seed.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@bizarre-crm/shared": "*",
@@ -57,6 +58,7 @@
     "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "vitest": "^1.6.0"
   }
 }

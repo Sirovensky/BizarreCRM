@@ -15,7 +15,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -159,7 +164,11 @@ fun PosTenderScreen(
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    // session 2026-04-26 — a11y: back button contentDescription
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics { contentDescription = "Back" },
+                    ) {
                         Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
@@ -179,8 +188,12 @@ fun PosTenderScreen(
                     }
                     Spacer(modifier = Modifier.width(4.dp))
                     // ── Task 5: Overflow menu — "Open cash drawer" ────────────
+                    // session 2026-04-26 — a11y: overflow button contentDescription
                     Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
+                        IconButton(
+                            onClick = { showOverflowMenu = true },
+                            modifier = Modifier.semantics { contentDescription = "More options" },
+                        ) {
                             Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
                         }
                         DropdownMenu(
@@ -203,7 +216,14 @@ fun PosTenderScreen(
         bottomBar = {
             TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // session 2026-04-26 — a11y: liveRegion Assertive on tender snackbar
+        // (payment errors/success must interrupt speech per goal 4)
+        snackbarHost = {
+            SnackbarHost(
+                snackbarHostState,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
+            )
+        },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
         // TASK-4: offline banner — zero-height when online
@@ -278,6 +298,8 @@ fun PosTenderScreen(
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
                     onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
+                    // NFC / Tap-to-pay: BlockChyp SDK pending — show snackbar until wired.
+                    onNfc = { viewModel.showMessage("Tap-to-pay coming soon (BlockChyp SDK pending)") },
                     onParkCart = { viewModel.parkCart() },
                     onStoreCredit = { viewModel.applyStoreCredit() },
                     onGiftCard = { showGiftCardDialog = true },
@@ -316,7 +338,15 @@ private fun BalanceHeroCard(state: PosTenderUiState) {
                     Text("TOTAL DUE", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(state.totalCents.toDollarString(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                // session 2026-04-26 — a11y: color-blind safe remaining balance;
+                // merged semantics provide "Remaining: $X" so screen reader
+                // doesn't rely on primary color alone
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    modifier = Modifier.semantics(mergeDescendants = true) {
+                        contentDescription = "Remaining: ${state.remainingCents.toDollarString()}"
+                    },
+                ) {
                     Text("REMAINING", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
                         state.remainingCents.toDollarString(),
@@ -372,8 +402,14 @@ private fun AppliedTenderCard(tender: AppliedTender, onRemove: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+        // session 2026-04-26 — a11y: clearAndSetSemantics on visual-only badge
+        // so screen reader reads "Status: Paid" not just the ✓ glyph
         Box(
-            modifier = Modifier.size(26.dp).clip(CircleShape).background(success),
+            modifier = Modifier
+                .size(26.dp)
+                .clip(CircleShape)
+                .background(success)
+                .clearAndSetSemantics { contentDescription = "Status: Paid" },
             contentAlignment = Alignment.Center,
         ) {
             Text("✓", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Black, color = Color(0xFF002817))
@@ -405,6 +441,7 @@ private fun PaymentMethodGrid(
     onCardReader: () -> Unit,
     onCash: () -> Unit,
     onAch: () -> Unit,
+    onNfc: () -> Unit,
     onParkCart: () -> Unit,
     onStoreCredit: () -> Unit,
     onGiftCard: () -> Unit,
@@ -412,11 +449,7 @@ private fun PaymentMethodGrid(
     onLoyaltyPoints: () -> Unit = {},
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
-        // the shop's hardware path is a single Bluetooth/USB card reader (no
-        // device-to-device NFC), so the two collapse into one tile labelled
-        // 'Card / Tap'. Cash takes Tap-to-pay's slot since real-world walk-in
-        // sales still hand over physical bills more often than ACH.
+        // Mockup PHONE 5: Card-reader, Tap-to-pay (NFC), Cash, ACH as separate tiles.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "💳",
@@ -427,6 +460,16 @@ private fun PaymentMethodGrid(
                 modifier = Modifier.weight(1f),
             )
             PaymentTile(
+                emoji = "📱",
+                label = "Tap to pay",
+                sublabel = "NFC",
+                isPrimary = false,
+                onClick = onNfc,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PaymentTile(
                 emoji = "💵",
                 label = "Cash",
                 sublabel = "Receive · change due",
@@ -434,8 +477,6 @@ private fun PaymentMethodGrid(
                 onClick = onCash,
                 modifier = Modifier.weight(1f),
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "🏦",
                 label = "ACH / check",
@@ -444,6 +485,8 @@ private fun PaymentMethodGrid(
                 onClick = onAch,
                 modifier = Modifier.weight(1f),
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "⏸",
                 label = "Park cart",
@@ -515,19 +558,19 @@ private fun PaymentTile(
     }
     val borderWidth = if (isPrimary && enabled) 1.5.dp else 1.dp
     val contentAlpha = if (enabled) 1f else 0.38f
-    // M3 Expressive: primary 'Card / Tap' tile uses MaterialShapes.Cookie9Sided
-    // so the canonical primary payment surface gets the alpha shape morph
-    // (visible cut-off edges). Secondary tiles stay rounded squares.
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-    val tileShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
-        MaterialShapes.Cookie9Sided.toShape()
-    else RoundedCornerShape(10.dp)
+    // 2026-04-26 audit: revert Cookie9Sided to plain 10dp rounded square
+    // (mockup PHONE 5 uses uniform 10px rounded square on all tender tiles —
+    // primary differs only via 1.5px border + cream label).
+    val tileShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp)
 
+    // session 2026-04-26 — a11y: Role.Button + 48dp min height on payment tile
     Column(
         modifier = modifier
             .clip(tileShape)
             .border(borderWidth, borderColor, tileShape)
             .background(MaterialTheme.colorScheme.surface)
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { role = Role.Button }
             .clickable(enabled = enabled, onClickLabel = label) { onClick() }
             .padding(14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -640,7 +683,9 @@ private fun CashTenderDialog(
     // Math.round avoids the float-truncation bug where 16.31 * 100 = 1630.999...
     // would .toLong() to 1630 and leave \$0.01 remaining on a fully-paid sale.
     val receivedCents = Math.round(received * 100)
-    val changeDollars = (received - remainingDollars).coerceAtLeast(0.0)
+    // session 2026-04-26 — ROUND-ERROR: compute change from Long cents (not Double dollars)
+    // to prevent floating-point display error (e.g. $2.4999... instead of $2.50).
+    val changeCents = (receivedCents - remainingCents).coerceAtLeast(0L)
     val canApply = receivedCents > 0L
 
     AlertDialog(
@@ -664,9 +709,9 @@ private fun CashTenderDialog(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                if (changeDollars > 0.0) {
+                if (changeCents > 0L) {
                     Text(
-                        "Change due: ${"$%.2f".format(changeDollars)}",
+                        "Change due: ${changeCents.toDollarString()}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = LocalExtendedColors.current.success,

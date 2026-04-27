@@ -67,3 +67,51 @@
 
 # Firebase Messaging — keep service so FCM can resolve it
 -keep class com.bizarreelectronics.crm.service.FcmService { *; }
+
+# ── §29 R8 keep-rules audit ──────────────────────────────────────────────────
+
+# Paging 3 — RemoteMediator + PagingSource implementations must survive
+# shrinking so Room's paging integration can resolve them via reflection.
+-keep class * extends androidx.paging.PagingSource { *; }
+-keep class * extends androidx.paging.RemoteMediator { *; }
+-dontwarn androidx.paging.**
+
+# Coil 3 — keep custom Fetcher / Decoder / Interceptor impls if added later.
+# PlatformContext + network extensions already dontwarn'd above.
+-keep class coil3.** { *; }
+-dontwarn coil3.**
+
+# androidx.tracing — Trace.beginSection / endSection are called by PerfTrace.
+# R8 must not inline or remove these calls; they are no-ops when tracing is
+# inactive (single volatile read) but must be present for Perfetto capture.
+-keep class androidx.tracing.Trace { *; }
+-keep class android.os.Trace { *; }
+
+# ProfileInstaller — keep the initializer and version-check code so ART
+# profile delivery can query install state at runtime.
+-keep class androidx.profileinstaller.** { *; }
+-dontwarn androidx.profileinstaller.**
+
+# WorkManager Hilt workers — the HiltWorkerFactory resolves worker class names
+# from the WorkRequest class name string; obfuscation must not rename them.
+-keep class * extends androidx.work.ListenableWorker {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+
+# Retrofit — interface methods annotated with HTTP verbs are invoked by
+# dynamic proxy; keep them even if not called at the JVM level.
+# (The -keepclassmembers above handles the method signatures; this rule adds
+# the interface *itself* so R8 does not remove unused API interface classes.)
+-keep interface com.bizarreelectronics.crm.data.remote.api.** { *; }
+
+# Gson — data-transfer objects in data/remote/dto must not be obfuscated
+# because Gson uses field names for JSON mapping (already covered by the
+# data/remote/dto rule above, listed here for explicitness).
+-keepclassmembers class com.bizarreelectronics.crm.data.remote.** {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+
+# SQLCipher — native library loads via System.loadLibrary("sqlcipher").
+# Keep the JNI entry points so R8 does not strip the bridge classes.
+-keep class net.zetetic.database.** { *; }
+-dontwarn net.zetetic.database.**

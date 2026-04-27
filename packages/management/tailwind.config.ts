@@ -55,7 +55,13 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // DASH-ELEC-024: brand font stack — Futura Medium for body (loaded via
+        // @font-face in globals.css), Jost as web-safe fallback, Inter for
+        // system UI fallback. See memory/feedback_brand_color.md for brand spec.
+        sans: ['Futura Medium', 'Jost', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        // Bebas Neue for display/heading use (large numerals, section headers).
+        display: ['Bebas Neue', 'Futura Medium', 'Jost', 'sans-serif'],
+        heading: ['Bebas Neue', 'Futura Medium', 'Jost', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
       },
       animation: {

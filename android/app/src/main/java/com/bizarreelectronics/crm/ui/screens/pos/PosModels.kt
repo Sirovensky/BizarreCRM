@@ -22,7 +22,8 @@ data class CartLine(
     val stockQty: Int? = null,
 ) {
     val lineTotalCents: Long get() = (unitPriceCents * qty) - discountCents
-    val taxCents: Long get() = (lineTotalCents * taxRate).toLong()
+    // session 2026-04-26 — ROUND-ERROR: was .toLong() (truncation); Math.round gives HALF_UP
+    val taxCents: Long get() = Math.round(lineTotalCents * taxRate)
     val totalWithTaxCents: Long get() = lineTotalCents + taxCents
 }
 

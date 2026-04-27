@@ -127,6 +127,22 @@ export function formatShortDateTime(iso: string | Date | null | undefined): stri
   });
 }
 
+/**
+ * Format a time-only string (hour + minute) from an ISO timestamp or Date.
+ * Mirrors the `formatShortDateTime` pattern \u2014 uses the tenant locale set by
+ * `initCurrencyFromSettings` so it stays consistent with the rest of the app.
+ *
+ * Use this instead of bare `.toLocaleTimeString(...)` call-sites (WEB-S5-008).
+ * High-traffic call-sites updated: Header notifications, Dashboard,
+ * TicketListPage, InvoiceListPage, CustomerListPage.
+ */
+export function formatTime(iso: string | Date | null | undefined): string {
+  if (iso == null) return '\u2014';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return '\u2014';
+  return d.toLocaleTimeString(_locale, { hour: 'numeric', minute: '2-digit' });
+}
+
 /** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
 export function formatNumber(n: number | null | undefined): string {
   if (n == null || !isFinite(Number(n))) return '0';

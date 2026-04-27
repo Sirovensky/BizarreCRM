@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.auth
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material3.Icon
@@ -37,8 +39,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -170,7 +175,10 @@ private fun KeyButton(
  * @param shakeTrigger  Increment to trigger the shake animation.
  * @param revealDigits  When true, show actual digit characters instead of filled dots.
  * @param enteredDigits The raw digit string entered so far (used when [revealDigits] is true).
- * @param modifier      Applied to the [Row]; pass the [pointerInput] reveal modifier here.
+ * @param reduceMotion  §26.4 — when true the shake animation is suppressed; a static red outline
+ *                      is shown instead to communicate the wrong-PIN feedback without motion.
+ *                      Derive from [com.bizarreelectronics.crm.util.ReduceMotion.isReduceMotion].
+ * @param modifier      Applied to the outer container; pass the [pointerInput] reveal modifier here.
  */
 @Composable
 fun PinDots(
@@ -179,11 +187,19 @@ fun PinDots(
     shakeTrigger: Int = 0,
     revealDigits: Boolean = false,
     enteredDigits: String = "",
+    reduceMotion: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    // §26.4 — when reduceMotion=false the classic horizontal shake fires.
+    // When reduceMotion=true we skip the translate animation entirely and
+    // instead show a red rounded-rect border around the dot row so the
+    // error is still visible without any displacement.
     val offset = remember { Animatable(0f) }
+    val showErrorBorder = reduceMotion && shakeTrigger > 0
+
     LaunchedEffect(shakeTrigger) {
         if (shakeTrigger == 0) return@LaunchedEffect
+        if (reduceMotion) return@LaunchedEffect // §26.4: skip shake; border replaces it
         // Asymmetric 4-stop shake: gives an honest "no" wobble without
         // overselling the rejection.
         val kick = 18f
@@ -191,8 +207,29 @@ fun PinDots(
             offset.animateTo(target, tween(durationMillis = 50))
         }
     }
+
+    // §26.1 — announce wrong-PIN outcome to TalkBack via liveRegion so
+    // users relying on screen readers hear "Wrong PIN" on shake / outline.
+    val a11yStateDesc = if (shakeTrigger > 0) "Wrong PIN entered" else ""
     Row(
-        modifier = modifier.graphicsLayer { translationX = offset.value },
+        modifier = modifier
+            .graphicsLayer { translationX = offset.value }
+            .then(
+                if (showErrorBorder) {
+                    // §26.4: static error outline replaces shake when motion is reduced.
+                    Modifier.border(
+                        width = 2.dp,
+                        color = MaterialTheme.colorScheme.error,
+                        shape = RoundedCornerShape(12.dp),
+                    ).padding(horizontal = 8.dp, vertical = 4.dp)
+                } else Modifier,
+            )
+            .semantics {
+                // §26.1 — liveRegion.Assertive so screen readers interrupt
+                // whatever they are reading and announce the error immediately.
+                liveRegion = LiveRegionMode.Assertive
+                stateDescription = a11yStateDesc
+            },
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

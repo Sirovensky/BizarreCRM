@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.customers
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -66,9 +67,16 @@ private data class PageKey(
 class CustomerListViewModel @Inject constructor(
     private val customerRepository: CustomerRepository,
     private val customerApi: CustomerApi,
+    // §1.8 process-death: SavedStateHandle persists transient search state
+    // across process kill so the user's query is restored on re-launch.
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(CustomerListUiState())
+    private val _state = MutableStateFlow(
+        CustomerListUiState(
+            searchQuery = savedStateHandle.get<String>(SSH_KEY_QUERY) ?: "",
+        ),
+    )
     val state = _state.asStateFlow()
     private var searchJob: Job? = null
     private var collectJob: Job? = null
@@ -134,6 +142,8 @@ class CustomerListViewModel @Inject constructor(
 
     fun onSearchChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
+        // §1.8 process-death: persist so the query survives a process kill + restore
+        savedStateHandle[SSH_KEY_QUERY] = query
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -399,6 +409,11 @@ class CustomerListViewModel @Inject constructor(
         searchQuery = _state.value.searchQuery.trim(),
         tagFilter = _state.value.activeTagFilter,
     )
+
+    companion object {
+        /** SavedStateHandle keys for process-death restoration (§1.8). */
+        const val SSH_KEY_QUERY = "customer_list_search_query"
+    }
 }
 
 private fun String?.csv(): String {

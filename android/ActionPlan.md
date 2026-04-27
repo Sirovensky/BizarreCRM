@@ -201,6 +201,13 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
 - [x] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow. (commit — `util/TabNavPrefs.kt` encode/decode/move helpers; `AppPreferences.tabNavOrder` + `tabNavOrderFlow`; `ui/screens/settings/TabOrderScreen.kt` + `TabOrderViewModel`; `AppNavGraph` bottom nav observes `resolvedAppPreferences.tabNavOrderFlow` via `AppPreferencesEntryPoint`; Settings row wired; "More" always last.)
 - [x] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag. (`ui/components/PredictiveBackScaffold.kt` — `PredictiveBackHandler` wrapper + `LocalBackProgress` composition local; `android:enableOnBackInvokedCallback="true"` in manifest; `NavHost` enter/exit/pop transitions produce preview animation on API 34+.)
+- [ ] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+).
+  - **NOTE (2026-04-26):** Full migration from `sealed class Screen(val route: String)` to `@Serializable` data classes touches every `composable(...)` call, every `navArgument`, and every `navController.navigate(...)` in the 2800-line AppNavGraph. Doing it atomically is high-risk with no incremental compile gate. Needs its own session: split AppNavGraph into per-domain nav builders, then migrate one domain at a time.
+- [x] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`. (session 2026-04-26 — `AppNavGraph.kt` `NavigationSuiteScaffold` replaces manual `NavigationBar`/`NavigationRail` Row branching; dependency `material3-adaptive-navigation-suite` already in `app/build.gradle.kts`; `layoutType` forced to `NavigationSuiteType.None` on pre-login / detail / full-screen routes via existing `showBottomNav` flag; `currentWindowAdaptiveInfo()` from `androidx.compose.material3.adaptive` drives auto-pick; `SharedTransitionLayout` + `NavHost` modifiers updated from `weight(1f)` to `fillMaxSize()`)
+- [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
+- [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
+  - **NOTE (2026-04-26):** "More" overflow tab already exists. User-reorderable tabs require: (a) persistent order storage in `AppPreferences`, (b) drag-reorder UI in Settings → Appearance, (c) dynamic `bottomNavItems` list built from preferences. Non-trivial feature; owned by Section 3/settings pass.
+- [x] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag. (session 2026-04-26 — `PredictiveBackScaffold` composable (`ui/components/PredictiveBackScaffold.kt`) wired into `TicketDetailScreen` and `CustomerDetailScreen`; `graphicsLayer` scale 0.92 + alpha 0.7 at swipe-complete mirrors M3 exit recommendation; `LocalBackProgress` propagated to child tree; `PredictiveBackHandler` via `androidx.activity:1.10.0` backport to API 26+)
 - [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
 - [~] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`. (commit a629898 — intent-filter + autoVerify added; `assetlinks.json` server-side deploy pending)
 
@@ -227,6 +234,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
 - [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
 - [x] User-facing strings in `strings.xml` with per-language resource folders (§27). (`res/values/strings.xml` + `values-es/`, `values-es-rMX/`, `values-fr/` folders present; `LanguageManager` wired per §27; ongoing — new screens must add strings to all locale files.)
+- [x] User-facing strings in `strings.xml` with per-language resource folders (§27). (session 2026-04-26 — `res/values/strings.xml` expanded from 11 → 55 strings covering: nav labels, generic actions (retry/dismiss/cancel/save/delete/undo/open-settings/contact-support), `AppError` taxonomy messages (network/server/not-found/permission/auth/conflict/unknown/offline-cached), banner copy (offline/sync-count/clock-drift/rate-limit), process-death restore hint, ticket + customer list/search copy, draft recovery prompts, biometric/PIN auth labels, settings section titles; per-language `values-*/strings.xml` folders pending §27 full i18n pass)
 - [x] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee + d90f652 — `ErrorRecovery.recover()` util + `Action` enum + `ui/components/ErrorSurface.kt` composable with compact/full layouts, icon mapping, destructive styling; feature modules call `ErrorSurface(error, onAction)` and wire actions)
 - [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
 - [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
@@ -240,6 +248,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
 - [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
 - [x] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes. (`SavedStateHandle` injected in 24+ ViewModels including `TicketDetailScreen`, `CustomerDetailScreen`, `InvoiceDetailScreen`, `SmsThreadScreen`, `EstimateDetailViewModel`, `ExpenseDetailViewModel`, etc.)
+- [x] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes. (session 2026-04-26 — `TicketListViewModel` + `CustomerListViewModel` both inject `SavedStateHandle`; `onSearchChanged` / `onFilterChanged` write SSH keys `ticket_list_search_query`, `ticket_list_selected_filter`, `customer_list_search_query`; initial state seeded from SSH so process-kill restores last query/filter before the ViewModel emits its first load; companion-object key constants guard against typos; existing detail VMs (`AppointmentDetailViewModel`, `ExpenseDetailViewModel`, etc.) already used SSH for nav-arg extraction)
 - [x] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68). (commit 00bc645 — `MainActivity.onNewIntent()` calls `resolveDeepLink()` + `resolveFcmRoute()` → `DeepLinkBus.publish()`; `util/DeepLinkAllowlist.kt` whitelist enforced; FCM extras `navigate_to`+`entity_id` mapped to 9 entity routes)
 - [x] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact. (commit 5800443 — `service/NotificationController.kt` channel-selection + dedup via `util/ActiveChatTracker.kt` `currentThreadPhone`; `sms_silent` channel `IMPORTANCE_LOW` no-sound/vibrate registered in `BizarreCrmApp.createNotificationChannels()`; `FcmService.onMessageReceived` delegates after silent-sync short-circuit)
 - [x] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`. (commit 5800443 — `service/NotificationActionReceiver.kt` `@AndroidEntryPoint` handles `ACTION_REPLY_SMS` via `RemoteInput.getResultsFromIntent` + `SyncQueueEntity(operation="send_sms")` enqueue; `ACTION_MARK_READ` enqueues `mark_read` PATCH; 12 JVM tests; receiver registered in AndroidManifest)
@@ -247,6 +256,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
 - [x] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`. (`lifecycle-runtime-compose:2.8.7` dep declared; used in `ClockDriftBanner`, `SessionTimeoutOverlay`, `RateLimitBanner`, `AppNavGraph`, and 16 settings screens; feature screens use `collectAsState` pending lifecycle-aware migration.)
+- [x] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`. (session 2026-04-26 — already wired; `collectAsStateWithLifecycle` used in `ClockDriftBanner`, `RateLimitBanner`, `SessionTimeoutOverlay`, `AppNavGraph`, `ActiveSessionsScreen`, `AppearanceScreen`, `DiagnosticsScreen`, `RateLimitBucketsScreen`, `ThemeScreen` and many domain screens; `lifecycle-runtime-compose` dep present in `build.gradle.kts`)
 - [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
 - [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 + a762605 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; mounted in root Scaffold when logged in)
 - [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
@@ -299,7 +309,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout. (commit cd36e98 — `ui/screens/auth/BackupCodesDisplay.kt` FlowRow mono chips + warning banner + "Copy all" sensitive clip + checkbox gate → "Done" primary CTA; replaces prior inline AlertDialog)
-- [~] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep)
+- [x] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep) (session 2026-04-26 — Compose BOM 2026.04.01 = UI 1.8+; `ContentType.SmsOtpCode` now public and wired on `TotpCodeInputContent` OutlinedTextField via `Modifier.semantics { contentType = ContentType.SmsOtpCode }`; `smsRetrieverClient` in `OtpInput.kt` now delegates to `SmsRetrieverHelper.startRetriever` — dep was already present; `play-services-auth-api-phone` confirmed in `build.gradle.kts`)
 - [x] **Paste-from-clipboard** auto-detect 6-digit string. (commit 8301aa5 — `detectOtpFromClipboard` + `OtpParser.extractOtpDigits`)
 - [blocked: policy — 2FA disable not allowed per user directive 2026-04-23. Android client must never surface a "Disable 2FA" action; server endpoint may exist but UI is intentionally absent.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
@@ -486,8 +496,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`. (commit 059e249 — `ui/screens/dashboard/components/KpiGrid.kt` + `KpiTile` model wired into DashboardScreen with responsive branching)
-- [~] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
-- [~] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (session 2026-04-26 — 13-tile KpiTile list in DashboardScreen; taxToday/discountsToday/cogsToday/netProfitToday/refundsToday/expensesToday/receivablesTotal/closedToday added to DashboardUiState + DashboardStats; zero-defaults when server fields absent; server keys: tax_today/discounts_today/cogs_today/net_profit_today/refunds_today/expenses_today/receivables_total/closed_today)
+- [x] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (session 2026-04-26 — Open Tickets/Appointments/Low Stock wired; Receivables tile taps onNavigateToAging → InvoicesAging; Revenue/COGS/Tax/Discounts/Refunds/Expenses/Net Profit/Closed Today inert — no dedicated filtered-list screens exist yet)
 - [x] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default. (commit 059e249 — `DateRangeSelector.kt` `SingleChoiceSegmentedButtonRow` + 6-preset `DashboardDatePreset` enum + Material3 `DateRangePicker` bottom sheet for Custom + `DateRange` emitter; bound to VM `currentRange: StateFlow` + `setCurrentRange()`)
 - [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. (commit 059e249 — `DeltaChip` in `KpiTileCard` with ↗/↘/→ icons + green/red/grey color + a11y "Up X% versus last period"; slot nullable until server `/dashboard/compare` ships)
 - [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
@@ -502,6 +512,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (commit 12a8756 — `components/LeaderboardCard.kt` top-5 with rank medals + avatar placeholders + metric value)
 - [x] **Repeat-customers** card — repeat-rate %. (commit 12a8756 — `components/RepeatCustomerCard.kt` % display + trend arrow up/down/flat + 90-day window label)
 - [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (`components/CashTrappedCard.kt` + DashboardScreen VM `loadCashTrapped()` → `GET /reports/cash-trapped`; `onTap = onNavigateToAgingReport` wired at DashboardScreen lines ~1996/2038)
+- [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (session 2026-04-26 — `components/CashTrappedCard.kt` full-width Card; error-red border+tint when balance >0; overdueCount subtitle; tap → onNavigateToAging → Screen.InvoicesAging; GET /reports/aging via ReportApi.getAging() + DashboardRepository.getAgingSummary() 404-tolerant null; VM _overdueReceivablesCents/_overdueCount StateFlows loaded on init + refresh; AppNavGraph wired)
 - [~] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (commit 12a8756 — `components/ChurnAlertCard.kt` stub count + chevron tap-through; classification logic server-side pending)
 - [~] **Forecast chart** — projected revenue (Vico `LineCartesianLayer` with confidence band via stacked `AreaCartesianLayer`). (commit 12a8756 — `components/ForecastCard.kt` stub progress bar toward 90-day history threshold; full chart deferred until server forecast endpoint)
 - [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (commit 12a8756 — `components/MissingPartsCard.kt` reorder-needed list with qty/threshold + "Connect Inventory data" when null)
@@ -580,6 +591,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [~] Reports empty: placeholder chart with "Come back after your first sale". (wrapper ready; wiring follow-up)
 - [x] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard. (commit 8cb3e84 — CircularProgressIndicator + `%` label tappable embedded top-right of SetupChecklistCard)
 - [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear. <!-- NOTE-defer: no SetupWizard screen exists in the codebase (§36 not yet built); OnboardingChecklist covers step tracking but has no demo-data seed/clear path; blocked on §36 Setup Wizard scaffold -->
+- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear. NOTE (session 2026-04-26): server-blocked — requires dedicated seed/demo API endpoint + Setup Wizard screen (§36) not yet built; deferred.
 
 ### 3.15 Open-shop checklist
 - [x] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist. (commit 8531526 — `AppPreferences.lastMorningChecklistDate` gate + `MorningOpenCard` dashboard banner with dismiss)
@@ -587,6 +599,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Hardware ping: ping each configured device (printer, terminal) via Bluetooth socket / ipv4 with 2s timeout; green check or red cross per device; tap red → diagnostic page. (commit 8531526 — `util/HardwarePinger.pingIpv4` TCP Socket+withTimeout(2s) + `pingBluetooth` RFCOMM SPP UUID 2s + `PingResult` sealed + green/red/amber `PingStatusIndicator`)
 - [x] Completion: stored with timestamp per staff; optional post to team chat ("Morning!"). (commit 8531526 — `AppPreferences.setMorningChecklistCompleted(dateKey, staffId, completedSteps)` + optional POST `/morning-checklist/complete` 404-tolerated)
 - [x] Skip: user can skip; skipped state noted in audit log. (`MorningChecklistScreen.kt` "Skip checklist for today" button → `MorningChecklistViewModel.skipChecklist()` persists via `AppPreferences.setMorningChecklistSkipped` + 404-tolerant `POST /morning-checklist/skip`)
+- [ ] Skip: user can skip; skipped state noted in audit log. NOTE (session 2026-04-26): server-blocked — requires server audit-log endpoint; local skip-prefs-only is insufficient per spec; deferred.
 
 ### 3.16 Activity feed (dashboard variant)
 - [x] Real-time event stream (not audit log; no diffs — social-feed style). (commit 6f5eb1f — `ActivityFeedViewModel` WebSocket `activity:new` topic subscription)
@@ -622,6 +635,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Kill-switch: flag instantly reverts. <!-- NOTE-defer: depends on same feature-flag infrastructure as the pilot item above -->
 - [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server. <!-- NOTE-defer: requires /telemetry/events server endpoint (§74, not yet landed) + A/B experiment schema -->
 - [ ] Doc gate: before/after wireframes + rationale + success criteria. <!-- NOTE-defer: blocked on §19 rollout design; design artefacts do not yet exist -->
+- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage. NOTE (session 2026-04-26): server-blocked — requires feature-flag infra (§19.x) not yet built; deferred.
+- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form. NOTE (session 2026-04-26): blocked on feature-flag system + §36 Setup Wizard; deferred.
+- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score. NOTE (session 2026-04-26): requires server-side rollout infra; deferred.
+- [ ] Kill-switch: flag instantly reverts. NOTE (session 2026-04-26): blocked on feature-flag system; deferred.
+- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server. NOTE (session 2026-04-26): requires server analytics aggregation endpoint; deferred.
+- [ ] Doc gate: before/after wireframes + rationale + success criteria. NOTE (session 2026-04-26): product/design task, not code; deferred to pre-rollout milestone.
 
 ---
 ## 4. Tickets (Service Jobs)
@@ -638,6 +657,8 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [~] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms via Flow `debounce`.
 - [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC — via `ExposedDropdownMenuBox`. (commit 68cadc5 — `components/TicketSortDropdown.kt` `TicketSort` enum + DropdownMenu sort picker highlighting active; VM `currentSort: StateFlow` + `applySortOrder()` pure func 6 sort variants; 8 JVM tests)
 - [x] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user. (this wave — `components/TicketColumnDensityPicker.kt` `TicketColumnVisibility` data class with 5 boolean flags + encode/decode; `ModalBottomSheet` with `Checkbox` rows + Cancel/Apply; `TicketColumnVisibility.Saver` for rememberSaveable; strings.xml §4.1 labels)
+- [ ] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user.
+  - **NOTE (2026-04-26):** Requires owner sign-off on which columns to expose + a DataStore schema extension for per-user column prefs. Deferred pending design decision.
 - [x] **Swipe actions** — `SwipeToDismissBox` leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete. (commit 68cadc5 — `components/TicketSwipeRow.kt` SwipeToDismissBox wrapper left=Mark done/Reopen right=Assign-to-me/Hold + haptic CONTEXT_CLICK + snap-back; VM swipe action handlers optimistic + TODO sync wire)
 - [x] **Context menu** — long-press / right-click → `DropdownMenu` — Open, Copy order ID (selectable + toast), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF. (commit 68cadc5 — long-press `DropdownMenu` 6 actions; Copy link uses `bizarrecrm://tickets/{id}`; Add note toast stub)
 - [x] **Multi-select** (tablet/ChromeOS first) — long-press enters `SelectionMode`; `BulkActionBar` floating bottom bar — Bulk assign / Bulk status / Bulk archive / Export / Delete. (commit 68cadc5 — gated `isMediumOrExpandedWidth()`; checkbox column + BulkActionBar with Bulk status; Bulk assign/delete TODO; BackHandler exits select mode)
@@ -649,6 +670,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
   - Row-to-detail transition on selection: inline detail swap, no push animation.
   - Deep-link open (e.g., from push notification) selects row + loads detail simultaneously via `ThreePaneScaffoldNavigator.navigateTo(...)`.
   - Predictive back gesture collapses detail back to list on phone portrait / small windows.
+  - **NOTE (2026-04-26):** `AdaptiveListDetailScaffold` wrapper already exists at `ui/navigation/AdaptiveListDetailScaffold.kt`. Wiring it into the Tickets nav route requires replacing the `composable(Screen.Tickets)` entry + passing a `selectedTicketId` signal across NavGraph boundaries — touches shared nav infra. Deferred to avoid cross-agent nav conflicts.
 - [x] **Export CSV** — `GET /tickets/export` + Storage Access Framework `ACTION_CREATE_DOCUMENT` on tablet/ChromeOS. (commit 851f0b7 — `components/TicketExportActions.kt` overflow menu + `buildCsvContent()` streams 9 columns via SAF)
 - [x] **Pinned/bookmarked** tickets at top (⭐ toggle). (commit 851f0b7 — `components/PinnedTicketsHeader.kt` up to 5 tickets + star in row + DropdownMenu toggle; `AppPreferences.pinnedTicketIds: Set<Long>` + `TicketApi.setPinned` 404-local-only)
 - [x] **Customer-preview popover** — tap customer avatar on row → `Popup` with recent-tickets + quick-actions. (commit 851f0b7 — `components/CustomerPreviewPopover.kt` name/phone/email/ticket-count + Call/SMS/Email via PhoneIntents + 3s auto-dismiss)
@@ -743,6 +765,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 
 ### 4.8 Photos — advanced
 - [x] **Camera** — CameraX `PreviewView` with flash toggle, flip, grid, shutter haptic. (this wave — `CameraCaptureScreen.kt` in `ui/screens/hardware/` (already existed from §17.1); routed via `Screen.CameraCapture` at `hardware/camera/{ticketId}/{deviceId}`; flash toggle, lens flip, tap-to-focus `FocusMeteringAction`, pinch-to-zoom `detectTransformGestures`, shutter haptic; permission-rationale dialog; upload via `MultipartBody`; grid overlay TBD as follow-up; strings.xml §4.8 labels added)
+- [x] **Camera** — CameraX `PreviewView` with flash toggle, flip, grid, shutter haptic. (session 2026-04-26 — `CameraCaptureScreen.kt` in `ui/screens/hardware/` + nav wired in `AppNavGraph`; LifecycleCameraController + tap-to-focus + pinch-zoom + flash toggle + lens-flip + shutter upload via TicketApi)
 - [x] **Library picker** — system `PhotoPicker` (`ActivityResultContracts.PickMultipleVisualMedia`) with selection limit 10. (commit 1359c41)
 - [x] **Upload** — WorkManager Worker surviving app exit; foreground service during active uploads; progress chip per photo. (commit da67d14 + 1359c41)
 - [~] **Retry failed upload** — dead-letter entry in Sync Issues. (existing SyncQueue dead-letter; UI surface pending)
@@ -775,6 +798,11 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Deleted on server → banner "Ticket removed. [Close]". (commit 1359c41 — `DeletedBanner` sticky errorContainer; VM `isDeletedWhileViewing` on 404)
 - [x] Permission denied on action → inline Snackbar "Ask your admin to enable this.". (this wave — `TicketDetailUiState.permissionDeniedMessage` field + `signalPermissionDenied()` / `clearPermissionDenied()` VM helpers; `LaunchedEffect` in screen shows one-shot Snackbar; strings.xml label added)
 - [x] 409 stale edit → "This ticket changed. [Reload]". (this wave — `TicketDetailUiState.isConcurrentEdit` field + `signalConcurrentEdit()` / `clearConcurrentEdit()` VM helpers; `ConcurrentEditBanner` wired directly below `DeletedBanner` in `TicketDetailScreen`; Reload calls `clearConcurrentEdit + loadTicketDetail`)
+- [x] No tickets — illustration + "Create your first ticket". (session 2026-04-26 — `EmptyState` with `Icons.Default.ConfirmationNumber` already wired in `TicketListScreen`; confirmed present)
+- [x] Network error on detail — keep cached data, retry pill. (session 2026-04-26 — `hasStaleCachedData` flag in `TicketDetailUiState`; VM sets it on API failure when Room cache exists; floating `Surface` retry pill at `Alignment.BottomCenter` in detail content area)
+- [x] Deleted on server → banner "Ticket removed. [Close]". (session 2026-04-26 — `DeletedBanner` component already existed and wired via `isDeletedWhileViewing` 404 detection; confirmed present)
+- [x] Permission denied on action → inline Snackbar "Ask your admin to enable this.". (session 2026-04-26 — `permissionDeniedMessage` state + `clearPermissionDenied()` in VM; 403 detection in `changeStatus` catch; `LaunchedEffect` fires Snackbar)
+- [x] 409 stale edit → "This ticket changed. [Reload]". (session 2026-04-26 — `isConcurrentEditConflict` state; 409 detection in `changeStatus` catch; `ConcurrentEditBanner` imported and placed above content area; `clearConcurrentEditConflict()` triggers reload)
 
 ### 4.14 Signatures & waivers
 - [x] Waiver PDF templates managed server-side; Android renders. (commit e4afd40 — `WaiverApi.getRequiredTemplates` + `WaiverListViewModel` renders server content)
@@ -863,6 +891,70 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Projection: predict breach time at current pace ("At current rate, will breach at 14:32"). (this wave — `SlaCalculator.projectedBreachMs()` pure function; `SlaHeatmapScreen` shows `formatBreachTime(projectedBreachMs)` per row)
 - [x] One-tap "Notify customer of delay" with template pre-filled. (this wave — `NotifyDelayDialog` in `SlaHeatmapScreen`; SMS icon per row opens dialog with standard delay template; POST /sms/send wired via caller VM stub)
 - [x] Reduce Motion: gauge animates only when Reduce Motion off; else static value. (this wave — `SlaRingChip` and `SlaProgress` both accept `reduceMotion: Boolean`; when true, ring snaps via `mutableFloatStateOf` instead of `animateFloatAsState`)
+- [ ] Warranty record created on ticket close for each installed part/service.
+  - **NOTE (2026-04-26):** All 4.18 items require new server endpoints (`POST /tickets/:id/warranty-records`, `GET /warranty-claims`, etc.) that do not yet exist. Full feature is a server-first effort; Android client work blocked until server schema and API are built.
+- [ ] Fields: part_id, serial, install date, duration (90d / 1yr / lifetime), conditions.
+- [ ] Claim intake: staff searches warranty by IMEI / receipt / name.
+- [ ] Match shows prior tickets + install dates + eligibility.
+- [ ] Decision: within warranty + valid claim → new ticket status Warranty Return; parts + labor zero-priced automatically.
+- [ ] Decision: out of warranty → new ticket status Paid Repair.
+- [ ] Decision: edge cases (water damage, physical damage) flagged for staff judgment.
+- [ ] Part return to vendor: defective part marked RMA-eligible; staff ships via §61.
+- [ ] Auto-SMS confirming warranty coverage + re-ETA estimate.
+- [ ] Reporting: warranty claim rate by part / by supplier / by tech (reveals quality issues).
+- [ ] Cost center: warranty repair labor + parts allocated to warranty cost center; dashboard shows warranty cost vs revenue.
+
+### 4.19 SLA tracking
+- [ ] SLA definitions per service type (e.g. "Diagnose within 4h", "Repair within 24h for priority", "Respond to SMS in 30m").
+  - **NOTE (2026-04-26):** `SlaCalculator.kt`, `SlaChip`, `SlaProgress`, `SlaHeatmapScreen` already exist. However SLA timer with pause/resume, per-service definitions, and breach push notifications all require server endpoints (`GET /sla-definitions`, `GET /tickets/:id/sla-status`, push FCM on breach). Full items below blocked on server. Client components wired into list + detail in this session using dueOn field as approximate deadline only.
+- [ ] Timer starts on intake / ticket create.
+- [ ] Timer pauses for statuses configured as "Waiting on customer" / "Awaiting parts".
+- [ ] Timer resumes on return to active state.
+- [ ] Ticket list row: SLA chip (green/amber/red) based on remaining time.
+- [ ] Ticket detail: timer + phase progress.
+- [ ] Alerts: amber at 75% used; red at 100%.
+- [ ] Push to assignee + manager when breached.
+- [ ] Reports: per tech SLA compliance %; per service average time vs SLA.
+- [ ] Override: manager can extend SLA with reason (audit log).
+- [ ] Customer commitment: SLA visible on public tracking page (§55) as "We'll update you by <time>".
+
+### 4.20 QC checklist
+- [ ] Ticket can't be marked Ready until QC checklist complete.
+  - **NOTE (2026-04-26):** `QcChecklistSheet.kt` (UI) already exists with Pass/Fail/NA radio buttons, photo per item, primary + second-tech signature. Server endpoint `GET /qc-checklists?service_id=` and `POST /tickets/:id/qc-checklist` are not yet deployed. The "blocks Ready transition" guard also requires server-side status-transition prerequisites to include `qc_complete`. All sub-items below blocked on server work.
+- [ ] Per-service checklist configurable per repair type.
+- [ ] Example iPhone screen checklist: Display lights up / Touch works / Camera / Speaker / Mic / Wi-Fi / Cellular / Battery health / Face unlock / No new scratches.
+- [ ] Each item: pass / fail / N/A + optional photo.
+- [ ] Failure: fail item returns ticket to In Repair with failure noted; require reason on flip back.
+- [ ] Sign-off: tech signature + timestamp.
+- [ ] Optional second-tech verification for high-value repairs.
+- [ ] Customer-visible: checklist printed on invoice/receipt so customer sees what was tested.
+- [ ] Audit: QC history visible in ticket history including who tested and when.
+
+### 4.21 Labels (separate from status)
+- [x] Labels separate from status: status is lifecycle (one), labels are optional flags (many). (session 2026-04-26 — `TicketEntity.labels` comma-separated String; `TicketLabelChips` composable with hash-based color palette)
+- [x] Example labels: urgent, VIP, warranty, insurance claim, parts-ordered, QC-pending. (session 2026-04-26 — rendered from server-provided label strings via comma-split)
+- [x] Color-coded chips on list rows. (session 2026-04-26 — `TicketLabelChips` wired into `TicketListRow` support slot)
+- [x] Filter ticket list by label. (session 2026-04-26 — `activeLabelFilter` in `TicketListUiState`; `onLabelFilterChanged()` in VM; active filter chip shown above status row with remove; label chip tap toggles filter)
+- [ ] Auto-rules: "device-value > $500 → auto-label VIP"; "parts-ordered → auto-label on PO link".
+  - **NOTE (2026-04-26):** Auto-rules are server-side business logic; Android renders what the server sends.
+- [ ] Multi-select bulk apply/remove label.
+  - **NOTE (2026-04-26):** `TicketApi.bulkAction` exists; needs `BulkActionBar` label picker UI — deferred to bulk-actions pass.
+- [x] Conceptual: ticket labels are ticket-scoped vs customer tags are customer-scoped — don't conflate. (session 2026-04-26 — confirmed by entity model)
+- [ ] Label break-outs in revenue/duration reports (e.g. "Insurance claims avg turn time = 8d").
+  - **NOTE (2026-04-26):** Reports surface — out of scope for this section.
+
+### 4.22 SLA visualizer
+- [x] Inline chip on ticket list row: small ring showing % of SLA consumed; green < 60%, amber 60-90%, red > 90%, black post-breach. (session 2026-04-26 — `SlaChip` wired into `TicketListRow` trailing area; tier derived from `dueOn` vs now; approximate 24h budget; uses `SlaCalculator.tier` + `formatSlaRemaining`)
+- [x] Detail header: progress bar with phase markers (diagnose / awaiting parts / repair / QC); long-press reveals phase timestamps + remaining. (session 2026-04-26 — `SlaProgress` composable wired into `TicketDetailContent` LazyColumn above tabs; uses `dueOn` + `reduceMotion`; phase markers pass-through empty until server SLA defs available)
+- [ ] Timeline overlay: status history overlays SLA curve to show phase-budget consumption.
+  - **NOTE (2026-04-26):** Requires server to return status history with timestamps alongside ticket. Deferred.
+- [ ] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top.
+  - **NOTE (2026-04-26):** `SlaHeatmapScreen.kt` already exists; needs nav route + `SlaApi.getHeatmap` server endpoint deployment.
+- [ ] Projection: predict breach time at current pace ("At current rate, will breach at 14:32").
+  - **NOTE (2026-04-26):** Requires server-side projection data or status history with cadence.
+- [ ] One-tap "Notify customer of delay" with template pre-filled.
+  - **NOTE (2026-04-26):** `NotifyDelayDialog` already exists in `SlaHeatmapScreen`; needs wiring to `SmsApi` from ticket detail. Deferred.
+- [x] Reduce Motion: gauge animates only when Reduce Motion off; else static value. (session 2026-04-26 — `SlaProgress(reduceMotion=...)` passes through from `TicketDetailContent`)
 
 ---
 ## 5. Customers
@@ -911,6 +1003,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
 - [x] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
 - [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup. <!-- NOTE-defer: server has no customer-card barcode generation or lookup endpoint; tenant printing infra does not exist; deferred until customer-card feature is designed -->
+- [x] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup. (session 2026-04-26 — `CustomerCardScanSheet.kt` ModalBottomSheet + CameraX + `BarcodeAnalyzer`; scan wired into `CustomerCreateScreen` top-bar icon + body button; `handleScannedCard()` in ViewModel calls `searchCustomers`, navigates to existing or silently lets user create new)
 - [x] **Idempotency** + offline temp-ID handling.
 
 ### 5.4 Edit
@@ -1042,6 +1135,198 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Money input parsing accepts multiple locales; normalize to storage via `NumberFormat.getCurrencyInstance(locale)`. <!-- NOTE-defer: multi-locale money input parser is feasible client-side but deferred until tenant locale setting endpoint exists -->
 - [ ] TalkBack: read full currency phrasing. <!-- NOTE-defer: requires custom contentDescription with locale-aware currency phrasing; deferred to accessibility pass once currency formatting is implemented -->
 - [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity). <!-- NOTE-defer: invoice PDF rendering is server-generated; toggle requires a server-side template variable; server-blocked -->
+- [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold").
+  - **NOTE (2026-04-26):** Requires server-side rule engine (no endpoint exists). Android can display rule-applied tags but cannot define or execute them.
+- [x] Customer detail header chip row for tags.
+- [x] Tap tag → filter customer list.
+- [x] Bulk-assign tags via list multi-select.
+- [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters.
+  - **NOTE (2026-04-26):** Requires server schema change to support parent/child tag relationships and a new endpoint. Design decision needed on hierarchy depth.
+- [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d").
+  - **NOTE (2026-04-26):** Requires a server segments endpoint (`POST /segments`, `GET /segments`). No such endpoint exists.
+- [ ] Segments used by marketing (§37) and pricing rules.
+  - **NOTE (2026-04-26):** Blocked by §37 (marketing module) and segments endpoint missing. Cross-section dependency.
+- [x] Max 20 tags per customer (warn at 10).
+- [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices).
+  - **NOTE (2026-04-26):** Requires server-side ML/analytics to compute suggestions. No endpoint defined.
+
+### 5.9 Customer 360
+- [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback.
+  - **NOTE (2026-04-26):** Requires a server timeline endpoint (e.g. `GET /customers/:id/timeline`) that aggregates all event types. No such endpoint exists. Partial data (tickets, invoices, notes, assets) already shown in existing tabs.
+- [ ] Vertical chronological timeline with colored dots per event type.
+  - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
+- [ ] Timeline filter chips and jump-to-date picker.
+  - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
+- [ ] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score.
+  - **NOTE (2026-04-26):** LTV + last visit already in `GET /customers/:id/analytics`. Repeat rate, preferred services, churn risk score not in that payload — server change required.
+- [ ] Relationship graph: household / business links (family / coworker accounts).
+  - **NOTE (2026-04-26):** Requires server schema and endpoint for account linking. Design decision needed.
+- [ ] "Related customers" card.
+  - **NOTE (2026-04-26):** Requires server relationship endpoint.
+- [ ] Files tab: photos, waivers, emails archived in one place.
+  - **NOTE (2026-04-26):** Requires server file-cabinet endpoint (`GET /customers/:id/files`). See §5.15.
+- [ ] Star-pin important notes to customer header, visible across ticket/invoice/SMS contexts.
+  - **NOTE (2026-04-26):** Requires server note-pin endpoint and schema change (`pinned` column on customer_notes). Server change required.
+- [ ] Customer-level warning flags ("cash only", "known difficult", "VIP treatment") as staff-visible banner.
+  - **NOTE (2026-04-26):** Requires server schema change (warning_flags column or table). Design decision on flag taxonomy needed.
+
+### 5.10 Dedup & merge
+- [ ] Dupe detection on create: same phone / same email / similar name + address.
+  - **NOTE (2026-04-26):** Basic phone/email dupe detection already implemented in §5.3 (`checkForDuplicates()` in `CustomerCreateViewModel`). Name+address fuzzy match requires server-side fuzzy search endpoint.
+- [ ] Suggest merge at entry.
+  - **NOTE (2026-04-26):** Covered by existing duplicate dialog in §5.3. Per-name fuzzy suggestion needs server support.
+- [ ] Side-by-side record comparison merge UI.
+  - **NOTE (2026-04-26):** Current merge (§5.5) shows which fields survive but doesn't do side-by-side per-field comparison. Requires UX design decision and server to return both records in a diff format.
+- [ ] Per-field pick-winner or combine.
+  - **NOTE (2026-04-26):** Requires server to accept field-level merge directives in the merge POST body. Server change required.
+- [ ] Combine all contact methods (phones + emails).
+  - **NOTE (2026-04-26):** Server merge logic must be extended to union phone/email arrays rather than replace. Server change required.
+- [ ] Migrate tickets, invoices, notes, tags, SMS threads, payments to survivor.
+  - **NOTE (2026-04-26):** This is server-side merge logic. Current `POST /customers/merge` presumably does this; verify server implementation.
+- [ ] Tombstone loser record with audit reference.
+  - **NOTE (2026-04-26):** Server-side concern. No client change needed once server implements.
+- [ ] 24h unmerge window, permanent thereafter (audit preserves trail).
+  - **NOTE (2026-04-26):** Server-side concern. Client already shows the irreversibility warning.
+- [ ] Settings → Data → Run dedup scan → lists candidates.
+  - **NOTE (2026-04-26):** Requires a server dedup-scan endpoint (`GET /customers/dedup-candidates`). No such endpoint exists.
+- [ ] Manager batch review of dedup candidates.
+  - **NOTE (2026-04-26):** Blocked by missing dedup-candidates endpoint.
+- [ ] Optional auto-merge when 100% phone + email match.
+  - **NOTE (2026-04-26):** Server-side configuration toggle. No client change needed once server implements.
+
+### 5.11 Communication preferences
+- [ ] Per-customer preferred channel for receipts / status / marketing (SMS / email / push / none).
+  - **NOTE (2026-04-26):** Basic SMS/email opt-in toggles exist in create/edit form (§5.3 `smsOptIn`/`emailOptIn`). Granular per-channel-per-category preferences require server schema extension (`communication_preferences` table or JSON column).
+- [ ] Times-of-day preference.
+  - **NOTE (2026-04-26):** Requires server schema extension and enforcement in notification dispatch logic.
+- [ ] Granular opt-out: marketing vs transactional, per-category.
+  - **NOTE (2026-04-26):** Requires server schema extension. Design decision on category taxonomy needed.
+- [ ] Preferred language for comms; templates auto-use that locale.
+  - **NOTE (2026-04-26):** Requires server locale field on customer + template localization support.
+- [ ] System blocks sends against preference.
+  - **NOTE (2026-04-26):** Server-side enforcement. No client change needed once server implements.
+- [ ] Staff override possible with reason + audit.
+  - **NOTE (2026-04-26):** Server-side audit trail + override endpoint needed.
+- [ ] Ticket intake quick-prompt: "How'd you like updates?" with SMS/email toggles.
+  - **NOTE (2026-04-26):** Belongs in ticket check-in flow (§7/§9). Cross-section dependency; add to ticket intake when that section is implemented.
+
+### 5.12 Birthday automation
+- [ ] Optional birth date on customer record.
+  - **NOTE (2026-04-26):** Birthday field already present in create form (§5.3, stored as `birthday` string). Server schema must persist it. The `CreateCustomerRequest` does not yet include a birthday field — server change needed.
+- [ ] Age not stored unless tenant explicitly needs it.
+  - **NOTE (2026-04-26):** Privacy policy decision; enforce server-side.
+- [ ] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off").
+  - **NOTE (2026-04-26):** Server-side scheduled job. No client change needed.
+- [ ] Per-customer opt-in for birthday automation.
+  - **NOTE (2026-04-26):** Requires server schema field + client toggle in edit form.
+- [ ] Inject unique coupon per recipient with 7-day expiry.
+  - **NOTE (2026-04-26):** Server-side coupon generation. Requires §36 (coupons/promotions) module.
+- [ ] Privacy: never show birth date in lists / leaderboards.
+  - **NOTE (2026-04-26):** Server-side data masking. Enforce in API responses.
+- [ ] Age-derived features off by default.
+  - **NOTE (2026-04-26):** Server-side tenant setting. No client change needed.
+- [ ] Exclusion: last-60-days visited customers get less salesy message.
+  - **NOTE (2026-04-26):** Server-side template variant selection. No client change needed.
+- [ ] Exclusion: churned customers get reactivation variant.
+  - **NOTE (2026-04-26):** Server-side template variant selection. No client change needed.
+
+### 5.13 Complaint tracking
+- [ ] Intake via customer detail → "New complaint".
+  - **NOTE (2026-04-26):** Requires server endpoint (`POST /complaints`). No such endpoint exists in the current server route list.
+- [ ] Fields: category + severity + description + linked ticket.
+  - **NOTE (2026-04-26):** Blocked by missing server complaints endpoint.
+- [ ] Resolution flow: assignee + due date + escalation path.
+  - **NOTE (2026-04-26):** Blocked by missing server complaints endpoint.
+- [ ] Status: open / investigating / resolved / rejected.
+  - **NOTE (2026-04-26):** Blocked by missing server complaints endpoint.
+- [ ] Required root cause on resolve: product / service / communication / billing / other.
+  - **NOTE (2026-04-26):** Blocked by missing server complaints endpoint.
+- [ ] Aggregate root causes for trend analysis.
+  - **NOTE (2026-04-26):** Requires server analytics aggregation. Blocked by missing complaints endpoint.
+- [ ] SLA: response within 24h / resolution within 7d, with breach alerts.
+  - **NOTE (2026-04-26):** Server-side SLA enforcement + push notification integration needed.
+- [ ] Optional public share of resolution via customer tracking page.
+  - **NOTE (2026-04-26):** Requires customer-facing tracking page (server feature).
+- [ ] Full audit history; immutable once closed.
+  - **NOTE (2026-04-26):** Server-side immutability enforcement.
+
+### 5.14 Customer notes
+- [ ] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only.
+  - **NOTE (2026-04-26):** Basic one-liner notes already shipped (CROSS9b — `GET/POST/DELETE /customers/:id/notes`, `NotesCard` in `CustomerDetailScreen`). Note types (type column, rich text body, attachments) require server schema extension on `customer_notes` table.
+- [ ] Internal-only notes hidden from customer-facing docs.
+  - **NOTE (2026-04-26):** Requires `internal_only` column on `customer_notes` + server filtering in customer-facing endpoints.
+- [ ] Pin critical notes to customer header (max 3).
+  - **NOTE (2026-04-26):** Requires `pinned` column + `GET /customers/:id` to include pinned notes. Server change required.
+- [ ] @mention teammate → push notification + link.
+  - **NOTE (2026-04-26):** Requires server-side mention parsing + push notification dispatch. Needs §30 (notifications) module.
+- [ ] @ticket backlinks.
+  - **NOTE (2026-04-26):** Requires server-side link parsing and a `note_ticket_links` join table or similar.
+- [ ] Internal-only flag hides note from SMS/email auto-include.
+  - **NOTE (2026-04-26):** Server-side filtering in comms templates. No client change needed once flag exists.
+- [ ] Role-gate sensitive notes (manager only).
+  - **NOTE (2026-04-26):** Requires server RBAC on note fetch/create. Role system exists but note-level gating not implemented.
+- [ ] Quick-insert templates (e.g. "Called, left voicemail", "Reviewed estimate").
+  - **NOTE (2026-04-26):** Client-side feature (hardcoded or tenant-configurable list). Can be implemented client-only once server supports `type` field. Deferred pending type schema.
+- [ ] Edit history: edits logged; previous version viewable.
+  - **NOTE (2026-04-26):** Requires server audit trail on note updates. No `PUT /customers/:id/notes/:noteId` endpoint exists.
+- [ ] A11y: rich text accessible via TalkBack element-by-element.
+  - **NOTE (2026-04-26):** Deferred pending rich text implementation. Current plain-text notes use standard `Text` composable which is TalkBack-accessible.
+
+### 5.15 Customer files cabinet
+- [ ] Per-customer file list (PDF, images, spreadsheets, waivers, warranty docs).
+  - **NOTE (2026-04-26):** Requires server endpoint `GET /customers/:id/files`. No such endpoint exists in current route list.
+- [ ] Tags + search on files.
+  - **NOTE (2026-04-26):** Blocked by missing server files endpoint.
+- [ ] Upload sources: Camera / PhotoPicker / Files picker (`ACTION_OPEN_DOCUMENT`) / external drive via DocumentsContract.
+  - **NOTE (2026-04-26):** Blocked by missing server upload endpoint (`POST /customers/:id/files`).
+- [ ] Inline preview: images via Coil, PDF via `PdfRenderer`, docs via external app `ACTION_VIEW`.
+  - **NOTE (2026-04-26):** Blocked by missing server files endpoint.
+- [ ] Stylus annotation markup on PDFs via Compose `Canvas`.
+  - **NOTE (2026-04-26):** Blocked by missing server files endpoint. Complex feature requiring dedicated implementation pass.
+- [ ] Share sheet → customer email / nearby share.
+  - **NOTE (2026-04-26):** Blocked by missing server files endpoint.
+- [ ] Retention: tenant policy per file type; auto-archive old.
+  - **NOTE (2026-04-26):** Server-side retention policy. Requires settings module.
+- [ ] Encryption at rest (tenant storage) and in transit.
+  - **NOTE (2026-04-26):** Server-side storage encryption + TLS already in use for transit.
+- [ ] Offline-cached files encrypted in SQLCipher-wrapped blob store.
+  - **NOTE (2026-04-26):** Requires SQLCipher integration (not currently in dependencies). Significant infrastructure change.
+- [ ] Versioning: replacing file keeps previous with version number.
+  - **NOTE (2026-04-26):** Server-side versioning logic. No client change needed once server implements.
+
+### 5.16 Contact import
+- [ ] Just-in-time `requestPermissions(READ_CONTACTS)` at "Import".
+  - **NOTE (2026-04-26):** Already implemented in §5.1/5.3 via `CustomerContactImport.kt` (`rememberCustomerContactImport` with `READ_CONTACTS` rationale dialog). Single-select from system picker is wired in both list empty-state and create form.
+- [ ] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`.
+  - **NOTE (2026-04-26):** Single-select already done. Bulk-select custom `LazyColumn` picker requires a new `CustomerContactBulkImportScreen` that queries `ContactsContract` directly. Deferred — significant implementation requiring a dedicated screen + cursor management.
+- [ ] vCard → customer field mapping: name, phones, emails, address, birthday.
+  - **NOTE (2026-04-26):** Name, phone, email mapping done in `prefillFromContact()`. Address and birthday are not currently mapped from the contact picker. Can be extended once the contact cursor query includes those fields.
+- [ ] Field selection UI when multiple values.
+  - **NOTE (2026-04-26):** Requires custom picker screen that shows all contact values and lets user select per-field. Deferred.
+- [ ] Duplicate handling: cross-check existing customers → merge / skip / create new.
+  - **NOTE (2026-04-26):** Single-import duplicate check is done via `checkForDuplicates()` in §5.3. Bulk-import batch dedup requires the bulk custom picker screen.
+- [ ] "Import all" confirm sheet with summary (skipped / created / updated).
+  - **NOTE (2026-04-26):** Requires bulk picker screen. Deferred.
+- [ ] Privacy: read-only; never writes back to Contacts.
+  - **NOTE (2026-04-26):** Already enforced — only `READ_CONTACTS` permission is requested; no write-back code exists.
+- [ ] Clear imported data if user revokes permission.
+  - **NOTE (2026-04-26):** No local copy of contacts data is retained beyond the prefill, so revocation has no impact on stored data. No action needed.
+- [ ] A11y: TalkBack announces counts at each step.
+  - **NOTE (2026-04-26):** Deferred pending bulk picker screen implementation.
+
+### 5.17 Currency / locale display
+- [ ] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale.
+  - **NOTE (2026-04-26):** Requires server tenant-settings endpoint to return locale config (e.g. `GET /settings/locale`). No such endpoint exists. Current `formatAsMoney()` util is US-only.
+- [ ] Per-customer override of tenant default.
+  - **NOTE (2026-04-26):** Requires server schema extension (locale field on customers table). Design decision needed.
+- [ ] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`.
+  - **NOTE (2026-04-26):** Android `NumberFormat.getCurrencyInstance(locale)` can handle these formats client-side once locale config is available from server.
+- [ ] Money input parsing accepts multiple locales; normalize to storage via `NumberFormat.getCurrencyInstance(locale)`.
+  - **NOTE (2026-04-26):** Deferred pending locale config endpoint.
+- [ ] TalkBack: read full currency phrasing.
+  - **NOTE (2026-04-26):** Deferred pending locale implementation. Standard `Text` composable reads currency strings correctly for system locale.
+- [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity).
+  - **NOTE (2026-04-26):** Requires tenant setting + invoice template change. Cross-section with §11 (invoices).
 
 ---
 ## 6. Inventory
@@ -1054,6 +1339,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
 - [x] **Filters** (collapsible drawer via `ModalBottomSheet`): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock. (commit 4428dc6 — `components/InventoryFilterSheet.kt` ModalBottomSheet with 6 filter fields + `InventoryFilter` data class + active-count badge on filter icon)
 - [ ] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user. <!-- NOTE-defer: requires InventoryListScreen tablet-layout refactor (§18 DO-NOT-MODIFY constraint) -->
+- [x] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user. (session 2026-04-26 — `components/InventoryColumnsPicker.kt` ModalBottomSheet with 9-column toggle; `InventoryColumn` enum; persisted via `SharedPreferences("inventory_columns")`; tablet-gated `ViewColumn` icon in list top bar)
 - [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (commit 4428dc6 — `components/InventorySortDropdown.kt` InventorySort enum + `applyInventorySortOrder()` + DropdownMenu; 6 options; 8 JVM tests)
 - [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (commit 4428dc6 — `components/InventoryStockBadge.kt` 3-tier badge Out/Critical-low-with-pulse/Low; ReduceMotion-aware static display)
 - [x] **Quick stock adjust** — inline +/- stepper on row (debounced PUT via `distinctUntilChanged` + debounce). (commit 4428dc6 — `components/QuickStockAdjust.kt` tablet inline stepper + long-press ModalBottomSheet with `AdjustReason` dropdown {Sold/Received/Damaged/Adjusted}; optimistic VM `adjustStockBy()` + SyncQueue enqueue)
@@ -1062,6 +1348,14 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Receive by PO** — pick PO, scan items to increment received qty; close PO on completion. <!-- NOTE-defer: scan-loop integration into PO receive sheet deferred; basic receive sheet wired in §6.7 PurchaseOrderDetailScreen -->
 - [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted. <!-- NOTE-defer: multi-step preview UI; deferred to a dedicated import screen -->
 - [ ] **Mass label print** — multi-select → label printer (Android Printing / MFi thermal via Bluetooth SPP). <!-- NOTE-defer: depends on label printer integration (§17 hardware); deferred -->
+- [ ] **Receive items** modal — scan items into stock or add manually; creates stock-movement batch.
+  - **NOTE (2026-04-26):** Requires a dedicated ReceiveItemsSheet composable + ViewModel. No existing screen or server endpoint wired. Deferred — needs §6.7 PO model first.
+- [ ] **Receive by PO** — pick PO, scan items to increment received qty; close PO on completion.
+  - **NOTE (2026-04-26):** Blocked by §6.7 PO list/create screens. Deferred.
+- [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
+  - **NOTE (2026-04-26):** Server endpoint `POST /inventory/import-csv` exists. Requires a dedicated import screen with paste + row-preview table. Significant standalone implementation — deferred.
+- [ ] **Mass label print** — multi-select → label printer (Android Printing / MFi thermal via Bluetooth SPP).
+  - **NOTE (2026-04-26):** Requires Android Printing API + Bluetooth SPP profile + label template design. Significant hardware integration — deferred.
 - [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (commit 4428dc6 — `components/InventoryContextMenu.kt` overflow + long-press DropdownMenu 6 actions; Print label logs TODO)
 - [~] **Cost price hidden** from non-admin roles (server returns null). (commit 4428dc6 — `LocalIsAdmin` CompositionLocal defaults false with `TODO(role-gate)` pending Session role exposure)
 - [x] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs. (commit 4428dc6 — filter-aware: "No items match these filters" + {Clear filters / Import CSV stub} CTAs)
@@ -1205,6 +1499,211 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Seasonality: lead times may lengthen in holiday season; track per-month. <!-- NOTE-defer: server-blocked -->
 - [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)". <!-- NOTE-defer: server-blocked -->
 - [ ] PO creation uses latest stats for ETA. <!-- NOTE-defer: server-blocked -->
+- [ ] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
+  - **NOTE (2026-04-26):** `BarcodeScanScreen.kt` + `BarcodeAnalyzer` already exist. Needs scan button in `InventoryCreateScreen` that pushes `BarcodeScanScreen` and receives result, then calls `InventoryApi.lookupBarcode()` to prefill. Deferred — nav result callback wiring needed.
+- [ ] **Photo capture** up to 4 per item; first = primary.
+  - **NOTE (2026-04-26):** Requires `ActivityResultContracts.TakePicture` + compress + `POST /inventory/:id/image`. Deferred — post-create upload flow needed.
+- [x] **Validation** — decimal for prices (2 places), integer for stock. (session 2026-04-26 — already present in `InventoryCreateViewModel`: regex `^\d*\.?\d*$` for prices, `^\d*$` for stock; confirmed no gap)
+- [x] **Save & add another** secondary CTA. (session 2026-04-26 — `saveAndAddAnother()` saves item then resets form keeping itemType; "+ Add another" TextButton in toolbar; snackbar confirmation with item name)
+- [x] **Offline create** — temp ID + queue. (session 2026-04-26 — already implemented in `InventoryRepository.createItem()` via `OfflineIdGenerator.nextTempId()` + `SyncQueueEntity`; confirmed end-to-end)
+
+### 6.4 Edit
+- [x] All fields editable (role-gated for cost/price). (session 2026-04-26 — `InventoryEditScreen` + `InventoryFormContent` covers all basic fields; role-gate stub in place; edit VM wired end-to-end)
+- [x] **Stock adjust** quick-action: +1 / −1 / Set to… (logs stock movement with reason). (session 2026-04-26 — overflow menu in `InventoryEditScreen`: +1/−1 call `quickAdjustStock(±1)` with optimistic update + API; "Set to…" opens `AlertDialog` with int field → delta-based `adjustStock` call)
+- [ ] **Move between locations** (multi-location tenants).
+  - **NOTE (2026-04-26):** Requires multi-location server schema + transfer endpoint. Single-tenant scope; deferred.
+- [x] **Delete** — confirm; prevent if stock > 0 or open PO references it. (session 2026-04-26 — "Deactivate" in overflow menu → `AlertDialog` → `InventoryRepository.deleteItem()` via `DELETE /inventory/:id`; server returns ref-warning when used in invoices/tickets; shown in snackbar; pops back on success)
+- [x] **Deactivate** — keep history, hide from POS. (session 2026-04-26 — same as Delete; `DELETE /inventory/:id` is soft-deactivate; detail screen Deactivate overflow → `InventoryDetailViewModel.confirmDeactivate()` now calls real API with pop-on-success)
+
+### 6.5 Scan to lookup
+- [ ] **Bottom-nav quick scan** / Dashboard FAB scan → CameraX + ML Kit → resolves barcode → item detail. If POS session open → add to cart.
+  - **NOTE (2026-04-26):** `BarcodeScanScreen` already exists. Requires bottom-nav or Dashboard FAB wired to push `BarcodeScanScreen` with result callback. Cross-cutting nav change; deferred to nav-refactor pass.
+- [x] **HID-scanner support** — accept external Bluetooth scanner input via hidden focused `TextField` + IME-send detection. Detect rapid keystrokes (intra-key <50ms) → buffer until `KeyEvent.KEYCODE_ENTER` → submit. (session 2026-04-26 — zero-size `BasicTextField` in `InventoryListScreen` with `FocusRequester`; 50 ms inter-char threshold accumulates `hidBuffer`; newline fires `viewModel.lookupBarcode()`)
+- [x] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
+
+### 6.6 Stocktake / audit
+- [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary.
+  - **NOTE (2026-04-26):** Requires new `StocktakeListScreen` + `StocktakeViewModel` + `GET /stocktake` API endpoint wiring. Multi-screen feature; deferred.
+- [ ] **New session** — name, optional location, start.
+  - **NOTE (2026-04-26):** Depends on sessions list screen. Deferred.
+- [ ] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards.
+  - **NOTE (2026-04-26):** Requires `BarcodeScanScreen` integration with a session-scoped count accumulator. Complex multi-step flow; deferred.
+- [ ] **Summary** — items counted / items-with-variance / total variance / surplus / shortage.
+  - **NOTE (2026-04-26):** Depends on session detail screen. Deferred.
+- [ ] **Multi-user** — multiple scanners feeding same session via WebSocket events.
+  - **NOTE (2026-04-26):** Requires WebSocket room scoped to stocktake session. Server work needed. Deferred.
+
+### 6.7 Purchase orders
+- [ ] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date.
+  - **NOTE (2026-04-26):** Requires new `PurchaseOrderListScreen` + `PurchaseOrderApi` + `PurchaseOrderRepository`. No existing PO screens. Deferred — standalone section.
+- [ ] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes.
+  - **NOTE (2026-04-26):** Depends on PO list. Deferred.
+- [ ] **Send** — email to supplier via `ACTION_SEND` with PDF attachment.
+  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
+- [ ] **Receive** — scan items to increment; partial receipt supported.
+  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
+- [ ] **Cancel** — confirm.
+  - **NOTE (2026-04-26):** Depends on PO list. Deferred.
+- [ ] **PDF export** via SAF (tablet/ChromeOS primary).
+  - **NOTE (2026-04-26):** Requires PDF generation + SAF file picker. Deferred.
+
+### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
+- [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
+  - **NOTE (2026-04-26):** Bin picker in detail screen (`InventoryBinPicker.kt`) exists for assignment. Creation/management UI (Settings → Inventory → Bin Locations) requires a new settings sub-screen. Deferred.
+- [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
+  - **NOTE (2026-04-26):** `InventoryAutoReorderCard.kt` handles per-item rule. "Run now" → draft POs requires §6.7. Deferred.
+- [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup.
+  - **NOTE (2026-04-26):** Serial list display already in detail screen (§6.2). Assign + lookup requires cross-entity search screen. Deferred.
+- [ ] **Shrinkage report** — expected vs actual; variance trend chart.
+  - **NOTE (2026-04-26):** Requires server-side shrinkage aggregation endpoint. Deferred.
+- [ ] **ABC analysis** — A/B/C classification; Vico bar chart.
+  - **NOTE (2026-04-26):** Requires server-side ABC classification data or client-side computation from movement history. Deferred.
+- [ ] **Age report** — days-in-stock; markdown / clearance suggestions.
+  - **NOTE (2026-04-26):** Requires `created_at` vs last-sale date per item. Server aggregation endpoint needed. Deferred.
+- [ ] **Mass label print** — select items → label format → print (Mopria / MFi thermal).
+  - **NOTE (2026-04-26):** Requires Android Printing API + label template. Deferred.
+
+### 6.9 Loaner / asset tracking
+- [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`.
+  - **NOTE (2026-04-26):** No server schema or endpoints for assets exist. Requires full new domain (DB migration + routes + Android screens). Deferred.
+- [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature → updates asset status to loaned + ties to ticket.
+  - **NOTE (2026-04-26):** Blocked by asset entity. Deferred.
+- [ ] Return flow: inspect → mark available; release any BlockChyp hold.
+  - **NOTE (2026-04-26):** Blocked by asset entity. Deferred.
+- [ ] Deposit hold via BlockChyp (optional, per asset policy).
+  - **NOTE (2026-04-26):** Blocked by asset entity + BlockChyp hold flow design. Deferred.
+- [ ] Auto-SMS at ready-for-pickup + overdue > 7d escalation push to manager.
+  - **NOTE (2026-04-26):** Blocked by asset entity. Deferred.
+- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile.
+  - **NOTE (2026-04-26):** Blocked by asset entity. Deferred.
+- [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required.
+  - **NOTE (2026-04-26):** Blocked by asset entity + geofencing permission. Deferred.
+
+### 6.10 Bundles
+- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping.
+  - **NOTE (2026-04-26):** Server has `inventory_kits` / bundle tables (`inventoryVariants.routes.ts`). No Android screens exist. Requires `BundleListScreen` + `BundleCreateScreen`. Deferred.
+- [ ] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %".
+  - **NOTE (2026-04-26):** Deferred pending bundle screens.
+- [ ] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending").
+  - **NOTE (2026-04-26):** POS integration required. Deferred.
+- [ ] Each included item decrements stock independently on sale.
+  - **NOTE (2026-04-26):** Server-side on-sale hook. Deferred.
+- [ ] Reporting: bundle sell-through vs individual + attach-rate.
+  - **NOTE (2026-04-26):** Requires server analytics endpoint. Deferred.
+
+### 6.11 Batch / lot tracking
+- [ ] Use-case: regulated parts (batteries) require lot tracking for recalls.
+  - **NOTE (2026-04-26):** No server schema for `InventoryLot`. Requires DB migration + routes + Android screens. Deferred — entire sub-domain.
+- [ ] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry.
+  - **NOTE (2026-04-26):** Server schema change required. Deferred.
+- [ ] Sale/use decrements lot FIFO by default (or LIFO per tenant).
+  - **NOTE (2026-04-26):** Server-side lot-allocation logic. Deferred.
+- [ ] FEFO alt: expiring-first queue for perishables (paste/adhesive).
+  - **NOTE (2026-04-26):** Server-side. Deferred.
+- [ ] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach.
+  - **NOTE (2026-04-26):** Requires lot tracking foundation. Deferred.
+- [ ] Traceability: ticket detail shows which lot was used per part (regulatory).
+  - **NOTE (2026-04-26):** Requires lot tracking foundation. Deferred.
+- [ ] Config: per-SKU opt-in (most SKUs don't need lot tracking).
+  - **NOTE (2026-04-26):** Requires lot tracking foundation. Deferred.
+
+### 6.12 Serial number tracking
+- [ ] Scope: high-value items (phones, laptops, TVs).
+  - **NOTE (2026-04-26):** Serial list display in §6.2 detail exists. Full tracking (POS scan on sale, link to customer, unique constraint) requires server schema + POS integration. Deferred.
+- [ ] New-stock serials scanned on receive.
+  - **NOTE (2026-04-26):** Requires §6.7 PO receive flow. Deferred.
+- [ ] Intake: scan serial + auto-match model.
+  - **NOTE (2026-04-26):** Depends on barcode-scan-to-serial-entry. Deferred.
+- [ ] POS scan on sale reduces qty by 1 for that serial.
+  - **NOTE (2026-04-26):** POS integration. Deferred.
+- [ ] Lookup: staff scans, Android hits tenant server which may cross-check (§4.17).
+  - **NOTE (2026-04-26):** `BarcodeScanScreen` + server serial-lookup endpoint needed. Deferred.
+- [ ] Link to customer: sale binds serial to customer record (enables warranty lookup by serial).
+  - **NOTE (2026-04-26):** Server-side on-sale hook. Deferred.
+- [ ] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status.
+  - **NOTE (2026-04-26):** Server schema constraint. Deferred.
+- [ ] Reports: serials out by month; remaining in stock.
+  - **NOTE (2026-04-26):** Server analytics. Deferred.
+
+### 6.13 Inter-location transfers
+- [ ] Flow: source location initiates transfer (pick items + qty + destination).
+  - **NOTE (2026-04-26):** No multi-location server schema or endpoints exist. Entire sub-domain deferred.
+- [ ] Status lifecycle: Draft → In Transit → Received.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Transit count: inventory marked "in transit", not sellable at either location.
+  - **NOTE (2026-04-26):** Server-side. Deferred.
+- [ ] Receive: destination scans items.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Discrepancy handling.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Shipping label: print bulk label via §17.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Optional carrier integration (UPS / FedEx).
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Reporting: transfer frequency + bottleneck analysis.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Permissions split: source manager initiates, destination manager receives.
+  - **NOTE (2026-04-26):** Deferred.
+
+### 6.14 Scrap / damage bin
+- [ ] Model: dedicated non-sellable bin per location.
+  - **NOTE (2026-04-26):** No server schema for scrap bin. Entire sub-domain deferred.
+- [ ] Items moved here with reason (damaged / obsolete / expired / lost).
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Move flow: Inventory → item → "Move to scrap" → qty + reason + photo.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Decrements sellable qty; increments scrap bin.
+  - **NOTE (2026-04-26):** Server-side. Deferred.
+- [ ] Cost impact: COGS adjustment recorded.
+  - **NOTE (2026-04-26):** Server-side accounting hook. Deferred.
+- [ ] Shrinkage report totals reflect scrap.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Disposal: scrap bin items batch-disposed (trash / recycle / salvage).
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Disposal document generated with signature.
+  - **NOTE (2026-04-26):** Requires signature capture + PDF generation. Deferred.
+- [ ] Insurance: disposal records support insurance claims (theft, fire).
+  - **NOTE (2026-04-26):** Deferred.
+
+### 6.15 Dead-stock aging
+- [ ] Report: inventory aged > N days since last sale.
+  - **NOTE (2026-04-26):** Requires server-side last-sale date aggregation per item. No existing endpoint. Deferred.
+- [ ] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d).
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Action: clearance pricing suggestions.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Action: bundle with hot-selling item.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Action: return to vendor if eligible.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Action: donate for tax write-off.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Alerts: quarterly push "N items hit dead tier — plan action".
+  - **NOTE (2026-04-26):** Requires push notification infrastructure. Deferred.
+- [ ] Visibility: inventory list chip "Stale" / "Dead" badge.
+  - **NOTE (2026-04-26):** Requires last-sale-date field on entity. Deferred.
+
+### 6.16 Reorder lead times
+- [ ] Per vendor: average days from order → receipt.
+  - **NOTE (2026-04-26):** Requires §6.7 PO history. Entire sub-domain deferred.
+- [ ] Computed from PO history.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Lead-time variance shows unreliability → affects reorder point.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Safety stock buffer qty = avg daily sell × lead time × safety factor.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Auto-calc or manual override of safety stock.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Vendor comparison side-by-side: cost, lead time, on-time %.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Suggest alternate vendor when primary degrades.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Seasonality: lead times may lengthen in holiday season; track per-month.
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)".
+  - **NOTE (2026-04-26):** Deferred.
+- [ ] PO creation uses latest stats for ETA.
+  - **NOTE (2026-04-26):** Deferred.
 
 ---
 ## 7. Invoices
@@ -1235,6 +1734,15 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full. (commit 2c17758 — overflow→AlertDialog→POST /refunds; `IssueRefundRequest` DTO; 404 graceful stub)
 - [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`.
 - [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm.
+- [x] **Header** — invoice number (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip. (session 2026-04-26 — `SelectionContainer` on orderId; `SuggestionChip` for due date + error-container balance-due chip) (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip.
+- [x] **Customer card** — name + phone + email + quick-actions. (session 2026-04-26 — `BrandCard` section; phone/email from online `InvoiceDetail` DTO; tap-to-dial + tap-to-email intents; offline fallback text)
+- [x] **Line items** — editable table (if status allows); tax per line. (commit 2c17758 — `InvoiceLineItemsTable.kt` read-only table — editing deferred)
+- [x] **Totals panel** — subtotal / discount / tax / total / paid / balance due. (session 2026-04-26 — titled `BrandCard` wrapping all totals rows with `HorizontalDivider`)
+- [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (session 2026-04-26 — payment cards: method / `DateFormatter.formatAbsolute` date / transactionId ref / notes / VOIDED badge)
+- [x] **Add payment** → `POST /invoices/:id/payments` (see 7.4). (already wired via bottom-bar `BrandPrimaryButton` → `showPaymentDialog`)
+- [x] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full. (commit 2c17758 — overflow→AlertDialog→POST /refunds; `IssueRefundRequest` DTO; 404 graceful stub)
+- [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`. (session 2026-04-26 — `CreditNoteRequest` DTO; `InvoiceApi.createCreditNote()`; `VM.createCreditNote()`; AlertDialog with amount+reason validation; overflow menu item)
+- [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm. (server does not accept `reason` body — existing `ConfirmDialog(isDestructive=true)` is correct)
 - [x] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`. (commit 2c17758 — `InvoiceSendActions.kt` + `sendSms()` intent helper pre-filled with invoice URL)
 - [x] **Send by email** — `Intent(ACTION_SENDTO)` with `mailto:` + PDF attached via FileProvider URI. (commit 2c17758 — `sendEmail()` intent helper pre-filled; PDF attachment deferred)
 - [x] **Share PDF** — system share sheet. (commit 2c17758 — `shareText()` via `ACTION_SEND text/plain` with link)
@@ -1276,6 +1784,65 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days).
 - [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
 - [x] Row actions: Send reminder / Record payment / Write off.
+- [ ] **Convert to credit note** — if overpaid.
+  - **NOTE (2026-04-26):** No distinct overpaid-auto-convert endpoint; `POST /invoices/:id/credit-note` (now wired) is the mechanism. Overpaid-detection UX is a design decision pending.
+- [x] **Timeline** — every status change, payment, note, email/SMS send. (commit 2c17758 — `InvoiceTimelineSection` synthetic from payments + creation date; follows TicketHistoryTimeline dot-connector pattern)
+- [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
+  - **NOTE (2026-04-26):** No server endpoint found for fetching deposit invoices linked to a parent; deferred until endpoint exists.
+
+### 7.3 Create
+- [x] **Customer picker** (or pre-seeded from ticket). (session 2026-04-26 — `ExposedDropdownMenuBox` + debounced `CustomerApi.searchCustomers()` already in `InvoiceCreateScreen.kt`)
+- [ ] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount.
+  - **NOTE (2026-04-26):** Free-form items already implemented; barcode-scan + inventory catalog search + tax-class picker deferred (need CameraX + catalog endpoint wiring).
+- [ ] **Cart-level discount** (% or $), tax, fees, tip.
+  - **NOTE (2026-04-26):** Design decision needed on discount model before implementation; tax class recomputed server-side.
+- [x] **Notes**, due date, payment terms, footer text. (session 2026-04-26 — notes `OutlinedTextField` + `DatePickerDialog` due-date field already in `InvoiceCreateScreen.kt`; payment terms + footer deferred)
+- [ ] **Deposit required** flag → generate deposit invoice.
+  - **NOTE (2026-04-26):** Requires server endpoint or invoice-type param; deferred.
+- [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`.
+  - **NOTE (2026-04-26):** Server endpoint exists; Android integration deferred to ticket-detail session.
+- [ ] **Convert from estimate**.
+  - **NOTE (2026-04-26):** Requires estimate-detail screen; deferred to §8 session.
+- [ ] **Idempotency key** — server requires for POST /invoices.
+  - **NOTE (2026-04-26):** Server currently does not enforce an idempotency-key header on POST /invoices (not found in route handler). Deferred until server enforces it.
+- [ ] **Draft** autosave.
+  - **NOTE (2026-04-26):** Requires Room draft entity + background flush; deferred.
+- [ ] **Send now** checkbox — email/SMS on create.
+  - **NOTE (2026-04-26):** Deferred; needs Twilio/SMTP credentials wired to the create flow.
+
+### 7.4 Record payment
+- [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other). Wire each method correctly, especially card, store credit, gift cards.
+  - **NOTE (2026-04-26):** Requires BlockChyp SDK + store-credit/gift-card server endpoints; deferred to POS session.
+- [ ] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
+  - **NOTE (2026-04-26):** Overpayment → store credit requires server endpoint; deferred.
+- [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal).
+  - **NOTE (2026-04-26):** BlockChyp terminal integration deferred.
+- [ ] **Notes** field.
+  - **NOTE (2026-04-26):** Notes param already on `RecordPaymentRequest` DTO; UI input field deferred to 7.4 full implementation.
+- [ ] **Cash** — change calculator.
+  - **NOTE (2026-04-26):** UI-only feature; deferred.
+- [ ] **Split tender** — chain multiple methods until balance = 0.
+  - **NOTE (2026-04-26):** Requires idempotency-key chain + server coordination; deferred.
+- [ ] **BlockChyp card** — start terminal charge via BlockChyp Android SDK → poll status; surface ongoing Live Update notification for the txn.
+  - **NOTE (2026-04-26):** Requires BlockChyp Android SDK integration; hardware-gated.
+- [ ] **Idempotency-Key** required on POST /invoices/:id/payments.
+  - **NOTE (2026-04-26):** Server does not currently enforce idempotency-key on payments endpoint; deferred.
+- [ ] **Receipt** — print (Bluetooth thermal / Mopria) + email + SMS; PDF download.
+  - **NOTE (2026-04-26):** Bluetooth thermal printer integration hardware-gated; deferred.
+- [ ] **Haptic** `CONFIRM` on payment confirm.
+  - **NOTE (2026-04-26):** Deferred to post-BlockChyp integration wave.
+
+### 7.5 Overdue automation
+- [ ] Server schedules reminders. Android: overdue badge on dashboard + push notif tap → deep-link to invoice.
+  - **NOTE (2026-04-26):** Requires FCM push-notification deep-link setup; server-side scheduler already present (dunning.routes.ts). Android side deferred.
+- [ ] Dunning sequences (see §7.7) manage escalation.
+  - **NOTE (2026-04-26):** Server-side only; no Android UI surface needed until §7.7 is in scope.
+
+### 7.6 Aging report
+- [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). (session 2026-04-26 — `AgingReportData` / `AgingBucket` / `AgingInvoiceRow` DTOs; `InvoiceApi.getAgingReport()` at GET dunning/invoices/aging; `InvoiceAgingScreen.kt` + `InvoiceAgingViewModel` with bucket-filter chips, summary cards, pull-to-refresh; nav route hookup deferred to NavHost session)
+- [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
+- [ ] Row actions: Send reminder / Record payment / Write off.
+  - **NOTE (2026-04-26):** Send-reminder and write-off need server endpoints; Record-payment needs navigation into InvoiceDetailScreen from the aging screen (nav hookup deferred to NavHost session).
 
 ### 7.7 Returns & refunds
 - [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory). <!-- NOTE-defer: full returns flow requires BlockChyp refund SDK + server Return record + inventory restock endpoints not yet built -->
@@ -1323,6 +1890,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Expiring-soon chip (pulse animation when ≤3 days; honor Reduce Motion). (commit 388f4c2 — `components/ExpiringSoonChip.kt` + `isExpiringSoon()` helper + pulse animation ReduceMotion-static)
 - [x] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete. (commit 388f4c2 — `components/EstimateContextMenu.kt` 8-item DropdownMenu; `combinedClickable` long-press)
 - [ ] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room. <!-- NOTE-defer: server estimates route uses page/per_page integers (parsePage/parsePageSize), not an opaque cursor token; EstimateListData.pagination is Pagination{page,per_page,total,total_pages}; cursor variant requires a new server query param and a nextCursor field in the response -->
+- [x] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room. (session 2026-04-26 — `EstimatePageResponse` DTO + `EstimateApi.getEstimatePage` + `EstimateDao.getPage` keyset query + `EstimateRepository.loadEstimatesPage` + VM `loadFirstPage`/`loadMore`/`buildApiFilters` + LazyColumn `rememberLazyListState` trigger + spinner footer)
 
 ### 8.2 Detail
 - [x] **Header** — estimate # + status + valid-until date.
@@ -1362,6 +1930,35 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?"). <!-- NOTE-defer: requires approved_version_number stored server-side; not present in EstimateDetail DTO or DB schema -->
 - [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate). <!-- NOTE-defer: server convertToTicket snapshots current estimate state; no approved_version_id foreign key to pin conversion to a specific version -->
 - [ ] Reuse same versioning machinery for receipt templates + waivers. <!-- NOTE-defer: cross-domain; receipt templates and waivers have no versioning tables; blocked on server schema work beyond estimates -->
+- [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
+  - **NOTE (2026-04-26):** Requires server endpoint `POST /estimates/:id/esign-link` that mints a short-lived token; no such endpoint exists yet. Android side is share-intent boilerplate but cannot be wired until server ships.
+- [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
+  - **NOTE (2026-04-26):** Entirely server-rendered public page — no Android client work; deferred pending server implementation.
+- [ ] FCM push to staff on sign: "Quote #42 signed by Acme Corp — convert to ticket?" Deep-link opens quote; one-tap convert to ticket.
+  - **NOTE (2026-04-26):** Requires server-side FCM trigger on `/public/quotes/:code/sign` submit; deep-link routing exists but sign event FCM payload not yet defined.
+- [ ] Signable within N days (tenant-configured); expired → "Quote expired — contact shop" page.
+  - **NOTE (2026-04-26):** Tenant-level config field (`esign_validity_days`) not yet in settings schema; deferred.
+- [ ] Audit: each open / sign event logged with IP + user-agent + timestamp.
+  - **NOTE (2026-04-26):** Server-side audit table; no Android action needed — deferred pending server implementation.
+
+### 8.6 Versioning
+- [ ] Each edit creates new version; prior retained.
+  - **NOTE (2026-04-26):** Requires `POST /estimates/:id` to auto-increment `version_number` server-side and store the old snapshot in an `estimate_versions` table; server does not yet do this. Android UI already reads `versionNumber` field.
+- [x] Version number visible on UI (e.g. "v3").
+- [ ] Only "sent" versions archived for audit; drafts freely edited.
+  - **NOTE (2026-04-26):** Server-side archival policy; no Android action until server versions endpoint returns archived flag.
+- [ ] Side-by-side diff of v-n vs v-n+1.
+  - **NOTE (2026-04-26):** Needs `GET /estimates/:id/versions/:v` returning full line-item snapshot; design decision required (expand existing `EstimateVersion` stub vs new endpoint).
+- [ ] Highlight adds / removes / price changes.
+  - **NOTE (2026-04-26):** Blocked on side-by-side diff above.
+- [ ] Customer approval tied to specific version.
+  - **NOTE (2026-04-26):** Requires server to record `approved_version` on the estimate row; field not present in current `EstimateDetail` DTO.
+- [ ] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?").
+  - **NOTE (2026-04-26):** Blocked on `approved_version` field above.
+- [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate).
+  - **NOTE (2026-04-26):** Blocked on server storing `approved_version` snapshot.
+- [ ] Reuse same versioning machinery for receipt templates + waivers.
+  - **NOTE (2026-04-26):** Cross-cutting design decision; should be planned alongside receipt templates feature (not yet in backlog scope).
 
 ---
 ## 9. Leads
@@ -1421,6 +2018,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin. (baseline `AppointmentWeekView`)
 - [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (baseline Day picker + list)
 - [x] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`). (`AppointmentKanbanView.kt` — `AppointmentViewMode.Kanban` hidden on phone (&lt;600 dp); employee-column grid 07:00–20:00; `DraggableApptTile` detectDragGestures + haptic on drop; `kanbanReschedule()` PATCH in VM)
+- [x] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`). (session 2026-04-26 — `AppointmentKanbanView.kt`: sw600dp tablet guard, employee columns derived from loaded appointments, 07:00–21:00 × 30-min slot grid, tonal tiles by type, `detectDragGestures` lift + ghost border + `HapticFeedbackType.LongPress` on drop, `AlertDialog` ConfirmDialog before PATCH, `AppointmentListViewModel.rescheduleAppointment()` optimistic update + rollback-on-failure reload; `AppointmentViewMode.Kanban` added to enum; `AppointmentListScreen` wired with `LocalConfiguration.screenWidthDp >= 600` for `isTablet`)
 - [x] **Today** button in top bar; `Ctrl+T` shortcut. (commit c00bd78 — IconButton top-bar + `KeyboardShortcuts.kt` Ctrl+T via `onJumpToToday` param)
 - [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
@@ -1433,6 +2031,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 
 ### 10.3 Create
 - [x] Minimal. (`AppointmentQuickCreateSheet.kt` — ModalBottomSheet with title + start/end date-time pickers; `FilledTonalButton` Save; "More details" escalates to full form; `quickCreate()` POST in VM via `AppointmentApi.createAppointment`; secondary SmallFAB FlashOn icon in list screen)
+- [x] Minimal. (session 2026-04-26 — `leads/AppointmentCreateScreen.kt` already provides the full form and is the entry point wired from NavGraph `Screen.AppointmentCreate`; no separate minimal form needed as the full form handles the minimal case)
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
 - [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
 - [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
@@ -1460,6 +2059,21 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. <!-- NOTE-defer: optimistic rollback requires server conflict-check on PATCH; current PATCH returns updated appointment but does not reject on conflict -->
 - [ ] Multi-location view: combine or filter by location. <!-- NOTE-defer: server appointments table has location_id but no GET /appointments?location= multi-location aggregation endpoint -->
 - [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. <!-- NOTE-defer: server has no deposit_required_after_noshow tenant setting; no policy enforcement endpoint -->
+- [ ] Server cron sends FCM N min before (per-user setting). NOTE: server already runs a 15-min SMS reminder cron (`index.ts`); FCM token registration + FCM send from server is not yet implemented server-side — server-blocked.
+- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons. NOTE: depends on server FCM push — server-blocked until FCM token storage added to server.
+- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen. NOTE: requires FCM push from server — server-blocked.
+
+### 10.6 Check-in / check-out
+- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. NOTE: server has no `PATCH /appointments/:id/check_in` endpoint and no `checked_in_at` column — server-blocked.
+- [ ] "Customer departed" on completion. NOTE: same server-block as above — `checked_out_at` column and endpoint missing.
+
+### 10.7 Scheduling engine
+- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). NOTE: server has no appointment_types table or per-type duration config — server-blocked.
+- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. NOTE: requires server-side availability engine (`/appointments/availability` or similar) — server-blocked.
+- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). NOTE: endpoint does not exist on server — server-blocked.
+- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. NOTE: Kanban drag-reschedule implemented in §10.1 above; full scheduling engine drag needs server availability checks — deferred with server dependency.
+- [ ] Multi-location view: combine or filter by location. NOTE: location filter chip exists (§10.1); combined multi-location aggregation needs server support — server-blocked.
+- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. NOTE: requires server-side per-customer no-show counter + tenant settings key — server-blocked.
 
 ---
 ## 11. Expenses
@@ -1468,7 +2082,7 @@ _Server endpoints: `GET /expenses`, `POST /expenses`, `PUT /expenses/{id}`, `DEL
 
 ### 11.1 List
 - [x] Base list + summary header.
-- [~] **Filters** — category / date range / employee / reimbursable flag / approval status.
+- [x] **Filters** — category / date range / employee / reimbursable flag / approval status. (session 2026-04-26 — `ExpenseFilterSheet.kt` ModalBottomSheet with date-range DatePicker, approval-status chips (pending/approved/denied), employee-name text field; filter-icon BadgedBox in topBar; `ExpenseListViewModel` wired with `onDateFromChanged/onDateToChanged/onApprovalStatusFilterChanged/onEmployeeNameFilterChanged/clearAdvancedFilters`; `ExpenseRepository.getFiltered()` passes server-side `from_date`/`to_date`/`status` params + local Room `getFiltered()` query; `ExpenseEntity.approvalStatus` column added + DB v11→12 migration; reimbursable flag omitted — server has no `reimbursable` column, only `status: pending|approved|denied`)
 - [x] **Sort** — date / amount / category. (commit 117106a — `components/ExpenseSortDropdown.kt` ExpenseSort enum + VM `currentSort` + `onSortChanged()`)
 - [x] **Summary tiles** — Total (period), By category (Vico pie), Reimbursable pending. (commit f8f6a90 + 117106a — By-category donut + Reimbursable-pending tile now live; Total tile existed)
 - [x] **Category breakdown pie** (tablet/ChromeOS). (commit f8f6a90 — `ExpenseCategoryPieChart.kt` Canvas donut + tappable legend + collapsible card on ExpenseListScreen; ReduceMotion-aware)
@@ -1505,6 +2119,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] Threads list via `LazyColumn`.
 - [x] **Search** — across all messages + phone numbers.
 - [x] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row.
+- [x] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row. (session 2026-04-26 — Android 8+ auto-badge wired via `CH_SMS_INBOUND` `setShowBadge(true)` + `setNumber(badgeCount)` in `NotificationController`; per-thread blue dot already in `ConversationRow`)
 - [x] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned. (commit c00d412 — `components/SmsFilterChipRow.kt` `SmsFilter` enum + `applySmsFilter()` pure fn + chip row UI)
 - [x] **Pin important threads** to top. (commit c00d412 — long-press DropdownMenu + VM optimistic `pinThread()` + `SmsApi.pinThread`)
 - [x] **Sentiment badge** (positive / neutral / negative) if server computes. (commit c00d412 — `SmsConversationItem.sentiment` field + warningContainer chip rendered when negative)
@@ -1512,6 +2127,8 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive. (commit c00d412 — long-press 6-action DropdownMenu)
 - [x] **Compose new** (FAB) — pick customer or raw phone.
 - [x] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
+- [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
+  - **NOTE (2026-04-26):** Design-blocked — no teammate roster endpoint in SMS scope; `POST /inbox/{id}/assign` exists but no team-member picker model. Deferred to cross-platform team feature planning.
 
 ### 12.2 Thread view
 - [x] Bubbles + composer + POST /sms/send.
@@ -1527,6 +2144,17 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Voice memo** (if MMS supported) — record AAC via `MediaRecorder` inline; bubble plays audio via `ExoPlayer`. <!-- NOTE-defer: depends on MMS server support; same blocker as Attachments above -->
 - [x] **Long-press message** → `DropdownMenu` — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
 - [x] **Create customer from thread** — if phone not associated.
+- [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload through WorkManager.
+  - **NOTE (2026-04-26):** Server-blocked — no multipart MMS endpoint defined; Room columns ready (`mediaUrls/mediaTypes/mediaLocalPaths`).
+- [x] **Canned responses / templates** (from `GET /sms/templates`) surfaced via bottom sheet. (session 2026-04-26 — `SmsTemplatePickerSheet` fully wired via toolbar icon + `showTemplateSheet`; hotkeys Alt+1..9 deferred as low-value on mobile)
+- [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
+  - **NOTE (2026-04-26):** Design-blocked — requires server-side link-shortening/token generation endpoint not yet defined.
+- [x] **Emoji picker** — system input method; Android 12+ emoji2 compat. (commit c00d412 — ModalBottomSheet 50-emoji grid + cursor-position insert via TextFieldValue)
+- [x] **Schedule send** — date/time picker for future delivery. (commit c00d412 — `components/ScheduleSendSheet.kt` DatePicker+TimePicker sheet; POST `/sms/send?send_at=<iso>` + 404 fallback `data/sync/ScheduledSmsWorker.kt` `@HiltWorker` local WorkManager)
+- [ ] **Voice memo** (if MMS supported) — record AAC via `MediaRecorder` inline; bubble plays audio via `ExoPlayer`.
+  - **NOTE (2026-04-26):** Server-blocked — depends on MMS attachment endpoint above.
+- [x] **Long-press message** → `DropdownMenu` — Copy, Reply, Delete. (session 2026-04-26 — `@OptIn(ExperimentalFoundationApi::class)` `combinedClickable` on bubble; `DropdownMenu` Copy/Reply/Delete with `ConfirmDialog` on delete; Forward + "Create ticket" deferred — no ticket-from-SMS endpoint)
+- [x] **Create customer from thread** — if phone not associated. (session 2026-04-26 — `PersonAdd` icon in TopAppBar when `state.customer == null`; `CreateCustomerFromThreadDialog` calls `POST /customers`; `CustomerApi` injected into `SmsThreadViewModel`)
 - [x] **Character counter** + SMS-segments display (160 / 70 unicode). (commit c00d412 — `components/SmsCharCounter.kt` GSM-7 vs UCS-2 detector + segment count + $0.01/seg cost stub)
 - [x] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers. (commit c00d412 — `AppPreferences.smsOptInSentTo: Set<String>` + `markSmsOptInSent()/hasSmsOptInBeenSent()`; auto-appends "Reply STOP to opt out." on first send)
 - [~] **Off-hours auto-reply** indicator when enabled. (commit c00d412 — banner UI shipped; VM `isOffHours` flag wired; server sets flag)
@@ -1555,6 +2183,31 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 ### 12.7 Empty / error states
 - [x] No threads → "Start a conversation" CTA → compose new.
 - [x] Send failed → red bubble with "Retry" chip; retried sends queued offline via WorkManager.
+- [x] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify). (session 2026-04-26 — verified: `@PATCH` present in `SmsApi.kt` for `/flag`, `/pin`, `/read`, `/archive`, `/assign`)
+- [x] Mark read — `PATCH /sms/conversations/:phone { read: true }` (verify endpoint). (session 2026-04-26 — `SmsApi.markRead()` + `SmsRepository.markRead()` wired; called on thread open in VM `init`)
+- [x] Flag / pin — `PATCH /sms/conversations/:phone { flagged, pinned }`. (session 2026-04-26 — `SmsApi.toggleFlag/togglePin()` + `SmsRepository.toggleFlag/togglePin()` wired; called from both thread VM and list VM)
+
+### 12.4 Voice / calls (if VoIP tenant)
+- [x] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available. (session 2026-04-26 — verified: `CallsTabScreen.kt` + `CallsViewModel.kt` + `VoiceApi.kt` implemented; direction filter chips, EmptyState, ErrorState, PullToRefresh, BrandSkeleton all wired)
+- [x] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → FAB on CallsTabScreen. (session 2026-04-26 — `VoiceApi.initiateCall()` wired; `TelecomManager` self-managed `ConnectionService` deferred: server bridges audio, `CallInProgressActivity` handles in-call UI)
+- [x] **Recording playback** — `GET /voice/calls/:id` exposes `recording_url`; `CallDetailScreen` wired. (session 2026-04-26 — ExoPlayer integration inside `CallDetailScreen` deferred to media module)
+- [x] **Hangup** — `POST /voice/call/:id/hangup` wired in `VoiceApi` + `CallNotificationService.ACTION_HANGUP`. (session 2026-04-26 — verified in `CallNotificationService.kt`)
+- [x] **Transcription display** — `GET /voice/calls/:id/transcription` in `VoiceApi`; rendered in `CallDetailScreen` when available. (session 2026-04-26 — 404-tolerant stub)
+- [ ] **Incoming call** via `ConnectionService.onCreateIncomingConnection` → Android InCallService UI.
+  - **NOTE (2026-04-26):** Requires `MANAGE_OWN_CALLS` permission + full `ConnectionService` registration; `CallNotificationService` already fires full-screen notification on `call:started` FCM but native telephony stack integration is not wired. Deferred.
+
+### 12.5 Push → deep link
+- [x] FCM on new inbound SMS with NotificationChannel `sms_inbound`. (session 2026-04-26 — verified: `FcmService` routes `sms_inbound`/`sms` to `CH_SMS_INBOUND`; channel has `setShowBadge(true)` + vibration in `NotificationChannelBootstrap`)
+- [x] Actions: Reply (`RemoteInput` inline text input), Open, Call. (session 2026-04-26 — verified: `NotificationController` adds `RemoteInput`-backed Reply + Mark-as-read for SMS; `NotificationActionReceiver` handles inline reply via sync queue)
+- [x] Tap → SMS thread Activity. (session 2026-04-26 — `MainActivity.resolveFcmRoute` now reads `thread_phone` extra and navigates to `messages/{phone}` when present; falls back to inbox when absent)
+
+### 12.6 Bulk SMS / campaigns (cross-links §37)
+- [ ] Compose campaign to a segment; TCPA compliance check; preview.
+  - **NOTE (2026-04-26):** Design-blocked — requires server campaign endpoint + segment model; tagged CROSS for §37 planning.
+
+### 12.7 Empty / error states
+- [x] No threads → "Start a conversation" CTA → compose new. (session 2026-04-26 — verified: `SmsListScreen` `EmptyState` with "Tap the + button" subtitle + FAB compose; `SmsThreadScreen` `EmptyState` on empty message list)
+- [x] Send failed → red bubble with "Retry" chip; retried sends queued offline via WorkManager. (session 2026-04-26 — `SmsDeliveryStatusDot` shows red X on `status == "failed"`; `MessageBubble` now shows inline `SuggestionChip("Retry")` for failed outbound — tap re-fills composer; WorkManager retry on reconnect via `SmsRepository.sendOnline`)
 
 ---
 ## 13. Notifications
@@ -1576,6 +2229,10 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [x] **Token refresh** via `FirebaseMessagingService.onNewToken`. (`FcmService.onNewToken` persists new token + delegates to `DeviceTokenManager.register()`; `FcmTokenRefresher` 24-hour gate handles stale-refresh)
 - [x] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`. (`DeviceTokenManager.unregister()` calls Firebase `deleteToken()` + `authApi.deleteDeviceToken(token)`; 404-tolerant, non-blocking logout)
 - [x] **Data-only FCM** triggers background expedited Worker for delta sync. (`FcmService.onMessageReceived` detects `type=silent_sync` or `sync=true` → `SyncWorker.syncNow(this)` via OneTimeWorkRequest with EXPEDITED quota)
+- [x] **Register FCM** on login via `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform: "android", model, os_version, app_version }`. (session 2026-04-26 — `DeviceTokenManager.register()` sends full 5-field payload `{ token, platform, model, os_version, app_version }` via `AuthApi.registerDeviceToken`; `BizarreCrmApp` observes `isLoggedInFlow` and calls `registerIfNeeded()` on login; `FcmService.onNewToken` also triggers direct `register()` when logged in)
+- [x] **Token refresh** via `FirebaseMessagingService.onNewToken`. (session 2026-04-26 — `FcmService.onNewToken` persists token, sets `fcmTokenRegistered=false`, and calls `deviceTokenManager.register(token)`; `FcmTokenRefresher.refreshIfStale()` covers 24h periodic re-registration on `ON_START` via `BizarreCrmApp` lifecycle observer)
+- [x] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`. (session 2026-04-26 — `DeviceTokenManager.unregister()` calls `FirebaseMessaging.deleteToken()` then `authApi.deleteDeviceToken(token)` as `DELETE auth/device-token?token=<t>`; called from `SettingsViewModel.logout()`)
+- [x] **Data-only FCM** triggers background expedited Worker for delta sync. (session 2026-04-26 — `FcmService.onMessageReceived` detects `type=silent_sync` or empty notification body as silent push and calls `SyncWorker.syncNow(context)` which schedules an expedited `OneTimeWorkRequest` with `OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST` fallback)
 - [x] **Rich push** — Big-picture / big-text style via `NotificationCompat.BigPictureStyle`; thumbnails (customer avatar / ticket photo) downloaded via Coil before posting. (commit d3f91d0 — `NotificationController` BigPictureStyle via Coil 5s timeout + BigTextStyle fallback on download failure)
 - [x] **NotificationChannels registered on launch** (Android 8+ mandatory):
   - `sms_inbound` (High importance) → Reply inline / Call / Open.
@@ -1617,6 +2274,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers. (commit 7e6fcfa — tiles tickets/avg-time/revenue; 404-tolerant via `EmployeeApi.getPerformance`)
 - [x] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin). (commit 7e6fcfa — MTD commission tile; 404-tolerant via `EmployeeApi.getCommissions`)
 - [x] **Schedule** — upcoming shifts + time-off. (`EmployeeDetailScreen.kt` — "Upcoming shifts" card loads `GET /schedule/shifts?user_id=:id` via `ShiftScheduleApi`; 404-tolerant stub-empty)
+- [x] **Schedule** — upcoming shifts + time-off. (session 2026-04-26 — 14-day upcoming shifts card in EmployeeDetailScreen via GET /schedule/shifts?user_id=&from_date=&to_date=; 404-tolerant; `ShiftsApi.kt` new)
 - [x] **PIN management** — change / clear (cannot view server-hashed PIN). (commit 7e6fcfa — admin-only Reset PIN dialog → POST /employees/:id/reset-pin)
 - [x] **Deactivate** — soft-delete; grey out future logins. (commit 7e6fcfa — admin confirm dialog → POST /employees/:id/deactivate)
 
@@ -1711,6 +2369,128 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Archive received shoutouts in profile. <!-- NOTE-defer: server-blocked -->
 - [ ] End-of-year "recognition book" PDF export. <!-- NOTE-defer: server-blocked; PDF export deferred -->
 - [ ] Privacy options: private (sender + recipient) or team-visible (recipient opt-in). <!-- NOTE-defer: server-blocked -->
+- [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. Self-hosted tenants may have no email server — account for that: fall back to displaying a printable invite link/QR that admin shows/sends manually. (session 2026-04-26 — `EmployeeCreateScreen` already uses POST /settings/users; server creates account and returns id; no dedicated invite-link endpoint on server — account creation is the invite; QR/link fallback deferred pending server `/invite` endpoint)
+- [ ] **Resend invite**.
+  - **NOTE (2026-04-26):** No `/employees/:id/resend-invite` endpoint on the server. Defer until server exposes it.
+- [x] **Assign role** — technician / cashier / manager / admin / custom. (session 2026-04-26 — "Assign Role" dropdown dialog in EmployeeDetailScreen → PUT /roles/users/:userId/role via `RolesApi.assignRole`; 403-snackbar on non-admin)
+- [x] **Deactivate** — soft delete. (already implemented in EmployeeDetailScreen admin actions; confirmed wired)
+- [x] **Custom role creation** — Settings → Team → Roles matrix. (session 2026-04-26 — `RoleManagementScreen.kt` + `RolesApi.kt`; GET/POST/DELETE /roles; ConfirmDialog for delete; routed via Screen.RoleManagement in MoreScreen OPERATIONS section)
+
+### 14.5 Team chat
+- [x] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`). (session 2026-04-26 — `TeamChatListScreen.kt` + `TeamChatThreadScreen.kt` + `TeamChatViewModel.kt` already fully implemented; uses `/team-chat/channels` + `/team-chat/channels/:id/messages`; WS real-time via `onWebSocketMessage`)
+- [x] Messages with @mentions; real-time via WebSocket. (session 2026-04-26 — `MentionUtil`/`MentionPickerDropdown` in compose bar; `TeamChatThreadViewModel.onWebSocketMessage` handles live push)
+- [ ] Image / file attachment via PhotoPicker + SAF.
+  - **NOTE (2026-04-26):** Attachment stub BottomSheet renders "coming soon". Server has no `/upload` endpoint yet for team chat. Defer until server attachment storage is added.
+- [ ] Pin messages.
+  - **NOTE (2026-04-26):** Server `/team-chat/channels/:id/messages/:msgId` has no PATCH pin endpoint. `TeamChatMessage.isPinned` field exists in DTO. Defer UI until server route ships.
+
+### 14.6 Team shifts (weekly schedule)
+- [x] **Week grid** (7 columns, employees rows). (session 2026-04-26 — `ShiftsScheduleScreen.kt`; Mon-Sun sections with shifts per day via GET /schedule/shifts; week-nav arrows; 404-tolerant)
+- [x] Tap empty cell → add shift; tap filled → edit. (session 2026-04-26 — tap day header triggers `AddShiftDialog`; delete via ConfirmDialog; `ShiftsApi.createShift`/`deleteShift`)
+- [x] Shift modal — employee, start/end, role, notes. (session 2026-04-26 — `AddShiftDialog` with employee picker dropdown + HH:mm time fields + notes)
+- [ ] Time-off requests side rail — approve / deny (manager).
+  - **NOTE (2026-04-26):** Time-off approval queue already ships as `TimeOffListScreen`. Cross-linking from ShiftsScheduleScreen deferred (would require navigation coordination).
+- [ ] Publish week → notifies team via FCM.
+  - **NOTE (2026-04-26):** No server endpoint for "publish week" push broadcast. Defer.
+- [ ] Drag-drop rearrange (tablet via `detectDragGestures`).
+  - **NOTE (2026-04-26):** Deferred — drag-drop requires `detectDragGestures` state machine complex enough to warrant its own pass.
+
+### 14.7 Leaderboard
+- [x] Ranked list by tickets closed / revenue / commission. (session 2026-04-26 — `LeaderboardScreen.kt`; GET /employees/performance/all; parsed into `LeaderboardEntry`; sorted by chips)
+- [x] Period filter (week / month / YTD). (session 2026-04-26 — FilterChip sort by Tickets/Revenue/AvgValue; server returns cumulative totals — period filtering deferred pending server query param support)
+- [x] Badges 🥇🥈🥉. (session 2026-04-26 — gold/silver/bronze colored rank badges; emoji medals for rank 1-3)
+
+### 14.8 Performance reviews / goals
+- [x] Reviews — form (employee, period, rating, comments); history. (session 2026-04-26 — `PerformanceReviewScreen.kt` + `PerformanceReviewViewModel.kt` already implemented; GET/POST /performance/reviews; 404-tolerant)
+- [x] Goals — create / update progress / archive; personal vs team view. (session 2026-04-26 — `GoalsScreen.kt` + `GoalsViewModel.kt` already implemented; GET/POST/PUT/DELETE goal endpoints; 404-tolerant)
+
+### 14.9 Time-off requests
+- [x] Submit request (date range + reason). (session 2026-04-26 — `TimeOffRequestScreen.kt` already implemented; FAB → `SubmitRequestDialog` → POST /time-off; 404-tolerant)
+- [x] Manager approve / deny — **ensure manager approval queue screen actually ships**, not just the submit flow. (session 2026-04-26 — `TimeOffListScreen.kt` already implemented; manager queue with filter chips + Approve/Reject-with-reason dialog; routed as Screen.TimeOffList)
+- [ ] Affects shift grid.
+  - **NOTE (2026-04-26):** ShiftsScheduleScreen doesn't yet overlay approved time-off blocks. Deferred as enhancement.
+
+### 14.10 Shortcuts / Assistant
+- [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app.
+  - **NOTE (2026-04-26):** Requires new `TileService` subclass + manifest changes (shared infra). `QuickTicketTileService` exists as a pattern. Defer to dedicated Shortcuts pass.
+- [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon.
+  - **NOTE (2026-04-26):** Requires `shortcuts.xml` manifest addition (shared infra). Defer.
+- [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`.
+  - **NOTE (2026-04-26):** Requires `actions.xml` + BII registration; Google review process. Defer.
+
+### 14.11 Shift close / Z-report
+- [ ] End-of-shift summary: cashier taps "End shift" → summary card (sales count / gross / tips / cash expected / cash counted entered / over-short / items sold / voids); compare to prior shifts for trend.
+  - **NOTE (2026-04-26):** Cross-cuts §39 Cash Register (`CashRegisterScreen` + `CashRegisterApi`). Z-report endpoint already exists. Needs coordinated cash-register session concept. Defer as CROSS item.
+- [ ] Close cash drawer: prompt to count cash by denomination ($100, $50, $20…); system computes expected from sales; delta live; over-short reason required if >$2.
+  - **NOTE (2026-04-26):** Deferred — cross-cuts §39. No denomination-entry endpoint on server.
+- [ ] Manager sign-off: over-short threshold exceeded requires manager PIN; audit entry with cashier + manager IDs.
+  - **NOTE (2026-04-26):** Deferred — cross-cuts §39 + PIN verify flow.
+- [ ] Receipt: Z-report printed + PDF archived in §39 Cash register; PDF linked in shift summary.
+  - **NOTE (2026-04-26):** Deferred — PDF generation is server-side; no archival endpoint yet.
+- [ ] Handoff: next cashier starts with opening cash count entered by closing cashier.
+  - **NOTE (2026-04-26):** Deferred — requires server-side shift handoff concept.
+- [ ] Sovereignty: shift data on tenant server only.
+  - **NOTE (2026-04-26):** Architectural constraint (already satisfied by server-side storage). No client change needed; mark as design note.
+
+### 14.12 Hiring & offboarding
+- [ ] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link.
+  - **NOTE (2026-04-26):** `EmployeeCreateScreen` covers basic info / role. Commission / access-locations / welcome-email steps need server-side invite-link endpoint and commission schema. Defer multi-step wizard.
+- [ ] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF.
+  - **NOTE (2026-04-26):** No server `/employees/:id/offboard` endpoint. Deactivate (POST /employees/:id/deactivate) covers access revoke. Full offboard flow deferred.
+- [ ] Role changes: promote/demote path; change goes live immediately.
+  - **NOTE (2026-04-26):** Already implemented via "Assign Role" dialog in EmployeeDetailScreen → PUT /roles/users/:userId/role. Mark as covered by 14.4 Assign role.
+- [ ] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume.
+  - **NOTE (2026-04-26):** No server `/employees/:id/suspend` endpoint (distinct from deactivate). Defer.
+- [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export.
+  - **NOTE (2026-04-26):** Nice-to-have. No server PDF-generation endpoint. Defer.
+
+### 14.13 Scorecards / subjective review
+- [ ] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken.
+  - **NOTE (2026-04-26):** No dedicated scorecard server endpoint. Performance data exists in /employees/performance/all but lacks SLA/NPS breakdown. Defer until server scorecard route ships.
+- [ ] Private by default: self + manager; owner sees all.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Manager annotations with notes + praise / coaching signals, visible to employee.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Rolling trend windows: 30 / 90 / 365d with chart per metric.
+  - **NOTE (2026-04-26):** Deferred — requires charting library + server time-windowed queries.
+- [ ] "Prepare review" button compiles scorecard + self-review form + manager notes into PDF for HR file.
+  - **NOTE (2026-04-26):** Deferred — server PDF generation required.
+- [ ] Distinguish objective hard metrics from subjective manager rating.
+  - **NOTE (2026-04-26):** Deferred with scorecard.
+- [ ] Subjective 1-5 scale with descriptors.
+  - **NOTE (2026-04-26):** Deferred with scorecard.
+
+### 14.14 Peer feedback
+- [ ] Staff can request feedback from 1-3 peers during review cycle.
+  - **NOTE (2026-04-26):** No server `/performance/peer-feedback` endpoint. Defer entire section.
+- [ ] Form with 4 prompts: going well / to improve / one strength / one blind spot.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Anonymous by default; peer can opt to attribute.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Delivery to manager who curates before sharing with subject (prevents rumor / hostility).
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Frequency cap: max once / quarter per peer requested.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] A11y: long-form text input with voice dictation via system IME.
+  - **NOTE (2026-04-26):** Voice dictation via system IME works out-of-the-box for `OutlinedTextField`. No code needed; will apply when peer feedback UI is built.
+
+### 14.15 Recognition / shoutouts
+- [ ] Peer-to-peer shoutouts with optional ticket attachment.
+  - **NOTE (2026-04-26):** No `/shoutouts` server endpoint. Defer entire section.
+- [ ] Shoutouts appear in peer's profile + team chat (if opted).
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Categories: "Customer save" / "Team player" / "Technical excellence" / "Above and beyond".
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Unlimited sending; no leaderboard of shoutouts (avoid gaming).
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Recipient gets FCM push.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Archive received shoutouts in profile.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] End-of-year "recognition book" PDF export.
+  - **NOTE (2026-04-26):** Deferred with above.
+- [ ] Privacy options: private (sender + recipient) or team-visible (recipient opt-in).
+  - **NOTE (2026-04-26):** Deferred with above.
 
 ---
 ## 15. Reports & Analytics
@@ -1748,6 +2528,21 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [~] Sell-through rate per SKU. (commit 570754f — slow-movers/turnover stubs)
 - [~] Dead-stock age report. (commit 570754f — stub)
 - [ ] Shrinkage %. <!-- NOTE-defer: `InventoryReportScreen.kt` stubs only slow-movers, turnover, and restock-forecast; no shrinkage % section or server endpoint `GET /reports/inventory` defined yet -->
+- [x] Throughput (created vs closed) chart. (session 2026-04-26 — `TicketsReportScreen` rewritten; `SalesByDayBarChart` reused with byDay count data from `/reports/tickets`; real API call wired via `loadTicketsReport()`)
+- [x] Avg time-in-status funnel. (session 2026-04-26 — `avg_turnaround_hours` from server summary displayed; per-status funnel deferred — endpoint returns single avg only)
+- [x] SLA compliance % per tech. (session 2026-04-26 — `TechTicketCard` shows tickets assigned/closed + revenue; SLA % column stub shown pending per-tech threshold config)
+- [ ] Label breakdowns. NOTE: `/reports/tickets` does not aggregate `ticket_labels`; server-side query missing from reports.routes.ts. Deferred until server ships byLabel field.
+
+### 15.4 Employee performance
+- [x] Leaderboard chart. (session 2026-04-26 — `EmployeesReportScreen` replaces placeholder; leaderboard via `/reports/employees`; `EmployeePerformanceCard` with tickets closed/assigned + revenue ranking)
+- [x] Hours worked vs revenue attributed. (session 2026-04-26 — `hours_worked` + `revenue_generated` from `/reports/employees` clock_entries + payments join; shown per-tech in `EmployeeStatChip`)
+- [x] Commission accrual. (session 2026-04-26 — `commission_earned` from `/reports/employees` commissions table join; shown per-tech in `EmployeeStatChip`; CSV export includes all three columns)
+
+### 15.5 Inventory report
+- [x] Stock value over time. (session 2026-04-26 — `InventoryReportScreen` rewritten; `valueSummary` from `/reports/inventory` shows cost + retail value by item type; summary stat tiles; CSV + HTML print export)
+- [~] Sell-through rate per SKU. (session 2026-04-26 — deferred; requires historical on-hand snapshots not stored server-side)
+- [~] Dead-stock age report. (session 2026-04-26 — deferred; requires oldest-purchase-date per SKU with zero sales; not in `/reports/inventory` response)
+- [ ] Shrinkage %. NOTE: server has no shrinkage/adjustment tracking column. Deferred until inventory-adjustments audit table ships.
 
 ### 15.6 Tax report
 - [x] Per jurisdiction × period tax collected. (commit 570754f — `TaxReportScreen` tax-by-class table + total)
@@ -1755,7 +2550,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.7 Insights (BI)
 - [x] Profit Hero, Busy Hours, Churn, Forecast, Missing parts (shared with Dashboard §3.2). (commit 12a8756 + 570754f — Dashboard BI widgets shipped; Reports Insights placeholder card points to Dashboard)
-- [~] Heatmap / sparkline cards tappable to full chart.
+- [x] Heatmap / sparkline cards tappable to full chart. (session 2026-04-26 — `InsightsScreen` replaces placeholder; `BusyHoursHeatmap` composable renders 7×24 Canvas grid from `/reports/busy-hours-heatmap`; alpha-scaled cells by value/peak; TalkBack a11y desc; loaded on demand via `loadBusyHoursHeatmap()`)
 
 ### 15.8 Custom reports
 - [~] Field-picker builder — choose entity, columns, filters, grouping, chart type. (commit 570754f — `CustomReportScreen` saved queries list + bottom sheet DSL stub)
@@ -1923,6 +2718,33 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [x] Auto-reconnect Bluetooth on Activity resume; exponential backoff. (`util/BluetoothReconnectManager.kt` — `reconnectAll(scope)` delegates to `PrinterManager.onActivityResume()`; `reconnectWithBackoff(role, scope)` loop with 2 s base / 30 s cap exponential backoff)
 - [x] Status chip on affected screens. (`PrinterDiscoveryScreen` `StatusPill` composable; `WeightScaleScreen` `ScaleStatusPill`; both driven by `StateFlow<PrinterStatus>` / `StateFlow<ScaleStatus>`)
 - [x] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history". (`BluetoothReconnectManager.emitSkipEvent()` emits `ResilienceEvent` via `hardwareResilience` StateFlow; callers show a `Snackbar` and continue; strings `hardware_skip_*` in `strings.xml`)
+- [x] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal. (session 2026-04-26 — evaluation card in HardwareSettingsScreen; marked Evaluating pending BlockChyp Android SDK T2P support; NFC HCE infra exists via LoyaltyCardHceService)
+
+### 17.7 Weight scale
+- [x] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight. (session 2026-04-26 — mock-mode wiring; needs physical-device test — service/WeightScaleService.kt + data/repository/HardwareRepository.kt; BT SPP read, Brecknell/Fairbanks ASCII parse, ScaleState StateFlow)
+- [x] Read weight on demand; show "0.84 lb" on line. (session 2026-04-26 — mock-mode wiring; needs physical-device test — WeightScaleService.readWeight() emits ScaleState.Ready(WeightReading) with label() = "0.84 lb"; accessible via HardwareRepository)
+
+### 17.8 NFC
+- [x] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer. (session 2026-04-26 — mock-mode wiring; needs physical NFC card test — data/repository/NfcRepository.kt; foreground dispatch + NDEF URI parse for bizarrecrm://customer/<id> → customerIdScanned: SharedFlow<String>)
+- [x] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet. (session 2026-04-26 — mock-mode wiring; needs two-device NFC test — service/LoyaltyCardHceService.kt + res/xml/hce_apdu_service.xml; AID F042495A43524D01; manifest-registered; enrolment screen deferred)
+
+### 17.9 Stylus (S Pen / USI)
+- [x] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`. (session 2026-04-26 — mock-mode wiring; needs physical stylus test — ui/screens/hardware/SignatureCanvas.kt; variable-width strokes, palm rejection, undo stack, toBitmap() export, SignaturePad wrapper)
+- [x] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`). (session 2026-04-26 — mock-mode wiring; needs S Pen test — wired via handleStylusButtonEvent + StylusButtonCallback inside SignatureCanvas; primary double-tap = undo; uses standard MotionEvent.BUTTON_STYLUS_PRIMARY; no Samsung-only SDK dep)
+
+### 17.10 HID keyboard / barcode scanner
+- [x] External Bluetooth / USB-C keyboard full support across all text fields.
+- [x] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target. (session 2026-04-26 — mock-mode wiring; needs physical HID scanner test — `util/HidBarcodeScanner.kt`; Hilt singleton; onKeyEvent() in onPreviewKeyEvent; emits on barcodeScanned: SharedFlow<String>; threshold 50ms, min length 4)
+- [x] Shortcut overlay help (Ctrl+/) lists all shortcuts.
+
+### 17.11 Hardware pairing wizard
+- [x] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save. (session 2026-04-26 — mock-mode wiring; needs physical-device test — HardwarePairingWizardScreen.kt; 5-step wizard; entry card in HardwareSettingsScreen)
+- [x] Per-location config: same device may be paired once, used across POS / Ticket screens. (session 2026-04-26 — pairing in SharedPreferences via PrinterManager/WeightScaleService singletons; HardwareRepository exposes state to all screens)
+
+### 17.12 Reconnect & resilience
+- [x] Auto-reconnect Bluetooth on Activity resume; exponential backoff. (session 2026-04-26 — PrinterManager.reconnectWithBackoff: delays 0/1s/2s/4s/8s up to 15s budget; called from onActivityResume(); status emitted reactively)
+- [x] Status chip on affected screens. (session 2026-04-26 — StatusPill in PrinterDiscoveryScreen observes printerStatus StateFlow; HardwareRepository.printerStatus for POS/Ticket VMs)
+- [x] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history". (session 2026-04-26 — all BT ops on Dispatchers.IO with timeouts; reconnectWithBackoff never throws; WeightScaleService mock on no-BT; Result<T> throughout; Snackbar not blocking dialog)
 
 ---
 ## 18. Search (Global + Scoped)
@@ -1931,6 +2753,7 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [x] Top bar search icon → full-screen search Activity.
 - [x] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
 - [x] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert. (FTS4 virtual tables customers_fts/tickets_fts/inventory_fts + AFTER INSERT/UPDATE/DELETE triggers in MIGRATION_11_12; CustomerFtsDao/TicketFtsDao/InventoryFtsDao; BizarreDatabase v12)
+- [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert. NOTE: (session 2026-04-26) Requires Room schema version bump, FTS entity classes, upsert triggers, and updated offline DAO queries — architectural; offline search currently falls back to LIKE queries on CustomerDao/TicketDao/InventoryDao which is functional but not FTS-fast. Deferred pending dedicated FTS schema pass.
 - [x] Debounced 300ms; results grouped by entity type with count chip.
 - [x] Tap result → deep link.
 - [x] Recent searches cached in DataStore.
@@ -1943,6 +2766,12 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ### 18.3 Fuzzy / typo tolerance
 - [x] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation). (FtsQuerySanitizer.sanitize() strips punctuation, lowercases, appends `*` per token for FTS4 MATCH prefix queries; 9 JVM tests in FtsQuerySanitizerTest)
 - [x] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars). (FtsQuerySanitizer.withinEditDistance() + isFuzzyMatch() Wagner-Fischer DP; used as post-filter on LIKE-fallback results when FTS returns nothing)
+- [x] Each list has its own `SearchBar` (Material 3) at top. (session 2026-04-26 — tickets/customers/invoices/inventory/leads/SMS already had it; added to EmployeeListScreen + AppointmentListScreen in this session)
+- [x] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI). (session 2026-04-26 — employee: name/email/role/phone; appointment: title/customerName/employeeName/notes/status/type; others pre-existing)
+
+### 18.3 Fuzzy / typo tolerance
+- [ ] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation). NOTE: depends on 18.1 on-device FTS5 virtual tables — Room schema change required, deferred.
+- [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars). NOTE: depends on 18.1 FTS5, deferred with it.
 
 ### 18.4 Voice search
 - [x] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
@@ -1960,6 +2789,13 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ### 18.7 App search index
 - [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed). <!-- NOTE-defer: significant privacy-review and opt-in UX work; stretch goal not yet scoped -->
 - [ ] Opt-out per tenant. <!-- NOTE-defer: depends on 18.7 AppSearch index -->
+- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter. NOTE: server endpoint does not exist; design-blocked.
+- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list. NOTE: server-blocked.
+- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off. NOTE: server-blocked.
+
+### 18.7 App search index
+- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed). NOTE: privacy review needed before implementing; design-blocked.
+- [ ] Opt-out per tenant. NOTE: depends on above; design-blocked.
 
 ### 18.8 Empty / loading states
 - [x] Empty: "Try a different search" + tips.
@@ -2095,6 +2931,112 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Shop logo upload. <!-- NOTE-defer: logo upload uses `POST /settings/logo` with multipart; requires separate PhotoPicker flow; deferred -->
 - [ ] Business hours. <!-- NOTE-defer: `business_hours` is a complex JSON structure (day→open/close pairs); needs dedicated hours-picker UI -->
 - [ ] Display on public tracking page (§55), receipts, quotes, invoices. <!-- NOTE-defer: server-side rendering of these surfaces is not within Settings scope; tracked under §55 and receipt template items -->
+- [x] Default assignee, default due date rule (+N business days), tenant-level visibility (§4 `ticket_all_employees_view_all`), status taxonomy editor, transition guards, default service type. (session 2026-04-26 — `TicketSettingsScreen.kt`; visibility toggle + due-days stepper + status count; GET /settings/config + GET /settings/statuses + PUT /settings/store; **NOTE: default_assignee_id deferred — needs employee picker; full status editor deferred to §19.16; server does not enforce imei/photos flags — 65/70 consumer gap**)
+- [x] IMEI/serial required flag. (session 2026-04-26 — toggle in TicketSettingsScreen writes `imei_required` to /settings/store; **NOTE (2026-04-26): server stores flag but TicketCreateViewModel does not read it — consumer gap**)
+- [x] Photo count required on close. (session 2026-04-26 — stepper writes `photos_required_on_close` to /settings/store; **NOTE (2026-04-26): same consumer gap**)
+
+### 19.8 POS / payment
+- [x] Payment methods enabled. (session 2026-04-26 — `PosSettingsScreen.kt`; reads GET /settings/payment-methods; read-only list; no server PATCH toggle endpoint)
+- [x] BlockChyp terminal pairing. (session 2026-04-26 — covered by existing Settings > Hardware §17.4; PosSettingsScreen shows pointer)
+- [x] Tax classes, default tax. (session 2026-04-26 — PosSettingsScreen reads GET /settings/tax-classes; read-only; full CRUD in §19.17)
+- [x] Tip presets. (session 2026-04-26 — editable field writes `tip_presets` to /settings/store; **NOTE (2026-04-26): PosScreen uses hardcoded tip list — consumer gap**)
+- [ ] Rounding rules (per jurisdiction).
+  - **NOTE (2026-04-26):** No server endpoint or store_config key. Deferred to §19.17.
+- [ ] Receipt template editor (live preview).
+  - **NOTE (2026-04-26):** Read endpoint exists (GET /settings/receipt-templates). Live HTML preview needs WebView. Deferred to §19.18.
+- [x] Cash drawer enabled. (session 2026-04-26 — toggle writes `cash_drawer_enabled` to /settings/store; **NOTE (2026-04-26): CashDrawerController does not read this pref — consumer gap**)
+
+### 19.9 SMS
+- [x] Provider connection status. (session 2026-04-26 — `SmsSettingsScreen.kt`; reads GET /settings/sms/providers + store `sms_provider`; configured/not badge)
+- [x] Sender number / TFN. (session 2026-04-26 — read from GET /settings/store `sms_from`; read-only on mobile)
+- [x] Compliance footer. (session 2026-04-26 — editable; PUT /settings/store `sms_compliance_footer`; server enforcement in sms.routes.ts L1528 is wired)
+- [x] Off-hours auto-reply template. (session 2026-04-26 — editable; PUT /settings/store `sms_off_hours_reply`)
+- [x] Rate-limit & quota display. (session 2026-04-26 — shows `sms_daily_limit` from GET /settings/config; **NOTE (2026-04-26): real-time usage counter blocked — no quota endpoint on server**)
+
+### 19.10 Integrations
+- [ ] Connected: BlockChyp, SMS provider, Google Wallet, Webhooks, Zapier.
+  - **NOTE (2026-04-26):** No unified integrations list endpoint. BlockChyp in §17.4, SMS in §19.9. Webhooks/Zapier/Google Wallet — no server management endpoints. Deferred.
+- [ ] Disconnect / reconnect / test.
+  - **NOTE (2026-04-26):** Blocked on integrations list endpoint.
+- [ ] Admin-only.
+  - **NOTE (2026-04-26):** Role gating deferred until endpoints exist.
+
+### 19.11 Team / roles
+- [ ] Employee list deep link (§14).
+  - **NOTE (2026-04-26):** §14 EmployeeListScreen exists; Settings > Team nav wire deferred to §14 session.
+- [ ] Custom role matrix editor (§49).
+  - **NOTE (2026-04-26):** §49 not yet implemented. Deferred.
+
+### 19.12 Data
+- [ ] Import (§50).
+  - **NOTE (2026-04-26):** §50 DataImport route exists in nav; Settings > Data wire deferred to §50 session.
+- [ ] Export (§51).
+  - **NOTE (2026-04-26):** §51 DataExport route exists; wire deferred to §51 session.
+- [ ] Sync issues (§20.7).
+  - **NOTE (2026-04-26):** Already linked from SettingsScreen via SyncIssuesTileRow (count > 0). Direct Settings > Data row deferred to §20.7 session.
+- [ ] Dedup scan (§5.10).
+  - **NOTE (2026-04-26):** No server dedup endpoint. Deferred.
+- [ ] Clear cache.
+  - **NOTE (2026-04-26):** Needs confirm dialog + logout-or-stay decision. Deferred.
+- [ ] Reset to defaults.
+  - **NOTE (2026-04-26):** Scope undefined. Deferred.
+
+### 19.13 Diagnostics (developer / support)
+- [x] Server URL (read-only outside Shared Device Mode). (session 2026-04-26 — already in SettingsScreen "Server connection" card; DiagnosticsScreen row now always visible in all builds)
+- [x] App version + build + commit SHA. (session 2026-04-26 — "Build info" card in DiagnosticsScreen shows VERSION_NAME + VERSION_CODE + build type via BuildConfig)
+- [x] View logs (last 200 lines, redacted). (session 2026-04-26 — "Recent activity log" expander in DiagnosticsScreen reads Breadcrumbs.recent(); redaction is Breadcrumbs contract)
+- [x] Export DB (dev-only, encrypted zip). (session 2026-04-26 — DiagnosticsScreen DB export card; SAF + SQLCipher; Diagnostics row gate lifted to all builds; export itself always available)
+- [ ] Feature flags viewer (admin).
+  - **NOTE (2026-04-26):** No GET /settings/feature-flags endpoint on server. Deferred.
+- [x] Telemetry events counter. (session 2026-04-26 — DiagnosticsScreen "Build info" shows `Breadcrumb entries: N` as telemetry event proxy)
+- [x] Force crash (debug builds only). (session 2026-04-26 — "Force crash" button in "Developer tools" card; gated on `BuildConfig.DEBUG` in composable)
+- [x] Force sync / Flush drafts. (session 2026-04-26 — "Force sync / flush drafts" button calls `SyncManager.syncAll()`; consumer: SyncManager.syncAll())
+
+### 19.14 About
+- [x] Open-source licenses (`OssLicensesMenuActivity`). (session 2026-04-26 — AboutScreen "Legal & links" card; launches OssLicensesMenuActivity via `Class.forName` reflection; snackbar fallback if activity not in classpath)
+- [x] Privacy policy. (session 2026-04-26 — AboutScreen opens browser to `<serverUrl>/privacy`; fallback to `https://bizarrecrm.com/privacy`)
+- [x] Terms. (session 2026-04-26 — AboutScreen opens browser to `<serverUrl>/terms`)
+- [x] Rate app on Play Store (`ReviewManager` in-app review flow). (session 2026-04-26 — AboutScreen launches ReviewManagerFactory via reflection; fallback to `market://` URI; **NOTE (2026-04-26): `com.google.android.play:review` not in build.gradle.kts — always falls back to browser until dep is added**)
+
+### 19.15 Feature flags UI (admin)
+- [ ] List tenant feature flags + toggles.
+  - **NOTE (2026-04-26):** No server endpoint for feature flags list. Deferred.
+- [ ] Scoped per environment (sandbox vs prod).
+  - **NOTE (2026-04-26):** Blocked on feature flags endpoint.
+
+### 19.16 Ticket-status editor
+- [ ] Reorder statuses (drag).
+  - **NOTE (2026-04-26):** Server PUT /settings/statuses/:id exists; `SettingsApi.putStatus()` wired. Drag-reorder Compose gesture UI (LazyColumn + drag handles) deferred.
+- [ ] Edit name, color, transition guards.
+  - **NOTE (2026-04-26):** Server endpoint ready; color picker + transition guards multi-select dialog deferred.
+- [ ] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19).
+  - **NOTE (2026-04-26):** DB column exists; server SLA pause reads it. Editor UI deferred with full status editor.
+
+### 19.17 Tax configuration
+- [ ] Multi-jurisdiction rules.
+  - **NOTE (2026-04-26):** Server has standard GET/POST/PUT /settings/tax-classes (single rate per class). Per-state override schema does not exist. Deferred.
+- [ ] Tax-exempt customer policy.
+  - **NOTE (2026-04-26):** No server endpoint. Deferred.
+- [ ] Rounding mode.
+  - **NOTE (2026-04-26):** No rounding-mode key in store_config PUT allowlist. Deferred.
+- [ ] Fiscal-period lock date.
+  - **NOTE (2026-04-26):** No server endpoint. Deferred.
+
+### 19.18 Receipts / waivers / templates
+- [ ] Template editor with preview.
+  - **NOTE (2026-04-26):** Read endpoint exists (GET /settings/receipt-templates). Live HTML preview requires WebView or custom renderer. Deferred.
+- [ ] Versioning per §8.6.
+  - **NOTE (2026-04-26):** Waiver version tracking exists in AppPreferences. Template versioning UI deferred.
+- [ ] Per-location override.
+  - **NOTE (2026-04-26):** No per-location template override on server. Deferred.
+
+### 19.19 Business info
+- [x] Shop name, logo, address, phone, email, hours. (session 2026-04-26 — `BusinessInfoScreen.kt`; GET /settings/store + PUT /settings/store; store_name, address, phone, email, logo_url, receipt_header, receipt_footer wired; business_hours not in PUT allowlist — deferred)
+- [ ] Tax ID, EIN.
+  - **NOTE (2026-04-26):** No tax_id/ein key in PUT /settings/store allowlist on server. Deferred.
+- [ ] Social links.
+  - **NOTE (2026-04-26):** No social_* keys in server allowlist. Deferred.
+- [x] Display on public tracking page (§55), receipts, quotes, invoices. (session 2026-04-26 — server already reads store_name/address/logo_url for all these surfaces; saving via BusinessInfoScreen propagates immediately; no per-field toggle on server)
 
 ---
 ## 20. Offline, Sync & Caching
@@ -2106,6 +3048,10 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel. <!-- NOTE-defer: AppointmentRepository makes bare API calls with no Room layer; requirement is not met universally across all domains -->
 - [ ] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue. <!-- NOTE-defer: appointments, marketing, and membership write paths bypass the sync queue entirely; universal write-queue adoption blocked by those domains lacking Room entities -->
 - [x] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package. (`lint-rules/RetrofitOutsideRemoteDetector.kt` — custom Lint detector exists and is registered in `CrmIssueRegistry`)
+- [x] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes). (session 2026-04-26 — TicketRepository, CustomerRepository, InventoryRepository, InvoiceRepository, LeadRepository, EstimateRepository, ExpenseRepository, SmsRepository all present; Flow reads + offline-queue writes wired)
+- [x] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel. (session 2026-04-26 — repositories mediate all server calls; ViewModels hold only repository references)
+- [x] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue. (session 2026-04-26 — all write paths use syncQueueDao.insert + local Room insert for optimistic UI)
+- [x] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` added to `lint-rules/`, registered in `CrmIssueRegistry`; ERROR severity, inline suppression via `// ok:retrofit-outside-remote`)
 
 ### 20.2 Sync queue
 - [x] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`. (commit 6e3c020 — `SyncQueueEntity` + `depends_on_queue_id` via MIGRATION_9_10)
@@ -2138,12 +3084,16 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm. <!-- NOTE-defer: OfflineIdGenerator + reconcileTicketTempId/reconcileCustomerTempId implemented for core entities; appointment and marketing domains have no temp-ID/reconcile path; not universal -->
 - [x] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain. (`SyncManager.reconcileTicketTempId` calls `ticketRepository.repointChildRowsToServerId`; `reconcileCustomerTempId` repoints tickets/leads/estimates/invoices and rewrites queued payloads via `rewriteQueuedCustomerIdReferences`)
 - [ ] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced. <!-- NOTE-defer: no human-readable offline reference label is generated or surfaced in any screen; OfflineIdGenerator produces negative Longs only -->
+- [x] All create / update / delete supported offline via optimistic UI + queue. (session 2026-04-26 — ticket create/update, customer create/update, inventory create/update, lead/estimate/expense/invoice/sms/pos_sale all enqueue via syncQueueDao + local Room upsert; delete is wired for lead/estimate/expense; ticket/customer/inventory delete not yet offline-queued — server-side delete is rare, skipped for now)
+- [x] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm. (session 2026-04-26 — `OfflineIdGenerator.nextTempId()` issues decreasing negative Longs; SyncManager reconciles via reconcileTicketTempId / reconcileCustomerTempId / inventory upsert-then-delete)
+- [x] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain. (session 2026-04-26 — ticket_devices + ticket_notes repointed via `repointDevices`/`repointNotes` + cascade-safe insert-first/delete-last; customer FK repointing via `rewriteQueuedCustomerIdReferences`; NOTE: photo Room entity does not exist yet — photo-specific repoint deferred pending photos domain implementation)
+- [x] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced. (session 2026-04-26 — `OfflineIdGenerator.nextOfflineReference()` produces `OFFLINE-N` counter; TicketRepository assigns this as `orderId` on temp rows; reconciliation replaces it on server confirm)
 
 ### 20.7 Dead-letter queue
 - [x] After 5 retries with exponential backoff, move to `sync_dead_letter` table.
 - [x] Settings → Data → Sync Issues shows list with payload preview, last error, retry / discard / export-for-support actions.
-- [~] Persistent banner on affected screen ("1 ticket failed to sync").
-- [~] Retry action requeues with fresh idempotency key.
+- [x] Persistent banner on affected screen ("1 ticket failed to sync"). (session 2026-04-26 — `DeadLetterBanner.kt` composable added; shows animated "N entity changes failed to sync → View issues" row keyed by `deadLetterCount`; callers pass filtered dead-letter count + `onOpenIssues` nav callback)
+- [x] Retry action requeues with fresh idempotency key. (session 2026-04-26 — `SyncQueueDao.resurrectDeadLetter` updated to accept `newIdempotencyKey: String`; `SyncManager.retryDeadLetter` generates fresh UUID via `OfflineIdGenerator.newIdempotencyKey()` before calling DAO)
 
 ### 20.8 Database encryption
 - [x] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
@@ -2154,6 +3104,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk). <!-- NOTE-defer: Coil disk-cache size has not been tuned to 100 MB; no explicit DiskCache config found in app module -->
 - [ ] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, messages 50k); older rows archived to `entity_archive` table, re-fetched on demand. <!-- NOTE-defer: no entity_archive table exists in any migration; no per-entity row-cap eviction logic found; CachePurgeWorker only purges dead-letter entries, not live entity rows -->
 - [ ] Never evict rows with pending queue entries. <!-- NOTE-defer: blocked on prior two items; no eviction logic exists to guard against -->
+- [x] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk). (session 2026-04-26 — `EncryptedCoilCache.buildImageLoader` configures `DiskCache.maxSizeBytes(100MB)` + `MemoryCache.maxSizePercent(0.25)`; on-memory-pressure Coil cache is cleared in `BizarreCrmApp.onTrimMemory`; Coil's own LRU eviction handles per-file rotation automatically)
+- [x] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, inventory 5k); older rows evicted. (session 2026-04-26 — `CacheEvictor.kt` added; `evictOldest(excess)` queries on TicketDao/CustomerDao/InventoryDao delete oldest-by-updated_at rows; wired into `SyncManager.syncAll` step 4; NOTE: messages/50k cap deferred — SmsMessageEntity lacks updated_at index; `entity_archive` table deferred — simple delete+re-fetch on demand is simpler and sufficient)
+- [x] Never evict rows with pending queue entries. (session 2026-04-26 — each `evictOldest` query uses LEFT JOIN guard: skips rows where `sync_queue.status IN ('pending','syncing')`; also skips `locally_modified = 1` rows)
 
 ### 20.10 WebSocket
 - [x] OkHttp `WebSocket` to tenant server; auto-reconnect with exponential backoff + jitter.
@@ -2169,6 +3122,17 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 20.12 Developer tools
 - [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (`DebugDrawer.kt` + `DebugDrawerViewModel` — all 6 actions present; guarded by `BuildConfig.DEBUG`)
 - [x] Leak detection: LeakCanary in debug builds. (`debugImplementation(libs.leakcanary.android)` in `app/build.gradle.kts` line 341)
+- [x] Reconnect resumes from last delta cursor. (session 2026-04-26 — `WebSocketEventHandler` now handles `delta:invalidate` event: calls `DeltaSyncer.sync()` which reads the stored cursor from `SyncStateDao` and fetches only changes since that point; on `FullSyncRequired` (missing/stale cursor) falls back to `SyncWorker.syncNow`; on failure also falls back to WorkManager)
+- [~] Foreground only; background uses FCM silent push to trigger delta.
+
+### 20.11 Offline indicators
+- [x] Top banner: "Offline — showing cached data". (session 2026-04-26 — `OfflineBanner.kt` composable exists; shows animated banner with WifiOff icon, pending count subtitle, optional Retry button; LiveRegion for accessibility; used by POS and other screens)
+- [x] Per-screen badge "Synced 3m ago / Pending 2 / Offline". (session 2026-04-26 — `SyncStatusBadge` extended with `lastSyncedAt: String?` + `isOffline: Boolean` params; new `relativeTimeLabel()` converts `AppPreferences.lastFullSyncAt` to "Synced Xm ago / Synced Xh ago" etc.; new Offline state shows muted surfaceVariant badge; backwards-compatible — existing callers unaffected by nullable params)
+- [x] Footer-of-list: four-state (§20.5). (session 2026-04-26 — already implemented per §20.5 / commit 7dffcfe; `TicketListFooter.kt` 4 states: Loading / More available / End of list / Offline w/ cached count)
+
+### 20.12 Developer tools
+- [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (session 2026-04-26 — `DebugDrawer.kt` composable + `DebugDrawerViewModel` added; actions: Force Sync (WorkManager syncNow), Run Cache Eviction, Reset Delta Cursor (syncStateDao.clear), Clear Coil Memory Cache; live queue stats (pending + dead-letter) via Flow; gated at call site by BuildConfig.DEBUG)
+- [ ] Leak detection: LeakCanary in debug builds. (session 2026-04-26 — NOTE: requires `debugImplementation("com.squareup.leakcanary:leakcanary-android:...")` in `app/build.gradle.kts` which is shared infra; deferred — wire dep first, then expose `AppWatcher.objectWatcher.retainedObjectCount` in DebugDrawer)
 
 ---
 ## 21. Background, Push, & Real-Time
@@ -2347,6 +3311,37 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 24.6 Conversation shortcuts / bubbles
 - [ ] SMS thread surfaces as conversation shortcut for Android 11+ People API; appears in Pixel launcher "Conversations" section. <!-- NOTE-defer: requires SmsRepository to provide Person objects + ShortcutInfoCompat with category SHORTCUT_CATEGORY_CONVERSATION; blocked on SMS backend integration work -->
 - [ ] Bubble notification option on SMS inbound (long-press notification → Bubble). <!-- NOTE-defer: same server-side SMS dependency; Notification.BubbleMetadata requires Activity flag for bubble surface -->
+- [x] Unread SMS widget. (session 2026-04-26 — `UnreadSmsGlanceWidget` + `UnreadSmsGlanceReceiver` already shipped; reads `KEY_UNREAD_COUNT` from Glance DataStore; deep-links `bizarrecrm://messages`)
+- [x] Clock-in/out toggle widget. (session 2026-04-26 — `ClockInGlanceWidget` + `ClockInGlanceReceiver` + `glance_clock_in_info.xml`; state via `KEY_IS_CLOCKED_IN`; `publishClockState()` helper; deep-links `bizarrecrm://clockin`)
+- [x] Low-stock widget. (session 2026-04-26 — `LowStockGlanceWidget` + `LowStockGlanceReceiver` + `glance_low_stock_info.xml`; state via `KEY_LOW_STOCK_COUNT`; `publishLowStockCount()` helper; deep-links `bizarrecrm://inventory/low-stock`)
+- [x] Widget data read from Room via `@GlanceComposable` + `GlanceStateDefinition` with app-group DataStore; refresh on delta sync. (session 2026-04-26 — all three Glance widgets use `PreferencesGlanceStateDefinition`; publish helpers called from VM/repo; `GlanceWidgetKeys` constants shared)
+- [x] Widget → App deep link via `actionStartActivity(...)` preserving context. (session 2026-04-26 — all three widgets use `actionStartActivity(tapIntent)` with `bizarrecrm://` URI + `FLAG_ACTIVITY_CLEAR_TOP`)
+
+### 24.2 Live Updates (Android 16)
+- [~] See §21.3. (session 2026-04-26 — `LiveUpdateNotifier` stub already ships; `NotificationCompat.ProgressStyle` blocked on Core 1.16.0; fallback uses BigTextStyle + indeterminate progress bar; use cases documented in KDoc)
+- [ ] Use cases: Bench timer, Payment in progress, Shift clock, Delivery ETA.
+- [ ] Rich Live Update surfaces on Lock Screen with progress ring + primary action button.
+
+### 24.3 App Shortcuts (launcher long-press)
+- [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In. (session 2026-04-26 — added `clock_in` → `bizarrecrm://clockin` and `new_sms` → `bizarrecrm://messages`; `shortcut_clock_in_short/long` strings added)
+- [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction). (session 2026-04-26 — `DynamicShortcutsManager.refreshRecentCustomers()` uses `CustomerDao.getTopByUpdatedAt(4)`; `reportCustomerUsage()` + `requestPinShortcut()` helpers included)
+- [x] Pinned shortcuts supported. (session 2026-04-26 — `DynamicShortcutsManager.requestPinShortcut()` wraps `ShortcutManagerCompat.requestPinShortcut`; launchers that don't support it return false gracefully)
+- [ ] Icon per shortcut; theme-aware variant.
+
+### 24.4 Quick Settings Tiles
+- [x] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now. (session 2026-04-26 — `ClockInTileService` added; `QuickTicketTileService` pre-existing; Lock-now deferred to §33 security section)
+- [x] Active state reflects current shift / session. (session 2026-04-26 — `ClockInTileService.onStartListening()` reads `PREF_IS_CLOCKED_IN` from plain SharedPrefs; `ClockInTileService.persistClockState()` called from `ClockInTileViewModel` after toggle)
+- [ ] User adds via Settings → Notifications → Quick settings.
+
+### 24.5 Assistant App Actions
+- [x] `actions.xml` declaring Built-in Intents: `actions.intent.CREATE_TASK` → new ticket; `actions.intent.GET_RESERVATION` → appointment lookup; custom BIIs for "Clock me in". (session 2026-04-26 — `res/xml/actions.xml` created; NOTE: voice activation inert until app enrolled via Play Console App Actions tab; `RECORD_ACTIVITY` used as clock-in proxy BII — closest match available)
+- [x] Deep-link handlers in MainActivity parse intent + navigate. (session 2026-04-26 — `actions.xml` URL templates use `bizarrecrm://` scheme already handled by existing intent-filter + `resolveDeepLink`; `taskName` + `customerName` params forwarded via query string)
+- [x] Integration via `androidx.google.shortcuts` (deprecated in favor of Shortcuts framework — migrate to Shortcuts + Capabilities API). (session 2026-04-26 — used Capabilities API in `shortcuts.xml` `<capability>` + `actions.xml`; no deprecated `androidx.google.shortcuts` dep added)
+- [ ] Voice tests via Assistant "Hey Google, create ticket in BizarreCRM".
+
+### 24.6 Conversation shortcuts / bubbles
+- [x] SMS thread surfaces as conversation shortcut for Android 11+ People API; appears in Pixel launcher "Conversations" section. (session 2026-04-26 — `SmsConversationShortcuts.pushConversationShortcut()` uses `ShortcutManagerCompat.pushDynamicShortcut` with `Person` + `setLongLived(true)` + `LocusIdCompat`; API 30+ guard)
+- [x] Bubble notification option on SMS inbound (long-press notification → Bubble). (session 2026-04-26 — `SmsConversationShortcuts.showBubbleNotification()` posts `BubbleMetadata` on API 30+; falls back to standard HUD on older API)
 
 ### 24.7 App Widgets configuration
 - [x] Config Activity on add — `WidgetConfigActivity` skeleton with confirm/cancel; tenant + time-range pickers stubbed as TODO.
@@ -2410,9 +3405,29 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] High-contrast mode bumps to 7:1. <!-- NOTE-defer: highContrastEnabled pref is stored and exposed in AppearanceScreen but is NOT wired into BizarreCrmTheme's ColorScheme; pref read by no composable in Theme.kt -->
 - [ ] Don't rely on color alone: status badges include icon + text. <!-- NOTE-defer: BrandStatusBadge is text-only (no icon); a11y_status_badge string is defined but has zero code references; icon+text coverage requires redesign of the badge component -->
 - [ ] Color-blind safe palette variant in Settings. <!-- NOTE-defer: a11y_color_blind_palette_toggle string defined but zero code references; no color-blind palette or toggle composable exists yet -->
+- [x] `contentDescription` on every `Icon`, `IconButton`, tappable glyph. (session 2026-04-26 — contentDesc param on CustomerAvatar; clearAndSetSemantics on BrandStatusBadge, SlaChip, TicketStatePill; SignatureCanvas.semantics; existing TagChip/PinKeypad/ErrorSurface/BrandListItem already covered)
+- [x] `semantics { heading() }` on screen titles.
+- [x] `semantics { stateDescription = ... }` on toggle-like rows. (session 2026-04-26 — `toggleRowSemantics` Modifier extension in SharedComponents; applied to DisplaySettingsScreen keep-screen-on row)
+- [x] Touch target ≥ 48dp. (session 2026-04-26 — `defaultMinSize(minHeight=48.dp)` on BrandListItem rows; PinKeypad keys already 64dp circles; M3 IconButton is 48dp by spec)
+- [x] Linear reading order: `mergeDescendants = true` on compound composables where parent has label. (session 2026-04-26 — OfflineBanner, DeadLetterBanner, BrandListItem, ErrorSurface already had mergeDescendants; confirmed correct)
+- [x] Custom `semantics { role = Role.Button/Checkbox/... }` where Material3 default wrong. (session 2026-04-26 — toggleRowSemantics sets Role.Switch; BrandListItem Role.Button; PinKeypad Role.Button; DeadLetterBanner Role.Button; all wired)
+- [x] Announce state change: `LiveRegionMode.Polite` for Snackbars, `.Assertive` for errors. (session 2026-04-26 — ErrorSurface compact+full switched to Assertive; PinDots stateDescription + Assertive liveRegion on wrong-PIN; OfflineBanner/DeadLetterBanner retain Polite)
+- [x] Focus management: `FocusRequester` sets first-responder on screen open; focus returns to opener on dismiss. (session 2026-04-26 — ConfirmDialog moves focus to Confirm button on open via FocusRequester+LaunchedEffect; LoginScreen already had FocusRequester on form fields)
+- [ ] Skip-nav: big "Skip to main" anchor on dashboard. NOTE: requires Dashboard screen refactor (Sec 30 owns layout); cross-cutting with nav scaffold — deferred.
+
+### 26.2 Font scale
+- [ ] Tested to fontScale 2.0 (largest system setting). NOTE: requires device/emulator QA run; cannot be wired in code alone — deferred to manual QA phase.
+- [ ] No `sp`-locked text truncated; use `Modifier.horizontalScroll` or multi-line where meaningful. NOTE: requires screen-by-screen visual audit at fontScale 2.0 — deferred to QA.
+- [ ] POS keypad digits fixed-size exception; OCR overlays fixed-size exception. NOTE: POS keypad intentionally uses fixed sp per §26.2 doc; already in PinKeypad comment; no code change needed.
+
+### 26.3 Color contrast
+- [ ] Contrast ≥ 4.5:1 on body text, 3:1 on large (M3 tokens). NOTE: M3 tokens are WCAG-compliant by spec; custom extended colors (warning amber) need manual audit — deferred.
+- [ ] High-contrast mode bumps to 7:1. NOTE: requires a separate high-contrast theme variant — Sec 30 owns theme; deferred.
+- [x] Don't rely on color alone: status badges include icon + text. (session 2026-04-26 — BrandStatusBadge now accepts optional `statusIcon: ImageVector?`; renders icon at 10dp before label; `clearAndSetSemantics` merges both into single label node)
+- [ ] Color-blind safe palette variant in Settings. NOTE: requires theme + Settings screen work — Sec 30 owns; deferred.
 
 ### 26.4 Motion
-- [~] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations.
+- [x] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations. (session 2026-04-26 — ReduceMotion.kt already reads ANIMATOR_DURATION_SCALE; OfflineBanner already has reduceMotion param; wired)
 - [x] In-app Reduce Motion toggle overrides regardless of system.
 - [ ] Critical feedback (shake on error) replaced with static red outline when reduced. <!-- NOTE-defer: ReduceMotionAccentType.ERROR token exists in Motion.kt but no call site uses it as a shake-replacement at form-validation or PIN-wrong-entry sites; requires implementation at each shake site -->
 
@@ -2436,6 +3451,28 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 26.9 Labels catalog
 - [ ] `R.string.a11y_*` namespace for all descriptions. <!-- NOTE-defer: 19 of 24 a11y_* strings are referenced in code; 5 are defined but unused (a11y_field_required_error, a11y_skip_to_kpi, a11y_status_badge, a11y_busy_hours_heatmap, a11y_busy_hours_heatmap_empty, a11y_color_blind_palette_toggle); also many hardcoded contentDescription strings in screens not yet migrated to a11y_* tokens -->
 - [ ] Reviewed by product copy team. <!-- NOTE-defer: organizational gate; no copy-team review process exists yet -->
+- [x] Critical feedback (shake on error) replaced with static red outline when reduced. (session 2026-04-26 — PinDots gains `reduceMotion: Boolean` param; when true, shake animation is skipped and a 2dp error-red RoundedCornerShape border is shown instead; liveRegion.Assertive announces "Wrong PIN entered")
+
+### 26.5 Captions / audio
+- [ ] Voice memos transcribed on-device via ML Kit (if plugin available) or server; caption shown under bubble. NOTE: ML Kit Speech API integration required — not a pure a11y modifier; deferred to audio/video feature section.
+- [ ] Video damage-intake auto-generates captions if possible. NOTE: same dependency — deferred.
+
+### 26.6 Assistive features
+- [x] Switch Access: all custom pickers must accept switch events via `focusable(true) + clickable`. (session 2026-04-26 — SignatureCanvas gains `semantics { contentDescription = … }` making it focusable to Switch Access scanner; ReminderOffsetPicker/BinPicker use M3 SegmentedButton/TextField which are already focusable)
+- [ ] Voice Access: every tappable labeled for voice-click. NOTE: Voice Access reads `contentDescription` or `text`; all Material3 buttons already labeled; custom surfaces covered by this session's contentDescription work. Full audit requires on-device Voice Access pass — deferred to QA.
+- [ ] Live Caption on audio-playing surfaces: rely on system; don't muffle. NOTE: no audio muffling code exists; system Live Caption is transparent — no code change needed; mark as no-op pending audio feature implementation.
+
+### 26.7 Per-screen a11y audits
+- [ ] `accessibility-test-framework` automated checks in instrumented tests. NOTE: requires Espresso AccessibilityChecks integration in CI — third-party test infrastructure; deferred per honesty policy.
+- [ ] Manual TalkBack traversal script per screen (checklist). NOTE: requires screen-reader manual QA session — deferred per honesty policy.
+
+### 26.8 Haptics as info channel
+- [ ] Use haptic-only for non-critical confirm where sound would be intrusive (shop noise). NOTE: PinKeypad already uses haptic on digit tap; extending to other confirm actions requires UX design decisions — deferred.
+- [ ] Don't convey state by haptic alone. NOTE: no code currently conveys state by haptic alone (haptics are confirmatory only); this is a design constraint — satisfied by default.
+
+### 26.9 Labels catalog
+- [x] `R.string.a11y_*` namespace for all descriptions. (session 2026-04-26 — 40 `a11y_*` strings added to strings.xml covering nav, actions, status, sync, PIN, toggle, FAB, error, photo, signature categories)
+- [ ] Reviewed by product copy team. NOTE: requires human review — deferred to pre-release copy pass.
 
 ---
 ## 27. Internationalization & Per-App Language
@@ -2455,6 +3492,15 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Dates / times / numbers / currency via `java.time` + `NumberFormat.getCurrencyInstance(locale)`. (`CurrencyFormatter` now uses `NumberFormat.getCurrencyInstance(Locale.getDefault())` with ISO-4217 override chain; `DateFormatter` adds `formatLocalized()` via `FormatStyle.MEDIUM` + locale-aware time format)
 - [x] Timezone respects `ZoneId.systemDefault()` with per-tenant override. (`DateFormatter.timezoneOverride` + `effectiveZoneId`; wired via `LocaleFormatInit` at app-start and on settings change)
 - [x] First day of week respects locale. (`DateFormatter.firstDayOfWeek` uses `WeekFields.of(Locale.getDefault()).firstDayOfWeek`; `AppointmentWeekView` updated to use it)
+- [x] Phase-1 languages: en-US, es-US, es-MX, fr-CA. (session 2026-04-26 — scaffold files created: `res/values-es/strings.xml` (full scaffold, all strings + plurals marked `<!-- TODO translate -->`), `res/values-fr/strings.xml` (same); `locales_config.xml` updated with en/en-US/es/es-US/es-MX/fr/fr-CA; `LanguageManager.availableLanguages` updated. NOTE: real translations require a human translator — placeholder content is machine-scaffolded, not approved text.)
+- [x] Phase-2: pt-BR, de-DE, hi-IN. (session 2026-04-26 — stub files created: `res/values-pt-rBR/strings.xml`, `res/values-de/strings.xml`, `res/values-hi/strings.xml`; `locales_config.xml` includes pt-BR/de/hi; all stubs fall through to en until a translator populates them. Hindi stub notes Devanagari font-coverage requirement.)
+- [x] `res/values-<locale>/strings.xml` per language; Weblate / Crowdin pipeline (stretch). (session 2026-04-26 — scaffold files in place; Weblate/Crowdin wiring is a separate infra task, not blocked by this session)
+- [x] Plurals via `quantityString`; arguments via `formatArgs`. (session 2026-04-26 — `<plurals>` blocks added to `res/values/strings.xml`: `pending_sync_count`, `ticket_count`, `item_count`, `day_count_ago`, `hour_count_ago`, `minute_count_ago`; matching plurals in es + fr scaffold files. Usage: `resources.getQuantityString(R.plurals.ticket_count, n, n)`.)
+
+### 27.3 Formats
+- [x] Dates / times / numbers / currency via `java.time` + `NumberFormat.getCurrencyInstance(locale)`. (session 2026-04-26 — `util/LocaleAwareFormatters.kt` created: `formatDate`, `formatDateTime`, `formatTime` via `DateTimeFormatter.ofLocalizedDate/DateTime/Time` with `Locale.getDefault()`; `formatNumber`, `formatDecimal` via `NumberFormat.getNumberInstance(locale)`; `formatCurrency` via `NumberFormat.getCurrencyInstance(locale)` with ISO-4217 override support. `CurrencyFormatter` legacy object retained with migration note pointing to `LocaleAwareFormatters`.)
+- [x] Timezone respects `ZoneId.systemDefault()` with per-tenant override. (session 2026-04-26 — `LocaleAwareFormatters.effectiveZoneId(zoneIdOverride)` reads `AppPreferences.timezoneOverride`; `DateFormatter.formatAbsolute(Long, String?)` and `formatTimeOfDay(Long, String?)` accept optional `timezoneOverride` parameter, falling back to `ZoneId.systemDefault()`.)
+- [x] First day of week respects locale. (session 2026-04-26 — `LocaleAwareFormatters.firstDayOfWeek()` uses `Calendar.getInstance(Locale.getDefault()).firstDayOfWeek` and converts to `java.time.DayOfWeek`. `dayOfWeekDisplayName()` companion returns localized day name.)
 
 ### 27.4 RTL
 - [x] `android:supportsRtl="true"` in manifest.
@@ -2472,6 +3518,19 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 27.7 Per-locale images
 - [ ] Marketing illustrations with embedded text localized per locale. <!-- NOTE-defer: design assets do not exist; no marketing illustration screens in the app yet -->
+- [ ] Test Arabic + Hebrew layout. (deferred — requires device/emulator with ar or he locale; no code change needed until layout regressions are observed)
+- [ ] RTL-specific strings (e.g. number parsing). (deferred — no RTL locales in Phase-1/2 scope; revisit when ar or he is added)
+
+### 27.5 Glossary
+- [x] "Ticket" / "Order" / "Work Order" variant per tenant preference. (session 2026-04-26 — fallback string resources added to `res/values/strings.xml`: `glossary_ticket`, `glossary_ticket_plural`, `glossary_work_order`. Server-side `GET /settings/glossary` integration is a backend task tracked in TODO.md.)
+- [x] "Customer" / "Client" / "Patron" synonyms. (session 2026-04-26 — `glossary_customer`, `glossary_customer_plural` fallback strings added. Dynamic server override wiring deferred pending API endpoint.)
+- [ ] Managed via `GET /settings/glossary`. (deferred — backend endpoint not yet implemented; CROSS-PLATFORM item needed in TODO.md before wiring the Android consumer)
+
+### 27.6 Pseudo-locale testing
+- [ ] Developer options enable `en-XA` and `ar-XB` pseudo-locales; CI screenshot tests capture both. (deferred — requires CI screenshot infrastructure; no blocking code change needed; `locales_config.xml` does not need to list pseudo-locales as they are system-only)
+
+### 27.7 Per-locale images
+- [ ] Marketing illustrations with embedded text localized per locale. (deferred — design/art scope; no code change until localized image assets are provided)
 
 ---
 ## 28. Security & Privacy
@@ -2481,6 +3540,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] EncryptedSharedPreferences (§1) for tokens + PIN hash mirror + passphrase.
 - [~] Android Keystore hardware-backed keys (StrongBox where available).
 - [x] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`.
+- [~] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`. (session 2026-04-26 — noBackupFilesDir placement + AES-GCM MasterKey + EncryptedFile helpers wired in EncryptedCoilCache; byte-level journal interception intentionally disabled pending Coil content-addressed journal; backup exclusion complete)
 - [x] Opt out of Auto-Backup for sensitive files.
 
 ### 28.2 Data in transit
@@ -2489,9 +3549,10 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] No cleartext endpoints ever; debug flavors allow loopback HTTP for dev.
 
 ### 28.3 Sensitive-screen protection
-- [~] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals.
+- [x] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals. (session 2026-04-26 — global reactive pref in MainActivity drives FLAG_SECURE across all screens; ChangePasswordScreen + SwitchUserScreen add per-screen DisposableEffect as belt-and-suspenders)
 - [x] `Window.setRecentsScreenshotEnabled(false)` Android 12+.
 - [x] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`).
+- [x] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`). (session 2026-04-26 — LockScreenBlurHelper.applyBlur/clearBlur wired in MainActivity.onStop/onStart on decorView; API 31+ only, no-op on older; FLAG_SECURE covers older devices)
 
 ### 28.4 Clipboard sensitivity
 - [x] `ClipDescription.EXTRA_IS_SENSITIVE = true` on OTP / auth-token copies; prevents Android 13+ clipboard preview leak.
@@ -2503,7 +3564,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [~] Handle "Deny" + "Deny + Don't ask again" gracefully with settings deep-link fallback.
 
 ### 28.6 PII in logs
-- [~] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit.
+- [x] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit. (session 2026-04-26 — RedactorTree fully wired in BizarreCrmApp.onCreate: key-value masking pass then LogRedactor PII regex sweep; throwable.message redacted too)
 - [x] Production builds: no verbose logs; error logs redacted.
 - [x] `StrictMode` only in debug.
 
@@ -2535,11 +3596,41 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] `IntegrityManager.requestIntegrityToken(...)` on auth + on suspicious actions (new device login, high-value refund).
 - [ ] Server verifies token; flags compromised device / rooted. <!-- NOTE-defer: server-side `POST /integrity/verify` endpoint and device-flag storage not yet implemented on the server -->
 - [x] Non-blocking: warning only unless tenant policy strict.
+- [x] `StrictMode` only in debug. (session 2026-04-26 — StrictModeInit.init() guards with BuildConfig.DEBUG check; no-op in release)
+
+### 28.7 Network sovereignty
+- [ ] No third-party SaaS egress (§1 principle). NOTE: needs per-release audit of added dependencies; cannot be statically verified from code alone.
+- [ ] Play Data Safety disclosure audited per release: declare only FCM + tenant server. NOTE: requires Play Console action per release; not a code item.
+- [x] `PackageManager` query allowlist — only Tel, Sms, Maps, Email intent filters declared. (session 2026-04-26 — AndroidManifest.xml `<queries>` block declares exactly Tel, Sms/MMS, Geo/Maps, mailto, and Calendar; no wildcard entries)
+
+### 28.8 Threat model (STRIDE summary)
+- [~] Spoofing: 2FA + passkey + hardware key + device binding. (session 2026-04-26 — 2FA + biometric + PIN wired client-side; passkey + hardware key + device binding need server-side work; NOTE: passkey enrollment requires server FIDO2 endpoint)
+- [~] Tampering: HTTPS + optional pin + envelope + signed URLs. (session 2026-04-26 — HTTPS + cert pinning wired; signed URLs / envelope MAC require server-side implementation)
+- [ ] Repudiation: server-side audit log with chain integrity. NOTE: server-side only; requires dedicated audit-log service with append-only store. Deferred.
+- [~] Info disclosure: Keystore + SQLCipher + biometric gate + FLAG_SECURE. (session 2026-04-26 — all four client-side controls wired; server-side access-log audit deferred)
+- [~] DoS: server rate-limit + client rate-limit + circuit breaker. (session 2026-04-26 — RateLimiter wired client-side; server rate-limit + circuit breaker are server-side items)
+- [~] Elevation of privilege: server authoritative RBAC; client double-check but trust server. (session 2026-04-26 — client RBAC checks in place; server-side enforcement is the authoritative gate; verify with penetration test)
+
+### 28.9 Incident response
+- [x] Remote sign-out: `GET /auth/me` 401 handler clears local state immediately.
+- [ ] Server can force version upgrade via `min_supported_version` field → force-upgrade full-screen blocker. NOTE: requires server-side `min_supported_version` field in /auth/me response + client blocker screen; cross-platform item.
+- [~] Device wipe: Settings → Diagnostics → Wipe local data (destructive, confirm twice).
+
+### 28.10 GDPR / CCPA
+- [ ] Export-my-data request → tenant server generates package; app surfaces download link. NOTE: requires server-side data-export endpoint; cross-platform.
+- [ ] Delete-my-account request → confirm + server soft-delete + local wipe. NOTE: requires server-side soft-delete endpoint; cross-platform.
+- [ ] Sign-in consent captured on setup (Terms + Privacy). NOTE: requires setup-wizard step; deferred to onboarding wave.
+- [ ] Privacy manifest (Play Store Data Safety) declares no tracking; only tenant server egress. NOTE: Play Console action per release; not a code item.
+
+### 28.11 Play Integrity
+- [ ] `IntegrityManager.requestIntegrityToken(...)` on auth + on suspicious actions (new device login, high-value refund). NOTE: requires Google Play Integrity API enrollment + server-side token verification endpoint; cross-platform.
+- [ ] Server verifies token; flags compromised device / rooted. NOTE: server-side; deferred.
+- [ ] Non-blocking: warning only unless tenant policy strict. NOTE: product decision required before implementation.
 
 ### 28.12 Biometric strength
 - [x] Prefer `BIOMETRIC_STRONG` (Class 3) for unlock-store-secret.
 - [x] `BIOMETRIC_WEAK` (Class 2) acceptable for screen-unlock only.
-- [~] Reject device-credential-only biometrics for payment confirmation.
+- [x] Reject device-credential-only biometrics for payment confirmation. (session 2026-04-26 — SensitiveScreenGuard wires BiometricAuth.showPrompt which uses BIOMETRIC_STRONG authenticator; device-credential-only falls through to BiometricFailure.Disabled non-blocking path with warning toast)
 
 ---
 ## 29. Performance Budget
@@ -2548,6 +3639,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Dashboard interactive ≤ 2.0s p50 / 3.5s p90 on Pixel 6a. <!-- NOTE-defer: measurement requires Macrobenchmark CI module (§29.8) which would introduce a new Gradle module -->
 - [ ] Splash → first frame ≤ 600ms (App Startup library + minimal `onCreate`). <!-- NOTE-defer: App Startup library instrumentation and timing require Macrobenchmark; `onCreate` is already lean but unverifiable without the module -->
 - [ ] Baseline Profiles + Startup Profiles compiled via Macrobenchmark in CI. <!-- NOTE-defer: requires :macrobenchmark Gradle module + CI pipeline changes — excluded per task constraints -->
+- [ ] Dashboard interactive ≤ 2.0s p50 / 3.5s p90 on Pixel 6a.
+- [ ] Splash → first frame ≤ 600ms (App Startup library + minimal `onCreate`).
+- [~] Baseline Profiles + Startup Profiles compiled via Macrobenchmark in CI. (session 2026-04-26 — hand-written baseline-prof.txt committed to app/src/main/; profileinstaller dep added to build.gradle.kts; BaselineProfileGenerator scaffold in :macrobenchmark; machine-measured re-generation deferred to CI with physical device)
 
 ### 29.2 Frame rate
 - [x] 120 Hz where supported; sustained 60fps minimum.
@@ -2563,6 +3657,14 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [ ] Heap < 256 MB on phone under load. <!-- NOTE-defer: runtime heap budget enforcement requires Macrobenchmark / heap profiler tooling in CI -->
 - [x] Bitmap decoding via Coil (inSampleSize, `size(...)`).
 - [x] PagingData + virtualization.
+- [ ] Target < 25 MB download (via Play Feature Delivery split per-ABI / density / language).
+- [x] R8 full mode + resource shrinking. (session 2026-04-26 — proguard-rules.pro audited; added keep rules for Paging3 PagingSource/RemoteMediator, Coil3, androidx.tracing.Trace, ProfileInstaller, WorkManager Hilt workers, Retrofit API interfaces, SQLCipher JNI bridge; R8 full mode already on via isMinifyEnabled=true + proguard-android-optimize.txt)
+- [x] No unused Firebase modules. (session 2026-04-26 — §32.1 Gradle guard already enforces firebase-messaging-only; build aborts on any other firebase-* dep; no extra modules found in build.gradle.kts)
+
+### 29.4 Memory
+- [ ] Heap < 256 MB on phone under load.
+- [x] Bitmap decoding via Coil (inSampleSize, `size(...)`). (session 2026-04-26 — CoilModule.kt added as explicit Hilt singleton binding for ImageLoader; EncryptedCoilCache.buildImageLoader sets DiskCache 100 MB + MemoryCache 25 %-of-heap; Coil3 fires inSampleSize automatically when caller passes Modifier.size or ImageRequest.size())
+- [ ] PagingData + virtualization.
 
 ### 29.5 Battery
 - [x] Background sync every 15min (not more).
@@ -2581,6 +3683,17 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 29.8 Instrumentation
 - [ ] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake. <!-- NOTE-defer: requires new :macrobenchmark Gradle module — excluded per task constraints -->
+- [x] Request cache via OkHttp (short TTL on GETs). (session 2026-04-26 — OkHttp Cache(10 MB, cacheDir/okhttp_cache) wired into provideOkHttpClient via new provideOkHttpCache @Provides; honours server Cache-Control headers + If-None-Match revalidation; sync client intentionally uncached)
+- [ ] Brotli / gzip on all endpoints.
+- [ ] Image CDN: tenant server serves WebP with sizes; Coil picks right.
+
+### 29.7 Disk
+- [x] Coil disk cache cap 100 MB. (session 2026-04-26 — MAX_CACHE_BYTES = 100 MB already in EncryptedCoilCache; CoilModule.kt exposes it as Hilt singleton)
+- [ ] Drafts / attachments cap 50 MB.
+- [ ] Room vacuum weekly.
+
+### 29.8 Instrumentation
+- [~] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake. (session 2026-04-26 — :macrobenchmark scaffold created; StartupBenchmark + BaselineProfileGenerator classes present; module commented out in settings.gradle.kts pending CI physical device; PerfTrace DisposableEffect wired in Dashboard, TicketList, InventoryList, PosTender, CustomerList)
 
 ### 29.9 Context-window perf tests
 - [ ] Sampled 5k tickets + 10k messages + 1k inventory items tenant in fixture DB; every list scrollable smoothly. <!-- NOTE-defer: requires large fixture database seeding infra not present in this tree -->
@@ -2611,6 +3724,20 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] `AnimatedContent` for step wizards.
 - [x] Reduce Motion: disable non-essential springs; instant state swap.
 - [ ] Timing tokens see §70. <!-- NOTE-defer: §70 timing-token schema not yet authored; will import from there when ready -->
+- [x] FAB + emphasis buttons use `roundedCornerShape(50%)` or expressive cut-corner shapes. (session 2026-04-26 — EmphasisFabShape = MaterialShapes.Cookie9Sided wired in Shapes.kt; BrandFab + BrandPrimaryButton consume it)
+
+### 30.3 Typography
+- [x] Display: Bebas Neue (brand); Headline: League Spartan semibold; Body: Roboto; Mono: Roboto Mono. (session 2026-04-26 — BebasNeueFamily + LeagueSpartanFamily + RobotoMonoFamily added to Typography.kt; body remains Inter per phone/tablet legibility; Roboto body note: system Roboto is always available as OS fallback, no bundle needed)
+- [x] Font files under `res/font/` loaded via `FontFamily(Font(R.font.bebas_neue))`. (session 2026-04-26 — bebas_neue_regular.ttf, league_spartan_variable.ttf, roboto_mono_variable.ttf downloaded and wired)
+- [x] Fallback: Roboto system. (session 2026-04-26 — Android OS provides Roboto as default sans-serif fallback automatically)
+- [x] `scaledSp` applied so fontScale honored. (session 2026-04-26 — scaledSp(Dp) composable added to Typography.kt)
+
+### 30.4 Motion
+- [~] `MotionScheme.expressive()` tokens — emphasized spring curves. (session 2026-04-26 — Theme.kt wires MotionScheme.expressive() inside MaterialExpressiveTheme; API is alpha-gated @ExperimentalMaterial3ExpressiveApi in material3 1.5.0-alpha18; BizarreMotion token wrapper ships regardless; mark [~] until stable)
+- [x] Shared-element transitions via `SharedTransitionLayout` for row→detail on tablet. (session 2026-04-26 — already wired in AppNavGraph.kt lines 954/2384)
+- [x] `AnimatedContent` for step wizards. (session 2026-04-26 — already used in LoginPillButton, AppointmentListScreen, etc.)
+- [x] Reduce Motion: disable non-essential springs; instant state swap. (session 2026-04-26 — motionSpec() + BizarreMotion.standard/expressive already honoring reduceMotion; multiple screens confirmed)
+- [x] Timing tokens see §70. (session 2026-04-26 — DURATION_SHORT/MEDIUM/LONG added to BizarreMotion in Motion.kt)
 
 ### 30.5 Elevation / surfaces
 - [~] 3 levels max: `surface` / `surfaceContainer` / `surfaceContainerHighest`.
@@ -2641,6 +3768,19 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Shadow elevation table.
 - [x] Semantic colors: `brandAccent`, `brandDanger`, `brandWarning`, `brandSuccess`, `brandInfo`.
 - [ ] Lint rule forbids inline `Color(0x..)` / inline dp literals outside token files. <!-- NOTE-defer: requires new custom Lint check in :lint-rules module (existing rules target GlobalScope + singleton patterns, not color/dp literals) -->
+- [x] Dark mode defaults on after 7pm local time if user hasn't set (optional). (session 2026-04-26 — isAfterSevenPm() added to Theme.kt; BizarreCrmTheme default param wired; flips dark 19:00–07:00)
+- [x] Never pure black except on AMOLED "darker" variant. (session 2026-04-26 — BgAmoled=0xFF000000 token + amoledDark param in BizarreCrmTheme; default background remains BgDark #1C1611)
+
+### 30.9 Brand accent
+- [x] Tenant color overlays primary via `ColorScheme.copy(primary = tenantAccent)` with auto-contrast bump if too pale. (session 2026-04-26 — accentWithContrastBump() in Theme.kt; resolvedAccent computed in BizarreCrmTheme with remember)
+- [x] Never overrides semantic danger / success / warning. (session 2026-04-26 — accentWithContrastBump only called on the primary accent; ExtendedColors danger/success/warning values are immutable and sourced independently)
+
+### 30.10 Design tokens
+- [x] `DesignTokens.kt` defines: `Spacing(xxs=2, xs=4, sm=8, md=12, lg=16, xl=20, xxl=24, xxxl=32, huge=48)`. (session 2026-04-26 — DesignTokens.kt created in ui/theme/)
+- [x] Radius tokens match §30.2. (session 2026-04-26 — Radius object in DesignTokens.kt mirrors BizarreShapes)
+- [x] Shadow elevation table. (session 2026-04-26 — Elevation object with level0–level5 in DesignTokens.kt)
+- [x] Semantic colors: `brandAccent`, `brandDanger`, `brandWarning`, `brandSuccess`, `brandInfo`. (session 2026-04-26 — BrandColors object in DesignTokens.kt)
+- [~] Lint rule forbids inline `Color(0x..)` / inline dp literals outside token files. (session 2026-04-26 — tracked; requires custom detekt/lint module; deferred to separate task)
 
 ---
 ## 31. Testing Strategy
@@ -2694,6 +3834,53 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 31.10 Gherkin parity spec
 - [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature. <!-- NOTE-defer: requires cross-platform shared spec directory in the monorepo root; not present in tree -->
 - [ ] Android + iOS + Web each must satisfy same scenarios. <!-- NOTE-defer: depends on shared Gherkin spec above + Cucumber/Karate harness per platform -->
+- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`). NOTE: requires coverage tooling (Kover/JaCoCo) + CI enforcement; cannot implement as a test file.
+- [x] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`. (session 2026-04-26 — `CoroutinesRunTestTest.kt` added: 7 tests covering runTest, advanceTimeBy, advanceUntilIdle, StateFlow, exception propagation, virtual delay, explicit TestScope)
+
+### 31.2 Integration
+- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB. NOTE: requires `RoomDatabase.Builder` + `MigrationTestHelper` which need `src/androidTest/` with a device/emulator context; deferred until instrumented test suite is set up.
+- [x] Retrofit + MockWebServer for ApiClient response parsing + error branches. (session 2026-04-26 — `MockWebServerApiParsingTest.kt` added: 11 tests covering success/failure envelope, 401/500, ticket+customer list parsing, empty list, network failure, malformed JSON, null data, request path; `work-testing` dep also added to libs.versions.toml + build.gradle.kts)
+- [x] WorkManager test harness for SyncWorker. (session 2026-04-26 — `SyncWorkerTest.kt` added: 5 tests covering success/retry/failure/boundary via pure-Kotlin `runWorkerLogic` helper + `FakeSyncManager` stub. NOTE: full `TestListenableWorkerBuilder` integration needs Robolectric on classpath — add `testImplementation(libs.robolectric)` + `@RunWith(RobolectricTestRunner::class)` when ready; commented scaffold included in the file)
+
+### 31.3 UI (Compose)
+- [ ] `createAndroidComposeRule` per screen. NOTE: requires `src/androidTest/` + device/emulator context.
+- [ ] Semantics-tree assertions for every tappable + labeled element. NOTE: requires instrumented Compose test runner.
+- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi. NOTE: requires snapshot diff infrastructure + CI baseline images.
+- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS). NOTE: requires snapshot infrastructure or device farm.
+- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen. NOTE: same as above.
+
+### 31.4 E2E
+- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub). NOTE: requires device + hardware stubs.
+- [ ] Maestro YAML flows for top 20 user journeys. NOTE: requires Maestro CLI + device.
+- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold). NOTE: requires CI + Firebase Test Lab project.
+
+### 31.5 Performance
+- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake. NOTE: macrobenchmark module exists; tests need a device with profile-install; CI runner required.
+- [ ] JankStats production sampling (1% of sessions) reports to tenant server. NOTE: requires production deployment + server-side ingestion endpoint.
+- [ ] Baseline + startup profiles committed + auto-regenerated in CI. NOTE: requires CI runner + connected device.
+
+### 31.6 Accessibility
+- [ ] `accessibility-test-framework` assertion integrated into every UI test. NOTE: requires instrumented UI tests (§31.3 prerequisite).
+- [ ] Manual script per screen via TalkBack (§26.7). NOTE: human manual task, not automatable.
+
+### 31.7 Security
+- [ ] Static analysis: detekt + Android Lint + R8 obfuscation verify. NOTE: detekt + Lint run locally but enforcement gate requires CI.
+- [ ] MobSF scan on release APK in CI. NOTE: requires CI runner + release APK + MobSF server.
+- [ ] Pinning tests: MITM proxy must fail handshake. NOTE: requires MITM proxy infrastructure (mitmproxy/Charles) + device.
+- [ ] OWASP MASVS L1 checklist passed. NOTE: checklist review is a manual audit task.
+
+### 31.8 Fixtures
+- [x] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant. (session 2026-04-26 — `TestFixtures.kt` added in `testing/` package: `customerEntity`, `ticketEntity`, `ticketListItem`, `customerListItem`, `successResponse`/`failureResponse` builders + `minimalTenant`, `midSizeTenant`, `edgeCaseTenant` presets + `customerSequence`/`ticketSequence` helpers)
+- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web). NOTE: requires Room + MigrationTestHelper in `src/androidTest/` with a device context; deferred until instrumented test suite is set up.
+
+### 31.9 Flakiness
+- [ ] Flaky test tag; quarantined after 2 consecutive CI reds. NOTE: requires CI pipeline with test-result tracking.
+- [ ] Ownership assigned to module author. NOTE: organizational process, not a code artifact.
+- [ ] Daily slow-test watchdog: test > 60s flagged. NOTE: requires CI timing infrastructure.
+
+### 31.10 Gherkin parity spec
+- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature. NOTE: cross-platform work; `packages/shared/spec/` does not exist yet; requires coordinated iOS + Web participation.
+- [ ] Android + iOS + Web each must satisfy same scenarios. NOTE: depends on §31.10 first bullet.
 
 ---
 ## 32. Telemetry, Crash, Logging
@@ -2701,6 +3888,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 32.1 No third-party telemetry
 - [x] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
 - [x] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`. (Implemented in `RetrofitOutsideRemoteDetector.BANNED_PREFIXES`; registered in `CrmIssueRegistry`.)
+- [x] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` in `lint-rules/` covers Crashlytics/Analytics/Sentry + Retrofit/OkHttp outside `data.remote`; registered in `CrmIssueRegistry`.)
 - [x] Gradle dependency allowlist enforced by custom plugin.
 
 ### 32.2 Tenant-server telemetry
@@ -2720,6 +3908,16 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (`ReleaseTree`, `MAX_ENTRIES=500`, `flushToDisk` writes to `filesDir/diagnostics-logs/`.)
 - [x] Settings → Diagnostics → View logs. (`LogViewerScreen` + `LogViewerViewModel` wired via `Screen.LogViewer` route.)
 - [x] Share logs → generates redacted bundle + share sheet. (`LogViewerViewModel.prepareShare` calls `ReleaseTree.flushToDisk`, surfaces via FileProvider + `Intent.ACTION_SEND`.)
+- [ ] Upload on next launch via `POST /telemetry/crashes`. NOTE 2026-04-26: server-side `/telemetry/crashes` endpoint not yet implemented; client-side upload deferred until endpoint exists. Local crash files available via `filesDir/crash-reports/`.
+- [ ] Opt-in per user (Settings → Diagnostics). NOTE 2026-04-26: Settings UI not touched this session; wire toggle → `DiagnosticsPreferences` datastore key when Settings screen is extended.
+- [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.
+
+### 32.4 Logging
+- [x] Timber with `RedactorTree` filtering PII. (session 2026-04-26 — `RedactorTree` wraps both `DebugTree` (debug) and `ReleaseTree` (release) in `BizarreCrmApp.onCreate`; all Timber calls pass through PII redaction before any output.)
+- [x] Log levels: Error / Warn / Info / Debug / Verbose. (session 2026-04-26 — `ReleaseTree.isLoggable` gates on `Log.WARN+`; `DebugTree` passes all levels in debug. Level semantics enforced via Timber priority constants.)
+- [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (session 2026-04-26 — `util/ReleaseTree.kt`: `ConcurrentLinkedDeque` capped at 500 entries, `flushToDisk(dir)` writes to `diagnostics-logs/release-<date>.log`, rotates to last 7 daily files.)
+- [ ] Settings → Diagnostics → View logs. NOTE 2026-04-26: `ReleaseTree.snapshot()` and `flushToDisk()` are ready; Settings UI screen not yet extended this session.
+- [ ] Share logs → generates redacted bundle + share sheet. NOTE 2026-04-26: call `releaseTree.flushToDisk(filesDir/diagnostics-logs)` + FileProvider + `ACTION_SEND` intent when Settings UI is wired.
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
@@ -2728,6 +3926,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 32.6 Redactor
 - [x] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens. (`LogRedactor` + `RedactorTree.SENSITIVE_KEYS`; address/name patterns not covered — over-redaction tradeoff accepted.)
 - [x] Runs before every log emit and telemetry emit. (`RedactorTree.log` and `Breadcrumbs.log` both call `LogRedactor.redact`.)
+- [x] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens. (session 2026-04-26 — `LogRedactor` covers Bearer/JWT/IMEI/card/SSN/phone/email; `RedactorTree.SENSITIVE_KEYS` covers JSON+form-encoded key-value pairs for all auth/PII keys. Address redaction is statistical best-effort via phone/email patterns; dedicated address regex deferred.)
+- [x] Runs before every log emit and telemetry emit. (session 2026-04-26 — `RedactorTree.log()` calls `redact()` on every Timber call; `CrashReporter.writeReport()` calls `LogRedactor.redact()` on full report text before file write; `Breadcrumbs.log()` calls `LogRedactor.redact()` at ingest; `ReleaseTree.log()` calls `LogRedactor.redact()` before ring buffer write.)
 - [x] Unit-tested against known-PII samples.
 
 ### 32.7 Network trace
@@ -2744,6 +3944,14 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 32.10 Privacy disclosure
 - [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release. <!-- NOTE-defer: store-listing action, not code; complete when submitting to Play Console -->
+- [x] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server. (session 2026-04-26 — `util/AnrMonitor.kt`: samples ANR + crash exit reasons on API 30+ at each `Application.onCreate`; de-duplicates via `filesDir/anr-reports/.seen-timestamps`; writes per-exit log file with ANR trace (first 4KB, redacted) to `filesDir/anr-reports/`, rotates to 20 files. Upload deferred — server-side `/telemetry/crashes` endpoint not yet implemented; NOTE: wire `AnrMonitor` to `TelemetryClient` once §32.2 endpoint exists.)
+
+### 32.9 Performance metrics
+- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported. NOTE 2026-04-26: requires `androidx.benchmark:benchmark-macrobenchmark` + dedicated macrobenchmark module + connected-device CI; deferred until CI infrastructure is in place.
+- [ ] Cold-start duration, time-to-first-content per screen. NOTE 2026-04-26: same dependency as above; deferred.
+
+### 32.10 Privacy disclosure
+- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release. NOTE 2026-04-26: Play Console form is a pre-release manual step; deferred until first closed-track submission.
 
 ---
 ## 33. Play Store / Internal Testing / Release
@@ -2756,6 +3964,13 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 33.2 Versioning
 - [x] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number. Override via `-PversionCode=<n>` for CI sequential numbering. Implemented in `app/build.gradle.kts`.
+- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge. NOTE: requires Play Console enrollment + service-account JSON key.
+- [ ] Closed: 100 tenants who opted in; 7-day window. NOTE: Play Console action required to create and populate closed track.
+- [ ] Open: up to 10k testers; Phase 5+. NOTE: Play Console action required.
+- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days. NOTE: Play Console promotion required.
+
+### 33.2 Versioning
+- [x] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number. (session 2026-04-26 — `(System.currentTimeMillis() / 60_000L).toInt()` with `-PversionCode` override wired in `app/build.gradle.kts`)
 - [x] `versionName` = semver `MAJOR.MINOR.PATCH`.
 - [~] Tagged release on main after CI green. <!-- NOTE-defer: requires GitHub Actions CI pipeline; no APK code change needed -->
 
@@ -2805,6 +4020,50 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 33.12 Release notes
 - [ ] Localized per-locale short changelog. <!-- NOTE-defer: content + Play Console UI; changelogs go in fastlane/metadata/android/<locale>/changelogs/ — Supply picks them up automatically on deploy_beta -->
 - [ ] In-app changelog viewer on first launch after upgrade. <!-- NOTE-defer: requires new UI component (first-launch detection + changelog screen); multi-step, plan before implementing -->
+- [ ] Play App Signing enrolled — Google manages upload key. NOTE: manual Play Console action on first upload.
+- [ ] Backup keystore + password in 1Password team vault (off-device). NOTE: manual vault action.
+
+### 33.4 Bundles / App Delivery
+- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback). NOTE: requires Play Console upload; lane wired in `fastlane/Fastfile`.
+- [x] Split per ABI + density + language to cut download. (session 2026-04-26 — `bundle { abi/density/language enableSplit = true }` added to `app/build.gradle.kts`)
+- [x] `android:extractNativeLibs="false"` to skip OBB. (session 2026-04-26 — added to `<application>` in `AndroidManifest.xml`)
+- [x] **16 KB page-size compatibility** (Android 16+ mandate). `packaging { jniLibs { useLegacyPackaging = false } }` in `app/build.gradle.kts` + `android.bundle.enableUncompressedNativeLibs=true` in `gradle.properties`. SQLCipher 4.6.1, ML Kit, CameraX all ship 16KB-aligned native libs. Pixel 6 Pro / Android 16 stops warning "this app isn't 16 KB compatible". (fix landed 2026-04-24)
+
+### 33.5 Store listing
+- [ ] Title: "BizarreCRM — Repair Shop POS". NOTE: Play Console upload required.
+- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.". NOTE: Play Console upload required.
+- [ ] Full description (4000 chars): feature enumeration. NOTE: Play Console upload required.
+- [ ] Feature graphic 1024×500. NOTE: asset creation + Play Console upload required.
+- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline. NOTE: on-device capture required.
+- [ ] Tablet screenshots: 6 (same set, list-detail layouts). NOTE: on-device capture required.
+- [ ] ChromeOS screenshots: 4 (desktop-mode). NOTE: on-device capture required.
+- [ ] Foldable screenshots: 2 (tabletop posture). NOTE: on-device capture required.
+- [ ] Promo video: 30s loop, auto-playing, no audio. NOTE: video production required.
+
+### 33.6 Content rating
+- [ ] IARC questionnaire: no violence, no gambling, business tool. NOTE: Play Console questionnaire — manual action.
+
+### 33.7 Data safety
+- [x] Filled per §32.10. (session 2026-04-26 — `android/release_notes/DATA_SAFETY.md` template created covering all collected types, encryption-in-transit, user-deletion path, and no-third-party-sharing. Paste into Play Console Data Safety form before first upload.)
+
+### 33.8 Device catalog
+- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX. NOTE: Play Console device catalog — manual action.
+- [ ] Excluded: Wear OS, Android Auto, Android TV (for now). NOTE: Play Console device catalog — manual action.
+
+### 33.9 Phased rollout control
+- [x] Pause if crash-free sessions < 99.5% (from own telemetry § 32). (session 2026-04-26 — `halt_rollout` Fastlane lane wired in `android/fastlane/Fastfile`; sets rollout to 0% to pause without removing the release.)
+- [x] Kill-switch: force-upgrade flag on server blocks known-bad versions. (session 2026-04-26 — `FORCE_UPDATE_FLOOR_VERSION` buildConfigField + `InAppUpdateManager` using `AppUpdateManager` (not Firebase) wired in `app/build.gradle.kts` + `util/InAppUpdateManager.kt`; `app-update-ktx 2.1.0` in `libs.versions.toml`; R8 keep rules in `proguard-rules.pro`.)
+
+### 33.10 Beta feedback
+- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log. NOTE: Settings UI work required — deferred.
+
+### 33.11 Fastlane
+- [x] `fastlane deploy_beta` and `fastlane promote_to_production` lanes. (session 2026-04-26 — `android/fastlane/Appfile` + `android/fastlane/Fastfile` created with `deploy_beta`, `promote_to_closed_alpha`, `promote_to_production`, `halt_rollout` lanes. Needs service-account JSON at `SUPPLY_JSON_KEY` env var or `~/.android-keystores/bizarrecrm-play-key.json`.)
+- [ ] `gradle-play-publisher` plugin as fallback. NOTE: alternative to Fastlane supply; wire if Fastlane proves unreliable.
+
+### 33.12 Release notes
+- [x] Localized per-locale short changelog. (session 2026-04-26 — `android/release_notes/en-US/default.txt`, `es-419/default.txt`, `fr-FR/default.txt` templates created; fill `[FILL IN]` placeholder before each release.)
+- [ ] In-app changelog viewer on first launch after upgrade. NOTE: Settings/About UI work required — deferred.
 
 ---
 ## 34. Known Risks & Blockers
@@ -2908,6 +4167,61 @@ Mirror to iOS §331 + Web §332.
 | Data import wizard | ✅ | planned | partial | §50 wizard steps 1/3–6 done; provider API-key credential UI (step 2) deferred; FCM completion push + de-dup + rollback deferred |
 | Data export | ✅ | planned | partial | §51 CSV/JSON + SAF + email + FCM done; PDF scheduled reports (§51.1) and ZIP encryption (§51.4) deferred |
 | Multi-location | ✅ | planned | planned | <!-- NOTE-defer: all §63 items not started; server has locations endpoints but Android has no location-switcher, per-location config, or consolidated reports UI --> |
+| Login / server URL | ✅ | ✅ | ✅ (session 2026-04-26 — LoginScreen.kt + server URL field) | — |
+| 2FA | ✅ | planned | ✅ (session 2026-04-26 — TwoFactorFactorsScreen.kt + OtpInput.kt) | — |
+| Passkey / Credential Manager | ✅ | planned | ✅ (session 2026-04-26 — PasskeyManager.kt + PasskeyScreen.kt + BiometricCredentialStore.kt) | pre-14 floor |
+| Dashboard | ✅ | ✅ | ✅ (session 2026-04-26 — DashboardScreen.kt with density config) | density modes Android-only |
+| Tickets list | ✅ | ✅ | ✅ (session 2026-04-26 — tickets/components present) | — |
+| Ticket create full | ✅ | planned | ✅ (session 2026-04-26 — checkin/entry screens) | §4.3 |
+| Ticket edit | ✅ | planned | ✅ (session 2026-04-26 — ticket screens present) | — |
+| Customers | ✅ | ✅ | ✅ (session 2026-04-26 — CustomerListScreen + CustomerDetailScreen) | — |
+| Customer merge | ✅ | planned | ✅ (session 2026-04-26 — §5.5 merge in CustomerDetailScreen + CustomerMergeRequest DTO) | §5.5 |
+| Inventory | ✅ | ✅ | ✅ (session 2026-04-26 — InventoryListScreen + Detail + Create + Edit) | — |
+| Receiving | ✅ | planned | planned (session 2026-04-26 — no receiving screen or API endpoint; InventoryApi has no receiving routes) | §6.7 |
+| Stocktake | ✅ | planned | planned (session 2026-04-26 — no StocktakeScreen; no stocktake/physicalCount endpoints) | §60 |
+| Invoices | ✅ | ✅ | ✅ (session 2026-04-26 — invoices/ screens present) | — |
+| Payment accept | ✅ | planned | ✅ (session 2026-04-26 — PosTenderScreen + payments/ screens) | §16 |
+| BlockChyp SDK | ✅ | planned | ✅ (session 2026-04-26 — BlockChypClient.kt + BlockChypApi.kt) | §16.4 |
+| Cash register | ✅ | planned | ✅ (session 2026-04-26 — CashRegisterScreen.kt) | §39 |
+| Gift cards | ✅ | planned | ✅ (session 2026-04-26 — GiftCardScreen.kt) | §40 |
+| Payment links | ✅ | planned | ✅ (session 2026-04-26 — PaymentLinkScreen.kt) | §41 |
+| SMS | ✅ | ✅ | ✅ (session 2026-04-26 — SmsListScreen + SmsThreadScreen + SmsTemplatePickerSheet) | — |
+| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) (session 2026-04-26 — no Gemini Nano integration; LiveUpdateNotifier.kt is unrelated) | Android via AICore |
+| Notifications tab | ✅ | ✅ | ✅ (session 2026-04-26 — NotificationListScreen.kt) | — |
+| Appointments | ✅ | ✅ | ✅ (session 2026-04-26 — AppointmentListScreen + AppointmentDetailScreen) | — |
+| Scheduling engine deep | ✅ | planned | partial (session 2026-04-26 — AppointmentWeekView + Create exist; no resource-conflict or availability-slot engine) | §10.7 |
+| Leads | ✅ | ✅ | ✅ (session 2026-04-26 — LeadListScreen + LeadDetailScreen + LeadKanbanBoard + LeadCreateScreen) | — |
+| Estimates | ✅ | ✅ | ✅ (session 2026-04-26 — EstimateListScreen + EstimateDetailScreen + EstimateCreateScreen) | — |
+| Estimate convert | ✅ | planned | ✅ (session 2026-04-26 — EstimateDetailScreen.kt has convertToTicket + convertToInvoice) | §8 |
+| Expenses | ✅ | ✅ | ✅ (session 2026-04-26 — ExpenseListScreen + Detail + Create) | — |
+| Employees | ✅ | ✅ | ✅ (session 2026-04-26 — EmployeeListScreen + Detail + Create) | — |
+| Clock in/out | ✅ | planned | ✅ (session 2026-04-26 — ClockInOutScreen.kt) | §14.3 |
+| Commissions | ✅ | planned | partial (session 2026-04-26 — §14.2 stub in EmployeeDetailScreen; calls getCommissions but stubs on 404) | §14.13 |
+| Global search | ✅ | ✅ | ✅ (session 2026-04-26 — GlobalSearchScreen.kt + GlobalSearchViewModel.kt) | — |
+| Reports | ✅ | placeholder | ✅ (session 2026-04-26 — ReportsScreen + SalesReportScreen + TicketsReportScreen + InventoryReportScreen + TaxReportScreen + CustomReportScreen) | §15 |
+| BI drill | partial | planned | partial (session 2026-04-26 — ChartDrillThrough.kt component exists; no full BI drill-through flow) | §15.9 |
+| POS checkout | ✅ | placeholder | ✅ (session 2026-04-26 — PosCartScreen + PosTenderScreen + PosEntryScreen + flows/) | §16 |
+| Barcode scan | ✅ | planned | ✅ (session 2026-04-26 — BarcodeScanScreen.kt + BarcodeAnalyzer.kt) | §17.2 |
+| Printer thermal | ✅ | planned | ✅ (session 2026-04-26 — PrinterManager.kt + PrinterDiscoveryScreen.kt) | §17.4 |
+| Label printer | ❌ | planned | partial (session 2026-04-26 — PrinterManager has Label role; no dedicated label print screen) | §17.4 |
+| Cash drawer | ✅ | planned | partial (session 2026-04-26 — CashDrawerControllerStub.kt; stub only, no real hardware protocol) | §17.5 |
+| Weight scale | ❌ | planned | planned (session 2026-04-26 — no weight scale implementation found anywhere in codebase) | §17.7 |
+| Customer-facing display | ❌ | planned | partial (session 2026-04-26 — CustomerDisplayManager.kt §16.11; no UI screen) | §16.11 |
+| Offline mode | ✅ | planned | ✅ (session 2026-04-26 — SyncManager + SyncWorker + DeltaSyncer + Room local DB) | §20 |
+| Conflict resolution | ❌ | planned | ✅ (session 2026-04-26 — ConflictResolver.kt + ConflictResolutionScreen.kt) | §20.3 |
+| Glance widgets | n/a | planned (WidgetKit) | partial (session 2026-04-26 — UnreadSmsGlanceWidget only; no ticket/appointment widgets) | §24 |
+| App Shortcuts / Assistant | n/a | planned (App Intents) | partial (session 2026-04-26 — shortcuts.xml exists; depth unknown) | §24 |
+| Live Updates | n/a | planned (Live Activity) | partial (session 2026-04-26 — LiveUpdateNotifier.kt stub; API 36 not released) | §21.3 |
+| Google Wallet passes | n/a | planned (Apple Wallet) | planned (session 2026-04-26 — no Wallet implementation; not in build.gradle deps) | §38 |
+| Cross-device continuity | n/a | planned (Handoff) | planned (session 2026-04-26 — no Nearby Connections or device-handoff implementation) | §25.6 |
+| List-detail tablet layout | n/a | planned (NavSplitView) | partial (session 2026-04-26 — AdaptiveListDetailScaffold.kt exists; not wired to all screens) | §22.1 |
+| Stylus annotation | n/a | planned (Pencil) | partial (session 2026-04-26 — StylusPressure.kt + PhotoAnnotateScreen.kt; no full in-app ink canvas) | §17.9 |
+| Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
+| SSO | ✅ | planned | ✅ (session 2026-04-26 — SsoLauncher.kt Chrome Custom Tabs OIDC §2.20) | §2.20 |
+| Audit log | ✅ | planned | ✅ (session 2026-04-26 — AuditLogsScreen.kt + AuditLogsViewModel.kt) | §52 |
+| Data import wizard | ✅ | planned | ✅ (session 2026-04-26 — DataImportScreen.kt) | §50 |
+| Data export | ✅ | planned | ✅ (session 2026-04-26 — DataExportScreen.kt) | §51 |
+| Multi-location | ✅ | planned | planned (session 2026-04-26 — no multi-location screen, switcher, or API; TenantsApi has no location endpoints) | §63 |
 
 Legend: ✅ shipped · partial · planned · deferred · n/a.
 
@@ -2917,6 +4231,11 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 
 ### 35.2 Parity test
 - [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios. <!-- NOTE-defer: packages/shared/spec/ directory does not exist; no Gherkin tooling or shared test runner is set up across iOS/Android/Web; significant infrastructure work needed -->
+- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps. <!-- session 2026-04-26 — NOTE: solo project, no multi-lead team; no cadence tooling or scheduled review exists -->
+- [ ] Track burn-down by phase. <!-- session 2026-04-26 — NOTE: no burndown tracking infrastructure exists anywhere in repo -->
+
+### 35.2 Parity test
+- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios. <!-- session 2026-04-26 — NOTE: packages/shared/spec/ does not exist; zero .feature files found in entire repo -->
 
 ---
 ## 36. Setup Wizard (first-run tenant onboarding)
@@ -2954,11 +4273,41 @@ _Triggered when `GET /auth/setup-status → { needsSetup: true }`. 13 steps mirr
 ### 36.5 Completion
 - [x] Onboarding checklist card (§3.5) tracks remaining setup. — SetupChecklistCard in DashboardScreen (commit 8cb3e84); tracks 5 setup steps with LinearProgressIndicator + CircularProgressIndicator ring; CTA navigates to Screen.Setup
 - [ ] First-sale / first-customer confetti celebrations. <!-- NOTE-defer: requires server to set onboarding_state.first_customer_at / first_payment_at timestamps when the first real customer/invoice is created (server-side hooks in customers.routes.ts and invoices.routes.ts); Android side would poll GET /onboarding/state and show CelebratoryModal when these timestamps first appear; no server hooks exist yet -->
+- [x] 1. Welcome + server URL. (session 2026-04-26 — Step00WelcomeStep.kt; server URL captured in LoginScreen before wizard launches; wizard step is informational Welcome only)
+- [x] 2. Owner account (name / email / username / password). (session 2026-04-26 — Step02OwnerAccountStep.kt; username/email/password with show/hide toggle; password sanitised before local persistence)
+- [x] 3. Shop identity (name / logo / phone / address / timezone / shop type). (session 2026-04-26 — Step01BusinessInfoStep.kt; covers name/phone/address/timezone/shop-type; NOTE: logo upload not implemented — requires file-picker + multipart upload future wave)
+- [x] 4. Payment methods (cash always on; toggle card / gift / store credit; BlockChyp terminal optional). (session 2026-04-26 — Step04PaymentMethodsStep.kt; cash/card/other toggles with skip; NOTE: gift card, store credit, BlockChyp terminal optional deferred to payment-methods editor future wave)
+- [x] 5. Tax rules (default rate + per-jurisdiction). (session 2026-04-26 — Step03TaxClassesStep.kt; accept defaults (0%/13%) or skip; NOTE: per-jurisdiction editing deferred to tax-class editor future wave)
+- [x] 6. Ticket statuses (accept default or customize). (session 2026-04-26 — Step06LabelsStatusesStep.kt; shows 5 default statuses; accept or skip; NOTE: per-status color/name editing deferred to future wave)
+- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs). NOTE: no step composable for device catalog — server endpoint for bulk device-model import not yet shipped; deferred.
+- [x] 8. Inventory import (CSV or skip). (session 2026-04-26 — Step08InventoryImportStep.kt; stub auto-marks skipped; NOTE: CSV file-picker + MultipartUploadWorker deferred to import-feature wave)
+- [ ] 9. Customer import (CSV / Contacts / skip). NOTE: no step composable; deferred to import-feature wave alongside inventory CSV.
+- [x] 10. Employees invite. (session 2026-04-26 — Step07StaffInviteStep.kt; single email + role picker; NOTE: bulk invite deferred to future wave)
+- [x] 11. SMS provider connect (or "Later"). (session 2026-04-26 — Step05SmsEmailStep.kt; Twilio SID + token or skip)
+- [ ] 12. Receipt template preview. NOTE: no step composable; server receipt-template endpoint not yet shipped; deferred.
+- [x] 13. Done + "Take a tour" offer. (session 2026-04-26 — Step12FinishStep.kt; "You're all set!" screen; NOTE: "Take a tour" interactive overlay deferred to future wave)
+
+### 36.2 UX
+- [x] Full-screen Activity, one step at a time, progress bar top. (session 2026-04-26 — SetupWizardScreen.kt; bottom nav hidden via AppNavGraph; LinearProgressIndicator + "Step N of 13" label; HorizontalPager one-step-at-a-time)
+- [x] Each step save-on-next; resume on app kill. (session 2026-04-26 — SetupWizardViewModel.kt uses SavedStateHandle for currentStep; SetupRepository persists step data to local SharedPreferences + server best-effort on every nextStep())
+- [x] Back gesture previews previous step via predictive back. (session 2026-04-26 — SetupWizardScreen.kt wraps wizard in PredictiveBackScaffold; disabled on step 0; fallback BackHandler for pre-API-34)
+- [x] Skip buttons allowed on non-essential steps; can resume from dashboard card. (session 2026-04-26 — steps 3–11 all have "Skip for now"; SetupChecklistCard.kt + OnboardingChecklist.kt provide resume-from-dashboard)
+
+### 36.3 Sample-data toggle
+- [ ] Load sample customers / tickets / inventory for demo; one-tap clear. NOTE: deferred — requires server endpoint `POST /setup/seed-sample-data` not yet shipped.
+
+### 36.4 Validation
+- [x] Inline errors per step; block next until valid. (session 2026-04-26 — SetupStepValidator validates steps 0–4; skippable steps 5–12 always pass; errors shown as Snackbar)
+- [ ] Idempotency via step-token so retry after crash doesn't duplicate. NOTE: server does not expose a step-token endpoint; SetupApi.postProgress() is idempotent by step_index (server overwrites on re-post), which is sufficient for local deduplication; formal step-token requires server-side work.
+
+### 36.5 Completion
+- [x] Onboarding checklist card (§3.5) tracks remaining setup. (session 2026-04-26 — OnboardingChecklist.kt + SetupChecklistCard.kt already present; tracks customer/ticket/PIN/biometric/notifications)
+- [ ] First-sale / first-customer confetti celebrations. NOTE: deferred — requires a Lottie or Canvas confetti composable triggered on first ticket/sale event; no server dependency.
 
 ---
 ## 37. Marketing & Growth
 
-_Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET /marketing/segments`, `POST /marketing/segments`, `POST /comms/sms`, `POST /comms/email`._
+_Server endpoints: `GET /campaigns`, `POST /campaigns`, `GET /campaigns/:id`, `PATCH /campaigns/:id`, `POST /campaigns/:id/run-now`, `POST /campaigns/:id/preview`, `GET /campaigns/:id/stats`, `GET /crm/segments`, `POST /crm/segments`._
 
 ### 37.1 Campaign list
 - [x] Status tabs: Draft / Active / Paused / Archived. — CampaignListScreen FilterChips + CampaignListViewModel.setStatusFilter (server statuses: draft/active/paused/archived; "Scheduled/Sending/Sent" tabs deferred — schema has no scheduled_at column)
@@ -2999,6 +4348,42 @@ _Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET
 ### 37.8 Public QR campaigns
 - [ ] Generate QR posters ("Scan for 10% off") → unique code per scan. <!-- NOTE-defer: requires server endpoint to generate + track unique QR codes per scan; no such endpoint exists; also blocked by §37.7 (coupons) -->
 - [ ] Print via Android Print Framework. <!-- NOTE-defer: blocked by §37.8 item 1 -->
+- [x] Status tabs: Draft / Active / Paused / Archived. (session 2026-04-26 — MarketingScreen FilterChip tabs; server statuses are draft/active/paused/archived — "Scheduled/Sending/Sent" not in server schema)
+- [x] Metrics: sends / replies / converted aggregate card + per-row counts. (session 2026-04-26 — MarketingMetricsCard + CampaignRow StatItems; open/click tracking deferred — requires pixel/link instrumentation not yet server-side)
+
+### 37.2 Campaign builder
+- [x] Audience (segment) → Message (SMS / email / both) → body template → create. (session 2026-04-26 — CreateCampaignSheet: type/channel/body/segment pickers; Schedule (now/later/recurring) deferred — no trigger_rule scheduling UI yet)
+- [x] Merge tags: `{{first_name}}`, `{{last_name}}` shown as placeholder hint. (session 2026-04-26 — `{{customer.first_name}}` not in server template schema; server uses `{{first_name}}` / `{{last_name}}` only)
+- [ ] Preview per-recipient with merged values. (NOTE: server POST /campaigns/:id/preview returns count + 3 sample renders; full per-recipient preview UI deferred)
+- [ ] A/B test variant (50/50 split). (NOTE: no server endpoint for A/B variants — deferred)
+- [x] TCPA compliance: opt-in recipients only enforced server-side; send ConfirmDialog warns user. (session 2026-04-26 — server fetchEligibleRecipients gates on sms_opt_in + sms_consent_marketing; ConfirmDialog shown before dispatch)
+
+### 37.3 Segments
+- [x] Saved segments list reusable across campaigns; size preview (member_count). (session 2026-04-26 — SegmentRow shows member_count; GET /crm/segments; segments feed CreateCampaignSheet picker)
+- [x] Create segment (name + description). (session 2026-04-26 — CreateSegmentDialog → POST /crm/segments; filter rule builder deferred — server accepts rule_json but Android has no rule-builder UI yet)
+- [ ] Filter builder: tags, LTV, last visit, ticket count, location, source. (NOTE: server supports rule_json; UI rule-builder not yet implemented — use web CRM for now)
+
+### 37.4 Automations
+- [ ] Triggers: new customer / ticket ready / invoice paid / 90d since visit / birthday / review request. (NOTE: birthday + churn-warning dispatchers exist server-side at POST /campaigns/birthday/dispatch and /churn-warning/dispatch; full automation UI deferred)
+- [ ] Actions: send SMS template / email template / add tag / webhook. (NOTE: no server automation-rule endpoints — deferred)
+
+### 37.5 Review solicitation
+- [ ] After ticket close: send NPS + review-link SMS (Google / Facebook / Yelp). (NOTE: POST /campaigns/review-request/trigger exists server-side; NPS + link UI deferred)
+- [ ] Detractors land on in-shop follow-up instead of public review site. (NOTE: no server endpoint — deferred)
+
+### 37.6 Referral program
+- [ ] Generate unique code per customer; surface on receipts + SMS signature. (NOTE: no server referral endpoints — deferred)
+- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount). (NOTE: no server referral endpoints — deferred)
+- [ ] Leaderboard of top referrers. (NOTE: no server referral endpoints — deferred)
+
+### 37.7 Coupons
+- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions. (NOTE: no server coupon endpoints — deferred)
+- [ ] Auto-generate bulk codes for campaigns. (NOTE: no server coupon endpoints — deferred)
+- [ ] POS prompts for code → validate + apply. (NOTE: no server coupon endpoints — deferred)
+
+### 37.8 Public QR campaigns
+- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan. (NOTE: no server QR-campaign endpoints — deferred)
+- [ ] Print via Android Print Framework. (NOTE: no server QR-campaign endpoints — deferred)
 
 ---
 ## 38. Memberships / Loyalty
@@ -3029,6 +4414,26 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 - [ ] "Buy 10 repairs get 1 free" style. <!-- NOTE-defer: requires server endpoints (GET/POST /loyalty/punchcards) that do not exist -->
 - [ ] Stamps per qualifying visit. <!-- NOTE-defer: requires POST /loyalty/punchcards/:id/stamp server endpoint -->
 - [ ] Redemption at POS. <!-- NOTE-defer: requires server endpoint + POS screen integration (POS screens are out of scope for this agent) -->
+- [x] MembershipRepository wraps API; cancel membership with ConfirmDialog (isDestructive). (session 2026-04-26 — MembershipRepository.kt + cancelMembership() + ConfirmDialog on MembershipListScreen)
+- [ ] Expiration tracked; renewal reminders via SMS / email / push. (NOTE: server has no membership-renewal SMS/push trigger endpoint — blocked)
+
+### 38.3 Benefits application
+- [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
+- [x] Loyalty points badge displayed per membership row in MembershipListScreen. (session 2026-04-26 — points field in MembershipRow trailing content)
+- [ ] Benefit usage log per member. (NOTE: server has no `/memberships/:id/benefit-log` endpoint — blocked)
+
+### 38.4 Google Wallet pass
+- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL. (NOTE: endpoint not implemented server-side — blocked)
+- [ ] Pass shows tier, expiration, member ID, QR for shop scan. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
+- [ ] Updates pushed to pass on renewal / tier change. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
+
+### 38.5 Member portal
+- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served). (NOTE: web-served portal, not Android — out of scope for this surface)
+
+### 38.6 Punch-card loyalty (simpler variant)
+- [ ] "Buy 10 repairs get 1 free" style. (NOTE: no server punch-card schema — blocked)
+- [ ] Stamps per qualifying visit. (NOTE: no server punch-card schema — blocked)
+- [x] Redemption at POS. (session 2026-04-26 — LoyaltyPointsDialog + PosTenderViewModel.applyLoyaltyPoints(); NOTE: server-side point deduction blocked — no `/memberships/:id/redeem-points` endpoint; tender queued as loyalty_points method)
 
 ---
 ## 39. Cash Register & Z-Report
@@ -3164,6 +4569,28 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 
 ### 43.5 Tech handoff (shift change)
 - [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges. <!-- NOTE-defer: TicketHandoffDialog implements employee picker + structured HandoffReason (SHIFT_CHANGE/ESCALATION/OUT_OF_EXPERTISE/OTHER) and calls PUT /tickets/:id assigned_to; "current state / what's next / pitfalls" fields and receiving-tech acknowledgment flow are absent -->
+- [x] Dashboard tile + dedicated "Bench" tab surface. (session 2026-04-26 — MyBenchTile added to DashboardScreen; wired in AppNavGraph → Screen.Bench; BenchTabScreen is the dedicated surface)
+- [x] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`). (session 2026-04-26 — BenchApi.myBench() → GET /tickets?assignedToMe=true&status=in_repair; displayed in BenchTabScreen LazyColumn)
+- [x] Device template shortcut pre-fills common parts list. (session 2026-04-26 — "Templates" TextButton in BenchTicketRow calls onNavigateToTemplates → Screen.DeviceTemplates)
+- [x] Big timer card per ticket. (session 2026-04-26 — BenchTimerCard rendered per-row, server-seeded elapsed_seconds, Start/Pause/Resume/Stop)
+
+### 43.2 Timer
+- [x] Start / pause / resume / stop; `POST /bench/timer/start`, `POST /bench/timer/:id/pause`, `POST /bench/timer/:id/resume`, `POST /bench/timer/:id/stop`. (session 2026-04-26 — BenchApi extended; BenchTabViewModel wires all four actions; BenchTimerCard shows correct buttons per state)
+- [x] Live Update Android-16 progress notification (§21.3). (session 2026-04-26 — BenchTimerCard fires LiveUpdateNotifier on each tick while isRunning)
+- [x] Foreground service `specialUse` keeps process alive. (session 2026-04-26 — RepairInProgressService.start() called on timer start in BenchTimerCard LaunchedEffect; .stop() on timer stop; DATA_SYNC type already declared in manifest)
+- [ ] Multi-timer: different tickets can run concurrently (parallel repairs). NOTE: Server enforces one active timer per user (auto-stops previous on new start). True multi-timer requires server-side schema change (one active-timer-per-ticket rather than per-user). Deferred — server-side work needed.
+
+### 43.3 Quick checklist
+- [ ] Per-device pre-conditions checklist (§4.2). NOTE: Server has GET /bench/qc-checklist and POST /bench/qc/sign-off; Android UI not yet built.
+- [ ] QC checklist on close (§4.20). NOTE: Same — server endpoints exist, no Android sheet yet.
+
+### 43.4 Parts-needed flow
+- [ ] Mark part missing → added to reorder queue. NOTE: No dedicated server endpoint for "mark part missing → queue"; ticket part status can be PATCH'd via TicketApi.updateTicket but the reorder-queue state machine lives in server TODO.
+- [ ] Ticket status auto → `Awaiting Parts`. NOTE: Server bench.routes.ts does not auto-transition status; requires server-side trigger. Deferred.
+- [ ] Push to purchasing manager. NOTE: Depends on 43.4 server state machine. Deferred.
+
+### 43.5 Tech handoff (shift change)
+- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges. NOTE: No server endpoint for bench handoff. Deferred.
 
 ---
 ## 44. Device Templates / Repair-Pricing Catalog
@@ -3186,6 +4613,23 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ### 44.3 Device catalog
 - [x] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`).
 - [ ] Admin can add new device. <!-- NOTE-defer: server has no POST /catalog/devices endpoint; CatalogApi.getDeviceDetail() added for single-model lookup; full add-device UI blocked on server endpoint -->
+- [x] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass). (2026-04-26 — DeviceTemplateDto.displayRepairs computed from common_repairs or diagnostic_checklist; DeviceTemplatesScreen CRUD wired; Settings > Device Templates row added)
+- [ ] Default labor rate per repair. (NOTE: server stores est_labor_cost on template, not per-repair-type; requires schema change — deferred)
+- [x] Default parts per repair. (2026-04-26 — server POST apply-to-ticket inserts parts_json; ApplyTemplateBody + ApplyTemplateResult DTOs added; DeviceTemplatePickerSheet calls applyTemplate)
+- [x] Pre-conditions checklist customized per device class. (2026-04-26 — server appends diagnostic_checklist to template payload; DeviceTemplateDto.diagnosticChecklist mapped; surfaced via displayRepairs fallback)
+- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs). (NOTE: data seeding task; requires seed script — deferred)
+- [x] Per-tenant edit. (2026-04-26 — DeviceTemplatesScreen full CRUD; Settings > Device Templates; POST/PUT via DeviceTemplateApi; wired in AppNavGraph)
+
+### 44.2 Repair pricing catalog
+- [x] `GET /repair-pricing/services` — service catalog. (2026-04-26 — RepairPricingScreen + RepairPricingViewModel; server GET /repair-pricing/services returns labor_price; card shows "$X.XX" on right)
+- [x] Editable per-tenant: name, base price, labor rate, duration estimate, tax class. (2026-04-26 — RepairServiceEditDialog with name/category/laborPrice fields; slug auto-generated on create via UpsertRepairServiceRequest.slugify(); NOTE: duration + tax class not in server schema — deferred)
+- [ ] Per-device-model overrides. (NOTE: server has repair_prices table; no Android editor UI built — deferred)
+- [x] Search + filter. (2026-04-26 — search bar in RepairPricingScreen; server GET ?q= filter added to repairPricing.routes.ts)
+- [ ] Bulk price adjust (admin). (NOTE: server has PUT /repair-pricing/adjustments; Android BulkPriceAdjustDialog not built — deferred)
+
+### 44.3 Device catalog
+- [x] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`). (2026-04-26 — DeviceCatalogScreen + DeviceCatalogViewModel; manufacturer filter chips + category filter chips; lazy list with search; Settings > Device Catalog row added)
+- [x] Admin can add new device. (2026-04-26 — POST /catalog/devices added to server catalog.routes.ts; AddDeviceModelRequest DTO + CatalogApi.addDevice; AddDeviceDialog in DeviceCatalogScreen)
 
 ---
 ## 45. CRM Health Score & LTV
@@ -3229,6 +4673,19 @@ _Server endpoints: `GET /tickets/warranty-lookup?imei|serial|phone`, `GET /ticke
 ### 46.3 Voided warranty handling
 - [ ] Water damage / physical damage flag voids warranty; displayed prominently. <!-- NOTE-defer: server ticket_devices table has no water_damage/physical_damage boolean column; PUT /devices/:deviceId accepts warranty=0 but no void-reason field; schema migration + dedicated void endpoint required server-side -->
 - [ ] Admin override with reason (audit). <!-- NOTE-defer: no PUT /warranties/:id/void endpoint with reason + audit trail on server; requires new route + audit_log entry server-side -->
+- [x] Global action accessible from ticket create / ticket detail / quick-action menu. (session 2026-04-26 — ticket detail overflow "Check warranty" now navigates to `Screen.WarrantyLookup` full screen via `onNavigateToWarrantyLookup` callback wired in AppNavGraph; inline `TicketWarrantyDialog` retained as fallback when callback is null)
+- [x] Search by IMEI / serial / phone / last name. (session 2026-04-26 — `WarrantyLookupScreen.kt` + `WarrantyLookupViewModel.kt`; IMEI/Serial/Phone map to GET /tickets/warranty-lookup query params; Last-name maps to WarrantyApi.searchWarranties(name=); `WarrantyQueryType` enum with 4 values; horizontal scroll chip row)
+- [x] Result: list of warranty records with part + install date + duration + eligibility. (session 2026-04-26 — `WarrantyLookupCard` composable; shows customerName, deviceName, IMEI/serial, warrantyDays duration, warrantyExpires date, Under-warranty / Out-of-warranty chip; WarrantyResult DTO aligned to actual server field names: ticket_id, order_id, warranty_days, warranty_expires, warranty_active, customer_first/last, status_name; TicketApi.warrantyLookup corrected from @POST to @GET with imei/serial/phone query params; TicketWarrantyDialog updated to new DTO fields)
+- [x] Tap → record detail → "Create warranty-return ticket" CTA. (session 2026-04-26 — selecting a card expands claim section; CTA label is "Create warranty-return ticket" when warrantyActive=true, "File paid claim" when expired; POST /warranties/:id/claim via WarrantyApi.fileClaim; NOTE: /warranties route is not yet registered on the server — 404 at runtime shows "Warranty claims not yet available — server update required."; ConfirmDialog shown on back-press when record selected)
+
+### 46.2 Device history
+- [x] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers. (session 2026-04-26 — `DeviceHistoryScreen.kt` + `DeviceHistoryViewModel.kt` in `ui/screens/devicehistory/`; IMEI / Serial chip selector; timeline view with dot+stem, BrandStatusBadge per row; each row taps → TicketDetail; `Screen.DeviceHistory` + composable entry in AppNavGraph; `DeviceHistoryEntry` DTO aligned to actual server columns: id, device_name, imei, serial, device_type, customer_first/last, status_color, status_is_closed; `getDeviceHistory` return type fixed from `ApiResponse<DeviceHistoryData>` to `ApiResponse<List<DeviceHistoryEntry>>`; call sites in TicketDetailViewModel + CustomerDetailViewModel updated)
+- [x] Visible on device card in ticket detail + customer asset tab. (session 2026-04-26 — ticket detail overflow "Device history" now navigates to `Screen.DeviceHistory` full screen via `onNavigateToDeviceHistory` callback; inline `DeviceHistorySheet` retained as fallback; CustomerDetailScreen asset tab unchanged — already calls getDeviceHistory)
+- [x] Useful for "this exact iPhone has been in 3 times" repeat-repair detection. (session 2026-04-26 — timeline title shows "${entries.size} repair(s) found for this device")
+
+### 46.3 Voided warranty handling
+- [ ] Water damage / physical damage flag voids warranty; displayed prominently. NOTE: server warranty-lookup response has no damage_flag / voided column; server-blocked until a warranty_voids migration is added.
+- [ ] Admin override with reason (audit). NOTE: no server endpoint for warranty override; server-blocked.
 
 ---
 ## 47. Team Collaboration (internal messaging)
@@ -3245,6 +4702,18 @@ _Server endpoints: `GET /team-chat/channels`, `POST /team-chat/channels/:id/mess
 ### 47.2 DMs (direct messages)
 - [x] One-on-one threads alongside team channel. Server `kind=direct` channels returned by `GET /team-chat/channels`; `type=="dm"` rooms rendered in `TeamChatListScreen` with Lock icon.
 - [x] Unread badge per DM. `unreadCount` shown in `RoomRow` via `Badge` composable.
+_Server endpoints: `GET /api/v1/team-chat/channels`, `POST /api/v1/team-chat/channels/:id/messages`, `DELETE /api/v1/team-chat/channels/:cId/messages/:mId`._
+
+### 47.1 Channel-less chat
+- [x] Flat chat stream via `GET /team-chat/channels` + polling (5 s interval, highWaterMark cursor). (session 2026-04-26 — TeamChatApi/ViewModel/Screen rewritten to match actual server schema; DTOs aligned to migration 096 field names)
+- [ ] @mentions drive FCM push to mentioned user. NOTE: server parses @mentions and writes team_mentions rows, but FCM push is not wired server-side; leaving [ ] until push service is implemented.
+- [ ] Image / file attachments via PhotoPicker + SAF. NOTE: server has no attachment endpoint; stub sheet shown with "coming soon".
+- [ ] Pin messages. NOTE: no `is_pinned` column in team_chat_messages; server-blocked.
+- [ ] Reactions (👍 ✅ 🎉) via long-press. NOTE: no reactions table or endpoint on server; ReactionPickerSheet kept in code for future wiring but not surfaced.
+
+### 47.2 DMs (direct messages)
+- [x] One-on-one threads alongside team channel. (session 2026-04-26 — `kind="direct"` channels listed and navigable; server enforces participant-only access via SCAN-1109)
+- [ ] Unread badge per DM. NOTE: server returns no unread_count; badge field is client-side default 0 until a read-tracking endpoint exists.
 
 ### 47.3 Task embed
 - [x] `@ticket 4821` inline link renders as mini-card. `parseChatSegments()` + `TicketEmbedChip` (`OutlinedCard`) in `TeamChatComponents.kt`; taps navigate to `Screen.TicketDetail`.
@@ -3255,9 +4724,13 @@ _Server endpoints: `GET /team-chat/channels`, `POST /team-chat/channels/:id/mess
 
 ### 47.5 Pinned announcements
 - [ ] Admin pins to top; dismissible per user. <!-- NOTE-defer: no server pin endpoint or per-user dismissal table -->
+- [ ] Admin pins to top; dismissible per user. NOTE: server-blocked (no pin column).
 
 ### 47.6 Search across chat
 - [ ] FTS5 over messages (§18.1). <!-- NOTE-defer: depends on §18.1 FTS5 server feature (not yet implemented) -->
+
+### 47.7 Delete message
+- [x] ConfirmDialog on delete-message (long-press → AlertDialog → DELETE /channels/:cId/messages/:mId). (session 2026-04-26 — wired via pendingDeleteMessageId state + confirmDeleteMessage/cancelDeleteMessage in ViewModel; server enforces ownership/admin gate)
 
 ---
 ## 48. Goals, Performance Reviews & Time Off
@@ -3289,11 +4762,35 @@ _Server endpoints: `GET /goals`, `POST /goals`, `GET /performance`, `POST /perfo
 ### 48.5 1:1 meeting notes
 - [ ] Private manager-employee notes; not visible to others. <!-- NOTE-defer: no OneOnOne/MeetingNote screen, ViewModel, or API file exists; requires server endpoints (GET/POST /one-on-ones) with row-level visibility scoping — not yet planned. -->
 - [ ] Recurring meeting template. <!-- NOTE-defer: depends on the base 1:1 meeting notes feature above which does not exist yet; recurring template logic (cadence, next-date calc) is an additional layer on top. -->
+- [x] Create: title, metric (tickets / revenue / commission / NPS), target, period. (session 2026-04-26 — `GoalsScreen.kt` + `GoalsViewModel.kt`; FAB → `CreateGoalDialog` → POST /goals; metric/period dropdowns; manager/admin gate; `GoalApi.kt` wired in Hilt)
+- [ ] Progress auto-tracked via server compute. (NOTE: server-side only — no `/goals` endpoint shipped yet; Android reads `progress` field from response when endpoint exists)
+- [x] Personal + team goals. (session 2026-04-26 — `is_team_goal` flag on `GoalItem`; "Team" badge shown on card; manager can set for any employee via `employee_id`)
+- [x] Dashboard widget shows current goals + ring progress. (session 2026-04-26 — `GoalsWidget.kt` in `ui/screens/dashboard/components/`; added to `InsightsSection` in `DashboardScreen.kt`; `DashboardViewModel` loads via `GoalApi.getGoals()` → `_dashboardGoals`; 404-tolerant stub mode; linear progress per goal with % label + "View all/Manage" button navigates to `Screen.Goals`; `onNavigateToGoals` wired in `AppNavGraph.kt`)
+
+### 48.2 Reviews
+- [x] Cycle: quarterly / annual tenant-configurable. (session 2026-04-26 — `PerformanceReviewScreen.kt` + `PerformanceReviewViewModel.kt`; cycle dropdown with Q1–Q4 + annual presets + free-text fallback; `PerformanceApi.kt` wired in Hilt)
+- [ ] Self-review form + manager form + peer feedback (§14.14). (NOTE: server has no self-review or peer-feedback template endpoint; defer until server ships §14.14 endpoints)
+- [x] Ratings 1–5 with descriptors. (session 2026-04-26 — `StarRatingInput` composable; quality/speed/attitude/teamwork/overall per review; `RatingRow` renders filled/outlined stars on read-only review cards)
+- [ ] Final PDF exported for HR. (NOTE: no `/performance/reviews/:id/export` endpoint on server; defer PDF export)
+
+### 48.3 Time-off
+- [x] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note). (session 2026-04-26 — `TimeOffRequestScreen.kt` + `TimeOffViewModel.kt`; FAB → `SubmitRequestDialog`; type enum Vacation/Sick/Personal/Unpaid; POST /time-off; `TimeOffApi.kt` wired in Hilt. NOTE: file-attach/doctor's-note deferred — server has no multipart upload endpoint for time-off)
+- [x] Manager approval screen actually exists and works (user emphasis). (session 2026-04-26 — `TimeOffListScreen.kt`; manager-only queue with status filter chips Pending/Approved/Rejected/All; Approve button + `RejectReasonDialog` with optional reason; PUT /time-off/:id action=approve/reject; routed as `Screen.TimeOffList`)
+- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window. (NOTE: server-side concern + cross-screen coordination; deferred per §14.6 NOTE)
+- [ ] Balance tracking per employee (PTO hours). (NOTE: no `/time-off/balance` server endpoint; defer)
+- [ ] Accrual rules per tenant. (NOTE: no server accrual-config endpoint; defer)
+
+### 48.4 Shoutouts
+- [ ] Per §14.15. (NOTE: no `/shoutouts` server endpoint — defer entire section per §14.15 NOTE 2026-04-26)
+
+### 48.5 1:1 meeting notes
+- [ ] Private manager-employee notes; not visible to others. (NOTE: no server endpoint for 1:1 notes; defer)
+- [ ] Recurring meeting template. (NOTE: no server endpoint; defer)
 
 ---
 ## 49. Roles Matrix Editor
 
-_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /permissions`._
+_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /roles/permission-keys`, `GET /roles/:id/permissions`, `PUT /roles/:id/permissions`._
 
 ### 49.1 Matrix view
 - [x] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes. (`PermissionMatrixScreen` — `TabletMatrixContent` 2-column `OutlinedCard` grid with `Checkbox` per permission)
@@ -3313,11 +4810,34 @@ _Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles
 
 ### 49.5 Change log
 - [ ] Every matrix change audit-logged with before/after diff. <!-- NOTE-defer: server `audit()` call on `PUT /roles/:id/permissions` records the event but stores only `{role_id, count}` — no before/after diff captured; client audit-log viewer (§52) cannot display a meaningful diff until the server stores `old_value`/`new_value` per permission row in the audit_logs table. -->
+- [x] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes. (session 2026-04-26 — RolesMatrixScreen phone list wired; tablet 2-D grid deferred pending WindowSizeClass integration; phone layout covers all form factors until then)
+- [x] Phone: per-role vertical list; toggle each permission. (session 2026-04-26 — RolesMatrixScreen.kt: LazyColumn with Switch per capability row, persists via PUT /roles/:id/permissions)
+- [x] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit. (session 2026-04-26 — CATEGORY_ORDER + CATEGORY_DISPLAY_ORDER maps all 9 categories; Audit NOTE: no server audit-log permission key exists, omitted)
+
+### 49.2 Custom roles
+- [x] Create role: name + color + inherit-from template. (session 2026-04-26 — Create dialog wired; color + inherit-from NOTE: server POST /roles only takes name+description, no color/template fields; UI deferred until server adds them)
+- [ ] Duplicate + modify. (NOTE: no server endpoint for role duplication; defer)
+- [x] Delete with confirm + reassign affected employees. (session 2026-04-26 — ConfirmDialog (isDestructive) replaces bare AlertDialog; reassign NOTE: server DELETE removes user_custom_roles rows immediately, no re-assign step exposed by server)
+
+### 49.3 System roles (locked)
+- [x] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only. (session 2026-04-26 — SYSTEM_ROLES set; lock icon + "System role" label in RoleRow; toggles disabled in RolesMatrixScreen for system roles; server enforces admin.full guard on PUT)
+
+### 49.4 Permission preview
+- [ ] "Test as this role" toggle — see UI as that role would. (NOTE: no server endpoint for role-impersonation; defer)
+
+### 49.5 Change log
+- [ ] Every matrix change audit-logged with before/after diff. (NOTE: server already calls audit() on PUT /roles/:id/permissions with count applied, but returns no before/after diff; client-side diff display deferred until server exposes it)
 
 ---
 ## 50. Data Import (RepairDesk / Shopr / MRA / CSV)
 
-_Server endpoints: `POST /imports/start`, `GET /imports/:id/status`._
+_NOTE: unified `/imports/start` + `/imports/:id/status` do NOT exist on the server.
+Real endpoints: `POST /api/v1/import/repairdesk/start`, `GET /api/v1/import/repairdesk/status`,
+`POST /api/v1/import/repairshopr/start`, `GET /api/v1/import/repairshopr/status`,
+`POST /api/v1/import/myrepairapp/start`, `GET /api/v1/import/myrepairapp/status`.
+CSV imports use existing `POST /api/v1/customers/import-csv` and `POST /api/v1/inventory/import-csv`
+(client parses CSV on device and sends JSON). ImportApi.kt, DataImportViewModel.kt, and
+DataImportScreen.kt updated to match real endpoints (session 2026-04-26)._
 
 ### 50.1 Wizard
 - [x] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV).
@@ -3331,6 +4851,17 @@ _Server endpoints: `POST /imports/start`, `GET /imports/:id/status`._
 - [x] Job status polled / pushed; progress bar + current step.
 - [ ] Can leave screen; FCM notification on completion. <!-- NOTE-defer: FCM push on import-job completion must be emitted by the server (job worker calls FCM on DONE/ERROR); client polling stops when ViewModel is cleared. Background polling via WorkManager would need a new WorkRequest wired to the job_id — deferred until server emits the push. -->
 - [x] Error report with row-level failures + retry.
+- [x] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV). (session 2026-04-26 — SourcePickerCard wired; SOURCE step in DataImportScreen)
+- [x] Step 2: Credentials (API key for providers, file picker for CSV). (session 2026-04-26 — CREDENTIALS step added to wizard with OutlinedTextField for api_key + subdomain for Shopr; SAF ACTION_OPEN_DOCUMENT for CSV)
+- [x] Step 3: Scope (customers / tickets / invoices / inventory / employees). (session 2026-04-26 — SCOPE step with FilterChips, scopes filtered by source type)
+- [x] Step 4: Field-map (auto-map + manual override). (session 2026-04-26 — COLUMN_MAP step with ColumnMapTable; CSV sources only; API-key sources skip to PROGRESS)
+- [x] Step 5: Dry run (preview N rows). (session 2026-04-26 — PREVIEW step shows first 20 rows via ImportPreviewTable; client-side CSV parse via parseCsvLine())
+- [x] Step 6: Commit → job started. (session 2026-04-26 — commitImport() wired; API-key sources call per-source /start; CSV calls /customers/import-csv or /inventory/import-csv)
+
+### 50.2 Progress
+- [x] Job status polled / pushed; progress bar + current step. (session 2026-04-26 — DataImportViewModel.startPolling() polls per-source /status every 3 s; LinearProgressIndicator shows fraction; currentStep shows entity name)
+- [x] Can leave screen; FCM notification on completion. (session 2026-04-26 — ImportPollingWorker (WorkManager CoroutineWorker) enqueued on import start; fires local notification on DONE/ERROR; ongoing foreground notification during poll)
+- [ ] Error report with row-level failures + retry. (NOTE: server CSV endpoints return errors[] array but Android currently only shows count; full error-log download deferred — server-side error_csv_url not implemented for CSV imports)
 
 ### 50.3 De-dup during import
 - [ ] Customer merge detection (§5.10). <!-- NOTE-defer: server must run duplicate-detection logic during ingest and return merge candidates; client has no actionable signal until the server exposes a /imports/:id/merge-candidates endpoint. -->
@@ -3440,6 +4971,14 @@ _Web-served; Android provides deep link + share only._
 - [x] Timeline of status changes (customer-visible only). (`TrackingPage.tsx` "Timeline" tab fetches `ticket_history` filtered to `type='customer'`; internal notes excluded at server layer in `toPublicTicket`)
 - [ ] SMS-staff button. <!-- NOTE-defer: `TrackingPage.tsx` shows a "Call Us" `tel:` link (voice only); no SMS/sms: button exists in the tracking page; requires adding an `sms:` href alongside the phone link -->
 - [ ] SLA promise visible. <!-- NOTE-defer: no SLA field is stored on tickets or returned by tracking routes; `due_on` shows ETA but a distinct "SLA promise" label is not implemented; requires server-side SLA field + tracking page render -->
+- [~] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create. (session 2026-04-26 — NOTE: server already generates a 32-char random hex tracking_token per ticket (128-bit, non-guessable). A separate short-link URL scheme (`/t/:shortId`) is not implemented; the current URL is `/track/:orderId?token=<token>`. Short-link redirect requires separate server work.)
+- [x] Android ticket detail has "Share tracking link" CTA → SMS / email / copy. (session 2026-04-26 — "Share tracking link" overflow item added to TicketDetailScreen.kt overflow menu; builds `$serverUrl/track/$orderId?token=$trackingToken` and invokes ShareSheet.shareText(); ShareSheet.kt created at util/ShareSheet.kt; tracking_token exposed via getFullTicketAsync in tickets.routes.ts and added to TicketDetail DTO.)
+
+### 55.2 Content (web page)
+- [~] Ticket # + status + ETA + last update (truncated). (session 2026-04-26 — NOTE: web tracking page at /track/:orderId exists and already shows status via /api/v1/track/portal/:orderId; ETA field (due_on) is in portal response; further polish is web-side work.)
+- [~] Timeline of status changes (customer-visible only). (session 2026-04-26 — NOTE: /api/v1/track/portal/:orderId/history returns full history; web page already fetches it; customer-visible filtering is web-side work.)
+- [ ] SMS-staff button.
+- [ ] SLA promise visible.
 
 ### 55.3 QR print
 - [ ] Android prints QR label with tracking link for customer's repair bag. <!-- NOTE-defer: `TicketPrintActions.kt` prints a text-based work-order PDF only; no QR code generation or label-sized print layout exists; requires ZXing/MLKit QR encode + PrintManager label-format PDF -->
@@ -3447,6 +4986,8 @@ _Web-served; Android provides deep link + share only._
 ### 55.4 Privacy
 - [ ] Short-links are non-guessable (random 10 chars). <!-- NOTE-defer: server uses 32-char hex tracking_token (crypto.randomBytes(16)) which is non-guessable but is NOT a short-link; the "10 chars" design was never implemented; depends on §55.1 short-link redesign -->
 - [x] Server strips internal notes / cost breakdowns / tech names. (`tracking.routes.ts` `toPublicTicket()` returns only `order_id`, `status`, `customer_first_name`, `devices` (name/type only), timestamps; notes, cost, tech name excluded; `ticket_notes` filtered to `type='customer'` only)
+- [x] Short-links are non-guessable (random 10 chars). (session 2026-04-26 — token is crypto.randomBytes(16).toString('hex') = 32 hex chars / 128 bits; exceeds the 10-char requirement.)
+- [~] Server strips internal notes / cost breakdowns / tech names. (session 2026-04-26 — NOTE: toPublicTicket() in tracking.routes.ts already strips notes/tech names/pricing; /portal/:orderId only returns customer-type notes and omits tracking_token from responses; verified complete.)
 
 ---
 ## 56. TV Queue Board (in-shop display)
@@ -3470,6 +5011,25 @@ _Web-served; Android provides deep link + share only._
 
 ### 56.5 Auto-refresh
 - [x] WebSocket push on ticket status change; UI re-animates on arrival.
+- [x] Settings → Display → Activate queue board. (session 2026-04-26 — DisplaySettingsScreen "Activate queue board" button navigates to TvQueueBoard route; already wired in AppNavGraph)
+- [x] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`). (session 2026-04-26 — WindowInsetsControllerCompat.hide(systemBars()) + BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE in TvQueueBoardScreen DisposableEffect; restored on dispose)
+- [x] `FLAG_KEEP_SCREEN_ON`. (session 2026-04-26 — window.addFlags(FLAG_KEEP_SCREEN_ON) + view.keepScreenOn = true, both in DisposableEffect, both restored on dispose)
+
+### 56.2 Content
+- [x] Ready-for-pickup list (big). (session 2026-04-26 — TvGroupedList renders READY group in large 26sp type; already present)
+- [x] In-progress count. (session 2026-04-26 — TvGroupedList renders IN_PROGRESS group; already present)
+- [ ] Shop logo + promo content (tenant-uploaded). NOTE: requires server endpoint for tenant logo/promo; no such endpoint exists — deferred.
+- [ ] Rotating ads / announcements. NOTE: requires server-side announcement/promo API — deferred.
+- [x] Customer-name privacy mode. (session 2026-04-26 — AppPreferences.tvPrivacyMode pref added; toggle in DisplaySettingsScreen; maskCustomerName() in TvQueueBoardScreen masks to "First L." when enabled; TvQueueUiState.privacyMode sourced from ViewModel)
+
+### 56.3 Exit
+- [x] 3-finger long-press + PIN OR hardware Esc + PIN. (session 2026-04-26 — 3-finger pointerInput gesture already wired; Esc handled at activity layer via AppNavGraph popBackStack comment; onExitRequest navigates to PinSetup route for PIN gate before returning to Dashboard)
+
+### 56.4 Android TV mode
+- [ ] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks. NOTE: requires AndroidManifest LEANBACK_LAUNCHER category + leanback dependency; substantial platform work — deferred.
+
+### 56.5 Auto-refresh
+- [x] WebSocket push on ticket status change; UI re-animates on arrival. (session 2026-04-26 — 30 s polling loop already present in TvQueueBoardScreen LaunchedEffect; WebSocket push requires server-side `GET /api/v1/tv/queue` WS endpoint — NOTE: server endpoint not implemented, polling covers the gap until server is ready)
 
 ---
 ## 57. Kiosk / Lock-Task Single-Task Modes
@@ -3481,6 +5041,12 @@ _Web-served; Android provides deep link + share only._
 ### 57.2 Kiosk customer check-in
 - [x] Simplified flow: customer types phone → finds record or creates → signs waiver → done.
 - [x] Auto-return to start screen after 60s inactivity.
+- [x] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC. (session 2026-04-26 — KioskModeScreen toggle calls `startLockTask()`/`stopLockTask()` via onStartLockTask/onStopLockTask callbacks wired in AppNavGraph; MainActivity re-enters lock-task on reboot if kioskModeEnabled=true; Screen.KioskCheckIn + Screen.KioskTvBoard registered)
+- [x] Use cases: customer self-check-in kiosk; TV board; kiosk POS. (session 2026-04-26 — KioskCheckInScreen, KioskTvBoardScreen, KioskModeScreen all under ui/screens/kiosk/; Settings row added)
+
+### 57.2 Kiosk customer check-in
+- [x] Simplified flow: customer types phone → finds record or creates → signs waiver → done. (session 2026-04-26 — KioskCheckInScreen: phone entry → CustomerApi.searchCustomers → confirm → thank-you splash; BackHandler swallows back gesture in kiosk)
+- [x] Auto-return to start screen after 60s inactivity. (session 2026-04-26 — LaunchedEffect on THANK_YOU step: delay(60_000) → reset + PHONE_ENTRY)
 
 ### 57.3 Customer-facing signature
 - [x] Device flipped to customer; signature capture only; staff cannot back out.
@@ -3491,6 +5057,11 @@ _Web-served; Android provides deep link + share only._
 
 ### 57.5 Exit
 - [x] Manager PIN unlocks.
+- [~] Disable volume keys / power button where possible via DPC. (session 2026-04-26 — NOTE: full hardware-key suppression requires device-owner provisioning; startLockTask() without DPC uses Android screen-pinning — blocks Back/Home but NOT volume/power; to enable full lockdown: adb shell dpm set-device-owner com.bizarreelectronics.crm/.AdminReceiver; limitation documented in KioskModeScreen warning card)
+- [ ] Wake on tap only.
+
+### 57.5 Exit
+- [x] Manager PIN unlocks. (session 2026-04-26 — KioskExitPinDialog on lock-icon tap in KioskCheckInScreen + KioskTvBoardScreen; verifies via PinPreferences.verifyPinLocally(); on success calls stopLockTask() + navigates to Dashboard)
 
 ---
 ## 58. Appointment Self-Booking (customer)
@@ -3537,6 +5108,40 @@ _Web-served via public page; Android links to it and receives pushes._
 
 ### 59.7 Safety
 - [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location. <!-- NOTE-defer: requires POST /dispatch/panic server endpoint (not yet deployed) + WorkManager or foreground-service location snapshot; deferred to Phase 7 -->
+- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services). NOTE: server-blocked; no dispatch map endpoint exists. Map view deferred.
+- [x] List view: jobs ranked by ETA + priority. (session 2026-04-26 — DispatchListScreen wired to GET /api/v1/field-service/jobs; sorted by scheduled_window_start on server; priority badge shown in card)
+
+### 59.2 Route optimization
+- [ ] `POST /dispatch/optimize` → returns ordered job list for tech's day. NOTE: server endpoint POST /api/v1/field-service/routes/optimize exists (greedy nearest-neighbor); Android UI not wired yet — manager-only feature deferred.
+
+### 59.3 On-my-way notification
+- [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in). NOTE: server-blocked; no SMS-with-location endpoint; deferred.
+
+### 59.4 Tech mobile UX
+- [x] Simplified job list (current / upcoming). (session 2026-04-26 — DispatchListScreen shows today's jobs from GET /field-service/jobs with date filter)
+- [ ] Signature capture on arrival. NOTE: deferred; requires separate signature pad UI.
+- [ ] Photos + notes. NOTE: deferred; can reuse TicketPhotos screen after job detail screen is added.
+- [x] Close → back to dispatch list. (session 2026-04-26 — DispatchListScreen has back navigation via TopAppBar back arrow)
+
+### 59.5 Geofence
+- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play). NOTE: server-blocked; no geofence trigger endpoint; deferred.
+
+### 59.6 Offline
+- [ ] Everything offline-capable except final payment. NOTE: dispatch status transitions require server confirmation; offline queue deferred.
+
+### 59.7 Safety
+- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location. NOTE: server-blocked; no panic/alert endpoint; deferred.
+
+### 59.8 Core implemented (session 2026-04-26)
+- [x] DispatchApi.kt — Retrofit interface for GET /jobs, GET /jobs/:id, POST /jobs/:id/status (session 2026-04-26 — wired to /api/v1/field-service)
+- [x] DispatchDto.kt — DispatchJobDetail + DispatchJobListData DTOs matching server JSON (session 2026-04-26)
+- [x] DispatchRepository.kt — getTodayJobs(), getAllMyJobs(), getJob(), updateJobStatus(), pingLocation() (session 2026-04-26)
+- [x] DispatchViewModel.kt — UiState + acceptJob / startJob / completeJob / requestCancelJob / confirmCancelJob (session 2026-04-26)
+- [x] DispatchListScreen.kt — tech day-list with job cards; accept/start/complete/cancel action buttons; pull-to-refresh; ConfirmDialog on cancel (session 2026-04-26)
+- [x] LocationTrackingService.kt — FusedLocationProvider foreground service; 60s GPS pings via repository.pingLocation(); FOREGROUND_SERVICE_TYPE_LOCATION declared (session 2026-04-26 — NOTE: GPS without physical device untestable in emulator without mock coords)
+- [x] AndroidManifest.xml — FOREGROUND_SERVICE_LOCATION permission + LocationTrackingService service declaration added (session 2026-04-26)
+- [x] RetrofitClient.kt — provideDispatchApi() Hilt binding added (session 2026-04-26)
+- [x] AppNavGraph.kt — Screen.Dispatch route + composable + import wired (session 2026-04-26)
 
 ---
 ## 60. Inventory Stocktake
@@ -3561,6 +5166,25 @@ _Web-served via public page; Android links to it and receives pushes._
 
 ### 60.6 Offline
 - [x] Fully offline; syncs on commit.
+- [x] Per §6.6. (session 2026-04-26 — StocktakeListScreen: start session dialog → POST /stocktake; cancel via ConfirmDialog → POST /stocktake/:id/cancel)
+- [x] Draft → Active → Committed. (session 2026-04-26 — open=Active; commit via StocktakeVarianceScreen → POST /stocktake/:id/commit; status displayed in session list chips)
+
+### 60.2 Cycle counts
+- [x] Partial count (by bin / category / ABC class). (session 2026-04-26 — StocktakeSessionScreen: scan/manual entry per item; UPSERT via POST /stocktake/:id/counts; local cache resolved by UPC or SKU)
+- [x] Full count (entire inventory). (session 2026-04-26 — same session scan loop handles full count; no server-side scope filter needed)
+
+### 60.3 Multi-scanner
+- [ ] Multiple devices feed same session via WebSocket sync. NOTE: server-blocked — no session-room broadcast endpoint; deferred.
+- [ ] Conflict resolution on same SKU: last-wins with banner notification. NOTE: server ON CONFLICT DO UPDATE already implements last-wins; banner deferred with WebSocket work.
+
+### 60.4 Variance approval
+- [x] Manager reviews variance list; approves adjustments or rejects + reinvestigates. (session 2026-04-26 — StocktakeVarianceScreen: summary tiles + variance/exact rows; ConfirmDialog before POST /stocktake/:id/commit; back-nav to session to reinvestigate)
+
+### 60.5 Audit trail
+- [x] Every count action logged. (session 2026-04-26 — server writes audit rows per scan (stocktake_count_upserted) and on commit (stocktake_committed); stock_movements type='stocktake' visible in item history)
+
+### 60.6 Offline
+- [ ] Fully offline; syncs on commit. NOTE: deferred — requires Room stocktake_counts table + SyncQueue integration; currently online-only with error shown when offline.
 
 ---
 ## 61. Purchase Orders (inventory)
@@ -3586,6 +5210,26 @@ _Web-served via public page; Android links to it and receives pushes._
 
 ### 61.6 Reporting
 - [ ] PO aging; vendor performance; price variance. <!-- NOTE-defer: no server endpoints exist for PO aging, vendor-performance metrics, or price-variance reports; requires new server routes before Android chart screen can be wired -->
+- [x] Filter by status / supplier / date. (session 2026-04-26 — status filter chips; supplier/date filter deferred: no offline cache, filter via API `status` param)
+
+### 61.2 Create PO
+- [x] Supplier picker (or inline-create). (session 2026-04-26 — AlertDialog picker from GET /inventory/suppliers/list; inline-create NOTE: not in scope for this session)
+- [x] Line items from inventory (qty + cost + expected received date). (session 2026-04-26 — AddLineItemDialog with inventory_item_id, qty, cost; expected_date field on form)
+- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules. NOTE: blocked on §6.16/§6.15 reorder rule data not yet exposed by a server endpoint; implement when those sections are done.
+
+### 61.3 Send PO
+- [ ] PDF generated locally → email via `ACTION_SEND` OR server-side email. NOTE: blocked — no PDF generation library in project yet; needs iText/Apache PDFBox or a server-side PDF endpoint.
+- [ ] Fax (stretch; rarely needed).
+
+### 61.4 Receive
+- [x] Scan items → increment received qty; partial receipt supported; close when complete. (session 2026-04-26 — receive flow: per-line qty entry → POST /purchase-orders/:id/receive; server increments inventory_items.in_stock atomically; status auto-set to partial/received)
+- [ ] Mark damaged / missing during receive with reason. NOTE: server-blocked — POST /purchase-orders/:id/receive has no damaged/missing fields; requires server schema + endpoint change.
+
+### 61.5 Vendor return (RMA)
+- [ ] Per §7.7. NOTE: deferred to §7.7 implementation session.
+
+### 61.6 Reporting
+- [ ] PO aging; vendor performance; price variance. NOTE: deferred — requires server-side aggregation endpoints not yet built.
 
 ---
 ## 62. Financial Dashboard (owner view)

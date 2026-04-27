@@ -40,9 +40,15 @@ export function DashboardShell() {
       <CommandPalette />
       {/* `?` opens keyboard shortcut help overlay. */}
       <KeyboardShortcutsHelp />
-      <Header />
+      {/* DASH-ELEC-015: per-section error boundaries so a render crash in one
+          shell section doesn't take down the entire layout. */}
+      <PageErrorBoundary fallbackTitle="Header failed to render">
+        <Header />
+      </PageErrorBoundary>
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
+        <PageErrorBoundary fallbackTitle="Sidebar failed to render">
+          <Sidebar />
+        </PageErrorBoundary>
         {/* DASH-ELEC-092: id + tabIndex=-1 so focus() works programmatically */}
         <main
           id="main-content"
@@ -56,7 +62,9 @@ export function DashboardShell() {
           </PageErrorBoundary>
         </main>
       </div>
-      <StatusFooter />
+      <PageErrorBoundary fallbackTitle="Status bar failed to render">
+        <StatusFooter />
+      </PageErrorBoundary>
     </div>
   );
 }

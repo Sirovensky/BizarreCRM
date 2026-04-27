@@ -4,7 +4,10 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.BuildConfig
+import com.bizarreelectronics.crm.data.sync.SyncManager
 import com.bizarreelectronics.crm.util.AppError
+import com.bizarreelectronics.crm.util.Breadcrumbs
 import com.bizarreelectronics.crm.util.DbExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -41,8 +44,14 @@ sealed class ExportState {
 /**
  * ViewModel for [DiagnosticsScreen].
  *
- * Exposes [exportState] as a [StateFlow] so the screen can observe progress
- * and result without coupling to coroutine lifecycle directly.
+ * §19.13 — extended with:
+ *  - [forceSyncNow]: triggers SyncManager.syncAll() on demand
+ *  - [recentLogs]: in-memory Breadcrumbs snapshot (last 200 lines, redacted per Breadcrumbs contract)
+ *  - [forceCrash]: debug-only — throws deliberately to exercise CrashReporter
+ *  - [telemetryCount]: breadcrumb entry count as a proxy for telemetry events
+ *
+ * NOTE (2026-04-26): Feature flags viewer requires GET /settings/feature-flags or similar
+ * endpoint that does not exist on the server. Deferred.
  *
  * Uses [AndroidViewModel] (rather than plain [ViewModel]) so it can access
  * [Application.contentResolver] and [Application.getDatabasePath] without
@@ -54,6 +63,8 @@ sealed class ExportState {
 @HiltViewModel
 class DiagnosticsViewModel @Inject constructor(
     application: Application,
+    private val syncManager: SyncManager,
+    private val breadcrumbs: Breadcrumbs,
 ) : AndroidViewModel(application) {
 
     private val _exportState = MutableStateFlow<ExportState>(ExportState.Idle)
@@ -84,6 +95,46 @@ class DiagnosticsViewModel @Inject constructor(
     /** Resets state back to [ExportState.Idle] so the user can retry or dismiss. */
     fun resetState() {
         _exportState.value = ExportState.Idle
+    }
+
+    // ── §19.13 — extended diagnostics ────────────────────────────────────────
+
+    private val _syncRunning = MutableStateFlow(false)
+    val syncRunning: StateFlow<Boolean> = _syncRunning.asStateFlow()
+
+    private val _syncMessage = MutableStateFlow<String?>(null)
+    val syncMessage: StateFlow<String?> = _syncMessage.asStateFlow()
+
+    /** §19.13 — Force a full sync on demand. Consumer: SyncManager.syncAll(). */
+    fun forceSyncNow() {
+        if (_syncRunning.value) return
+        _syncRunning.value = true
+        _syncMessage.value = null
+        viewModelScope.launch {
+            try {
+                syncManager.syncAll()
+                _syncMessage.value = "Sync completed"
+            } catch (e: Exception) {
+                _syncMessage.value = "Sync failed: ${e.message}"
+            } finally {
+                _syncRunning.value = false
+            }
+        }
+    }
+
+    /** §19.13 — Recent in-app breadcrumb/log entries (last 200, redacted by Breadcrumbs). */
+    fun recentLogs(): List<String> = breadcrumbs.recent()
+
+    /** §19.13 — Breadcrumb count as telemetry-events proxy. */
+    val telemetryCount: Int get() = breadcrumbs.recent().size
+
+    /**
+     * §19.13 — Force crash for debug builds only.
+     * Exercises CrashReporter's uncaught-exception handler.
+     */
+    fun forceCrash() {
+        check(BuildConfig.DEBUG) { "forceCrash is only available in debug builds" }
+        throw RuntimeException("DiagnosticsViewModel.forceCrash() — intentional test crash")
     }
 
     // ── internals ────────────────────────────────────────────────────────────

@@ -154,6 +154,10 @@ function tryPowershellDiskSpace(): DiskDrive[] {
     const psExe = path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
     if (!fs.existsSync(psExe)) return [];
 
+    // DASH-ELEC-004: execSync is acceptable here because the script is a
+    // hardcoded literal — no caller-supplied input reaches this shell string.
+    // Do NOT use this pattern with dynamic input; use spawnSync with an
+    // explicit argv array instead to avoid shell injection.
     const script = `Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used -ne $null } | ForEach-Object { "$($_.Root),$($_.Free),$($_.Used + $_.Free)" }`;
     const raw = execSync(`"${psExe}" -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "${script}"`, {
       encoding: 'utf-8',

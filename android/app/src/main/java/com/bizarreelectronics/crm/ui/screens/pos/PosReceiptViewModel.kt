@@ -45,6 +45,17 @@ data class PosReceiptUiState(
     val snackbarMessage: String? = null,
     // Non-null when a cache PDF is ready and the caller should fire the email intent.
     val pendingEmailPdfUri: Uri? = null,
+    // Receipt preview breakdown — populated from the completed PosSession.
+    val receiptLines: List<CartLine> = emptyList(),
+    val subtotalCents: Long = 0L,
+    val taxCents: Long = 0L,
+    val tipCents: Long = 0L,
+    val cartDiscountCents: Long = 0L,
+    val paidCents: Long = 0L,
+    // TODO(loyalty): loyaltyPointsEarned is not yet returned by the server on
+    // sale completion. Add to PosReceiptUiState once POST /api/v1/pos/checkout
+    // returns loyalty data. Gate LoyaltyBanner on (loyaltyPointsEarned > 0).
+    val loyaltyPointsEarned: Int = 0,
 )
 
 enum class SendState { IDLE, SENDING, SENT, ERROR }
@@ -78,6 +89,13 @@ class PosReceiptViewModel @Inject constructor(
                         // client-built path only when the server didn't provide one.
                         trackingUrl = session.trackingUrl
                             ?: session.completedOrderId?.let { id -> "/track/$id" },
+                        // Receipt preview breakdown — snapshot the completed session.
+                        receiptLines = session.lines,
+                        subtotalCents = session.subtotalCents,
+                        taxCents = session.taxCents,
+                        tipCents = session.tipCents,
+                        cartDiscountCents = session.cartDiscountCents,
+                        paidCents = session.paidCents,
                     )
                 }
             }

@@ -5,6 +5,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.ui.screens.pos.toDollarString
 
@@ -54,7 +56,8 @@ fun PosSplitTenderDialog(
                     style = MaterialTheme.typography.labelLarge,
                 )
 
-                // Part-count picker: chips for 2..6
+                // session 2026-04-26 — a11y: FilterChip contentDescription includes
+                // "ways" so screen reader announces "2 ways" not just "2"
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -64,6 +67,9 @@ fun PosSplitTenderDialog(
                             selected = selectedParts == n,
                             onClick = { selectedParts = n },
                             label = { Text("$n") },
+                            modifier = Modifier.semantics {
+                                contentDescription = "$n ways"
+                            },
                         )
                     }
                 }

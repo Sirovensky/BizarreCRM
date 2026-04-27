@@ -61,4 +61,33 @@ interface InventoryDao {
 
     @Query("SELECT * FROM inventory_items WHERE locally_modified = 1")
     suspend fun getLocallyModified(): List<InventoryItemEntity>
+
+    // ── §20.9 Cache eviction ─────────────────────────────────────────────────
+
+    /** §20.9 — Total row count for eviction math. */
+    @Query("SELECT COUNT(*) FROM inventory_items")
+    suspend fun countAll(): Int
+
+    /**
+     * §20.9 — Evict the [excess] oldest inventory rows with no pending/syncing
+     * queue entry and not locally modified. See [TicketDao.evictOldest] for
+     * the full rationale.
+     */
+    @Query(
+        """
+        DELETE FROM inventory_items
+        WHERE id IN (
+            SELECT i.id FROM inventory_items i
+            LEFT JOIN sync_queue sq
+                ON sq.entity_type = 'inventory'
+               AND sq.entity_id   = i.id
+               AND sq.status IN ('pending', 'syncing')
+            WHERE sq.id IS NULL
+              AND i.locally_modified = 0
+            ORDER BY i.id ASC
+            LIMIT :excess
+        )
+        """,
+    )
+    suspend fun evictOldest(excess: Int)
 }

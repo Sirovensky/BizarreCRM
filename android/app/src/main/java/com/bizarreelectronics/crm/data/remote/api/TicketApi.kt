@@ -3,7 +3,7 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
-import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryData
+import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetail
 import com.bizarreelectronics.crm.data.remote.dto.PinDashboardResponse
 import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
@@ -144,25 +144,35 @@ interface TicketApi {
     // ─── L725 — Warranty lookup ───────────────────────────────────────────────
 
     /**
-     * POST /tickets/warranty-lookup — look up warranty record by IMEI / serial / phone.
-     * Returns [WarrantyResult] on match; 404 when no record exists (tolerated).
+     * GET /tickets/warranty-lookup — look up warranty records by IMEI / serial / phone.
+     *
+     * Server returns `{ success: true, data: [ WarrantyResult, … ] }` — the data
+     * field is a plain JSON array (may be empty). 404 is tolerated; callers treat
+     * empty/null as "no record found".
+     *
+     * Corrected from the former @POST variant which passed a "query" body key that
+     * the server never accepted.
      */
-    @POST("tickets/warranty-lookup")
+    @GET("tickets/warranty-lookup")
     suspend fun warrantyLookup(
-        @Body body: Map<String, @JvmSuppressWildcards String>,
-    ): ApiResponse<WarrantyResult>
+        @Query("imei") imei: String? = null,
+        @Query("serial") serial: String? = null,
+        @Query("phone") phone: String? = null,
+    ): ApiResponse<@JvmSuppressWildcards List<WarrantyResult>>
 
     // ─── L726 — Device history ────────────────────────────────────────────────
 
     /**
      * GET /tickets/device-history — list past repairs for a device identifier.
-     * Query param: `imei` (or `serial`). Returns [DeviceHistoryData].
+     *
+     * Server returns `{ success: true, data: [ DeviceHistoryEntry, … ] }` — the data
+     * field is a plain JSON array. Callers wrap in [DeviceHistoryData] for back-compat.
      */
     @GET("tickets/device-history")
     suspend fun getDeviceHistory(
         @Query("imei") imei: String? = null,
         @Query("serial") serial: String? = null,
-    ): ApiResponse<DeviceHistoryData>
+    ): ApiResponse<@JvmSuppressWildcards List<DeviceHistoryEntry>>
 
     // ─── L727 — Pin to dashboard ──────────────────────────────────────────────
 

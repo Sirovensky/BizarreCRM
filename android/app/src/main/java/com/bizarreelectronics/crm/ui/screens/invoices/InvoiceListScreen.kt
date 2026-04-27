@@ -161,6 +161,11 @@ fun InvoiceListScreen(
                             IconButton(onClick = { viewModel.loadInvoices() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh invoices")
                             }
+                            if (onAgingClick != null) {
+                                IconButton(onClick = onAgingClick) {
+                                    Icon(Icons.Default.Assessment, contentDescription = "Aging report")
+                                }
+                            }
                         },
                     )
                 }

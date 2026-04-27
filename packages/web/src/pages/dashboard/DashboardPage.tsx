@@ -23,7 +23,7 @@ import { useMilestoneToasts } from '@/components/onboarding/useMilestoneToasts';
 import { useAuthStore } from '@/stores/authStore';
 import { useHasRole } from '@/hooks/useHasRole';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatTime } from '@/utils/format';
 // Business Intelligence layer (audit 47)
 import { ProfitHeroCard } from '@/components/reports/ProfitHeroCard';
 import { BusyHoursHeatmap } from '@/components/reports/BusyHoursHeatmap';
@@ -128,7 +128,7 @@ function getDateRange(preset: DatePreset): { from: string; to: string } {
     case 'thisYear':
       return { from: `${today.getFullYear()}-01-01`, to: fmt(today) };
     case 'all':
-      return { from: '2020-01-01', to: fmt(today) };
+      return { from: '2000-01-01', to: fmt(today) };
   }
 }
 
@@ -1376,7 +1376,7 @@ function TodaysAppointments() {
       ) : (
         <div className="divide-y divide-surface-100 dark:divide-surface-800">
           {appointments.map((appt: any) => {
-            const startTime = appt.start_time ? new Date(appt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '--';
+            const startTime = appt.start_time ? formatTime(appt.start_time) : '--';
             const customerName = appt.customer_first_name
               ? `${appt.customer_first_name} ${appt.customer_last_name || ''}`.trim()
               : 'Walk-in';

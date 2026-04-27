@@ -69,10 +69,12 @@ const pricingTiers = [
   { name: 'Enterprise', price: 'Custom', period: '', desc: 'Multi-location shops', features: ['Everything in Pro', 'Multi-location', 'Custom branding', 'API access', 'Dedicated support', 'SLA guarantee'], cta: 'Contact Sales', pop: false },
 ];
 
+// WEB-S4-034: removed fabricated testimonials (FTC risk). Replace with real
+// customer quotes once dogfood shops provide them.
 const testimonials = [
-  { quote: "We switched from RepairDesk and saved hours every week. The SMS integration alone was worth it.", name: 'Mike R.', shop: 'QuickFix Mobile, Denver' },
-  { quote: "Finally a CRM that doesn't feel like it was built by someone who's never touched a soldering iron.", name: 'Sarah L.', shop: 'TechRevive, Austin' },
-  { quote: "The mobile app is a game-changer. I check ticket status from the bench without running to the computer.", name: 'James K.', shop: 'PhoneDoc, Miami' },
+  { quote: 'Testimonial coming soon.', name: '— Early adopter', shop: '' },
+  { quote: 'Testimonial coming soon.', name: '— Early adopter', shop: '' },
+  { quote: 'Testimonial coming soon.', name: '— Early adopter', shop: '' },
 ];
 
 // WEB-FG-002 / FIXED-by-Fixer-U 2026-04-25 — trust only known base domains
@@ -92,10 +94,19 @@ function resolveBaseDomain(hostname: string): string | null {
 
 // Build the tenant URL from a slug. Returns null if the current origin is not
 // a trusted base domain — caller must abort the redirect in that case.
+// WEB-S4-036: localhost (and *.localhost) can't use subdomain routing because
+// browsers don't resolve sub-subdomains of localhost consistently. Fall back to
+// path-based routing (/t/<slug><path>) for the local-dev / self-host case so
+// development doesn't silently fail with a blank page.
 function getTenantUrl(slug: string, path = '/'): string | null {
   const { protocol, port, hostname } = window.location;
   const baseDomain = resolveBaseDomain(hostname);
   if (!baseDomain) return null;
+  // localhost: use path-based routing /t/<slug> instead of slug.localhost
+  if (baseDomain === 'localhost') {
+    const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
+    return `${protocol}//${hostname}${portSuffix}/t/${slug}${path}`;
+  }
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
@@ -152,7 +163,12 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             display: 'flex', alignItems: 'center', padding: '0 14px',
             background: '#f5f5f5', border: '2px solid #ddd', borderLeft: 'none',
             borderRadius: '0 8px 8px 0', color: '#999', fontSize: 14, whiteSpace: 'nowrap',
-          }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
+          }}>
+            {/* WEB-S4-036: on localhost show path-based hint instead of subdomain */}
+            {resolveBaseDomain(window.location.hostname) === 'localhost'
+              ? ' (path-based: /t/yourshop)'
+              : `.${resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}`}
+          </span>
         </div>
         {error && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>

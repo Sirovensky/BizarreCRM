@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Send, MessageSquare, Plus, Phone, User, AlertCircle,
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
-  Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
+  Bell, Mail, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
   Archive, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Mic, Info,
   Users,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
+import { smsApi, customerApi, ticketApi, voiceApi, emailApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import { formatPhone, formatCurrency } from '@/utils/format';
@@ -727,6 +727,15 @@ function NewMessageModal({ onClose, onStart }: {
 }
 
 // ─── Link Customer Popover (COM-1) ──────────────────────────────────
+// WEB-S6-035: replaced navigate('/customers/new?phone=…') with an inline
+// slide-over modal so the conversation stays loaded. No URL change.
+interface CreateCustomerFormState {
+  first_name: string;
+  last_name: string;
+  phone: string;
+  email: string;
+}
+
 function LinkCustomerPopover({
   phone,
   onLinked,
@@ -736,8 +745,14 @@ function LinkCustomerPopover({
   onLinked: (customer: { id: number; first_name: string; last_name: string }) => void;
   onClose: () => void;
 }) {
-  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateCustomerFormState>({
+    first_name: '',
+    last_name: '',
+    phone,
+    email: '',
+  });
   const queryClient = useQueryClient();
 
   const { data: searchResults } = useQuery({
@@ -749,7 +764,8 @@ function LinkCustomerPopover({
   const customers = unwrap<CommCustomerSummary[]>(searchResults as AxiosLike<CommCustomerSummary[]>) ?? [];
 
   const createMut = useMutation({
-    mutationFn: () => customerApi.create({ first_name: 'New', last_name: 'Customer', mobile: phone } as any),
+    mutationFn: (data: CreateCustomerFormState) =>
+      customerApi.create({ ...data, mobile: data.phone } as any),
     onSuccess: (res) => {
       // SCAN-1003b: typed unwrap.
       const cust = unwrap<CommCustomerSummary>(res as AxiosLike<CommCustomerSummary>);
@@ -765,9 +781,7 @@ function LinkCustomerPopover({
   });
 
   const linkExisting = useMutation({
-    // For now we just navigate to customer create with phone pre-filled, or we can just
-    // update the customer's phone. Since the SMS system auto-resolves by phone, creating
-    // a customer with this phone number is sufficient.
+    // Update the customer's mobile so the SMS system auto-resolves by phone.
     mutationFn: (customerId: number) => customerApi.update(customerId, { mobile: phone } as any),
     onSuccess: (_res, customerId) => {
       const c = customers.find((c: any) => c.id === customerId);
@@ -782,6 +796,101 @@ function LinkCustomerPopover({
     onError: () => toast.error('Failed to link customer'),
   });
 
+  // ── Inline create-customer slide-over ───────────────────────────
+  if (showCreate) {
+    return (
+      <div className="absolute left-0 top-full z-30 mt-1 w-80 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
+        {/* Header */}
+        <div className="flex items-center justify-between p-3 border-b border-surface-200 dark:border-surface-700">
+          <p className="text-xs font-semibold text-surface-500 uppercase tracking-wider">New Customer</p>
+          <button
+            onClick={() => setShowCreate(false)}
+            className="rounded p-0.5 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+            aria-label="Back to search"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
+                First Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={createForm.first_name}
+                onChange={(e) => setCreateForm((p) => ({ ...p, first_name: e.target.value }))}
+                placeholder="John"
+                autoFocus
+                className="w-full rounded-lg border border-surface-300 px-2.5 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">
+                Last Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={createForm.last_name}
+                onChange={(e) => setCreateForm((p) => ({ ...p, last_name: e.target.value }))}
+                placeholder="Doe"
+                className="w-full rounded-lg border border-surface-300 px-2.5 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Phone</label>
+            <input
+              type="tel"
+              value={createForm.phone}
+              onChange={(e) => setCreateForm((p) => ({ ...p, phone: e.target.value }))}
+              placeholder="(555) 123-4567"
+              className="w-full rounded-lg border border-surface-300 px-2.5 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-medium text-surface-500 uppercase tracking-wider mb-1">Email</label>
+            <input
+              type="email"
+              value={createForm.email}
+              onChange={(e) => setCreateForm((p) => ({ ...p, email: e.target.value }))}
+              placeholder="john@example.com"
+              className="w-full rounded-lg border border-surface-300 px-2.5 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
+            />
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex gap-2 p-3 border-t border-surface-200 dark:border-surface-700">
+          <button
+            onClick={() => setShowCreate(false)}
+            className="flex-1 rounded-lg border border-surface-200 dark:border-surface-600 px-3 py-1.5 text-sm font-medium text-surface-600 dark:text-surface-400 hover:bg-surface-50 dark:hover:bg-surface-700"
+          >
+            Back
+          </button>
+          <button
+            onClick={() => {
+              if (!createForm.first_name.trim() || !createForm.last_name.trim()) {
+                toast.error('First and last name are required');
+                return;
+              }
+              createMut.mutate(createForm);
+            }}
+            disabled={createMut.isPending}
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+          >
+            {createMut.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Create &amp; Link
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Default: search / link existing view ─────────────────────────
   return (
     <div className="absolute left-0 top-full z-30 mt-1 w-72 rounded-xl border border-surface-200 bg-white shadow-xl dark:border-surface-700 dark:bg-surface-800">
       <div className="p-3 border-b border-surface-200 dark:border-surface-700">
@@ -818,7 +927,7 @@ function LinkCustomerPopover({
       </div>
       <div className="border-t border-surface-200 dark:border-surface-700 p-2">
         <button
-          onClick={() => navigate(`/customers/new?phone=${encodeURIComponent(phone)}`)}
+          onClick={() => setShowCreate(true)}
           className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/20"
         >
           <UserPlus className="h-4 w-4" />
@@ -978,7 +1087,7 @@ function ThreadSearchBar({
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
   const queryClient = useQueryClient();
-  const [mainView, setMainView] = useState<'messages' | 'calls'>('messages');
+  const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
@@ -1027,6 +1136,38 @@ export function CommunicationPage() {
     };
   }, [attachedMedia]);
 
+  // WEB-S6-017: Email threads — gated behind server feature flag.
+  const { data: emailData, isLoading: emailLoading } = useQuery({
+    queryKey: ['email-threads'],
+    queryFn: () => emailApi.threads(),
+    enabled: mainView === 'email',
+    staleTime: 60_000,
+  });
+  // WEB-FC-017: narrow email thread shape instead of `any[]`.
+  interface EmailThread {
+    id: number | string;
+    subject?: string | null;
+    last_message_at?: string | null;
+    from_address?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    unread_count?: number;
+    [key: string]: unknown;
+  }
+  const emailPayload = (emailData?.data as { data?: { threads?: EmailThread[]; enabled?: boolean } } | undefined)?.data;
+  const emailThreads: EmailThread[] = emailPayload?.threads ?? [];
+  const emailEnabled: boolean = emailPayload?.enabled ?? false;
+
+  // WEB-S6-034: Debounce search so the API is only hit 300ms after the user
+  // stops typing, rather than on every keystroke. `debouncedSearch` is what
+  // gets sent as `q=` to GET /sms/conversations; `searchFilter` is the live
+  // input value used only for the controlled input.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchFilter.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchFilter]);
+
   // Fetch conversations (include archived when that tab is active)
   const includeArchived = activeTab === 'archived';
   // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 15s `refetchInterval`.
@@ -1036,8 +1177,15 @@ export function CommunicationPage() {
   // every open Communications tab. WS reconnect on visibilitychange picks up
   // any messages missed while hidden.
   const { data: convData, isLoading: convLoading } = useQuery({
-    queryKey: ['sms-conversations', includeArchived],
-    queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
+    // WEB-S6-034: include debouncedSearch in the cache key so a new search
+    // triggers a fresh server-side fetch.
+    queryKey: ['sms-conversations', includeArchived, debouncedSearch],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (includeArchived) params['include_archived'] = '1';
+      if (debouncedSearch) params['q'] = debouncedSearch;
+      return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
+    },
     staleTime: 30_000,
   });
   // SCAN-1003b: typed unwrap.
@@ -1276,7 +1424,12 @@ export function CommunicationPage() {
     return () => { clearTimeout(timer); document.removeEventListener('click', handler); };
   }, [showSchedulePicker]);
 
-  // Filter conversations by search + tab (client-side for instant feedback)
+  // Filter conversations by search + tab (client-side for instant feedback).
+  // WEB-S6-034: When debouncedSearch is non-empty, the server already filtered
+  // by q= — don't double-filter in JS (the server result is already scoped).
+  // The live searchFilter still drives the input; the 300ms debounce means
+  // there's a brief window where searchFilter != debouncedSearch — during that
+  // window we keep the last server result as-is so the list doesn't jump.
   const filtered = conversations.filter((c) => {
     // Tab filter
     if (activeTab === 'unread' && (c.unread_count ?? 0) === 0) return false;
@@ -1286,6 +1439,8 @@ export function CommunicationPage() {
     // Hide archived from non-archived tabs
     if (activeTab !== 'archived' && c.is_archived) return false;
 
+    // Only apply client-side text filter when server hasn't filtered yet.
+    if (debouncedSearch) return true; // server already applied q=
     if (!searchFilter) return true;
     const q = searchFilter.toLowerCase();
     const name = c.customer ? `${c.customer.first_name} ${c.customer.last_name}`.toLowerCase() : '';
@@ -1379,6 +1534,19 @@ export function CommunicationPage() {
             >
               <PhoneCall className="h-3.5 w-3.5" />
               Calls
+            </button>
+            {/* WEB-S6-017: Email tab — gated behind email_inbox_enabled flag */}
+            <button
+              onClick={() => setMainView('email')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                mainView === 'email'
+                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-600 dark:text-surface-100'
+                  : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+              )}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Email
             </button>
           </div>
           {mainView === 'messages' && (
@@ -1610,9 +1778,64 @@ export function CommunicationPage() {
         )}
       </div>
 
-      {/* ── Right Panel: Message Thread or Call Log ── */}
+      {/* ── Right Panel: Message Thread, Call Log, or Email Threads ── */}
       {mainView === 'calls' ? (
         <CallLogPanel />
+      ) : mainView === 'email' ? (
+        /* WEB-S6-017: Email thread panel — gated behind email_inbox_enabled */
+        <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900 p-6 overflow-y-auto">
+          {emailLoading ? (
+            <div className="flex justify-center py-16">
+              <Loader2 className="h-8 w-8 animate-spin text-primary-400" />
+            </div>
+          ) : !emailEnabled ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+              <Mail className="h-12 w-12 text-surface-300 dark:text-surface-600" />
+              <h2 className="text-base font-medium text-surface-600 dark:text-surface-400">Email inbox not configured</h2>
+              <p className="text-sm text-surface-400 dark:text-surface-500 max-w-sm">
+                Email receiving infrastructure is not yet set up. Once SMTP inbound is configured,
+                email threads from customers will appear here.
+              </p>
+            </div>
+          ) : emailThreads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
+              <Mail className="h-12 w-12 text-surface-300 dark:text-surface-600" />
+              <h2 className="text-base font-medium text-surface-600 dark:text-surface-400">No emails yet</h2>
+              <p className="text-sm text-surface-400 dark:text-surface-500">
+                Incoming customer emails will appear here once they arrive.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2 max-w-2xl">
+              <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">Email Threads</h2>
+              {emailThreads.map((thread) => (
+                <div
+                  key={thread.id}
+                  className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-4 py-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-sm text-surface-900 dark:text-surface-100 truncate">
+                      {thread.subject || '(no subject)'}
+                    </span>
+                    <span className="text-xs text-surface-400 whitespace-nowrap ml-2">
+                      {thread.last_message_at ? new Date(thread.last_message_at).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                  <div className="text-xs text-surface-500 mt-0.5">
+                    {thread.first_name || thread.last_name
+                      ? `${thread.first_name ?? ''} ${thread.last_name ?? ''}`.trim()
+                      : thread.from_address || 'Unknown'}
+                  </div>
+                  {(thread.unread_count ?? 0) > 0 && (
+                    <span className="mt-1 inline-block rounded-full bg-primary-600 px-2 py-0.5 text-xs font-medium text-white">
+                      {thread.unread_count} new
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       ) : (
       <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">
         {!selectedPhone ? (

@@ -73,6 +73,10 @@ fun BrandListItem(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            // §26.1 — enforce 48dp minimum touch target height per WCAG 2.5.5.
+            // Content padding alone (12dp top + 12dp bottom + ~20dp body text)
+            // may fall just below 48dp on single-line rows with small text.
+            .defaultMinSize(minHeight = 48.dp)
             .then(
                 if (onClick != null) {
                     // §26.1 — merge descendants + Role.Button so TalkBack

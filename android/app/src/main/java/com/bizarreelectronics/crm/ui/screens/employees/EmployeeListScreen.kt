@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.employees.components.EmployeeFilter
 import com.bizarreelectronics.crm.ui.screens.employees.components.EmployeeFilterChips
 import com.bizarreelectronics.crm.ui.screens.employees.components.PresenceBadge
@@ -59,16 +60,27 @@ data class EmployeeListUiState(
     // §14.1 L1611 — real-time presence map: employeeId → PresenceStatus.
     // Populated from WebSocket "presence" events; absent = Off (stub gray).
     val presenceMap: Map<Long, PresenceStatus> = emptyMap(),
+    // §18.2 — scoped search query for this screen
+    val searchQuery: String = "",
 ) {
     /** Derived filtered list applied in UI without extra API calls. */
     val filtered: List<EmployeeListItem>
-        get() = when (activeFilter) {
-            EmployeeFilter.All -> employees
-            EmployeeFilter.Admin -> employees.filter { it.role == "admin" }
-            EmployeeFilter.Technician -> employees.filter { it.role == "technician" }
-            EmployeeFilter.Active -> employees.filter { it.isActive == 1 }
-            EmployeeFilter.Inactive -> employees.filter { it.isActive != 1 }
-            EmployeeFilter.ClockedIn -> employees.filter { it.isClockedIn == true }
+        get() {
+            val byFilter = when (activeFilter) {
+                EmployeeFilter.All -> employees
+                EmployeeFilter.Admin -> employees.filter { it.role == "admin" }
+                EmployeeFilter.Technician -> employees.filter { it.role == "technician" }
+                EmployeeFilter.Active -> employees.filter { it.isActive == 1 }
+                EmployeeFilter.Inactive -> employees.filter { it.isActive != 1 }
+                EmployeeFilter.ClockedIn -> employees.filter { it.isClockedIn == true }
+            }
+            val q = searchQuery.trim()
+            if (q.isBlank()) return byFilter
+            return byFilter.filter { emp ->
+                val name = listOfNotNull(emp.firstName, emp.lastName).joinToString(" ")
+                listOfNotNull(name, emp.email, emp.username, emp.role)
+                    .any { it.contains(q, ignoreCase = true) }
+            }
         }
 }
 
@@ -135,6 +147,11 @@ class EmployeeListViewModel @Inject constructor(
 
     fun setFilter(filter: EmployeeFilter) {
         _state.value = _state.value.copy(activeFilter = filter)
+    }
+
+    /** §18.2 — update the scoped search query for this screen. */
+    fun updateSearchQuery(query: String) {
+        _state.value = _state.value.copy(searchQuery = query)
     }
 
     /**
@@ -239,6 +256,14 @@ fun EmployeeListScreen(
             }
             else -> {
                 Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                    // §18.2 — scoped search bar
+                    SearchBar(
+                        query = state.searchQuery,
+                        onQueryChange = viewModel::updateSearchQuery,
+                        placeholder = "Search by name, email, role…",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
+
                     // §14.1 L1610 — filter chip row
                     EmployeeFilterChips(
                         selected = state.activeFilter,
@@ -255,6 +280,18 @@ fun EmployeeListScreen(
                                 icon = Icons.Default.Group,
                                 title = "No employees",
                                 subtitle = "No employee accounts found.",
+                            )
+                        }
+                    } else if (state.filtered.isEmpty() && state.searchQuery.isNotBlank()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            EmptyState(
+                                icon = Icons.Default.SearchOff,
+                                title = "No match",
+                                subtitle = "No employees matched \"${state.searchQuery}\"",
+                                includeWave = false,
                             )
                         }
                     } else {

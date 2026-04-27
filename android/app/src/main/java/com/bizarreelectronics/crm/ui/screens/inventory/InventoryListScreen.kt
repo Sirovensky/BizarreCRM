@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,17 +16,24 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.invisibleToUser
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.delay
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -33,6 +41,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryColumn
+import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryColumnsPickerSheet
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryContextMenu
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilter
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilterSheet
@@ -40,6 +50,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySortDropdown
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryStockBadge
 import com.bizarreelectronics.crm.ui.screens.inventory.components.QuickStockAdjust
+import com.bizarreelectronics.crm.ui.screens.inventory.components.loadInventoryColumns
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.local.db.entities.costPrice
@@ -74,6 +85,30 @@ fun InventoryListScreen(
     val clipboardManager = LocalClipboardManager.current
 
     var showFilterSheet by remember { mutableStateOf(false) }
+    // §6.1: tablet column picker state (persisted via SharedPreferences)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var visibleColumns by remember {
+        mutableStateOf(loadInventoryColumns(context))
+    }
+    var showColumnsPicker by remember { mutableStateOf(false) }
+
+    // §6.5: HID-scanner support — hidden focused BasicTextField captures rapid
+    // keystrokes from an external Bluetooth scanner operating in HID keyboard
+    // mode. The scanner sends characters with intra-key interval < 50 ms and
+    // terminates with Enter (KeyEvent.KEYCODE_ENTER / '\n'). We accumulate the
+    // buffer and submit when we see a newline. Regular keyboard typing is
+    // filtered out by the 50 ms threshold: human key repeat is typically > 80 ms.
+    var hidBuffer by remember { mutableStateOf(TextFieldValue("")) }
+    var hidLastCharMs by remember { mutableStateOf(0L) }
+    val hidFocusRequester = remember { FocusRequester() }
+
+    // Re-request focus on the hidden field whenever we're back on the list screen
+    // so the scanner can always inject input without user interaction.
+    LaunchedEffect(Unit) {
+        // Delay slightly to let the Scaffold settle before requesting focus.
+        kotlinx.coroutines.delay(300)
+        try { hidFocusRequester.requestFocus() } catch (_: Exception) { /* safe to ignore */ }
+    }
 
     // Trigger barcode lookup when a scanned barcode arrives
     LaunchedEffect(scannedBarcode) {
@@ -106,6 +141,15 @@ fun InventoryListScreen(
                 showFilterSheet = false
             },
             onDismiss = { showFilterSheet = false },
+        )
+    }
+
+    // §6.1: Columns picker sheet — tablet/ChromeOS only
+    if (showColumnsPicker && isTablet) {
+        InventoryColumnsPickerSheet(
+            visibleColumns = visibleColumns,
+            onColumnsChanged = { updated -> visibleColumns = updated },
+            onDismiss = { showColumnsPicker = false },
         )
     }
 
@@ -149,6 +193,12 @@ fun InventoryListScreen(
                         currentSort = state.currentSort,
                         onSortSelected = { viewModel.onSortChanged(it) },
                     )
+                    // §6.1: Column picker icon — tablet/ChromeOS only
+                    if (isTablet) {
+                        IconButton(onClick = { showColumnsPicker = true }) {
+                            Icon(Icons.Default.ViewColumn, contentDescription = "Choose visible columns")
+                        }
+                    }
                     IconButton(onClick = onScanClick) {
                         Icon(Icons.Default.QrCodeScanner, contentDescription = "Scan barcode to find item")
                     }
@@ -177,6 +227,39 @@ fun InventoryListScreen(
                 .padding(padding)
                 .imePadding(),
         ) {
+            // §6.5: HID-scanner hidden field — zero-size, invisible to a11y.
+            // External Bluetooth scanner (HID keyboard mode) injects characters
+            // here; rapid bursts (< 50 ms inter-char) + newline → barcode lookup.
+            BasicTextField(
+                value = hidBuffer,
+                onValueChange = { newVal ->
+                    val nowMs = System.currentTimeMillis()
+                    val deltaMs = nowMs - hidLastCharMs
+                    hidLastCharMs = nowMs
+
+                    val newText = newVal.text
+                    if (newText.endsWith("\n")) {
+                        // Newline = scanner terminator → submit
+                        val barcode = newText.trimEnd('\n').trim()
+                        if (barcode.isNotBlank()) {
+                            viewModel.lookupBarcode(barcode)
+                        }
+                        hidBuffer = TextFieldValue("")
+                    } else if (deltaMs < 50 || hidBuffer.text.isNotEmpty()) {
+                        // Fast typing (< 50 ms) OR already buffering → accumulate
+                        hidBuffer = newVal
+                    } else {
+                        // Slow typing (human) → discard so the hidden field stays empty
+                        hidBuffer = TextFieldValue("")
+                    }
+                },
+                modifier = Modifier
+                    .size(0.dp)
+                    .focusRequester(hidFocusRequester)
+                    .semantics { invisibleToUser() },
+                textStyle = TextStyle(fontSize = 0.sp),
+            )
+
             SearchBar(
                 query = state.searchQuery,
                 onQueryChange = { viewModel.onSearchChanged(it) },

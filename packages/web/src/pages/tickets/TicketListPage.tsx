@@ -1016,7 +1016,7 @@ export function TicketListPage() {
 
   const { data: calendarData } = useQuery({
     queryKey: ['tickets-calendar', calStartDate, calEndDate],
-    queryFn: () => ticketApi.list({ pagesize: 500, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
+    queryFn: () => ticketApi.list({ pagesize: 100, from_date: calStartDate, to_date: calEndDate, sort_by: 'created_at', sort_order: 'ASC' }),
     enabled: viewMode === 'calendar',
   });
   const calendarTickets: Ticket[] = calendarData?.data?.data?.tickets || calendarData?.data?.tickets || [];

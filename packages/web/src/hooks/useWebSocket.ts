@@ -490,6 +490,12 @@ export function useWebSocket() {
         if (!hasToken) return;
         authRejectedRef.current = false;
       }
+      // Cancel any pending reconnect timer before initiating a direct connect
+      // so a visibility-resume doesn't race against an already-scheduled retry.
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
       backoffRef.current = INITIAL_BACKOFF;
       connect();
     };

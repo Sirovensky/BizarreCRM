@@ -253,13 +253,13 @@ export function CommandPalette() {
     setSelectedIndex(0);
   }, [setCommandPaletteOpen]);
 
-  // Focus input on open — return a cleanup so the timer doesn't fire after
-  // an unmount (W10 fix). A stale callback trying to focus a detached input
-  // is harmless but still creates a memory retention path.
+  // Focus input on open — requestAnimationFrame fires after the browser paints
+  // so the focus ring appears at the end of the open animation, not mid-transition.
   useEffect(() => {
     if (!commandPaletteOpen) return;
-    const timer = setTimeout(() => inputRef.current?.focus(), 50);
-    return () => clearTimeout(timer);
+    let raf = 0;
+    raf = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(raf);
   }, [commandPaletteOpen]);
 
   // Debounced search

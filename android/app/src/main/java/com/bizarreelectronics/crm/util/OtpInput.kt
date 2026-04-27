@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.util
 
+import android.app.Activity
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -11,46 +12,24 @@ import androidx.compose.ui.text.input.KeyboardType
  * a pure Android (no Compose) utility that can be tested without Compose on
  * the classpath.
  *
- * ### ContentType / autofill semantics
- * `androidx.compose.ui.autofill.ContentType` is declared `internal` in the
- * Compose UI 1.7.x library and therefore cannot be imported from application
- * code. The recommended approach for OTP autofill semantics in this Compose
- * version is to use the `autofillHints` modifier with the Android view-system
- * hint string directly:
- *
+ * ### ContentType / autofill semantics (session 2026-04-26)
+ * `ContentType.SmsOtpCode` became accessible in Compose UI 1.8 (BOM 2026.04.01).
+ * Wire it into OTP fields via:
  * ```kotlin
- * import android.view.View
+ * import androidx.compose.ui.autofill.ContentType
  * OutlinedTextField(
- *     modifier = Modifier.semantics {
- *         // Wire up View-level autofill hint so the Android autofill framework
- *         // can fill the field with the incoming SMS OTP.
- *         autofillHints(View.AUTOFILL_HINT_SMS_OTP)
- *     },
+ *     modifier = Modifier.semantics { contentType = ContentType.SmsOtpCode },
  *     keyboardOptions = OtpInput.otpKeyboardOptions(),
  * )
  * ```
- *
- * When Compose upgrades to a version where `ContentType` is public (expected
- * post-1.8), replace the `autofillHints` approach with:
- * ```kotlin
- * Modifier.semantics { contentType = ContentType.SmsOtpCode }
- * ```
+ * Legacy `autofillHints(View.AUTOFILL_HINT_SMS_OTP)` still works as a fallback
+ * for older devices; both can be applied simultaneously.
  *
  * ### SmsRetriever
- * [smsRetrieverClient] is a stub. The SMS Retriever API requires the
- * `com.google.android.gms:play-services-auth-api-phone` library which is NOT
- * present in `android/app/build.gradle.kts`. Adding it is out of scope for
- * this sub-agent (no dep bumps). When that dependency is added, replace the
- * stub body with:
- *
- * ```kotlin
- * import com.google.android.gms.auth.api.phone.SmsRetriever
- * fun smsRetrieverClient(context: Context) =
- *     SmsRetriever.getClient(context).startSmsRetriever()
- * ```
- *
- * Required gradle coordinate:
- *   `implementation("com.google.android.gms:play-services-auth-api-phone:18.1.0")`
+ * [smsRetrieverClient] delegates to [SmsRetrieverHelper.startRetriever], which
+ * requires `play-services-auth-api-phone` — already present in
+ * `android/app/build.gradle.kts`. Call this when the 2FA verify step is
+ * composed to enable automatic code fill from incoming SMS messages.
  */
 object OtpInput {
 
@@ -78,31 +57,21 @@ object OtpInput {
      * )
      * ```
      *
-     * Note: The newer `ContentType.SmsOtpCode` API is preferred once
-     * `androidx.compose.ui.autofill.ContentType` becomes public (post 1.7.x).
+     * Prefer `ContentType.SmsOtpCode` on Compose UI 1.8+ devices (see class KDoc).
      */
     const val SMS_OTP_AUTOFILL_HINT: String = "smsOTPCode"
 
     /**
-     * Thin wrapper for the SMS Retriever API.
+     * Starts the SMS Retriever session so Android auto-fills the OTP code when
+     * the server SMS arrives.
      *
-     * STUB — `play-services-auth-api-phone` is not in the project's
-     * build.gradle.kts. Returns null with a log-level warning.
+     * Must be called from a foreground [Activity]. The result code is delivered
+     * asynchronously through [SmsOtpBus]; the returned Task can be discarded if
+     * the caller doesn't need start-failure notifications.
      *
-     * TODO: add `implementation("com.google.android.gms:play-services-auth-api-phone:18.1.0")`
-     *       to android/app/build.gradle.kts, then replace this body with:
-     *       `return SmsRetriever.getClient(context).startSmsRetriever()`
-     *
-     * @return null (stub). When the dep is present, returns the Task<Void>
-     *         from SmsRetriever.getClient(context).startSmsRetriever().
+     * Call once per 2FA verify composition. Play Services ignores duplicate
+     * starts within the active 5-minute session window.
      */
-    fun smsRetrieverClient(context: android.content.Context): Nothing? {
-        android.util.Log.w(
-            "OtpInput",
-            "smsRetrieverClient() is a stub — play-services-auth-api-phone is not in the build. " +
-                "Add implementation(\"com.google.android.gms:play-services-auth-api-phone:18.1.0\")" +
-                " to android/app/build.gradle.kts to enable SMS auto-retrieval.",
-        )
-        return null
-    }
+    fun smsRetrieverClient(activity: Activity) =
+        SmsRetrieverHelper.startRetriever(activity)
 }

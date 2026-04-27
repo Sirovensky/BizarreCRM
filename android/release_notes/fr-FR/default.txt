@@ -1,0 +1,6 @@
+Corrections de bugs et améliorations des performances.
+
+Nouveautés :
+• [À COMPLÉTER avant la mise en ligne — 500 caractères max.]
+
+Journal des modifications : https://bizarrecrm.com/changelog

@@ -123,4 +123,42 @@ interface TicketDao {
 
     @Query("SELECT COUNT(*) FROM tickets WHERE status_is_closed = 0 AND is_deleted = 0")
     fun getOpenCount(): Flow<Int>
+
+    // ── §20.9 Cache eviction ─────────────────────────────────────────────────
+
+    /**
+     * §20.9 — Total row count used by [CacheEvictor] to decide whether to evict.
+     */
+    @Query("SELECT COUNT(*) FROM tickets")
+    suspend fun countAll(): Int
+
+    /**
+     * §20.9 — Delete the [excess] oldest rows that do NOT have a pending or
+     * in-progress sync_queue entry. Evicted rows will be re-fetched from the
+     * server on demand (detail page) or on the next background refresh.
+     *
+     * The `LEFT JOIN / WHERE sq.id IS NULL` guard ensures that any row with an
+     * unresolved queue entry is NEVER evicted — evicting a row while a create
+     * or update is in-flight would lose the user's offline work. Rows with
+     * `locally_modified = 1` are also excluded as an extra safety net.
+     *
+     * [excess] = currentCount - cap. Callers must pass max(0, count - cap).
+     */
+    @Query(
+        """
+        DELETE FROM tickets
+        WHERE id IN (
+            SELECT t.id FROM tickets t
+            LEFT JOIN sync_queue sq
+                ON sq.entity_type = 'ticket'
+               AND sq.entity_id   = t.id
+               AND sq.status IN ('pending', 'syncing')
+            WHERE sq.id IS NULL
+              AND t.locally_modified = 0
+            ORDER BY t.updated_at ASC
+            LIMIT :excess
+        )
+        """,
+    )
+    suspend fun evictOldest(excess: Int)
 }

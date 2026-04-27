@@ -47,7 +47,13 @@ interface AuthSwitchResponse {
 // ==================== Auth ====================
 export const authApi = {
   setupStatus: () =>
-    api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
+    api.get<{ success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } }>(
       '/auth/setup-status',
     ),
   setup: (data: {
@@ -86,8 +92,13 @@ export const authApi = {
   // breaking auto-login on every page reload. Type now matches the wire shape;
   // LoginPage was patched in tandem to read `res.data?.data` directly.
   me: () => api.get<{ success: boolean; data: User }>('/auth/me'),
-  forgotPassword: (email: string) =>
-    api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/forgot-password', { email }),
+  // WEB-S4-006: optional captcha_token — included from second attempt onward
+  // when the backend starts requiring CAPTCHA after repeated failures.
+  forgotPassword: (email: string, captchaToken?: string) =>
+    api.post<{ success: boolean; data: { message: string }; message?: string }>(
+      '/auth/forgot-password',
+      captchaToken ? { email, captcha_token: captchaToken } : { email },
+    ),
   resetPassword: (token: string, password: string) =>
     api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/reset-password', { token, password }),
 };
@@ -226,6 +237,8 @@ export const ticketApi = {
   deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
   // Clone as warranty case
   cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
+  // Duplicate ticket (copies header + devices + parts, resets status)
+  duplicate: (id: number) => api.post(`/tickets/${id}/duplicate`),
   // AUDIT-WEB-002: mint a scoped short-lived photo-upload token for the QR URL.
   // Returns { token: string } — 30-minute JWT scoped to one ticket+device.
   getPhotoUploadToken: (ticketId: number, deviceId: number) =>
@@ -602,6 +615,34 @@ export interface VoiceCallsResponse {
   };
 }
 
+// ==================== Email ====================
+// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
+export interface EmailThread {
+  id: number;
+  customer_id?: number | null;
+  subject?: string | null;
+  from_address?: string | null;
+  last_message_at: string;
+  message_count?: number;
+  unread_count?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+export interface EmailThreadsPayload {
+  threads: EmailThread[];
+  enabled: boolean;
+  pagination?: { page: number; per_page: number; total: number; total_pages: number };
+}
+
+export const emailApi = {
+  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
+  threads: (params?: { page?: number; pagesize?: number }) =>
+    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
+  messages: (threadId: number) =>
+    api.get(`/email/threads/${threadId}/messages`),
+};
+
 export const voiceApi = {
   call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
     api.post<{ success: boolean; data?: unknown; message?: string }>('/voice/call', data),
@@ -610,6 +651,9 @@ export const voiceApi = {
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
   /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
+  /** WEB-W3-023: Fetch a short-lived signed URL for playback (5-min HMAC token). */
+  recordingSignedUrl: (id: number) =>
+    api.get<{ success: boolean; data: { url: string } }>(`/voice/calls/${id}/recording-url`),
 };
 
 // ==================== POS ====================
@@ -620,8 +664,8 @@ export const posApi = {
   // the field misled callers into thinking they could query the service
   // catalog from POS. If/when the server supports a `service` filter, add
   // it back as a real param.
-  products: (params?: { keyword?: string; category?: string }) =>
-    api.get('/pos/products', { params }),
+  products: (params?: { keyword?: string; category?: string }, signal?: AbortSignal) =>
+    api.get('/pos/products', { params, signal }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
   // event so a flaky-network double-click doesn't double-record opening float.
@@ -1048,7 +1092,9 @@ export const blockchypApi = {
   // exact bug SEC-M34 was trying to prevent. Pages should branch on
   // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
   // recording a "successful" payment.
-  processPayment: (invoiceId: number, tip?: number) => {
+  // WEB-W3-004: `amount` lets the caller charge a specific leg amount for
+  // split payments. When omitted the server charges the full remaining balance.
+  processPayment: (invoiceId: number, tip?: number, amount?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1078,7 +1124,7 @@ export const blockchypApi = {
       };
     }>(
       '/blockchyp/process-payment',
-      { invoiceId, tip, idempotency_key: idempotencyKey },
+      { invoiceId, tip, amount, idempotency_key: idempotencyKey },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>
@@ -1204,6 +1250,10 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
+
+  // WEB-W3-020: trigger immediate billing for a subscription (admin only)
+  runBilling: (id: number) =>
+    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================

@@ -80,7 +80,7 @@ export function MentionPicker({ onPick, onClose }: MentionPickerProps) {
       ref={ref}
       className="absolute bottom-full left-0 mb-2 w-64 max-h-60 overflow-y-auto bg-white border rounded-lg shadow-xl z-10"
     >
-      <div className="px-3 py-1.5 border-b text-xs font-semibold text-gray-500 uppercase">
+      <div className="px-3 py-1.5 border-b text-xs font-semibold text-surface-500 dark:text-surface-400 uppercase">
         Mention
       </div>
       {/* WEB-FD-022 (Fixer-C5 2026-04-25): typed-name filter input. Autofocus
@@ -98,7 +98,7 @@ export function MentionPicker({ onPick, onClose }: MentionPickerProps) {
         />
       </div>
       {employees.length === 0 && (
-        <p className="px-3 py-3 text-xs text-gray-500">No employees found.</p>
+        <p className="px-3 py-3 text-xs text-surface-500 dark:text-surface-400">No employees found.</p>
       )}
       {employees.map((e) => (
         <button
@@ -108,7 +108,7 @@ export function MentionPicker({ onPick, onClose }: MentionPickerProps) {
         >
           <span>
             <span className="font-semibold">{e.first_name} {e.last_name}</span>
-            <span className="text-gray-500 text-xs ml-1">@{e.username}</span>
+            <span className="text-surface-500 dark:text-surface-400 text-xs ml-1">@{e.username}</span>
           </span>
         </button>
       ))}

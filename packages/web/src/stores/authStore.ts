@@ -177,6 +177,28 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user: User) => set({ user }),
 }));
 
+// WEB-S5-033: sweep all per-user namespaced keys on auth-cleared so kiosk
+// handoffs don't leak dismissals, drafts, or recent-view data across logins.
+// `recent_views:*` is handled by Sidebar's own listener; `bizarrecrm:draft:*`
+// by useDraft's listener. This covers the `bizarrecrm:dismiss:*` namespace
+// (useDismissible) and any future `bizarrecrm:` prefixed additions.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try {
+      const toRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('bizarrecrm:dismiss:')) toRemove.push(k);
+      }
+      toRemove.forEach((k) => {
+        try { localStorage.removeItem(k); } catch { /* best-effort */ }
+      });
+    } catch (err) {
+      console.warn('[authStore] dismiss key sweep on auth-cleared failed', err);
+    }
+  });
+}
+
 // ──────────────────────────────────────────────────────────────────
 // WEB-FO-002: cross-tab auth sync via the `storage` event.
 // localStorage writes in tab A fire a `storage` event in every other

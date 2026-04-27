@@ -8,8 +8,11 @@ import androidx.compose.runtime.Immutable
 
 /**
  * Expense row. `amount` is stored as **Long cents**.
+ *
+ * `approvalStatus` mirrors the server `status` column added in server migration 120
+ * (pending | approved | denied). Added to the Android schema in DB version 12.
  */
-@Entity(tableName = "expenses", indices = [Index("category"), Index("date"), Index("user_id")])
+@Entity(tableName = "expenses", indices = [Index("category"), Index("date"), Index("user_id"), Index("approval_status")])
 @Immutable
 data class ExpenseEntity(
     @PrimaryKey
@@ -48,4 +51,11 @@ data class ExpenseEntity(
 
     @ColumnInfo(name = "locally_modified")
     val locallyModified: Boolean = false,
+
+    /**
+     * Approval workflow status from the server. Values: `pending`, `approved`, `denied`.
+     * Defaults to `pending` for new rows and for rows cached before v12 migration.
+     */
+    @ColumnInfo(name = "approval_status")
+    val approvalStatus: String = "pending",
 )

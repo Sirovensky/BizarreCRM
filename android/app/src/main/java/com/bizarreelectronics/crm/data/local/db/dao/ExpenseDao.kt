@@ -22,6 +22,32 @@ interface ExpenseDao {
     @Query("SELECT * FROM expenses WHERE category = :category ORDER BY date DESC")
     fun getByCategory(category: String): Flow<List<ExpenseEntity>>
 
+    @Query("SELECT * FROM expenses WHERE approval_status = :status ORDER BY date DESC")
+    fun getByApprovalStatus(status: String): Flow<List<ExpenseEntity>>
+
+    /**
+     * Combined filter query supporting date range, category, and approval status.
+     * Pass empty string to skip a filter. Supports any combination of the three.
+     */
+    @Query(
+        """
+        SELECT * FROM expenses
+        WHERE (:category = '' OR category = :category)
+          AND (:dateFrom = '' OR date >= :dateFrom)
+          AND (:dateTo = '' OR date <= :dateTo)
+          AND (:approvalStatus = '' OR approval_status = :approvalStatus)
+          AND (:employeeName = '' OR user_name LIKE '%' || :employeeName || '%')
+        ORDER BY date DESC
+        """
+    )
+    fun getFiltered(
+        category: String,
+        dateFrom: String,
+        dateTo: String,
+        approvalStatus: String,
+        employeeName: String,
+    ): Flow<List<ExpenseEntity>>
+
     @Query(
         """
         SELECT * FROM expenses

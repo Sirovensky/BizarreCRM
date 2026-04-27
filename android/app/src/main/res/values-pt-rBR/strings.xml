@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Brazilian Portuguese (pt-BR) — Phase-2 locale stub (§27.2).
+
+    TRANSLATION STATUS: STUB ONLY — no translated strings present.
+    All strings fall through to values/ (English) until a human translator
+    populates this file. Add translated strings here and remove this comment
+    once translation is complete.
+
+    Plural rules for Portuguese follow CLDR "one / other":
+      quantity="one"  → exactly 1
+      quantity="other" → everything else
+-->
+<resources>
+    <!-- App name — keep untranslated; brand identity must not change. -->
+    <string name="app_name">Bizarre CRM</string>
+
+    <!--
+        TODO (Phase-2): add translated strings here.
+        Priority order: nav_* > error_* > action_* > tickets_* > customers_* > settings_* > plurals
+    -->
+</resources>

@@ -240,6 +240,34 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'shared_device_mode_enabled',
   'shared_device_auto_logoff_minutes',
   'shared_device_require_pin_on_switch',
+  // SSW1: First-run setup wizard — new keys (setup_wizard_*) for granular
+  // skip tracking. Distinct from legacy 'wizard_completed' key which remains
+  // for existing data compatibility.
+  'setup_wizard_completed',
+  'setup_wizard_skipped_at',
+  'setup_wizard_skip_count',
+  // Previously referenced in code but silently dropped by the allowlist:
+  'catalog_auto_sync',
+  'billing_dunning_enabled',
+  'file_count_quota',
+  'grandfathered',
+  'invoice_auto_reminder',
+  'invoice_reminder_days',
+  'invoice_reminder_template',
+  'membership_enabled',
+  'owner_email',
+  'payment_provider',
+  'profit_threshold_amber',
+  'profit_threshold_green',
+  'retention_sweep_enabled',
+  'scheduled_report_email',
+  'stall_followup_days',
+  'tv_display_enabled',
+  'wallet_pass_apple_url',
+  'wallet_pass_google_url',
+  'widget_allowed_origins',
+  'weekly_summary_last_sent_at',
+  'setup_imported_legacy_data',
 ]);
 
 // ==================== Generic Config (key-value) ====================

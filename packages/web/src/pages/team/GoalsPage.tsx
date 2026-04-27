@@ -33,10 +33,22 @@ interface Employee {
   last_name: string;
 }
 
-const METRIC_LABELS: Record<string, string> = {
+interface GoalMetricDef {
+  key: string;
+  label: string;
+  unit: string;
+}
+
+// WEB-W3-037: Static fallback labels for metrics not yet loaded from server.
+// The GoalsPage fetches /team/goal-metrics on mount; until that resolves these
+// cover the legacy values so existing goals render correctly.
+const METRIC_LABELS_FALLBACK: Record<string, string> = {
   tickets_closed_week: 'Tickets closed',
   revenue_week: 'Revenue',
+  avg_ticket_value: 'Avg ticket value',
   csat: 'CSAT',
+  on_time_completion: 'On-time completion',
+  parts_accuracy: 'Parts accuracy',
 };
 
 function todayIso(): string {
@@ -82,6 +94,21 @@ export function GoalsPage() {
     },
   });
   const employees: Employee[] = employeesData || [];
+
+  // WEB-W3-037: Load supported metric types from server enum instead of hardcoding.
+  const { data: metricsData } = useQuery({
+    queryKey: ['team', 'goal-metrics'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: GoalMetricDef[] }>('/team/goal-metrics');
+      return res.data.data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const metricDefs: GoalMetricDef[] = metricsData || [];
+  const metricLabels: Record<string, string> = {
+    ...METRIC_LABELS_FALLBACK,
+    ...Object.fromEntries(metricDefs.map((m) => [m.key, m.label])),
+  };
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -159,7 +186,7 @@ export function GoalsPage() {
                     {g.first_name} {g.last_name}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-surface-400">
-                    {METRIC_LABELS[g.metric] || g.metric} · {g.period_start} → {g.period_end}
+                    {metricLabels[g.metric] || g.metric} · {g.period_start} → {g.period_end}
                   </div>
                 </div>
                 <button
@@ -215,9 +242,16 @@ export function GoalsPage() {
                   value={newMetric}
                   onChange={(e) => setNewMetric(e.target.value)}
                 >
-                  <option value="tickets_closed_week">Tickets closed</option>
-                  <option value="revenue_week">Revenue</option>
-                  <option value="csat">CSAT score</option>
+                  {(metricDefs.length > 0
+                    ? metricDefs
+                    : [
+                        { key: 'tickets_closed_week', label: 'Tickets closed' },
+                        { key: 'revenue_week',        label: 'Revenue'        },
+                        { key: 'csat',                label: 'CSAT score'     },
+                      ]
+                  ).map((m) => (
+                    <option key={m.key} value={m.key}>{m.label}</option>
+                  ))}
                 </select>
               </label>
               <label className="block">

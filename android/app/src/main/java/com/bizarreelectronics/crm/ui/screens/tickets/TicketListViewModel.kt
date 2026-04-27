@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -72,6 +73,8 @@ data class TicketListUiState(
     // plan:L792 — Bulk transition summary
     /** Non-null when a bulk-transition operation completed with a summary to show. */
     val bulkTransitionSummary: BulkTransitionSummary? = null,
+    // §4.21 — Active label filter (null = show all)
+    val activeLabelFilter: String? = null,
 )
 
 /**
@@ -94,9 +97,17 @@ class TicketListViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val ticketApi: TicketApi,
     private val appPreferences: AppPreferences,
+    // §1.8 process-death: SavedStateHandle persists transient search/filter state
+    // across process kill so the user's query is restored on re-launch.
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(TicketListUiState())
+    private val _state = MutableStateFlow(
+        TicketListUiState(
+            searchQuery = savedStateHandle.get<String>(SSH_KEY_QUERY) ?: "",
+            selectedFilter = savedStateHandle.get<String>(SSH_KEY_FILTER) ?: "All",
+        ),
+    )
     val state = _state.asStateFlow()
 
     /**
@@ -182,8 +193,15 @@ class TicketListViewModel @Inject constructor(
                 // Saved-view filter applied on top of status filter
                 val savedFiltered = applySavedView(filtered, savedView)
 
+                // §4.21 — Label filter: keep only tickets containing the active label
+                val labelFiltered = _state.value.activeLabelFilter?.let { activeLabel ->
+                    savedFiltered.filter { ticket ->
+                        ticket.labels?.split(",")?.any { it.trim().equals(activeLabel, ignoreCase = true) } == true
+                    }
+                } ?: savedFiltered
+
                 // Sort
-                val sorted = applySortOrder(savedFiltered, _state.value.currentSort)
+                val sorted = applySortOrder(labelFiltered, _state.value.currentSort)
 
                 _state.value = _state.value.copy(
                     tickets = sorted,
@@ -201,6 +219,8 @@ class TicketListViewModel @Inject constructor(
 
     fun onSearchChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
+        // §1.8 process-death: persist so the query survives a process kill + restore
+        savedStateHandle[SSH_KEY_QUERY] = query
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -210,7 +230,15 @@ class TicketListViewModel @Inject constructor(
 
     fun onFilterChanged(filter: String) {
         _state.value = _state.value.copy(selectedFilter = filter)
+        // §1.8 process-death: persist so the filter survives a process kill + restore
+        savedStateHandle[SSH_KEY_FILTER] = filter
         _filterKeyFlow.value = resolveFilterKey(filter = filter)
+        collectTickets()
+    }
+
+    // §4.21 — Filter ticket list by label (null clears the filter)
+    fun onLabelFilterChanged(label: String?) {
+        _state.value = _state.value.copy(activeLabelFilter = label)
         collectTickets()
     }
 
@@ -526,6 +554,9 @@ class TicketListViewModel @Inject constructor(
 
     private companion object {
         private const val TAG = "TicketListViewModel"
+        /** SavedStateHandle keys for process-death restoration (§1.8). */
+        const val SSH_KEY_QUERY  = "ticket_list_search_query"
+        const val SSH_KEY_FILTER = "ticket_list_selected_filter"
     }
 }
 

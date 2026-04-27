@@ -120,5 +120,15 @@ interface EmployeeApi {
         @Path("id") employeeId: Long,
     ): ApiResponse<@JvmSuppressWildcards Any>
 
+    /**
+     * §14.7 — Leaderboard: all-employee performance summary.
+     * GET /employees/performance/all
+     * Returns a list of rows: { id, first_name, last_name, role,
+     *   total_tickets, closed_tickets, total_revenue, avg_ticket_value, avg_repair_hours }
+     * 404 tolerated — caller shows empty state.
+     */
+    @GET("employees/performance/all")
+    suspend fun getPerformanceAll(): ApiResponse<@JvmSuppressWildcards Any>
+
     // endregion
 }

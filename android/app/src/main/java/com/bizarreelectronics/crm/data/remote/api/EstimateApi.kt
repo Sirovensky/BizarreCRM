@@ -4,6 +4,7 @@ import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.CreateEstimateRequest
 import com.bizarreelectronics.crm.data.remote.dto.EstimateDetail
 import com.bizarreelectronics.crm.data.remote.dto.EstimateListData
+import com.bizarreelectronics.crm.data.remote.dto.EstimatePageResponse
 import com.bizarreelectronics.crm.data.remote.dto.UpdateEstimateRequest
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -13,6 +14,7 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
 /** Minimal version snapshot returned by GET /estimates/:id/versions (404-tolerant). */
@@ -28,6 +30,19 @@ interface EstimateApi {
 
     @GET("estimates")
     suspend fun getEstimates(@QueryMap filters: Map<String, String> = emptyMap()): ApiResponse<EstimateListData>
+
+    /**
+     * Cursor-based page fetch for offline-first paging (plan:L1325).
+     * When [cursor] is null the server returns the first page.
+     * On servers that do not yet support cursor the response is treated as a
+     * final page ([EstimatePageResponse.cursor] = null).
+     */
+    @GET("estimates")
+    suspend fun getEstimatePage(
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int = 50,
+        @QueryMap filters: Map<String, String> = emptyMap(),
+    ): ApiResponse<EstimatePageResponse>
 
     @GET("estimates/{id}")
     suspend fun getEstimate(@Path("id") id: Long): ApiResponse<EstimateDetail>
