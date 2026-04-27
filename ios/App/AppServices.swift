@@ -9,6 +9,7 @@ import Inventory
 import Pos
 import Sync
 import Hardware
+import Core
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -67,5 +68,24 @@ final class AppServices {
         let posExecutor = PosSyncOpExecutor(api: apiClient)
         SyncManager.shared.executor = posExecutor
         SyncManager.shared.autoStart()
+
+        // §29.1 Deferred init — non-critical framework init moved off the
+        // hot launch path. MetricKit wiring (§32.2) and any future analytics /
+        // feature-flag prefetch go here so cold-start time is not penalised.
+        let client = apiClient
+        Task.detached(priority: .background) {
+            // §32.2 MetricKit performance upload — tenant server only.
+            // Upload closure builds a URLRequest manually so we can POST raw
+            // pre-serialised JSON without going through the typed APIClient.
+            let metricKit = MetricKitManager(upload: { [client] data in
+                guard let base = await client.currentBaseURL() else { return }
+                var req = URLRequest(url: base.appendingPathComponent("telemetry/metrics"))
+                req.httpMethod = "POST"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = data
+                _ = try await URLSession.shared.data(for: req)
+            })
+            metricKit.start()
+        }
     }
 }

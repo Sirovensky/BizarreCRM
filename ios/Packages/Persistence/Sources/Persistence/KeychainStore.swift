@@ -45,6 +45,40 @@ public final class KeychainStore: @unchecked Sendable {
         try? keychain.removeAll()
     }
 
+    // MARK: — §28.1 Logout cleanup
+
+    /// Removes all user-session and tenant-scoped Keychain items on sign-out.
+    ///
+    /// The DB passphrase (`dbPassphrase`) is intentionally NOT cleared here —
+    /// the encrypted database stays on disk until the user taps "Reset" in the
+    /// Danger Zone, and the passphrase must survive a sign-out → sign-in cycle
+    /// for the same tenant so the DB remains accessible.
+    ///
+    /// `blockChypAuth` is also preserved — hardware pairing should survive logout.
+    public func deleteSessionKeys() {
+        let sessionKeys: [KeychainKey] = [
+            .accessToken,
+            .refreshToken,
+            .pinHash,
+            .pinLength,
+            .pinFailCount,
+            .pinLockUntil,
+            .backupCodes,
+            .activeTenantId,
+            .rememberedEmail,
+        ]
+        for key in sessionKeys {
+            try? keychain.remove(key.rawValue)
+        }
+    }
+
+    /// Full wipe: removes ALL Keychain items including the DB passphrase.
+    ///
+    /// Call from Settings → Danger Zone → Reset, not from routine logout.
+    public func deleteAll() {
+        clearAll()
+    }
+
     /// Generates a new random 256-bit passphrase if missing; returns existing otherwise.
     public func dbPassphrase() throws -> String {
         if let existing = get(.dbPassphrase) { return existing }
