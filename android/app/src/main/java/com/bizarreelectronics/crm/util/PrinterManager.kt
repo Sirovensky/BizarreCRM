@@ -11,6 +11,7 @@ import android.content.SharedPreferences
 import android.print.PrintManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -186,20 +187,65 @@ class PrinterManager @Inject constructor(
      */
     suspend fun kickDrawer(): Result<Unit> = cashDrawerController.openDrawer()
 
-    // ─── Auto-reconnect (§17.4 L1887) ────────────────────────────────────────
+    // ─── Auto-reconnect with exponential backoff (§17.12) ────────────────────
 
     /**
-     * Attempts to reconnect to all paired printers. Should be called from the
-     * host Activity's onResume (or ProcessLifecycleOwner) so status pills update
-     * reactively when the user returns to the app.
+     * Attempts to reconnect to all paired printers.
+     *
+     * §17.12: Uses exponential backoff — first attempt immediate, subsequent
+     * retries at 1s, 2s, 4s, 8s (capped).  Total budget per device is
+     * [RECONNECT_BUDGET_MS] (15 s).  Status pills update reactively on each
+     * probe so the UI always reflects real-time state.
+     *
+     * Call from Activity.onResume or ProcessLifecycleOwner.onStart.
+     *
+     * §17.12: Hardware failure NEVER blocks the UI — this runs on IO and
+     * emits status changes; consumers degrade gracefully ("Print skipped,
+     * reprint from sales history").
      */
     suspend fun onActivityResume() = withContext(Dispatchers.IO) {
         PrinterRole.entries.forEach { role ->
             val address = getPairedAddress(role) ?: return@forEach
-            updateStatus(address, PrinterStatus.Connecting)
-            val reachable = probeSocket(address)
-            updateStatus(address, if (reachable) PrinterStatus.Ready else PrinterStatus.NotConnected)
+            reconnectWithBackoff(address)
         }
+    }
+
+    /**
+     * Attempt to reach a single device address with exponential backoff.
+     * Emits [PrinterStatus.Connecting] while in progress, then [PrinterStatus.Ready]
+     * or [PrinterStatus.NotConnected] when complete.
+     *
+     * Does NOT throw — all failures are captured in the status StateFlow.
+     */
+    suspend fun reconnectWithBackoff(address: String) = withContext(Dispatchers.IO) {
+        updateStatus(address, PrinterStatus.Connecting)
+        var delayMs = 0L
+        var attempt = 0
+        val startTime = System.currentTimeMillis()
+        while (System.currentTimeMillis() - startTime < RECONNECT_BUDGET_MS) {
+            if (delayMs > 0) delay(delayMs)
+            val reachable = probeSocket(address)
+            if (reachable) {
+                updateStatus(address, PrinterStatus.Ready)
+                Timber.d("PrinterManager: reconnected $address on attempt ${attempt + 1}")
+                return@withContext
+            }
+            attempt++
+            delayMs = when (attempt) {
+                1 -> 1_000L
+                2 -> 2_000L
+                3 -> 4_000L
+                else -> 8_000L
+            }
+            Timber.d("PrinterManager: $address not reachable (attempt $attempt), retry in ${delayMs}ms")
+        }
+        updateStatus(address, PrinterStatus.NotConnected)
+        Timber.d("PrinterManager: reconnect budget exhausted for $address")
+    }
+
+    companion object {
+        /** Total time budget for the exponential-backoff reconnect loop per device. */
+        const val RECONNECT_BUDGET_MS = 15_000L
     }
 
     // ─── Internal helpers ─────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ import com.bizarreelectronics.crm.data.repository.LeadRepository
 import com.bizarreelectronics.crm.data.repository.SmsRepository
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.data.repository.toEntity
+import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -81,6 +82,7 @@ class SyncManager @Inject constructor(
     private val networkMonitor: NetworkMonitor,
     private val appPreferences: AppPreferences,
     private val gson: Gson,
+    private val offlineIdGenerator: OfflineIdGenerator,
     private val ticketRepository: TicketRepository,
     private val customerRepository: CustomerRepository,
     private val inventoryRepository: InventoryRepository,
@@ -90,6 +92,7 @@ class SyncManager @Inject constructor(
     private val estimateRepository: EstimateRepository,
     private val expenseRepository: ExpenseRepository,
     private val breadcrumbs: com.bizarreelectronics.crm.util.Breadcrumbs,
+    private val cacheEvictor: CacheEvictor,
 ) {
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing = _isSyncing.asStateFlow()
@@ -142,6 +145,13 @@ class SyncManager @Inject constructor(
                 // 3. Retention: purge dead-letter entries older than the configured
                 //    retention window so the queue table doesn't grow unbounded.
                 runIsolated("dead letter purge") { purgeOldDeadLetters() }
+
+                // 4. §20.9 — LRU-style cache eviction: trim entity tables to their
+                //    configured caps. Safe rows (no pending queue entry, not locally
+                //    modified) are removed oldest-first. Piggybacks the sync tick so
+                //    eviction always follows a full refresh — i.e. it targets stale
+                //    data that was just replaced by fresh server rows.
+                runIsolated("cache eviction") { cacheEvictor.runEviction() }
 
                 // Update last sync time — done even on partial failure so the user sees
                 // "last synced N minutes ago" rather than a stale value from hours ago.
@@ -200,7 +210,12 @@ class SyncManager @Inject constructor(
      * inside a ViewModel coroutine so the UI can reflect the result.
      */
     suspend fun retryDeadLetter(id: Long) {
-        syncQueueDao.resurrectDeadLetter(id)
+        // §20.7 — rotate idempotency key so the server doesn't see this retry as a
+        // duplicate of the original failed attempt (which may have partially executed
+        // or left stale state on the server). A fresh UUID guarantees the POST is
+        // treated as a new request on the server side.
+        val freshKey = offlineIdGenerator.newIdempotencyKey()
+        syncQueueDao.resurrectDeadLetter(id, freshKey)
         // Best-effort immediate flush. If offline, flushQueue() itself returns
         // without changing state and the next connection-online tick picks up
         // the newly-pending entry on its own.

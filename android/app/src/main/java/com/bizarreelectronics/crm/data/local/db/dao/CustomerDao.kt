@@ -82,4 +82,34 @@ interface CustomerDao {
 
     @Query("SELECT COUNT(*) FROM customers WHERE is_deleted = 0")
     fun getCount(): Flow<Int>
+
+    // ── §20.9 Cache eviction ─────────────────────────────────────────────────
+
+    /** §20.9 — Total row count (including soft-deleted) for eviction math. */
+    @Query("SELECT COUNT(*) FROM customers")
+    suspend fun countAll(): Int
+
+    /**
+     * §20.9 — Evict the [excess] oldest customer rows that have no pending/syncing
+     * sync_queue entry and are not locally modified. See [TicketDao.evictOldest]
+     * for the full rationale on the LEFT JOIN guard.
+     */
+    @Query(
+        """
+        DELETE FROM customers
+        WHERE id IN (
+            SELECT c.id FROM customers c
+            LEFT JOIN sync_queue sq
+                ON sq.entity_type = 'customer'
+               AND sq.entity_id   = c.id
+               AND sq.status IN ('pending', 'syncing')
+            WHERE sq.id IS NULL
+              AND c.locally_modified = 0
+            ORDER BY c.updated_at ASC
+            LIMIT :excess
+        )
+        """,
+    )
+    suspend fun evictOldest(excess: Int)
+
 }

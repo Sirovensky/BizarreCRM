@@ -69,6 +69,12 @@
     <!-- Biometric -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- §17.8 NFC: customer-card tap → auto-lookup + HCE loyalty card emulation.
+         NFC is optional (uses-feature required=false so app runs on devices without NFC). -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
+    <uses-feature android:name="android.hardware.nfc.hce" android:required="false" />
+
     <!-- READ_MEDIA_IMAGES: runtime permission for photo gallery access on API 33+.
          No maxSdkVersion — the permission only exists on API 33+ so it is
          harmless to declare without a cap. The system denies it silently on
@@ -321,6 +327,22 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_info" />
         </receiver>
+
+        <!-- §17.8 — HCE loyalty-card service. Emulates a Bizarre CRM NFC loyalty card
+             so the customer's phone can tap a reader in-store without carrying a physical card.
+             exported=true is required by HostApduService; BIND_NFC_SERVICE restricts the
+             binding to the NFC subsystem only. -->
+        <service
+            android:name=".service.LoyaltyCardHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/hce_apdu_service" />
+        </service>
 
         <!-- §1.6 / §24 plan:L225,L2316 — Glance Unread-SMS home-screen widget.
              exported=false: only the system AppWidget framework (platform cert)

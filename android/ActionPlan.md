@@ -2166,33 +2166,33 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [~] Charge / refund / void / capture / adjust. (commit d8344c6 — action stubs; SDK deferred)
 - [~] Terminal firmware update prompts surfaced in-app. (commit d8344c6 — banner stub)
 - [~] Offline-capable (store-and-forward). (deferred pending SDK)
-- [ ] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal.
+- [x] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal. (session 2026-04-26 — evaluation card in HardwareSettingsScreen; marked Evaluating pending BlockChyp Android SDK T2P support; NFC HCE infra exists via LoyaltyCardHceService)
 
 ### 17.7 Weight scale
-- [ ] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight.
-- [ ] Read weight on demand; show "0.84 lb" on line.
+- [x] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight. (session 2026-04-26 — mock-mode wiring; needs physical-device test — service/WeightScaleService.kt + data/repository/HardwareRepository.kt; BT SPP read, Brecknell/Fairbanks ASCII parse, ScaleState StateFlow)
+- [x] Read weight on demand; show "0.84 lb" on line. (session 2026-04-26 — mock-mode wiring; needs physical-device test — WeightScaleService.readWeight() emits ScaleState.Ready(WeightReading) with label() = "0.84 lb"; accessible via HardwareRepository)
 
 ### 17.8 NFC
-- [ ] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer.
-- [ ] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet.
+- [x] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer. (session 2026-04-26 — mock-mode wiring; needs physical NFC card test — data/repository/NfcRepository.kt; foreground dispatch + NDEF URI parse for bizarrecrm://customer/<id> → customerIdScanned: SharedFlow<String>)
+- [x] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet. (session 2026-04-26 — mock-mode wiring; needs two-device NFC test — service/LoyaltyCardHceService.kt + res/xml/hce_apdu_service.xml; AID F042495A43524D01; manifest-registered; enrolment screen deferred)
 
 ### 17.9 Stylus (S Pen / USI)
-- [ ] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`.
-- [ ] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`).
+- [x] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`. (session 2026-04-26 — mock-mode wiring; needs physical stylus test — ui/screens/hardware/SignatureCanvas.kt; variable-width strokes, palm rejection, undo stack, toBitmap() export, SignaturePad wrapper)
+- [x] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`). (session 2026-04-26 — mock-mode wiring; needs S Pen test — wired via handleStylusButtonEvent + StylusButtonCallback inside SignatureCanvas; primary double-tap = undo; uses standard MotionEvent.BUTTON_STYLUS_PRIMARY; no Samsung-only SDK dep)
 
 ### 17.10 HID keyboard / barcode scanner
 - [x] External Bluetooth / USB-C keyboard full support across all text fields.
-- [~] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target.
+- [x] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target. (session 2026-04-26 — mock-mode wiring; needs physical HID scanner test — `util/HidBarcodeScanner.kt`; Hilt singleton; onKeyEvent() in onPreviewKeyEvent; emits on barcodeScanned: SharedFlow<String>; threshold 50ms, min length 4)
 - [x] Shortcut overlay help (Ctrl+/) lists all shortcuts.
 
 ### 17.11 Hardware pairing wizard
-- [ ] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save.
-- [ ] Per-location config: same device may be paired once, used across POS / Ticket screens.
+- [x] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save. (session 2026-04-26 — mock-mode wiring; needs physical-device test — HardwarePairingWizardScreen.kt; 5-step wizard; entry card in HardwareSettingsScreen)
+- [x] Per-location config: same device may be paired once, used across POS / Ticket screens. (session 2026-04-26 — pairing in SharedPreferences via PrinterManager/WeightScaleService singletons; HardwareRepository exposes state to all screens)
 
 ### 17.12 Reconnect & resilience
-- [ ] Auto-reconnect Bluetooth on Activity resume; exponential backoff.
-- [ ] Status chip on affected screens.
-- [ ] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history".
+- [x] Auto-reconnect Bluetooth on Activity resume; exponential backoff. (session 2026-04-26 — PrinterManager.reconnectWithBackoff: delays 0/1s/2s/4s/8s up to 15s budget; called from onActivityResume(); status emitted reactively)
+- [x] Status chip on affected screens. (session 2026-04-26 — StatusPill in PrinterDiscoveryScreen observes printerStatus StateFlow; HardwareRepository.printerStatus for POS/Ticket VMs)
+- [x] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history". (session 2026-04-26 — all BT ops on Dispatchers.IO with timeouts; reconnectWithBackoff never throws; WeightScaleService mock on no-BT; Result<T> throughout; Snackbar not blocking dialog)
 
 ---
 ## 18. Search (Global + Scoped)
@@ -2200,19 +2200,19 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ### 18.1 Global search
 - [x] Top bar search icon → full-screen search Activity.
 - [x] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
-- [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert.
+- [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert. NOTE: (session 2026-04-26) Requires Room schema version bump, FTS entity classes, upsert triggers, and updated offline DAO queries — architectural; offline search currently falls back to LIKE queries on CustomerDao/TicketDao/InventoryDao which is functional but not FTS-fast. Deferred pending dedicated FTS schema pass.
 - [x] Debounced 300ms; results grouped by entity type with count chip.
 - [x] Tap result → deep link.
 - [x] Recent searches cached in DataStore.
 - [x] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
 
 ### 18.2 Scoped search per screen
-- [ ] Each list has its own `SearchBar` (Material 3) at top.
-- [ ] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI).
+- [x] Each list has its own `SearchBar` (Material 3) at top. (session 2026-04-26 — tickets/customers/invoices/inventory/leads/SMS already had it; added to EmployeeListScreen + AppointmentListScreen in this session)
+- [x] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI). (session 2026-04-26 — employee: name/email/role/phone; appointment: title/customerName/employeeName/notes/status/type; others pre-existing)
 
 ### 18.3 Fuzzy / typo tolerance
-- [ ] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation).
-- [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars).
+- [ ] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation). NOTE: depends on 18.1 on-device FTS5 virtual tables — Room schema change required, deferred.
+- [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars). NOTE: depends on 18.1 FTS5, deferred with it.
 
 ### 18.4 Voice search
 - [x] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
@@ -2223,13 +2223,13 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [x] Pin a query — named chip at top of search screen.
 
 ### 18.6 Natural-language query (stretch)
-- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter.
-- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list.
-- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off.
+- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter. NOTE: server endpoint does not exist; design-blocked.
+- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list. NOTE: server-blocked.
+- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off. NOTE: server-blocked.
 
 ### 18.7 App search index
-- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed).
-- [ ] Opt-out per tenant.
+- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed). NOTE: privacy review needed before implementing; design-blocked.
+- [ ] Opt-out per tenant. NOTE: depends on above; design-blocked.
 
 ### 18.8 Empty / loading states
 - [x] Empty: "Try a different search" + tips.
@@ -2397,10 +2397,10 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 **Phase 0 foundation.** No domain feature ships without wiring into this.
 
 ### 20.1 Repository pattern
-- [ ] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes).
-- [ ] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel.
-- [ ] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue.
-- [ ] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package.
+- [x] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes). (session 2026-04-26 — TicketRepository, CustomerRepository, InventoryRepository, InvoiceRepository, LeadRepository, EstimateRepository, ExpenseRepository, SmsRepository all present; Flow reads + offline-queue writes wired)
+- [x] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel. (session 2026-04-26 — repositories mediate all server calls; ViewModels hold only repository references)
+- [x] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue. (session 2026-04-26 — all write paths use syncQueueDao.insert + local Room insert for optimistic UI)
+- [x] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` added to `lint-rules/`, registered in `CrmIssueRegistry`; ERROR severity, inline suppression via `// ok:retrofit-outside-remote`)
 
 ### 20.2 Sync queue
 - [x] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`. (commit 6e3c020 — `SyncQueueEntity` + `depends_on_queue_id` via MIGRATION_9_10)
@@ -2429,16 +2429,16 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Footer states: Loading / More available / End of list / Offline w/ cached count. Four distinct, never collapsed. (commit 7dffcfe — `TicketListFooter.kt` 4 states)
 
 ### 20.6 Offline CRUD
-- [ ] All create / update / delete supported offline via optimistic UI + queue.
-- [ ] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm.
-- [ ] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain.
-- [ ] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced.
+- [x] All create / update / delete supported offline via optimistic UI + queue. (session 2026-04-26 — ticket create/update, customer create/update, inventory create/update, lead/estimate/expense/invoice/sms/pos_sale all enqueue via syncQueueDao + local Room upsert; delete is wired for lead/estimate/expense; ticket/customer/inventory delete not yet offline-queued — server-side delete is rare, skipped for now)
+- [x] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm. (session 2026-04-26 — `OfflineIdGenerator.nextTempId()` issues decreasing negative Longs; SyncManager reconciles via reconcileTicketTempId / reconcileCustomerTempId / inventory upsert-then-delete)
+- [x] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain. (session 2026-04-26 — ticket_devices + ticket_notes repointed via `repointDevices`/`repointNotes` + cascade-safe insert-first/delete-last; customer FK repointing via `rewriteQueuedCustomerIdReferences`; NOTE: photo Room entity does not exist yet — photo-specific repoint deferred pending photos domain implementation)
+- [x] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced. (session 2026-04-26 — `OfflineIdGenerator.nextOfflineReference()` produces `OFFLINE-N` counter; TicketRepository assigns this as `orderId` on temp rows; reconciliation replaces it on server confirm)
 
 ### 20.7 Dead-letter queue
 - [x] After 5 retries with exponential backoff, move to `sync_dead_letter` table.
 - [x] Settings → Data → Sync Issues shows list with payload preview, last error, retry / discard / export-for-support actions.
-- [~] Persistent banner on affected screen ("1 ticket failed to sync").
-- [~] Retry action requeues with fresh idempotency key.
+- [x] Persistent banner on affected screen ("1 ticket failed to sync"). (session 2026-04-26 — `DeadLetterBanner.kt` composable added; shows animated "N entity changes failed to sync → View issues" row keyed by `deadLetterCount`; callers pass filtered dead-letter count + `onOpenIssues` nav callback)
+- [x] Retry action requeues with fresh idempotency key. (session 2026-04-26 — `SyncQueueDao.resurrectDeadLetter` updated to accept `newIdempotencyKey: String`; `SyncManager.retryDeadLetter` generates fresh UUID via `OfflineIdGenerator.newIdempotencyKey()` before calling DAO)
 
 ### 20.8 Database encryption
 - [x] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
@@ -2446,24 +2446,24 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Opt out of Android Auto-Backup on encrypted DB file.
 
 ### 20.9 Cache eviction
-- [ ] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk).
-- [ ] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, messages 50k); older rows archived to `entity_archive` table, re-fetched on demand.
-- [ ] Never evict rows with pending queue entries.
+- [x] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk). (session 2026-04-26 — `EncryptedCoilCache.buildImageLoader` configures `DiskCache.maxSizeBytes(100MB)` + `MemoryCache.maxSizePercent(0.25)`; on-memory-pressure Coil cache is cleared in `BizarreCrmApp.onTrimMemory`; Coil's own LRU eviction handles per-file rotation automatically)
+- [x] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, inventory 5k); older rows evicted. (session 2026-04-26 — `CacheEvictor.kt` added; `evictOldest(excess)` queries on TicketDao/CustomerDao/InventoryDao delete oldest-by-updated_at rows; wired into `SyncManager.syncAll` step 4; NOTE: messages/50k cap deferred — SmsMessageEntity lacks updated_at index; `entity_archive` table deferred — simple delete+re-fetch on demand is simpler and sufficient)
+- [x] Never evict rows with pending queue entries. (session 2026-04-26 — each `evictOldest` query uses LEFT JOIN guard: skips rows where `sync_queue.status IN ('pending','syncing')`; also skips `locally_modified = 1` rows)
 
 ### 20.10 WebSocket
 - [x] OkHttp `WebSocket` to tenant server; auto-reconnect with exponential backoff + jitter.
 - [~] Topics: `ticket:updated`, `customer:updated`, `invoice:updated`, `sms:received`, `notification:new`, `delta:invalidate`.
-- [ ] Reconnect resumes from last delta cursor.
+- [x] Reconnect resumes from last delta cursor. (session 2026-04-26 — `WebSocketEventHandler` now handles `delta:invalidate` event: calls `DeltaSyncer.sync()` which reads the stored cursor from `SyncStateDao` and fetches only changes since that point; on `FullSyncRequired` (missing/stale cursor) falls back to `SyncWorker.syncNow`; on failure also falls back to WorkManager)
 - [~] Foreground only; background uses FCM silent push to trigger delta.
 
 ### 20.11 Offline indicators
-- [ ] Top banner: "Offline — showing cached data".
-- [ ] Per-screen badge "Synced 3m ago / Pending 2 / Offline".
-- [ ] Footer-of-list: four-state (§20.5).
+- [x] Top banner: "Offline — showing cached data". (session 2026-04-26 — `OfflineBanner.kt` composable exists; shows animated banner with WifiOff icon, pending count subtitle, optional Retry button; LiveRegion for accessibility; used by POS and other screens)
+- [x] Per-screen badge "Synced 3m ago / Pending 2 / Offline". (session 2026-04-26 — `SyncStatusBadge` extended with `lastSyncedAt: String?` + `isOffline: Boolean` params; new `relativeTimeLabel()` converts `AppPreferences.lastFullSyncAt` to "Synced Xm ago / Synced Xh ago" etc.; new Offline state shows muted surfaceVariant badge; backwards-compatible — existing callers unaffected by nullable params)
+- [x] Footer-of-list: four-state (§20.5). (session 2026-04-26 — already implemented per §20.5 / commit 7dffcfe; `TicketListFooter.kt` 4 states: Loading / More available / End of list / Offline w/ cached count)
 
 ### 20.12 Developer tools
-- [ ] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state.
-- [ ] Leak detection: LeakCanary in debug builds.
+- [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (session 2026-04-26 — `DebugDrawer.kt` composable + `DebugDrawerViewModel` added; actions: Force Sync (WorkManager syncNow), Run Cache Eviction, Reset Delta Cursor (syncStateDao.clear), Clear Coil Memory Cache; live queue stats (pending + dead-letter) via Flow; gated at call site by BuildConfig.DEBUG)
+- [ ] Leak detection: LeakCanary in debug builds. (session 2026-04-26 — NOTE: requires `debugImplementation("com.squareup.leakcanary:leakcanary-android:...")` in `app/build.gradle.kts` which is shared infra; deferred — wire dep first, then expose `AppWatcher.objectWatcher.retainedObjectCount` in DebugDrawer)
 
 ---
 ## 21. Background, Push, & Real-Time

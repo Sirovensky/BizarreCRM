@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 
 /**
  * Visual indicator showing how many rows are waiting to sync to the server
@@ -38,13 +40,25 @@ import kotlinx.coroutines.flow.StateFlow
  * The caller is expected to pass in already-collected Flows so the same
  * component can be reused on any screen (dashboard, tickets list, etc.).
  *
- * ## States (brand-aligned)
+ * ## States (brand-aligned, §20.11)
  *   - Syncing now: `purpleContainer` bg — brand active.
  *   - Pending > 0: `magentaContainer` bg — attention, NOT errorContainer.
  *     Red is reserved for real errors. Gentle 600ms alpha pulse (0.9 → 1.0).
- *   - Clean: `tealContainer` (secondaryContainer) bg — calm, resolved.
+ *     Label: "Pending N".
+ *   - Offline (no pending): `surfaceVariant` bg — muted, informational.
+ *     Label: "Offline".
+ *   - Clean + synced: `tealContainer` (secondaryContainer) bg — calm, resolved.
+ *     Label: "Synced Xm ago" when [lastSyncedAt] is provided, "Synced" otherwise.
  *
  * Icons are unchanged from the original implementation.
+ *
+ * @param lastSyncedAt  Optional ISO-8601 / datetime string of the last full sync
+ *                      completion (from [AppPreferences.lastFullSyncAt]). When
+ *                      non-null, the clean-state label shows a relative time
+ *                      ("Synced 3m ago") so the user can judge freshness.
+ * @param isOffline     When true and there are no pending rows, the badge shows
+ *                      "Offline" in a muted surface variant colour instead of the
+ *                      clean green-teal. Defaults false (legacy callers unaffected).
  */
 @Composable
 fun SyncStatusBadge(
@@ -61,6 +75,10 @@ fun SyncStatusBadge(
      * unchanged).
      */
     onOpenIssues: (() -> Unit)? = null,
+    /** §20.11 — ISO-8601 / space-separated datetime of last full sync (nullable). */
+    lastSyncedAt: String? = null,
+    /** §20.11 — Whether the device is currently offline (no server reachability). */
+    isOffline: Boolean = false,
 ) {
     val isSyncing by isSyncingFlow.collectAsState()
     val pendingCount by pendingCountFlow.collectAsState(initial = 0)
@@ -97,9 +115,17 @@ fun SyncStatusBadge(
             container = MaterialTheme.colorScheme.tertiaryContainer,   // magenta (NOT error)
             onContainer = MaterialTheme.colorScheme.onTertiaryContainer,
         )
+        isOffline && pendingCount == 0 -> BadgeVisual(
+            icon = Icons.Filled.CloudOff,
+            label = "Offline",
+            container = MaterialTheme.colorScheme.surfaceVariant,
+            onContainer = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         else -> BadgeVisual(
             icon = Icons.Filled.CloudDone,
-            label = "Synced",
+            // §20.11 — show relative "Synced Xm ago" when lastSyncedAt is available
+            // so the user can judge data freshness at a glance.
+            label = relativeTimeLabel(lastSyncedAt),
             container = MaterialTheme.colorScheme.secondaryContainer,  // teal
             onContainer = MaterialTheme.colorScheme.onSecondaryContainer,
         )
@@ -140,6 +166,36 @@ fun SyncStatusBadge(
             }
             Text(label, style = MaterialTheme.typography.labelSmall)
         }
+    }
+}
+
+/**
+ * §20.11 — Build a human-readable relative sync label.
+ *
+ * Accepted formats for [syncedAt]:
+ *  - ISO-8601 / `"2026-04-26 14:30:00"` (SyncManager stores this)
+ *  - null → "Synced" (fallback for callers that don't provide the timestamp)
+ *
+ * Examples: "Synced 2m ago", "Synced 1h ago", "Synced just now"
+ */
+private fun relativeTimeLabel(syncedAt: String?): String {
+    if (syncedAt.isNullOrBlank()) return "Synced"
+    return try {
+        // SyncManager stores "2026-04-26 14:30:00" (space-separated, no T). Normalise.
+        val normalised = syncedAt.trim().replace(' ', 'T').let {
+            if (!it.contains('Z') && !it.contains('+')) "${it}Z" else it
+        }
+        val syncInstant = Instant.parse(normalised)
+        val now = Instant.now()
+        val minutesAgo = ChronoUnit.MINUTES.between(syncInstant, now)
+        when {
+            minutesAgo < 1L -> "Synced just now"
+            minutesAgo < 60L -> "Synced ${minutesAgo}m ago"
+            minutesAgo < 1440L -> "Synced ${minutesAgo / 60}h ago"
+            else -> "Synced ${minutesAgo / 1440}d ago"
+        }
+    } catch (_: Exception) {
+        "Synced"
     }
 }
 

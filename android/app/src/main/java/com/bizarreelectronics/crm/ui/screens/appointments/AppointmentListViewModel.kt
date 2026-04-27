@@ -46,13 +46,23 @@ data class AppointmentListUiState(
     val selectedDate: LocalDate = LocalDate.now(),
     val filter: AppointmentFilter = AppointmentFilter(),
     val toastMessage: String? = null,
+    // §18.2 — scoped search query for this screen
+    val searchQuery: String = "",
 ) {
-    /** Appointments filtered by current [AppointmentFilter]. */
+    /** Appointments filtered by current [AppointmentFilter] and [searchQuery]. */
     val filtered: List<AppointmentItem>
-        get() = appointments.filter { appt ->
-            (filter.employeeId == null || appt.employeeId == filter.employeeId) &&
-                (filter.location == null || appt.location?.equals(filter.location, ignoreCase = true) == true) &&
-                (filter.type == null || appt.type?.equals(filter.type, ignoreCase = true) == true)
+        get() {
+            val byFilter = appointments.filter { appt ->
+                (filter.employeeId == null || appt.employeeId == filter.employeeId) &&
+                    (filter.location == null || appt.location?.equals(filter.location, ignoreCase = true) == true) &&
+                    (filter.type == null || appt.type?.equals(filter.type, ignoreCase = true) == true)
+            }
+            val q = searchQuery.trim()
+            if (q.isBlank()) return byFilter
+            return byFilter.filter { appt ->
+                listOfNotNull(appt.title, appt.customerName, appt.employeeName, appt.notes, appt.status, appt.type)
+                    .any { it.contains(q, ignoreCase = true) }
+            }
         }
 }
 
@@ -106,5 +116,10 @@ class AppointmentListViewModel @Inject constructor(
 
     fun clearToast() {
         _state.update { it.copy(toastMessage = null) }
+    }
+
+    /** §18.2 — update the scoped search query for this screen. */
+    fun updateSearchQuery(query: String) {
+        _state.update { it.copy(searchQuery = query) }
     }
 }

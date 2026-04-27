@@ -16,4 +16,6 @@
     <string name="shortcut_new_customer_long">Add a new customer</string>
     <string name="shortcut_scan_short">Scan</string>
     <string name="shortcut_scan_long">Scan barcode or IMEI</string>
+    <!-- §17.8 — HCE loyalty card description shown in Android NFC settings -->
+    <string name="loyalty_hce_description">Bizarre CRM Loyalty Card</string>
 </resources>

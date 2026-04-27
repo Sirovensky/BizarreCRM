@@ -21,6 +21,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.components.shared.ErrorState
+import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentAgendaView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentDayView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentMonthView
@@ -78,6 +79,14 @@ fun AppointmentListScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // §18.2 — scoped search bar
+            SearchBar(
+                query = state.searchQuery,
+                onQueryChange = viewModel::updateSearchQuery,
+                placeholder = "Search by title, customer, employee…",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            )
+
             // View-mode segmented button: Agenda / Day / Week / Month (L1419)
             ViewModeSelector(
                 current = state.viewMode,

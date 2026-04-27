@@ -144,9 +144,18 @@ interface SyncQueueDao {
     /**
      * Reset a dead-letter entry back to `pending` so the next flush will retry it.
      * Retry counter is zeroed so the entry gets a fresh budget.
+     *
+     * §20.7 — [newIdempotencyKey] rotates the idempotency key so the server does NOT
+     * treat the retried request as a duplicate of the original failed attempt. Without
+     * a fresh key, a server that already processed the request and returned an error
+     * could still respond with 409 Conflict on the retry, permanently blocking the
+     * row. Callers must supply a UUID generated via [OfflineIdGenerator.newIdempotencyKey].
      */
-    @Query("UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL WHERE id = :id")
-    suspend fun resurrectDeadLetter(id: Long)
+    @Query(
+        "UPDATE sync_queue SET status = 'pending', retries = 0, last_error = NULL, " +
+            "idempotency_key = :newIdempotencyKey WHERE id = :id",
+    )
+    suspend fun resurrectDeadLetter(id: Long, newIdempotencyKey: String)
 
     // ─── Ordered queue (plan §20.4 L2112) ────────────────────────────────────────
 
