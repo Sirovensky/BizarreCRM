@@ -206,10 +206,43 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
     }
 }
 
+/// Sort options for the ticket list — maps to server `sort` query param.
+public enum TicketSortOrder: String, CaseIterable, Sendable, Identifiable {
+    case newest    = "newest"
+    case oldest    = "oldest"
+    case status    = "status"
+    case urgency   = "urgency"
+    case assignee  = "assignee"
+    case dueDate   = "due_date"
+    case totalDesc = "total_desc"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .newest:    return "Newest first"
+        case .oldest:    return "Oldest first"
+        case .status:    return "Status"
+        case .urgency:   return "Urgency"
+        case .assignee:  return "Assignee"
+        case .dueDate:   return "Due date"
+        case .totalDesc: return "Total (high–low)"
+        }
+    }
+
+    public var queryItem: URLQueryItem { URLQueryItem(name: "sort", value: rawValue) }
+}
+
 public extension APIClient {
-    func listTickets(filter: TicketListFilter = .all, keyword: String? = nil, pageSize: Int = 50) async throws -> TicketsListResponse {
+    func listTickets(
+        filter: TicketListFilter = .all,
+        keyword: String? = nil,
+        sort: TicketSortOrder = .newest,
+        pageSize: Int = 50
+    ) async throws -> TicketsListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
+        items.append(sort.queryItem)
         if let keyword, !keyword.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: keyword))
         }
@@ -497,6 +530,41 @@ public extension APIClient {
             "/api/v1/tickets/\(ticketId)/convert-to-invoice",
             body: _EmptyBody(),
             as: ConvertToInvoiceResponse.self
+        )
+    }
+}
+
+// MARK: - Delete ticket
+
+public extension APIClient {
+    /// `DELETE /api/v1/tickets/:id` — soft-delete server-side.
+    func deleteTicket(ticketId: Int64) async throws {
+        try await delete("/api/v1/tickets/\(ticketId)")
+    }
+}
+
+// MARK: - Duplicate ticket
+
+/// Response from `POST /tickets/:id/duplicate`.
+public struct DuplicateTicketResponse: Decodable, Sendable {
+    public let id: Int64?
+    public let ticketId: Int64?
+
+    public var resolvedId: Int64? { id ?? ticketId }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case ticketId = "ticket_id"
+    }
+}
+
+public extension APIClient {
+    /// `POST /api/v1/tickets/:id/duplicate` — copies customer + devices + clears status.
+    func duplicateTicket(ticketId: Int64) async throws -> DuplicateTicketResponse {
+        try await post(
+            "/api/v1/tickets/\(ticketId)/duplicate",
+            body: _EmptyBody(),
+            as: DuplicateTicketResponse.self
         )
     }
 }

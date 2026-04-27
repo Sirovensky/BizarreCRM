@@ -3,6 +3,14 @@ import Observation
 import Core
 import Networking
 
+/// Footer state for the ticket list — §4.1.
+public enum TicketListFooterState: Sendable, Equatable {
+    case loading
+    case showing(count: Int)
+    case end
+    case offline(count: Int, lastSyncedAt: Date?)
+}
+
 @MainActor
 @Observable
 public final class TicketListViewModel {
@@ -11,9 +19,20 @@ public final class TicketListViewModel {
     public private(set) var isRefreshing: Bool = false
     public private(set) var errorMessage: String?
     public var filter: TicketListFilter = .all
+    public var sort: TicketSortOrder = .newest          // §4.1 sort dropdown
     public var searchQuery: String = ""
     /// Exposed for `StalenessIndicator` in the toolbar.
     public var lastSyncedAt: Date?
+
+    /// §4.1 footer state — four distinct states.
+    public var footerState: TicketListFooterState {
+        if isLoading { return .loading }
+        if !Reachability.shared.isOnline {
+            return .offline(count: tickets.count, lastSyncedAt: lastSyncedAt)
+        }
+        if tickets.isEmpty { return .end }
+        return .showing(count: tickets.count)
+    }
 
     @ObservationIgnored private let repo: TicketRepository
     @ObservationIgnored private let cachedRepo: TicketCachedRepository?
@@ -56,6 +75,12 @@ public final class TicketListViewModel {
         await fetch()
     }
 
+    /// §4.1 — Sort dropdown changed.
+    public func applySort(_ newSort: TicketSortOrder) async {
+        sort = newSort
+        await fetch()
+    }
+
     /// Called on every keystroke from the search field. Debounces 300ms
     /// (matches Android TicketListScreen.kt:134) and then re-fetches.
     public func onSearchChange(_ query: String) {
@@ -87,12 +112,17 @@ public final class TicketListViewModel {
         await refresh()
     }
 
-    /// Delete `ticket` permanently.
+    /// §4.4 Delete `ticket` permanently via repository.
     public func delete(ticket: TicketSummary) async {
         // Optimistic removal.
         tickets = tickets.filter { $0.id != ticket.id }
-        // TODO: wire to DELETE /tickets/:id — Phase 4.
-        AppLog.ui.debug("Quick-action delete: ticket=\(ticket.id)")
+        do {
+            try await repo.delete(id: ticket.id)
+        } catch {
+            AppLog.ui.error("Delete ticket failed: \(error.localizedDescription, privacy: .public)")
+            // Restore on failure.
+            await refresh()
+        }
     }
 
     private func fetch() async {
@@ -100,7 +130,8 @@ public final class TicketListViewModel {
         do {
             let results = try await repo.list(
                 filter: filter,
-                keyword: searchQuery.isEmpty ? nil : searchQuery
+                keyword: searchQuery.isEmpty ? nil : searchQuery,
+                sort: sort
             )
             tickets = results
             if let cached = cachedRepo {

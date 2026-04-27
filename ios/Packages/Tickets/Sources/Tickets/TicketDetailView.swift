@@ -1,6 +1,8 @@
 #if canImport(UIKit)
 import SwiftUI
 import Core
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import DesignSystem
 import Networking
 
@@ -14,6 +16,9 @@ public struct TicketDetailView: View {
     @State private var showingMerge: Bool = false
     @State private var showingSplit: Bool = false
     @State private var showingSignOff: Bool = false
+    // §4.2 — QR code
+    @State private var showingQRCode: Bool = false
+    @Environment(\.dismiss) private var dismiss
     private let api: APIClient?
 
     /// Basic init — read-only detail.
@@ -40,6 +45,54 @@ public struct TicketDetailView: View {
         .refreshable { await vm.load() }
         .toolbar {
             toolbarItems
+        }
+        // §4.4 — delete confirmation
+        .confirmationDialog(
+            "Delete this ticket?",
+            isPresented: $vm.showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task { await vm.deleteTicket(); if vm.wasDeleted { dismiss() } }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently removes the ticket and all associated data.")
+        }
+        .onChange(of: vm.wasDeleted) { _, deleted in if deleted { dismiss() } }
+        // §4.4 — concurrent-edit 409 banner
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if vm.concurrentEditBanner {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "exclamationmark.arrow.triangle.2.circlepath")
+                        .foregroundStyle(.white).accessibilityHidden(true)
+                    Text("This ticket changed.")
+                        .font(.brandBodyMedium()).foregroundStyle(.white)
+                    Spacer()
+                    Button("Reload") { Task { await vm.load() } }
+                        .font(.brandLabelLarge().bold()).foregroundStyle(.white)
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+                .background(Color.bizarreOrange)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("This ticket changed elsewhere. Tap Reload to refresh.")
+            }
+        }
+        // §4.5 — action error
+        .alert("Action Failed", isPresented: Binding(
+            get: { vm.actionErrorMessage != nil },
+            set: { if !$0 { vm.actionErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { vm.actionErrorMessage = nil }
+        } message: {
+            if let msg = vm.actionErrorMessage { Text(msg) }
+        }
+        // §4.2 — QR code sheet
+        .sheet(isPresented: $showingQRCode) {
+            if case let .loaded(detail) = vm.state {
+                TicketQRCodeSheet(orderId: detail.orderId)
+            }
         }
         // §4.4 — Deep edit sheet
         .sheet(isPresented: $showingEdit) {
@@ -146,45 +199,53 @@ public struct TicketDetailView: View {
                 .brandGlass(.clear, in: Capsule())
             }
 
-            // Actions menu: Edit, Change Status, Timeline, Merge, Split, Sign-Off
+            // Actions menu: Edit, Change Status, Timeline, QR, Convert, Duplicate, Merge, Split, Sign-Off, Delete
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
-                    Button {
-                        showingEdit = true
-                    } label: {
+                    Button { showingEdit = true } label: {
                         Label("Edit Details", systemImage: "pencil")
                     }
                     .accessibilityIdentifier("ticket.editDetails")
 
-                    Button {
-                        showingStatus = true
-                    } label: {
+                    Button { showingStatus = true } label: {
                         Label("Change Status", systemImage: "arrow.triangle.2.circlepath")
                     }
                     .accessibilityIdentifier("ticket.changeStatus")
 
                     Divider()
 
-                    Button {
-                        showingTimeline = true
-                    } label: {
+                    Button { showingTimeline = true } label: {
                         Label("View Timeline", systemImage: "clock.fill")
                     }
                     .accessibilityIdentifier("ticket.timeline")
 
+                    // §4.2 — QR code
+                    Button { showingQRCode = true } label: {
+                        Label("Show QR Code", systemImage: "qrcode")
+                    }
+                    .accessibilityIdentifier("ticket.qrcode")
+
                     Divider()
 
+                    // §4.5 — Convert to invoice
+                    Button { Task { await vm.convertToInvoice() } } label: {
+                        Label("Convert to Invoice", systemImage: "doc.text")
+                    }
+                    .accessibilityIdentifier("ticket.convertToInvoice")
+
+                    // §4.5 — Duplicate
+                    Button { Task { await vm.duplicateTicket() } } label: {
+                        Label("Duplicate Ticket", systemImage: "doc.on.doc")
+                    }
+                    .accessibilityIdentifier("ticket.duplicate")
+
                     // §4 — Merge / Split
-                    Button {
-                        showingMerge = true
-                    } label: {
+                    Button { showingMerge = true } label: {
                         Label("Merge…", systemImage: "arrow.triangle.merge")
                     }
                     .accessibilityIdentifier("ticket.merge")
 
-                    Button {
-                        showingSplit = true
-                    } label: {
+                    Button { showingSplit = true } label: {
                         Label("Split…", systemImage: "arrow.triangle.branch")
                     }
                     .accessibilityIdentifier("ticket.split")
@@ -193,13 +254,22 @@ public struct TicketDetailView: View {
                     if case .loaded(let detail) = vm.state,
                        detail.status?.name.lowercased().contains("pickup") == true {
                         Divider()
-                        Button {
-                            showingSignOff = true
-                        } label: {
+                        Button { showingSignOff = true } label: {
                             Label("Customer Sign-Off", systemImage: "signature")
                         }
                         .accessibilityIdentifier("ticket.signoff")
                     }
+
+                    Divider()
+
+                    // §4.4 — Delete (destructive)
+                    Button(role: .destructive) {
+                        vm.showDeleteConfirm = true
+                    } label: {
+                        Label("Delete Ticket", systemImage: "trash")
+                    }
+                    .accessibilityIdentifier("ticket.delete")
+
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }
@@ -233,10 +303,37 @@ public struct TicketDetailView: View {
         case .loaded(let detail):
             ScrollView {
                 VStack(spacing: BrandSpacing.base) {
+                    // §4.2 — Copyable header + share link
+                    HStack {
+                        Text(detail.orderId)
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .textSelection(.enabled)
+                            .accessibilityLabel("Ticket ID: \(detail.orderId)")
+                        Spacer()
+                        ShareLink(
+                            item: URL(string: "https://app.bizarrecrm.com/tickets/\(detail.id)") ?? URL(string: "https://app.bizarrecrm.com")!,
+                            subject: Text("Ticket \(detail.orderId)"),
+                            message: Text("View ticket \(detail.orderId)")
+                        ) {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(.bizarreOrange)
+                        }
+                        .accessibilityLabel("Share ticket link")
+                    }
+                    .padding(BrandSpacing.base)
+                    .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+
                     CustomerCard(detail: detail)
+
+                    // §4.2 — Customer quick actions
+                    if let customer = detail.customer {
+                        CustomerQuickActionsRow(customer: customer)
+                    }
+
                     InfoRow(detail: detail)
 
-                    // §4.6 — Status chip with inline transition button
+                    // §4.6 — Status chip with inline transition button + server hex color
                     if let status = detail.status, let api {
                         StatusChipRow(status: status) {
                             showingTransition = true
@@ -288,6 +385,23 @@ public struct TicketDetailView: View {
                     }
 
                     TotalsCard(detail: detail)
+
+                    // §4.4 — Delete button at bottom of detail
+                    if api != nil {
+                        Button(role: .destructive) {
+                            vm.showDeleteConfirm = true
+                        } label: {
+                            Label("Delete Ticket", systemImage: "trash")
+                                .font(.brandBodyMedium())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, BrandSpacing.sm)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.bizarreError)
+                        .accessibilityLabel("Delete this ticket")
+                        .accessibilityHint("Shows a confirmation before deleting")
+                        .disabled(vm.isDeleting)
+                    }
                 }
                 .padding(BrandSpacing.base)
             }
@@ -295,7 +409,103 @@ public struct TicketDetailView: View {
     }
 }
 
-// MARK: - Status chip row (§4.6)
+// MARK: - §4.2 QR code sheet
+
+private struct TicketQRCodeSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let orderId: String
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: BrandSpacing.lg) {
+                if let qr = makeQR(orderId) {
+                    Image(uiImage: qr)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 260, maxHeight: 260)
+                        .padding(BrandSpacing.lg)
+                        .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
+                        .accessibilityLabel("QR code for ticket \(orderId)")
+                }
+                Text(orderId)
+                    .font(.brandMono(size: 18))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            .navigationTitle("QR Code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func makeQR(_ s: String) -> UIImage? {
+        let ctx = CIContext()
+        guard let filter = CIFilter(name: "CIQRCodeGenerator") else { return nil }
+        filter.setValue(Data(s.utf8), forKey: "inputMessage")
+        filter.setValue("M", forKey: "inputCorrectionLevel")
+        guard let ci = filter.outputImage else { return nil }
+        let scaled = ci.transformed(by: .init(scaleX: 10, y: 10))
+        guard let cg = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
+// MARK: - §4.2 Customer quick actions row
+
+private struct CustomerQuickActionsRow: View {
+    let customer: TicketDetail.Customer
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                if let phone = customer.callablePhone {
+                    if let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
+                        quickChip("Call", icon: "phone.fill", color: .bizarreTeal, url: url)
+                    }
+                    if let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
+                        quickChip("SMS", icon: "message.fill", color: .bizarreTeal, url: url)
+                    }
+                    if let url = URL(string: "facetime:\(phone.filter(\.isNumber))") {
+                        quickChip("FaceTime", icon: "video.fill", color: .bizarreTeal, url: url)
+                    }
+                }
+                if let email = customer.email,
+                   let enc = email.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+                   let url = URL(string: "mailto:\(enc)") {
+                    quickChip("Email", icon: "envelope.fill", color: .bizarreOrange, url: url)
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.xs)
+        }
+        .scrollClipDisabled()
+    }
+
+    @ViewBuilder
+    private func quickChip(_ label: String, icon: String, color: Color, url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+                Text(label).font(.brandLabelLarge())
+            }
+            .foregroundStyle(color)
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(color.opacity(0.12), in: Capsule())
+        }
+        .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Status chip row (§4.6 + §4.7 server hex color)
 
 private struct StatusChipRow: View {
     let status: TicketDetail.Status
@@ -303,13 +513,22 @@ private struct StatusChipRow: View {
 
     var body: some View {
         HStack(spacing: BrandSpacing.sm) {
-            Text(status.name)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.xs)
-                .brandGlass(.clear, in: Capsule())
-                .accessibilityLabel("Status: \(status.name)")
+            HStack(spacing: BrandSpacing.xs) {
+                // §4.7 — render server hex color dot
+                if let hex = status.color, let color = colorFromHex(hex) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+                Text(status.name)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .brandGlass(.clear, in: Capsule())
+            .accessibilityLabel("Status: \(status.name)")
 
             Spacer()
 
@@ -328,6 +547,17 @@ private struct StatusChipRow: View {
         .padding(.vertical, BrandSpacing.sm)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+    }
+
+    private func colorFromHex(_ hex: String) -> Color? {
+        var h = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if h.hasPrefix("#") { h.removeFirst() }
+        guard h.count == 6, let v = UInt64(h, radix: 16) else { return nil }
+        return Color(
+            red: Double((v >> 16) & 0xFF) / 255,
+            green: Double((v >> 8) & 0xFF) / 255,
+            blue: Double(v & 0xFF) / 255
+        )
     }
 }
 

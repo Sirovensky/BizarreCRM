@@ -53,21 +53,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     public var lastSyncedAt: Date? { latestSyncedAt }
 
     /// Returns cache if fresh; else fetches and caches.
-    public func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
+    public func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, keyword: keyword, sort: sort)
         if let entry = cache[key] {
             let age = Date().timeIntervalSince(entry.fetchedAt)
             if age <= Double(maxAgeSeconds) {
                 return entry.tickets
             }
         }
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+        return try await fetch(filter: filter, keyword: keyword, sort: sort, key: key)
     }
 
     /// Always fetches from remote. Used by pull-to-refresh.
     public func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword)
-        return try await fetch(filter: filter, keyword: keyword, key: key)
+        let key = cacheKey(filter: filter, keyword: keyword, sort: .newest)
+        return try await fetch(filter: filter, keyword: keyword, sort: .newest, key: key)
     }
 
     /// Pass-through — detail view calls this directly; no caching needed for MVP.
@@ -75,14 +75,33 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
         try await remote.detail(id: id)
     }
 
-    // MARK: - Private
-
-    private func cacheKey(filter: TicketListFilter, keyword: String?) -> String {
-        "\(filter.rawValue)|\(keyword ?? "")"
+    public func delete(id: Int64) async throws {
+        try await remote.delete(id: id)
+        // Invalidate cache entries containing this ticket.
+        cache = cache.filter { _, entry in !entry.tickets.contains { $0.id == id } }
     }
 
-    private func fetch(filter: TicketListFilter, keyword: String?, key: String) async throws -> [TicketSummary] {
-        let tickets = try await remote.list(filter: filter, keyword: keyword)
+    public func duplicate(id: Int64) async throws -> DuplicateTicketResponse {
+        try await remote.duplicate(id: id)
+    }
+
+    public func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse {
+        try await remote.convertToInvoice(id: id)
+    }
+
+    // MARK: - Private
+
+    private func cacheKey(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) -> String {
+        "\(filter.rawValue)|\(keyword ?? "")|\(sort.rawValue)"
+    }
+
+    private func fetch(
+        filter: TicketListFilter,
+        keyword: String?,
+        sort: TicketSortOrder,
+        key: String
+    ) async throws -> [TicketSummary] {
+        let tickets = try await remote.list(filter: filter, keyword: keyword, sort: sort)
         let now = Date()
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)
         latestSyncedAt = now

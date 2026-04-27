@@ -12,6 +12,7 @@ public struct TicketListView: View {
     @State private var path: [Int64] = []
     @State private var selected: Int64?
     @State private var showingCreate: Bool = false
+    @State private var showingSortMenu: Bool = false
     private let repo: TicketRepository
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
@@ -76,7 +77,7 @@ public struct TicketListView: View {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    filterChips
+                    filterAndSortBar
                     listContent { id in
                         path.append(id)
                     }
@@ -92,6 +93,7 @@ public struct TicketListView: View {
             }
             .toolbar {
                 newTicketToolbar
+                sortToolbarItem
                 stalenessToolbarItem
             }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
@@ -109,7 +111,7 @@ public struct TicketListView: View {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    filterChips
+                    filterAndSortBar
                     listContent { id in
                         selected = id
                     }
@@ -122,7 +124,9 @@ public struct TicketListView: View {
             .refreshable { await vm.refresh() }
             .toolbar {
                 newTicketToolbar
+                sortToolbarItem
                 stalenessToolbarItem
+                columnPickerToolbarItem
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
@@ -166,37 +170,103 @@ public struct TicketListView: View {
         }
     }
 
+    /// §4.1 — Sort dropdown in toolbar.
+    private var sortToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Menu {
+                ForEach(TicketSortOrder.allCases) { option in
+                    Button {
+                        Task { await vm.applySort(option) }
+                    } label: {
+                        HStack {
+                            Text(option.displayName)
+                            if vm.sort == option {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .accessibilityLabel("Sort tickets. Current: \(vm.sort.displayName)")
+        }
+    }
+
     private var stalenessToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
     }
 
+    /// §4.1 Column/density picker — iPad/Mac only.
+    private var columnPickerToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Menu {
+                Text("Density")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            } label: {
+                Label("Columns", systemImage: "slider.horizontal.3")
+            }
+            .accessibilityLabel("Column and density settings")
+        }
+    }
+
+    // MARK: - Filter + Sort bar
+
+    private var filterAndSortBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                ForEach(TicketListFilter.allCases) { option in
+                    FilterChip(
+                        label: option.displayName,
+                        selected: vm.filter == option
+                    ) {
+                        Task { await vm.applyFilter(option) }
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
+        }
+        .scrollClipDisabled()
+    }
+
     @ViewBuilder
     private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Loading tickets")
         } else if let err = vm.errorMessage {
             TicketErrorState(message: err) { Task { await vm.load() } }
         } else if vm.tickets.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "tickets")
         } else if vm.tickets.isEmpty {
-            TicketEmptyState(hint: emptyHint)
+            TicketEmptyState(
+                hint: emptyHint,
+                showCreateCTA: api != nil && customerRepo != nil,
+                onCreate: { showingCreate = true }
+            )
         } else {
-            List(selection: Binding<Int64?>(
-                get: { Platform.isCompact ? nil : selected },
-                set: { if let id = $0 { selected = id } }
-            )) {
-                ForEach(vm.tickets) { ticket in
-                    ticketRow(ticket: ticket, onSelect: onSelect)
-                        .listRowBackground(Color.bizarreSurface1)
-                        .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
-                        .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
-                        // contextMenu is applied inside ticketRow via TicketQuickActionsContent
+            VStack(spacing: 0) {
+                List(selection: Binding<Int64?>(
+                    get: { Platform.isCompact ? nil : selected },
+                    set: { if let id = $0 { selected = id } }
+                )) {
+                    ForEach(vm.tickets) { ticket in
+                        ticketRow(ticket: ticket, onSelect: onSelect)
+                            .listRowBackground(Color.bizarreSurface1)
+                            .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
+                            .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
+                    }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+
+                // §4.1 Footer state
+                TicketListFooter(state: vm.footerState)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
     }
 
@@ -247,31 +317,13 @@ public struct TicketListView: View {
     private var emptyHint: String {
         if !searchText.isEmpty { return "No results for \"\(searchText)\"." }
         switch vm.filter {
-        case .all:        return "Create a ticket to get started."
+        case .all:        return "No tickets yet."
         case .myTickets:  return "No tickets are assigned to you."
         case .open:       return "Nothing open right now."
         case .inProgress: return "No tickets in progress."
         case .waiting:    return "Nothing waiting."
         case .closed:     return "Nothing closed yet."
         }
-    }
-
-    private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.xs) {
-                ForEach(TicketListFilter.allCases) { option in
-                    FilterChip(
-                        label: option.displayName,
-                        selected: vm.filter == option
-                    ) {
-                        Task { await vm.applyFilter(option) }
-                    }
-                }
-            }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
-        }
-        .scrollClipDisabled()
     }
 }
 
@@ -291,6 +343,11 @@ private struct TicketRow: View {
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .lineLimit(1)
+
+                // §4.1 — Urgency chip with color dot
+                if let urgency = ticket.urgency, !urgency.isEmpty {
+                    UrgencyChip(urgency: urgency)
+                }
             }
 
             Spacer(minLength: BrandSpacing.sm)
@@ -303,6 +360,11 @@ private struct TicketRow: View {
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .monospacedDigit()
+
+                // §4.1 — SLA badge color indicator
+                if let sla = ticket.slaStatus, !sla.isEmpty {
+                    SLABadge(status: sla)
+                }
             }
         }
         .padding(.vertical, BrandSpacing.xs)
@@ -351,6 +413,126 @@ private struct TicketRow: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$\(cents / 100)"
+    }
+}
+
+// MARK: - §4.1 Urgency chip
+
+private struct UrgencyChip: View {
+    let urgency: String
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            Text(urgency.capitalized)
+                .font(.brandLabelSmall())
+                .foregroundStyle(dotColor)
+        }
+        .accessibilityLabel("Urgency: \(urgency)")
+    }
+
+    private var dotColor: Color {
+        switch urgency.lowercased() {
+        case "critical": return Color.bizarreError
+        case "high":     return Color.bizarreOrange
+        case "medium":   return Color(red: 0.93, green: 0.76, blue: 0.18) // amber
+        case "normal":   return Color.bizarreOnSurfaceMuted
+        case "low":      return Color.bizarreTeal
+        default:         return Color.bizarreOnSurfaceMuted
+        }
+    }
+}
+
+// MARK: - §4.1 SLA badge
+
+private struct SLABadge: View {
+    let status: String  // e.g. "ok", "warning", "breached"
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(badgeColor)
+            .accessibilityLabel("SLA \(status)")
+    }
+
+    private var icon: String {
+        switch status.lowercased() {
+        case "breached": return "clock.badge.xmark"
+        case "warning":  return "clock.badge.exclamationmark"
+        default:         return "clock"
+        }
+    }
+
+    private var badgeColor: Color {
+        switch status.lowercased() {
+        case "breached": return .bizarreError
+        case "warning":  return .bizarreOrange
+        default:         return .bizarreOnSurfaceMuted
+        }
+    }
+}
+
+// MARK: - §4.1 Footer states
+
+private struct TicketListFooter: View {
+    let state: TicketListFooterState
+
+    var body: some View {
+        Group {
+            switch state {
+            case .loading:
+                HStack(spacing: BrandSpacing.sm) {
+                    ProgressView().scaleEffect(0.7)
+                    Text("Loading…")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+
+            case .showing(let count):
+                Text("Showing \(count) ticket\(count == 1 ? "" : "s")")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+
+            case .end:
+                Text("End of list")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+
+            case .offline(let count, let syncedAt):
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    if let syncedAt {
+                        let ago = relativeTime(from: syncedAt)
+                        Text("Offline — \(count) cached, last synced \(ago)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    } else {
+                        Text("Offline — \(count) cached")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity)
+        .background(Color.bizarreSurfaceBase)
+    }
+
+    private func relativeTime(from date: Date) -> String {
+        let interval = Date().timeIntervalSince(date)
+        let hours = Int(interval / 3600)
+        let minutes = Int((interval.truncatingRemainder(dividingBy: 3600)) / 60)
+        if hours > 0 { return "\(hours)h ago" }
+        if minutes > 0 { return "\(minutes)m ago" }
+        return "just now"
     }
 }
 
@@ -411,20 +593,36 @@ private struct TicketErrorState: View {
     }
 }
 
+/// §4.13 — "No tickets yet. Create one." with optional CTA.
 private struct TicketEmptyState: View {
     let hint: String
+    var showCreateCTA: Bool = false
+    var onCreate: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "tray")
-                .font(.system(size: 24, weight: .regular))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "wrench.and.screwdriver")
+                .font(.system(size: 36, weight: .regular))
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.6))
                 .accessibilityHidden(true)
             Text(hint)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, BrandSpacing.lg)
+            if showCreateCTA {
+                Button {
+                    onCreate()
+                } label: {
+                    Label("Create your first ticket", systemImage: "plus")
+                        .font(.brandBodyLarge())
+                        .padding(.horizontal, BrandSpacing.lg)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityLabel("Create your first ticket")
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
