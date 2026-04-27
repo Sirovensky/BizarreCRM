@@ -1689,6 +1689,9 @@ app.use('/api/v1/public/payment-links', paymentLinksPublicRouter);
 app.use('/api/v1/payment-links', authMiddleware, paymentLinksAuthedRouter);
 app.use('/api/v1/dunning', authMiddleware, dunningRoutes);
 app.use('/api/v1/deposits', authMiddleware, depositRoutes);
+// WEB-W2-002: installment plans (table exists since migration 095)
+import installmentsRoutes from './routes/installments.routes.js';
+app.use('/api/v1/installments', authMiddleware, installmentsRoutes);
 
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);
@@ -1706,9 +1709,12 @@ app.use('/api/v1/management', managementRoutes);
 import teamRoutes from './routes/team.routes.js';
 import rolesRoutes from './routes/roles.routes.js';
 import teamChatRoutes from './routes/teamChat.routes.js';
+// WEB-S6-017: Email thread tab stub — gated by store_config.email_inbox_enabled.
+import emailRoutes from './routes/email.routes.js';
 app.use('/api/v1/team', authMiddleware, teamRoutes);
 app.use('/api/v1/roles', authMiddleware, rolesRoutes);
 app.use('/api/v1/team-chat', authMiddleware, teamChatRoutes);
+app.use('/api/v1/email', authMiddleware, emailRoutes);
 
 app.get('/admin', (req, res) => {
   if (config.multiTenant && req.tenantSlug) {

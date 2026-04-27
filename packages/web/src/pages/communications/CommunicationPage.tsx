@@ -6,10 +6,10 @@ import {
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
   Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
   Archive, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Mic, Info,
-  Users,
+  Users, Mail,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
+import { smsApi, customerApi, ticketApi, voiceApi, emailApi, type EmailThread } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import { formatPhone, formatCurrency } from '@/utils/format';
@@ -978,9 +978,19 @@ function ThreadSearchBar({
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
   const queryClient = useQueryClient();
-  const [mainView, setMainView] = useState<'messages' | 'calls'>('messages');
+  const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
+  // WEB-S6-034: debounced version of searchFilter — sent as `q=` to the server
+  // so results include conversations beyond the current page when the user
+  // stops typing, rather than on every keystroke. `debouncedSearch` is what
+  // gets sent as `q=` to GET /sms/conversations; `searchFilter` is the live
+  // input value.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchFilter.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchFilter]);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
   // WEB-FJ-004 / FIXED-by-Fixer-A11 2026-04-25 — never embed the raw phone
   // number in the draft localStorage key. A counter-staff snoop with a few
@@ -1035,13 +1045,30 @@ export function CommunicationPage() {
   // poll was duplicating the same work plus burning a steady request/min on
   // every open Communications tab. WS reconnect on visibilitychange picks up
   // any messages missed while hidden.
+  // WEB-S6-034: pass debounced search to the server so results include
+  // conversations beyond the current page.
   const { data: convData, isLoading: convLoading } = useQuery({
-    queryKey: ['sms-conversations', includeArchived],
-    queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
+    queryKey: ['sms-conversations', includeArchived, debouncedSearch],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (includeArchived) params.include_archived = '1';
+      if (debouncedSearch) params.q = debouncedSearch;
+      return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
+    },
     staleTime: 30_000,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
+
+  // WEB-S6-017: email threads query (only fires when email tab active)
+  const { data: emailData, isLoading: emailLoading } = useQuery({
+    queryKey: ['email-threads'],
+    queryFn: () => emailApi.threads(),
+    enabled: mainView === 'email',
+  });
+  const emailPayload = (emailData?.data as any)?.data as { threads: EmailThread[]; enabled: boolean } | undefined;
+  const emailThreads: EmailThread[] = emailPayload?.threads ?? [];
+  const emailEnabled: boolean = emailPayload?.enabled ?? false;
 
   // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 10s `refetchInterval`.
   // WS now invalidates `['sms-messages']` on `sms:received` +
@@ -1380,6 +1407,19 @@ export function CommunicationPage() {
               <PhoneCall className="h-3.5 w-3.5" />
               Calls
             </button>
+            {/* WEB-S6-017: email thread tab — gated behind email_inbox_enabled flag */}
+            <button
+              onClick={() => setMainView('email')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                mainView === 'email'
+                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-600 dark:text-surface-100'
+                  : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+              )}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Email
+            </button>
           </div>
           {mainView === 'messages' && (
             <div className="flex items-center gap-1">
@@ -1601,7 +1641,13 @@ export function CommunicationPage() {
             </div>
           )}
         </div>
-        </>) : (
+        </>) : mainView === 'email' ? (
+          /* Email tab: placeholder left-panel */
+          <div className="flex-1 flex flex-col text-center text-surface-400 py-8">
+            <Mail className="mx-auto mb-2 h-8 w-8" />
+            <p className="text-sm">Email threads shown in main panel</p>
+          </div>
+        ) : (
           /* Call log view fills the left panel when calls tab is active */
           <div className="flex-1 flex flex-col text-center text-surface-400 py-8">
             <PhoneCall className="mx-auto mb-2 h-8 w-8" />
@@ -1610,8 +1656,43 @@ export function CommunicationPage() {
         )}
       </div>
 
-      {/* ── Right Panel: Message Thread or Call Log ── */}
-      {mainView === 'calls' ? (
+      {/* ── Right Panel: Message Thread, Call Log, or Email ── */}
+      {mainView === 'email' ? (
+        <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900 p-6">
+          {emailLoading ? (
+            <div className="flex items-center justify-center flex-1">
+              <Loader2 className="h-8 w-8 animate-spin text-surface-400" />
+            </div>
+          ) : !emailEnabled ? (
+            <div className="flex flex-col items-center justify-center flex-1 text-surface-400">
+              <Mail className="h-12 w-12 mb-3 text-surface-300 dark:text-surface-600" />
+              <p className="text-sm font-medium text-surface-600 dark:text-surface-400">Email inbox not configured</p>
+              <p className="text-xs mt-1">Enable email inbox in Settings to see email threads here.</p>
+            </div>
+          ) : emailThreads.length === 0 ? (
+            <div className="flex flex-col items-center justify-center flex-1 text-surface-400">
+              <Mail className="h-12 w-12 mb-3 text-surface-300 dark:text-surface-600" />
+              <p className="text-sm">No email threads yet.</p>
+            </div>
+          ) : (
+            <div className="space-y-2 overflow-y-auto">
+              {emailThreads.map((t) => (
+                <div key={t.id} className="bg-white dark:bg-surface-800 rounded-lg border border-surface-200 dark:border-surface-700 p-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-surface-900 dark:text-surface-100 truncate">
+                      {t.first_name && t.last_name ? `${t.first_name} ${t.last_name}` : (t.from_address ?? 'Unknown')}
+                    </span>
+                    <span className="text-xs text-surface-400 shrink-0 ml-2">
+                      {t.last_message_at ? new Date(t.last_message_at).toLocaleDateString() : ''}
+                    </span>
+                  </div>
+                  {t.subject && <p className="text-xs text-surface-600 dark:text-surface-400 truncate">{t.subject}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : mainView === 'calls' ? (
         <CallLogPanel />
       ) : (
       <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">

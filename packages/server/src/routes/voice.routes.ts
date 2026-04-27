@@ -243,6 +243,113 @@ router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // ---------------------------------------------------------------------------
+// GET /voice/recording/:id — JWT-protected signed-URL proxy for recordings
+// (WEB-W3-023)
+//
+// Clients call voiceApi.recordingSignedUrl(callId) to get a short-lived
+// signed URL, then use it in an <audio> src or direct fetch. The token
+// is an HMAC-SHA256 over "recordingId|expires" signed with the server's
+// JWT secret so it cannot be forged. Token lifetime: 5 minutes. This
+// avoids exposing the raw GET /calls/:id/recording URL (which requires
+// cookie/session-based auth) in an <audio> element.
+// ---------------------------------------------------------------------------
+router.get('/recording/:id', asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const token = req.query.token as string | undefined;
+
+  if (!token) throw new AppError('Missing token', 401);
+
+  // Verify HMAC: token = hex(HMAC("sha256", jwtSecret, "recordingId|expires"))
+  // where expires is a Unix epoch in ms embedded in the token as two parts:
+  // token format: "<expires>.<hmac>" so expires is readable for expiry check.
+  const [expiresStr, hmac] = token.split('.');
+  if (!expiresStr || !hmac) throw new AppError('Malformed token', 401);
+
+  const expires = parseInt(expiresStr, 10);
+  if (isNaN(expires) || Date.now() > expires) throw new AppError('Token expired', 401);
+
+  const expected = crypto
+    .createHmac('sha256', config.jwtSecret)
+    .update(`${id}|${expiresStr}`)
+    .digest('hex');
+
+  // Constant-time comparison to prevent timing attacks.
+  const hmacBuf = Buffer.from(hmac, 'hex');
+  const expectedBuf = Buffer.from(expected, 'hex');
+  if (hmacBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(hmacBuf, expectedBuf)) {
+    throw new AppError('Invalid token', 401);
+  }
+
+  const adb = req.asyncDb;
+  const call = await adb.get<AnyRow>(
+    'SELECT user_id, direction, recording_local_path, recording_url FROM call_logs WHERE id = ?',
+    parseInt(id, 10),
+  );
+  if (!call) throw new AppError('Recording not found', 404);
+
+  if (call.recording_local_path) {
+    const filePath = path.join(
+      config.uploadsPath,
+      call.recording_local_path.replace(/^\/uploads\//, ''),
+    );
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'no-store'); // signed URL — don't cache
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+  }
+
+  if (call.recording_url) {
+    try {
+      validateRecordingUrl(call.recording_url);
+    } catch {
+      throw new AppError('Recording URL not trusted', 403);
+    }
+    res.redirect(call.recording_url);
+    return;
+  }
+
+  throw new AppError('Recording not available', 404);
+}));
+
+// ---------------------------------------------------------------------------
+// GET /voice/calls/:id/recording-url — Returns a short-lived signed URL
+// (WEB-W3-023) — auth required; issues the token the frontend uses.
+// ---------------------------------------------------------------------------
+router.get('/calls/:id/recording-url', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const callId = parseInt(req.params.id, 10);
+  if (!callId || isNaN(callId)) throw new AppError('Invalid call id', 400);
+
+  const call = await adb.get<AnyRow>(
+    'SELECT user_id, direction, recording_local_path, recording_url FROM call_logs WHERE id = ?',
+    callId,
+  );
+  if (!call) throw new AppError('Call not found', 404);
+
+  const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
+  if (!isAdmin && call.user_id !== req.user!.id && call.direction !== 'inbound') {
+    throw new AppError('Not authorized to access this recording', 403);
+  }
+
+  if (!call.recording_local_path && !call.recording_url) {
+    throw new AppError('No recording available for this call', 404);
+  }
+
+  // Issue a 5-minute HMAC token: "<expires>.<hmac>"
+  const expires = Date.now() + 5 * 60 * 1000;
+  const hmac = crypto
+    .createHmac('sha256', config.jwtSecret)
+    .update(`${callId}|${expires}`)
+    .digest('hex');
+  const token = `${expires}.${hmac}`;
+
+  const signedUrl = `/api/v1/voice/recording/${callId}?token=${encodeURIComponent(token)}`;
+  res.json({ success: true, data: { url: signedUrl } });
+}));
+
+// ---------------------------------------------------------------------------
 // GET /voice/calls/:id/recording — Stream recording audio (auth required)
 // ---------------------------------------------------------------------------
 // @audit-fixed: §37 — Same authorization gap. Recordings may contain

@@ -112,6 +112,36 @@ router.get(
   }),
 );
 
+// WEB-W3-024 helper: detect overlapping shifts for the same employee.
+// Two intervals [a_start, a_end) and [b_start, b_end) overlap when
+// a_start < b_end AND a_end > b_start. excludeId skips the current row
+// when checking during a PUT (don't collide with yourself).
+async function checkShiftOverlap(
+  adb: AsyncDb,
+  userId: number,
+  startAt: string,
+  endAt: string,
+  excludeId?: number,
+): Promise<void> {
+  const conflict = await adb.get<{ id: number; start_at: string; end_at: string }>(
+    `SELECT id, start_at, end_at FROM shift_schedules
+     WHERE user_id = ?
+       AND start_at < ?
+       AND end_at   > ?
+       ${excludeId ? 'AND id != ?' : ''}
+     LIMIT 1`,
+    ...(excludeId
+      ? [userId, endAt, startAt, excludeId]
+      : [userId, endAt, startAt]),
+  );
+  if (conflict) {
+    throw new AppError(
+      `Shift overlaps with an existing shift (${conflict.start_at} – ${conflict.end_at})`,
+      409,
+    );
+  }
+}
+
 router.post(
   '/shifts',
   asyncHandler(async (req, res) => {
@@ -130,6 +160,9 @@ router.post(
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new AppError('end_at must be after start_at', 400);
     }
+    // WEB-W3-024: reject overlapping shifts for same employee
+    await checkShiftOverlap(adb, userId, startAt, endAt);
+
     const role = req.body?.role ? validateTextLength(req.body.role, 50, 'role') : null;
     const notes = req.body?.notes ? validateTextLength(req.body.notes, 500, 'notes') : null;
 
@@ -167,6 +200,9 @@ router.put(
     if (new Date(endAt).getTime() <= new Date(startAt).getTime()) {
       throw new AppError('end_at must be after start_at', 400);
     }
+    // WEB-W3-024: reject overlapping shifts for same employee (exclude self)
+    await checkShiftOverlap(adb, existing.user_id, startAt, endAt, id);
+
     const role = req.body?.role !== undefined
       ? (req.body.role ? validateTextLength(req.body.role, 50, 'role') : null)
       : existing.role;
@@ -474,8 +510,28 @@ router.post(
 // GOALS
 // ============================================================================
 
-const VALID_METRICS = ['tickets_closed_week', 'revenue_week', 'csat'] as const;
-type GoalMetric = typeof VALID_METRICS[number];
+// WEB-W3-037: All supported metric keys + labels. Adding a new metric here
+// automatically surfaces it in the GoalsPage create form without any frontend
+// change (beyond what the dynamic fetch provides).
+const GOAL_METRIC_DEFINITIONS = [
+  { key: 'tickets_closed_week',  label: 'Tickets closed (week)',   unit: 'count'    },
+  { key: 'revenue_week',         label: 'Revenue (week)',           unit: 'currency' },
+  { key: 'avg_ticket_value',     label: 'Avg ticket value',         unit: 'currency' },
+  { key: 'csat',                 label: 'CSAT score',               unit: 'score'    },
+  { key: 'on_time_completion',   label: 'On-time completion',       unit: 'percent'  },
+  { key: 'parts_accuracy',       label: 'Parts accuracy',           unit: 'percent'  },
+] as const;
+
+const VALID_METRICS = GOAL_METRIC_DEFINITIONS.map((m) => m.key) as unknown as readonly [string, ...string[]];
+type GoalMetric = typeof GOAL_METRIC_DEFINITIONS[number]['key'];
+
+// GET /team/goal-metrics — returns supported metric keys + labels (WEB-W3-037)
+router.get(
+  '/goal-metrics',
+  asyncHandler(async (_req, res) => {
+    res.json({ success: true, data: GOAL_METRIC_DEFINITIONS });
+  }),
+);
 
 router.get(
   '/goals',
@@ -556,6 +612,46 @@ router.post(
   }),
 );
 
+// WEB-S6-027: goal edit via PUT
+router.put(
+  '/goals/:id',
+  asyncHandler(async (req, res) => {
+    requireAdminOrManager(req);
+    const adb: AsyncDb = req.asyncDb;
+    const id = parseId(req.params.id, 'goal id');
+    const existing = await adb.get<any>('SELECT * FROM team_goals WHERE id = ?', id);
+    if (!existing) throw new AppError('Goal not found', 404);
+
+    const userId = req.body?.user_id !== undefined ? parseId(String(req.body.user_id), 'user_id') : existing.user_id;
+    const metric = req.body?.metric !== undefined
+      ? (validateEnum(req.body.metric, VALID_METRICS, 'metric', true)! as GoalMetric)
+      : existing.metric;
+    const target = req.body?.target_value !== undefined
+      ? validatePositiveAmount(req.body.target_value, 'target_value')
+      : existing.target_value;
+    const periodStart = req.body?.period_start !== undefined
+      ? validateIsoDate(req.body.period_start, 'period_start', true)!
+      : existing.period_start;
+    const periodEnd = req.body?.period_end !== undefined
+      ? validateIsoDate(req.body.period_end, 'period_end', true)!
+      : existing.period_end;
+
+    if (new Date(periodEnd).getTime() < new Date(periodStart).getTime()) {
+      throw new AppError('period_end must be on/after period_start', 400);
+    }
+
+    await adb.run(
+      `UPDATE team_goals SET user_id = ?, metric = ?, target_value = ?, period_start = ?, period_end = ?,
+          updated_at = datetime('now')
+       WHERE id = ?`,
+      userId, metric, target, periodStart, periodEnd, id,
+    );
+    audit(req.db, 'goal_updated', requireUserId(req), req.ip || 'unknown', { goal_id: id });
+    const updatedRow = await adb.get('SELECT * FROM team_goals WHERE id = ?', id);
+    res.json({ success: true, data: updatedRow });
+  }),
+);
+
 router.delete(
   '/goals/:id',
   asyncHandler(async (req, res) => {
@@ -578,14 +674,35 @@ router.get(
     requireAdminOrManager(req);
     const adb: AsyncDb = req.asyncDb;
     const userId = req.query.user_id ? parseId(String(req.query.user_id), 'user_id') : null;
+    // WEB-S6-028: pagination support — limit/page params
+    const rawLimit = parseInt(String(req.query.limit ?? '20'), 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 100 ? rawLimit : 20;
+    const rawPage = parseInt(String(req.query.page ?? '1'), 10);
+    const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+    const offset = (page - 1) * limit;
+
+    const whereClause = userId ? 'WHERE r.user_id = ?' : '';
+    const params: unknown[] = userId ? [userId] : [];
+
+    const totalRow = await adb.get<{ cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM performance_reviews r ${whereClause}`,
+      ...params,
+    );
+    const total = totalRow?.cnt ?? 0;
+    const totalPages = Math.ceil(total / limit);
+
     const sql = `SELECT r.*, u.first_name, u.last_name, ru.first_name AS reviewer_first, ru.last_name AS reviewer_last
                  FROM performance_reviews r
                  LEFT JOIN users u  ON u.id  = r.user_id
                  LEFT JOIN users ru ON ru.id = r.reviewer_user_id
-                 ${userId ? 'WHERE r.user_id = ?' : ''}
-                 ORDER BY r.created_at DESC LIMIT 100`;
-    const rows = userId ? await adb.all(sql, userId) : await adb.all(sql);
-    res.json({ success: true, data: rows });
+                 ${whereClause}
+                 ORDER BY r.created_at DESC
+                 LIMIT ? OFFSET ?`;
+    const rows = await adb.all(sql, ...params, limit, offset);
+    res.json({
+      success: true,
+      data: { reviews: rows, pagination: { page, limit, total, total_pages: totalPages } },
+    });
   }),
 );
 

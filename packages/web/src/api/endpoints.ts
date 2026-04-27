@@ -571,6 +571,34 @@ export const smsApi = {
   },
 };
 
+// ==================== Email ====================
+// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
+export interface EmailThread {
+  id: number;
+  customer_id?: number | null;
+  subject?: string | null;
+  from_address?: string | null;
+  last_message_at: string;
+  message_count?: number;
+  unread_count?: number;
+  first_name?: string | null;
+  last_name?: string | null;
+}
+
+export interface EmailThreadsPayload {
+  threads: EmailThread[];
+  enabled: boolean;
+  pagination?: { page: number; per_page: number; total: number; total_pages: number };
+}
+
+export const emailApi = {
+  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
+  threads: (params?: { page?: number; pagesize?: number }) =>
+    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
+  messages: (threadId: number) =>
+    api.get(`/email/threads/${threadId}/messages`),
+};
+
 // ==================== Voice / Click-to-Call ====================
 
 export interface VoiceCall {
@@ -610,6 +638,9 @@ export const voiceApi = {
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
   /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
+  /** WEB-W3-023: Fetch a short-lived signed URL for playback (5-min HMAC token). */
+  recordingSignedUrl: (id: number) =>
+    api.get<{ success: boolean; data: { url: string } }>(`/voice/calls/${id}/recording-url`),
 };
 
 // ==================== POS ====================
