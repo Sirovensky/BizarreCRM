@@ -9,20 +9,8 @@ type: project
 
 ## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
 
-### P0
-- [ ] WEB-W3-003. **Purchase order has no receive workflow — cannot mark items received or change status.** `pages/inventory/PurchaseOrdersPage.tsx`. Fix: add receive modal + `POST /purchase-orders/:id/receive` route to update line `received_qty`, set status to received/partial.
-
-### P1 (silent no-op)
-- [ ] WEB-W3-009. **Mass label "PDF" format downloads ZPL/text not PDF.** `MassLabelPrintPage.tsx`. Fix: add real PDF render via `pdfkit` or label-template route returning `application/pdf`.
-- [ ] WEB-W3-010. **No line-item view for POs.** `PurchaseOrdersPage.tsx`. Fix: detail page or expandable row showing PO lines + receive status.
-- [ ] WEB-W3-013. **Inventory CSV export is current-page-only; advanced filters may be ignored by backend.** `InventoryListPage.tsx`. Fix: dedicated `/inventory/export.csv` server-streaming route honoring all filters.
-- [ ] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** `pages/voice/`. Fix: serve recordings via signed URL or behind JWT-protected proxy route.
-- [ ] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** `pages/team/`. Fix: server validation rejects overlapping shifts for same employee; UI shows error.
-
 ### P2 (cosmetic / missing UI)
-- [ ] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** `AbcAnalysisPage.tsx`. Fix: add CSV export + "Mark for clearance" button.
 - [x] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`. FIXED-by-Fixer-A23 2026-04-25 — added FKeyLegend popover button (bottom-right of UnifiedPosPage) listing F1/F2/F3 tabs, F4 customer search, Shift+F5 complete sale, F6 returns hotkey. `<kbd>`-styled rows, dialog role + aria-expanded button.
-- [ ] WEB-W3-032. **Reports: no PDF export anywhere; CSV only on sales tab; non-admin date cap silent.** `pages/reports/`. Fix: PDF route + surface date-cap message.
 - [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
 - [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
 
@@ -33,26 +21,10 @@ type: project
   - Fix: enforce server-side. POS routes should require a PIN-validation header on tendering / ticket actions when these flags are true. Add middleware `requirePosPin` reading store_config + `pos_pin_hash`.
 
 ### P1 (silent no-op)
-- [ ] WEB-W1-002. **`ticket_show_closed` stored but never read by backend.** — `TicketsRepairsSettings.tsx`. Fix: tickets list route filters out closed tickets when false (`statuses NOT IN (closed, canceled)`).
 - [ ] WEB-W1-004. **`ticket_default_view` client-only, `kanban` option unimplemented but marked live.** — flip to `coming_soon` until kanban default works, or add server-side default-view persistence.
-- [ ] WEB-W1-005. **`ticket_default_filter` — date-range value assigned to `statusFilter` variable (type mismatch).** — `TicketsRepairsSettings.tsx`. Fix: split into `ticket_default_date_filter` + `ticket_default_status_filter`.
 - [ ] WEB-W1-006. **`ticket_default_pagination` key-name drift between save and read.** — verify save key matches consumed key in `tickets.routes.ts`.
 - [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
-- [ ] WEB-W1-014. **`pos_show_images` dead.** — wire into POS catalog tile render.
 - [ ] WEB-W1-015. **`pos_show_discount_reason` dead.** — wire into POS discount modal (require reason input when true).
-- [ ] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** — `ReceiptSettings.tsx` + print route. Pick canonical value; migrate stored.
-- [ ] WEB-W1-017. **8x `receipt_cfg_*_page` variants — 2 of 8 wired (security_code_page + po_so_page) per WEB-WA-003/004; remaining 6 still saved-but-not-read.** Identify the other 6 keys + wire each into letter renderer.
-- [ ] WEB-W1-022. **`POST /settings/sms/reload` endpoint existence unverified.** — `SmsVoiceSettings.tsx`. Verify route in `settings.routes.ts`; if missing, add (re-init Twilio client from updated creds) or remove button.
-- [ ] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed in `blockchyp.ts`.** — verify; if not read, wire terminal-capture toggle.
-
-### P2 (cosmetic / missing UI)
-- [ ] WEB-W1-025. **`checkin_default_category` hardcoded option list.** — `PosSettings.tsx`. Fix: load options from `categories` table.
-- [ ] WEB-W1-026. **`receipt_header` / `receipt_footer` written by two separate forms — last-write-wins.** — `ReceiptSettings.tsx`. Fix: single source of truth form.
-- [ ] WEB-W1-029. **`auto_reply_enabled` / `auto_reply_message` missing from SmsVoiceSettings UI** (already wired backend in WEB-WB-001). — add inputs to surface.
-- [ ] WEB-W1-030. **3CX keys (`tcx_*`) missing from SmsVoiceSettings.** — these are intentionally dead; either hide or render with Coming Soon badge.
-- [ ] WEB-W1-031. **`notification_digest_mode` / `notification_digest_hour` missing from NotificationsSettings.** — render with Coming Soon badge until digest dispatcher exists.
-- [ ] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection before advancing.** — `pages/setup/`. Add `POST /setup/test-smtp` route + button on step.
-- [ ] WEB-W1-035. **Setup wizard: no "back" navigation between sub-steps.** — add Back button reading wizard step state.
 
 ## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
 
@@ -92,13 +64,6 @@ type: project
   - Fix: trigger anchor download with `download` attr instead of `window.open`.
   - File: `packages/web/src/pages/leads/`
   - Fix: same normalization to `notes`.
-
-### P2 (cosmetic / minor UX)
-- [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
-- [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
-- [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
-- [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
-- [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
 
 ## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
 
@@ -141,40 +106,12 @@ type: project
   - Android shows existing labels as chips; web is a plain text input.
   - Fix: load distinct label values from `GET /ticket-labels`; render as multi-select chips or combobox.
 
-- [ ] WEB-S6-008. **TicketDevices DeviceEditForm: `pre_conditions` read from device but never editable — field in form state is never rendered as UI.**
-  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` line 180 (`pre_conditions` in state) — no input element for it
-  - Backend stores pre/post conditions as JSON array. The edit form captures the field in state but has no checkbox or multi-input UI for it.
-  - Fix: add a "Pre-repair Conditions" checklist using a configurable list (or free-text tags) that writes to `form.pre_conditions`; `post_conditions` similarly absent.
-
-- [ ] WEB-S6-009. **InventoryDetailPage: price history absent — no way to see how retail/cost price changed over time.**
-  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx` (stock movements shown, price history is not)
-  - Android audit references price history. The server has `inventory_price_history` table (migration 006 or similar). No route or UI exposes it on web.
-  - Fix: add `GET /inventory/:id/price-history` route if missing; render as mini timeline under Pricing card.
-
-- [ ] WEB-S6-010. **InventoryDetailPage: multi-location stock absent — only shows single `in_stock` total, not per-location breakdown.**
-  - File: `packages/web/src/pages/inventory/InventoryDetailPage.tsx`
-  - `locations.routes.ts` and `inventory` route accept `location_id`. Android likely shows per-location stock. Web detail shows one number.
-  - Fix: add `GET /inventory/:id/locations` or query `inventory_locations` join; render per-location stock table with per-location adjust button.
-
-- [ ] WEB-S6-011. **CustomerCreatePage: address geocoding absent — no lat/lng stored, breaking field-service map routing.**
-  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` — no geocode call on address blur
-  - `fieldService.routes.ts` expects lat/lng on customers for route optimization. Android likely geocodes on save.
-  - Fix: on `address1`/`city`/`state` blur, call `GET /api/v1/geocode?address=…` (add route or use nominatim) and silently set `lat`/`lng` in payload.
-
-- [ ] WEB-S6-012. **CustomerCreatePage: custom fields absent — all `custom_fields` defined in settings are invisible on the create form.**
-  - File: `packages/web/src/pages/customers/CustomerCreatePage.tsx` (no `customFieldsApi` import or render)
-  - `customFields.routes.ts` provides a list of entity-scoped custom fields. Android intake shows them. Web create page skips them entirely.
-  - Fix: fetch `GET /custom-fields?entity=customer`; render as additional form fields; include in payload as `custom_field_values`.
 
 - [x] WEB-S6-013. **EmployeeListPage: "Add Employee" is a plain `<a href="/settings/users">` — breaks SPA navigation and loses keyboard focus context.** CLOSED 2026-04-24 — 24b71b25
   - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` line 378–384
   - The button is an `<a>` tag, not a `<Link>`. Full page reload on click. Should use React Router `<Link>` or `useNavigate`.
   - Fix: replace with `<Link to="/settings/users">` from react-router-dom.
 
-- [ ] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.**
-  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no pay_rate field anywhere
-  - Android employee detail shows pay rate. `employees.routes.ts` presumably stores it. Web page has clock-in/out and commissions but no pay rate management.
-  - Fix: add pay rate display in `EmployeeExpandedRow`; allow edit via `PATCH /employees/:id` with `pay_rate` field.
 
 - [x] WEB-S6-015. **EmployeeListPage: no time-off request UI — employees cannot submit time-off from this page; managers cannot approve/deny.** CLOSED 2026-04-24 — 24b71b25
   - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no timeOff import or render
@@ -186,58 +123,21 @@ type: project
   - `detailQueries` array is built and the comment says "We'll fetch details within the table rendering via separate queries" — the variable is never passed anywhere. The per-row query inside `EmployeeRow` is the real path, making this array purely dead.
   - Fix: remove `detailQueries` array and `employeeDetails` Map (lines 322–329) entirely.
 
-- [ ] WEB-S6-017. **CommunicationPage: no email thread view — channel supports `both` in campaigns but Communications page only shows SMS + Calls; email conversations unreachable.**
-  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` — `mainView` state only `'messages' | 'calls'`
-  - If email channel is used (campaigns, direct replies), there's no inbox tab to read/reply to emails.
-  - Fix: add `'email'` tab to `mainView` toggle; query email threads via a new `emailApi.threads()` endpoint or expose under existing inbox.
 
 - [x] WEB-S6-018. **CommunicationPage: "Link existing customer" silently overwrites customer's `mobile` with conversation phone — existing mobile lost if different.** CLOSED 2026-04-24 — 60383c8c
   - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 765 (`customerApi.update(customerId, { mobile: phone })`)
   - If the customer already has a different mobile number, this PUT replaces it. No warning or merge prompt.
   - Fix: before overwriting, check if customer already has a mobile. If so, prompt "Replace existing mobile XXXX with YYYY?" or add a secondary phone field.
 
-- [ ] WEB-S6-019. **AutomationsListPage: is a thin wrapper for `AutomationsTab` — the same tab is also at `/settings/automations`. No per-automation detail/edit page exists; editing is in-list only.**
-  - File: `packages/web/src/pages/automations/AutomationsListPage.tsx`
-  - Complex automations with many conditions cannot be edited comfortably in a cramped in-list form. Android likely has a dedicated edit screen.
-  - Fix: add `/automations/:id` detail page with full condition/action builder UI; link from list rows.
 
-- [ ] WEB-S6-020. **CampaignsPage: `trigger_rule_json` stored on campaign but never editable — no trigger rule builder in create modal.**
-  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` line 44 (field exists in type) and `CreateCampaignModal` (no trigger_rule field in form)
-  - Scheduled/triggered campaigns (birthday, churn) require a rule but the create modal has no way to configure when it fires.
-  - Fix: add trigger rule builder to `CreateCampaignModal`: date-offset picker for birthday/winback, threshold for churn warning, etc.
-
-- [ ] WEB-S6-021. **CampaignsPage: no campaign edit — after creation only delete/status-toggle possible; name, body, segment, channel are immutable from UI.**
-  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` — no edit modal, no edit button
-  - Fix: add an edit button per row that opens `CreateCampaignModal` pre-populated; PUT to `campaignsApi.update(id, payload)`.
-
-- [ ] WEB-S6-022. **SegmentsPage: rule builder only supports single-condition rules — no AND/OR compound conditions.**
-  - File: `packages/web/src/pages/marketing/SegmentsPage.tsx` — `RULE_FIELDS` implies one condition per segment
-  - Useful audience segments (e.g. "LTV > $500 AND churned > 90 days") require multiple conditions. Current builder creates one rule object.
-  - Fix: allow adding multiple conditions with AND/OR connectors; serialize as `{ op: 'and', conditions: [...] }` to `rule_json`.
-
-- [ ] WEB-S6-023. **PartnerReportPage: no loading/error state — if the PDF endpoint is slow or returns 500, user sees nothing.**
-  - File: `packages/web/src/pages/reports/PartnerReportPage.tsx` — `openReport()` is a bare `window.open` with no try/catch
-  - Fix: wrap in async fetch, show spinner while generating, toast on error (non-200 status).
-
-- [ ] WEB-S6-024. **TaxReportPage: date range allows `from > to` — server returns empty or incorrect data silently.**
-  - File: `packages/web/src/pages/reports/TaxReportPage.tsx` — no date-order validation before `openReport()`
-  - Fix: add `if (from > to) { toast.error('From date must be before To date'); return; }` before opening URL.
 
 - [x] WEB-S6-025. **TeamChatPage: polling is unconditional — 5-second interval fires even when page is not active/visible, wasting bandwidth.** CLOSED 2026-04-24 — c7b57972
   - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 68 (`refetchInterval: 5_000`) — comment says "only while visible" but `document.visibilityState` check is missing
   - Fix: add `refetchIntervalInBackground: false` to the query options (TanStack Query v5 default) or add a `visibilitychange` listener that pauses refetch.
 
-- [ ] WEB-S6-026. **TeamChatPage: no message pagination — loads last 200 messages then stops; older history inaccessible.**
-  - File: `packages/web/src/pages/team/TeamChatPage.tsx` line 69 (`?limit=200`)
-  - Fix: add "Load older" button that appends `?before=<oldest_id>` to query; prepend results to message list.
-
 - [ ] WEB-S6-027. **GoalsPage: goal edit absent — goals can only be created or deleted, not modified (target value, dates, employee assignment).**
   - File: `packages/web/src/pages/team/GoalsPage.tsx` — no edit button or modal
   - Fix: add edit button per goal row; re-use create form in edit mode; PUT to `/team/goals/:id`.
-
-- [ ] WEB-S6-028. **PerformanceReviewsPage: no pagination on review history — all reviews for an employee load in one query; slow for long-tenured staff.**
-  - File: `packages/web/src/pages/team/PerformanceReviewsPage.tsx` line 54 (`/team/reviews?user_id=…` — no limit/page params)
-  - Fix: add `limit=20&page=N` to query; render paginator under review list.
 
 ### P2 (UX / cosmetic / missing polish)
 
@@ -245,27 +145,12 @@ type: project
   - File: `packages/web/src/pages/tickets/TicketCreatePage.tsx`
   - Fix: serialize form state to `sessionStorage` on change; restore on mount; clear on successful submit. Show `beforeunload` warning if form is dirty.
 
-- [ ] WEB-S6-030. **TicketDevices: photo thumbnails use `/uploads/` relative path — breaks when page is embedded or origin differs from asset server.**
-  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` lines 968, 987, 1063, 1082 (`src={'/uploads/${photo.file_path}'}`)
-  - Fix: resolve through `GET /api/v1/info` `server_url` (already used for QR codes) so photo URLs are absolute and work from any origin.
-
-- [ ] WEB-S6-031. **TicketDevices: photo caption field not editable — `photo.caption` is read for alt-text but there is no UI to set or change it.**
-  - File: `packages/web/src/pages/tickets/TicketDevices.tsx` — no caption input in `PhotoUploadSection`
-  - Fix: add optional caption input to `PhotoUploadSection`; include in `FormData`; persist via `PUT /ticket-photos/:id`.
 
 - [x] WEB-S6-032. **InventoryCreatePage: `wholesale_price` field absent at creation — only retail and cost; wholesale must be set post-creation via edit.** CLOSED 2026-04-24 — 19ecf363
   - File: `packages/web/src/pages/inventory/InventoryCreatePage.tsx` — form state has no `wholesale_price`
   - Backend `INSERT` does not include it on create (line 224). `wholesale_price` column exists and is used in PO/supplier workflows.
   - Fix: add wholesale price input next to cost/retail; include in create payload.
 
-- [ ] WEB-S6-033. **EmployeeListPage: clock-in status depends on `employee-detail` query per row — N+1 API calls on page load with many employees.**
-  - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` `EmployeeRow` component (calls `employeeApi.get(employee.id)` per row)
-  - With 20 employees that's 20 separate API calls just to show clock status.
-  - Fix: add `is_clocked_in` and `weekly_hours` to `GET /employees` list response; eliminate per-row detail fetch for status display.
-
-- [ ] WEB-S6-034. **CommunicationPage: conversation search is client-side filter over loaded conversations only — unread threads outside current page invisible to search.**
-  - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 1370 (`searchFilter` filters `conversations` array in-memory)
-  - Fix: debounce search input and pass `q=` param to `GET /sms/conversations`; server-side full-text search across all conversations.
 
 - [ ] WEB-S6-035. **CommunicationPage: "Create New Customer" from Link Customer popover navigates away from the active conversation — conversation context lost.**
   - File: `packages/web/src/pages/communications/CommunicationPage.tsx` line 815 (`navigate('/customers/new?phone=…')`)

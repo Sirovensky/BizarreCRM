@@ -253,6 +253,19 @@
             <meta-data
                 android:name="android.app.shortcuts"
                 android:resource="@xml/shortcuts" />
+
+            <!--
+              §24.5 — App Actions (Capabilities API) metadata.
+              Declares the actions.xml BII bindings to Google Assistant.
+              The com.google.android.gms.actions.metadata.ACTIONS_FILE key is
+              recognised by the App Actions assistant bridge.
+              NOTE: full voice activation requires enrollment via the Play
+              Console App Actions tab — this declaration is syntactically
+              correct but inert until the app is enrolled.
+            -->
+            <meta-data
+                android:name="com.google.android.gms.actions.metadata.ACTIONS_FILE"
+                android:resource="@xml/actions" />
         </activity>
 
         <!-- Firebase Messaging Service -->
@@ -309,6 +322,21 @@
             </intent-filter>
         </service>
 
+        <!-- §24.4 — Clock-In/Out Quick Settings tile (Android 7+).
+             Reflects current shift state from ClockInTileService.persistClockState().
+             Tapping opens ClockInOutScreen via bizarrecrm://clockin.
+             BIND_QUICK_SETTINGS_TILE restricts binding to the system QS service. -->
+        <service
+            android:name=".service.ClockInTileService"
+            android:label="@string/tile_clock_in_label"
+            android:icon="@mipmap/ic_launcher"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
         <!-- Home-screen widget provider. exported=true is required so the
              launcher process can bind to the provider. -->
         <receiver
@@ -336,6 +364,36 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/glance_unread_sms_info" />
+        </receiver>
+
+        <!-- §24.1 — Clock-In/Out Glance widget receiver.
+             exported=false: same rationale as UnreadSmsGlanceReceiver above.
+             State updated via ClockInGlanceWidget.publishClockState() called
+             from ClockInTileViewModel after a successful API toggle. -->
+        <receiver
+            android:name=".widget.glance.ClockInGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_clock_in_info" />
+        </receiver>
+
+        <!-- §24.1 — Low-Stock Glance widget receiver.
+             exported=false: same rationale as UnreadSmsGlanceReceiver.
+             State updated via LowStockGlanceWidget.publishLowStockCount() called
+             from DashboardRepository after an inventory refresh. -->
+        <receiver
+            android:name=".widget.glance.LowStockGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_low_stock_info" />
         </receiver>
 
         <!-- §1.7 L245 — BroadcastReceiver for notification action buttons (Reply, Mark as read). -->

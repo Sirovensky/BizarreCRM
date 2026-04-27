@@ -2985,3 +2985,52 @@ Bulk move of items that were already marked [x] in TODO.md but never relocated t
 ### Wave S7 data integrity + edge cases 2026-04-24 — P2 closure
 
 - [x] WEB-S7-040. **`InvoiceListPage` uses `window.confirm()` for bulk action confirmation.** CLOSED 2026-04-24 — 0392b06d (covered by WEB-S5-001 fix)
+
+## todofixes426 — Cleanup pass 2 (2026-04-26)
+
+- [x] WEB-S6-008. **TicketDevices DeviceEditForm: `pre_conditions` never editable — no UI rendered.** CLOSED 2026-04-26 — todofixes426: ConditionChecklist component added to DeviceEditForm; CONDITION_OPTIONS defined; pre/post conditions rendered as checkbox list writing to form.pre_conditions / form.post_conditions.
+- [x] WEB-W2-025. **Calendar view: can't create ticket from day click.** CLOSED 2026-04-26 — todofixes426: TicketListPage day-click handler opens create-modal with prefilled due_date= param.
+- [x] WEB-W1-002. **`ticket_show_closed` stored but never read by backend.** CLOSED 2026-04-26 — todofixes426: TicketListPage reads `ticket_show_closed` setting and passes `show_closed: '0'` to the tickets list query when false; server filters accordingly.
+- [x] WEB-W1-005. **`ticket_default_filter` date-range value assigned to statusFilter (type mismatch).** CLOSED 2026-04-26 — todofixes426: split into `ticket_default_date_filter` + `ticket_default_status_filter` in TicketsRepairsSettings; TicketListPage reads both separately.
+- [x] WEB-S6-030. **TicketDevices: photo thumbnails use relative `/uploads/` path — breaks cross-origin embed.** CLOSED 2026-04-26 — todofixes426: photo src resolved via `serverInfoApi` `server_url` making URLs absolute.
+- [x] WEB-S6-031. **TicketDevices: photo caption not editable.** CLOSED 2026-04-26 — todofixes426: caption input added to PhotoUploadSection; persisted via `updatePhotoMut` (PUT /tickets/photos/:id).
+- [x] WEB-W2-029. **No bulk delete of customers.** CLOSED 2026-04-26 — todofixes426: `bulkDeleteConfirm` flow added to CustomerListPage; DELETE /customers/bulk route wired.
+- [x] WEB-S6-011. **CustomerCreatePage: address geocoding absent.** CLOSED 2026-04-26 — todofixes426: `geocode.routes.ts` added; CustomerCreatePage calls geocode on address blur to populate lat/lng.
+- [x] WEB-S6-012. **CustomerCreatePage: custom fields absent.** CLOSED 2026-04-26 — todofixes426: `customFieldApi` fetch added; CustomerCreatePage renders entity-scoped custom fields and includes values in payload.
+- [x] WEB-W3-003. **Purchase order has no receive workflow.** CLOSED 2026-04-26 — todofixes426: `ReceiveModal` added to PurchaseOrdersPage; POST /purchase-orders/:id/receive route updates line received_qty and status.
+- [x] WEB-W3-009. **Mass label "PDF" downloads ZPL/text not PDF.** CLOSED 2026-04-26 — todofixes426: `pdf_base64` response from `inventoryEnrich.routes.ts` renders real PDF via pdfkit.
+- [x] WEB-W3-010. **No line-item view for POs.** CLOSED 2026-04-26 — todofixes426: `PoDetailRow` expandable row added to PurchaseOrdersPage showing lines + receive status.
+- [x] WEB-W3-013. **Inventory CSV export is current-page-only.** CLOSED 2026-04-26 — todofixes426: dedicated `export.csv` route added to `inventory.routes.ts`; honors all filters; InventoryListPage uses it.
+- [x] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** CLOSED 2026-04-26 — todofixes426: CSV export added; `mark-clearance` endpoint in `inventoryEnrich.routes.ts`; "Mark for clearance" button wired.
+- [x] WEB-S6-009. **InventoryDetailPage: price history absent.** CLOSED 2026-04-26 — todofixes426: `GET /inventory/:id/price-history` route added; mini price-history timeline rendered under Pricing card.
+- [x] WEB-S6-010. **InventoryDetailPage: multi-location stock absent.** CLOSED 2026-04-26 — todofixes426: `GET /inventory/:id/locations` route added; per-location stock table rendered with per-location adjust button.
+- [x] WEB-W1-014. **`pos_show_images` dead.** CLOSED 2026-04-26 — todofixes426: POS ProductsTab reads `pos_show_images` setting to toggle product image display on catalog tiles.
+- [x] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** CLOSED 2026-04-26 — todofixes426: canonical value standardised to `receipt80` throughout — ReceiptSettings, PrintPage, seed.ts; `thermal_80` string eliminated.
+- [x] WEB-W1-017. **8x `receipt_cfg_*_page` variants — remaining 6 unwired.** CLOSED 2026-04-26 — todofixes426: all receipt_cfg_*_page toggles wired into PrintPage letter renderer (description_page, pre_conditions_page, transaction_id_page, etc.).
+- [x] WEB-W1-022. **`POST /settings/sms/reload` endpoint unverified.** CLOSED 2026-04-26 — todofixes426: route confirmed in `settings.routes.ts` (line 1762); re-inits Twilio client from store_config.
+- [x] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed.** CLOSED 2026-04-26 — todofixes426: `blockchyp.ts` reads `blockchyp_tc_enabled` via `getConfigValue`; terminal-capture toggle is wired.
+- [x] WEB-W1-025. **`checkin_default_category` hardcoded option list.** CLOSED 2026-04-26 — todofixes426: PosSettings loads options via `inventoryApi.categories`; select populated from DB categories.
+- [x] WEB-W1-026. **`receipt_header`/`receipt_footer` written by two forms — last-write-wins.** CLOSED 2026-04-26 — todofixes426: fields removed from SettingsPage general form; single source of truth in ReceiptSettings only.
+- [x] WEB-W1-029. **`auto_reply_enabled`/`auto_reply_message` missing from SmsVoiceSettings UI.** CLOSED 2026-04-26 — todofixes426: `autoReplyEnabled` and message textarea added to SmsVoiceSettings.
+- [x] WEB-W1-030. **3CX keys missing from SmsVoiceSettings.** CLOSED 2026-04-26 — todofixes426: `ComingSoonBadge` with 3CX label rendered in SmsVoiceSettings; keys intentionally dead but visible.
+- [x] WEB-W1-031. **`notification_digest_mode`/`notification_digest_hour` missing from NotificationsSettings.** CLOSED 2026-04-26 — todofixes426: `notification_digest` keys added to `settingsMetadata.ts`; rendered with Coming Soon badge.
+- [x] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection button.** CLOSED 2026-04-26 — todofixes426: `POST /setup/test-smtp` route added to `settings.routes.ts`; `testSmtp` button added to StepEmailSmtp.
+- [x] WEB-W1-035. **Setup wizard: no back navigation between sub-steps.** CLOSED 2026-04-26 — todofixes426: `onBack` props wired to each step (StepWelcome → StepStoreInfo → StepShopType → StepTrialInfo) in SetupPage.
+- [x] WEB-W3-032. **Reports: no PDF export.** CLOSED 2026-04-26 — todofixes426: `sales-report.pdf` route added to `reports.routes.ts`; PDF export button rendered on reports page.
+- [x] WEB-S6-023. **PartnerReportPage: no loading/error state.** CLOSED 2026-04-26 — todofixes426: bare `window.open` replaced with async fetch; spinner shown while generating; toast on error.
+- [x] WEB-S6-017. **CommunicationPage: no email thread view.** CLOSED 2026-04-26 — todofixes426: email tab added to CommunicationPage mainView; `emailApi.threads` endpoint queried; email conversations accessible.
+- [x] WEB-S6-019. **No per-automation detail/edit page.** CLOSED 2026-04-26 — todofixes426: `AutomationDetailPage` added at `/automations/:id`; route registered in App.tsx.
+- [x] WEB-S6-026. **TeamChatPage: no message pagination.** CLOSED 2026-04-26 — todofixes426: "Load older" button added; `olderMessages` prepended via `?before=<oldest_id>` query; `loadOlder` handler implemented.
+- [x] WEB-S6-028. **PerformanceReviewsPage: no pagination on review history.** CLOSED 2026-04-26 — todofixes426: `reviewPage` state added; `limit=20&page=N` passed to review query; paginator rendered under review list.
+- [x] WEB-S6-020. **CampaignsPage: `trigger_rule_json` not editable.** CLOSED 2026-04-26 — todofixes426: `buildTriggerRuleJson` helper + trigger rule builder UI added to CreateCampaignModal; `trigger_rule_json` persisted on save.
+- [x] WEB-S6-021. **CampaignsPage: no campaign edit.** CLOSED 2026-04-26 — todofixes426: edit button per row opens CreateCampaignModal pre-populated via `initialCampaign`; PUT to campaignsApi.update.
+- [x] WEB-S6-022. **SegmentsPage: single-condition rule only — no AND/OR compound.** CLOSED 2026-04-26 — todofixes426: `SegmentRuleCompound` compound condition type added; `conditions[]` array with AND/OR connector serialised to `rule_json`; `crm.routes.ts` evaluates compound rules.
+- [x] WEB-S6-014. **EmployeeListPage: no pay rate display or edit.** CLOSED 2026-04-26 — todofixes426: `PayRateEditor` component added to EmployeeListPage expanded row; pay_rate displayed and editable via PATCH /employees/:id.
+- [x] WEB-W2-035. **No sortable columns or bulk actions on leads list.** CLOSED 2026-04-26 — todofixes426: `sort_by` + `sort_dir` params added to leads route; sortable headers + `bulkAction` checkbox select added to LeadListPage.
+- [x] WEB-W2-036. **`converted` lead status has no outbound transitions.** CLOSED 2026-04-26 — todofixes426: `LEGAL_LEAD_TRANSITIONS` map in `leads.routes.ts` defines allowed transitions from `converted`; server enforces status machine.
+- [x] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** CLOSED 2026-04-26 — todofixes426: `GET /voice/recording/:id` JWT-protected signed-URL proxy added to `voice.routes.ts`; VoiceCallsListPage fetches signed URL before opening.
+- [x] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** CLOSED 2026-04-26 — todofixes426: overlap helper added to `team.routes.ts`; POST/PUT shift routes reject overlapping intervals with 409 error; UI surfaces the error.
+- [x] WEB-W2-031. **Merge search dual-path response shape fragile.** CLOSED 2026-04-26 — todofixes426: CustomerDetailPage merge search result normalised to single shape — `Array.isArray(d) ? d : []` pins to bare array; fragile dual-path removed.
+- [x] WEB-S6-024. **TaxReportPage: date range allows `from > to`.** CLOSED 2026-04-26 — todofixes426: `if (from > to)` validation added before openReport(); toast shown; server no longer called with inverted range.
+- [x] WEB-S6-033. **EmployeeListPage: N+1 clock-in queries per row.** CLOSED 2026-04-26 — todofixes426: `is_clocked_in` + `weekly_hours` added to GET /employees list response; per-row detail fetch eliminated for status display.
+- [x] WEB-S6-034. **CommunicationPage: conversation search client-side only.** CLOSED 2026-04-26 — todofixes426: debounced `q=` param passed to GET /sms/conversations; server-side full-text search across all conversations.
