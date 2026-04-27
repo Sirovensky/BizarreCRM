@@ -233,4 +233,34 @@ public extension APIClient {
     func blockChypProcessPayment(_ request: BlockChypPaymentRequest) async throws -> BlockChypPaymentResponse {
         try await post("/api/v1/blockchyp/process-payment", body: request, as: BlockChypPaymentResponse.self)
     }
+
+    /// §16.5 — `GET /api/v1/blockchyp/terminal-status` — heartbeat ping.
+    ///
+    /// Returns `{ online: Bool, terminal_name: String? }` when the server can
+    /// reach the paired terminal. 501 means the route is not yet live
+    /// (caller renders "unknown" state rather than "offline").
+    func getTerminalHeartbeat() async throws -> BlockChypTerminalStatus {
+        // Server route: packages/server/src/routes/blockchyp.routes.ts
+        // Stub until Hardware SDK wiring (Agent 2).
+        throw APITransportError.httpStatus(501, message: "Coming soon — BLOCKCHYP-HEARTBEAT-001")
+        // return try await get("/api/v1/blockchyp/terminal-status", as: BlockChypTerminalStatus.self)
+    }
+}
+
+// MARK: - Terminal status DTO
+
+/// Response from `GET /api/v1/blockchyp/terminal-status`.
+public struct BlockChypTerminalStatus: Decodable, Sendable {
+    public let online: Bool
+    public let terminalName: String?
+
+    public init(online: Bool, terminalName: String? = nil) {
+        self.online = online
+        self.terminalName = terminalName
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case online
+        case terminalName = "terminal_name"
+    }
 }
