@@ -174,6 +174,8 @@ public struct LeadDetailView: View {
                 if !detail.devices.isEmpty { devicesCard(detail.devices) }
                 if !detail.appointments.isEmpty { appointmentsCard(detail.appointments) }
                 metaCard(detail)
+                // §9.3 Related tickets / estimates + convert-to-estimate
+                LeadRelatedRecordsView(leadId: detail.id, api: api)
                 // §9.3 Activity timeline — calls, SMS, email, appointments, property changes
                 activityTimelineSection(detail)
             }
