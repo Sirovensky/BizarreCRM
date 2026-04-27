@@ -434,6 +434,8 @@ public struct ReportsView: View {
             if !vm.topCustomers.isEmpty {
                 TopCustomersCard(rows: vm.topCustomers)
             }
+            // §15.2 Cohort revenue retention
+            CohortRetentionCard(data: vm.cohortRetention, isLoading: vm.isLoading && vm.cohortRetention == nil)
 
         case .tickets:
             // §15.3 Tickets by status
@@ -474,6 +476,8 @@ public struct ReportsView: View {
             InventoryMovementCard(report: vm.inventoryReport)
             // §15.5 Inventory turnover
             InventoryTurnoverCard(rows: vm.inventoryTurnover)
+            // §15.5 Shrinkage trend
+            ShrinkageTrendCard(report: vm.shrinkageReport)
 
         case .tax:
             // §15.6 Tax collected by class

@@ -55,6 +55,10 @@ public protocol ReportsRepository: Sendable {
     func getAvgTicketValueTrend(from: String, to: String) async throws -> [AvgTicketValueTrendPoint]
     func getConversionFunnel(from: String, to: String) async throws -> ConversionFunnelStats
     func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow]
+    // §15.2 Cohort revenue retention → GET /api/v1/reports/cohort-retention
+    func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData
+    // §15.5 Shrinkage trend → GET /api/v1/reports/inventory-shrinkage
+    func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport
 }
 
 // MARK: - LiveReportsRepository
@@ -498,6 +502,22 @@ public actor LiveReportsRepository: ReportsRepository {
         let r = try await api.get("/api/v1/reports/labor-utilization",
                                   query: dateQuery(from: from, to: to), as: Response.self)
         return r.rows
+    }
+
+    // MARK: - §15.2 Cohort Retention → GET /api/v1/reports/cohort-retention
+
+    public func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData {
+        return try await api.get("/api/v1/reports/cohort-retention",
+                                 query: dateQuery(from: from, to: to),
+                                 as: CohortRetentionData.self)
+    }
+
+    // MARK: - §15.5 Shrinkage Report → GET /api/v1/reports/inventory-shrinkage
+
+    public func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport {
+        return try await api.get("/api/v1/reports/inventory-shrinkage",
+                                 query: dateQuery(from: from, to: to),
+                                 as: ShrinkageReport.self)
     }
 
     // MARK: - Private helpers

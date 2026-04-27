@@ -188,6 +188,18 @@ actor StubReportsRepository: ReportsRepository {
         ConversionFunnelStats(leadsCount: 0, estimatesCount: 0, ticketsCount: 0, invoicesCount: 0, paidCount: 0)
     }
     func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow] { [] }
+
+    // §15.2 Cohort retention stub
+    var cohortRetentionResult: Result<CohortRetentionData, Error> = .success(CohortRetentionData(cohorts: []))
+    func getCohortRetention(from: String, to: String) async throws -> CohortRetentionData {
+        try cohortRetentionResult.get()
+    }
+
+    // §15.5 Shrinkage report stub
+    var shrinkageResult: Result<ShrinkageReport, Error> = .success(ShrinkageReport(rows: []))
+    func getShrinkageReport(from: String, to: String) async throws -> ShrinkageReport {
+        try shrinkageResult.get()
+    }
 }
 
 // MARK: - Actor mutators for tests

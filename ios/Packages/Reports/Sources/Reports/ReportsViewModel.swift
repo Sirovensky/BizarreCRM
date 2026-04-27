@@ -82,6 +82,12 @@ public final class ReportsViewModel {
     public var conversionFunnel: ConversionFunnelStats?
     public var laborUtilization: [LaborUtilizationRow] = []
 
+    // MARK: - §15.2 Cohort revenue retention
+    public var cohortRetention: CohortRetentionData? = nil
+
+    // MARK: - §15.5 Inventory shrinkage trend
+    public var shrinkageReport: ShrinkageReport? = nil
+
     // MARK: - §15.9 Compare periods
     /// The comparison period the user has chosen (nil = no overlay).
     public var comparePeriod: ComparePeriod? = nil
@@ -165,6 +171,10 @@ public final class ReportsViewModel {
             group.addTask { await self.loadLaborUtilization() }
             // §15.9 compare periods — fetch prior window if a period is selected
             group.addTask { await self.loadPriorRevenue() }
+            // §15.2 cohort retention
+            group.addTask { await self.loadCohortRetention() }
+            // §15.5 shrinkage trend
+            group.addTask { await self.loadShrinkageReport() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -524,5 +534,25 @@ public final class ReportsViewModel {
                 from: fromDateString, to: toDateString
             )
         } catch { laborUtilization = [] }
+    }
+
+    // MARK: - §15.2 Cohort retention → GET /api/v1/reports/cohort-retention
+
+    private func loadCohortRetention() async {
+        do {
+            cohortRetention = try await repository.getCohortRetention(
+                from: fromDateString, to: toDateString
+            )
+        } catch { cohortRetention = nil }
+    }
+
+    // MARK: - §15.5 Shrinkage trend → GET /api/v1/reports/inventory-shrinkage
+
+    private func loadShrinkageReport() async {
+        do {
+            shrinkageReport = try await repository.getShrinkageReport(
+                from: fromDateString, to: toDateString
+            )
+        } catch { shrinkageReport = nil }
     }
 }

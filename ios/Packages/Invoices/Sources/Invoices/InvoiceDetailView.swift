@@ -23,6 +23,9 @@ public struct InvoiceDetailView: View {
     @State private var clonedInvoiceId: Int64?
     // §7.2 SMS
     @State private var showSMSSheet = false
+    // §7.4 Post-payment receipt delivery sheet
+    @State private var showReceiptDelivery = false
+    @State private var lastPaymentCents: Int = 0
     // §7.2 Share PDF + AirPrint
     @State private var pdfURL: URL?
     @State private var isGeneratingPDF = false
@@ -66,7 +69,32 @@ public struct InvoiceDetailView: View {
                         balanceCents: balanceCents,
                         customerId: inv.customerId
                     )
-                ) { _ in Task { await vm.load() } }
+                ) { result in
+                    // §7.4 After successful payment, offer receipt delivery options.
+                    let paid = Int(((result.amountPaid ?? 0) * 100).rounded())
+                    lastPaymentCents = paid > 0 ? paid : balanceCents
+                    Task {
+                        await vm.load()
+                        showPaySheet = false
+                        showReceiptDelivery = true
+                    }
+                }
+            }
+        }
+        // §7.4 Post-payment receipt delivery sheet (print / email / SMS / PDF).
+        .sheet(isPresented: $showReceiptDelivery) {
+            if case let .loaded(inv) = vm.state {
+                InvoiceReceiptDeliverySheet(
+                    vm: InvoiceReceiptDeliveryViewModel(
+                        invoiceId: inv.id,
+                        invoiceNumber: inv.orderId ?? "INV-\(inv.id)",
+                        customerEmail: inv.customerEmail,
+                        customerPhone: inv.customerPhone,
+                        paymentCents: lastPaymentCents,
+                        repository: InvoiceReceiptDeliveryRepositoryImpl(api: api)
+                    ),
+                    invoice: inv
+                ) { Task { await vm.load() } }
             }
         }
         .sheet(isPresented: $showRefundSheet) {
