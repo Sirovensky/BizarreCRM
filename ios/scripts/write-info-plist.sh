@@ -73,6 +73,10 @@ cat > "${PLIST}" <<'PLIST_EOF'
         <string>remote-notification</string>
         <string>processing</string>
         <string>fetch</string>
+        <!-- §42.4 PushKit VoIP — wakes app on incoming call push; unblocks Agent 7 CallKit + Agent 2 PushKit -->
+        <string>voip</string>
+        <!-- §17 Discovered[Agent 2→10]: CoreBluetooth state-restoration for BluetoothBackgroundManager -->
+        <string>bluetooth-central</string>
     </array>
 
     <key>UILaunchScreen</key>
@@ -115,6 +119,9 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <string>Verify you are at the shop when clocking in.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Discover your shop server and payment terminal on the local network.</string>
+    <!-- §28.5 NFC — device serial / waiver tag scanning -->
+    <key>NFCReaderUsageDescription</key>
+    <string>Read device serial tags attached to items under repair.</string>
     <!-- §17 / Discovered[Agent 2→10]: NWBrowser requires NSBonjourServices on iOS 14+ -->
     <key>NSBonjourServices</key>
     <array>

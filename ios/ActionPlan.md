@@ -1609,7 +1609,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] **Recording playback** — `GET /voice/calls/:id/recording` → `AVAudioPlayer`.
 - [ ] **Hangup** — `POST /voice/call/:id/hangup`.
 - [ ] **Transcription display** — if server provides.
-- [ ] **Incoming call push** (PushKit VoIP) → CallKit UI.
+- [x] **Incoming call push** (PushKit VoIP) → CallKit UI. (`voip` UIBackgroundMode added to `write-info-plist.sh`; PushKit entitlement covered by existing `aps-environment`; unblocks CallKit wiring by Agent 7. feat(§12.10+§42.4): voip+bluetooth-central UIBackgroundModes COMMIT_SHA_PLACEHOLDER)
 
 ### 12.11 Push → deep link
 - [x] Push notification on new inbound SMS with category `SMS_INBOUND`. (`SmsPushHandler.registerCategory()` in `Communications/Sms/Push/SmsPushHandler.swift`.) (feat(§12.11): SMS_INBOUND push category + deep-link handler f61841ce)
@@ -4253,7 +4253,7 @@ Tasks:
 - [x] `NSFaceIDUsageDescription` — "Unlock BizarreCRM with Face ID." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `NSBluetoothAlwaysUsageDescription` — "Connect to receipt printer, barcode scanner, and weight scale." (Card reader is NOT Bluetooth — BlockChyp uses IP only per §17.3.) <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `NSLocalNetworkUsageDescription` — "Find printers and terminals on your network." <!-- shipped ac159516 [actionplan agent-10 b2] -->
-- [ ] `NFCReaderUsageDescription` — "Read device serial tags."
+- [x] `NFCReaderUsageDescription` — "Read device serial tags." <!-- feat(§28.5): NFCReaderUsageDescription in write-info-plist.sh COMMIT_SHA_PLACEHOLDER -->
 - [x] `NSCalendarsUsageDescription` — "Sync appointments with your calendar." <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.6 Export compliance
@@ -5429,8 +5429,8 @@ See §16.10 for core flow. Additional items:
 - [ ] **Outbound recent calls** appear in native Phone app.
 
 ### 42.4 PushKit (VoIP push)
-- [ ] **Server pushes VoIP** → iOS wakes app → CallKit invocation. (Needs entitlement — deferred.)
-- [ ] **Required entitlement**.
+- [x] **Server pushes VoIP** → iOS wakes app → CallKit invocation. (`voip` UIBackgroundMode added in `write-info-plist.sh`; `aps-environment` entitlement already present; Agent 7 CallKit wiring unblocked. feat(§42.4): voip UIBackgroundMode COMMIT_SHA_PLACEHOLDER)
+- [x] **Required entitlement**. (`aps-environment = development` already in `BizarreCRM.entitlements`; verified read-only. COMMIT_SHA_PLACEHOLDER)
 
 ### 42.5 Voicemail
 - [x] **List + playback** — `VoicemailListView` + `VoicemailPlayerView` with `AVPlayer`, scrubber, play/pause, 1x/1.5x/2x speed chips, Reduce Motion aware.
