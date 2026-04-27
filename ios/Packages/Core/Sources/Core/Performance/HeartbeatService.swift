@@ -41,7 +41,9 @@ public actor HeartbeatService {
 
     // MARK: — Init
 
-    private init() {}
+    /// Private production init — use `HeartbeatService.shared` at app level.
+    /// Tests use the `@testable` accessor to create isolated instances.
+    init() {}
 
     // MARK: — Lifecycle
 
