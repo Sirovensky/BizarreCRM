@@ -103,9 +103,21 @@ interface SegmentRow {
 }
 
 type ComparisonOp = '>' | '>=' | '<' | '<=' | '=' | '!=';
-interface SegmentRule {
+/** Single-condition leaf: { field: { op: value } } */
+interface SegmentRuleLeaf {
   [field: string]: { [op in ComparisonOp]?: string | number };
 }
+/**
+ * Compound rule: { op: 'and'|'or', conditions: SegmentRuleLeaf[] }
+ * Allows multi-condition segments like "LTV > 50000 AND days-since > 90".
+ * The flat legacy form (single or multi-field object) is still accepted for
+ * backward compatibility with seeded auto-segments.
+ */
+interface SegmentRuleCompound {
+  op: 'and' | 'or';
+  conditions: SegmentRuleLeaf[];
+}
+type SegmentRule = SegmentRuleLeaf | SegmentRuleCompound;
 
 // -----------------------------------------------------------------------------
 // Health score endpoints
@@ -738,17 +750,12 @@ const SEGMENT_FIELD_EXPRESSIONS: Record<string, string> = {
     "CAST(ABS(julianday(strftime('%Y','now') || '-' || c.birthday) - julianday('now')) AS INTEGER)",
 };
 
-function parseSegmentRule(ruleJson: string): SegmentRule {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(ruleJson);
-  } catch {
-    throw new AppError('rule must be valid JSON', 400);
+/** Validate a single leaf rule object (flat field-op-value form). */
+function validateLeaf(leaf: unknown, context: string): SegmentRuleLeaf {
+  if (!leaf || typeof leaf !== 'object' || Array.isArray(leaf)) {
+    throw new AppError(`${context} must be an object`, 400);
   }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new AppError('rule must be an object', 400);
-  }
-  const rule = parsed as SegmentRule;
+  const rule = leaf as SegmentRuleLeaf;
   for (const field of Object.keys(rule)) {
     if (!(field in SEGMENT_FIELD_EXPRESSIONS)) {
       throw new AppError(`rule field '${field}' is not allowed`, 400);
@@ -764,19 +771,49 @@ function parseSegmentRule(ruleJson: string): SegmentRule {
   return rule;
 }
 
+function parseSegmentRule(ruleJson: string): SegmentRule {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(ruleJson);
+  } catch {
+    throw new AppError('rule must be valid JSON', 400);
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new AppError('rule must be an object', 400);
+  }
+  // Detect compound form: { op: 'and'|'or', conditions: [...] }
+  const obj = parsed as Record<string, unknown>;
+  if ('op' in obj && 'conditions' in obj) {
+    if (obj.op !== 'and' && obj.op !== 'or') {
+      throw new AppError("rule.op must be 'and' or 'or'", 400);
+    }
+    if (!Array.isArray(obj.conditions) || obj.conditions.length === 0) {
+      throw new AppError('rule.conditions must be a non-empty array', 400);
+    }
+    if (obj.conditions.length > 10) {
+      throw new AppError('rule.conditions may not exceed 10 entries', 400);
+    }
+    const conditions = obj.conditions.map((c: unknown, i: number) =>
+      validateLeaf(c, `rule.conditions[${i}]`),
+    );
+    return { op: obj.op as 'and' | 'or', conditions };
+  }
+  // Legacy flat form: { field: { op: value }, ... }
+  return validateLeaf(parsed, 'rule');
+}
+
 /**
- * Translate a parsed rule into a parameterised WHERE clause over customers c.
- * Returns { whereSql, params }. Never splices user strings into SQL directly.
+ * Build WHERE clauses for a single leaf rule (flat field-op-value form).
  */
-function buildSegmentWhere(rule: SegmentRule): { whereSql: string; params: unknown[] } {
+function buildLeafWhere(leaf: SegmentRuleLeaf): { clauses: string[]; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
-  for (const [field, ops] of Object.entries(rule)) {
+  for (const [field, ops] of Object.entries(leaf)) {
     const expr = SEGMENT_FIELD_EXPRESSIONS[field];
     if (!expr) continue;
     for (const [op, value] of Object.entries(ops)) {
       if (!SEGMENT_OPS.includes(op as ComparisonOp)) continue;
-      // Ensure birthday_window_days NULL → excluded (LIKE check below).
+      // Ensure birthday_window_days NULL → excluded.
       if (field === 'birthday_window_days') {
         clauses.push(`(c.birthday IS NOT NULL AND ${expr} ${op} ?)`);
       } else {
@@ -785,6 +822,31 @@ function buildSegmentWhere(rule: SegmentRule): { whereSql: string; params: unkno
       params.push(value);
     }
   }
+  return { clauses, params };
+}
+
+/**
+ * Translate a parsed rule into a parameterised WHERE clause over customers c.
+ * Returns { whereSql, params }. Never splices user strings into SQL directly.
+ * Supports both the flat legacy form and the compound { op, conditions } form.
+ */
+function buildSegmentWhere(rule: SegmentRule): { whereSql: string; params: unknown[] } {
+  // Compound form: { op: 'and'|'or', conditions: [...] }
+  if ('op' in rule && 'conditions' in rule) {
+    const compound = rule as SegmentRuleCompound;
+    const allClauses: string[] = [];
+    const allParams: unknown[] = [];
+    for (const leaf of compound.conditions) {
+      const { clauses, params } = buildLeafWhere(leaf);
+      allClauses.push(...clauses);
+      allParams.push(...params);
+    }
+    if (allClauses.length === 0) return { whereSql: '1=1', params: [] };
+    const joiner = compound.op === 'or' ? ' OR ' : ' AND ';
+    return { whereSql: allClauses.join(joiner), params: allParams };
+  }
+  // Legacy flat form
+  const { clauses, params } = buildLeafWhere(rule as SegmentRuleLeaf);
   if (clauses.length === 0) return { whereSql: '1=1', params: [] };
   return { whereSql: clauses.join(' AND '), params };
 }
