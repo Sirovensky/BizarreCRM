@@ -6,6 +6,8 @@ import Networking
 
 // MARK: - CouponListViewModel
 
+/// §16 — ViewModel for the admin coupon management screen.
+/// All API calls go through `CouponRepository` (§20 containment).
 @MainActor
 @Observable
 public final class CouponListViewModel {
@@ -26,10 +28,16 @@ public final class CouponListViewModel {
     public var generateCount: String = "10"
     public var generatePrefix: String = ""
 
-    private let api: APIClient
+    private let repository: any CouponRepository
 
-    public init(api: APIClient) {
-        self.api = api
+    /// Designated init — accepts any `CouponRepository` (live or test double).
+    public init(repository: any CouponRepository) {
+        self.repository = repository
+    }
+
+    /// Convenience init for live production use.
+    public convenience init(api: APIClient) {
+        self.init(repository: CouponRepositoryImpl(api: api))
     }
 
     // MARK: - Actions
@@ -37,7 +45,7 @@ public final class CouponListViewModel {
     public func load() async {
         loadState = .loading
         do {
-            coupons = try await api.get("/coupons", as: [CouponCode].self)
+            coupons = try await repository.listCoupons()
             loadState = .loaded
         } catch {
             loadState = .error(error.localizedDescription)
@@ -54,23 +62,17 @@ public final class CouponListViewModel {
             prefix: generatePrefix.isEmpty ? nil : generatePrefix
         )
         do {
-            let new = try await api.post("/coupons/batch", body: req, as: [CouponCode].self)
+            let new = try await repository.batchGenerate(request: req)
             coupons = new + coupons
             showGenerateSheet = false
         } catch {
-            // Surface error via alert in view
+            // Surface error via view-level alert
         }
     }
 
     public func markExpired(coupon: CouponCode) async {
         do {
-            // PATCH /coupons/:id  { expires_at: now }
-            struct ExpireBody: Codable, Sendable {
-                let expiresAt: String
-                enum CodingKeys: String, CodingKey { case expiresAt = "expires_at" }
-            }
-            let body = ExpireBody(expiresAt: ISO8601DateFormatter().string(from: .now))
-            let updated = try await api.patch("/coupons/\(coupon.id)", body: body, as: CouponCode.self)
+            let updated = try await repository.markExpired(couponId: coupon.id)
             coupons = coupons.map { $0.id == coupon.id ? updated : $0 }
         } catch {
             // Handled by view-level alert
@@ -79,7 +81,7 @@ public final class CouponListViewModel {
 
     public func delete(coupon: CouponCode) async {
         do {
-            try await api.delete("/coupons/\(coupon.id)")
+            try await repository.deleteCoupon(id: coupon.id)
             coupons = coupons.filter { $0.id != coupon.id }
         } catch { }
     }

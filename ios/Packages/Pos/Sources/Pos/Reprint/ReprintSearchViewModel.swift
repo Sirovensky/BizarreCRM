@@ -12,6 +12,7 @@ import Networking
 /// **State machine:**
 /// `.idle` → user types → `.searching` → API returns → `.results([])` or `.results([…])` or `.error(…)`.
 /// Debounce: 400 ms so we don't hammer the server on every keystroke.
+/// API calls go through `ReprintRepository` (§20 containment).
 @MainActor
 @Observable
 public final class ReprintSearchViewModel {
@@ -32,15 +33,21 @@ public final class ReprintSearchViewModel {
 
     // MARK: - Dependencies
 
-    private let api: APIClient
+    private let repository: any ReprintRepository
 
     // MARK: - Private
 
     private var debounceTask: Task<Void, Never>?
     private let debounceInterval: Duration = .milliseconds(400)
 
-    public init(api: APIClient) {
-        self.api = api
+    /// Designated init — accepts any `ReprintRepository`.
+    public init(repository: any ReprintRepository) {
+        self.repository = repository
+    }
+
+    /// Convenience init for live production use.
+    public convenience init(api: APIClient) {
+        self.init(repository: ReprintRepositoryImpl(api: api))
     }
 
     // MARK: - Public API
@@ -81,15 +88,14 @@ public final class ReprintSearchViewModel {
         }
     }
 
-    // MARK: - API call
+    // MARK: - Repository call (§20 containment — no direct APIClient here)
 
     private func performSearch(query: String) {
         searchState = .searching
         Task { [weak self] in
             guard let self else { return }
             do {
-                let queryItems = [URLQueryItem(name: "q", value: query)]
-                let results = try await api.get("/sales/search", query: queryItems, as: [SaleSummary].self)
+                let results = try await repository.searchSales(query: query)
                 self.searchState = .results(results)
                 AppLog.pos.info("ReprintSearchVM: \(results.count, privacy: .public) results for query")
             } catch {

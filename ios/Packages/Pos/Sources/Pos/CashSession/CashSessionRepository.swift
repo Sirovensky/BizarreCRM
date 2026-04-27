@@ -13,6 +13,14 @@ public struct RegisterStateDTO: Decodable, Sendable {
     public let cashSales: Int       // cents from cash tender payments today
     public let net: Int             // cashIn + cashSales - cashOut
     public let entries: [RegisterEntryDTO]
+
+    public init(cashIn: Int, cashOut: Int, cashSales: Int, net: Int, entries: [RegisterEntryDTO]) {
+        self.cashIn = cashIn
+        self.cashOut = cashOut
+        self.cashSales = cashSales
+        self.net = net
+        self.entries = entries
+    }
 }
 
 public struct RegisterEntryDTO: Decodable, Sendable, Identifiable {
@@ -22,6 +30,15 @@ public struct RegisterEntryDTO: Decodable, Sendable, Identifiable {
     public let reason: String?
     public let userName: String?
     public let createdAt: String?
+
+    public init(id: Int, type: String, amount: Int, reason: String?, userName: String?, createdAt: String?) {
+        self.id = id
+        self.type = type
+        self.amount = amount
+        self.reason = reason
+        self.userName = userName
+        self.createdAt = createdAt
+    }
 }
 
 /// Request body for `POST /pos/cash-in` and `POST /pos/cash-out`.
