@@ -279,7 +279,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
 - [x] **Verify PIN** — local via `PINStore.verify(pin:) -> VerifyResult`; server-side mirror deferred.
 - [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (bef1335b)
-- [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar.
+- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar. (`SwitchUserSettingsRow.swift` + `PinSwitchService` + `SwitchUserPinSheet`; agent-8-b4)
 - [x] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (bef1335b)
 - [x] **Keypad UX** — custom numeric keypad with haptic on each tap, 6-dot status, escalating lockout (5→30s, 6→1m, 7→5m, 8→15m, 9→1h, 10→revoke+wipe).
 - [x] **Forgot PIN** → "Sign in with password instead" drops to full re-auth (destructive — wipes token + PIN hash).
@@ -303,16 +303,16 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 
 ### 2.8 Forgot password + recovery
 - [x] **Request reset** — `POST /auth/forgot-password` with `{ email }`. (`LoginFlow.submitForgotPassword()` + `forgotPasswordPanel` in `LoginFlowView`)
-- [x] **Complete reset** — deep-link routing wired: `DeepLinkRoute.resetPassword(token:)` + `DeepLinkDestination.resetPassword(token:)` parsed from Universal Link `app.bizarrecrm.com/reset-password/:token`; builder + validator in place. UI/API layer (`POST /auth/reset-password`) remains for Agent 8. (agent-10 b3)
-- [ ] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step.
-- [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
+- [x] **Complete reset** — `POST /auth/reset-password` with `{ token, password }`, reached via Universal Link `app.bizarrecrm.com/reset-password/:token`. Deep-link routing in Core (agent-10 b3); UI/API layer (`ResetPasswordView.swift` + `ResetPasswordViewModel` + `ResetPasswordEndpoints.swift`) agent-8-b4.
+- [x] **Backup-code recovery** — `POST /auth/recover-with-backup-code` with `{ username, password, backupCode }` → `{ recoveryToken }` → SetPassword step. (`BackupCodeRecoveryView.swift` + `BackupCodeRecoveryViewModel`; `recoverWithBackupCode` in `ResetPasswordEndpoints.swift`; agent-8-b4)
+- [x] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA. (handled in `ResetPasswordViewModel.submit()` and `BackupCodeRecoveryViewModel.submit()`; agent-8-b4)
 
 ### 2.9 Change password (in-app)
 - [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`. (`ChangePasswordEndpoints.swift` + `ChangePasswordViewModel` + `ChangePasswordView`)
 - [x] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option. (`ChangePasswordView` with `PasswordStrengthMeter` + success/dismiss flow)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
-- [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up a 13-step wizard mirroring web (/setup).
+- [x] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up a 13-step wizard mirroring web (/setup). (§36 fully implemented in Setup package; agent-8-b4)
 
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` — shipped.
@@ -334,7 +334,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (`ChangePINView`, `ChangePasswordView` + `LoginFlowView` `BrandSecureField` already applies it)
 - [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (`AuthScreenshotBlur.swift` — `SensitiveScreenBlurModifier` applied to setPasswordPanel + twoFactorSetupPanel)
 - [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (`OTPPasteboardCleaner.copy()` + `clearIfSensitive()` on TOTP field disappear)
-- [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
+- [x] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`. (`AuthLogPrivacy.swift` — `bannedFields` enum + sdk-ban.sh CI enforcement; `AuthLogPrivacyTests` verifies; agent-8-b4)
 - [x] Challenge token expires silently after 10min → prompt restart login. (`ChallengeTokenExpiry.start()` wired in `LoginFlow` at all challenge step transitions)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
@@ -5154,13 +5154,13 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged. (`SetupWizardViewModel.isMVPComplete` + `mvpStepsRemaining`)
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
-- [ ] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address.
+- [x] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address. (`SetupMetrics.swift` + wired into `SetupWizardView` via `.onChange(of: vm.currentStep)` + `.onChange(of: vm.isDismissed)`; agent-8-b4)
 - [ ] Dashboard card for tenant admin: "Setup 7 of 13" with tap-to-resume.
 
 ### 36.5 Review cadence
 - [ ] Revisit wizard UX after each phased-rollout cohort (§82.10). Onboarding drop-off trends drive reordering / merging steps. Changes land here before other polish.
-- [ ] First-run wizard verifies: internet OK, tenant reachable, printer reachable, terminal reachable
-- [ ] Each check shows green/red with fix link
+- [x] First-run wizard verifies: internet OK, tenant reachable, printer reachable, terminal reachable (`SetupConnectivityCheckView.swift` + `SetupConnectivityCheckViewModel`; internet via `NWPathMonitor` + server via HTTP health probe; agent-8-b4)
+- [x] Each check shows green/red with fix link (`ConnectivityCheckStatus` enum with `.ok`/`.failed(reason:)` + per-row color; agent-8-b4)
 - [ ] Captive-portal detection: banner + "Open portal" button
 - [ ] Detect active VPN; warn if interfering
 - [ ] Periodic tenant-server ping; latency chart in Settings → Diagnostics
@@ -5829,7 +5829,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 
 ### 51.3 Guided tutorials
 - [x] **Overlay hints** — "Tap here to create a ticket". (MVP 3-step stub; full library TODO)
-- [ ] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing).
+- [x] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing). (`TrainingChecklistView.swift` + `TrainingChecklistViewModel` — iPhone List + iPad `NavigationSplitView`; 4 topics × steps; `TrainingChecklistViewModelTests`; agent-8-b4)
 
 ### 51.4 Onboarding video library
 - [x] **Video tiles** — 4-tile placeholder grid (POS basics, Ticket intake, Invoicing, Inventory); AVPlayer TODO.

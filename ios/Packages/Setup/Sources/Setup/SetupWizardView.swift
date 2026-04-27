@@ -27,6 +27,21 @@ public struct SetupWizardView: View {
             }
         }
         .task { await vm.loadServerState() }
+        // §36.4 Setup wizard metrics — track step entry times and drop-off
+        .onAppear {
+            SetupMetrics.shared.stepEntered(vm.currentStep.rawValue)
+        }
+        .onChange(of: vm.currentStep) { old, new in
+            SetupMetrics.shared.onStepChange(from: old.rawValue, to: new.rawValue)
+        }
+        .onChange(of: vm.isDismissed) { _, dismissed in
+            if dismissed {
+                SetupMetrics.shared.wizardDeferred(
+                    atStep: vm.currentStep.rawValue,
+                    completedSteps: vm.completedSteps
+                )
+            }
+        }
     }
 
     // MARK: - Adaptive layout dispatcher
