@@ -1,6 +1,25 @@
 import Foundation
 import Core
 
+// MARK: - ReadStrategy (§20.1)
+
+/// Controls how a `CachedRepository` satisfies a read request.
+///
+/// - `networkOnly`: Skip local cache; fetch fresh from server. Fails offline.
+/// - `cacheOnly`: Return local GRDB data only; never attempt a network call.
+///   Use for guaranteed-offline screens.
+/// - `cacheFirst`: Return local data immediately; if stale, refresh in the
+///   background (default). Best for most interactive lists.
+/// - `cacheThenNetwork`: Return local data immediately AND fire a remote
+///   refresh unconditionally; UI re-renders when refresh completes
+///   (stale-while-revalidate pattern).
+public enum ReadStrategy: String, Sendable, CaseIterable {
+    case networkOnly
+    case cacheOnly
+    case cacheFirst
+    case cacheThenNetwork
+}
+
 // MARK: - CacheSource
 
 /// Where the data in a `CachedResult` came from.
