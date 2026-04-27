@@ -586,11 +586,11 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Base list + filter chips + search — shipped.
 - [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
 - [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
-- [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
+- [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
 - [ ] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
-- [ ] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
+- [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
 - [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
-- [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
+- [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
 - [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
 - [ ] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete.
 - [ ] **Context menu** — Open, Copy order ID (`.textSelection(.enabled)` preview), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF.
@@ -624,14 +624,14 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
-- [ ] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
+- [x] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
-- [ ] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
-- [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
+- [x] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
+- [x] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
 - [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
 - [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
-- [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
+- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
 
 ### 4.3 Create — full-fidelity multi-step
@@ -667,15 +667,15 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
 - [x] **Offline enqueue** — network failure routes to `ticket.update` with `entityServerId`; `TicketSyncHandlers` replays on reconnect.
 - [x] **Expanded fields** — notes, estimated cost, priority, tags, discount, source, referral, due_on, customer reassign, state-transition picker, archive. `TicketEditDeepView` + `TicketEditDeepViewModel` with draft auto-save + iPad side-by-side layout. Reassign via `PATCH /tickets/:id/assign`; archive via `POST /tickets/:id/archive`.
-- [ ] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast).
+- [x] **Optimistic UI** with rollback on failure (revert local mutation + glass error toast).
 - [ ] **Audit log** entries streamed back into timeline.
-- [ ] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
-- [ ] **Delete** — destructive confirm; soft-delete server-side.
+- [x] **Concurrent-edit** detection — server returns 409 on stale `updated_at`; UI shows "This ticket changed. Reload to merge." banner.
+- [x] **Delete** — destructive confirm; soft-delete server-side.
 
 ### 4.5 Ticket actions
-- [ ] **Convert to invoice** — `POST /tickets/:id/convert-to-invoice` → jumps to new invoice detail; prefill ticket line items; respect deposit credit.
+- [x] **Convert to invoice** — `POST /tickets/:id/convert-to-invoice` → jumps to new invoice detail; prefill ticket line items; respect deposit credit.
 - [ ] **Attach to existing invoice** — picker; append line items.
-- [ ] **Duplicate ticket** — same customer + device + clear status.
+- [x] **Duplicate ticket** — same customer + device + clear status.
 - [x] **Merge tickets** — pick a duplicate candidate (search dialog); confirm; server merges notes / photos / devices. `TicketMergeViewModel` + `TicketMergeView` (iPad 3-col / iPhone sheet) + `TicketMergeCandidatePicker`. `POST /tickets/merge`. Commit `feat(ios post-phase §4)`.
 - [x] **Split ticket** — multi-select device lines → move to new ticket (customer inherited). `TicketSplitViewModel` + `TicketSplitView` (checkbox per device, "Create N new tickets" button). `POST /tickets/:id/split`. Commit `feat(ios post-phase §4)`.
 - [ ] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged.
@@ -698,7 +698,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Commit** via `PATCH /tickets/:id/status`; sheet highlights current status with a check, dismisses + refreshes detail on success.
 - [x] **State machine** — `TicketStateMachine` + `TicketStatus` (9 states) + `TicketTransition` (9 actions) in `StateMachine/TicketStateMachine.swift`. `TicketStatusTransitionSheet` shows only allowed transitions; Confirm disabled when illegal. 51 unit tests, 100% transition coverage.
 - [x] **Timeline events** — `TicketTimelineView` + `TicketTimelineViewModel` load `GET /tickets/:id/events`; fallback to embedded `history` on 404/network. Vertical timeline with circle connectors, kind icons, diff chips, Reduce Motion support, full a11y labels. Wired into `TicketDetailView` as sheet + inline preview.
-- [ ] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
+- [x] **Color chip** from server hex — `color` field is wired through the DTO but the row doesn't render it yet.
 - [ ] **Transition guards** — some transitions require: note added, photos taken, checklist signed, QC sign-off. Frontend enforces + server validates.
 - [x] **QC sign-off modal** — signature capture (PencilKit `PKCanvasView`), comments, "Work complete" confirm. `TicketSignOffView` + `TicketSignOffViewModel` (GPS if allowed, base-64 PNG, ISO-8601 timestamp). `POST /tickets/:id/sign-off`. Receipt PDF download. Shown when status contains "pickup". Commit `feat(ios post-phase §4)`.
 - [ ] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview.
