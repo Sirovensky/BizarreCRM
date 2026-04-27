@@ -180,4 +180,9 @@ public extension APIClient {
     func bulkDeleteCustomers(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
         try await post("/api/v1/customers/bulk-delete", body: req, as: BulkOperationResult.self)
     }
+
+    /// `DELETE /api/v1/customers/:id` — permanently delete a single customer (§5.2).
+    func deleteCustomer(id: Int64) async throws {
+        try await delete("/api/v1/customers/\(id)")
+    }
 }
