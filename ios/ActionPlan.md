@@ -243,9 +243,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
 ### 2.1 Setup-status probe
-- [ ] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form.
-- [ ] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login.
-- [ ] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen.
+- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form. (ecb07902 — SetupStatusProbe.swift)
+- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (ecb07902 — SetupStatusProbe.swift)
+- [x] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen. (ecb07902 — SetupStatusProbe.swift)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage — shipped.
@@ -272,15 +272,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
-- [ ] **Paste-from-clipboard** auto-detect 6-digit string.
+- [x] **Paste-from-clipboard** auto-detect 6-digit string. (ecb07902 — OTPClipboardWatcher.swift)
 - [x] Confirmed removed 2026-04-23 (commit 8270aea) — self-service 2FA disable UI + endpoint wiring ripped from iOS per security policy. Legitimate recovery remains via backup-code flow (`POST /auth/recover-with-backup-code` — atomic password + 2FA reset) and super-admin force-disable (`POST /tenants/:slug/users/:id/force-disable-2fa` — Step-Up TOTP gated). **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
 - [x] **Verify PIN** — local via `PINStore.verify(pin:) -> VerifyResult`; server-side mirror deferred.
-- [ ] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`.
-- [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar.
-- [ ] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action.
+- [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (ecb07902 — ChangePINView.swift + APIClient+Auth.swift)
+- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar. (ecb07902 — SwitchUserSettingsRow.swift)
+- [x] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (ecb07902 — LockTriggerManager.swift)
 - [x] **Keypad UX** — custom numeric keypad with haptic on each tap, 6-dot status, escalating lockout (5→30s, 6→1m, 7→5m, 8→15m, 9→1h, 10→revoke+wipe).
 - [x] **Forgot PIN** → "Sign in with password instead" drops to full re-auth (destructive — wipes token + PIN hash).
 - [x] **iPad layout** — keypad centered in `.brandGlass` card, max-width 420, not full-width.
@@ -289,9 +289,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`.
 - [x] **Enable toggle** — login-offer step persists via `BiometricPreference`. Settings toggle follow-up.
 - [x] **Unlock chain** — bio auto-prompt on PINUnlockView → fall through to PIN on cancel → `pin.reauth` on revoke.
-- [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`.
+- [x] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`. (ecb07902 — BiometricLoginShortcut.swift pre-existing, BiometricCredentialStore.swift)
 - [x] **Respect disabled biometry** gracefully — `BiometricGate.isAvailable` + `kind` guards every call; PIN keypad stays available.
-- [ ] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed).
+- [x] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed). (ecb07902 — BiometricReenrollPrompt.swift)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
 - [ ] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
@@ -308,8 +308,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA.
 
 ### 2.9 Change password (in-app)
-- [ ] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`.
-- [ ] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option.
+- [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`. (ecb07902 — APIClient+Auth.swift)
+- [x] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option. (ecb07902 — ChangePasswordView.swift)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
 - [ ] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up a 13-step wizard mirroring web (/setup).
@@ -317,25 +317,25 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` — shipped.
 - [x] **Refresh-and-retry** on 401 — single-flight `Task<Bool, Error>` in `APIClient.refreshSessionOnce()`; concurrent 401s await the same task, retry replays with the new bearer, refresh failure posts `SessionEvents.sessionRevoked`.
-- [ ] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`.
+- [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`. (ecb07902 — ColdStartValidator.swift + APIClient+Auth.swift)
 - [x] **Logout** — `POST /auth/logout` via `APIClient.logout()`; best-effort server call + local wipe (TokenStore + PINStore + BiometricPreference + bearer); optional ServerURLStore clear via Settings → "Change shop".
 - [ ] **Active sessions** (stretch) — if server exposes session list.
-- [ ] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`.
+- [x] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`. (ecb07902 — SessionRevokedBanner.swift)
 
 ### 2.12 Error / empty states
-- [ ] Wrong password → inline error + shake animation + `.error` haptic.
-- [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address.
-- [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
-- [ ] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`).
-- [ ] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only).
-- [ ] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
+- [x] Wrong password → inline error + shake animation + `.error` haptic. (ecb07902 — LoginErrorStates.swift ShakeEffect)
+- [x] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address. (ecb07902 — LoginErrorStates.swift AccountLockedAlert)
+- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (ecb07902 — LoginErrorStates.swift; handled in LoginFlow.submitServer existing + error copy)
+- [x] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`). (ecb07902 — LoginErrorStates.swift RateLimitBanner)
+- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (ecb07902 — LoginErrorStates.swift OfflineLoginNotice)
+- [x] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (ecb07902 — LoginErrorStates.swift TLSPinFailureAlert)
 
 ### 2.13 Security polish
-- [ ] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds.
-- [ ] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`).
-- [ ] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`).
+- [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (ecb07902 — AuthPrivacyModifiers.swift BackgroundRedactionModifier)
+- [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (ecb07902 — AuthPrivacyModifiers.swift ScreenCaptureBlurModifier)
+- [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (ecb07902 — AuthPrivacyModifiers.swift OTPPasteboardCleaner)
 - [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
-- [ ] Challenge token expires silently after 10min → prompt restart login.
+- [x] Challenge token expires silently after 10min → prompt restart login. (ecb07902 — AuthPrivacyModifiers.swift ChallengeTokenExpiryModifier)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
 - [ ] Requires device passcode + management PIN to enable/disable
@@ -5148,9 +5148,9 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
 ### 36.3 Persistence
-- [ ] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard.
-- [ ] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking).
-- [ ] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step.
+- [x] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard. (ecb07902 — SetupResumeCard.swift)
+- [x] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking). (ecb07902 — SetupResumeCard.swift + SetupWizardViewModel.deferWizard existing)
+- [x] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step. (ecb07902 — SetupCrossDeviceResumer.swift)
 - [ ] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged.
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
@@ -5829,7 +5829,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 
 ### 51.3 Guided tutorials
 - [x] **Overlay hints** — "Tap here to create a ticket". (MVP 3-step stub; full library TODO)
-- [ ] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing).
+- [x] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing). (ecb07902 — TutorialChecklist.swift; 4 topics × 5 steps + TutorialCompletionStore)
 
 ### 51.4 Onboarding video library
 - [x] **Video tiles** — 4-tile placeholder grid (POS basics, Ticket intake, Invoicing, Inventory); AVPlayer TODO.
@@ -6752,8 +6752,8 @@ No in-app live switcher. Sign out + sign in handles tenant change. Keychain cach
 ### 79.1 What stays
 - [x] **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
 - [x] **Last-used persistence** — Keychain stores `activeTenantId`; `TenantStore.load()` reconciles on startup.
-- **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick.
-- **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants).
+- [x] **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick. (ecb07902 — RecentServersStore.swift + RecentServersRow.swift)
+- [x] **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants). (ecb07902 — APIClient+Tenant.swift registerDeviceToken/unregisterDeviceToken)
 
 ### 79.2 What is dropped
 - Concurrent per-tenant sessions.
