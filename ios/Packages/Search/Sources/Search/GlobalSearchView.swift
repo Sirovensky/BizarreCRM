@@ -71,14 +71,26 @@ public final class GlobalSearchViewModel {
     // MARK: - Private fetch
 
     private func fetchLocal() async {
-        guard let store = ftsStore else { return }
+        // §18.1 BUG-FIX: Guard nil FTSIndexStore early — prevent crash when
+        // FTS5 schema migration hasn't run on first install.
+        guard let store = ftsStore else {
+            AppLog.ui.debug("GlobalSearchViewModel: no FTSIndexStore; local search skipped")
+            return
+        }
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
         let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
-        async let hitsResult = store.search(query: query, entity: filter, limit: 50)
-        async let countsResult = store.scopeCounts(query: query)
-        let (hits, counts) = (try? await (hitsResult, countsResult)) ?? ([], .zero)
-        localHits = hits
-        scopeCounts = counts
-        updateMergedRows()
+        do {
+            async let hitsResult = store.search(query: trimmed, entity: filter, limit: 50)
+            async let countsResult = store.scopeCounts(query: trimmed)
+            let (hits, counts) = try await (hitsResult, countsResult)
+            localHits = hits
+            scopeCounts = counts
+            updateMergedRows()
+        } catch {
+            // FTS5 schema may be missing on first run; log and continue to remote.
+            AppLog.ui.error("GlobalSearchViewModel: fetchLocal failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func fetchRemote() async {
