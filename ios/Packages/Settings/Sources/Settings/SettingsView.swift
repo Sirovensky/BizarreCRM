@@ -100,6 +100,7 @@ public struct SettingsView: View {
         var sections: [SettingsSection] = [
             SettingsSection(id: "account", title: "Account", pages: [
                 SettingsPageEntry(id: "settings.profile",       title: "Profile",           icon: "person.circle"),
+                SettingsPageEntry(id: "settings.security",      title: "Security",          icon: "lock.shield"),
                 SettingsPageEntry(id: "settings.preferences",   title: "Preferences",       icon: "slider.horizontal.3"),
             ]),
             SettingsSection(id: "organization", title: "Organization", pages: [
@@ -176,6 +177,8 @@ public struct SettingsView: View {
             NotificationsPage()
         case "settings.smsProvider":
             SmsProviderPage(api: APIClientHolder.current)
+        case "settings.security":
+            SecuritySettingsPage()
         case "settings.appearance":
             AppearancePage()
         case "settings.helpCenter":
@@ -348,6 +351,13 @@ public struct SettingsView: View {
             }
 
             Section("Security") {
+                // §19.2 Auto-lock, biometric app lock, privacy snapshot
+                NavigationLink {
+                    SecuritySettingsPage()
+                } label: {
+                    Label("Security", systemImage: "lock.shield")
+                }
+                .accessibilityIdentifier("settings.security")
                 BiometricToggleRow()
             }
 

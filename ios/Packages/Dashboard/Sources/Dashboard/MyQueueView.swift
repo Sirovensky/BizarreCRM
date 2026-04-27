@@ -33,6 +33,15 @@ public struct MyQueueTicket: Decodable, Identifiable, Sendable {
 struct MyQueueResponse: Decodable {
     let success: Bool
     let data: [MyQueueTicket]?
+    /// Optional field: `true` when the tenant policy blocks the requesting role
+    /// from seeing team tickets. Drives the "Your shop has limited visibility" tooltip.
+    let teamFilterBlocked: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case data
+        case teamFilterBlocked = "team_filter_blocked"
+    }
 }
 
 // MARK: - Age badge severity
@@ -113,7 +122,17 @@ public final class MyQueueViewModel {
     public private(set) var tickets: [MyQueueTicket] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
-    public var filter: MyQueueFilter = .mine
+    public var filter: MyQueueFilter = .mine {
+        didSet {
+            if oldValue != filter {
+                Task { await load() }
+            }
+        }
+    }
+    /// When `true`, the "Mine + team" toggle is disabled because the tenant
+    /// policy restricts this role from seeing team tickets. The UI shows a
+    /// tooltip: "Your shop has limited visibility — ask an admin."
+    public private(set) var isTeamFilterBlocked: Bool = false
 
     @ObservationIgnored private let api: APIClient
     @ObservationIgnored private var autoRefreshTask: Task<Void, Never>?
@@ -127,11 +146,20 @@ public final class MyQueueViewModel {
         defer { isLoading = false }
         errorMessage = nil
         do {
+            // §3.4 — pass `scope` param so server can return mine-only vs mine+team.
+            // Server ignores it gracefully if the param is unknown (backward compat).
+            let scopeParam = filter == .mineAndTeam ? "&scope=team" : ""
             let resp = try await api.get(
-                "/api/v1/tickets/my-queue",
+                "/api/v1/tickets/my-queue?sort=due_asc\(scopeParam)",
                 as: MyQueueResponse.self
             )
-            // Sort: due date ASC, then age DESC
+            // §3.4 — if server returned fewer results than expected due to role gate,
+            // `team_filter_blocked` field (optional) indicates the toggle should be
+            // shown as disabled. Decoded from envelope extension in MyQueueResponse.
+            if let blocked = resp.teamFilterBlocked {
+                isTeamFilterBlocked = blocked
+            }
+            // Sort: due date ASC, then age DESC (client mirrors server default)
             tickets = (resp.data ?? []).sorted { a, b in
                 let da = DueSeverity.from(a.dueDate)
                 let db = DueSeverity.from(b.dueDate)
@@ -253,15 +281,31 @@ public struct MyQueueView: View {
 
             Spacer()
 
-            // §3.4 Mine / Mine+Team toggle
-            Picker("Queue filter", selection: $vm.filter) {
-                ForEach(MyQueueFilter.allCases) { f in
-                    Text(f.rawValue).tag(f)
+            // §3.4 Mine / Mine+Team toggle.
+            // Disabled with tooltip when tenant policy blocks team visibility for this role.
+            if vm.isTeamFilterBlocked {
+                Picker("Queue filter", selection: .constant(MyQueueFilter.mine)) {
+                    ForEach(MyQueueFilter.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
                 }
+                .pickerStyle(.menu)
+                .font(.brandLabelSmall())
+                .disabled(true)
+                .opacity(0.5)
+                .help("Your shop has limited visibility — ask an admin.")
+                .accessibilityHint("Disabled: Your shop has limited visibility — ask an admin.")
+                .accessibilityIdentifier("myQueue.filter")
+            } else {
+                Picker("Queue filter", selection: $vm.filter) {
+                    ForEach(MyQueueFilter.allCases) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                .pickerStyle(.menu)
+                .font(.brandLabelSmall())
+                .accessibilityIdentifier("myQueue.filter")
             }
-            .pickerStyle(.menu)
-            .font(.brandLabelSmall())
-            .accessibilityIdentifier("myQueue.filter")
         }
         .padding(.bottom, BrandSpacing.xs)
     }

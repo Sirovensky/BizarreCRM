@@ -3,6 +3,9 @@ import Observation
 import Core
 import DesignSystem
 // POSThemeOverride is defined in DesignSystem (POSThemeModifier.swift)
+#if canImport(UIKit)
+import UIKit
+#endif
 
 // MARK: - Models
 
@@ -209,6 +212,8 @@ public struct AppearancePage: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // §19.4 Alternate app icon picker
+            AppIconPickerSection()
         }
         .navigationTitle("Appearance")
         #if canImport(UIKit)
@@ -224,5 +229,107 @@ public struct AppearancePage: View {
         }
         .onChange(of: vm.theme) { _, _ in vm.save() }
         .onChange(of: vm.posThemeOverride) { _, _ in vm.save() }
+    }
+}
+
+// MARK: - §19.4 App icon picker
+
+/// Shows alternate app icons via `UIApplication.setAlternateIconName`.
+/// Falls back gracefully on macOS / simulator (where alt icons are unavailable).
+private struct AppIconPickerSection: View {
+    @State private var activeIcon: String? = nil
+    @State private var errorMessage: String?
+
+    /// Available alternate icon names matching the CFBundleAlternateIcons entries
+    /// that will be declared in Info.plist. For now using SF Symbol names as
+    /// visual stand-ins until PNG icon sets are prepared (per §19.4 note).
+    private let iconOptions: [(name: String?, label: String, systemImage: String)] = [
+        (nil,       "Default",    "app.badge"),
+        ("Dark",    "Dark",       "app.badge.fill"),
+        ("Minimal", "Minimal",    "square"),
+    ]
+
+    var body: some View {
+        Section {
+            ForEach(iconOptions, id: \.label) { option in
+                iconRow(option)
+            }
+            if let err = errorMessage {
+                Text(err)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreError)
+            }
+        } header: {
+            Text("App Icon")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityAddTraits(.isHeader)
+        } footer: {
+            Text("Alt icon variants will be available in a future build once icon assets ship.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .task { fetchCurrentIcon() }
+    }
+
+    @ViewBuilder
+    private func iconRow(_ option: (name: String?, label: String, systemImage: String)) -> some View {
+        Button {
+            setIcon(option.name)
+        } label: {
+            HStack(spacing: BrandSpacing.md) {
+                // SF symbol as placeholder until PNG icon sets ship.
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(option.name == nil ? Color.bizarreOrange : Color.bizarreSurface2)
+                    .frame(width: 40, height: 40)
+                    .overlay {
+                        Image(systemName: option.systemImage)
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundStyle(option.name == nil ? Color.white : Color.bizarreOnSurface)
+                    }
+                    .accessibilityHidden(true)
+
+                Text(option.label)
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+
+                Spacer()
+
+                if activeIcon == option.name {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(Color.bizarreSurface1)
+        .accessibilityLabel("\(option.label) icon\(activeIcon == option.name ? ", selected" : "")")
+        .accessibilityIdentifier("appearance.icon.\(option.label.lowercased())")
+    }
+
+    private func fetchCurrentIcon() {
+        #if canImport(UIKit)
+        activeIcon = UIApplication.shared.alternateIconName
+        #endif
+    }
+
+    private func setIcon(_ name: String?) {
+        #if canImport(UIKit)
+        guard UIApplication.shared.supportsAlternateIcons else {
+            errorMessage = "Alternate icons are not supported on this device."
+            return
+        }
+        UIApplication.shared.setAlternateIconName(name) { error in
+            if let error {
+                errorMessage = error.localizedDescription
+                AppLog.ui.error("setAlternateIconName failed: \(error.localizedDescription, privacy: .public)")
+            } else {
+                activeIcon = name
+                errorMessage = nil
+            }
+        }
+        #endif
     }
 }
