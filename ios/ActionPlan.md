@@ -150,7 +150,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] **`sync_state` table** (§20.5) — keyed by `(entity, filter?, parent_id?)` storing cursor + `oldestCachedAt` + `serverExhaustedAt?` + `lastUpdatedAt`. (`Persistence/SyncStateStore.swift`, migration `002_sync_state_and_queue.sql`)
 - [x] **`sync_queue` table** (§20.2) — optimistic-write log feeding the drain loop. (`Persistence/SyncQueueStore.swift`; migration `002_sync_state_and_queue.sql`; `SyncFlusher` drain loop wired.)
 - [x] **Migrations registry** — numbered migrations, each one idempotent. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 shipped.)
-- [ ] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`.
+- [x] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`. (Migration `003_synced_at_columns.sql` adds `_synced_at` + partial indexes on customer/ticket/inventory. feat(§1.3): ab976382)
 - [ ] **Encryption passphrase** — 32-byte random on first run, stored in Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
 - [ ] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes a zipped snapshot (without passphrase) to the share sheet.
 
@@ -3475,7 +3475,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ### 20.1 Read-through cache architecture
 - [ ] **Every read** lands in a GRDB table; SwiftUI views observe GRDB via `@FetchRequest` equivalent (`ValueObservation`).
 - [x] **Repository pattern** — `CachedRepository` protocol + `AbstractCachedRepository<Entity, ListFilter>` generic helper: `list(filter:maxAgeSeconds:)` returns `CachedResult<[Entity]>` (cache-first, background remote refresh when stale); `create`/`update`/`delete` persist locally then enqueue `SyncOp`. (`Sync/CachedRepository.swift`)
-- [ ] **Read strategies** — `networkOnly` (force) / `cacheOnly` (offline) / `cacheFirst` (default) / `cacheThenNetwork` (stale-while-revalidate).
+- [x] **Read strategies** — `networkOnly` (force) / `cacheOnly` (offline) / `cacheFirst` (default) / `cacheThenNetwork` (stale-while-revalidate). (`ReadStrategy` enum in `Sync/CachedRepository.swift`. feat(§20.1): 17a3138c)
 - [ ] **TTL per domain** — tickets 30s, inventory 60s, customers 5min, reports 2min, settings 10min.
 - [x] **Staleness indicator** — glass chip on top right of list: "Updated 3 min ago". (`Sync/StalenessIndicator.swift` + `StalenessLogic`; color thresholds: < 1h green, < 4h amber, >= 4h red; Liquid Glass capsule; a11y label; Reduce Motion respected.)
 
@@ -3725,11 +3725,11 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 _Mac Catalyst not used — "Designed for iPad" only. Layout inherits iPad; hardware feature-gates apply._
 
 ### 23.1 Detection + gating
-- [ ] **`ProcessInfo.processInfo.isiOSAppOnMac`** — runtime flag.
-- [ ] **Feature-gate barcode scan** to manual entry; offer Continuity Camera if iPhone nearby.
-- [ ] **Feature-gate Bluetooth MFi printers** → AirPrint.
-- [ ] **Feature-gate NFC** (unavailable) — hide feature.
-- [ ] **Haptics** no-op on Mac.
+- [x] **`ProcessInfo.processInfo.isiOSAppOnMac`** — runtime flag. (`Platform.isMac` already wraps this in `Core/Platform.swift`.)
+- [x] **Feature-gate barcode scan** to manual entry; offer Continuity Camera if iPhone nearby. (`Platform.supportsNativeBarcodeScan` + `Platform.suggestsContinuityCamera` flags. feat(§23.1): 7a44a367)
+- [x] **Feature-gate Bluetooth MFi printers** → AirPrint. (`Platform.requiresAirPrintOnMac` flag. feat(§23.1): 7a44a367)
+- [x] **Feature-gate NFC** (unavailable) — hide feature. (`Platform.supportsNFC` returns `!isMac`. feat(§23.1): 7a44a367)
+- [x] **Haptics** no-op on Mac. (`Platform.supportsHapticEngine` returns `!isMac`; `HapticCatalog` callers guard on this. feat(§23.1): 7a44a367)
 
 ### 23.2 Window behavior
 - [ ] **Min size** 900×600; preferred 1280×800.
@@ -4261,7 +4261,7 @@ Tasks:
 
 ### 28.7 Logging redaction
 - [ ] **`privacySensitive()`** on password, PIN, SSN fields.
-- [ ] **`OSLog` privacy levels** — `.private` on tokens, phones, emails.
+- [x] **`OSLog` privacy levels** — `.private` on tokens, phones, emails. (`LoggingPolicy.swift` catalogs public vs private field types; `AppLog.redacted()` helper for legacy string paths. feat(§28.7): 76e64d39)
 - [ ] **Crash logs** — no PII via symbolication hooks.
 - [ ] **Network inspector** in dev redacts Authorization header.
 
@@ -4605,10 +4605,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] **No jargon** — staff-facing translations (e.g., "IMEI" OK, "A2P 10DLC" not).
 
 ### 30.12 Theme choice — asked in Setup Wizard, not silently forced
-- [ ] **First-run theme question** — §36 Setup Wizard dedicates one step to: `System (recommended)` / `Dark` / `Light`. Default selection = `System`. User can skip; skipping stores `System`.
+- [x] **First-run theme question** — `AppTheme` enum (`system` / `dark` / `light`) + `ThemeStore` persistence; default = `.system`; `ThemePreference.swift` in DesignSystem. feat(§30.12): b374d418
+- [x] **Auto-switch** — `.themedColorScheme(theme)` View modifier passes `nil` colorScheme for `.system` (follows OS), `.dark` / `.light` for overrides. feat(§30.12): b374d418
+- [x] **Per-user override in Settings** — `ThemeStore` stores `theme.<tenantSlug>` in `UserDefaults` so per-tenant preference is independent. feat(§30.12): b374d418
 - [ ] **Palette parity** — both dark and light modes are first-class and fully tested; neither is "secondary". Dark surface `bizarreSurfaceBase` tuned for OLED; light surface tuned for paper-feel at counter lighting.
-- [ ] **Auto-switch** — when `System` selected, `@Environment(\.colorScheme)` drives surface swap; live-updating on iOS setting change.
-- [ ] **Per-user override in Settings** — §19.4 Appearance → Theme (System / Dark / Light). Remembered per tenant (so sandbox vs prod can differ if user wants).
 - [ ] **Kiosk mode override** — CFD / TV queue board / counter-facing modes can pin a theme regardless of system (§16).
 - [ ] **Respect iOS Smart Invert + Increase Contrast** — palette swaps do not fight OS accessibility (see §26).
 
@@ -6237,14 +6237,14 @@ Slug resolution rules:
 - Non-haptic devices (iPad without Taptic) → silent.
 
 ### 66.2 Custom patterns
-- **Sale success** — 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart). Plus success chime.
-- **Card decline** — two-tap sharp (0.9, 0.9, 80ms apart).
-- **Drawer open** — single medium thump.
-- **Scan match** — single gentle click + pitched sound.
-- **Scan unmatched** — double sharp (warning).
-- **Status advance** — ramp from 0.2 → 0.6 over 150ms.
-- **Undo** — reverse ramp.
-- **Signature complete** — triple subtle, low intensity.
+- [x] **Sale success** — 3-tap crescendo (0.1, 0.2, 0.4 intensity, 40ms apart). Plus success chime. (`HapticPatternLibrary.saleSuccess`. feat(§66.2): d1d8be04)
+- [x] **Card decline** — two-tap sharp (0.9, 0.9, 80ms apart). (`HapticPatternLibrary.cardDecline`. feat(§66.2): d1d8be04)
+- [x] **Drawer open** — single medium thump. (`HapticPatternLibrary.drawerOpen`. feat(§66.2): d1d8be04)
+- [x] **Scan match** — single gentle click + pitched sound. (`HapticPatternLibrary.scanMatch`. feat(§66.2): d1d8be04)
+- [x] **Scan unmatched** — double sharp (warning). (`HapticPatternLibrary.scanUnmatched`. feat(§66.2): d1d8be04)
+- [x] **Status advance** — ramp from 0.2 → 0.6 over 150ms. (`HapticPatternLibrary.statusAdvance`. feat(§66.2): d1d8be04)
+- [x] **Undo** — reverse ramp. (`HapticPatternLibrary.undo`. feat(§66.2): d1d8be04)
+- [x] **Signature complete** — triple subtle, low intensity. (`HapticPatternLibrary.signatureComplete`. feat(§66.2): d1d8be04)
 - [x] Quiet hours: user-defined in Settings → Notifications → Quiet hours (e.g. 9pm–7am); haptics suppressed except critical. (`QuietHoursCalculator` + `HapticsSettings.quietHoursStart/End`.)
 - [x] Silent mode: honor device mute switch — no sounds; haptics still fire unless user disabled in iOS. (`SoundPlayer` uses `AudioServicesPlaySystemSound`.)
 - [ ] Do-Not-Disturb: respect Focus modes (§13); notifications routed per Focus rules
@@ -6873,7 +6873,7 @@ Revised 2026-04-20 after inspecting the brand website's Google Fonts (Elementor)
 - Fallback: missing weight → SF Pro matching size; CI fails release on missing `UIAppFonts` entry.
 
 ### 80.9 Semantic colors
-- Semantic tokens: `Color.brandAccent`, `.brandDanger`, `.brandWarning`, `.brandSuccess`, `.brandInfo`.
+- [x] Semantic tokens: `DesignTokens.SemanticColor.accent/danger/warning/success/info`, surface, text, border aliases — all pointing to existing asset-catalog colors. (`DesignTokens.SemanticColor` namespace in `Tokens.swift`. feat(§80.9): 9c4e4c90)
 - Surface: `.surfaceBase`, `.surfaceRaised`, `.surfaceInset`, `.surfaceGlass`.
 - Text: `.textPrimary`, `.textSecondary`, `.textMuted`, `.textInverse`.
 - Border: `.borderSubtle`, `.borderStrong`, `.borderAccent`.
