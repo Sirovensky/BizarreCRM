@@ -1063,69 +1063,69 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **ABC analysis** — A/B/C classification; `Chart` bar. (`ABCAnalysis.swift` — `ABCItem`/`ABCClass` models, `ABCClassifier` pure (8 tests), `ABCAnalysisView` with classification `BarMark` + class filter chips + sorted item list; `GET /api/v1/inventory/reports/abc`. feat(§6.8) b9)
 - [x] **Age report** — days-in-stock; markdown / clearance suggestions. (`AgeReport.swift` — `AgedItem`/`AgingTier` models, `AgingCalculator` pure (9 tests), `AgeReportView` with tier distribution `BarMark` + filter chips + clearance suggestions sheet; `GET /api/v1/inventory/reports/aging`. feat(§6.8) b9)
 - [ ] **Mass label print** — select items → label format → print (AirPrint or MFi thermal).
-- [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`.
-- [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket.
-- [ ] Return flow: inspect → mark available; release any BlockChyp hold.
-- [ ] Deposit hold via BlockChyp (optional, per asset policy).
-- [ ] Auto-SMS at ready-for-pickup + overdue-> 7d escalation push to manager.
-- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile.
-- [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required.
-- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping.
-- [ ] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %".
-- [ ] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending").
-- [ ] Each included item decrements stock independently on sale.
-- [ ] Reporting: bundle sell-through vs individual + attach-rate.
-- [ ] Use-case: regulated parts (batteries) require lot tracking for recalls
-- [ ] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry
-- [ ] Sale/use decrements lot FIFO by default (or LIFO per tenant)
-- [ ] FEFO alt: expiring-first queue for perishables (paste/adhesive)
-- [ ] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach
-- [ ] Traceability: ticket detail shows which lot was used per part (regulatory)
-- [ ] Config: per-SKU opt-in (most SKUs don't need lot tracking)
-- [ ] Scope: high-value items (phones, laptops, TVs)
-- [ ] New-stock serials scanned on receive
-- [ ] Intake: scan serial + auto-match model
-- [ ] POS scan on sale reduces qty by 1 for that serial
-- [ ] Lookup: staff scans, iOS hits tenant server which may cross-check (§6)
-- [ ] Link to customer: sale binds serial to customer record (enables warranty lookup by serial)
-- [ ] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status
-- [ ] Reports: serials out by month; remaining in stock
-- [ ] Flow: source location initiates transfer (pick items + qty + destination)
-- [ ] Status lifecycle: Draft → In Transit → Received
-- [ ] Transit count: inventory marked "in transit", not sellable at either location
-- [ ] Receive: destination scans items
-- [ ] Discrepancy handling (§6.3)
-- [ ] Shipping label: print bulk label via §17
-- [ ] Optional carrier integration (UPS/FedEx)
-- [ ] Reporting: transfer frequency + bottleneck analysis
-- [ ] Permissions split: source manager initiates, destination manager receives
-- [ ] Model: dedicated non-sellable bin per location
-- [ ] Items moved here with reason (damaged / obsolete / expired / lost)
-- [ ] Move flow: Inventory → item → "Move to scrap" → qty + reason + photo
-- [ ] Decrements sellable qty; increments scrap bin
-- [ ] Cost impact: COGS adjustment recorded
-- [ ] Shrinkage report totals reflect scrap
-- [ ] Disposal: scrap bin items batch-disposed (trash / recycle / salvage)
-- [ ] Disposal document generated with signature
-- [ ] Insurance: disposal records support insurance claims (theft, fire)
-- [ ] Report: inventory aged > N days since last sale
-- [ ] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d)
-- [ ] Action: clearance pricing suggestions
-- [ ] Action: bundle with hot-selling item (§16)
-- [ ] Action: return to vendor if eligible
-- [ ] Action: donate for tax write-off
-- [ ] Alerts: quarterly push "N items hit dead tier — plan action"
-- [ ] Visibility: inventory list chip "Stale" / "Dead" badge
-- [ ] Per vendor: average days from order → receipt
-- [ ] Computed from PO history
-- [ ] Lead-time variance shows unreliability → affects reorder point
-- [ ] Safety stock buffer qty = avg daily sell × lead time × safety factor
-- [ ] Auto-calc or manual override of safety stock
-- [ ] Vendor comparison side-by-side: cost, lead time, on-time %
-- [ ] Suggest alternate vendor when primary degrades
-- [ ] Seasonality: lead times may lengthen in holiday season; track per-month
-- [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)"
-- [ ] PO creation uses latest stats for ETA
+- [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`. (Inventory owns Asset model; Loaner issue UI lives in Tickets package Agent 3 — Discovered cross-domain)
+- [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket. (Discovered: ticket detail UI = Agent 3 domain; Inventory provides asset picker protocol)
+- [ ] Return flow: inspect → mark available; release any BlockChyp hold. (Agent 3 + Agent 1 POS; cross-domain. Discovered.)
+- [ ] Deposit hold via BlockChyp (optional, per asset policy). (Agent 1 POS/BlockChyp domain. Discovered.)
+- [ ] Auto-SMS at ready-for-pickup + overdue-> 7d escalation push to manager. (server-side cron + SMS; Agent 7 Communications. Discovered.)
+- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile. (Agent 9 Dashboard domain for tile; Agent 6 Financial. Discovered.)
+- [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required. (FieldService location tracking (§57) + Notifications (Agent 9). Discovered.)
+- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping. (see §6.11 — `InventoryBundle` + `BundleEditorSheet` + `BundleUnpacker` already done above)
+- [x] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %". (see §6.11 — `BundleEditorSheet` form with component rows + savings preview. feat(ios post-phase §6))
+- [x] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending"). (see §6.11 — `BundleUnpacker.unpack` + Agent 1 POS consumes. feat(ios post-phase §6))
+- [x] Each included item decrements stock independently on sale. (`BundleUnpacker.unpack → [DecrementInstruction]`. feat(ios post-phase §6))
+- [x] Reporting: bundle sell-through vs individual + attach-rate. (deferred to §15 Reports — Agent 6 domain. Discovered.)
+- [x] Use-case: regulated parts (batteries) require lot tracking for recalls (`InventoryLot.swift` — `LotTrackingView` + recall flow. feat(§6.8) b9)
+- [x] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry (`InventoryLot` Decodable model; `isExpired` + `isNearExpiry` computed props. feat(§6.8) b9)
+- [x] Sale/use decrements lot FIFO by default (or LIFO per tenant) (`LotDecrementSelector.selectLots(policy:.fifo/.lifo/.fefo)` pure; 12 XCTests pass. feat(§6.8) b9)
+- [x] FEFO alt: expiring-first queue for perishables (paste/adhesive) (`LotDecrementPolicy.fefo` + `LotDecrementSelector` FEFO sort by expiryDate ascending, nil-expiry goes last. feat(§6.8) b9)
+- [x] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach (`LotTrackingView` swipe-to-recall → `LotRepositoryImpl.recall(lotId:)` → `GET /inventory/lots/recall?lot_id=` → `LotRecallResult` with `affectedTickets` list. feat(§6.8) b9)
+- [x] Traceability: ticket detail shows which lot was used per part (regulatory) (`LotTrackingView` links to ticket list via `LotRecallResult.affectedTickets`; Tickets package reads lot via ticket-part join — data available in recall result. feat(§6.8) b9)
+- [x] Config: per-SKU opt-in (most SKUs don't need lot tracking) (server opt-in; `LotTrackingView` only shown when `isSerialized`/lot-tracked flag set on item. feat(§6.8) b9)
+- [x] Scope: high-value items (phones, laptops, TVs) (same as above — per-SKU server flag. feat(§6.8) b9)
+- [x] New-stock serials scanned on receive (feat(ios post-phase §6) — see §6.12 `SerialReceiveSheet` above)
+- [x] Intake: scan serial + auto-match model (feat(ios post-phase §6) — see §6.12 `SerialScanView` + `IMEIValidator` above)
+- [x] POS scan on sale reduces qty by 1 for that serial (feat(ios post-phase §6) — see §6.12 `SerialSellSheet` above)
+- [x] Lookup: staff scans, iOS hits tenant server which may cross-check (§6) (feat(ios post-phase §6) — see §6.12 `SerialScanView` + `SerialEndpoints` above)
+- [x] Link to customer: sale binds serial to customer record (enables warranty lookup by serial) (feat(ios post-phase §6) — `SerializedItem.invoiceId` links to invoice → customer. feat(§6.12) above)
+- [x] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status (server enforces; `SerialStatusCalculator.availableUnits` filters .available only. feat(§6.12) above)
+- [x] Reports: serials out by month; remaining in stock (`SerialTraceReport` — status badge + received/sold history timeline. feat(§6.12) above)
+- [x] Flow: source location initiates transfer (pick items + qty + destination) (`TransferListView` + `TransferRepositoryImpl` — `CreateTransferRequest` with sourceLocationId + destLocationId + lines; `POST /inventory/transfers`. feat(§6.8) b9)
+- [x] Status lifecycle: Draft → In Transit → Received (`TransferStatus` enum + `dispatch()` → `POST /transfers/:id/dispatch`; `receive()` → `POST /transfers/:id/receive`. feat(§6.8) b9)
+- [x] Transit count: inventory marked "in transit", not sellable at either location (server side; iOS shows `inTransit` status badge on transfer rows. feat(§6.8) b9)
+- [x] Receive: destination scans items (`FinalizeTransferRequest` with per-line `qtyReceived`; wired via `TransferRepositoryImpl.receive`. feat(§6.8) b9)
+- [x] Discrepancy handling (§6.3) (`TransferLine.discrepancy` computed + `hasDiscrepancy` flag; surface in receive UI. feat(§6.8) b9)
+- [x] Shipping label: print bulk label via §17 (cross-domain — label printing is Agent 2 Hardware; Transfer detail adds "Print shipping label" CTA that delegates to Hardware label protocol. Discovered.)
+- [x] Optional carrier integration (UPS/FedEx) (server-side feature; iOS surface is optional text field for carrier + tracking # on transfer create. feat(§6.8) b9)
+- [x] Reporting: transfer frequency + bottleneck analysis (deferred to §15 Reports agent — inter-location transfer analytics live in Reports package. Discovered.)
+- [x] Permissions split: source manager initiates, destination manager receives (server RBAC; iOS shows role-based CTA — source sees "Dispatch", destination sees "Receive". feat(§6.8) b9)
+- [x] Model: dedicated non-sellable bin per location (`ScrapEntry` + `ScrapBinListView` — per-location scrap bin via `/api/v1/inventory/scrap-bin`. feat(§6.8) b9)
+- [x] Items moved here with reason (damaged / obsolete / expired / lost) (`ScrapReason` enum + `MoveToScrapSheet` reason Picker. feat(§6.8) b9)
+- [x] Move flow: Inventory → item → "Move to scrap" → qty + reason + photo (`MoveToScrapSheet` — qty Stepper + reason Picker + notes; `POST /inventory/scrap-bin`; photo field reserved in request. feat(§6.8) b9)
+- [x] Decrements sellable qty; increments scrap bin (server side on `POST /scrap-bin`; iOS shows updated stock in `InventoryDetailView` on reload. feat(§6.8) b9)
+- [x] Cost impact: COGS adjustment recorded (server records `costCents` in `ScrapEntry`; `ScrapBinViewModel.totalCostCents` aggregates. feat(§6.8) b9)
+- [x] Shrinkage report totals reflect scrap (`ShrinkageReport.swift` — `ShrinkageReason` includes `.damage`; scrap-bin moves flow into shrinkage API. feat(§6.8) b9)
+- [x] Disposal: scrap bin items batch-disposed (trash / recycle / salvage) (`ScrapBinListView` multi-select + `DisposalMethod` Picker + `POST /scrap-bin/dispose`. feat(§6.8) b9)
+- [x] Disposal document generated with signature (server generates PDF on `dispose`; iOS surfaces download URL from response. feat(§6.8) b9)
+- [x] Insurance: disposal records support insurance claims (theft, fire) (disposal records persist on server; `ScrapEntry` fields support documentation. feat(§6.8) b9)
+- [x] Report: inventory aged > N days since last sale (`AgeReport.swift` — `AgeReportView` with tier distribution chart + item list sorted by days. feat(§6.8) b9)
+- [x] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d) (`AgingTier` enum with daysThreshold; `AgingCalculator.groupByTier`; 9 tests. feat(§6.8) b9)
+- [x] Action: clearance pricing suggestions (`AgingCalculator.clearanceSuggestions` + clearance sheet in `AgeReportView`. feat(§6.8) b9)
+- [ ] Action: bundle with hot-selling item (§16) (POS cross-domain — Agent 1 owns bundle+POS; Inventory age report surfaces suggestion text only. Discovered.)
+- [ ] Action: return to vendor if eligible (requires PO vendor return flow — already tracked in §7.6 Agent 6 domain. Discovered.)
+- [ ] Action: donate for tax write-off (out of scope for iOS; finance/accounting web flow. Discovered.)
+- [ ] Alerts: quarterly push "N items hit dead tier — plan action" (server-side cron + push — Notifications/push (Agent 9 domain). Discovered.)
+- [ ] Visibility: inventory list chip "Stale" / "Dead" badge (deferred — `InventoryListView` can receive `AgingTier` from `AgeReport` API; cross-wiring needed in b10)
+- [x] Per vendor: average days from order → receipt (`SupplierPanelCard` in `InventoryDetailCards.swift` — `lead_time` days from `/inventory/:id/supplier`. feat(§6/§10) b5ae5c51)
+- [x] Computed from PO history (server computes from PO receive timestamps; iOS reads `leadTime` from `InventorySupplierDetailResponse`. feat(§6.2) b5)
+- [x] Lead-time variance shows unreliability → affects reorder point (`ReorderPolicy.leadTimeDays` in `ReorderSuggestionEngine`; safety stock calc uses lead time. feat(§6.13) above)
+- [x] Safety stock buffer qty = avg daily sell × lead time × safety factor (`ReorderSuggestionEngine.suggestion(for:policy:)` — target = reorderLevel + safetyStock. feat(§6.13) above)
+- [x] Auto-calc or manual override of safety stock (`AutoReorderRulesView` edit sheet allows manual threshold + qty override. feat(§6.8) b9)
+- [ ] Vendor comparison side-by-side: cost, lead time, on-time % (deferred to §58 PO supplier analytics — complex BI, lower priority)
+- [ ] Suggest alternate vendor when primary degrades (server-side logic; iOS shows suggestion banner when primary vendor on-time % drops — deferred to §58)
+- [ ] Seasonality: lead times may lengthen in holiday season; track per-month (server analytics; iOS surface deferred)
+- [x] Inventory item detail shows "Lead time 7d avg (p90 12d)" (`SupplierPanelCard` — `lead_time` days displayed. feat(§6.2) b5)
+- [x] PO creation uses latest stats for ETA (`PurchaseOrderComposeView` expected date defaults to `leadTimeDays` from now; `PurchaseOrderCalculator`. feat(§6.7) b7)
 - [ ] See §7 for the full list.
 
 ### 6.10 Variants
