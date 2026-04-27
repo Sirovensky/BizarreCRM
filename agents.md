@@ -309,6 +309,17 @@ Two classes of pre-existing errors found during b5 build gate:
 3. `InvoiceDetailEndpoints.swift` line 186: `invalid redeclaration of 'EmptyBody'` — private struct with same name in another file. Agent 6 owns this file.
 These errors prevent `swift test` from completing across the full package graph. Per-package tests on Agent 9's own packages (Notifications, Settings, Search) compile and pass cleanly.
 
+### Agent 2 — b9 discoveries
+
+**`UIBackgroundModes bluetooth-central` + `CBCentralManagerOptionRestoreIdentifierKey` — Agent 10 action needed (`scripts/write-info-plist.sh` + `project.yml`)**
+
+`BluetoothBackgroundManager` (b9, `b4b3b9f0`) implements the Swift-side state-restoration delegate for CoreBluetooth background mode. For the background reconnection to work at runtime, two changes are needed in files owned by Agent 10:
+
+1. `scripts/write-info-plist.sh` — add `bluetooth-central` to the `UIBackgroundModes` array.
+2. `BluetoothManager.init` — pass `[CBCentralManagerOptionRestoreIdentifierKey: BluetoothBackgroundManager.restoreIdentifier]` as options when constructing `CBCentralManager`, and wire `centralManager(_:willRestoreState:)` delegate method to call `BluetoothBackgroundManager.shared.handleWillRestoreState(_:manager:)`.
+
+The `BluetoothManager` init and the `CBCentralManagerDelegate` extension both live in `ios/Packages/Hardware/Sources/Hardware/Bluetooth/BluetoothManager.swift` (Agent 2 owns this file). Agent 2 will implement the delegate wiring in a follow-up batch once Agent 10 confirms the `UIBackgroundModes` key is added (ordering: plist change first so CI doesn't fail on missing entitlement).
+
 ---
 
 ## Workflow per agent (reminder)

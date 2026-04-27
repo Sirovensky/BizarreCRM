@@ -707,11 +707,11 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Camera** — `AVCaptureSession` with flash toggle, flip, grid, shutter haptic.
 - [ ] **Library picker** — `PhotosUI.PhotosPicker` with selection limit 10.
 - [ ] **Upload** — background `URLSession` surviving app exit; progress chip per photo.
-- [ ] **Retry failed upload** — dead-letter entry in Sync Issues.
+- [x] **Retry failed upload** — dead-letter entry in Sync Issues. `PhotoUploadService.recordDeadLetter` / `clearDeadLetter` / `deadLetterEntries` persist failures to UserDefaults; `PhotoUploadDeadLetterEntry` model carries retry count + error description for Sync Issues screen. Commit `ccfa0a18`.
 - [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. `TicketDevicePhotoListView` gallery (tap → full-screen), `TicketPhotoBeforeAfterView` side-by-side. `TicketPhotoUploadService` actor with background URLSession, offline queue, retry. `TicketPhotoAnnotationIntegration` shim into Camera pkg PencilKit. Commit `feat(ios post-phase §4)`.
-- [ ] **EXIF strip** — remove GPS + timestamp metadata on upload.
-- [ ] **Thumbnail cache** — Nuke with disk limit; full-size fetched on tap.
+- [x] **EXIF strip** — remove GPS + timestamp metadata on upload. `PhotoUploadService.stripExifAndCompress` uses `CGImageDestination` to explicitly drop `kCGImagePropertyGPSDictionary` + EXIF date fields from any photo (covers library-picker paths not routed through `CameraService`). Commit `ccfa0a18`.
+- [x] **Thumbnail cache** — Nuke with disk limit; full-size fetched on tap. `PhotoThumbnailCache` actor: ImageIO `kCGImageSourceThumbnailMaxPixelSize` downscale + `NSCache` (32 MB / 500 entries) in-memory + `AppSupport/thumbnails/` disk cache; `ThumbnailSize` enum (small=80/medium=200/large=400); `evict` / `evictAll` hooks. Commit `ccfa0a18`.
 - [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment.
 
 ### 4.9 Bench workflow
@@ -2873,10 +2873,10 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Icon per device class. `DiscoveredPrinter.systemImageName` returns per-type SF Symbol. Commit `[agent-2 b4]`.
 - [x] Auto-refresh every 10s. `BonjourPrinterPickerViewModel` schedules 10s refresh timer via `Task.sleep`. Commit `[agent-2 b4]`.
 - [x] Manual refresh button. Toolbar refresh button in `BonjourPrinterPickerView`. Commit `[agent-2 b4]`.
-- [ ] `CBCentralManager` peripheral scan
+- [x] `CBCentralManager` peripheral scan — `BluetoothManager.startScan` + `CBCentralManagerProtocol` abstraction (pre-existing; confirmed complete). Commit `b4b3b9f0`.
 - [ ] MFi cert required for commercial printers
-- [ ] Register `bluetooth-central` background mode
-- [ ] Maintain connection across app backgrounding (required for POS)
+- [x] Register `bluetooth-central` background mode — `BluetoothBackgroundManager` Swift-side restoration handler; `UIBackgroundModes` key in `write-info-plist.sh` filed as Discovered for Agent 10 (advisory lock). Commit `b4b3b9f0`.
+- [x] Maintain connection across app backgrounding (required for POS) — `BluetoothBackgroundManager.handleWillRestoreState` re-hydrates `CBPeripheral` list on app relaunch; `BluetoothScanPolicy` enforces foreground-only scan. Commit `b4b3b9f0`.
 - [ ] `NSBluetoothAlwaysUsageDescription` in Info.plist
 - [x] Settings → Hardware → Bluetooth paired list with connection state. `BluetoothSettingsView` + `BluetoothSettingsViewModel` (pre-existing, confirmed complete). Commit `258f346b`.
 - [x] Forget button per paired device. `BluetoothSettingsViewModel.forget()` + destructive context menu in `BluetoothDeviceRow`. Commit `258f346b`.
@@ -2930,11 +2930,11 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] Settings → Hardware: per-station peripheral-health dashboard / logs. `PeripheralHealthDashboardView` + `PeripheralHealthEntry`. Commit `258f346b`.
 - [x] Doc types: receipt (thermal 80mm + A4 letter), invoice, quote, work order, waiver, labor certificate, refund receipt (thermal/letter), Z-report / end-of-day, tax summary. — `PrintDocumentType` enum covers all types; `defaultMedium` maps each to correct `PrintMedium`. Commit `0f9c77de`.
 - [x] Engine: `UIGraphicsPDFRenderer` + SwiftUI `ImageRenderer(content:)`; fallback Core Graphics for thermal printers. — `ReceiptRenderer.rasterize` (ImageRenderer → 1-bit dither) + `ReceiptRenderer.renderPDF` (UIGraphicsPDFRenderer); `PrintDocumentType.supportsPagination` flags multi-page types. Commit `0f9c77de` (type enum) + prior batches (renderer).
-- [ ] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§4).
-- [ ] A11y: tagged PDFs (searchable/copyable); screen-reader friendly in-app.
-- [ ] Archival: generated PDFs on tenant server (primary) + local cache (offline); deterministic re-generation for historical recreation.
-- [ ] Preview: live in template editor with real tenant + sample data.
-- [ ] Pagination: long invoices span pages with reprinted header + page numbers.
+- [x] Structure: header tenant branding, body line items + subtotals, footer terms + signature line + QR for public tracking (§4). — `InvoiceDocumentPayload` + `InvoiceDocumentView` (header/bill-to/meta/line-item table/subtotals/footer + signature line + QR) in `DocumentViews.swift`. Commit `49be5543`.
+- [x] A11y: tagged PDFs (searchable/copyable); screen-reader friendly in-app. — `ReceiptRenderer.renderAccessiblePDF` sets `UIGraphicsPDFRendererFormat.documentInfo` (Title/Author/Subject/Keywords); `.accessibilityLabel` on all InvoiceDocumentView elements. Commit `49be5543`.
+- [x] Archival: generated PDFs on tenant server (primary) + local cache (offline); deterministic re-generation for historical recreation. — `PDFArchiveService` actor: `archive` copies to `AppSupport/pdf-archive/`; `markUploaded`/`pendingUploadEntries`; `APIClient+Hardware.uploadPDFArchive` wires to `POST /api/v1/documents/upload`. Commit `49be5543`.
+- [x] Preview: live in template editor with real tenant + sample data. — `ReceiptTemplateEditorView` already ships `ReceiptPreviewCard` + `ReceiptView` live preview in iPad split pane; `InvoiceDocumentView` adds `#Preview("Invoice Document (Letter)")` with `InvoiceDocumentPayload.preview` sample data. Commit `49be5543`.
+- [x] Pagination: long invoices span pages with reprinted header + page numbers. — `ReceiptRenderer.renderMultiPagePDF` slices CGImage into `pageHeight` strips with continuation-header support + `PrintMedium.margin`; page-number footer drawn per page. Commit `49be5543`.
 - [ ] See §30 for the full list.
 
 ### 17.11 BlockChyp SDK status parity across iOS / Android
