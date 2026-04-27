@@ -333,6 +333,11 @@ public struct TicketDetailView: View {
                         CustomerQuickActionsRow(customer: customer)
                     }
 
+                    // §4.2 — Urgency chip in detail header
+                    if let urgency = detail.urgency, !urgency.isEmpty {
+                        DetailUrgencyChip(urgency: urgency)
+                    }
+
                     InfoRow(detail: detail)
 
                     // §4.6 — Status chip with inline transition button + server hex color
@@ -532,6 +537,39 @@ private struct CustomerQuickActionsRow: View {
             .background(color.opacity(0.12), in: Capsule())
         }
         .accessibilityLabel(label)
+    }
+}
+
+// MARK: - §4.2 Urgency chip for detail header
+
+private struct DetailUrgencyChip: View {
+    let urgency: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xs) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(urgency.capitalized)
+                .font(.brandLabelLarge())
+                .foregroundStyle(dotColor)
+        }
+        .padding(.horizontal, BrandSpacing.md)
+        .padding(.vertical, BrandSpacing.xs)
+        .background(dotColor.opacity(0.1), in: Capsule())
+        .accessibilityLabel("Urgency: \(urgency)")
+    }
+
+    private var dotColor: Color {
+        switch urgency.lowercased() {
+        case "critical": return .bizarreError
+        case "high":     return .bizarreOrange
+        case "medium":   return Color(red: 0.93, green: 0.76, blue: 0.18)
+        case "normal":   return .bizarreOnSurfaceMuted
+        case "low":      return .bizarreTeal
+        default:         return .bizarreOnSurfaceMuted
+        }
     }
 }
 
@@ -863,8 +901,17 @@ private struct NotesSection: View {
 
 // MARK: - Totals
 
+/// §4.2 — Totals panel: subtotal, tax, discount, deposit, balance due, paid.
 private struct TotalsCard: View {
     let detail: TicketDetail
+
+    private var totalPaid: Double {
+        detail.payments.reduce(0) { $0 + $1.amount }
+    }
+
+    private var balanceDue: Double {
+        max(0, (detail.total ?? 0) - totalPaid)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -891,6 +938,12 @@ private struct TotalsCard: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Total: \(formatMoney(detail.total ?? 0))")
+
+            if totalPaid > 0 {
+                Divider().overlay(Color.bizarreOutline.opacity(0.2))
+                row("Paid", value: totalPaid, tint: .bizarreSuccess)
+                row("Balance due", value: balanceDue, tint: balanceDue > 0 ? .bizarreError : .bizarreSuccess)
+            }
         }
         .cardBackground()
     }
@@ -903,6 +956,7 @@ private struct TotalsCard: View {
                 .font(.brandBodyMedium())
                 .foregroundStyle(tint)
                 .monospacedDigit()
+                .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(formatMoney(value))")

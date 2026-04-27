@@ -30,6 +30,10 @@ public struct TicketQuickActionHandlers: Sendable {
     public let onArchive: @Sendable (TicketSummary) -> Void
     /// Delete `ticket` (destructive).
     public let onDelete: @Sendable (TicketSummary) -> Void
+    /// Convert `ticket` to invoice.
+    public let onConvertToInvoice: @Sendable (TicketSummary) -> Void
+    /// Toggle pin/star on `ticket`.
+    public let onTogglePin: @Sendable (TicketSummary) -> Void
 
     public init(
         onAdvanceStatus: @escaping @Sendable (TicketSummary, TicketTransition) -> Void,
@@ -37,7 +41,9 @@ public struct TicketQuickActionHandlers: Sendable {
         onAddNote: @escaping @Sendable (TicketSummary) -> Void,
         onDuplicate: @escaping @Sendable (TicketSummary) -> Void,
         onArchive: @escaping @Sendable (TicketSummary) -> Void,
-        onDelete: @escaping @Sendable (TicketSummary) -> Void
+        onDelete: @escaping @Sendable (TicketSummary) -> Void,
+        onConvertToInvoice: @escaping @Sendable (TicketSummary) -> Void = { _ in },
+        onTogglePin: @escaping @Sendable (TicketSummary) -> Void = { _ in }
     ) {
         self.onAdvanceStatus = onAdvanceStatus
         self.onAssign = onAssign
@@ -45,6 +51,8 @@ public struct TicketQuickActionHandlers: Sendable {
         self.onDuplicate = onDuplicate
         self.onArchive = onArchive
         self.onDelete = onDelete
+        self.onConvertToInvoice = onConvertToInvoice
+        self.onTogglePin = onTogglePin
     }
 
     /// No-op stub for previews and tests.
@@ -140,7 +148,35 @@ public struct TicketQuickActionsContent: View {
 
         Divider()
 
-        // 3. Add Note
+        // 3. Copy order ID
+        Button {
+            UIPasteboard.general.string = ticket.orderId
+        } label: {
+            Label("Copy Order ID", systemImage: "doc.on.clipboard")
+        }
+        .accessibilityLabel("Copy order ID \(ticket.orderId)")
+
+        // 4. SMS customer
+        if let phone = ticket.customer?.callablePhone,
+           let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
+            Link(destination: url) {
+                Label("SMS Customer", systemImage: "message")
+            }
+            .accessibilityLabel("Send SMS to customer")
+        }
+
+        // 5. Call customer
+        if let phone = ticket.customer?.callablePhone,
+           let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
+            Link(destination: url) {
+                Label("Call Customer", systemImage: "phone")
+            }
+            .accessibilityLabel("Call customer")
+        }
+
+        Divider()
+
+        // 6. Add Note
         Button {
             handlers.onAddNote(ticket)
         } label: {
@@ -148,7 +184,15 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Add note to ticket")
 
-        // 4. Duplicate
+        // 7. Convert to invoice
+        Button {
+            handlers.onConvertToInvoice(ticket)
+        } label: {
+            Label("Convert to Invoice", systemImage: "doc.text")
+        }
+        .accessibilityLabel("Convert ticket to invoice")
+
+        // 8. Duplicate
         Button {
             handlers.onDuplicate(ticket)
         } label: {
@@ -156,9 +200,20 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Duplicate ticket")
 
+        // 9. Pin / unpin
+        Button {
+            handlers.onTogglePin(ticket)
+        } label: {
+            Label(
+                ticket.isPinned ? "Unpin" : "Pin to Dashboard",
+                systemImage: ticket.isPinned ? "pin.slash" : "pin"
+            )
+        }
+        .accessibilityLabel(ticket.isPinned ? "Unpin ticket" : "Pin ticket to dashboard")
+
         Divider()
 
-        // 5. Archive
+        // 10. Archive
         Button {
             handlers.onArchive(ticket)
         } label: {
@@ -166,7 +221,7 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Archive ticket")
 
-        // 6. Delete (destructive)
+        // 11. Delete (destructive)
         Button(role: .destructive) {
             handlers.onDelete(ticket)
         } label: {

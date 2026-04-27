@@ -49,7 +49,7 @@ public struct TicketRowSwipeActions: ViewModifier {
                 .tint(Color.bizarreWarning)
                 .accessibilityLabel("Archive ticket")
             }
-            // Leading: Advance Status + Assign
+            // Leading: Advance Status + SMS customer
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
                 if let status = currentStatus,
                    let firstTransition = TicketStateMachine.allowedTransitions(from: status).first {
@@ -62,7 +62,17 @@ public struct TicketRowSwipeActions: ViewModifier {
                     .accessibilityLabel("Advance status: \(firstTransition.displayName)")
                 }
 
-                if let assignee = firstAssignee {
+                // §4.1 — SMS customer leading swipe
+                if let phone = ticket.customer?.callablePhone,
+                   let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
+                    Button {
+                        UIApplication.shared.open(url)
+                    } label: {
+                        Label("SMS", systemImage: "message.fill")
+                    }
+                    .tint(Color.bizarreOrange)
+                    .accessibilityLabel("SMS customer")
+                } else if let assignee = firstAssignee {
                     Button {
                         handlers.onAssign(ticket, assignee.id)
                     } label: {

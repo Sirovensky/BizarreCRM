@@ -80,6 +80,13 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
             return parts.joined(separator: " ")
         }
 
+        /// First non-empty phone or mobile number.
+        public var callablePhone: String? {
+            if let p = phone, !p.isEmpty { return p }
+            if let m = mobile, !m.isEmpty { return m }
+            return nil
+        }
+
         enum CodingKeys: String, CodingKey {
             case id, phone, mobile, email, organization
             case firstName = "first_name"

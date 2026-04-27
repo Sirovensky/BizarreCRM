@@ -2,6 +2,9 @@ import Foundation
 import Observation
 import Core
 import Networking
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Footer state for the ticket list — §4.1.
 public enum TicketListFooterState: Sendable, Equatable {
@@ -37,10 +40,19 @@ public final class TicketListViewModel {
     @ObservationIgnored private let repo: TicketRepository
     @ObservationIgnored private let cachedRepo: TicketCachedRepository?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    /// Optional API client — only available in the full init path.
+    @ObservationIgnored private var api: APIClient?
 
     public init(repo: TicketRepository) {
         self.repo = repo
         self.cachedRepo = repo as? TicketCachedRepository
+    }
+
+    /// Full init — enables api-backed actions (pin toggle, convert to invoice).
+    public init(repo: TicketRepository, api: APIClient) {
+        self.repo = repo
+        self.cachedRepo = repo as? TicketCachedRepository
+        self.api = api
     }
 
     public func load() async {
@@ -122,6 +134,28 @@ public final class TicketListViewModel {
             AppLog.ui.error("Delete ticket failed: \(error.localizedDescription, privacy: .public)")
             // Restore on failure.
             await refresh()
+        }
+    }
+
+    /// §4.1 / §4.5 — Toggle pin/star on `ticket`.
+    /// Calls `PATCH /tickets/:id { pinned }` then refreshes the list.
+    public func togglePin(ticket: TicketSummary) async {
+        guard let api else { return }
+        do {
+            try await api.setTicketPinned(ticketId: ticket.id, pinned: !ticket.isPinned)
+            await refresh()
+        } catch {
+            AppLog.ui.error("Toggle pin failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// §4.5 — Convert `ticket` to invoice via repository.
+    public func convertToInvoice(ticket: TicketSummary) async {
+        do {
+            _ = try await repo.convertToInvoice(id: ticket.id)
+        } catch {
+            AppLog.ui.error("Convert to invoice failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
         }
     }
 

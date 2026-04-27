@@ -14,6 +14,11 @@ public struct TicketListView: View {
     @State private var showingCreate: Bool = false
     @State private var showingSortMenu: Bool = false
     @State private var showingExport: Bool = false
+    // §4.5 — Bulk action state
+    @State private var bulkSelection: BulkEditSelection = .init()
+    @State private var showingBulkAction: Bool = false
+    @State private var bulkOutcomes: [BulkTicketOutcome] = []
+    @State private var showingBulkResult: Bool = false
     private let repo: TicketRepository
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
@@ -41,6 +46,14 @@ public struct TicketListView: View {
             onDelete: { [weak vm] ticket in
                 guard let vm else { return }
                 Task { await vm.delete(ticket: ticket) }
+            },
+            onConvertToInvoice: { [weak vm] ticket in
+                guard let vm else { return }
+                Task { await vm.convertToInvoice(ticket: ticket) }
+            },
+            onTogglePin: { [weak vm] ticket in
+                guard let vm else { return }
+                Task { await vm.togglePin(ticket: ticket) }
             }
         )
     }
@@ -53,12 +66,12 @@ public struct TicketListView: View {
         _vm = State(wrappedValue: TicketListViewModel(repo: repo))
     }
 
-    /// Enables the "+" toolbar + Edit in the row context menu.
+    /// Enables the "+" toolbar + Edit in the row context menu + pin/convert actions.
     public init(repo: TicketRepository, api: APIClient, customerRepo: CustomerRepository) {
         self.repo = repo
         self.api = api
         self.customerRepo = customerRepo
-        _vm = State(wrappedValue: TicketListViewModel(repo: repo))
+        _vm = State(wrappedValue: TicketListViewModel(repo: repo, api: api))
     }
 
     public var body: some View {
@@ -67,6 +80,34 @@ public struct TicketListView: View {
                 compactLayout
             } else {
                 regularLayout
+            }
+        }
+        // §4.5 — Bulk action sheet
+        .sheet(isPresented: $showingBulkAction) {
+            if let api {
+                BulkActionMenu(
+                    selection: bulkSelection,
+                    api: api
+                ) { action in
+                    let ids = Array(bulkSelection.selectedIDs)
+                    let coordinator = BulkEditCoordinator(api: api)
+                    showingBulkAction = false
+                    Task {
+                        let outcomes = await coordinator.execute(action: action, ticketIDs: ids)
+                        bulkOutcomes = outcomes
+                        bulkSelection.deactivate()
+                        showingBulkResult = true
+                        await vm.refresh()
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showingBulkResult) {
+            BulkEditResultView(outcomes: bulkOutcomes) { failedIds in
+                // retry: re-open bulk menu for failed IDs
+                bulkSelection.activateMode()
+                failedIds.forEach { bulkSelection.toggle($0) }
+                showingBulkAction = true
             }
         }
     }
@@ -97,6 +138,7 @@ public struct TicketListView: View {
                 sortToolbarItem
                 stalenessToolbarItem
                 exportToolbarItem
+                selectToolbarItem
             }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
                 if let api, let customerRepo {
@@ -106,6 +148,15 @@ public struct TicketListView: View {
             .sheet(isPresented: $showingExport) {
                 if let api {
                     TicketExportView(api: api, filter: vm.filter, keyword: vm.searchQuery.isEmpty ? nil : vm.searchQuery, sort: vm.sort)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if bulkSelection.isActive && bulkSelection.hasSelection {
+                    TicketBulkActionBar(
+                        count: bulkSelection.count,
+                        onAction: { showingBulkAction = true },
+                        onDeselect: { bulkSelection.deactivate() }
+                    )
                 }
             }
         }
@@ -135,6 +186,16 @@ public struct TicketListView: View {
                 stalenessToolbarItem
                 columnPickerToolbarItem
                 exportToolbarItem
+                selectToolbarItem
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if bulkSelection.isActive && bulkSelection.hasSelection {
+                    TicketBulkActionBar(
+                        count: bulkSelection.count,
+                        onAction: { showingBulkAction = true },
+                        onDeselect: { bulkSelection.deactivate() }
+                    )
+                }
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
@@ -180,6 +241,21 @@ public struct TicketListView: View {
             .keyboardShortcut("N", modifiers: .command)
             .accessibilityLabel("New ticket")
             .disabled(api == nil || customerRepo == nil)
+        }
+    }
+
+    /// §4.5 — Multi-select toggle button.
+    private var selectToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                bulkSelection.toggleMode()
+            } label: {
+                Label(
+                    bulkSelection.isActive ? "Done" : "Select",
+                    systemImage: bulkSelection.isActive ? "checkmark.circle.fill" : "checkmark.circle"
+                )
+            }
+            .accessibilityLabel(bulkSelection.isActive ? "Exit selection mode" : "Enter selection mode")
         }
     }
 
@@ -299,7 +375,23 @@ public struct TicketListView: View {
     @ViewBuilder
     private func ticketRow(ticket: TicketSummary, onSelect: @escaping (Int64) -> Void) -> some View {
         let currentStatus = TicketStatus(rawValue: ticket.status?.name.lowercased().replacingOccurrences(of: " ", with: "") ?? "")
-        if Platform.isCompact {
+        let isSelected = bulkSelection.selectedIDs.contains(ticket.id)
+        if bulkSelection.isActive {
+            // §4.5 — Bulk-select mode: tap toggles selection
+            Button {
+                bulkSelection.toggle(ticket.id)
+            } label: {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isSelected ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
+                        .font(.system(size: 22))
+                        .accessibilityHidden(true)
+                    TicketRow(ticket: ticket)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(isSelected ? "Selected" : "Not selected"): \(ticket.orderId)")
+        } else if Platform.isCompact {
             NavigationLink(value: ticket.id) {
                 TicketRow(ticket: ticket)
             }
@@ -317,6 +409,11 @@ public struct TicketListView: View {
                 currentStatus: currentStatus,
                 handlers: quickActionHandlers
             ))
+            // Long-press to enter bulk selection
+            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                bulkSelection.activateMode()
+                bulkSelection.toggle(ticket.id)
+            })
         } else {
             Button { onSelect(ticket.id) } label: {
                 TicketRow(ticket: ticket)
@@ -337,6 +434,11 @@ public struct TicketListView: View {
                 currentStatus: currentStatus,
                 handlers: quickActionHandlers
             ))
+            // Long-press to enter bulk selection
+            .simultaneousGesture(LongPressGesture().onEnded { _ in
+                bulkSelection.activateMode()
+                bulkSelection.toggle(ticket.id)
+            })
         }
     }
 
@@ -362,10 +464,19 @@ private struct TicketRow: View {
     var body: some View {
         HStack(alignment: .center, spacing: BrandSpacing.md) {
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                Text(primaryLine)
-                    .font(.brandBodyLarge())
-                    .foregroundStyle(.bizarreOnSurface)
-                    .lineLimit(1)
+                HStack(spacing: BrandSpacing.xs) {
+                    Text(primaryLine)
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(1)
+                    // §4.1 — Pinned/bookmarked indicator
+                    if ticket.isPinned {
+                        Image(systemName: "pin.fill")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.bizarreOrange)
+                            .accessibilityLabel("Pinned")
+                    }
+                }
                 Text(secondaryLine)
                     .font(.brandLabelLarge())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -743,6 +854,53 @@ private struct EmptyTicketDetailPlaceholder: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
+    }
+}
+
+// MARK: - §4.5 Bulk action floating bar
+
+/// Floating glass bar shown at the bottom of the list when bulk-selection mode is active
+/// and at least one ticket is selected.
+private struct TicketBulkActionBar: View {
+    let count: Int
+    let onAction: () -> Void
+    let onDeselect: () -> Void
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.base) {
+            Button(action: onDeselect) {
+                Label("Cancel", systemImage: "xmark.circle.fill")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cancel selection")
+
+            Spacer()
+
+            Text("\(count) selected")
+                .font(.brandBodyMedium().bold())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityLabel("\(count) tickets selected")
+
+            Spacer()
+
+            Button(action: onAction) {
+                Label("Actions…", systemImage: "ellipsis.circle.fill")
+                    .font(.brandBodyMedium().bold())
+                    .foregroundStyle(.bizarreOrange)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Show bulk actions for \(count) selected tickets")
+        }
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.vertical, BrandSpacing.md)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Divider()
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+        .animation(.spring(duration: 0.25), value: count)
     }
 }
 #endif

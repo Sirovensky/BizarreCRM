@@ -4,6 +4,7 @@ import Core
 import DesignSystem
 import Networking
 import Customers
+import UIKit
 
 // §4.3 — Full-fidelity multi-step ticket create.
 //
@@ -76,11 +77,13 @@ public struct TicketCreateFlowView: View {
         ToolbarItem(placement: .cancellationAction) {
             if vm.currentStep == .customer {
                 Button("Cancel") { dismiss() }
+                    .keyboardShortcut(".", modifiers: .command)  // §4.3 ⌘. cancel
                     .accessibilityLabel("Cancel ticket creation")
             } else {
                 Button(action: vm.back) {
                     Label("Back", systemImage: "chevron.left")
                 }
+                .keyboardShortcut(.leftArrow, modifiers: .command)  // §4.3 ⌘← prev step
                 .accessibilityLabel("Go back to \(prevStepTitle)")
             }
         }
@@ -140,6 +143,7 @@ public struct TicketCreateFlowView: View {
     private var iPadToolbar: some ToolbarContent {
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
+                .keyboardShortcut(".", modifiers: .command)  // §4.3 ⌘. cancel
                 .accessibilityLabel("Cancel ticket creation")
         }
 
@@ -199,12 +203,23 @@ public struct TicketCreateFlowView: View {
     private func submitAndDismiss() async {
         await vm.submit()
         if let id = vm.createdTicketId {
+            // §4.3 — Haptic feedback: .success on create
+            let generator = UINotificationFeedbackGenerator()
+            generator.prepare()
             if vm.queuedOffline {
                 pendingBanner = "Saved — will sync when online"
+                generator.notificationOccurred(.success)
                 try? await Task.sleep(nanoseconds: 900_000_000)
+            } else {
+                generator.notificationOccurred(.success)
             }
             onCreated(id)
             dismiss()
+        } else if vm.stepValidationMessage != nil {
+            // §4.3 — Haptic feedback: .error on validation fail
+            let generator = UINotificationFeedbackGenerator()
+            generator.prepare()
+            generator.notificationOccurred(.error)
         }
     }
 

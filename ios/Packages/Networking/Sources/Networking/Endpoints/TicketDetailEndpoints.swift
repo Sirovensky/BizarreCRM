@@ -24,6 +24,8 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
     public let howDidUFindUs: String?
     public let isPinned: Bool?
     public let isStarred: Bool?
+    public let urgency: String?
+    public let dueOn: String?
 
     public let customer: Customer?
     public let status: Status?
@@ -257,6 +259,8 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
         case howDidUFindUs = "how_did_u_find_us"
         case isPinned = "is_pinned"
         case isStarred = "is_starred"
+        case urgency
+        case dueOn = "due_on"
         case customer, status
         case assignedUser = "assigned_user"
         case createdByUser = "created_by_user"
@@ -284,6 +288,8 @@ public struct TicketDetail: Decodable, Sendable, Identifiable, Hashable {
         howDidUFindUs = try c.decodeIfPresent(String.self, forKey: .howDidUFindUs)
         isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned)
         isStarred = try c.decodeIfPresent(Bool.self, forKey: .isStarred)
+        urgency = try c.decodeIfPresent(String.self, forKey: .urgency)
+        dueOn = try c.decodeIfPresent(String.self, forKey: .dueOn)
         customer = try c.decodeIfPresent(Customer.self, forKey: .customer)
         status = try c.decodeIfPresent(Status.self, forKey: .status)
         assignedUser = try c.decodeIfPresent(UserRef.self, forKey: .assignedUser)
