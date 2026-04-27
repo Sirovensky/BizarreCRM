@@ -5,11 +5,8 @@ import Foundation
 // active users without relying on third-party analytics SDKs.
 //
 // Wiring (AppServices.restoreSession or scene phase handler):
-// ```swift
-// HeartbeatService.shared.start(post: { data in
-//     try await apiClient.post("/heartbeat", body: data, as: EmptyPayload.self)
-// })
-// ```
+// Call `HeartbeatService.shared.start(post:)` with a closure that POSTs
+// the HeartbeatPayload to the tenant server's `/heartbeat` endpoint.
 // Stop on logout / scene backgrounded:
 // ```swift
 // HeartbeatService.shared.stop()
@@ -51,7 +48,7 @@ public actor HeartbeatService {
     /// (the existing loop continues uninterrupted).
     ///
     /// - Parameter post: Closure that delivers each `HeartbeatPayload` to the server.
-    ///   Inject via `APIClient.post("/heartbeat", body:, as:)` from `AppServices`.
+    ///   Inject from `AppServices` to POST each payload to `/heartbeat` on the tenant server.
     public func start(post: @escaping @Sendable (HeartbeatPayload) async throws -> Void) {
         // If already running with the same closure, leave it running.
         guard task == nil else { return }

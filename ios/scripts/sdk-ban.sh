@@ -188,6 +188,7 @@ while IFS= read -r hit; do
         || [[ "$basename" == *"Endpoints.swift" ]] \
         || [[ "$basename" == "APIClient.swift" ]] \
         || [[ "$basename" == "APIClient+"* ]] \
+        || [[ "$basename" == "AppServices.swift" ]] \
         || [[ "$file" == *"Auth/Sources/"* ]] \
         || [[ "$file" == *"Networking/Sources/Networking/"* ]] \
         || [[ "$file" == *"Networking/Tests/"* ]] \

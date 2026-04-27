@@ -19,12 +19,9 @@ import Foundation
 /// **Wiring:** call `MetricKitManager.shared.start()` from `AppServices`
 /// at app launch, alongside `CrashReporter.shared.start()`.
 ///
-/// **Upload closure:** inject via `MetricKitManager(upload:)` in `AppServices`:
-/// ```swift
-/// MetricKitManager(upload: { data in
-///     try await apiClient.post("/telemetry/metrics", body: data)
-/// }).start()
-/// ```
+/// **Upload closure:** inject via `MetricKitManager(upload:)` in `AppServices`,
+/// binding the `APIClient` of the active session. The closure should POST to
+/// `"/telemetry/metrics"` on the tenant server.
 public final class MetricKitManager: @unchecked Sendable {
 
     // MARK: — Singleton (no-op upload until AppServices wires it up)

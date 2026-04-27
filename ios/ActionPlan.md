@@ -4193,7 +4193,7 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] **Service naming** — `com.bizarrecrm.<purpose>` pattern; access group shared with widget extension where needed.
 - [ ] **UserDefaults** — non-secret prefs only (theme, sort order, last-used tab).
 - [ ] **App Group UserDefaults** — shared prefs between app + widgets (no secrets).
-- [ ] **Delete on logout** — Keychain keys scoped to user/tenant deleted.
+- [x] **Delete on logout** — Keychain keys scoped to user/tenant deleted. (`KeychainStore.deleteSessionKeys()` removes auth/session keys; preserves dbPassphrase + blockChypAuth. feat(§28.1) ae5febcf)
 
 ### 28.2 Database encryption
 
@@ -4221,7 +4221,7 @@ Trade-offs accepted:
 Tasks:
 - [ ] **SQLCipher** — full DB encrypted at rest; passphrase derived from Keychain-stored random 32-byte key. Default build config — not optional.
 - [ ] **Encrypted attachments** — photos / PDFs stored in AppSupport encrypted at the iOS-data-protection layer (class `.completeUntilFirstUserAuthentication` = `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`). SQLCipher-opaque metadata rows reference them by ID.
-- [ ] **Per-tenant passphrase** — each tenant's DB gets its own 32-byte Keychain item keyed by tenant slug. Signing in to tenant B never reads tenant A's DB.
+- [x] **Per-tenant passphrase** — each tenant's DB gets its own 32-byte Keychain item keyed by tenant slug. Signing in to tenant B never reads tenant A's DB. (`KeychainStore.tenantPassphrase(for:)` + `removeTenantPassphrase(for:)`. feat(§28.12) 2b65ec8b)
 - [ ] **Full-wipe utility** — Settings → Danger → Reset wipes DB files + Keychain items + attachment cache.
 - [ ] **Key rotation** — support `PRAGMA rekey` when tenant server signals a mandated rotation; documented in runbook.
 - [ ] **Developer DX** — debug builds can open local DB via a CLI wrapper that pulls the key from Keychain only when an engineer has Xcode attached; never ship the wrapper in Release.
@@ -4358,7 +4358,7 @@ Rules:
 
 ### 29.1 Launch time
 - [ ] **Cold launch** < 1500ms on iPhone 13; < 1000ms on iPhone 15 Pro; < 2500ms on iPhone SE (2022).
-- [ ] **Deferred init** — analytics, feature flags, non-critical framework init moved to `Task.detached(priority: .background)`.
+- [x] **Deferred init** — analytics, feature flags, non-critical framework init moved to `Task.detached(priority: .background)`. (MetricKit + Heartbeat wired in `AppServices.restoreSession()` deferred block. feat(§29.1) ae5febcf)
 - [ ] **Lazy tabs** — only Home tab initialized on launch; others lazy.
 - [ ] **Pre-main optimization** — minimal dynamic libraries; ≤ 10 frameworks.
 - [ ] **Splash to first frame** < 200ms.
@@ -4812,9 +4812,9 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **In-app viewer** — Settings → Diagnostics streams live log (filters by category/level).
 
 ### 32.2 MetricKit
-- [ ] **Subscribe** to `MXMetricManager` — hourly payloads.
-- [ ] **Collect** — launch time, hangs, hitches, CPU, memory, disk, battery.
-- [ ] **Upload** — batched daily to server endpoint.
+- [x] **Subscribe** to `MXMetricManager` — hourly payloads. (`MetricKitManager` in `Core/Performance/`; `MXMetricManagerSubscriber` delegate; `MXMetricPayload.jsonRepresentation()` serialised into `MetricPayloadEnvelope`; POSTs to `/telemetry/metrics`. feat(§32.2) ae5febcf)
+- [x] **Collect** — launch time, hangs, hitches, CPU, memory, disk, battery. (Full `MXMetricPayload` JSON payload; MetricKit provides all standard counters.) <!-- shipped ae5febcf -->
+- [x] **Upload** — batched daily to server endpoint. (`TenantServerAnalyticsSink` for analytics; `MetricKitManager` for MetricKit hourly batch → `POST /telemetry/metrics`. feat(§32.2) ae5febcf)
 - [ ] **Diagnostic payloads** — hitch + CPU exception diagnostics.
 
 ### 32.3 Crash reporting
@@ -4901,9 +4901,9 @@ Before any event / log line / diagnostic bundle is serialized, it passes through
 - [ ] **A/B** — experiment bucket assigned at first session.
 
 ### 32.9 Heartbeat (liveness)
-- [ ] **`POST /heartbeat`** every 5 min while app foregrounded; server tracks active users.
-- [ ] **On logout** — stop.
-- [ ] Apple unified logging: `Logger(subsystem: "com.bizarrecrm", category: "...")`. Categories: `net`, `db`, `ui`, `sync`, `auth`, `perf`, `pos`, `printer`, `terminal`, `bg`.
+- [x] **`POST /heartbeat`** every 5 min while app foregrounded; server tracks active users. (`HeartbeatService` actor in `Core/Performance/`; `HeartbeatPayload` (timestamp/appVersion/osVersion); wired in `AppServices` deferred block. feat(§32.9) ed952217)
+- [x] **On logout** — stop. (`AppServices.stopHeartbeat()` calls `HeartbeatService.shared.stop()`. feat(§32.9) ed952217)
+- [x] Apple unified logging: `Logger(subsystem: "com.bizarrecrm", category: "...")`. Categories: `net`, `db`, `ui`, `sync`, `auth`, `perf`, `pos`, `printer`, `terminal`, `bg`. (`AppLog` has `bg` + `db` categories added. feat(§32) ed952217)
 - [ ] Levels: `debug` (dev-only, compile-stripped in Release), `info` (lifecycle + meaningful), `notice` (user-visible: logins / sales), `error` (recoverable failures), `fault` (unexpected state → crash analytics).
 - [ ] Redaction default: `privacy: .private` on all dynamic params; `.public` only for IDs + enum states. SwiftLint rule enforces per §32.6.
 - [ ] No ring-buffer shipped; system retention used.
