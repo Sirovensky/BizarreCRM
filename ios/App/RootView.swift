@@ -273,42 +273,77 @@ private struct iPhoneTabs: View {
     @Binding var selection: MainTab
     var onSignOut: (() -> Void)? = nil
 
+    // §29.1 — Lazy tabs: Dashboard is eager (home tab); all others rendered on
+    // first selection so cold-start only pays the cost of one tab's body.
+    // Once a tab has appeared it is never destroyed — tabs stay alive so
+    // ValueObservation pipelines keep running and pull-to-refresh state is
+    // preserved. The `.appeared` set is intentionally not persisted across
+    // app launches; every cold-start re-pays only the first navigation cost.
+    @State private var appearedTabs: Set<MainTab> = [.dashboard]
+
     var body: some View {
         TabView(selection: $selection) {
+            // Home tab — always eager; content starts loading immediately.
             DashboardView(repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient), api: AppServices.shared.apiClient)
                 .tabItem { Label(MainTab.dashboard.title, systemImage: MainTab.dashboard.systemImage) }
                 .tag(MainTab.dashboard)
 
-            TicketListView(
-                repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient,
-                customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
-            )
-                .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
-                .tag(MainTab.tickets)
-
-            CustomerListView(
-                repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient
-            )
-                .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
-                .tag(MainTab.customers)
-
-            PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+            lazyTab(.tickets) {
+                TicketListView(
+                    repo: TicketRepositoryImpl(api: AppServices.shared.apiClient),
                     api: AppServices.shared.apiClient,
-                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
-                    cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
-                .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
-                .tag(MainTab.pos)
+                    customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient)
+                )
+            }
+            .tabItem { Label(MainTab.tickets.title, systemImage: MainTab.tickets.systemImage) }
+            .tag(MainTab.tickets)
 
-            MoreMenuView(onSignOut: onSignOut)
-                .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
-                .tag(MainTab.more)
+            lazyTab(.customers) {
+                CustomerListView(
+                    repo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                    detailRepo: CustomerDetailRepositoryImpl(api: AppServices.shared.apiClient),
+                    api: AppServices.shared.apiClient
+                )
+            }
+            .tabItem { Label(MainTab.customers.title, systemImage: MainTab.customers.systemImage) }
+            .tag(MainTab.customers)
 
-            GlobalSearchView(api: AppServices.shared.apiClient)
-                .tabItem { Label(MainTab.search.title, systemImage: MainTab.search.systemImage) }
-                .tag(MainTab.search)
+            lazyTab(.pos) {
+                PosView(repo: InventoryRepositoryImpl(api: AppServices.shared.apiClient),
+                        api: AppServices.shared.apiClient,
+                        customerRepo: CustomerRepositoryImpl(api: AppServices.shared.apiClient),
+                        cashDrawerOpen: { try await AppServices.shared.cashDrawer.open() })
+            }
+            .tabItem { Label(MainTab.pos.title, systemImage: MainTab.pos.systemImage) }
+            .tag(MainTab.pos)
+
+            lazyTab(.more) {
+                MoreMenuView(onSignOut: onSignOut)
+            }
+            .tabItem { Label(MainTab.more.title, systemImage: MainTab.more.systemImage) }
+            .tag(MainTab.more)
+
+            lazyTab(.search) {
+                GlobalSearchView(api: AppServices.shared.apiClient)
+            }
+            .tabItem { Label(MainTab.search.title, systemImage: MainTab.search.systemImage) }
+            .tag(MainTab.search)
+        }
+        .onChange(of: selection) { _, newTab in
+            appearedTabs.insert(newTab)
+        }
+    }
+
+    /// Returns the real content view once `tab` has appeared (been selected at
+    /// least once), or a lightweight `Color.clear` placeholder otherwise.
+    /// After first appearance the real view is kept in the hierarchy permanently.
+    @ViewBuilder
+    private func lazyTab<Content: View>(_ tab: MainTab, @ViewBuilder content: () -> Content) -> some View {
+        if appearedTabs.contains(tab) {
+            content()
+        } else {
+            Color.clear
+                .accessibilityHidden(true)
         }
     }
 }
