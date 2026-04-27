@@ -10,7 +10,9 @@ data class RepairServiceItem(
     @SerializedName("is_active")
     val isActive: Int = 1,
     @SerializedName("sort_order")
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+    @SerializedName("labor_price")
+    val laborPrice: Double = 0.0,
 )
 
 data class RepairPriceLookup(

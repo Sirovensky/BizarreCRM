@@ -81,12 +81,20 @@ interface RepairPricingApi {
 
 /**
  * Request body for POST/PUT repair-pricing/services.
+ * [slug] is required on POST (auto-generated from name); may be null on PUT.
  */
 data class UpsertRepairServiceRequest(
     val name: String,
+    val slug: String?,
     val category: String?,
     @SerializedName("labor_price")
     val laborPrice: Double,
     @SerializedName("is_active")
     val isActive: Int = 1,
-)
+) {
+    companion object {
+        /** Convert a display name to a URL-safe slug (lowercase, hyphens). */
+        fun slugify(name: String): String =
+            name.trim().lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
+    }
+}

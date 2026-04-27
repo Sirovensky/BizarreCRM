@@ -211,17 +211,17 @@ private fun DeviceTemplateCard(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
             )
-            template.deviceModelName?.let { model ->
+            template.displaySubtitle?.let { subtitle ->
                 Text(
-                    text = model,
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (template.commonRepairs.isNotEmpty()) {
+            if (template.displayRepairs.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "Common repairs: ${template.commonRepairs.joinToString(", ")}",
+                    text = "Repairs: ${template.displayRepairs.take(4).joinToString(", ")}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,

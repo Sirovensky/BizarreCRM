@@ -24,3 +24,15 @@ data class DeviceModelItem(
     @SerializedName("release_year")
     val releaseYear: Int? = null
 )
+
+/** Request body for POST /catalog/devices (admin only). */
+data class AddDeviceModelRequest(
+    @SerializedName("manufacturer_id")
+    val manufacturerId: Long,
+    val name: String,
+    val category: String = "phone",
+    @SerializedName("release_year")
+    val releaseYear: Int? = null,
+    @SerializedName("is_popular")
+    val isPopular: Int = 0,
+)

@@ -284,6 +284,12 @@ fun SettingsScreen(
     onSmsSettings: (() -> Unit)? = null,
     // §19.19 — opens the Business Info sub-screen.
     onBusinessInfo: (() -> Unit)? = null,
+    // §44.1 — opens the Device Templates sub-screen.
+    onDeviceTemplates: (() -> Unit)? = null,
+    // §44.2 — opens the Repair Pricing catalog sub-screen.
+    onRepairPricing: (() -> Unit)? = null,
+    // §44.3 — opens the Device Catalog sub-screen.
+    onDeviceCatalog: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -447,6 +453,33 @@ fun SettingsScreen(
                     icon = Icons.Default.Store,
                     title = "Business Info",
                     onClick = onBusinessInfo,
+                )
+            }
+
+            // §44.1 — Device templates (common repairs + parts per device model).
+            if (onDeviceTemplates != null) {
+                SettingsRow(
+                    icon = Icons.Default.PhoneAndroid,
+                    title = "Device Templates",
+                    onClick = onDeviceTemplates,
+                )
+            }
+
+            // §44.2 — Repair pricing catalog (service names + labor rates).
+            if (onRepairPricing != null) {
+                SettingsRow(
+                    icon = Icons.Default.Build,
+                    title = "Repair Pricing",
+                    onClick = onRepairPricing,
+                )
+            }
+
+            // §44.3 — Device catalog (manufacturers + models browser, admin can add).
+            if (onDeviceCatalog != null) {
+                SettingsRow(
+                    icon = Icons.Default.Devices,
+                    title = "Device Catalog",
+                    onClick = onDeviceCatalog,
                 )
             }
 

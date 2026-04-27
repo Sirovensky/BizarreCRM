@@ -7,6 +7,7 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * DeviceTemplateApi — §4.9 L762
@@ -55,6 +56,35 @@ interface DeviceTemplateApi {
         @Path("id") id: Long,
         @Body body: CreateDeviceTemplateRequest,
     ): ApiResponse<DeviceTemplateDto>
+
+    /**
+     * Search templates by category or device model hint.
+     *
+     * @param category    Optional category slug (phone/tablet/etc.).
+     * @param model       Optional free-text model name filter.
+     * @return filtered list of [DeviceTemplateDto].
+     */
+    @GET("device-templates")
+    suspend fun searchTemplates(
+        @Query("category") category: String? = null,
+        @Query("model") model: String? = null,
+    ): ApiResponse<List<DeviceTemplateDto>>
+
+    /**
+     * Apply a template to an existing ticket.
+     * Server inserts common_repairs as ticket lines + copies parts_json.
+     *
+     * @param id            Template ID.
+     * @param ticketId      Target ticket ID.
+     * @param body          Optional ticket_device_id binding.
+     * @return [ApplyTemplateResult] with inserted line count.
+     */
+    @POST("device-templates/{id}/apply-to-ticket/{ticketId}")
+    suspend fun applyTemplate(
+        @Path("id") id: Long,
+        @Path("ticketId") ticketId: Long,
+        @Body body: ApplyTemplateBody = ApplyTemplateBody(),
+    ): ApiResponse<ApplyTemplateResult>
 }
 
 // ─── DTOs ────────────────────────────────────────────────────────────────────
@@ -70,7 +100,32 @@ data class DeviceTemplateDto(
     val commonRepairs: List<String> = emptyList(),
     @SerializedName("created_at")
     val createdAt: String?,
-)
+    // Extended fields returned by server apply-to-ticket endpoint
+    @SerializedName("device_category")
+    val deviceCategory: String? = null,
+    @SerializedName("device_model")
+    val deviceModel: String? = null,
+    val fault: String? = null,
+    @SerializedName("est_labor_minutes")
+    val estLaborMinutes: Int = 0,
+    @SerializedName("suggested_price")
+    val suggestedPrice: Int = 0,
+    @SerializedName("diagnostic_checklist")
+    val diagnosticChecklist: List<String> = emptyList(),
+    @SerializedName("is_active")
+    val isActive: Int = 1,
+) {
+    /** Display subtitle: "ModelName — Fault" or just model or fault, whichever is available. */
+    val displaySubtitle: String?
+        get() {
+            val parts = listOfNotNull(deviceModelName ?: deviceModel, fault)
+            return parts.joinToString(" — ").takeIf { it.isNotBlank() }
+        }
+
+    /** Repairs to display; falls back to diagnostic checklist when common_repairs is empty. */
+    val displayRepairs: List<String>
+        get() = commonRepairs.ifEmpty { diagnosticChecklist }
+}
 
 data class CreateDeviceTemplateRequest(
     val name: String,
@@ -78,4 +133,19 @@ data class CreateDeviceTemplateRequest(
     val deviceModelId: Long?,
     @SerializedName("common_repairs")
     val commonRepairs: List<String>,
+)
+
+/** Body for POST device-templates/:id/apply-to-ticket/:ticketId */
+data class ApplyTemplateBody(
+    @SerializedName("ticket_device_id")
+    val ticketDeviceId: Long? = null,
+)
+
+/** Result returned by apply-to-ticket endpoint. */
+data class ApplyTemplateResult(
+    @SerializedName("lines_inserted")
+    val linesInserted: Int = 0,
+    @SerializedName("parts_inserted")
+    val partsInserted: Int = 0,
+    val message: String? = null,
 )

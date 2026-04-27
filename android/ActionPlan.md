@@ -3463,23 +3463,23 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 44. Device Templates / Repair-Pricing Catalog
 
 ### 44.1 Device templates
-- [ ] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass).
-- [ ] Default labor rate per repair.
-- [ ] Default parts per repair.
-- [ ] Pre-conditions checklist customized per device class.
-- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs).
-- [ ] Per-tenant edit.
+- [x] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass). (2026-04-26 — DeviceTemplateDto.displayRepairs computed from common_repairs or diagnostic_checklist; DeviceTemplatesScreen CRUD wired; Settings > Device Templates row added)
+- [ ] Default labor rate per repair. (NOTE: server stores est_labor_cost on template, not per-repair-type; requires schema change — deferred)
+- [x] Default parts per repair. (2026-04-26 — server POST apply-to-ticket inserts parts_json; ApplyTemplateBody + ApplyTemplateResult DTOs added; DeviceTemplatePickerSheet calls applyTemplate)
+- [x] Pre-conditions checklist customized per device class. (2026-04-26 — server appends diagnostic_checklist to template payload; DeviceTemplateDto.diagnosticChecklist mapped; surfaced via displayRepairs fallback)
+- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs). (NOTE: data seeding task; requires seed script — deferred)
+- [x] Per-tenant edit. (2026-04-26 — DeviceTemplatesScreen full CRUD; Settings > Device Templates; POST/PUT via DeviceTemplateApi; wired in AppNavGraph)
 
 ### 44.2 Repair pricing catalog
-- [ ] `GET /repair-pricing/services` — service catalog.
-- [ ] Editable per-tenant: name, base price, labor rate, duration estimate, tax class.
-- [ ] Per-device-model overrides.
-- [ ] Search + filter.
-- [ ] Bulk price adjust (admin).
+- [x] `GET /repair-pricing/services` — service catalog. (2026-04-26 — RepairPricingScreen + RepairPricingViewModel; server GET /repair-pricing/services returns labor_price; card shows "$X.XX" on right)
+- [x] Editable per-tenant: name, base price, labor rate, duration estimate, tax class. (2026-04-26 — RepairServiceEditDialog with name/category/laborPrice fields; slug auto-generated on create via UpsertRepairServiceRequest.slugify(); NOTE: duration + tax class not in server schema — deferred)
+- [ ] Per-device-model overrides. (NOTE: server has repair_prices table; no Android editor UI built — deferred)
+- [x] Search + filter. (2026-04-26 — search bar in RepairPricingScreen; server GET ?q= filter added to repairPricing.routes.ts)
+- [ ] Bulk price adjust (admin). (NOTE: server has PUT /repair-pricing/adjustments; Android BulkPriceAdjustDialog not built — deferred)
 
 ### 44.3 Device catalog
-- [ ] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`).
-- [ ] Admin can add new device.
+- [x] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`). (2026-04-26 — DeviceCatalogScreen + DeviceCatalogViewModel; manufacturer filter chips + category filter chips; lazy list with search; Settings > Device Catalog row added)
+- [x] Admin can add new device. (2026-04-26 — POST /catalog/devices added to server catalog.routes.ts; AddDeviceModelRequest DTO + CatalogApi.addDevice; AddDeviceDialog in DeviceCatalogScreen)
 
 ---
 ## 45. CRM Health Score & LTV

@@ -95,6 +95,7 @@ import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.bench.BenchTabScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DeviceTemplatesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RepairPricingScreen
+import com.bizarreelectronics.crm.ui.screens.pricingcatalog.DeviceCatalogScreen
 import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.PosSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
@@ -390,6 +391,9 @@ sealed class Screen(val route: String) {
 
     // §4.9 L766 — Repair pricing catalog Settings sub-screen.
     data object RepairPricing : Screen("settings/repair-pricing")
+
+    // §44.3 — Device catalog browse + admin add screen.
+    data object DeviceCatalog : Screen("settings/device-catalog")
 
     // §3.13 L565–L567 — Full-screen TV queue board for in-shop display mode.
     data object TvQueueBoard : Screen("tv/queue")
@@ -1120,10 +1124,6 @@ fun AppNavGraph(
                     onNavigateToActivityFeed = { navController.navigate(Screen.ActivityFeed.route) },
                     // §3.2 L504 — Cash-Trapped card tap → Aging report.
                     onNavigateToAging = { navController.navigate(Screen.InvoicesAging.route) },
-                    // §48.1 — Goals widget "View all / Manage" → GoalsScreen.
-                    onNavigateToGoals = { navController.navigate(Screen.Goals.route) },
-                    // §43.1 — "My Bench" tile → BenchTabScreen.
-                    onNavigateToBench = { navController.navigate(Screen.Bench.route) },
                 )
             }
             // §3.16 L592-L599 — Full-screen Activity Feed.
@@ -1665,6 +1665,12 @@ fun AppNavGraph(
                     onSmsSettings = { navController.navigate(Screen.SmsSettings.route) },
                     // §19.19 — Business info.
                     onBusinessInfo = { navController.navigate(Screen.BusinessInfo.route) },
+                    // §44.1 — Device templates.
+                    onDeviceTemplates = { navController.navigate(Screen.DeviceTemplates.route) },
+                    // §44.2 — Repair pricing catalog.
+                    onRepairPricing = { navController.navigate(Screen.RepairPricing.route) },
+                    // §44.3 — Device catalog.
+                    onDeviceCatalog = { navController.navigate(Screen.DeviceCatalog.route) },
                 )
             }
             // §19.7 — Ticket settings sub-screen.
@@ -2212,6 +2218,14 @@ fun AppNavGraph(
             composable(Screen.RepairPricing.route) {
                 RepairPricingScreen(
                     onBack = { navController.popBackStack() },
+                )
+            }
+
+            // ─── §44.3 — Device Catalog ───
+            composable(Screen.DeviceCatalog.route) {
+                DeviceCatalogScreen(
+                    onBack = { navController.popBackStack() },
+                    isAdmin = authPreferences?.userRole == "admin",
                 )
             }
 

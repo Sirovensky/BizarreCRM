@@ -1,7 +1,9 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.*
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Query
 
 interface CatalogApi {
@@ -16,4 +18,8 @@ interface CatalogApi {
         @Query("popular") popular: Int? = null,
         @Query("limit") limit: Int = 100
     ): ApiResponse<List<DeviceModelItem>>
+
+    /** Admin-only: add a new device model to the catalog (POST /catalog/devices). */
+    @POST("catalog/devices")
+    suspend fun addDevice(@Body body: AddDeviceModelRequest): ApiResponse<DeviceModelItem>
 }

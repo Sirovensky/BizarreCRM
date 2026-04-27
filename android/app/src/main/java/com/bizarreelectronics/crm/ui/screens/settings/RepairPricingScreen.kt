@@ -247,6 +247,14 @@ private fun RepairServiceCard(
                 }
             }
             // Labor rate shown on the right
+            if (service.laborPrice > 0) {
+                Text(
+                    text = "$%.2f".format(service.laborPrice),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
     }
 }
@@ -270,7 +278,9 @@ fun RepairServiceEditDialog(
 ) {
     var name by remember(service) { mutableStateOf(service?.name ?: "") }
     var category by remember(service) { mutableStateOf(service?.category ?: "") }
-    var laborPriceText by remember(service) { mutableStateOf("") }
+    var laborPriceText by remember(service) {
+        mutableStateOf(if (service != null && service.laborPrice > 0) "%.2f".format(service.laborPrice) else "")
+    }
 
     val canSave = name.isNotBlank() && !isSaving
 

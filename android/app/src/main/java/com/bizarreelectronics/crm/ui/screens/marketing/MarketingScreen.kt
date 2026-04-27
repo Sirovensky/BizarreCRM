@@ -119,11 +119,9 @@ fun MarketingScreen(
         }
 
         if (state.error != null && state.campaigns.isEmpty()) {
-            ErrorState(
-                message = state.error!!,
-                onRetry = { viewModel.refresh() },
-                modifier = Modifier.padding(innerPadding),
-            )
+            Box(modifier = Modifier.padding(innerPadding)) {
+                ErrorState(message = state.error!!, onRetry = { viewModel.refresh() })
+            }
             return@Scaffold
         }
 
@@ -185,11 +183,10 @@ fun MarketingScreen(
                 item {
                     EmptyState(
                         title = "No campaigns",
-                        message = if (state.selectedStatusTab == "All")
+                        subtitle = if (state.selectedStatusTab == "All")
                             "Tap + to create your first campaign."
                         else
                             "No ${state.selectedStatusTab.lowercase()} campaigns.",
-                        modifier = Modifier.padding(32.dp),
                     )
                 }
             } else {
@@ -231,8 +228,7 @@ fun MarketingScreen(
                 item {
                     EmptyState(
                         title = "No segments",
-                        message = "Segments let you target specific customer groups.",
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        subtitle = "Segments let you target specific customer groups.",
                     )
                 }
             } else {
