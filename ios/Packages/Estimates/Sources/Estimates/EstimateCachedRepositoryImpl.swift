@@ -35,6 +35,15 @@ public actor EstimateCachedRepositoryImpl: EstimateRepository {
         return result.value
     }
 
+    /// Cursor pages always go through the underlying repo (no cursor-aware cache for MVP).
+    public func listPage(
+        status: EstimateStatusFilter,
+        keyword: String?,
+        cursor: String?
+    ) async throws -> EstimatePageResult {
+        try await underlying.listPage(status: status, keyword: keyword, cursor: cursor)
+    }
+
     // MARK: - CachedResult list
 
     public func cachedList(

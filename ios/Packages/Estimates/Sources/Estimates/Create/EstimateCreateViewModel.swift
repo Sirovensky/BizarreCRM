@@ -44,6 +44,38 @@ public final class EstimateCreateViewModel {
 
     public init(api: APIClient) { self.api = api }
 
+    /// §8.3 — Prefill from a lead detail: customer identity carried over; no line items yet.
+    /// The lead's linked customer is pre-selected so the user only needs to add line items + validity.
+    ///
+    /// Uses `LeadDetail` (rather than `Lead`) because only the detail response carries `customerId`.
+    public init(api: APIClient, prefillFromLeadDetail lead: LeadDetail) {
+        self.api = api
+        // Map lead detail fields to estimate create fields
+        self.customerId = lead.customerId
+        let nameParts = [lead.firstName, lead.lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
+        let displayName = nameParts.isEmpty ? "Lead #\(lead.id)" : nameParts.joined(separator: " ")
+        self.customerDisplayName = displayName
+        self.notes = "Estimate created from lead #\(lead.id)."
+        // Validity: default 30 days from today — tenant can configure
+        let thirtyDays = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        self.validUntil = fmt.string(from: thirtyDays)
+    }
+
+    /// §8.3 — Lightweight prefill from `Lead` summary (no customerId available).
+    /// Used when navigating from the lead list where detail has not been fetched.
+    /// `customerId` will be nil — user must re-select from the customer picker.
+    public init(api: APIClient, prefillFromLead lead: Lead) {
+        self.api = api
+        self.customerDisplayName = lead.displayName
+        self.notes = "Estimate created from lead \(lead.orderId ?? "#\(lead.id)")."
+        let thirtyDays = Calendar.current.date(byAdding: .day, value: 30, to: Date()) ?? Date()
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        self.validUntil = fmt.string(from: thirtyDays)
+    }
+
     // MARK: - Validation
 
     public var isValid: Bool {

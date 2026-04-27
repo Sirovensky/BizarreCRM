@@ -3,30 +3,43 @@ import Core
 import DesignSystem
 import Networking
 
-// MARK: - EstimateDetailView
+// MARK: - EstimateDetailView (§8.2)
+//
+// Detail view for a single estimate.
+// §8.2: header (estimate # + status + valid-until), line items + totals,
+//   Send (SMS/email), Approve (staff-assisted signature), Reject (reason required),
+//   Convert to ticket, Convert to invoice, Versioning, Customer-facing PDF preview.
+//
+// iPhone: vertical scroll + action menu in toolbar.
+// iPad: main scroll + actions sidebar (300pt).
 
-/// Detail view for a single estimate.
-/// §8.2: header, line items, totals, approve/reject actions, convert-to-ticket.
-/// iPhone: vertical scroll + bottom-sheet actions.
-/// iPad: multi-column layout with actions sidebar.
 public struct EstimateDetailView: View {
     private let estimate: Estimate
     private let api: APIClient
     private let onTicketCreated: @MainActor (Int64) -> Void
+    private let onInvoiceCreated: @MainActor (Int64) -> Void
 
+    // §8.2 sheet states
     @State private var showConvertSheet: Bool = false
+    @State private var showVersionsSheet: Bool = false
+    @State private var showPdfPreview: Bool = false
     #if canImport(UIKit)
-    @State private var showSignSheet: Bool = false
+    @State private var showSignSheet: Bool = false      // existing sign-url sheet
+    @State private var showSendSheet: Bool = false      // §8.2 send
+    @State private var showApproveSheet: Bool = false   // §8.2 approve
+    @State private var showRejectSheet: Bool = false    // §8.2 reject
     #endif
 
     public init(
         estimate: Estimate,
         api: APIClient,
-        onTicketCreated: @escaping @MainActor (Int64) -> Void = { _ in }
+        onTicketCreated: @escaping @MainActor (Int64) -> Void = { _ in },
+        onInvoiceCreated: @escaping @MainActor (Int64) -> Void = { _ in }
     ) {
         self.estimate = estimate
         self.api = api
         self.onTicketCreated = onTicketCreated
+        self.onInvoiceCreated = onInvoiceCreated
     }
 
     public var body: some View {
@@ -47,6 +60,9 @@ public struct EstimateDetailView: View {
                     headerCard
                     lineItemsCard
                     totalsCard
+                    if let reason = estimate.rejectionReason, !reason.isEmpty {
+                        rejectionCard(reason)
+                    }
                 }
                 .padding(BrandSpacing.lg)
             }
@@ -57,8 +73,13 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { compactToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        .sheet(isPresented: $showVersionsSheet) { versionsSheet }
+        .sheet(isPresented: $showPdfPreview) { pdfPreviewSheet }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
+        .sheet(isPresented: $showSendSheet) { sendSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
         #endif
     }
 
@@ -73,6 +94,9 @@ public struct EstimateDetailView: View {
                     VStack(alignment: .leading, spacing: BrandSpacing.lg) {
                         headerCard
                         lineItemsCard
+                        if let reason = estimate.rejectionReason, !reason.isEmpty {
+                            rejectionCard(reason)
+                        }
                     }
                     .padding(BrandSpacing.xl)
                 }
@@ -97,20 +121,33 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { ipadToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        .sheet(isPresented: $showVersionsSheet) { versionsSheet }
+        .sheet(isPresented: $showPdfPreview) { pdfPreviewSheet }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
+        .sheet(isPresented: $showSendSheet) { sendSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
         #endif
     }
 
-    // MARK: - Header card
+    // MARK: - Header card (§8.2)
 
     private var headerCard: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             HStack {
-                Text(estimate.orderId ?? "EST-?")
-                    .font(.brandMono(size: 18))
-                    .foregroundStyle(.bizarreOnSurface)
-                    .textSelection(.enabled)
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(estimate.orderId ?? "EST-?")
+                        .font(.brandMono(size: 18))
+                        .foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
+                        .accessibilityLabel("Order ID: \(estimate.orderId ?? "EST-?")")
+                    if let vn = estimate.versionNumber {
+                        Text("Version \(vn)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
                 Spacer()
                 statusBadge
             }
@@ -124,6 +161,7 @@ public struct EstimateDetailView: View {
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
+                    .textSelection(.enabled)
                     .accessibilityLabel("Total: \(formatMoney(total))")
             }
 
@@ -136,6 +174,21 @@ public struct EstimateDetailView: View {
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Valid until \(String(until.prefix(10)))")
+            }
+
+            if let sentAt = estimate.sentAt, !sentAt.isEmpty {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "paperplane")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("Sent \(String(sentAt.prefix(10)))")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Sent on \(String(sentAt.prefix(10)))")
             }
 
             if let notes = estimate.notes, !notes.isEmpty {
@@ -171,6 +224,7 @@ public struct EstimateDetailView: View {
         case "approved": return .green
         case "rejected", "expired": return .bizarreError
         case "converted": return .bizarreOrange
+        case "sent": return .blue
         default: return .bizarreOnSurface
         }
     }
@@ -180,8 +234,28 @@ public struct EstimateDetailView: View {
         case "approved": return Color.green.opacity(0.15)
         case "rejected", "expired": return Color.bizarreError.opacity(0.15)
         case "converted": return Color.bizarreOrange.opacity(0.15)
+        case "sent": return Color.blue.opacity(0.15)
         default: return Color.bizarreSurface2
         }
+    }
+
+    // MARK: - Rejection card
+
+    private func rejectionCard(_ reason: String) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            Label("Rejected", systemImage: "xmark.circle.fill")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(reason)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+        }
+        .padding(BrandSpacing.lg)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bizarreError.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Rejected. Reason: \(reason)")
     }
 
     // MARK: - Line items card
@@ -278,6 +352,7 @@ public struct EstimateDetailView: View {
                     .font(.brandTitleMedium())
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
+                    .textSelection(.enabled)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Total: \(formatMoney(estimate.total ?? 0))")
@@ -304,19 +379,52 @@ public struct EstimateDetailView: View {
     // MARK: - iPad actions sidebar card
 
     private var actionsCard: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.md) {
+        let status = estimate.status ?? ""
+        let isConverted = (status == "converted")
+        let isSigned   = (status == "signed")
+        let isApproved = (status == "approved")
+        let isRejected = (status == "rejected")
+
+        return VStack(alignment: .leading, spacing: BrandSpacing.md) {
             Text("Actions")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
 
-            let status = estimate.status ?? ""
-            let isConverted = (status == "converted")
-            let isSigned = (status == "signed")
+            // §8.2 Send
+            #if canImport(UIKit)
+            Button { showSendSheet = true } label: {
+                Label("Send to Customer", systemImage: "paperplane")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isConverted)
+            .accessibilityLabel(isConverted ? "Cannot send — already converted" : "Send estimate via SMS or email")
+            .keyboardShortcut("m", modifiers: [.command, .shift])
 
-            Button {
-                showConvertSheet = true
-            } label: {
+            // §8.2 Approve
+            Button { showApproveSheet = true } label: {
+                Label("Approve (Signature)", systemImage: "signature")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isApproved || isConverted || isRejected)
+            .accessibilityLabel(isApproved ? "Already approved" : "Approve with customer signature")
+            .keyboardShortcut("a", modifiers: [.command, .option])
+
+            // §8.2 Reject
+            Button { showRejectSheet = true } label: {
+                Label("Reject", systemImage: "xmark.circle")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .tint(.bizarreError)
+            .disabled(isRejected || isConverted || isApproved)
+            .accessibilityLabel(isRejected ? "Already rejected" : "Reject this estimate with a reason")
+            #endif
+
+            // Convert to ticket (existing)
+            Button { showConvertSheet = true } label: {
                 Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -325,11 +433,39 @@ public struct EstimateDetailView: View {
             .accessibilityLabel(isConverted ? "Already converted to ticket" : "Convert estimate to a service ticket")
             .keyboardShortcut("k", modifiers: [.command, .shift])
 
-            #if canImport(UIKit)
+            // §8.2 Convert to invoice
             Button {
-                showSignSheet = true
+                Task { await convertToInvoice() }
             } label: {
-                Label(isSigned ? "Already Signed" : "Send for Signature",
+                Label("Convert to Invoice", systemImage: "doc.text")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isConverted)
+            .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to an invoice")
+            .keyboardShortcut("i", modifiers: [.command, .option])
+
+            // §8.2 Versions
+            Button { showVersionsSheet = true } label: {
+                Label("Version History", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("View all versions of this estimate")
+            .keyboardShortcut("v", modifiers: [.command, .option])
+
+            // §8.2 PDF preview
+            Button { showPdfPreview = true } label: {
+                Label("Customer Preview", systemImage: "doc.richtext")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Preview what the customer sees")
+
+            // Existing sign-url sheet
+            #if canImport(UIKit)
+            Button { showSignSheet = true } label: {
+                Label(isSigned ? "Already Signed" : "Send for E-Signature",
                       systemImage: isSigned ? "checkmark.seal.fill" : "pencil.and.signature")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -350,20 +486,55 @@ public struct EstimateDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
-            let isSigned = (status == "signed")
+            let isSigned   = (status == "signed")
+            let isApproved = (status == "approved")
+            let isRejected = (status == "rejected")
+
             Menu {
-                Button {
-                    showConvertSheet = true
-                } label: {
+                #if canImport(UIKit)
+                Button { showSendSheet = true } label: {
+                    Label("Send to Customer", systemImage: "paperplane")
+                }
+                .disabled(isConverted)
+
+                Button { showApproveSheet = true } label: {
+                    Label("Approve (Signature)", systemImage: "signature")
+                }
+                .disabled(isApproved || isConverted || isRejected)
+
+                Button { showRejectSheet = true } label: {
+                    Label("Reject", systemImage: "xmark.circle")
+                }
+                .disabled(isRejected || isConverted || isApproved)
+
+                Divider()
+                #endif
+
+                Button { showConvertSheet = true } label: {
                     Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(isConverted)
 
+                Button { Task { await convertToInvoice() } } label: {
+                    Label("Convert to Invoice", systemImage: "doc.text")
+                }
+                .disabled(isConverted)
+
+                Divider()
+
+                Button { showVersionsSheet = true } label: {
+                    Label("Version History", systemImage: "clock.arrow.circlepath")
+                }
+
+                Button { showPdfPreview = true } label: {
+                    Label("Customer Preview", systemImage: "doc.richtext")
+                }
+
                 #if canImport(UIKit)
-                Button {
-                    showSignSheet = true
-                } label: {
-                    Label("Send for Signature", systemImage: "pencil.and.signature")
+                Divider()
+
+                Button { showSignSheet = true } label: {
+                    Label("Send for E-Signature", systemImage: "pencil.and.signature")
                 }
                 .disabled(isSigned)
                 #endif
@@ -379,23 +550,26 @@ public struct EstimateDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
-            Button {
-                showConvertSheet = true
-            } label: {
+            Button { showConvertSheet = true } label: {
                 Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
             }
             .disabled(isConverted)
             .keyboardShortcut("k", modifiers: [.command, .shift])
             .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to a service ticket")
         }
+        ToolbarItem(placement: .primaryAction) {
+            Button { showVersionsSheet = true } label: {
+                Label("Versions", systemImage: "clock.arrow.circlepath")
+            }
+            .keyboardShortcut("v", modifiers: [.command, .option])
+            .accessibilityLabel("View version history")
+        }
         #if canImport(UIKit)
         ToolbarItem(placement: .primaryAction) {
             let status = estimate.status ?? ""
             let isSigned = (status == "signed")
-            Button {
-                showSignSheet = true
-            } label: {
-                Label("Send for Signature", systemImage: "pencil.and.signature")
+            Button { showSignSheet = true } label: {
+                Label("Send for E-Sig", systemImage: "pencil.and.signature")
             }
             .disabled(isSigned)
             .keyboardShortcut("g", modifiers: [.command, .shift])
@@ -404,7 +578,7 @@ public struct EstimateDetailView: View {
         #endif
     }
 
-    // MARK: - Convert sheet
+    // MARK: - Sheets
 
     private var convertSheet: some View {
         EstimateConvertSheet(
@@ -417,7 +591,41 @@ public struct EstimateDetailView: View {
         )
     }
 
-    // MARK: - Sign sheet
+    private var versionsSheet: some View {
+        NavigationStack {
+            EstimateVersionsView(
+                api: api,
+                estimateId: estimate.id,
+                currentVersionNumber: estimate.versionNumber
+            )
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Done") { showVersionsSheet = false }
+                        .accessibilityLabel("Close version history")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var pdfPreviewSheet: some View {
+        NavigationStack {
+            #if canImport(UIKit)
+            EstimatePdfPreviewView(estimate: estimate)
+            #else
+            Text("PDF preview not available on this platform")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+            #endif
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { showPdfPreview = false }
+                    .accessibilityLabel("Close PDF preview")
+            }
+        }
+        .presentationDetents([.large])
+    }
 
     #if canImport(UIKit)
     private var signSheet: some View {
@@ -427,7 +635,47 @@ public struct EstimateDetailView: View {
             api: api
         )
     }
+
+    private var sendSheet: some View {
+        EstimateSendSheet(
+            estimateId: estimate.id,
+            orderId: estimate.orderId ?? "EST-?",
+            api: api
+        )
+        .presentationDetents([.medium])
+    }
+
+    private var approveSheet: some View {
+        EstimateApproveSheet(
+            estimateId: estimate.id,
+            orderId: estimate.orderId ?? "EST-?",
+            api: api
+        )
+    }
+
+    private var rejectSheet: some View {
+        EstimateRejectSheet(
+            estimateId: estimate.id,
+            orderId: estimate.orderId ?? "EST-?",
+            api: api
+        )
+        .presentationDetents([.medium])
+    }
     #endif
+
+    // MARK: - Convert to invoice action
+
+    @MainActor
+    private func convertToInvoice() async {
+        do {
+            let result = try await api.convertEstimateToInvoice(estimateId: estimate.id)
+            if let invoiceId = result.invoiceId {
+                onInvoiceCreated(invoiceId)
+            }
+        } catch {
+            AppLog.ui.error("Estimate convert-to-invoice failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
     // MARK: - Helpers
 
