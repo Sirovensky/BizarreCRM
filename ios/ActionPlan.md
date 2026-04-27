@@ -2064,13 +2064,13 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] CFD (customer-facing display) use case: POS terminal facing customer shows running cart via `CFDView` in secondary `"cfd"` WindowGroup scene. Audio cue + spatial AirPods deferred. (Phase 5 §16)
 - [ ] Scanner feedback: beep on scan plays spatial from "upper-right" to feel more physical
 - [ ] Restraint: audio secondary to haptic; always optional (Settings → Audio); mute in silent mode per iOS convention
-- [ ] Secondary scene: new `UIScene` for external display; detect `UIScreen.connectionNotification`; mirror cart state via shared model
-- [ ] Layout: top = shop logo + tenant-configured tagline; middle = cart lines + running total; bottom = current line highlighted as added; large tax + total; payment prompt "Insert / tap card" with animated arrow when BlockChyp terminal ready
-- [ ] Receipt/thank-you: post-approval confetti (respect Reduce Motion) + "Thank you!" + QR for Google review / membership signup; auto-dismiss after 10s
+- [x] Secondary scene: new `UIScene` for external display; detect `UIScreen.connectionNotification`; mirror cart state via shared model (`CFDExternalDisplayService` @Observable UIScreen.didConnectNotification observer. dba9ae7f)
+- [x] Layout: top = shop logo + tenant-configured tagline; middle = cart lines + running total; bottom = current line highlighted as added; large tax + total; payment prompt "Insert / tap card" with animated arrow when BlockChyp terminal ready (CFDView Liquid Glass header: shopName + shopTagline from CFDBridge; CFDSettingsView shopTagline AppStorage key. dba9ae7f)
+- [x] Receipt/thank-you: post-approval confetti (respect Reduce Motion) + "Thank you!" + QR for Google review / membership signup; auto-dismiss after 10s (`CFDThankYouView` + `CFDPostSaleState` + `CFDConfettiView` + `CFDBridge.showPostSale()`; 10s countdown; Reduce Motion gated. dba9ae7f)
 - [ ] Signature: customer signs on secondary display on Pencil-compatible iPad; else signs on terminal
-- [ ] Marketing slideshow: idle >30s between sales rotates tenant-configured slides (promos, upcoming events); tap anywhere exits
-- [ ] Multi-language: customer can tap flag to switch language; decoupled from cashier's app language
-- [ ] Privacy: never show cashier personal data (email/phone/other customers); no cross-sale persistence on display
+- [x] Marketing slideshow: idle >30s between sales rotates tenant-configured slides (promos, upcoming events); tap anywhere exits (`CFDIdleView` slideshow mode; 30s trigger; 5s rotation; tap-to-exit; Reduce Motion: static. dba9ae7f)
+- [x] Multi-language: customer can tap flag to switch language; decoupled from cashier's app language (`CFDBridge.customerLanguageCode`; `CFDView.localised()` EN/ES/FR/DE table; `CFDSettingsView` Picker; `CFDThankYouView` localised labels. dba9ae7f)
+- [x] Privacy: never show cashier personal data (email/phone/other customers); no cross-sale persistence on display (`CFDBridge.privacyModeEnabled` bool; `CFDSettingsView` privacy toggle + description; `CFDBridge.clear()` wipes all state between sales; documented in bridge header. dba9ae7f)
 - [x] Full register accelerators on iPad hardware keyboard. `PosRegisterShortcutsExtended` ViewModifier + `PosRegisterShortcut` metadata enum; all shortcuts listed below implemented. (feat(§16.14): full register keyboard accelerators cad69018)
 - [x] Cart: ⌘N new sale, ⌘⇧N hold/park, ⌘R resume held, ⌘+/⌘− qty on focused line, ⌘⌫ remove line, ⌘⇧⌫ clear cart (with confirm). (feat(§16.14): full register keyboard accelerators cad69018)
 - [x] Lookup: ⌘F focus product search, ⌘B focus barcode input, ⌘K customer lookup palette. (feat(§16.14): full register keyboard accelerators cad69018)
@@ -2160,13 +2160,13 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] Mismatch resolution: banner "Tax recomputed (+$0.03)" when server total differs. `CartServerValidationBannerView` + `CartServerValidationDetailSheet` (see Server validation above). (feat(§16): server validation banner 2f6d8bab)
 - [x] A11y: screen reader announces new total on change (debounced). `PosCartTotalsView.scheduleA11yAnnouncement` — 600ms debounce + `UIAccessibility.post(.announcement, ...)` fires after cart settles; avoids per-keypress chatter. (feat(§16): a11y debounced total announce cad69018)
 - [x] Sale record schema: local UUID + timestamp + lines + tenders + idempotency key. `PosSaleRecord` + `PosSaleLineRecord` + `PosSaleTenderRecord` Codable structs; `capturedOffline` + `syncedAt` lifecycle; PCI posture: card tenders store only last4/brand/opaque token, never PAN. (feat(§16.12): offline sale schema cad69018)
-- [ ] Receipt printing: "OFFLINE" watermark until synced; post-sync reprint available without watermark.
+- [x] Receipt printing: "OFFLINE" watermark until synced; post-sync reprint available without watermark. (`PosReceiptPayload.capturedOffline` + `syncedAt`; `PosReceiptView.offlineWatermark` amber Capsule chip (wifi.slash + OFFLINE + 'Sent when reconnected'); success 'Synced' chip post-sync. d44b806c)
 - [ ] Card tenders: BlockChyp offline capture (where supported) captures card + holds auth + settles on reconnect; manager alert on declined auth at settle; configurable max offline card amount ($100 default).
 - [x] Cash tenders fully offline OK (no auth needed). `PosSaleRecord.isOfflineSafe(tenderMethod:)` returns true for "cash"/"check"; documented in `PosSaleRecord` policy helpers. (feat(§16.12): offline tender policy cad69018)
 - [x] Gift-card redemption requires online: error "Card balance lookup needs internet"; fallback accept as IOU with manager approval. `PosGiftCardOfflineSheet` — offline warning + IOU amount stepper ($1 steps up to cart total) + manager PIN gate; `iouApproved: true` written to `PosSaleTenderRecord`. (feat(§16.12): gift card offline IOU cad69018)
 - [ ] Sync on reconnect: FIFO flush, idempotency key prevents duplicate ledger, success clears watermark, failures → dead-letter (§20).
-- [ ] Audit: record offline duration + sync time per sale; manager report like "3 sales made during 20min outage — all reconciled."
-- [ ] UI: outage banner "Offline mode — N sales queued"; dashboard tile tracks queue depth.
+- [x] Audit: record offline duration + sync time per sale; manager report like "3 sales made during 20min outage — all reconciled." (`PosOfflineAuditService` @MainActor @Observable: recordOutageStart/End/SaleSync/registerOfflineSale; `PosOutageRecord` + `PosOutageSaleSync`; `mostRecentOutageSummary` report string; UserDefaults persistence. d44b806c)
+- [x] UI: outage banner "Offline mode — N sales queued"; dashboard tile tracks queue depth. (`PosOutageBannerView` amber brandGlass sticky banner with expand/collapse; audit summary + Review CTA; `.posOutageBanner()` ViewModifier; VoiceOver announcement; Reduce Motion fade. d44b806c)
 - [ ] Security: SQLCipher encryption for offline sales; card data tokenized before store, raw PAN never persisted.
 - [ ] See §6 for the full list.
 
