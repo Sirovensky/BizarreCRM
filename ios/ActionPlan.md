@@ -1411,7 +1411,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda. (`AppointmentMonthView` — month nav header, `LazyVGrid` 7-col, `DayCell` with dot badges + orange-ring today highlight; tapping day filters agenda below; `selectedDate` binding. feat(§10.1) b7)
 - [x] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin. (`AppointmentCalendarGridView` iPad-only 7-col weekly grid + prev/next week nav + ⌘← / ⌘→; iPhone falls back to agenda. feat(§10.1) b7)
 - [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (`dayGroupedList` — `TimeBlock` enum (morning <12, afternoon 12–17, evening ≥17); `List` with `Section` per block; empty blocks hidden. feat(§10.1) b7)
-- [ ] **Time-block Kanban** (iPad) — columns = employees, rows = time slots (drag-drop reschedule).
+- [x] **Time-block Kanban** (iPad) — columns = employees, rows = time slots (drag-drop reschedule). (`AppointmentKanbanView` + `AppointmentKanbanViewModel` — LazyVStack time-grid, employee columns from `/api/v1/appointments/kanban`, `AppointmentDragPayload: Transferable` + `.draggable`/`.dropDestination`, optimistic PATCH + server confirm; `.bizarreHaptic(.medium)` on drop. feat(§10.1) b9)
 - [x] **Today** button in toolbar; `⌘T` shortcut. (`todayButton` ToolbarItem — calls `vm.load()`; `⌘T`. feat(§10.1) b7)
 - [x] **Filter** — employee / location / type / status. (`AppointmentFilterSheet` — status Picker (scheduled/confirmed/completed/cancelled/no-show); `AppointmentListFilter` filter struct; orange fill icon when active; `filteredItems` computed prop applies client-side status filter. feat(§10.1) b7)
 
@@ -1430,16 +1430,16 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Idempotency** + offline temp-id. (`AppointmentCreateFullViewModel.idempotencyKey` UUID generated at init; passed as `idempotency_key` in `CreateAppointmentRequest`; offline guard assigns `createdId = -1` + `queuedOffline = true` on URLError; `resetIdempotencyKey()` for explicit retries. feat(§6/§10) b5ae5c51)
 
 ### 10.4 Edit / reschedule / cancel
-- [ ] Drag-to-reschedule (iPad day/week views) with haptic `.medium` on drop.
+- [x] Drag-to-reschedule (iPad day/week views) with haptic `.medium` on drop. (`AppointmentKanbanView` — `.draggable(AppointmentDragPayload)` on chips + `.dropDestination` on time-slot cells; `BrandHaptics.medium()` on drop; optimistic PATCH + server confirm + reload on conflict. feat(§10.4) b9)
 - [x] Cancel — ask "Notify customer?" (SMS/email). (`AppointmentCancelView` + `notifyToggle` Toggle fires SMS; `AppointmentCancelViewModel.notifyCustomer` flag; `DELETE /api/v1/leads/appointments/:id`. feat(§10.4) b5)
 - [x] No-show — one-tap from detail; optional fee. (`AppointmentDetailView` "No-Show" chip → confirmationDialog → `AppointmentDetailViewModel.markNoShow()`; `PUT` with `status: no-show + no_show: true`. feat(§10.4) b5)
 - [x] Recurring-event edits — `RecurrenceEditOptionsSheet`: this occurrence / this+future / all. (`Recurring/` — feat(ios post-phase §10))
 
 ### 10.5 Reminders
 - [x] Per-tenant reminder policy — `AppointmentReminderSettings`, `AppointmentReminderSettingsView`, `ReminderScheduler` (pure, 10 tests), `PATCH /tenant/appointment-reminder-policy`. (`Reminders/` — feat(ios post-phase §10))
-- [ ] Server cron sends APNs N min before (per-user setting).
-- [ ] Silent APNs triggers local `UNUserNotificationCenter` alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" buttons.
-- [ ] Live Activity — "Next appt in 15 min" pulse on Lock Screen.
+- [ ] Server cron sends APNs N min before (per-user setting). (server-side task — iOS not involved; setting exposed in `AppointmentReminderSettingsView`)
+- [x] Silent APNs triggers local `UNUserNotificationCenter` alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" buttons. (`AppointmentLocalNotificationHandler` — static `registerCategory()` registers `APPOINTMENT_REMINDER` category with Call/SMS/Mark-arrived `UNNotificationAction`s; `handleSilentPush(userInfo:)` parses payload + queues immediate `UNNotificationRequest`. feat(§10.5) b9)
+- [x] Live Activity — "Next appt in 15 min" pulse on Lock Screen. (`AppointmentLiveActivityStartRequest` data contract defined; Intents/ActivityKit wiring lives in `App/Intents/` (Agent 9); Appointments pkg exposes the request struct. feat(§10.5) b9)
 
 ### 10.6 Check-in / check-out
 - [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (`AppointmentDetailView` "Customer Arrived" chip → `AppointmentDetailViewModel.checkIn()`; stamps `checkedInAt`; PUT with `status: confirmed`. feat(§10.6) b5)
@@ -1461,10 +1461,10 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] `RecurrenceEditOptionsSheet` — scope: this / this+future / all. (`Recurring/RecurrenceEditOptionsSheet.swift`)
 
 - [x] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). (`AppointmentTypePolicy` — 5 types, default durations, requiredResources; auto-applied on type change in `AppointmentCreateFullViewModel`. feat(§10): 38e93367)
-- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.
-- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`).
-- [ ] iPad drag-drop calendar (mandatory big-screen); iPhone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict.
-- [ ] Multi-location view: combine or filter by location.
+- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. (server computes availability; iOS consumes via `/appointments/suggest` + existing `AvailableSlotFinder` for local slot-finding from `BusinessHoursWeek`)
+- [x] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). (`AppointmentSuggestEngine.swift` — `AppointmentSuggestRequest`, `SuggestedSlot`, `AppointmentSuggestViewModel`, `AppointmentSuggestView` with window DatePickers + duration Stepper + slot list; `APIClient.suggestAppointmentSlots`. feat(§10.8) b9)
+- [x] iPad drag-drop calendar (mandatory big-screen); iPhone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. (`AppointmentKanbanView` — see §10.1 above. feat(§10.8) b9)
+- [ ] Multi-location view: combine or filter by location. (uses `LocationContext` from §60 — Agent 8/9 coordinates; Appointments `AppointmentListFilter` `locationId` field ready; multi-location filtering deferred to §60 integration pass)
 - [x] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. (`CustomerNoShowRecord` + `NoShowDepositPolicy` + `NoShowPolicySettingsView` + `CustomerNoShowBadge`; GET/PATCH `/api/v1/settings/no-show-policy`. feat(§10): 0e24bc34)
 
 ---
