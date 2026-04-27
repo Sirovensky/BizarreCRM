@@ -2,14 +2,10 @@ import SwiftUI
 import Core
 import DesignSystem
 
-/// §19.3 Notifications page — per-channel toggles.
-/// Delegates to `NotificationSettingsView` already shipped in Phase 6A.
-/// This is a thin wrapper that wires the Settings NavigationLink destination.
-///
-/// If the full NotificationSettingsView is available as a public type from
-/// a Notifications package, we would import it here. Until that package is
-/// linked, we render our own compact toggles and link to System Settings.
+/// §19.3 Notifications page — per-channel toggles, quiet hours, critical overrides.
 public struct NotificationsPage: View {
+
+    // MARK: Per-channel toggles (local UserDefaults mirror; server sync via Notifications pkg)
 
     @State private var newSmsEnabled: Bool = true
     @State private var newTicketEnabled: Bool = true
@@ -19,6 +15,19 @@ public struct NotificationsPage: View {
     @State private var appointmentReminderEnabled: Bool = true
     @State private var lowStockEnabled: Bool = false
     @State private var dailySummaryEnabled: Bool = false
+
+    // MARK: §19.3 Quiet hours
+
+    @State private var quietHoursEnabled: Bool = false
+    @State private var quietStart: Date = Calendar.current.date(
+        bySettingHour: 22, minute: 0, second: 0, of: Date()) ?? Date()
+    @State private var quietEnd: Date = Calendar.current.date(
+        bySettingHour: 8, minute: 0, second: 0, of: Date()) ?? Date()
+
+    // MARK: §19.3 Critical overrides (bypass quiet hours)
+
+    @State private var paymentFailedCritical: Bool = true
+    @State private var mentionCritical: Bool = false
 
     public init() {}
 
@@ -51,6 +60,39 @@ public struct NotificationsPage: View {
                     .accessibilityIdentifier("notif.lowStock")
                 Toggle("Daily summary", isOn: $dailySummaryEnabled)
                     .accessibilityIdentifier("notif.dailySummary")
+            }
+
+            // MARK: - §19.3 Quiet hours
+
+            Section {
+                Toggle("Enable quiet hours", isOn: $quietHoursEnabled)
+                    .accessibilityIdentifier("notif.quietHours.enabled")
+
+                if quietHoursEnabled {
+                    DatePicker("Start", selection: $quietStart, displayedComponents: .hourAndMinute)
+                        .accessibilityIdentifier("notif.quietHours.start")
+                    DatePicker("End", selection: $quietEnd, displayedComponents: .hourAndMinute)
+                        .accessibilityIdentifier("notif.quietHours.end")
+                }
+            } header: {
+                Text("Quiet hours")
+            } footer: {
+                Text("Notifications are suppressed during quiet hours except for critical overrides below.")
+            }
+
+            // MARK: - §19.3 Critical overrides
+
+            if quietHoursEnabled {
+                Section {
+                    Toggle("Payment failed", isOn: $paymentFailedCritical)
+                        .accessibilityIdentifier("notif.critical.paymentFailed")
+                    Toggle("@Mention", isOn: $mentionCritical)
+                        .accessibilityIdentifier("notif.critical.mention")
+                } header: {
+                    Text("Critical overrides")
+                } footer: {
+                    Text("These events bypass quiet hours when enabled.")
+                }
             }
 
             Section {
