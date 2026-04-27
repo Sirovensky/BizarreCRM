@@ -174,11 +174,28 @@ public struct LeadDetailView: View {
                 if !detail.devices.isEmpty { devicesCard(detail.devices) }
                 if !detail.appointments.isEmpty { appointmentsCard(detail.appointments) }
                 metaCard(detail)
+                // §9.3 Activity timeline — calls, SMS, email, appointments, property changes
+                activityTimelineSection(detail)
             }
             .padding(BrandSpacing.base)
             .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    @ViewBuilder
+    private func activityTimelineSection(_ detail: LeadDetail) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Activity")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityAddTraits(.isHeader)
+            LeadActivityTimelineView(api: api, leadId: detail.id)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(BrandSpacing.base)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
     private func headerCard(_ detail: LeadDetail) -> some View {
