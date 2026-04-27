@@ -12,6 +12,32 @@ import { StepImportHandoff } from './steps/StepImportHandoff';
 import { StepShopType } from './steps/StepShopType';
 import { StepReview } from './steps/StepReview';
 import { SkipToDashboard } from './SkipToDashboard';
+// Wave 3 — pre-wizard auth screens
+import { StepFirstLogin } from './steps/StepFirstLogin';
+import { StepForcePassword } from './steps/StepForcePassword';
+import { StepSignup } from './steps/StepSignup';
+import { StepVerifyEmail } from './steps/StepVerifyEmail';
+import { StepTwoFactorSetup } from './steps/StepTwoFactorSetup';
+// Wave 4 — new wizard body steps
+import { StepRepairPricing } from './steps/StepRepairPricing';
+import { StepPaymentTerminal } from './steps/StepPaymentTerminal';
+import { StepFirstEmployees } from './steps/StepFirstEmployees';
+import { StepNotificationTemplates } from './steps/StepNotificationTemplates';
+import { StepReceiptPrinter } from './steps/StepReceiptPrinter';
+import { StepCashDrawer } from './steps/StepCashDrawer';
+import { StepBookingPolicy } from './steps/StepBookingPolicy';
+import { StepWarrantyDefaults } from './steps/StepWarrantyDefaults';
+import { StepBackupDestination } from './steps/StepBackupDestination';
+import { StepMobileAppQr } from './steps/StepMobileAppQr';
+import { StepDone } from './steps/StepDone';
+// Wave 5 — body steps rewritten to StepProps
+import { StepDefaultStatuses } from './steps/StepDefaultStatuses';
+import { StepBusinessHours } from './steps/StepBusinessHours';
+import { StepTax } from './steps/StepTax';
+import { StepReceipts } from './steps/StepReceipts';
+import { StepLogo } from './steps/StepLogo';
+import { StepSmsProvider } from './steps/StepSmsProvider';
+import { StepEmailSmtp } from './steps/StepEmailSmtp';
 
 /**
  * First-run setup wizard shell.
@@ -184,24 +210,19 @@ export function SetupPage() {
 
   const renderStep = () => {
     switch (phase) {
-      // Pre-wizard auth phases — Wave 3 will replace these placeholders.
+      // Pre-wizard auth phases (Wave 3)
       case 'firstLogin':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepFirstLogin {...stepProps} />;
       case 'forcePassword':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepForcePassword {...stepProps} />;
       case 'signup':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepSignup {...stepProps} />;
       case 'verifyEmail':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepVerifyEmail {...stepProps} />;
       case 'twoFactorSetup':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepTwoFactorSetup {...stepProps} />;
 
-      // Wizard body — already-built steps wired to linear nav.
-      // StepWelcome / StepStoreInfo / StepImportHandoff / StepShopType already
-      // use the new StepProps signature. The remaining sub-step-style files
-      // (StepBusinessHours/Tax/Logo/Receipts/DefaultStatuses/SmsProvider/EmailSmtp)
-      // are scheduled for Wave 5 rewrite — until then they render through
-      // PlaceholderStep so the wizard remains traversable.
+      // Wizard body
       case 'welcome':
         return <StepWelcome {...stepProps} />;
       case 'shopType':
@@ -210,27 +231,40 @@ export function SetupPage() {
         return <StepStoreInfo {...stepProps} />;
       case 'importHandoff':
         return <StepImportHandoff {...stepProps} />;
-      case 'defaultStatuses':
-      case 'businessHours':
-      case 'tax':
-      case 'receipts':
-      case 'logo':
-      case 'smsProvider':
-      case 'emailSmtp':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
-
-      // New body steps — Wave 4 will replace these placeholders.
       case 'repairPricing':
+        return <StepRepairPricing {...stepProps} />;
+      case 'defaultStatuses':
+        return <StepDefaultStatuses {...stepProps} />;
+      case 'businessHours':
+        return <StepBusinessHours {...stepProps} />;
+      case 'tax':
+        return <StepTax {...stepProps} />;
+      case 'receipts':
+        return <StepReceipts {...stepProps} />;
+      case 'logo':
+        return <StepLogo {...stepProps} />;
       case 'paymentTerminal':
+        return <StepPaymentTerminal {...stepProps} />;
       case 'firstEmployees':
+        return <StepFirstEmployees {...stepProps} />;
+      case 'smsProvider':
+        return <StepSmsProvider {...stepProps} />;
+      case 'emailSmtp':
+        return <StepEmailSmtp {...stepProps} />;
       case 'notificationTemplates':
+        return <StepNotificationTemplates {...stepProps} />;
       case 'receiptPrinter':
+        return <StepReceiptPrinter {...stepProps} />;
       case 'cashDrawer':
+        return <StepCashDrawer {...stepProps} />;
       case 'bookingPolicy':
+        return <StepBookingPolicy {...stepProps} />;
       case 'warrantyDefaults':
+        return <StepWarrantyDefaults {...stepProps} />;
       case 'backupDestination':
+        return <StepBackupDestination {...stepProps} />;
       case 'mobileAppQr':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepMobileAppQr {...stepProps} />;
 
       case 'review':
         return (
@@ -245,7 +279,7 @@ export function SetupPage() {
           />
         );
       case 'done':
-        return <PlaceholderStep phase={phase} {...stepProps} />;
+        return <StepDone {...stepProps} />;
 
       default:
         return null;
@@ -275,69 +309,6 @@ export function SetupPage() {
           </div>
         )}
         {renderStep()}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Placeholder rendered for any phase whose real Step component hasn't been
- * built yet (Wave 3, 4 sub-agents are still pending). Shows the current
- * phase name + Back / Continue buttons so the wizard remains traversable
- * end-to-end during agent rollout.
- */
-function PlaceholderStep({
-  phase,
-  onNext,
-  onBack,
-  onSkip,
-}: {
-  phase: WizardPhase;
-  pending: PendingWrites;
-  onUpdate: (patch: Partial<PendingWrites>) => void;
-  onNext: () => void;
-  onBack: () => void;
-  onSkip?: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-8 dark:border-amber-500/30 dark:bg-amber-900/20">
-      <p className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-        Pending build (placeholder)
-      </p>
-      <h2 className="mt-2 text-2xl font-bold text-amber-900 dark:text-amber-100">
-        {WIZARD_PHASE_LABELS[phase]}
-      </h2>
-      <p className="mt-2 text-sm text-amber-800 dark:text-amber-200">
-        This step's real UI is still being built by a sub-agent. See{' '}
-        <code className="rounded bg-amber-100 px-1 py-0.5 dark:bg-amber-800/40">
-          docs/setup-wizard-implementation-plan.md
-        </code>{' '}
-        for the agent assignment.
-      </p>
-      <div className="mt-6 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="rounded-lg border border-amber-300 bg-white px-4 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-900/30 dark:text-amber-100"
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          onClick={onNext}
-          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-        >
-          Continue
-        </button>
-        {onSkip && (
-          <button
-            type="button"
-            onClick={onSkip}
-            className="ml-auto rounded-lg px-3 py-2 text-sm text-amber-700 hover:bg-amber-100 dark:text-amber-300"
-          >
-            Skip wizard
-          </button>
-        )}
       </div>
     </div>
   );
