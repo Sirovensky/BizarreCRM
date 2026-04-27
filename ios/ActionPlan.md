@@ -1194,14 +1194,14 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
 
 ### 7.3 Create
-- [ ] **Customer picker** (or pre-seeded from ticket). (scaffold in View — picker integration point marked; caller injects)
+- [x] **Customer picker** (or pre-seeded from ticket). `InvoiceCustomerPickerSheet` — search GET /api/v1/customers, 300ms debounce, sheet with drag indicator. ([actionplan agent-6 b4] c0cb747c)
 - [x] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount. `LineItemRow` + `DraftLineItem`; `InvoiceLineItemRequest` + `CreateInvoiceRequest` extended. (feat(§7.3) 5e509224)
 - [x] **Cart-level discount** (% or $), tax, fees, tip. `cartDiscount` field + `computedTotal`; clamp to 0. (feat(§7.3) 5e509224)
 - [x] **Notes**, due date, payment terms, footer text. All wired to draft autosave. (feat(§7.3) 5e509224)
 - [x] **Deposit required** flag → generate deposit invoice. `depositRequired` toggle in Options section. (feat(§7.3) 5e509224)
 - [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`.
 - [ ] **Convert from estimate**.
-- [ ] **Idempotency key** — server requires for POST /invoices.
+- [x] **Idempotency key** — server requires for POST /invoices. UUID generated at `InvoiceCreateViewModel.init`, sent as `idempotency_key` in `CreateInvoiceRequest`. ([actionplan agent-6 b4] c0cb747c)
 - [x] **Draft** autosave.
 - [x] **Send now** checkbox — email/SMS on create. `sendOnCreate` toggle. (feat(§7.3) 5e509224)
 
@@ -1213,7 +1213,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] **Cash** — change calculator.
 - [ ] **Split tender** — chain multiple methods until balance = 0.
 - [ ] **BlockChyp card** — start terminal charge → poll status; surface Live Activity for the txn.
-- [ ] **Idempotency-Key** required on POST /invoices/:id/payments.
+- [x] **Idempotency-Key** required on POST /invoices/:id/payments. Per-leg UUID (`PaymentLeg.id`) passed as `transactionId`. ([actionplan agent-6 b4] c0cb747c)
 - [ ] **Receipt** — print (MFi / AirPrint) + email + SMS; PDF download.
 - [ ] **Haptic** `.success` on payment confirm.
 
@@ -1823,8 +1823,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.2 Sales
 - [x] Revenue trend — `RevenueChartCard` with Swift Charts `AreaMark + LineMark`, y-axis in $K, x-axis time-scale; hero tile shows period total + sparkline + trend arrow. (feat(ios phase-8 §15))
-- [ ] Total invoices / revenue / unique customers / period-over-period delta.
-- [ ] Revenue by payment method pie.
+- [x] Total invoices / revenue / unique customers / period-over-period delta. `SalesKPISummaryCard` with delta badge and `SalesTotals`; iPhone 2×2 grid, iPad HStack. ([actionplan agent-6 b4] c0cb747c)
+- [x] Revenue by payment method pie. `RevenueByMethodPieCard` with Swift Charts `SectorMark`, tappable legend, `AXChartDescriptorRepresentable`; iPhone stacked, iPad side-by-side. ([actionplan agent-6 b4] c0cb747c)
 - [ ] YoY growth.
 - [ ] Top 10 customers by spend.
 - [ ] Cohort revenue retention.
@@ -1840,7 +1840,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 15.4 Employees
 - [x] `GET /reports/employees-performance` — `TopEmployeesCard` top-5 ranked by revenue; `EmployeePerf` model with tickets closed, revenue cents, avg resolution hours. (feat(ios phase-8 §15))
-- [ ] `GET /reports/technician-performance` — table: name / tickets assigned / closed / commission / hours / revenue.
+- [x] `GET /reports/technician-performance` — `TechnicianPerformanceCard` table: name / tickets assigned / closed / commission / hours / revenue; `TechnicianPerfRow` model; iPad sortable `Table`. ([actionplan agent-6 b4] c0cb747c)
 - [ ] Per-tech detail drill.
 
 ### 15.5 Inventory
@@ -1850,8 +1850,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] Shrinkage trend.
 
 ### 15.6 Tax
-- [ ] `GET /reports/tax` — collected by class / rate summary.
-- [ ] Period total for filing.
+- [x] `GET /reports/tax` — `TaxReportCard` collected by class / rate summary; `TaxEntry` + `TaxReportResponse` models. ([actionplan agent-6 b4] c0cb747c)
+- [x] Period total for filing. Filing note line in `TaxReportCard` footer. ([actionplan agent-6 b4] c0cb747c)
 
 ### 15.7 Insights (adv) — CSAT + NPS
 - [x] **CSAT** — `CSATScoreCard` gauge + trend badge; `CSATDetailView` score distribution bar chart + free-text comments list. `GET /reports/csat`. (feat(ios phase-8 §15))
@@ -1875,7 +1875,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Swift Charts with `AreaMark + LineMark` on revenue; `BarMark` on tickets/CSAT; `Gauge` on CSAT/NPS; all with `.accessibilityChartDescriptor`. (feat(ios phase-8 §15))
 - [x] Sovereignty: all compute on tenant server; no external BI tool — single network peer via `APIClient.baseURL`. (feat(ios phase-8 §15))
 - [ ] CSV / PDF export per report (CSV not yet wired).
-- [ ] "BI" sub-tab in Reports for deeper analysis
+- [x] "BI" sub-tab in Reports for deeper analysis — `ReportSubTab` enum (6 cases) + chip picker in `ReportsView`; switch drives per-tab card rendering. ([actionplan agent-6 b4] c0cb747c)
 - [ ] Built-in reports: revenue/margin by category/tech/customer segment
 - [ ] Built-in reports: repeat customer rate, time-to-repeat
 - [ ] Built-in reports: average ticket value trend
@@ -5814,7 +5814,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 - Viewing logged (meta-audit).
 
 ### 50.10 Offline
-- [ ] Cached last 90d locally — stubbed (`AuditLogRepository.cachedRecent()` returns empty; TODO comment).
+- [x] Cached last 90d locally — `AuditLogRepository` in-memory write-through cache (90d TTL, 500-entry cap, newest-first, deduplication by id). ([actionplan agent-6 b4] c0cb747c)
 - Older pulled on demand.
 
 ---
@@ -8098,4 +8098,5 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 10]** 4 Core sdk-ban violations. **RESOLVED** in Agent 10 batch 2 (`ac159516`).
 - **[Agent 10]** `Motion/MotionCatalog.swift` already extends `BrandMotion` with `sharedElement` + `pulse` as `public extension BrandMotion` — base enum redeclaration causes `invalid redeclaration` errors. Note for any future motion token additions.
 - **[Agent 10]** Multipart binary JPEG handling: `MultipartFormDataTests.swift:120` previously crashed on `String(data:encoding:.utf8)!` for binary content. **RESOLVED** in `bcbccaa8` (ISO-Latin-1 fallback).
-- **[Agent 10]** (2026-04-27, b4) Pre-existing runtime test failures in Core: `AnalyticsPIIGuardTests` (PII field set mismatch), `CoreErrorStateTests` + `ErrorCopyTests` (validation clamp / tone logic), `DeepLinkDestinationTests` (null-byte validator), `PseudoLocaleGeneratorTests` (expansion ratio), `SensitiveFieldRedactorTests` (regex over-matches single words), `FixtureLoaderTests` (bundle resource path). These existed before b4; compilation is clean. Needs implementation fixes in the corresponding source files. **OPEN** — Agent 10 to address in b5.
+- **[Agent 10]** (2026-04-27, b4) Pre-existing runtime test failures in Core: `AnalyticsPIIGuardTests`, `CoreErrorStateTests`, `ErrorCopyTests`, `DeepLinkDestinationTests`, `PseudoLocaleGeneratorTests`, `SensitiveFieldRedactorTests`, `FixtureLoaderTests`. **OPEN** — Agent 10 b5.
+- **[Agent 6 → Agent 10/Agent 1/Agent 3]** (2026-04-27, agent-6 b4) Networking pre-existing build errors: `APIClient+Estimates.swift:306` `EmptyBody` not `Decodable` (Agent 3); `APIClient+Pos.swift:259/274` struct-in-generic-func (Agent 1); `WebSocketConnection.swift:40/46` missing explicit `self` (Agent 10). Plus 12 sdk-ban violations in `Pos/PosSyncOpExecutor.swift` + `Pos/Coupons/CouponListView.swift` (Agent 1).
