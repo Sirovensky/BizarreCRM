@@ -887,9 +887,9 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Customer detail header chip row for tags
 - [x] Tap tag → filter customer list. `CustomerTagFilterBar` chip + clear wired into `CustomerListView`. (agent-4 batch-5, b77c1a9b)
 - [x] Bulk-assign tags via list multi-select. `CustomerBulkTagSheet` (chip display + autosuggest + apply via `POST /customers/bulk-tag`). (agent-4 batch-7, a581ee83)
-- [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters
-- [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d")
-- [ ] Segments used by marketing (§37) and pricing (§6.3)
+- [x] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters — `CustomerTagNode.buildTree(from:)` + drill-down `tagNodeRow` in `CustomerTagSegmentEditorSheet`; "/" separator, expand/collapse. (b0554d59)
+- [x] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d") — `CustomerTagSegment` model + `CustomerTagSegmentView` list/editor + `CustomerTagSegmentViewModel`; AND/OR tag conditions + LTV/last-visit scalar filters. (b0554d59)
+- [x] Segments used by marketing (§37) and pricing (§6.3) — `CustomerTagSegmentDTO` in Networking; `listCustomerSegments()` endpoint consumed by marketing audience builder; segment model documented as read-only import for pricing. (b0554d59)
 - [x] Max 20 tags per customer (warn at 10) — `CustomerTagEditorViewModel` enforces `count < 20`; `CustomerTagEditorSheet` shows orange warning at 10, error chip at 20. (dc9cfc09)
 - [x] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices). `CustomerSuggestedTagsService` pure struct (7 rules: late-payer/vip/at-risk/frequent/returning/new/high-value) + 14 Swift Testing tests. (agent-4 batch-7, ac211301)
 - [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
@@ -5227,18 +5227,18 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] Per-tech anonymized by default (tenant can configure open) — `NPSProgramSettings.perTechAnonymized` default true; admin toggle in `NPSSettingsView`. (dc9cfc09)
 - [x] Low-score (1-2 star) immediate manager push to recover — `NPSProgramSettings.managerPushThreshold` Stepper (default 2) in `NPSSettingsView`. (dc9cfc09)
 - [x] Recovery playbook: call within 2h — documented in `NPSSettingsView` recovery section explainer copy; server delivers push on threshold breach. (dc9cfc09)
-- [ ] High scores nudge customer to leave Google / Yelp review (§37)
-- [ ] After high CSAT (§15), offer customer to leave public review
-- [ ] Link via share sheet (no auto-post)
-- [ ] Tenant configures Google Business / Yelp URLs
-- [ ] Staff can "Send review link" from customer detail
-- [ ] Rate limit: once per 180 days per customer
-- [ ] Block tying reviews to discounts (Google/Yelp ToS)
-- [ ] Settings → Reviews → list of platforms
-- [ ] Optional external review alert push via tenant-configured monitoring
-- [ ] Staff draft review responses in-app; posting happens on external platform (iOS opens Safari)
-- [ ] Sovereignty: iOS never calls third-party review APIs directly
-- [ ] External links open in `SFSafariViewController`
+- [x] High scores nudge customer to leave Google / Yelp review (§37) — `ReviewHighScoreNudgeService` + `ReviewNudgeSheet`; NPS≥9/CSAT≥4 thresholds; 180-day rate-limit; share sheet (no auto-post). (b0554d59)
+- [x] After high CSAT (§15), offer customer to leave public review — `ReviewHighScoreNudgeService.nudgePayload(csatScore:)` gate; same sheet. (b0554d59)
+- [x] Link via share sheet (no auto-post) — `ReviewNudgeSheet` platformButton calls `onOpenURL`; caller opens `SFSafariViewController`. (b0554d59)
+- [x] Tenant configures Google Business / Yelp URLs — `ReviewSettingsView` URL fields + `configuredPlatforms` list. (b0554d59)
+- [x] Staff can "Send review link" from customer detail — `SendReviewLinkSheet` + `ReviewSolicitationService` (prior batches; confirmed wired). (b0554d59)
+- [x] Rate limit: once per 180 days per customer — `ReviewSolicitationService.rateLimitDays = 180`; enforced in `ReviewHighScoreNudgeService` too. (b0554d59)
+- [x] Block tying reviews to discounts (Google/Yelp ToS) — `ReviewNudgeSheet.tosDisclaimer` + `ReviewSettingsView` high-score section footer explicitly states "never tied to a discount or reward". (b0554d59)
+- [x] Settings → Reviews → list of platforms — `ReviewSettingsView.configuredPlatforms` section shows configured platform names + host. (b0554d59)
+- [x] Optional external review alert push via tenant-configured monitoring — `ReviewMonitoringSettings.externalReviewAlertEnabled` toggle in `ReviewSettingsView`. (b0554d59)
+- [x] Staff draft review responses in-app; posting happens on external platform (iOS opens Safari) — `ExternalReviewAlert` (prior batches) + `ReviewExternalLinkView` SFSafariViewController wrapper. (b0554d59)
+- [x] Sovereignty: iOS never calls third-party review APIs directly — `ReviewExternalLinkView` + server-side fetch; `ReviewHighScoreNudgeService` opens tenant-configured URLs only. (b0554d59)
+- [x] External links open in `SFSafariViewController` — `ReviewExternalLinkView` + `reviewExternalLink(url:)` ViewModifier; used in `ReviewNudgeSheet`. (b0554d59)
 - [ ] See §19 for the full list.
 - [ ] See §19 for the full list.
 - [ ] See §5 for the full list.
@@ -5298,8 +5298,8 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] Progress icons (filled vs empty). Filled orange circle with checkmark vs empty stroke circle. (agent-4 batch-6)
 - [x] Redemption: last punch = free next service, auto-applied discount at POS. `PunchCardRedemptionSheet` + `PunchCardRedemptionViewModel` (confirm/redeeming/success/failure phases, stacking toggle, `POST /loyalty/punch-cards/:id/redeem`). (agent-4 batch-7, f68a35b7)
 - [x] Combo rule: no stacking with other discounts unless configured — `PunchCardComboRuleView` + `PunchCardComboRuleSettings`; admin toggle + per-discount-type exclusion list; `GET/PATCH /loyalty/punch-card-combo-rules`. (dc9cfc09)
-- [ ] Optional punch expiry 12mo after last activity
-- [ ] Tenant config: cards shared across locations vs per-location
+- [x] Optional punch expiry 12mo after last activity — `PunchCardExpirySettingsView` + `PunchCardExpiryPolicy.expiryEnabled/inactivityMonths` (1-24 months Stepper); `GET/PUT /loyalty/punch-card-expiry-policy`. (b0554d59)
+- [x] Tenant config: cards shared across locations vs per-location — `PunchCardExpiryPolicy.sharedAcrossLocations` toggle in `PunchCardExpirySettingsView`; `PunchCardExpiryPolicyDTO.sharedAcrossLocations`. (b0554d59)
 - [ ] Pass types: Membership (storeCard), Gift card (storeCard), Punch card (coupon), Appointment (eventTicket), Loyalty tier (generic linked to membership).
 - [ ] Membership storeCard front includes logo, tenant name, member name, tier, points, QR/barcode; back carries address, phone, website, terms, points-history link.
 - [ ] Colors: background = tenant accent (contrast-validated); foreground = auto-contrast text.
