@@ -11,12 +11,18 @@ public struct InvoiceDetailView: View {
     @State private var showVoidAlert = false
     @State private var showReceiptSheet = false
     @State private var showCreditNoteSheet = false
+    // §7.2 Clone invoice
+    @State private var isCloning = false
+    @State private var cloneError: String?
+    @State private var clonedInvoiceId: Int64?
 
     @ObservationIgnored private let api: APIClient
+    @ObservationIgnored private let repo: InvoiceDetailRepository
 
     public init(repo: InvoiceDetailRepository, invoiceId: Int64, api: APIClient) {
         _vm = State(wrappedValue: InvoiceDetailViewModel(repo: repo, invoiceId: invoiceId))
         self.api = api
+        self.repo = repo
     }
 
     public var body: some View {
@@ -97,6 +103,34 @@ public struct InvoiceDetailView: View {
                 ) { showCreditNoteSheet = false; Task { await vm.load() } }
             }
         }
+        // §7.2 Clone invoice — navigate to the cloned invoice detail sheet
+        .sheet(
+            isPresented: Binding(
+                get: { clonedInvoiceId != nil },
+                set: { if !$0 { clonedInvoiceId = nil } }
+            )
+        ) {
+            if let newId = clonedInvoiceId {
+                NavigationStack {
+                    InvoiceDetailView(repo: repo, invoiceId: newId, api: api)
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Close") { clonedInvoiceId = nil }
+                            }
+                        }
+                }
+            }
+        }
+        // §7.2 Clone error alert
+        .alert("Clone Failed", isPresented: Binding(
+            get: { cloneError != nil },
+            set: { if !$0 { cloneError = nil } }
+        )) {
+            Button("OK") { cloneError = nil }
+        } message: {
+            Text(cloneError ?? "Unknown error")
+        }
     }
 
     @ToolbarContentBuilder
@@ -146,11 +180,39 @@ public struct InvoiceDetailView: View {
                             }
                             .accessibilityLabel("Issue credit note for this invoice")
                         }
+                        // §7.2 Clone invoice
+                        Button {
+                            Task { await cloneInvoice(inv) }
+                        } label: {
+                            if isCloning {
+                                Label("Cloning…", systemImage: "doc.on.doc")
+                            } else {
+                                Label("Clone Invoice", systemImage: "doc.on.doc")
+                            }
+                        }
+                        .disabled(isCloning)
+                        .accessibilityLabel("Clone this invoice")
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - §7.2 Clone invoice action
+
+    @MainActor
+    private func cloneInvoice(_ inv: InvoiceDetail) async {
+        isCloning = true
+        cloneError = nil
+        defer { isCloning = false }
+        do {
+            let cloned = try await api.cloneInvoice(id: inv.id)
+            clonedInvoiceId = cloned.id
+        } catch {
+            cloneError = error.localizedDescription
+            AppLog.ui.error("Invoice clone failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -203,34 +265,77 @@ private struct HeaderCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text(invoice.orderId ?? "INV-?")
-                .font(.brandHeadlineMedium())
-                .foregroundStyle(.bizarreOnSurface)
-
-            HStack {
-                Text(invoice.customerDisplayName)
-                    .font(.brandBodyLarge())
+            // §7.2 Invoice # with textSelection
+            HStack(alignment: .firstTextBaseline) {
+                Text(invoice.orderId ?? "INV-?")
+                    .font(.brandMono(size: 17))
                     .foregroundStyle(.bizarreOnSurface)
+                    .textSelection(.enabled)
+                    .accessibilityLabel("Invoice number \(invoice.orderId ?? "unknown")")
                 Spacer()
                 StatusBadge(status: invoice.status)
             }
 
+            Text(invoice.customerDisplayName)
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+
+            // §7.2 Balance-due chip
+            if let due = invoice.amountDue, due > 0 {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .foregroundStyle(.bizarreError)
+                        .accessibilityHidden(true)
+                    Text("Balance due \(formatMoney(due))")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreError)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreError.opacity(0.12), in: Capsule())
+                .accessibilityLabel("Balance due \(formatMoney(due))")
+            }
+
+            // §7.2 Customer card — phone + email with quick-actions
             if let phone = invoice.customerPhone, !phone.isEmpty {
                 HStack(spacing: BrandSpacing.xs) {
                     Image(systemName: "phone").foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
                     Text(PhoneFormatter.format(phone))
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .textSelection(.enabled)
+                    Spacer()
+                    // Quick-action: dial
+                    if let url = URL(string: "tel:\(phone.filter { $0.isNumber })") {
+                        Link(destination: url) {
+                            Image(systemName: "phone.circle.fill")
+                                .foregroundStyle(.bizarreOrange)
+                                .font(.system(size: 22))
+                        }
+                        .accessibilityLabel("Call \(PhoneFormatter.format(phone))")
+                    }
                 }
             }
             if let email = invoice.customerEmail, !email.isEmpty {
                 HStack(spacing: BrandSpacing.xs) {
                     Image(systemName: "envelope").foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
                     Text(email)
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .textSelection(.enabled)
+                    Spacer()
+                    // Quick-action: compose email
+                    if let url = URL(string: "mailto:\(email)") {
+                        Link(destination: url) {
+                            Image(systemName: "envelope.circle.fill")
+                                .foregroundStyle(.bizarreOrange)
+                                .font(.system(size: 22))
+                        }
+                        .accessibilityLabel("Email \(email)")
+                    }
                 }
             }
 
@@ -315,6 +420,21 @@ private struct LineItemsCard: View {
                                 .foregroundStyle(.bizarreOnSurfaceMuted)
                         }
                         Spacer()
+                    }
+                    // §7.2 Tax per line
+                    if let tax = item.taxAmount, tax > 0 {
+                        HStack {
+                            Text("Tax")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            Text(formatMoney(tax))
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .monospacedDigit()
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityLabel("Tax: \(formatMoney(tax))")
                     }
                 }
                 .padding(.vertical, BrandSpacing.xxs)
