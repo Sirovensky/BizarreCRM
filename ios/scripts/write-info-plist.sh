@@ -133,6 +133,23 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <key>NSCalendarsFullAccessUsageDescription</key>
     <string>Add appointments directly to your iOS Calendar.</string>
 
+    <!-- §28.3 App Transport Security — HTTPS only. NSAllowsArbitraryLoads is
+         explicitly NOT set, so it defaults to false (ATS enforced). This means
+         every outbound connection must use TLS. Self-hosted tenants must have
+         a valid cert; the app will refuse plaintext HTTP connections to their
+         server. PinnedURLSessionDelegate provides optional SPKI pinning on
+         top of ATS for cloud-hosted tenants that request it (§1.2). -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <!-- NSAllowsArbitraryLoads intentionally omitted (defaults false). -->
+        <!-- NSAllowsLocalNetworking: allow http:// to LAN-only addresses so
+             self-hosted tenants on e.g. 192.168.x.x can still be reached
+             without a cert. The server URL the user enters IS the API peer;
+             see §32 sovereignty — all traffic goes to that single peer. -->
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 
