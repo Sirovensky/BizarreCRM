@@ -955,26 +955,35 @@ Verified working. Not TODOs.
 ## Web Audit Wave-WEB-2026-04-24 Search S4 — auth + setup + portal
 
 ### Auth pages (`packages/web/src/pages/auth/`)
-- [ ] WEB-S4-006. **P2 — `LoginPage` no hCaptcha widget in Forgot panel despite backend demanding it after CAPTCHA_FAILURE_THRESHOLD.** `LoginPage.tsx:520-535`. Fix: read captcha_required from 429, render widget, attach token.
-- [ ] WEB-S4-008. **P2 — Trusted-device "90 days" checkbox has no help text or revoke link.** `LoginPage.tsx:626-634`. Fix: tooltip + link to sessions settings.
+- [ ] WEB-S4-002. **P1 — `LoginPage` 2FA setup step has no Back button.** `LoginPage.tsx:576-611`. Fix: add Back button calling setStep('password').
+- [ ] WEB-S4-004. **P2 — `LoginPage` first-run setup has no confirm-password.** `LoginPage.tsx:447-467`. Fix: add confirm-password field.
+- [ ] WEB-S4-005. **P2 — `LoginPage` first-run setup: no password strength indicator.** `LoginPage.tsx:380-467`. Fix: zxcvbn bar or complexity hint.
+- [x] WEB-S4-006. **P2 — `LoginPage` no hCaptcha widget in Forgot panel despite backend demanding it after CAPTCHA_FAILURE_THRESHOLD.** `LoginPage.tsx:520-535`. Fix: read captcha_required from 429, render widget, attach token. CLOSED 2026-04-26 — todofixes426: `forgotFailCount` state; widget lazy-loaded after first failure; `captcha_token` sent on subsequent requests; `authApi.forgotPassword` accepts optional 2nd arg.
+- [x] WEB-S4-008. **P2 — Trusted-device "90 days" checkbox has no help text or revoke link.** `LoginPage.tsx:626-634`. Fix: tooltip + link to sessions settings. CLOSED 2026-04-26 — todofixes426: `HelpCircle` icon + CSS tooltip explaining 90-day 2FA skip + `href=/settings?tab=sessions` revoke link.
 
 ### Setup wizard (`packages/web/src/pages/setup/`)
 
 ### Customer portal (`packages/web/src/pages/portal/`)
 - [x] WEB-S4-020. **P1 — Portal Sign In phone has no formatting/strip — backend gets unstripped value.** Fix: strip non-digits before submit. FIXED 2026-04-25 by Fixer-S — `PortalLogin.handleSignIn` now does `phone.replace(/\D/g, '')` before validation + `api.portalLogin(...)`. The visible `phone` state is left untouched (so the user keeps their formatting); only the wire value is normalized. Validation still gates on having any digits.
-- [ ] WEB-S4-026. **P2 — `enrichApi.ts` base `/portal/api/v2` differs from main `/api/v1/portal` — proxy mismatch risk.** Fix: verify mount + add error logging.
+- [ ] WEB-S4-021. **P1 — `PortalTicketDetail` fetch errors silently swallowed.** Fix: error state + retry button + 404-vs-network distinction.
+- [ ] WEB-S4-022. **P1 — Portal widget `postMessage` uses wrong target origin for cross-origin embeds.** `CustomerPortalPage.tsx:109,217`. Fix: use '*' or configured allowed parent origins.
+- [ ] WEB-S4-023. **P2 — `loginWithToken` discards `has_account` from verifySession response.** `usePortalAuth.ts:59-70`. Fix: pass has_account through.
+- [ ] WEB-S4-024. **P2 — `PortalDashboard`/`PortalEstimatesView`/`PortalInvoicesView` no error boundaries.** Fix: error+retry per view.
+- [ ] WEB-S4-025. **P2 — `PayNowButton` same-origin guard rejects external BlockChyp URLs.** `PayNowButton.tsx:43-56`. Fix: relax to https-only or config allowlist.
+- [x] WEB-S4-026. **P2 — `enrichApi.ts` base `/portal/api/v2` differs from main `/api/v1/portal` — proxy mismatch risk.** Fix: verify mount + add error logging. CLOSED 2026-04-26 — todofixes426: mount verified correct; response error interceptor added to `enrichApi.ts` to log all portal-v2 failures.
+- [ ] WEB-S4-027. **P2 — `PortalRegister` no Resend code; back-link clears phone.** Fix: Resend button + 30s timer; preserve phone.
 
 ### Photo capture
 - [x] WEB-S4-029. **P2 — No 20-photo cap enforcement.** `PhotoCapturePage.tsx:156-167`. Fix: disable add-more when length>=20. FIXED-by-Fixer-QQ 2026-04-25: added `MAX_PHOTOS=20` constant; `handleCapture` toasts when full + trims multi-select to remaining capacity; "Add more" tile hidden when at cap.
-- [ ] WEB-S4-030. **P2 — "Add More Photos" doesn't reset error.** Fix: setError('') in onClick.
+- [x] WEB-S4-030. **P2 — "Add More Photos" doesn't reset error.** Fix: setError('') in onClick. CLOSED 2026-04-26 — todofixes426: `setError('')` added to Add More Photos button onClick.
 
 ### Print page
-- [ ] WEB-S4-032. **P2 — `ticket: any` cast erases type safety in customer-facing render.** Fix: cast to PrintTicket.
-- [ ] WEB-S4-033. **P2 — Note content uses regex strip not DOMPurify.** `PrintPage.tsx:704`. Fix: DOMPurify.sanitize ALLOWED_TAGS:[].
+- [x] WEB-S4-032. **P2 — `ticket: any` cast erases type safety in customer-facing render.** Fix: cast to PrintTicket. CLOSED 2026-04-26 — todofixes426: cast replaced with `as PrintTicket | undefined`.
+- [x] WEB-S4-033. **P2 — Note content uses regex strip not DOMPurify.** `PrintPage.tsx:704`. Fix: DOMPurify.sanitize ALLOWED_TAGS:[]. CLOSED 2026-04-26 — todofixes426: regex strip replaced with `DOMPurify.sanitize(..., { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })`.
 
 ### Landing page
-- [ ] WEB-S4-034. **P1 — Fabricated testimonials (Mike R/Sarah L/James K) — FTC risk.** Fix: replace with real or mark illustrative + disclaimer.
-- [ ] WEB-S4-036. **P2 — `getTenantUrl` fails on localhost (single-segment hostname).** Fix: detect localhost, offer path-based fallback.
+- [x] WEB-S4-034. **P1 — Fabricated testimonials (Mike R/Sarah L/James K) — FTC risk.** Fix: replace with real or mark illustrative + disclaimer. CLOSED 2026-04-26 — todofixes426: all three replaced with "Testimonial coming soon." / "— Early adopter" placeholders.
+- [x] WEB-S4-036. **P2 — `getTenantUrl` fails on localhost (single-segment hostname).** Fix: detect localhost, offer path-based fallback. CLOSED 2026-04-26 — todofixes426: localhost returns `/t/<slug><path>` path-based URL; LoginModal hint updated.
 - [ ] WEB-S4-037. **P2 — "Get Started Free" → /signup which is gated on isMultiTenantMode; 404 on self-host.** Fix: gate landing route behind multi-tenant or show install instructions.
 
 ### Super-admin
@@ -984,26 +993,26 @@ Verified working. Not TODOs.
 
 ## Web Audit Wave-WEB-2026-04-24 Search S5 — cross-cutting UX
 
-- [ ] WEB-S5-008. **[P1] 55 files call `toLocaleDateString`/`toLocaleTimeString` direct — inconsistent + no UTC fix + ignores tenant locale.** Fix: codemod to shared helpers; add formatTime.
-- [ ] WEB-S5-009. **[P2] Header notification polling uses 2 setInterval — 6 calls per tab per 30s; runs in background.** `Header.tsx:79-123`. Fix: useQuery refetchInterval+refetchIntervalInBackground:false.
-- [ ] WEB-S5-010. **[P2] Notification badge updates silently — no aria-live region.** Fix: sr-only aria-live=polite mirror.
-- [ ] WEB-S5-016. **[P2] Sidebar collapsed recent-views truncated to 6 chars with no tooltip.** Fix: SidebarTooltipWrapper.
-- [ ] WEB-S5-020. **[P2] `PrintPreviewModal` iframe-poll race can double-fire print dialog.** Fix: `done` guard.
-- [x] WEB-S5-021. **[P2] `SignatureCanvas` reads pen color before dark class lands — first dark render wrong color.** Fix: useEffect + matchMedia. FIXED-by-Fixer-A19 2026-04-25 — extracted `computePenColor()` helper; `resolvedPenColor` now lives in `useState` initialized via lazy fn and re-resolved inside a `useEffect` on mount; effect also subscribes to `matchMedia('(prefers-color-scheme: dark)')` so a system-theme flip mid-session re-paints the pen instead of keeping the original-scheme color baked in. Legacy `addEventListener` failures are swallowed (Safari ≤13).
-- [ ] WEB-S5-023. **[P2] `useWebSocket` reconnect race: visibilitychange handler doesn't clear pending timer.** Fix: clearTimeout before connect.
-- [x] WEB-S5-025. **[P2] `uiStore` matchMedia listener leaks across HMR reloads.** Fix: import.meta.hot?.dispose(). FIXED-by-Fixer-A19 2026-04-25 — `packages/web/src/stores/uiStore.ts` now registers an `import.meta.hot.dispose()` callback that calls `mql.removeEventListener('change', handleSystemThemeChange)` and resets the `__bizarreThemeAttached` guard, so an HMR re-import detaches the previous module's listener (whose closure pinned the OLD `useUiStore`) before the new instance attaches. Production bundle path unchanged (`import.meta.hot` is undefined). Pairs with the existing dedup flag for a clean single-listener lifecycle.
-- [ ] WEB-S5-026. **[P2] `useDraft` localStorage keys not user-scoped — User B sees User A drafts.** Fix: prefix with userId; clear on auth-cleared.
+- [x] WEB-S5-008. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-009. CLOSED 2026-04-26 — pre-fixed (prior session; no setIntervals remain in Header.tsx).
+- [x] WEB-S5-010. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-016. CLOSED 2026-04-26 — pre-fixed (SidebarTooltipWrapper already wraps collapsed recent-view items).
+- [x] WEB-S5-020. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-021. CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-023. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-025. CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-026. CLOSED 2026-04-26 — pre-fixed (useDraft already user-scoped with buildScopedKey + wipeAllDrafts).
 - [ ] WEB-S5-029. **[P2] `DataTable` "Select all" is page-scoped but BulkActionBar implies global.** Fix: cross-page selection banner.
 - [ ] WEB-S5-030. **[P2] `DataTable` "Showing X-Y of Z" hidden when total undefined.** Fix: require total OR derive count.
-- [ ] WEB-S5-033. **[P3] `authStore.logout` only removes accessToken — leaves recent_views, theme, drafts for next user.** Fix: clear CRM-namespaced keys on auth-cleared.
-- [ ] WEB-S5-034. **[P3] `PageErrorBoundary.handleReload` doesn't clear CHUNK_RELOAD_SENTINEL.** Fix: sessionStorage.removeItem.
-- [ ] WEB-S5-035. **[P3] `ToastAvalancheGuard` dismisses oldest at cap — first error lost in storm.** Fix: dedup by message first.
-- [ ] WEB-S5-036. **[P3] `ToastAvalancheGuard` Promise.resolve().then() may not re-announce on AT.** Fix: setTimeout(0).
-- [ ] WEB-S5-037. **[P3] `ConfirmDialog`/`CommandPalette` use setTimeout(50) for focus — focus ring mid-animation on slow devices.** Fix: requestAnimationFrame.
-- [ ] WEB-S5-038. **[P3] `CommissionPeriodLock` + `TicketHandoffModal` use only `text-gray-*` no dark variants.** Fix: codemod to surface tokens.
+- [x] WEB-S5-033. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-034. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-035. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-036. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-037. CLOSED 2026-04-26 — todofixes426.
+- [x] WEB-S5-038. CLOSED 2026-04-26 — todofixes426.
 - [ ] WEB-S5-040. **[P3] `useSettings` creates N parallel useQuery subscriptions — coerceSettings runs N times.** Fix: lift into SettingsContext.
-- [ ] WEB-S5-042. **[P3] `useDismissible` localStorage not user-scoped — same as W5-026.** Fix: prefix + clear on auth-cleared.
-- [ ] WEB-S5-043. **[P3] `formatDate`/`formatDateTime` hard-code `'en-US'` — non-US tenants ignored.** Fix: use `_locale`.
+- [x] WEB-S5-042. CLOSED 2026-04-26 — pre-fixed (useDismissible already user-scoped via userId in storageKey).
+- [x] WEB-S5-043. CLOSED 2026-04-26 — pre-fixed (formatDate/formatDateTime already use `_locale`).
 - [ ] WEB-S5-044. **[P3] `DataTable` sortable `<th>` adds `role="button"` — strips implicit columnheader role.** Fix: remove role; aria-sort + tabIndex sufficient.
 
 ## Web Audit Wave-WEB-2026-04-24 Search S7 — data integrity + edge cases
