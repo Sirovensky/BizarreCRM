@@ -66,24 +66,44 @@ public struct CustomerInfoTabView: View {
     let api: APIClient
     @State private var showingHealthSheet = false
     @State private var showingLTVSheet = false
+    @State private var showingDelete = false
+    @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
         ScrollView {
             VStack(spacing: BrandSpacing.base) {
-                // §5.2 Health score ring — tap → explanation sheet
-                healthScoreRing
-
-                // §5.2 LTV tier chip — tap → explanation
-                ltvTierChip
+                // §5.2 Header — avatar + name + LTV tier chip + health-score ring + VIP star
+                CustomerDetailHeader(
+                    detail: detail,
+                    analytics: analytics,
+                    api: api,
+                    onHealthTap: { showingHealthSheet = true },
+                    onLTVTap: { showingLTVSheet = true }
+                )
 
                 // Quick-action glass row
                 CustomerQuickActionRow(detail: detail, api: api)
 
-                // Contact info
-                InfoContactCard(detail: detail)
+                // §5.2 Contact card — multi-phone, multi-email, address→Maps
+                CustomerFullContactCard(detail: detail, onMapsTap: nil)
+
+                // §5.2 Membership card (shown only if tenant has memberships)
+                CustomerMembershipCard(customerId: detail.id, api: api)
 
                 // Balance / credit §5.2
                 CustomerBalanceCard(customerId: detail.id, api: api)
+
+                // §5.2 vCard actions — Share + Add to Contacts
+                CustomerVCardActions(detail: detail)
+
+                // §5.2 Delete customer
+                CustomerDeleteButton(
+                    customerId: detail.id,
+                    displayName: detail.displayName,
+                    openTicketCount: detail.openTicketCount ?? 0,
+                    api: api,
+                    onDeleted: { dismiss() }
+                )
             }
             .padding(BrandSpacing.base)
         }
@@ -96,162 +116,10 @@ public struct CustomerInfoTabView: View {
         }
     }
 
-    // MARK: Health score ring
-
-    private var healthScoreRing: some View {
-        let health = CustomerHealthScoreResult.compute(detail: detail)
-        return Button {
-            showingHealthSheet = true
-        } label: {
-            HStack(spacing: BrandSpacing.md) {
-                HealthRing(score: health.value, tier: health.tier)
-                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                    Text(tierLabel(health.tier))
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(tierColor(health.tier))
-                    Text("Health Score")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    if let rec = health.recommendation {
-                        Text(rec)
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreWarning)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-            }
-            .padding(BrandSpacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-            .overlay(RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
-                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Health score \(health.value) of 100. \(tierLabel(health.tier)). Tap for breakdown.")
-    }
-
-    // MARK: LTV tier chip
-
-    private var ltvTierChip: some View {
-        let ltvCentsInt: Int = {
-            if let a = analytics, a.lifetimeValue > 0 { return Int(a.lifetimeValue * 100) }
-            if let c = detail.ltvCents, c > 0 { return Int(c) }
-            return 0
-        }()
-        let tier = LTVCalculator.tier(for: ltvCentsInt)
-        let formatted = currencyString(Double(ltvCentsInt) / 100.0)
-
-        return Button {
-            showingLTVSheet = true
-        } label: {
-            HStack(spacing: BrandSpacing.sm) {
-                Image(systemName: tier.icon)
-                    .foregroundStyle(tier.color)
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("LTV: \(formatted)")
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                    Text("\(tier.label) tier")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(tier.color)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-            }
-            .padding(.horizontal, BrandSpacing.md)
-            .padding(.vertical, BrandSpacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(tier.color.opacity(0.10), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Lifetime value \(formatted). \(tier.label) tier. Tap for details.")
-    }
-
-    private func tierLabel(_ t: CustomerHealthTier) -> String {
-        switch t { case .green: return "Healthy"; case .yellow: return "At Risk"; case .red: return "Critical" }
-    }
-    private func tierColor(_ t: CustomerHealthTier) -> Color {
-        switch t { case .green: return .bizarreSuccess; case .yellow: return .bizarreWarning; case .red: return .bizarreError }
-    }
-    private func currencyString(_ v: Double) -> String {
-        let f = NumberFormatter(); f.numberStyle = .currency; f.currencyCode = "USD"; f.maximumFractionDigits = 0
-        return f.string(from: NSNumber(value: v)) ?? "$\(Int(v))"
-    }
 }
 
-// MARK: - HealthRing subview
-
-private struct HealthRing: View {
-    let score: Int
-    let tier: CustomerHealthTier
-
-    private var color: Color {
-        switch tier { case .green: return .bizarreSuccess; case .yellow: return .bizarreWarning; case .red: return .bizarreError }
-    }
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(color.opacity(0.18), lineWidth: 5)
-            Circle()
-                .trim(from: 0, to: CGFloat(score) / 100)
-                .stroke(color, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.easeOut(duration: DesignTokens.Motion.smooth), value: score)
-            Text("\(score)")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .contentTransition(.numericText())
-        }
-        .frame(width: 52, height: 52)
-        .accessibilityHidden(true)
-    }
-}
-
-// MARK: - Info Contact Card
-
-private struct InfoContactCard: View {
-    let detail: CustomerDetail
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Contact").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            if let m = detail.mobile, !m.isEmpty { row("phone", "Mobile", PhoneFormatter.format(m), mono: true) }
-            if let p = detail.phone, !p.isEmpty, p != detail.mobile { row("phone", "Phone", PhoneFormatter.format(p), mono: true) }
-            if let e = detail.email, !e.isEmpty { row("envelope", "Email", e) }
-            if let addr = detail.addressLine { row("mappin.and.ellipse", "Address", addr) }
-            if let org = detail.organization, !org.isEmpty { row("building.2", "Organization", org) }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(BrandSpacing.base)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
-    }
-
-    private func row(_ icon: String, _ label: String, _ value: String, mono: Bool = false) -> some View {
-        HStack(alignment: .top, spacing: BrandSpacing.sm) {
-            Image(systemName: icon).foregroundStyle(.bizarreOnSurfaceMuted).frame(width: 22).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
-                Text(value)
-                    .font(mono ? .brandMono(size: 14) : .brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
-                    .textSelection(.enabled)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, BrandSpacing.xxs)
-    }
-}
+// HealthRing and InfoContactCard replaced by CustomerDetailHeader + CustomerFullContactCard
+// (see Detail/CustomerDetailHeader.swift)
 
 // MARK: - Tickets Tab
 
@@ -476,14 +344,18 @@ private struct CommRow: View {
     }
 }
 
-// MARK: - Assets Tab (wraps existing CustomerAssetsListView)
+// MARK: - Assets Tab (wraps CustomerAssetsListView via repository)
 
 public struct CustomerAssetsTabView: View {
     let customerId: Int64
     let api: APIClient
 
     public var body: some View {
-        CustomerAssetsListView(api: api, customerId: customerId)
+        // §5.2 Assets tab — GET /customers/:id/assets; add asset; tap → device-history.
+        CustomerAssetsListView(
+            repository: CustomerAssetsRepositoryImpl(api: api),
+            customerId: customerId
+        )
     }
 }
 #endif
