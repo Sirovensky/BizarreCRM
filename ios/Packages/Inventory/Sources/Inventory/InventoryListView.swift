@@ -15,10 +15,31 @@ public struct InventoryListView: View {
     @State private var showingReceiving: Bool = false
     @State private var showingStocktake: Bool = false
     @State private var showingBatchEdit: Bool = false
+    @State private var showingImport: Bool = false
+    @State private var showingFilterDrawer: Bool = false
     @State private var multiSelection: Set<Int64> = []
     @State private var isBatchSelectMode: Bool = false
+    @State private var showingAdjust: Bool = false
+    @State private var adjustTargetId: Int64?
+    @State private var adjustTargetName: String = ""
     private let detailRepo: InventoryDetailRepository
     private let api: APIClient?
+
+    // §6.1 Tab: All / Products / Parts (not Services — services use Settings).
+    private enum ItemTypeTab: String, CaseIterable {
+        case all      = "All"
+        case products = "Products"
+        case parts    = "Parts"
+
+        var inventoryFilter: InventoryFilter {
+            switch self {
+            case .all:      return .all
+            case .products: return .product
+            case .parts:    return .part
+            }
+        }
+    }
+    @State private var selectedTab: ItemTypeTab = .all
 
     public init(repo: InventoryRepository, detailRepo: InventoryDetailRepository, api: APIClient? = nil) {
         self.detailRepo = detailRepo
@@ -43,8 +64,15 @@ public struct InventoryListView: View {
             ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    filterChips
-                        .padding(.vertical, BrandSpacing.sm)
+                    // §6.1 Tab bar — All / Products / Parts
+                    itemTypeTabBar
+                        .padding(.vertical, BrandSpacing.xs)
+                    // §6.1 Collapsible filter drawer
+                    InventoryFilterDrawer(
+                        filter: filterBinding,
+                        isExpanded: $showingFilterDrawer,
+                        onApply: { Task { await vm.load() } }
+                    )
                     if isBatchSelectMode {
                         batchSelectionBanner
                     }
@@ -56,7 +84,7 @@ public struct InventoryListView: View {
                 }
             }
             .navigationTitle("Inventory")
-            .searchable(text: $searchText, prompt: "Search by name, SKU, UPC")
+            .searchable(text: $searchText, prompt: "Search by name, SKU, UPC, manufacturer")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task {
                 vm.isOffline = !Reachability.shared.isOnline
@@ -88,6 +116,16 @@ public struct InventoryListView: View {
                     BatchEditSheet(api: api, selectedIds: Array(multiSelection))
                 }
             }
+            .sheet(isPresented: adjustSheetBinding) {
+                if let api, let targetId = adjustTargetId {
+                    InventoryAdjustSheet(
+                        itemId: targetId,
+                        itemName: adjustTargetName,
+                        api: api,
+                        onSuccess: { Task { await vm.refresh() } }
+                    )
+                }
+            }
         }
     }
 
@@ -98,8 +136,13 @@ public struct InventoryListView: View {
             ZStack(alignment: .top) {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 VStack(spacing: 0) {
-                    filterChips
-                        .padding(.vertical, BrandSpacing.sm)
+                    itemTypeTabBar
+                        .padding(.vertical, BrandSpacing.xs)
+                    InventoryFilterDrawer(
+                        filter: filterBinding,
+                        isExpanded: $showingFilterDrawer,
+                        onApply: { Task { await vm.load() } }
+                    )
                     if isBatchSelectMode {
                         batchSelectionBanner
                     }
@@ -111,7 +154,7 @@ public struct InventoryListView: View {
                 }
             }
             .navigationTitle("Inventory")
-            .searchable(text: $searchText, prompt: "Search by name, SKU, UPC")
+            .searchable(text: $searchText, prompt: "Search by name, SKU, UPC, manufacturer")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task {
                 vm.isOffline = !Reachability.shared.isOnline
@@ -141,6 +184,16 @@ public struct InventoryListView: View {
                     BatchEditSheet(api: api, selectedIds: Array(multiSelection))
                 }
             }
+            .sheet(isPresented: adjustSheetBinding) {
+                if let api, let targetId = adjustTargetId {
+                    InventoryAdjustSheet(
+                        itemId: targetId,
+                        itemName: adjustTargetName,
+                        api: api,
+                        onSuccess: { Task { await vm.refresh() } }
+                    )
+                }
+            }
         } detail: {
             if let id = selected {
                 NavigationStack {
@@ -151,6 +204,45 @@ public struct InventoryListView: View {
             }
         }
         .navigationSplitViewStyle(.balanced)
+    }
+
+    // MARK: - §6.1 Item-type tab bar (All / Products / Parts)
+
+    private var itemTypeTabBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                ForEach(ItemTypeTab.allCases, id: \.rawValue) { tab in
+                    InventoryFilterChip(
+                        label: tab.rawValue,
+                        selected: selectedTab == tab
+                    ) {
+                        guard selectedTab != tab else { return }
+                        selectedTab = tab
+                        Task { await vm.applyFilter(tab.inventoryFilter) }
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+        }
+        .accessibilityLabel("Item type filter tabs")
+    }
+
+    // MARK: - Adjust sheet binding
+
+    private var adjustSheetBinding: Binding<Bool> {
+        Binding(
+            get: { showingAdjust && adjustTargetId != nil },
+            set: { if !$0 { showingAdjust = false } }
+        )
+    }
+
+    // MARK: - Filter binding passthrough
+
+    private var filterBinding: Binding<InventoryAdvancedFilter> {
+        Binding(
+            get: { vm.advanced },
+            set: { vm.advanced = $0 }
+        )
     }
 
     // MARK: - Batch selection banner (Liquid Glass chrome)
@@ -195,6 +287,23 @@ public struct InventoryListView: View {
             .keyboardShortcut("N", modifiers: .command)
             .accessibilityLabel("New item")
             .disabled(api == nil)
+        }
+        // §6.1 Sort menu
+        ToolbarItem(placement: .secondaryAction) {
+            Menu {
+                Picker("Sort by", selection: Binding(
+                    get: { vm.sort },
+                    set: { newSort in Task { await vm.applySort(newSort) } }
+                )) {
+                    ForEach(InventorySortOption.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .accessibilityLabel("Sort inventory list")
         }
         ToolbarItem(placement: .secondaryAction) {
             Button { showingLowStock = true } label: {
@@ -248,7 +357,13 @@ public struct InventoryListView: View {
         } else if vm.items.isEmpty && vm.isOffline {
             OfflineEmptyStateView(entityName: "inventory items")
         } else if vm.items.isEmpty {
-            InventoryEmptyState(isSearching: !searchText.isEmpty)
+            // §6.1 Enhanced empty state with CTAs
+            InventoryEmptyState(
+                isSearching: !searchText.isEmpty,
+                hasFilters: vm.hasActiveAdvancedFilters,
+                onImport: { showingImport = true },
+                onCreate: { showingCreate = true }
+            )
         } else {
             List(selection: isBatchSelectMode
                  ? $multiSelection
@@ -272,7 +387,7 @@ public struct InventoryListView: View {
     @ViewBuilder
     private func row(for item: InventoryListItem, onSelect: @escaping (Int64) -> Void) -> some View {
         if isBatchSelectMode {
-            InventoryRow(item: item)
+            InventoryRow(item: item, onAdjust: nil)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if multiSelection.contains(item.id) {
@@ -294,13 +409,22 @@ public struct InventoryListView: View {
                 .accessibilityAddTraits(multiSelection.contains(item.id) ? .isSelected : [])
         } else if Platform.isCompact {
             NavigationLink(value: item.id) {
-                InventoryRow(item: item)
+                // §6.1 Quick stock adjust inline — only if api available
+                InventoryRow(item: item, onAdjust: api != nil ? {
+                    adjustTargetId = item.id
+                    adjustTargetName = item.displayName
+                    showingAdjust = true
+                } : nil)
             }
             .hoverEffect(.highlight)
             .contextMenu { rowContextMenu(for: item) }
         } else {
             Button { onSelect(item.id) } label: {
-                InventoryRow(item: item)
+                InventoryRow(item: item, onAdjust: api != nil ? {
+                    adjustTargetId = item.id
+                    adjustTargetName = item.displayName
+                    showingAdjust = true
+                } : nil)
             }
             .buttonStyle(.plain)
             .hoverEffect(.highlight)
@@ -309,9 +433,10 @@ public struct InventoryListView: View {
         }
     }
 
+    // MARK: - §6.1 Context menu (Open / Copy SKU / Adjust stock / Create PO / Deactivate / Delete)
+
     @ViewBuilder
     private func rowContextMenu(for item: InventoryListItem) -> some View {
-        // Open / Edit
         Button {
             selected = item.id
         } label: {
@@ -319,47 +444,44 @@ public struct InventoryListView: View {
         }
         .accessibilityLabel("Open \(item.displayName)")
 
-        Button {
-            selected = item.id
-        } label: {
-            Label("Edit", systemImage: "pencil")
+        if let sku = item.sku, !sku.isEmpty {
+            Button {
+                UIPasteboard.general.string = sku
+            } label: {
+                Label("Copy SKU", systemImage: "doc.on.clipboard")
+            }
+            .accessibilityLabel("Copy SKU \(sku)")
         }
-        .accessibilityLabel("Edit \(item.displayName)")
 
         Divider()
 
-        // §22 domain-relevant actions
         if api != nil {
             Button {
-                selected = item.id
+                adjustTargetId = item.id
+                adjustTargetName = item.displayName
                 showingAdjust = true
             } label: {
-                Label("Adjust Stock", systemImage: "slider.horizontal.3")
+                Label("Adjust stock", systemImage: "slider.horizontal.3")
             }
             .accessibilityLabel("Adjust stock for \(item.displayName)")
 
             Button {
-                // TODO: POST /inventory/:id/reorder — Phase 4
+                // Handled by §58 PO compose — opens via nav; for now navigate to item detail
+                selected = item.id
             } label: {
-                Label("Reorder", systemImage: "cart.badge.plus")
+                Label("Create PO", systemImage: "cart.badge.plus")
             }
-            .accessibilityLabel("Reorder \(item.displayName)")
-
-            Button {
-                // TODO: navigate to stock history — Phase 4
-            } label: {
-                Label("View History", systemImage: "clock.arrow.circlepath")
-            }
-            .accessibilityLabel("View stock history for \(item.displayName)")
+            .accessibilityLabel("Create purchase order for \(item.displayName)")
 
             Divider()
 
-            Button {
-                // TODO: PATCH /inventory/:id { archived: true } — Phase 4
+            // §6.4 Deactivate
+            Button(role: .destructive) {
+                // TODO(phase-4): PATCH /inventory/:id { archived: true }
             } label: {
-                Label("Archive", systemImage: "archivebox")
+                Label("Deactivate", systemImage: "archivebox")
             }
-            .accessibilityLabel("Archive \(item.displayName)")
+            .accessibilityLabel("Deactivate \(item.displayName)")
         }
 
         Divider()
@@ -369,27 +491,10 @@ public struct InventoryListView: View {
             isBatchSelectMode = true
             showingBatchEdit = true
         } label: {
-            Label("Batch Edit", systemImage: "checkmark.circle")
+            Label("Batch edit", systemImage: "checkmark.circle")
         }
         .disabled(api == nil)
         .accessibilityLabel("Batch edit \(item.displayName)")
-    }
-
-    @State private var showingAdjust: Bool = false
-
-    // MARK: - Filter chips
-
-    private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.sm) {
-                ForEach(InventoryFilter.allCases) { option in
-                    InventoryFilterChip(label: option.displayName, selected: vm.filter == option) {
-                        Task { await vm.applyFilter(option) }
-                    }
-                }
-            }
-            .padding(.horizontal, BrandSpacing.base)
-        }
     }
 }
 
@@ -397,6 +502,8 @@ public struct InventoryListView: View {
 
 private struct InventoryRow: View {
     let item: InventoryListItem
+    /// Non-nil when quick stock-adjust is available (requires api).
+    let onAdjust: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: BrandSpacing.md) {
@@ -409,6 +516,7 @@ private struct InventoryRow: View {
                     Text("SKU \(sku)")
                         .font(.brandMono(size: 13))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .textSelection(.enabled)
                         .lineLimit(1)
                 } else if let type = item.itemType, !type.isEmpty {
                     Text(type.capitalized)
@@ -427,6 +535,18 @@ private struct InventoryRow: View {
                         .monospacedDigit()
                 }
                 stockBadge
+
+                // §6.1 Quick stock adjust inline +/-
+                if let onAdjust {
+                    Button(action: onAdjust) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Quick adjust stock for \(item.displayName)")
+                    .padding(.top, BrandSpacing.xxs)
+                }
             }
         }
         .padding(.vertical, BrandSpacing.xs)
@@ -445,10 +565,24 @@ private struct InventoryRow: View {
         .accessibilityAddTraits(.isButton)
     }
 
+    // MARK: - §6.1 Stock badge: low-stock (critical-low pulse respects Reduce Motion)
+
     @ViewBuilder
     private var stockBadge: some View {
         let stock = item.inStock ?? 0
-        if item.isLowStock {
+        let reorder = item.reorderLevel ?? 0
+        let isCriticalLow = item.isLowStock && reorder > 0 && stock == 0
+
+        if isCriticalLow {
+            // Out of stock — show "Out of stock" chip
+            Text("Out of stock")
+                .font(.brandLabelSmall())
+                .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
+                .foregroundStyle(.black)
+                .background(.bizarreError, in: Capsule())
+                .modifier(CriticalLowPulse())
+        } else if item.isLowStock {
+            // Low stock — red badge with qty
             Text("Low · \(stock)")
                 .font(.brandLabelSmall())
                 .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
@@ -470,6 +604,23 @@ private struct InventoryRow: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: Double(cents) / 100.0)) ?? "$\(cents / 100)"
+    }
+}
+
+// MARK: - §6.1 Critical-low pulse animation (respects Reduce Motion)
+
+private struct CriticalLowPulse: ViewModifier {
+    @State private var pulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(reduceMotion ? 1.0 : (pulsing ? 0.5 : 1.0))
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                value: pulsing
+            )
+            .onAppear { if !reduceMotion { pulsing = true } }
     }
 }
 
@@ -498,7 +649,71 @@ private struct InventoryFilterChip: View {
     }
 }
 
-// MARK: - Empty / Error states
+// MARK: - §6.1 Enhanced empty state with CTAs
+
+private struct InventoryEmptyState: View {
+    let isSearching: Bool
+    let hasFilters: Bool
+    let onImport: () -> Void
+    let onCreate: () -> Void
+
+    var body: some View {
+        VStack(spacing: BrandSpacing.base) {
+            Image(systemName: "shippingbox")
+                .font(.system(size: 48))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+
+            if isSearching {
+                Text("No results")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Try a different search term.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            } else if hasFilters {
+                Text("No items match your filters")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Adjust or clear filters to see more items.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            } else {
+                Text("No items yet")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Text("Import a CSV or create items manually.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+
+                // §6.1 CTAs: Import CSV + Add manually
+                HStack(spacing: BrandSpacing.sm) {
+                    Button(action: onImport) {
+                        Label("Import CSV", systemImage: "square.and.arrow.down")
+                            .font(.brandLabelLarge())
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Import inventory items from CSV file")
+
+                    Button(action: onCreate) {
+                        Label("Add item", systemImage: "plus")
+                            .font(.brandLabelLarge())
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .accessibilityLabel("Create a new inventory item")
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(BrandSpacing.lg)
+    }
+}
+
+// MARK: - Error state
 
 private struct InventoryErrorState: View {
     let message: String
@@ -525,21 +740,7 @@ private struct InventoryErrorState: View {
     }
 }
 
-private struct InventoryEmptyState: View {
-    let isSearching: Bool
-
-    var body: some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 48))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-            Text(isSearching ? "No results" : "No items")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
+// MARK: - iPad placeholder
 
 private struct EmptyInventoryDetailPlaceholder: View {
     var body: some View {

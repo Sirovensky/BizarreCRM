@@ -12,11 +12,16 @@ public final class InventoryListViewModel {
     public private(set) var isRefreshing: Bool = false
     public private(set) var errorMessage: String?
     public var filter: InventoryFilter = .all
+    public var sort: InventorySortOption = .nameAsc
+    public var advanced: InventoryAdvancedFilter = .init()
     public var searchQuery: String = ""
 
     // Phase-3: staleness + offline
     public private(set) var lastSyncedAt: Date?
     public var isOffline: Bool = false
+
+    // Indicates at least one advanced filter is active (drives filter-drawer badge).
+    public var hasActiveAdvancedFilters: Bool { !advanced.isEmpty }
 
     @ObservationIgnored private let repo: InventoryRepository
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -42,6 +47,16 @@ public final class InventoryListViewModel {
         await fetch(forceRemote: false)
     }
 
+    public func applySort(_ newSort: InventorySortOption) async {
+        sort = newSort
+        await fetch(forceRemote: false)
+    }
+
+    public func applyAdvanced(_ newAdvanced: InventoryAdvancedFilter) async {
+        advanced = newAdvanced
+        await fetch(forceRemote: false)
+    }
+
     public func onSearchChange(_ query: String) {
         searchQuery = query
         searchTask?.cancel()
@@ -54,26 +69,33 @@ public final class InventoryListViewModel {
 
     private func fetch(forceRemote: Bool) async {
         errorMessage = nil
+        let keyword = searchQuery.isEmpty ? nil : searchQuery
         do {
             if let cached = repo as? InventoryCachedRepositoryImpl {
                 let result: CachedResult<[InventoryListItem]>
                 if forceRemote {
                     result = try await cached.forceRefresh(
                         filter: filter,
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
+                        sort: sort,
+                        advanced: advanced,
+                        keyword: keyword
                     )
                 } else {
                     result = try await cached.cachedList(
                         filter: filter,
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
+                        sort: sort,
+                        advanced: advanced,
+                        keyword: keyword
                     )
                 }
                 items = result.value
                 lastSyncedAt = result.lastSyncedAt
             } else {
-                items = try await repo.list(
+                items = try await repo.listAdvanced(
                     filter: filter,
-                    keyword: searchQuery.isEmpty ? nil : searchQuery
+                    sort: sort,
+                    advanced: advanced,
+                    keyword: keyword
                 )
             }
         } catch {
