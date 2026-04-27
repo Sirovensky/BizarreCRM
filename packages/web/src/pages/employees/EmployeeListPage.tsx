@@ -1,7 +1,7 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
+  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
@@ -230,6 +230,96 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
   );
 }
 
+// ─── Pay Rate inline editor (WEB-S6-014) ─────────────────────────
+function PayRateEditor({ employeeId, currentRate }: { employeeId: number; currentRate: number | null }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (rate: number | null) => employeeApi.updatePayRate(employeeId, rate),
+    onSuccess: () => {
+      toast.success('Pay rate updated');
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['employee-detail', employeeId] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to update pay rate');
+    },
+  });
+
+  function startEdit() {
+    setDraft(currentRate != null ? String(currentRate) : '');
+    setEditing(true);
+  }
+
+  function commit() {
+    const trimmed = draft.trim();
+    const rate = trimmed === '' ? null : parseFloat(trimmed);
+    if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
+      toast.error('Pay rate must be a number between 0 and 9999.99');
+      return;
+    }
+    mutation.mutate(rate);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-surface-500">$/hr</span>
+        <input
+          type="number"
+          min="0"
+          max="9999.99"
+          step="0.01"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          autoFocus
+          placeholder="e.g. 18.50"
+          className="w-24 rounded-lg border border-surface-300 px-2 py-1 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          disabled={mutation.isPending}
+          aria-label="Save pay rate"
+          className="rounded-lg p-1 text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          aria-label="Cancel"
+          className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
+        {currentRate != null ? `${formatCurrency(currentRate)}/hr` : <span className="italic text-surface-400">Not set</span>}
+      </span>
+      <button
+        type="button"
+        onClick={startEdit}
+        aria-label="Edit pay rate"
+        className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
 // ─── Expanded Row Detail ────────────────────────────────────────────
 function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
   const weekRange = getWeekRange();
@@ -260,6 +350,18 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
   return (
     <tr>
       <td colSpan={6} className="bg-surface-50/50 px-4 py-4 dark:bg-surface-800/50">
+        {/* WEB-S6-014: Pay Rate row */}
+        <div className="mb-4 flex items-center gap-4 rounded-lg border border-surface-200 bg-white px-4 py-3 shadow-sm dark:border-surface-700 dark:bg-surface-700">
+          <DollarSign className="h-4 w-4 shrink-0 text-surface-400" />
+          <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Hourly Pay Rate</span>
+          <div className="ml-auto">
+            <PayRateEditor
+              employeeId={employeeId}
+              currentRate={(detail as any)?.pay_rate ?? null}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recent Clock Entries */}
           <div>

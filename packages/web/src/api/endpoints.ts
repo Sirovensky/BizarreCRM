@@ -850,13 +850,17 @@ export const catalogApi = {
 
 // ==================== Leads ====================
 export const leadApi = {
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; assigned_to?: number }) =>
+  // WEB-W2-035: sort_by + sort_order added for sortable columns
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; assigned_to?: number; sort_by?: string; sort_order?: 'ASC' | 'DESC' }) =>
     api.get('/leads', { params }),
   get: (id: number) => api.get(`/leads/${id}`),
   create: (data: CreateLeadInput) => api.post('/leads', data),
   update: (id: number, data: UpdateLeadInput) => api.put(`/leads/${id}`, data),
   convert: (id: number) => api.post(`/leads/${id}/convert`),
   delete: (id: number) => api.delete(`/leads/${id}`),
+  // WEB-W2-035: bulk action endpoint (delete or status-change for selected leads)
+  bulkAction: (lead_ids: number[], action: string, value?: string) =>
+    api.post('/leads/bulk-action', { lead_ids, action, value }),
   pipeline: () => api.get('/leads/pipeline'),
   reminders: (id: number) => api.get(`/leads/${id}/reminders`),
   createReminder: (id: number, data: { remind_at: string; note?: string }) =>
@@ -908,6 +912,9 @@ export const employeeApi = {
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/commissions`, { params }),
+  // WEB-S6-014: PATCH /employees/:id — set/clear hourly pay_rate (admin only)
+  updatePayRate: (id: number, pay_rate: number | null) =>
+    api.patch(`/employees/${id}`, { pay_rate }),
 };
 
 // ==================== Day-1 Onboarding (audit section 42) ====================
@@ -1459,6 +1466,43 @@ export interface SuperAdminTenant {
   created_at: string;
   db_size_mb: number;
 }
+
+// ==================== Installment Plans ====================
+export interface InstallmentScheduleRow {
+  index?: number;
+  due_date: string;
+  amount_cents: number;
+}
+
+export interface CreateInstallmentPlanInput {
+  customer_id: number;
+  invoice_id?: number | null;
+  total_cents: number;
+  installment_count: number;
+  frequency_days: number;
+  acceptance_token: string;
+  acceptance_signed_at: string;
+  schedule: InstallmentScheduleRow[];
+}
+
+export const installmentApi = {
+  /** Create a new installment plan + schedule rows. Returns the plan with schedule. */
+  create: (data: CreateInstallmentPlanInput) =>
+    api.post('/installments', data),
+  /** List plans with optional filters. */
+  list: (params?: { invoice_id?: number; customer_id?: number; status?: string }) =>
+    api.get('/installments', { params }),
+  listByInvoice: (invoice_id: number) =>
+    api.get('/installments', { params: { invoice_id } }),
+  listByCustomer: (customer_id: number) =>
+    api.get('/installments', { params: { customer_id } }),
+  /** Fetch a single plan with its schedule rows. */
+  get: (id: number) =>
+    api.get(`/installments/${id}`),
+  /** Cancel a pending/active plan. Requires admin or manager role. */
+  cancel: (id: number) =>
+    api.post(`/installments/${id}/cancel`),
+};
 
 export const superAdminApi = {
   /** Login step 1 — returns challengeToken */

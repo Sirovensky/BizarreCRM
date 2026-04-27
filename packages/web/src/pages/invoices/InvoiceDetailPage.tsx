@@ -3,7 +3,8 @@ import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi } from '@/api/endpoints';
+import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
+import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
@@ -19,7 +20,6 @@ import {
   RefundReasonPicker,
   type RefundReasonCode,
 } from '@/components/billing/RefundReasonPicker';
-import { api } from '@/api/client';
 import type { InvoiceDetail } from '@/types/invoice';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -206,7 +206,7 @@ export function InvoiceDetailPage() {
   // /api/v1/installments (see installment-plans.routes.ts). The wizard
   // already owns the money math + acceptance token; this just POSTs.
   const installmentPlanMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => api.post('/installments', payload),
+    mutationFn: (payload: CreateInstallmentPlanInput) => installmentApi.create(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoice', id] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });

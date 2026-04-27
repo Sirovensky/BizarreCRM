@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, UserPlus, ChevronLeft, ChevronRight, Trash2, Eye,
   ArrowRightLeft, Phone, Mail, X, Loader2, ChevronDown, BarChart3,
+  ArrowUpDown, ArrowUp, ArrowDown, CheckSquare, Square,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
@@ -134,7 +135,7 @@ function LeadScoreBadge({ score }: { score: number }) {
 function SkeletonRow() {
   return (
     <tr className="animate-pulse">
-      {Array.from({ length: 10 }).map((_, i) => (
+      {Array.from({ length: 11 }).map((_, i) => (
         <td key={i} className="px-4 py-3">
           <div className="h-4 w-20 rounded bg-surface-200 dark:bg-surface-700" />
         </td>
@@ -313,6 +314,38 @@ function CreateLeadModal({
   );
 }
 
+// ─── Sortable column header ──────────────────────────────────────
+function SortHeader({
+  label,
+  column,
+  sortBy,
+  sortOrder,
+  onSort,
+}: {
+  label: string;
+  column: string;
+  sortBy: string;
+  sortOrder: 'ASC' | 'DESC';
+  onSort: (col: string) => void;
+}) {
+  const active = sortBy === column;
+  return (
+    <th
+      className="cursor-pointer select-none px-4 py-3 font-medium text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200"
+      onClick={() => onSort(column)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? (
+          sortOrder === 'ASC' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+        ) : (
+          <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </span>
+    </th>
+  );
+}
+
 // ─── Main Component ─────────────────────────────────────────────
 export function LeadListPage() {
   const navigate = useNavigate();
@@ -323,10 +356,16 @@ export function LeadListPage() {
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('leads_pagesize') || '25');
   const keyword = searchParams.get('keyword') || '';
   const statusFilter = searchParams.get('status') || '';
+  const sortBy = (searchParams.get('sort_by') || 'created_at') as string;
+  const sortOrder = ((searchParams.get('sort_order') || 'DESC').toUpperCase()) as 'ASC' | 'DESC';
 
   const [searchInput, setSearchInput] = useState(keyword);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [showCreate, setShowCreate] = useState(false);
+
+  // WEB-W2-035: row selection for bulk actions
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -340,6 +379,9 @@ export function LeadListPage() {
     }, 400);
     return () => clearTimeout(debounceRef.current);
   }, [searchInput, setSearchParams]);
+
+  // Clear selection when page/filters change
+  useEffect(() => { setSelectedIds(new Set()); }, [page, keyword, statusFilter, sortBy, sortOrder]);
 
   // Fetch users
   const { data: usersData } = useQuery({
@@ -355,6 +397,8 @@ export function LeadListPage() {
     pagesize: pageSize,
     ...(keyword ? { keyword } : {}),
     ...(statusFilter ? { status: statusFilter } : {}),
+    sort_by: sortBy,
+    sort_order: sortOrder,
   };
 
   const { data: leadData, isLoading, isFetching } = useQuery({
@@ -428,6 +472,77 @@ export function LeadListPage() {
     [queryClient, deleteUndo],
   );
 
+  // WEB-W2-035: Bulk action mutation
+  const bulkMut = useMutation({
+    mutationFn: ({ action, value }: { action: string; value?: string }) =>
+      leadApi.bulkAction(Array.from(selectedIds), action, value),
+    onSuccess: (_res, { action }) => {
+      const count = selectedIds.size;
+      if (action === 'delete') toast.success(`${count} lead${count !== 1 ? 's' : ''} deleted`);
+      else toast.success(`${count} lead${count !== 1 ? 's' : ''} updated`);
+      setSelectedIds(new Set());
+      setBulkMenuOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Bulk action failed');
+    },
+  });
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    try {
+      if (await confirm(`Delete ${selectedIds.size} lead${selectedIds.size !== 1 ? 's' : ''}?`, { danger: true })) {
+        bulkMut.mutate({ action: 'delete' });
+      }
+    } catch { /* dismissed */ }
+  }
+
+  async function handleBulkStatusChange(status: string) {
+    if (selectedIds.size === 0) return;
+    bulkMut.mutate({ action: 'status', value: status });
+  }
+
+  // Column sort handler
+  function handleSort(col: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (sortBy === col) {
+        next.set('sort_order', sortOrder === 'ASC' ? 'DESC' : 'ASC');
+      } else {
+        next.set('sort_by', col);
+        next.set('sort_order', 'DESC');
+      }
+      next.set('page', '1');
+      return next;
+    });
+  }
+
+  // Row selection helpers
+  const allPageIds = leads.map((l) => l.id);
+  const allSelected = allPageIds.length > 0 && allPageIds.every((id) => selectedIds.has(id));
+  const someSelected = allPageIds.some((id) => selectedIds.has(id)) && !allSelected;
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        allPageIds.forEach((id) => next.delete(id));
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => new Set([...prev, ...allPageIds]));
+    }
+  }
+
+  function toggleSelectOne(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -499,20 +614,98 @@ export function LeadListPage() {
           </div>
         </div>
 
+        {/* WEB-W2-035: Bulk action toolbar — appears when ≥1 row selected */}
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 border-b border-surface-200 bg-primary-50 px-4 py-2 dark:border-surface-700 dark:bg-primary-950/20">
+            <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
+              {selectedIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-surface-500 underline hover:text-surface-700 dark:hover:text-surface-300"
+            >
+              Clear
+            </button>
+            <div className="ml-auto flex items-center gap-2">
+              {/* Bulk status change */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setBulkMenuOpen((v) => !v)}
+                  disabled={bulkMut.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-xs font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-300"
+                >
+                  Change Status
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {bulkMenuOpen && (
+                  <div className="absolute right-0 top-full z-20 mt-1 w-40 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                    {LEAD_STATUSES.filter((s) => s.value).map((s) => (
+                      <button
+                        key={s.value}
+                        type="button"
+                        onClick={() => {
+                          setBulkMenuOpen(false);
+                          handleBulkStatusChange(s.value);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-xs hover:bg-surface-50 dark:hover:bg-surface-700"
+                      >
+                        <StatusBadge status={s.value} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* Bulk delete */}
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                disabled={bulkMut.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {bulkMut.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-surface-200 dark:border-surface-700">
+                {/* WEB-W2-035: select-all checkbox */}
+                <th className="w-10 px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={toggleSelectAll}
+                    aria-label={allSelected ? 'Deselect all' : 'Select all'}
+                    className="text-surface-400 hover:text-primary-600 dark:hover:text-primary-400"
+                  >
+                    {allSelected ? (
+                      <CheckSquare className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                    ) : someSelected ? (
+                      <CheckSquare className="h-4 w-4 opacity-50" />
+                    ) : (
+                      <Square className="h-4 w-4" />
+                    )}
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Lead ID</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Name</th>
+                <SortHeader label="Name" column="first_name" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Phone</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Email</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Status</th>
+                <SortHeader label="Status" column="status" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Score</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Source</th>
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Assigned To</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Created</th>
+                <SortHeader label="Created" column="created_at" sortBy={sortBy} sortOrder={sortOrder} onSort={handleSort} />
                 <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400 text-right">Actions</th>
               </tr>
             </thead>
@@ -521,7 +714,7 @@ export function LeadListPage() {
                 Array.from({ length: 6 }).map((_, i) => <SkeletonRow key={i} />)
               ) : leads.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>
+                  <td colSpan={11}>
                     <div className="flex flex-col items-center justify-center py-20">
                       <UserPlus className="mb-4 h-16 w-16 text-surface-300 dark:text-surface-600" />
                       <h2 className="text-lg font-medium text-surface-600 dark:text-surface-400">No Leads</h2>
@@ -538,8 +731,19 @@ export function LeadListPage() {
                   <tr
                     key={lead.id}
                     onClick={() => navigate(`/leads/${lead.id}`)}
-                    className="cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50"
+                    className={cn(
+                      'cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50',
+                      selectedIds.has(lead.id) && 'bg-primary-50/60 dark:bg-primary-950/20',
+                    )}
                   >
+                    {/* WEB-W2-035: per-row checkbox */}
+                    <td className="w-10 px-4 py-3" onClick={(e) => { e.stopPropagation(); toggleSelectOne(lead.id); }}>
+                      {selectedIds.has(lead.id) ? (
+                        <CheckSquare className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                      ) : (
+                        <Square className="h-4 w-4 text-surface-400" />
+                      )}
+                    </td>
                     <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">
                       {lead.order_id || `L-${String(lead.id).padStart(4, '0')}`}
                     </td>

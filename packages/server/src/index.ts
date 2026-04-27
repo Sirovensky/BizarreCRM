@@ -1695,6 +1695,9 @@ app.use('/api/v1/deposits', authMiddleware, depositRoutes);
 import installmentsRoutes from './routes/installments.routes.js';
 app.use('/api/v1/installments', authMiddleware, installmentsRoutes);
 
+import installmentsRoutes from './routes/installments.routes.js';
+app.use('/api/v1/installments', authMiddleware, installmentsRoutes);
+
 // TV display (no auth or simple token auth)
 app.use('/api/v1/tv', tvRoutes);
 

@@ -107,13 +107,13 @@ type: project
 
 ### P2 (cosmetic / minor UX)
 - [ ] WEB-W2-025. **Calendar view: can't create ticket from day click.** — `pages/tickets/TicketListPage.tsx` — wire day-click → create-modal with prefilled date.
-- [x] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route. CLOSED 2026-04-26 — todofixes426: POST /customers/bulk-delete route (customers.routes.ts), bulkDelete in endpoints.ts, Delete Selected button + ConfirmDialog in CustomerListPage.
-- [x] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape. CLOSED 2026-04-26 — todofixes426: pinned to Array.isArray(d) ? d : [] since /customers/search always returns bare array.
-- [x] WEB-W2-032. **No sortable columns on invoice table.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` params on `GET /invoices` with allowlisted columns; InvoiceListPage `toggleSort` + sortable column headers with ArrowUp/Down/UpDown icons.
-- [x] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /estimates`; EstimateListPage sortable headers, checkbox column, selectedIds state, bulk delete action bar.
-- [x] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** CLOSED 2026-04-26 — todofixes426: print CSS in `globals.css` collapses 3-col grid, hides action buttons/version history via `data-estimate-actions`/`data-version-history` data attrs, cleans card borders.
-- [ ] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`.
-- [ ] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine.
+- [ ] WEB-W2-029. **No bulk delete of customers.** — `pages/customers/CustomerListPage.tsx` — add bulk action + route.
+- [ ] WEB-W2-031. **Merge search dual-path response shape handling is fragile.** — `pages/customers/CustomerDetailPage.tsx` — pin to single shape.
+- [ ] WEB-W2-032. **No sortable columns on invoice table.** — `pages/invoices/`.
+- [ ] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** — `pages/estimates/`.
+- [ ] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** — add print stylesheet or PDF route.
+- [x] WEB-W2-035. **No sortable columns; no bulk actions on leads list.** — `pages/leads/`. CLOSED 2026-04-26 — todofixes426
+- [x] WEB-W2-036. **`converted` lead status has no allowed outbound transitions.** — leads route status machine. CLOSED 2026-04-26 — todofixes426
 
 ## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
 
@@ -176,7 +176,7 @@ type: project
   - The button is an `<a>` tag, not a `<Link>`. Full page reload on click. Should use React Router `<Link>` or `useNavigate`.
   - Fix: replace with `<Link to="/settings/users">` from react-router-dom.
 
-- [ ] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.**
+- [x] WEB-S6-014. **EmployeeListPage: no hourly pay rate display or edit — can't see/set an employee's pay rate from the employees page.** CLOSED 2026-04-26 — todofixes426
   - File: `packages/web/src/pages/employees/EmployeeListPage.tsx` — no pay_rate field anywhere
   - Android employee detail shows pay rate. `employees.routes.ts` presumably stores it. Web page has clock-in/out and commissions but no pay rate management.
   - Fix: add pay rate display in `EmployeeExpandedRow`; allow edit via `PATCH /employees/:id` with `pay_rate` field.
@@ -206,19 +206,6 @@ type: project
   - Complex automations with many conditions cannot be edited comfortably in a cramped in-list form. Android likely has a dedicated edit screen.
   - Fix: add `/automations/:id` detail page with full condition/action builder UI; link from list rows.
 
-- [ ] WEB-S6-020. **CampaignsPage: `trigger_rule_json` stored on campaign but never editable — no trigger rule builder in create modal.**
-  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` line 44 (field exists in type) and `CreateCampaignModal` (no trigger_rule field in form)
-  - Scheduled/triggered campaigns (birthday, churn) require a rule but the create modal has no way to configure when it fires.
-  - Fix: add trigger rule builder to `CreateCampaignModal`: date-offset picker for birthday/winback, threshold for churn warning, etc.
-
-- [ ] WEB-S6-021. **CampaignsPage: no campaign edit — after creation only delete/status-toggle possible; name, body, segment, channel are immutable from UI.**
-  - File: `packages/web/src/pages/marketing/CampaignsPage.tsx` — no edit modal, no edit button
-  - Fix: add an edit button per row that opens `CreateCampaignModal` pre-populated; PUT to `campaignsApi.update(id, payload)`.
-
-- [ ] WEB-S6-022. **SegmentsPage: rule builder only supports single-condition rules — no AND/OR compound conditions.**
-  - File: `packages/web/src/pages/marketing/SegmentsPage.tsx` — `RULE_FIELDS` implies one condition per segment
-  - Useful audience segments (e.g. "LTV > $500 AND churned > 90 days") require multiple conditions. Current builder creates one rule object.
-  - Fix: allow adding multiple conditions with AND/OR connectors; serialize as `{ op: 'and', conditions: [...] }` to `rule_json`.
 
 - [ ] WEB-S6-023. **PartnerReportPage: no loading/error state — if the PDF endpoint is slow or returns 500, user sees nothing.**
   - File: `packages/web/src/pages/reports/PartnerReportPage.tsx` — `openReport()` is a bare `window.open` with no try/catch
