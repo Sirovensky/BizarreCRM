@@ -1177,8 +1177,8 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Line items / totals / payments — shipped.
 - [x] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip. (feat(§7.2) 34788e7d)
 - [x] **Customer card** — name + phone + email + quick-actions (tel:/mailto: Links). (feat(§7.2) 34788e7d)
-- [ ] **Line items** — editable table (if status allows); tax per line (read display done feat(§7.2) 34788e7d).
-- [ ] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
+- [x] **Line items** — editable table (if status allows); tax per line (read display done feat(§7.2) 34788e7d). `InvoiceLineItemEditorSheet` + `InvoiceLineItemEditorViewModel`; PUT /invoices/:id/lines; `canEditLines` gate on InvoiceDetail; 8 tests. ([actionplan agent-6 b7] 55e60eb3)
+- [x] **Totals panel** — subtotal / discount / tax / total / paid / balance due. `TotalsCard` wired in `InvoiceDetailView.content` (existing `TotalsCard`). ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
 - [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
 - [x] **Issue refund** — `POST /invoices/:id/refund`; role-gated; partial + full; manager PIN > $100. `InvoiceRefundSheet` + `InvoiceRefundViewModel` + `ManagerPinSheet`. (feat(ios phase-4 §7))
@@ -1189,9 +1189,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac). `InvoicePrintService` + `ShareSheet` shim wired in toolbar. (feat(§7.2) e9c1737e)
 - [x] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer. `InvoicePrintService.generatePDF` + `presentAirPrint`. (feat(§7.2) e9c1737e)
 - [x] **Clone invoice** — duplicate line items for new invoice. `POST /api/v1/invoices/:id/clone` + `CloneInvoiceResponse`; cloned detail sheet; error alert. (feat(§7.2) 34788e7d)
-- [ ] **Convert to credit note** — if overpaid.
+- [x] **Convert to credit note** — if overpaid. `isOverpaid` helper + "Convert Overpayment to Credit" toolbar menu entry → `InvoiceCreditNoteSheet`; `showConvertToCreditNote` state. ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Timeline** — every status change, payment, note, email/SMS send. `InvoiceTimelineView` + `buildInvoiceTimeline()`; 12 tests. (feat(§7.2) e9c1737e)
-- [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
+- [x] **Deposit invoices linked** — nested card showing connected deposit invoices. `DepositInvoicesCard` (GET /invoices?deposit_parent_id; status badge; tap → nested detail sheet); wired in `InvoiceDetailView`. ([actionplan agent-6 b7] 55e60eb3)
 
 ### 7.3 Create
 - [x] **Customer picker** (or pre-seeded from ticket). `InvoiceCustomerPickerSheet` — search GET /api/v1/customers, 300ms debounce, sheet with drag indicator. ([actionplan agent-6 b4] c0cb747c)
@@ -1199,8 +1199,8 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Cart-level discount** (% or $), tax, fees, tip. `cartDiscount` field + `computedTotal`; clamp to 0. (feat(§7.3) 5e509224)
 - [x] **Notes**, due date, payment terms, footer text. All wired to draft autosave. (feat(§7.3) 5e509224)
 - [x] **Deposit required** flag → generate deposit invoice. `depositRequired` toggle in Options section. (feat(§7.3) 5e509224)
-- [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`.
-- [ ] **Convert from estimate**.
+- [x] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`. `InvoiceConvertFromTicketSheet` + `InvoiceConvertFromTicketViewModel`; toolbar "Convert → From Ticket…" in `InvoiceCreateView`; 3 tests. ([actionplan agent-6 b7] 55e60eb3)
+- [x] **Convert from estimate**. `InvoiceConvertFromEstimateSheet` + `InvoiceConvertFromEstimateViewModel`; toolbar "Convert → From Estimate…" in `InvoiceCreateView`; 2 tests. ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Idempotency key** — server requires for POST /invoices. UUID generated at `InvoiceCreateViewModel.init`, sent as `idempotency_key` in `CreateInvoiceRequest`. ([actionplan agent-6 b4] c0cb747c)
 - [x] **Draft** autosave.
 - [x] **Send now** checkbox — email/SMS on create. `sendOnCreate` toggle. (feat(§7.3) 5e509224)
@@ -1883,13 +1883,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Built-in reports: labor utilization by tech ([actionplan agent-6 b6] 1a6c05bf)
 - [x] Visual query builder (no SQL): entity + filters + group + measure + timeframe ([actionplan agent-6 b6] 6df21885)
 - [x] Save custom query as widget ([actionplan agent-6 b6] 6df21885)
-- [ ] Swift Charts with zoom / pan / compare periods
+- [x] Swift Charts with zoom / pan / compare periods ([actionplan agent-6 b7] 55e60eb3)
 - [x] Export chart as PNG / CSV ([actionplan agent-6 b6] ef704dd0)
 - [x] Breadcrumb drill: tap chart segment → filtered records list; trail "Total revenue → October → Services → iPhone repair"; each crumb tappable to step back. ([actionplan agent-6 b6] ef704dd0)
 - [x] Context panel layout: filters narrowed-by-drill (left), records list (right). ([actionplan agent-6 b6] ef704dd0)
 - [x] Export at any level: share current filtered view as PDF / CSV. ([actionplan agent-6 b6] ef704dd0)
 - [x] "Save this drill as dashboard tile" saves with query. ([actionplan agent-6 b6] ef704dd0)
-- [ ] Cross-report drilling: jump into related report with same filters applied.
+- [x] Cross-report drilling: jump into related report with same filters applied. ([actionplan agent-6 b7] 55e60eb3)
 - [ ] Perf budget: server query index hints, p95 < 2s.
 - [ ] See §39 for the full list.
 - [ ] See §6 for the full list.
