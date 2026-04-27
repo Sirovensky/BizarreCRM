@@ -48,6 +48,7 @@ import com.bizarreelectronics.crm.ui.screens.customers.CustomerListScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerDetailScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryListScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
+import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceAgingScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
@@ -170,6 +171,7 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "invoices/$id"
     }
     data object InvoiceCreate : Screen("invoice-create")
+    data object InvoicesAging : Screen("invoices/aging")
     data object Pos : Screen("pos")
     data object PosCart : Screen("pos/cart")
     data object PosTender : Screen("pos/tender")
@@ -1413,6 +1415,7 @@ fun AppNavGraph(
                 InvoiceListScreen(
                     onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.InvoiceCreate.route) },
+                    onAgingClick = { navController.navigate(Screen.InvoicesAging.route) },
                 )
             }
             composable(Screen.InvoiceDetail.route) { backStackEntry ->
@@ -1431,6 +1434,12 @@ fun AppNavGraph(
                             popUpTo(Screen.Invoices.route)
                         }
                     },
+                )
+            }
+            composable(Screen.InvoicesAging.route) {
+                InvoiceAgingScreen(
+                    onBack = { navController.popBackStack() },
+                    onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
                 )
             }
             composable(Screen.InventoryDetail.route) { backStackEntry ->

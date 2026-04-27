@@ -149,6 +149,22 @@ class InventoryRepository @Inject constructor(
         return tempId
     }
 
+    /**
+     * Soft-delete (deactivate) an inventory item via DELETE /inventory/:id.
+     * The server marks the item inactive and returns a warning if it has
+     * historical references. Always removes the item from the local cache so
+     * the list updates immediately.
+     *
+     * Returns the warning string from the server (may be null when no refs).
+     * Throws on network failure — callers should show an error snackbar.
+     */
+    suspend fun deleteItem(id: Long): String? {
+        val resp = inventoryApi.deleteItem(id)
+        // Remove from local cache regardless of warning
+        inventoryDao.deleteById(id)
+        return resp.data?.warning
+    }
+
     /** Update an inventory item. Online: API call. Offline: local update + sync queue. */
     suspend fun updateItem(id: Long, request: CreateInventoryRequest): InventoryItemEntity? {
         if (serverMonitor.isEffectivelyOnline.value) {

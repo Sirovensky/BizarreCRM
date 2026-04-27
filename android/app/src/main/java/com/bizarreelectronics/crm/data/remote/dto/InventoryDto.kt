@@ -267,3 +267,18 @@ data class InventoryPhoto(
 data class PhotoListData(
     val photos: List<InventoryPhoto>,
 )
+
+/** Response from DELETE /inventory/:id (soft deactivate). */
+data class DeactivateInventoryData(
+    val message: String?,
+    val warning: String?,
+    @com.google.gson.annotations.SerializedName("reference_counts")
+    val referenceCounts: ReferenceCounts?,
+)
+
+data class ReferenceCounts(
+    @com.google.gson.annotations.SerializedName("invoice_line_items")
+    val invoiceLineItems: Int = 0,
+    @com.google.gson.annotations.SerializedName("ticket_device_parts")
+    val ticketDeviceParts: Int = 0,
+)

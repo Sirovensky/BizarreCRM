@@ -66,6 +66,24 @@ data class CustomerPageResponse(
     val total: Int? = null,
 )
 
+/**
+ * Cursor-based page response for [EstimateListViewModel] offline-first paging (plan:L1325).
+ *
+ * Mirrors [TicketPageResponse] exactly. When the server does not yet support cursor params
+ * it falls back to returning the standard estimate array under the `estimates` key; callers
+ * treat [cursor]=null as end-of-pagination.
+ */
+data class EstimatePageResponse(
+    val estimates: List<EstimateListItem> = emptyList(),
+    /** Opaque cursor to pass as `?cursor=` on the next APPEND load. Null = exhausted. */
+    val cursor: String? = null,
+    /** True when the server explicitly confirms no more pages remain. */
+    @SerializedName("server_exhausted")
+    val serverExhausted: Boolean = false,
+    /** Optional approximate total for UI display. */
+    val total: Int? = null,
+)
+
 /** Stats tiles for the customer list header (plan:L880). */
 data class CustomerStats(
     val total: Int = 0,

@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
+import com.bizarreelectronics.crm.ui.screens.tickets.components.ConcurrentEditBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
@@ -193,6 +194,25 @@ data class TicketDetailUiState(
     val waiverFeatureEnabled: Boolean = false,
     /** True while the waiver availability check is in-flight. */
     val waiverCheckInProgress: Boolean = false,
+    // ─── §4.13 — Error states ─────────────────────────────────────────────────
+    /**
+     * True when the server returned HTTP 409 during a save attempt, meaning the
+     * ticket was modified by another session. [ConcurrentEditBanner] is shown
+     * and cleared when the user taps Reload.
+     */
+    val isConcurrentEditConflict: Boolean = false,
+    /**
+     * True when the API refresh failed but a cached [TicketEntity] is available.
+     * A soft "retry pill" is shown at the bottom of the cached detail instead of
+     * replacing the screen with a hard [ErrorState].
+     */
+    val hasStaleCachedData: Boolean = false,
+    /**
+     * Set when the server returns HTTP 403 on a user-initiated action (e.g.
+     * delete, status change). Surfaces as a Snackbar "Ask your admin to enable this."
+     * and is consumed-once via [clearPermissionDenied].
+     */
+    val permissionDeniedMessage: String? = null,
 )
 
 @HiltViewModel
@@ -295,9 +315,12 @@ class TicketDetailViewModel @Inject constructor(
                     )
                     return@launch
                 }
-                // If we have a cached entity, just show a soft warning — not a hard error
+                // §4.13 — If we have a cached entity, keep cached data + show retry pill
                 if (_state.value.ticket != null) {
-                    _state.value = _state.value.copy(isLoading = false)
+                    _state.value = _state.value.copy(
+                        isLoading = false,
+                        hasStaleCachedData = true,
+                    )
                 } else {
                     _state.value = _state.value.copy(
                         isLoading = false,
@@ -404,12 +427,40 @@ class TicketDetailViewModel @Inject constructor(
                     )
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(
-                    isActionInProgress = false,
-                    actionMessage = "Failed to change status: ${e.message}",
-                )
+                val code = (e as? HttpException)?.code()
+                when (code) {
+                    409 -> _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        isConcurrentEditConflict = true,
+                    )
+                    403 -> _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        permissionDeniedMessage = "Ask your admin to enable this.",
+                    )
+                    else -> _state.value = _state.value.copy(
+                        isActionInProgress = false,
+                        actionMessage = "Failed to change status: ${e.message}",
+                    )
+                }
             }
         }
+    }
+
+    /** §4.13 — Clear the 409 conflict flag after user reloads. */
+    fun clearConcurrentEditConflict() {
+        _state.value = _state.value.copy(isConcurrentEditConflict = false)
+        loadTicketDetail()
+    }
+
+    /** §4.13 — Clear the retry-pill stale-cache flag after user taps Retry. */
+    fun retryAfterStaleCachedData() {
+        _state.value = _state.value.copy(hasStaleCachedData = false)
+        loadTicketDetail()
+    }
+
+    /** §4.13 — Consume the permission-denied message once shown in Snackbar. */
+    fun clearPermissionDenied() {
+        _state.value = _state.value.copy(permissionDeniedMessage = null)
     }
 
     fun addNote(text: String) {
@@ -1170,6 +1221,14 @@ fun TicketDetailScreen(
         }
     }
 
+    // §4.13 — Permission-denied Snackbar (403 on any action)
+    LaunchedEffect(state.permissionDeniedMessage) {
+        state.permissionDeniedMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearPermissionDenied()
+        }
+    }
+
     // Navigate to the new invoice once convertToInvoice() succeeds.
     LaunchedEffect(state.convertedInvoiceId) {
         state.convertedInvoiceId?.let { invoiceId ->
@@ -1689,6 +1748,11 @@ fun TicketDetailScreen(
                 visible = state.isDeletedWhileViewing,
                 onClose = onBack,
             )
+            // §4.13 — 409 concurrent-edit banner
+            ConcurrentEditBanner(
+                visible = state.isConcurrentEditConflict,
+                onReload = { viewModel.clearConcurrentEditConflict() },
+            )
             when {
                 state.isLoading -> {
                     BrandSkeleton(
@@ -1711,41 +1775,83 @@ fun TicketDetailScreen(
                 }
                 ticket != null -> {
                     // L677 — tablet split-pane: content + related rail side-by-side
-                    Row(modifier = Modifier.fillMaxSize()) {
-                        TicketDetailContent(
-                            modifier = Modifier.weight(1f),
-                            ticket = ticket,
-                            ticketId = ticketId,
-                            sharedTransitionScope = sharedTransitionScope,
-                            animatedContentScope = animatedContentScope,
-                            ticketDetail = state.ticketDetail,
-                            devices = state.devices,
-                            notes = state.notes,
-                            history = state.history,
-                            photos = state.photos,
-                            statuses = state.statuses,
-                            payments = state.ticketDetail?.payments ?: emptyList(),
-                            employees = state.employees,
-                            isActionInProgress = state.isActionInProgress,
-                            isBenchTimerRunning = state.isBenchTimerRunning,
-                            reduceMotion = reduceMotion,
-                            padding = padding,
-                            onNavigateToCustomer = onNavigateToCustomer,
-                            onEditDevice = onEditDevice,
-                            onAddPhotos = onAddPhotos,
-                            serverUrl = viewModel.serverUrl,
-                            onStatusSelected = { viewModel.changeStatus(it) },
-                            onAddNote = { viewModel.addNote(it) },
-                            onNavigateToSms = onNavigateToSms,
-                            onDeletePhoto = { viewModel.deletePhoto(it) },
-                            onBenchStart = { viewModel.startBenchTimer() },
-                            onBenchStop = { viewModel.stopBenchTimer() },
-                        )
-                        // L677 — Related rail: tablet only; phone gets zero-size stub
-                        TicketRelatedRail(
-                            photos = state.photos,
-                            serverUrl = viewModel.serverUrl,
-                        )
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            TicketDetailContent(
+                                modifier = Modifier.weight(1f),
+                                ticket = ticket,
+                                ticketId = ticketId,
+                                sharedTransitionScope = sharedTransitionScope,
+                                animatedContentScope = animatedContentScope,
+                                ticketDetail = state.ticketDetail,
+                                devices = state.devices,
+                                notes = state.notes,
+                                history = state.history,
+                                photos = state.photos,
+                                statuses = state.statuses,
+                                payments = state.ticketDetail?.payments ?: emptyList(),
+                                employees = state.employees,
+                                isActionInProgress = state.isActionInProgress,
+                                isBenchTimerRunning = state.isBenchTimerRunning,
+                                reduceMotion = reduceMotion,
+                                padding = padding,
+                                onNavigateToCustomer = onNavigateToCustomer,
+                                onEditDevice = onEditDevice,
+                                onAddPhotos = onAddPhotos,
+                                serverUrl = viewModel.serverUrl,
+                                onStatusSelected = { viewModel.changeStatus(it) },
+                                onAddNote = { viewModel.addNote(it) },
+                                onNavigateToSms = onNavigateToSms,
+                                onDeletePhoto = { viewModel.deletePhoto(it) },
+                                onBenchStart = { viewModel.startBenchTimer() },
+                                onBenchStop = { viewModel.stopBenchTimer() },
+                            )
+                            // L677 — Related rail: tablet only; phone gets zero-size stub
+                            TicketRelatedRail(
+                                photos = state.photos,
+                                serverUrl = viewModel.serverUrl,
+                            )
+                        }
+                        // §4.13 — Stale-cache retry pill: network failed but Room cache shown.
+                        if (state.hasStaleCachedData) {
+                            Surface(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 24.dp),
+                                shape = MaterialTheme.shapes.extraLarge,
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shadowElevation = 4.dp,
+                                tonalElevation = 2.dp,
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Icon(
+                                        Icons.Default.WifiOff,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        "Showing cached data",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    TextButton(
+                                        onClick = { viewModel.retryAfterStaleCachedData() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    ) {
+                                        Text(
+                                            "Retry",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1866,6 +1972,48 @@ private fun TicketDetailContent(
                         }
                     }
                 }
+            }
+        }
+
+        // §4.22 — SLA progress bar from dueOn field.
+        // Full SLA tracking with server definitions is §4.19 (deferred).
+        item {
+            val dueOnStr = ticket.dueOn
+            if (dueOnStr != null) {
+                val dueMs = runCatching {
+                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                        .parse(dueOnStr)?.time ?: 0L
+                }.getOrDefault(0L)
+                if (dueMs > 0L) {
+                    val nowMs = System.currentTimeMillis()
+                    val remainingMs = dueMs - nowMs
+                    // Approx 24h SLA for display when no server SLA definition
+                    val budgetMs = 24L * 60 * 60 * 1000
+                    val consumedPct = ((1.0 - remainingMs.toDouble() / budgetMs) * 100)
+                        .toInt().coerceIn(0, 200)
+                    val tier = com.bizarreelectronics.crm.util.SlaCalculator.tier(100 - consumedPct.coerceIn(0, 100))
+                    val remainingLabel = com.bizarreelectronics.crm.ui.screens.tickets.components.formatSlaRemaining(remainingMs)
+                    com.bizarreelectronics.crm.ui.screens.tickets.components.SlaProgress(
+                        consumedPct = consumedPct.coerceIn(0, 100),
+                        tier = tier,
+                        remainingLabel = remainingLabel,
+                        reduceMotion = reduceMotion,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    )
+                }
+            }
+        }
+
+        // §4.21 — Label chips from TicketEntity.labels (comma-separated)
+        item {
+            val labelList = remember(ticket.labels) {
+                ticket.labels?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+            }
+            if (labelList.isNotEmpty()) {
+                com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips(
+                    labels = labelList,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 

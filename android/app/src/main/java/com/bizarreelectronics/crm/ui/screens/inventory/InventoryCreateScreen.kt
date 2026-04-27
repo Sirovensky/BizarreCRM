@@ -43,6 +43,10 @@ data class InventoryCreateUiState(
     val isSubmitting: Boolean = false,
     val error: String? = null,
     val createdId: Long? = null,
+    /** True when saved via "Save & add another" — resets form instead of navigating away. */
+    val addAnotherReset: Int = 0,
+    /** Non-null after a "Save & add another" save — shows confirmation snackbar. */
+    val addAnotherMessage: String? = null,
 )
 
 @HiltViewModel
@@ -81,6 +85,53 @@ class InventoryCreateViewModel @Inject constructor(
 
     fun clearError() {
         _state.value = _state.value.copy(error = null)
+    }
+
+    fun clearAddAnotherMessage() {
+        _state.value = _state.value.copy(addAnotherMessage = null)
+    }
+
+    /** Save the item then reset the form so the user can immediately add another. */
+    fun saveAndAddAnother() {
+        val current = _state.value
+        if (current.name.isBlank()) {
+            _state.value = current.copy(error = "Name is required")
+            return
+        }
+        val retail = current.retailPrice.toDoubleOrNull()
+        if (retail == null || retail <= 0.0) {
+            _state.value = current.copy(error = "Retail price must be greater than 0")
+            return
+        }
+
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isSubmitting = true, error = null)
+            try {
+                val request = CreateInventoryRequest(
+                    name = current.name.trim(),
+                    itemType = current.itemType,
+                    description = current.description.trim().ifBlank { null },
+                    sku = current.sku.trim().ifBlank { null },
+                    upcCode = current.upcCode.trim().ifBlank { null },
+                    inStock = current.inStock.toIntOrNull() ?: 0,
+                    costPrice = current.costPrice.toDoubleOrNull(),
+                    price = retail,
+                    reorderLevel = current.reorderLevel.toIntOrNull(),
+                )
+                inventoryRepository.createItem(request)
+                // Reset the form for a fresh entry; keep itemType as convenience
+                _state.value = InventoryCreateUiState(
+                    itemType = current.itemType,
+                    addAnotherReset = _state.value.addAnotherReset + 1,
+                    addAnotherMessage = "\"${current.name.trim()}\" saved — ready for next item",
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isSubmitting = false,
+                    error = e.message ?: "Failed to create inventory item",
+                )
+            }
+        }
     }
 
     fun save() {
@@ -134,11 +185,20 @@ fun InventoryCreateScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Navigate on successful creation
+    // Navigate on successful creation (single-save path)
     LaunchedEffect(state.createdId) {
         val id = state.createdId
         if (id != null) {
             onCreated(id)
+        }
+    }
+
+    // Show confirmation snackbar after "Save & add another"
+    LaunchedEffect(state.addAnotherMessage) {
+        val msg = state.addAnotherMessage
+        if (msg != null) {
+            snackbarHostState.showSnackbar(msg)
+            viewModel.clearAddAnotherMessage()
         }
     }
 
@@ -172,6 +232,13 @@ fun InventoryCreateScreen(
                         )
                         Spacer(modifier = Modifier.width(16.dp))
                     } else {
+                        // §6.3: "Save & add another" secondary CTA
+                        TextButton(
+                            onClick = { viewModel.saveAndAddAnother() },
+                            enabled = canSave,
+                        ) {
+                            Text("+ Add another", style = MaterialTheme.typography.labelMedium)
+                        }
                         TextButton(
                             onClick = { viewModel.save() },
                             enabled = canSave,

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -25,6 +26,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
+import com.bizarreelectronics.crm.data.remote.dto.CreditNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceLineItem
 import com.bizarreelectronics.crm.data.remote.dto.InvoicePayment
 import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
@@ -70,6 +72,9 @@ data class InvoiceDetailUiState(
     val paymentSuccessCounter: Int = 0,
     // Server URL used by InvoiceSendActions for SMS/email/share/print links.
     val serverUrl: String? = null,
+    // Customer contact fields fetched from online detail (not stored in Room).
+    val customerPhone: String? = null,
+    val customerEmail: String? = null,
 )
 
 @HiltViewModel
@@ -119,6 +124,8 @@ class InvoiceDetailViewModel @Inject constructor(
                     lineItems = detail?.lineItems ?: emptyList(),
                     payments = detail?.payments ?: emptyList(),
                     onlineDetailMessage = null,
+                    customerPhone = detail?.customerPhone,
+                    customerEmail = detail?.customerEmail,
                 )
             } catch (_: Exception) {
                 _state.value = _state.value.copy(
@@ -224,6 +231,27 @@ class InvoiceDetailViewModel @Inject constructor(
         }
     }
 
+    fun createCreditNote(amount: Double, reason: String) {
+        if (_state.value.isActionInProgress) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isActionInProgress = true)
+            try {
+                invoiceApi.createCreditNote(invoiceId, CreditNoteRequest(amount = amount, reason = reason))
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Credit note for $${"%.2f".format(amount)} created.",
+                )
+                runCatching { invoiceRepository.refreshInvoiceDetail(invoiceId) }
+                loadOnlineDetails()
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isActionInProgress = false,
+                    actionMessage = "Failed to create credit note: ${e.message}",
+                )
+            }
+        }
+    }
+
     fun clearActionMessage() {
         _state.value = _state.value.copy(actionMessage = null)
     }
@@ -246,12 +274,15 @@ fun InvoiceDetailScreen(
     var showPaymentDialog by rememberSaveable { mutableStateOf(false) }
     var showVoidConfirm by rememberSaveable { mutableStateOf(false) }
     var showRefundDialog by rememberSaveable { mutableStateOf(false) }
+    var showCreditNoteDialog by rememberSaveable { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var paymentAmount by rememberSaveable { mutableStateOf("") }
     var paymentMethod by rememberSaveable { mutableStateOf("cash") }
     var showMethodDropdown by remember { mutableStateOf(false) }
     var refundAmount by rememberSaveable { mutableStateOf("") }
     var refundReason by rememberSaveable { mutableStateOf("") }
+    var creditNoteAmount by rememberSaveable { mutableStateOf("") }
+    var creditNoteReason by rememberSaveable { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -510,6 +541,86 @@ fun InvoiceDetailScreen(
         )
     }
 
+    // Credit note dialog
+    if (showCreditNoteDialog) {
+        val invoiceTotalDollars = (invoice?.total ?: 0L).toDollars()
+        AlertDialog(
+            onDismissRequest = {
+                showCreditNoteDialog = false
+                creditNoteAmount = ""
+                creditNoteReason = ""
+            },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = { Text("Create Credit Note", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val parsedCN = creditNoteAmount.toDoubleOrNull()
+                    val cnError: String? = when {
+                        creditNoteAmount.isBlank() -> null
+                        parsedCN == null -> "Enter a valid amount"
+                        parsedCN <= 0.0 -> "Amount must be greater than $0.00"
+                        parsedCN > invoiceTotalDollars -> "Cannot exceed invoice total ($${"%.2f".format(invoiceTotalDollars)})"
+                        else -> null
+                    }
+                    OutlinedTextField(
+                        value = creditNoteAmount,
+                        onValueChange = { v ->
+                            if (v.isEmpty() || v.matches(Regex("^\\d*\\.?\\d{0,2}$"))) creditNoteAmount = v
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Credit amount") },
+                        leadingIcon = { Text("$", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        placeholder = { Text("0.00") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        singleLine = true,
+                        isError = cnError != null,
+                        supportingText = {
+                            if (cnError != null) Text(cnError, color = MaterialTheme.colorScheme.error)
+                        },
+                    )
+                    OutlinedTextField(
+                        value = creditNoteReason,
+                        onValueChange = { creditNoteReason = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Reason (required)") },
+                        singleLine = true,
+                        isError = creditNoteReason.isBlank() && creditNoteAmount.isNotBlank(),
+                        supportingText = {
+                            if (creditNoteReason.isBlank() && creditNoteAmount.isNotBlank()) {
+                                Text("Reason is required by the server", color = MaterialTheme.colorScheme.error)
+                            }
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                val parsedCN = creditNoteAmount.toDoubleOrNull()
+                val isValid = parsedCN != null &&
+                    parsedCN > 0.0 &&
+                    parsedCN <= invoiceTotalDollars &&
+                    creditNoteReason.isNotBlank()
+                TextButton(
+                    onClick = {
+                        if (isValid && parsedCN != null && !state.isActionInProgress) {
+                            viewModel.createCreditNote(parsedCN, creditNoteReason.trim())
+                            showCreditNoteDialog = false
+                            creditNoteAmount = ""
+                            creditNoteReason = ""
+                        }
+                    },
+                    enabled = isValid && !state.isActionInProgress,
+                ) { Text("Create") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showCreditNoteDialog = false
+                    creditNoteAmount = ""
+                    creditNoteReason = ""
+                }) { Text("Cancel") }
+            },
+        )
+    }
+
     Scaffold(
         // D5-8: keep the payment-amount and reference inputs visible when the
         // soft keyboard opens on the record-payment dialog path.
@@ -551,6 +662,14 @@ fun InvoiceDetailScreen(
                                     text = { Text("Issue Refund") },
                                     leadingIcon = { Icon(Icons.Default.Undo, null) },
                                     onClick = { showOverflowMenu = false; showRefundDialog = true },
+                                )
+                            }
+                            if (invoice != null && !invoice.status.equals("Voided", ignoreCase = true) &&
+                                !invoice.status.equals("void", ignoreCase = true)) {
+                                DropdownMenuItem(
+                                    text = { Text("Create Credit Note") },
+                                    leadingIcon = { Icon(Icons.Default.Receipt, null) },
+                                    onClick = { showOverflowMenu = false; showCreditNoteDialog = true },
                                 )
                             }
                             DropdownMenuItem(
@@ -662,6 +781,8 @@ fun InvoiceDetailScreen(
                     payments = state.payments,
                     onlineDetailMessage = state.onlineDetailMessage,
                     serverUrl = state.serverUrl,
+                    customerPhone = state.customerPhone,
+                    customerEmail = state.customerEmail,
                     padding = padding,
                     onNavigateToTicket = onNavigateToTicket,
                 )
@@ -677,6 +798,8 @@ private fun InvoiceDetailContent(
     payments: List<InvoicePayment>,
     onlineDetailMessage: String?,
     serverUrl: String?,
+    customerPhone: String?,
+    customerEmail: String?,
     padding: PaddingValues,
     onNavigateToTicket: ((Long) -> Unit)? = null,
 ) {
@@ -687,25 +810,56 @@ private fun InvoiceDetailContent(
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Status + customer
+        // ── Invoice header: number + status chip + due date + balance chip ─────
         item {
             BrandCard(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Invoice number — selectable so user can copy it
+                    SelectionContainer {
+                        Text(
+                            invoice.orderId.ifBlank { "INV-${invoice.id}" },
+                            style = MaterialTheme.typography.titleMedium.copy(fontFamily = BrandMono.fontFamily),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            invoice.customerName ?: "Unknown Customer",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-
                         BrandStatusBadge(
                             label = invoice.status.replaceFirstChar { it.uppercase() },
                             status = invoice.status,
                         )
+                        // Due date chip
+                        if (!invoice.dueOn.isNullOrBlank()) {
+                            SuggestionChip(
+                                onClick = {},
+                                label = {
+                                    Text(
+                                        "Due ${invoice.dueOn.take(10)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
+                        // Balance-due chip (only when there is a balance)
+                        if (invoice.amountDue > 0L) {
+                            SuggestionChip(
+                                onClick = {},
+                                colors = SuggestionChipDefaults.suggestionChipColors(
+                                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                                    labelColor = MaterialTheme.colorScheme.onErrorContainer,
+                                ),
+                                label = {
+                                    Text(
+                                        "Balance ${invoice.amountDue.formatAsMoney()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                },
+                            )
+                        }
                     }
                     // CROSS46: canonical "April 16, 2026" rendering.
                     Text(
@@ -719,6 +873,60 @@ private fun InvoiceDetailContent(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onNavigateToTicket(invoice.ticketId) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── Customer card with quick-actions ────────────────────────────────
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        "Customer",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        invoice.customerName ?: "Unknown Customer",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (!customerPhone.isNullOrBlank()) {
+                        Text(
+                            customerPhone,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_DIAL,
+                                    android.net.Uri.parse("tel:$customerPhone"),
+                                )
+                                context.startActivity(intent)
+                            },
+                        )
+                    }
+                    if (!customerEmail.isNullOrBlank()) {
+                        Text(
+                            customerEmail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable {
+                                val intent = android.content.Intent(
+                                    android.content.Intent.ACTION_SENDTO,
+                                    android.net.Uri.parse("mailto:$customerEmail"),
+                                )
+                                runCatching { context.startActivity(intent) }
+                            },
+                        )
+                    }
+                    if (customerPhone.isNullOrBlank() && customerEmail.isNullOrBlank()) {
+                        Text(
+                            "Contact info available when online",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
@@ -754,102 +962,139 @@ private fun InvoiceDetailContent(
             }
         }
 
-        // Totals
+        // ── Totals panel ─────────────────────────────────────────────────────
         item {
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant,
-                thickness = 1.dp,
+            Text(
+                "Totals",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            if (invoice.discount > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
-                    Text(invoice.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                    Text("-${invoice.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                }
-            }
-            if (invoice.totalTax > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Tax", style = MaterialTheme.typography.bodyMedium)
-                    Text(invoice.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    invoice.total.formatAsMoney(),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-                Text(invoice.amountPaid.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
-            }
-            if (invoice.amountDue > 0) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(
-                        "Due",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    Text(
-                        invoice.amountDue.formatAsMoney(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.error,
-                    )
+        }
+        item {
+            BrandCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    // Subtotal always shown
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Subtotal", style = MaterialTheme.typography.bodyMedium)
+                        Text(invoice.subtotal.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (invoice.discount > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Discount", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                            Text("-${invoice.discount.formatAsMoney()}", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                        }
+                    }
+                    if (invoice.totalTax > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("Tax", style = MaterialTheme.typography.bodyMedium)
+                            Text(invoice.totalTax.formatAsMoney(), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(
+                            invoice.total.formatAsMoney(),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Paid", style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                        Text(invoice.amountPaid.formatAsMoney(), style = MaterialTheme.typography.bodyMedium, color = SuccessGreen)
+                    }
+                    if (invoice.amountDue > 0) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(
+                                "Balance due",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                            Text(
+                                invoice.amountDue.formatAsMoney(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // Payments section
+        // ── Payment history ───────────────────────────────────────────────────
         if (payments.isNotEmpty()) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    "Payments",
+                    "Payment history",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
             }
             items(payments, key = { it.id }) { payment ->
                 BrandCard(modifier = Modifier.fillMaxWidth()) {
-                    Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    payment.method?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Payment",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                Text(
+                                    // CROSS46: full date display
+                                    DateFormatter.formatAbsolute(payment.paymentDate ?: "").ifBlank {
+                                        payment.paymentDate?.take(10) ?: ""
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                if (!payment.transactionId.isNullOrBlank()) {
+                                    Text(
+                                        "Ref: ${payment.transactionId}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "$${"%.2f".format(payment.amount ?: 0.0)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (payment.status == "voided")
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    else
+                                        MaterialTheme.colorScheme.primary,
+                                )
+                                if (payment.status == "voided") {
+                                    Text(
+                                        "VOIDED",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                }
+                            }
+                        }
+                        if (!payment.notes.isNullOrBlank()) {
                             Text(
-                                payment.method?.replace("_", " ")?.replaceFirstChar { it.uppercase() } ?: "Payment",
-                                style = MaterialTheme.typography.bodyMedium,
-                            )
-                            Text(
-                                payment.paymentDate?.take(10) ?: "",
+                                payment.notes,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (payment.status == "voided") {
-                                Text(
-                                    "VOIDED",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
                         }
-                        Text(
-                            "$${"%.2f".format(payment.amount ?: 0.0)}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
                     }
                 }
             }

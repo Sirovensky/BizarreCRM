@@ -71,6 +71,24 @@ interface EstimateDao {
     fun getCount(): Flow<Int>
 
     /**
+     * Keyset (cursor) page — returns up to [limit] rows with created_at < [beforeCreatedAt]
+     * (exclusive upper bound supplied from the last row of the previous page).
+     * Used by [EstimateRepository.loadEstimatesPage] for offline-first paging (plan:L1325).
+     * Pass [beforeCreatedAt] = "" (or any large string) to get the first page.
+     */
+    @Query(
+        """
+        SELECT * FROM estimates
+        WHERE is_deleted = 0 AND (
+            :beforeCreatedAt = '' OR created_at < :beforeCreatedAt
+        )
+        ORDER BY created_at DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getPage(beforeCreatedAt: String, limit: Int): List<EstimateEntity>
+
+    /**
      * @audit-fixed: Section 33 / D3 — `EstimateEntity.locallyModified` was a
      * write-only field. Without a way to enumerate dirty rows, the offline
      * estimate-edit flow could not be re-flushed after a SyncManager restart.

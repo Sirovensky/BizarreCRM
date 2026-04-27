@@ -56,6 +56,7 @@ import java.io.OutputStreamWriter
 fun InvoiceListScreen(
     onInvoiceClick: (Long) -> Unit,
     onCreateClick: (() -> Unit)? = null,
+    onAgingClick: (() -> Unit)? = null,
     viewModel: InvoiceListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -151,6 +152,11 @@ fun InvoiceListScreen(
                             )
                             IconButton(onClick = { viewModel.loadInvoices() }) {
                                 Icon(Icons.Default.Refresh, contentDescription = "Refresh invoices")
+                            }
+                            if (onAgingClick != null) {
+                                IconButton(onClick = onAgingClick) {
+                                    Icon(Icons.Default.Assessment, contentDescription = "Aging report")
+                                }
                             }
                         },
                     )

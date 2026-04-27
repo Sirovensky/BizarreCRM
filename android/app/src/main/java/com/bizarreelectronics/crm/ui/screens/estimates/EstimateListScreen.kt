@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -225,12 +226,24 @@ fun EstimateListScreen(
                     }
                 }
                 else -> {
+                    val listState = rememberLazyListState()
+
+                    // L1325 — trigger loadMore when within 5 items of the bottom
+                    LaunchedEffect(listState.layoutInfo.visibleItemsInfo) {
+                        val total = listState.layoutInfo.totalItemsCount
+                        val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                        if (total > 0 && lastVisible >= total - 5) {
+                            viewModel.loadMore()
+                        }
+                    }
+
                     PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
                         onRefresh = { viewModel.refresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         LazyColumn(
+                            state = listState,
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
@@ -298,6 +311,23 @@ fun EstimateListScreen(
                                             showBulkDeleteConfirm = true
                                         },
                                     )
+                                }
+                            }
+
+                            // L1325 — load-more footer
+                            if (state.isLoadingMore) {
+                                item(key = "load_more_spinner") {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 12.dp),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp,
+                                        )
+                                    }
                                 }
                             }
                         }

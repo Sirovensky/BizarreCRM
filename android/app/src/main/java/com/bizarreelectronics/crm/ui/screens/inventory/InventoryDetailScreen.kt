@@ -72,6 +72,8 @@ sealed class InventoryEdit {
 }
 
 data class InventoryDetailUiState(
+    /** Non-null when DELETE was successful and we should pop back to the list. */
+    val deletedAndShouldPop: Boolean = false,
     val item: InventoryItemEntity? = null,
     val movements: List<StockMovement> = emptyList(),
     val groupPrices: List<InventoryGroupPrice> = emptyList(),
@@ -113,6 +115,10 @@ data class InventoryDetailUiState(
     val isSavingBin: Boolean = false,
     /** True while deactivate confirm dialog is showing (L1084). */
     val showDeactivateDialog: Boolean = false,
+    /** True while delete confirm dialog is showing (§6.4). */
+    val showDeleteDialog: Boolean = false,
+    /** True while delete API call is in-flight. */
+    val isDeletingItem: Boolean = false,
 )
 
 @HiltViewModel
@@ -369,14 +375,33 @@ class InventoryDetailViewModel @Inject constructor(
         _state.value = _state.value.copy(showDeactivateDialog = show)
     }
 
-    /** L1084: Confirm deactivation (stub — extend when endpoint is available). */
+    /** §6.4 / L1084: Confirm deactivation via DELETE /inventory/:id (soft deactivate). */
     fun confirmDeactivate() {
         viewModelScope.launch {
             _state.value = _state.value.copy(
                 showDeactivateDialog = false,
-                actionMessage = "Item deactivated",
+                isDeletingItem = true,
             )
+            try {
+                val warning = inventoryRepository.deleteItem(itemId)
+                val msg = if (warning != null) warning else "Item deactivated"
+                _state.value = _state.value.copy(
+                    isDeletingItem = false,
+                    actionMessage = msg,
+                    deletedAndShouldPop = true,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isDeletingItem = false,
+                    actionMessage = "Failed to deactivate: ${e.message}",
+                )
+            }
         }
+    }
+
+    /** §6.4: Show / dismiss hard-delete confirm dialog. */
+    fun setShowDeleteDialog(show: Boolean) {
+        _state.value = _state.value.copy(showDeleteDialog = show)
     }
 
     fun adjustStock(quantity: Int, type: String, reason: String?) {
@@ -497,6 +522,11 @@ fun InventoryDetailScreen(
     var showTypeDropdown by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Pop back after successful delete/deactivate
+    LaunchedEffect(state.deletedAndShouldPop) {
+        if (state.deletedAndShouldPop) onBack()
+    }
 
     // Clear the undo stack when the screen leaves composition (nav back / replace).
     DisposableEffect(Unit) {
@@ -697,24 +727,40 @@ fun InventoryDetailScreen(
         )
     }
 
-    // L1084: Deactivate confirm dialog
+    // §6.4 / L1084: Deactivate confirm dialog (soft-delete via DELETE /inventory/:id)
     if (state.showDeactivateDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.setShowDeactivateDialog(false) },
             title = { Text("Deactivate item?") },
-            text = { Text("This item will be marked inactive and hidden from inventory. Stock adjustments will be blocked.") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This item will be marked inactive and hidden from inventory. Historical records are preserved.")
+                    if (state.isDeletingItem) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            },
             confirmButton = {
-                TextButton(onClick = { viewModel.confirmDeactivate() }) {
+                TextButton(
+                    onClick = { viewModel.confirmDeactivate() },
+                    enabled = !state.isDeletingItem,
+                ) {
                     Text("Deactivate", color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.setShowDeactivateDialog(false) }) {
+                TextButton(
+                    onClick = { viewModel.setShowDeactivateDialog(false) },
+                    enabled = !state.isDeletingItem,
+                ) {
                     Text("Cancel")
                 }
             },
         )
     }
+
+    // Overflow menu state for Deactivate action in top bar
+    var showOverflow by remember { mutableStateOf(false) }
 
     Scaffold(
         // D5-8: stock-adjust and reorder-point inputs sit near the bottom of
@@ -733,7 +779,32 @@ fun InventoryDetailScreen(
                     // U5 fix: wire the edit button to the edit-item navigation.
                     if (onEditItem != null) {
                         IconButton(onClick = { onEditItem(itemId) }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            Icon(Icons.Default.Edit, contentDescription = "Edit item")
+                        }
+                    }
+                    // §6.4: Overflow menu — Deactivate (soft-delete)
+                    Box {
+                        IconButton(onClick = { showOverflow = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                        }
+                        DropdownMenu(
+                            expanded = showOverflow,
+                            onDismissRequest = { showOverflow = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Deactivate", color = MaterialTheme.colorScheme.error) },
+                                onClick = {
+                                    showOverflow = false
+                                    viewModel.setShowDeactivateDialog(true)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.VisibilityOff,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                            )
                         }
                     }
                 },
