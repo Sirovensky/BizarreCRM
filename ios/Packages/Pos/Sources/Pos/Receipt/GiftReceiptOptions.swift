@@ -74,6 +74,30 @@ public struct GiftReceiptOptions: Sendable, Equatable {
     /// Return credit destination.
     public var returnCredit: GiftReceiptReturnCredit
 
+    // MARK: - §16 Gift-receipt QR (scoped one-time return token)
+    //
+    // The QR code on a gift receipt encodes a **one-time return token** (GUID)
+    // rather than the raw invoice ID. This means:
+    //   1. The recipient cannot infer the price of the gift.
+    //   2. The token is single-use — once a return is initiated the server marks
+    //      it consumed, preventing re-use.
+    //   3. The recipient does NOT need to authenticate — they present the QR at
+    //      the counter and the cashier scans it.
+    //
+    // `returnToken` is server-generated and returned in the invoice payload
+    // (field `gift_return_token`). When `nil` the QR section is hidden.
+
+    /// One-time return token scoped to this gift receipt.
+    /// `nil` until the invoice is finalised (server provides the token).
+    public var returnToken: String?
+
+    /// Public return URL embedding the scoped token.
+    /// The recipient opens this to initiate a return without revealing the price.
+    public func returnURL(baseURL: URL) -> URL? {
+        guard let token = returnToken else { return nil }
+        return baseURL.appendingPathComponent("returns/gift/\(token)")
+    }
+
     // MARK: - Derived
 
     /// Human-readable return-by date from the reference sale date.
@@ -100,7 +124,8 @@ public struct GiftReceiptOptions: Sendable, Equatable {
         includedLineIds: [],
         channel: .print,
         returnByDays: 30,
-        returnCredit: .storeCredit
+        returnCredit: .storeCredit,
+        returnToken: nil
     )
 
     public init(
@@ -108,12 +133,14 @@ public struct GiftReceiptOptions: Sendable, Equatable {
         includedLineIds: Set<Int64> = [],
         channel: GiftReceiptChannel = .print,
         returnByDays: Int = 30,
-        returnCredit: GiftReceiptReturnCredit = .storeCredit
+        returnCredit: GiftReceiptReturnCredit = .storeCredit,
+        returnToken: String? = nil
     ) {
-        self.enabled        = enabled
+        self.enabled         = enabled
         self.includedLineIds = includedLineIds
-        self.channel        = channel
-        self.returnByDays   = returnByDays
-        self.returnCredit   = returnCredit
+        self.channel         = channel
+        self.returnByDays    = returnByDays
+        self.returnCredit    = returnCredit
+        self.returnToken     = returnToken
     }
 }
