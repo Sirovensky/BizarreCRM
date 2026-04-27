@@ -22,14 +22,19 @@ public struct TicketCreateFlowView: View {
     @State private var pendingBanner: String?
     private let customerRepo: CustomerRepository
     private let onCreated: (_ ticketId: Int64) -> Void
+    // §4.3 — Optional "print label" callback. When non-nil and a printer is paired,
+    // a "Print intake label" banner is offered after successful create.
+    private let onPrintLabel: ((_ ticketId: Int64) -> Void)?
 
     public init(
         api: APIClient,
         customerRepo: CustomerRepository,
-        onCreated: @escaping (_ ticketId: Int64) -> Void = { _ in }
+        onCreated: @escaping (_ ticketId: Int64) -> Void = { _ in },
+        onPrintLabel: ((_ ticketId: Int64) -> Void)? = nil
     ) {
         self.customerRepo = customerRepo
         self.onCreated = onCreated
+        self.onPrintLabel = onPrintLabel
         _vm = State(wrappedValue: TicketCreateFlowViewModel(api: api))
     }
 
@@ -213,7 +218,14 @@ public struct TicketCreateFlowView: View {
             } else {
                 generator.notificationOccurred(.success)
             }
+            // §4.3 — Post-create: pop to ticket detail + offer "Print label" if callback available
             onCreated(id)
+            if let printLabel = onPrintLabel {
+                // Brief banner so the view is still visible before dismiss
+                pendingBanner = "Ticket created — tap to print intake label"
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                printLabel(id)
+            }
             dismiss()
         } else if vm.stepValidationMessage != nil {
             // §4.3 — Haptic feedback: .error on validation fail
@@ -443,8 +455,11 @@ private struct FlowCustomerPickerSheet: View {
 
 // MARK: - Step 2: Devices
 
+private struct ServicePickerTarget: Identifiable { let id: Int }  // wraps device index
+
 private struct DevicesStepView: View {
     @Bindable var vm: TicketCreateFlowViewModel
+    @State private var servicePickerTarget: ServicePickerTarget? = nil
 
     var body: some View {
         Form {
@@ -453,7 +468,8 @@ private struct DevicesStepView: View {
                     DeviceFormSection(
                         device: device,
                         onUpdate: { update in vm.updateDevice(at: idx, update) },
-                        onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) }
+                        onToggleChecklist: { itemId in vm.toggleChecklistItem(deviceIndex: idx, itemId: itemId) },
+                        onPickService: { servicePickerTarget = ServicePickerTarget(id: idx) }
                     )
 
                     if vm.devices.count > 1 {
@@ -490,6 +506,17 @@ private struct DevicesStepView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .sheet(item: $servicePickerTarget) { target in
+            // §4.3 — Services / parts picker for device at target.id
+            TicketCreateServicePickerSheet(api: vm.api) { serviceId, name, price in
+                vm.updateDevice(at: target.id) {
+                    $0.serviceId = serviceId
+                    $0.serviceName = name
+                    if $0.price == 0 { $0.price = price }   // pre-fill price only if blank
+                }
+                servicePickerTarget = nil
+            }
+        }
     }
 }
 
@@ -497,6 +524,7 @@ private struct DeviceFormSection: View {
     var device: DraftDevice
     let onUpdate: ((inout DraftDevice) -> Void) -> Void
     let onToggleChecklist: (String) -> Void
+    let onPickService: () -> Void
 
     var body: some View {
         Group {
@@ -542,6 +570,28 @@ private struct DeviceFormSection: View {
             ))
             .keyboardType(.decimalPad)
             .accessibilityLabel("Repair price in US dollars")
+
+            // §4.3 — Service picker shortcut
+            Button {
+                onPickService()
+            } label: {
+                HStack {
+                    if !device.serviceName.isEmpty {
+                        Text(device.serviceName)
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                    } else {
+                        Text("Choose repair service…")
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .font(.system(size: 12))
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(device.serviceName.isEmpty ? "Choose a repair service from catalog" : "Selected service: \(device.serviceName). Tap to change.")
         }
 
         // Pre-conditions checklist

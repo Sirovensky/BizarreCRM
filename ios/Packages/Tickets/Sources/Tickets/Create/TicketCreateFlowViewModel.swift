@@ -129,7 +129,8 @@ public final class TicketCreateFlowViewModel {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored private let api: APIClient
+    // §4.3 — Exposed so DevicesStepView can pass api to service picker sheet.
+    @ObservationIgnored public let api: APIClient
 
     public init(api: APIClient) {
         self.api = api

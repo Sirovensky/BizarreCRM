@@ -50,12 +50,22 @@ public final class EstimateVersionsViewModel {
             errorMessage = error.localizedDescription
         }
     }
+
+    /// §8 — Fetches a specific version for diff comparison. Returns nil on error.
+    public func fetchVersion(_ version: EstimateVersion) async throws -> Estimate? {
+        try? await api.estimateVersion(estimateId: estimateId, versionId: version.id)
+    }
 }
 
 // MARK: - EstimateVersionsView
 
 public struct EstimateVersionsView: View {
     @State private var vm: EstimateVersionsViewModel
+    // §8 — Side-by-side diff state
+    @State private var diffCompareVersion: EstimateVersion? = nil
+    @State private var showingDiff: Bool = false
+    @State private var activeDiff: EstimateVersionDiff? = nil
+    @State private var isLoadingDiff: Bool = false
 
     public init(api: APIClient, estimateId: Int64, currentVersionNumber: Int?) {
         _vm = State(wrappedValue: EstimateVersionsViewModel(
@@ -70,6 +80,20 @@ public struct EstimateVersionsView: View {
             if Platform.isCompact { compactLayout } else { regularLayout }
         }
         .task { await vm.load() }
+        // §8 — Version diff sheet
+        .sheet(isPresented: $showingDiff) {
+            if let diff = activeDiff {
+                NavigationStack {
+                    EstimateVersionDiffView(diff: diff)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingDiff = false }
+                            }
+                        }
+                }
+                .presentationDetents([.large])
+            }
+        }
     }
 
     // MARK: - iPhone
@@ -141,6 +165,16 @@ public struct EstimateVersionsView: View {
                 .hoverEffect(.highlight)
                 #endif
                 .accessibilityLabel(versionA11y(version))
+                // §8 — Context menu: "Compare with next version" shortcut
+                .contextMenu {
+                    if vm.versions.count >= 2 {
+                        Button {
+                            Task { await loadDiff(for: version) }
+                        } label: {
+                            Label("Compare with latest", systemImage: "arrow.left.arrow.right")
+                        }
+                    }
+                }
             }
         }
     }
@@ -162,6 +196,23 @@ public struct EstimateVersionsView: View {
         if let date = v.createdAt { parts.append("Created \(String(date.prefix(10)))") }
         if v.versionNumber == vm.currentVersionNumber { parts.append("Customer-approved version") }
         return parts.joined(separator: ". ")
+    }
+
+    // §8 — Load two estimates and compute diff for the diff sheet
+    private func loadDiff(for older: EstimateVersion) async {
+        guard let latest = vm.versions.last, latest.id != older.id else { return }
+        isLoadingDiff = true
+        defer { isLoadingDiff = false }
+        do {
+            async let olderEst = vm.fetchVersion(older)
+            async let newerEst = vm.fetchVersion(latest)
+            let (o, n) = try await (olderEst, newerEst)
+            guard let o, let n else { return }
+            activeDiff = EstimateVersionDiff.compute(older: o, newer: n)
+            showingDiff = true
+        } catch {
+            AppLog.ui.warning("Version diff load failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

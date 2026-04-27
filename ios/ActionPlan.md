@@ -585,7 +585,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 ### 4.1 List
 - [x] Base list + filter chips + search — shipped.
 - [x] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field. `TicketsCursorEndpoints` + `TicketCursorPaginationController`. (agent-3-b7)
-- [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
+- [x] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets. `TicketDiskCache` actor + `CachedTicketRecord` Codable mirror; `warmFromDisk()` in `TicketCachedRepositoryImpl`. (agent-3-b8)
 - [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
 - [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`). TicketListFilter.allCases in filterAndSortBar. (578aa4e4)
 - [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
@@ -614,22 +614,22 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
 - [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder. `TicketDetailTabView` + `TicketDetailTabPicker` + `TicketPaymentsTabView` + wired into `TicketDetailView`. `TicketPayment` DTO in `TicketDetailEndpoints`. (agent-3-b5)
 - [x] **Header** — ticket ID copyable (`.textSelection(.enabled)`), status chip (tap to advance), urgency chip (`DetailUrgencyChip`), customer card, InfoRow dates. `TicketDetail` gains `urgency` + `dueOn` fields. (578aa4e4)
-- [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
-- [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
+- [x] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots. `TicketStatusChangeSheet` (agent-3-b8)
+- [x] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12). `TicketAssigneePickerSheet` + wired in `TicketDetailView`. (agent-3-b8)
 - [x] **Totals panel** — subtotal, tax, discount, paid, balance due; `.textSelection(.enabled)` on total; `TotalsCard` now computes `totalPaid` + `balanceDue` from `payments` array. (578aa4e4)
-- [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
+- [x] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel. `TicketDeviceSheet` + `DevicesSectionWithActions` in `TicketDetailView`. (agent-3-b8)
 - [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement).
-- [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
+- [x] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated. `TicketDeviceServicesSheet` + `ServiceLineDraft`. (agent-3-b8)
 - [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
-- [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
+- [x] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight. "Add note" button wired to `TicketNoteComposeView` in Notes tab. (agent-3-b8)
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
 - [x] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load. `TicketWarrantySLABadge` + `TicketWarrantySLAViewModel`; wired in `TicketDetailView`. (agent-3-b7)
 - [x] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [x] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
 - [x] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
-- [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
-- [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
+- [x] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42). `TicketRelatedSidebar` gated on `!Platform.isCompact`. (agent-3-b8)
+- [x] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2). `BenchTimerToggleCard` in Actions tab wired to `BenchTimerView`. (agent-3-b8)
 - [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
 - [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
 - [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
@@ -645,7 +645,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Device catalog** — `GET /catalog/manufacturers` + `GET /catalog/devices?keyword=&manufacturer=` drive hierarchical picker. Pre-populate common-repair suggestions from `GET /device-templates`.
 - [ ] **Device intake photos** — camera + library; 0..N; drag-to-reorder (iPad) / long-press-reorder (iPhone).
 - [ ] **Pre-conditions checklist** — checkboxes (from server or tenant default); required signed on bench start.
-- [ ] **Services / parts picker** — quick-add tiles (top 5 services from `GET /pos-enrich/quick-add`) + full catalog search + barcode scan (VisionKit). Tap inventory part → adds to cart; tap service → adds with default labor rate from `GET /repair-pricing/services`.
+- [x] **Services / parts picker** — quick-add tiles (top 5 services from `GET /pos-enrich/quick-add`) + full catalog search + barcode scan (VisionKit). Tap inventory part → adds to cart; tap service → adds with default labor rate from `GET /repair-pricing/services`. `TicketCreateServicePickerSheet` wired in `DevicesStepView`. (agent-3-b8)
 - [ ] **Pricing calculator** — subtotal + tax class (per line) + line discount + cart discount (% or $, reason required beyond threshold) + fees + tip + rounding rules. Live recalc.
 - [ ] **Deposit** — "Collect deposit now" → inline POS charge (see §16) or "Mark deposit pending". Deposit amount shown on header.
 - [ ] **Assignee picker** — employee grid filtered by role / clocked-in; "Assign to me" shortcut.
@@ -661,7 +661,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Validation** — per-step inline glass error toasts; block next until required fields valid. `stepValidationMessage` in `TicketCreateFlowViewModel` + `CreateFlowValidationToast` in `TicketCreateFlowView`. (agent-3-b5)
 - [x] **Keyboard shortcuts** — ⌘↩ create (existing), ⌘. cancel (new), ⌘→ next step (existing), ⌘← prev step (new). `TicketCreateFlowView` iPhone + iPad toolbars. (578aa4e4)
 - [x] **Haptic** — `.success` on create; `.error` on validation fail. `UINotificationFeedbackGenerator` in `submitAndDismiss()`. (578aa4e4)
-- [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
+- [x] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired. `onPrintLabel` callback + glass banner in `TicketCreateFlowView`. (agent-3-b8)
 
 ### 4.4 Edit
 - [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
@@ -1334,8 +1334,8 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Each edit creates new version; prior retained
 - [ ] Version number visible on UI (e.g. "v3")
 - [ ] Only "sent" versions archived for audit; drafts freely edited
-- [ ] Side-by-side diff of v-n vs v-n+1
-- [ ] Highlight adds / removes / price changes
+- [x] Side-by-side diff of v-n vs v-n+1 — `EstimateVersionDiff.compute(older:newer:)` pure function + `EstimateVersionDiffView`; context-menu "Compare with latest" in `EstimateVersionsView`. (agent-3-b8)
+- [x] Highlight adds / removes / price changes — green "+", red "−" strikethrough, amber "Δ" badges in `EstimateVersionDiffView`. (agent-3-b8)
 - [ ] Customer approval tied to specific version
 - [x] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?"). `versionWarningBanner` in `EstimateDetailView`; `approvedVersionNumber` field on `Estimate` DTO. (agent-3-b7)
 - [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate)

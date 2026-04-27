@@ -25,6 +25,16 @@ public struct TicketDetailView: View {
     // §4.5 — Attach invoice / transfer location sheets
     @State private var showingAttachInvoice: Bool = false
     @State private var showingTransferLocation: Bool = false
+    // §4.2 — Assignee picker
+    @State private var showingAssigneePicker: Bool = false
+    // §4.2 — Device add/edit sheets
+    @State private var showingAddDevice: Bool = false
+    @State private var deviceBeingEdited: TicketDetail.TicketDevice? = nil
+    @State private var deviceForServices: TicketDetail.TicketDevice? = nil
+    // §4.2 — Note compose
+    @State private var showingNoteCompose: Bool = false
+    // §4.9 — Bench timer widget visibility toggle
+    @State private var showBenchTimer: Bool = false
     @Environment(\.dismiss) private var dismiss
     private let api: APIClient?
 
@@ -217,6 +227,55 @@ public struct TicketDetailView: View {
                 ) { Task { await vm.load() } }
             }
         }
+        // §4.2 — Assignee picker
+        .sheet(isPresented: $showingAssigneePicker) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketAssigneePickerSheet(
+                    api: api,
+                    ticketId: detail.id,
+                    currentAssigneeId: detail.assignedTo
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.2 — Add new device
+        .sheet(isPresented: $showingAddDevice) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketDeviceSheet(
+                    api: api,
+                    ticketId: detail.id,
+                    existingDevice: nil
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.2 — Edit existing device
+        .sheet(item: $deviceBeingEdited) { device in
+            if let api, case let .loaded(detail) = vm.state {
+                TicketDeviceSheet(
+                    api: api,
+                    ticketId: detail.id,
+                    existingDevice: device
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.2 — Services & parts for a device
+        .sheet(item: $deviceForServices) { device in
+            if let api {
+                TicketDeviceServicesSheet(
+                    api: api,
+                    deviceId: device.id,
+                    deviceName: device.displayName
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §4.2 — Note compose
+        .sheet(isPresented: $showingNoteCompose) {
+            if let api, case let .loaded(detail) = vm.state {
+                TicketNoteComposeView(
+                    api: api,
+                    ticketId: detail.id
+                ) { Task { await vm.load() } }
+            }
+        }
     }
 
     private var navTitle: String {
@@ -286,6 +345,12 @@ public struct TicketDetailView: View {
                         Label("Transfer to Location…", systemImage: "arrow.triangle.swap")
                     }
                     .accessibilityIdentifier("ticket.transferLocation")
+
+                    // §4.2 — Assign
+                    Button { showingAssigneePicker = true } label: {
+                        Label("Assign…", systemImage: "person.fill.badge.plus")
+                    }
+                    .accessibilityIdentifier("ticket.assign")
 
                     // §4.5 — Duplicate
                     Button { Task { await vm.duplicateTicket() } } label: {
@@ -415,6 +480,9 @@ public struct TicketDetailView: View {
                     switch activeTab {
 
                     case .actions:
+                        // §4.9 — Bench timer widget (glass card toggle)
+                        BenchTimerToggleCard(isShowing: $showBenchTimer)
+
                         // §4 — Sign-off button when readyForPickup
                         if api != nil,
                            detail.status?.name.lowercased().contains("pickup") == true {
@@ -446,17 +514,43 @@ public struct TicketDetailView: View {
                         TotalsCard(detail: detail)
 
                     case .devices:
-                        if detail.devices.isEmpty {
-                            Text("No devices attached")
-                                .font(.brandBodyMedium())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .frame(maxWidth: .infinity)
-                                .padding(BrandSpacing.lg)
+                        // §4.2 — Device section with add button + edit/services access
+                        if let api {
+                            DevicesSectionWithActions(
+                                devices: detail.devices,
+                                onAdd: { showingAddDevice = true },
+                                onEdit: { deviceBeingEdited = $0 },
+                                onServices: { deviceForServices = $0 }
+                            )
                         } else {
-                            DevicesSection(devices: detail.devices)
+                            if detail.devices.isEmpty {
+                                Text("No devices attached")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(BrandSpacing.lg)
+                            } else {
+                                DevicesSection(devices: detail.devices)
+                            }
                         }
 
                     case .notes:
+                        // §4.2 — Notes tab: list + compose button
+                        if let api {
+                            Button {
+                                showingNoteCompose = true
+                            } label: {
+                                Label("Add note", systemImage: "plus.circle.fill")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(.bizarreOrange)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(BrandSpacing.base)
+                                    .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+                            }
+                            .accessibilityLabel("Add a new note to this ticket")
+                            .accessibilityHint("Opens note compose sheet")
+                        }
+
                         if detail.notes.isEmpty {
                             Text("No notes yet")
                                 .font(.brandBodyMedium())
@@ -467,7 +561,7 @@ public struct TicketDetailView: View {
                             NotesSection(notes: detail.notes)
                         }
 
-                        // §4 — Photos section
+                        // §4.2 — Photos section
                         TicketDevicePhotoListView(
                             photos: detail.photos,
                             ticketId: detail.id,
@@ -1028,6 +1122,170 @@ private struct TotalsCard: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: value)) ?? "$\(value)"
+    }
+}
+
+// MARK: - §4.2 Devices section with edit/services actions
+
+/// Wraps DevicesSection and adds "Add device" + per-device swipe actions (edit, services & parts).
+private struct DevicesSectionWithActions: View {
+    let devices: [TicketDetail.TicketDevice]
+    let onAdd: () -> Void
+    let onEdit: (TicketDetail.TicketDevice) -> Void
+    let onServices: (TicketDetail.TicketDevice) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            HStack {
+                Text("Devices")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Button {
+                    onAdd()
+                } label: {
+                    Label("Add device", systemImage: "plus.circle")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Add a new device to this ticket")
+            }
+
+            if devices.isEmpty {
+                Text("No devices attached yet.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .padding(.vertical, BrandSpacing.sm)
+            } else {
+                ForEach(devices) { device in
+                    DeviceCardWithActions(
+                        device: device,
+                        onEdit: { onEdit(device) },
+                        onServices: { onServices(device) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+private struct DeviceCardWithActions: View {
+    let device: TicketDetail.TicketDevice
+    let onEdit: () -> Void
+    let onServices: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            HStack {
+                Text(device.displayName)
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer()
+                Menu {
+                    Button { onEdit() } label: {
+                        Label("Edit device", systemImage: "pencil")
+                    }
+                    Button { onServices() } label: {
+                        Label("Services & parts", systemImage: "wrench.and.screwdriver")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.bizarreOrange)
+                }
+                .accessibilityLabel("Device actions for \(device.displayName)")
+            }
+
+            if let notes = device.additionalNotes, !notes.isEmpty {
+                Text(notes)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+
+            if let imei = device.imei, !imei.isEmpty {
+                KeyValueLine(key: "IMEI", value: imei, mono: true)
+            }
+            if let serial = device.serial, !serial.isEmpty {
+                KeyValueLine(key: "Serial", value: serial, mono: true)
+            }
+            if let code = device.securityCode, !code.isEmpty {
+                KeyValueLine(key: "Passcode", value: code, mono: true)
+            }
+            if let price = device.total, price > 0 {
+                KeyValueLine(key: "Price", value: formatMoney(price))
+            }
+            if let service = device.service, let name = service.name {
+                KeyValueLine(key: "Service", value: name)
+            }
+
+            if let parts = device.parts, !parts.isEmpty {
+                Divider().overlay(Color.bizarreOutline.opacity(0.4))
+                ForEach(parts) { part in
+                    HStack {
+                        Text("\(part.name ?? "Part")  ×\(part.quantity ?? 1)")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        if let total = part.total {
+                            Text(formatMoney(total))
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .monospacedDigit()
+                        }
+                    }
+                }
+            }
+        }
+        .cardBackground()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func formatMoney(_ value: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .currency
+        f.currencyCode = "USD"
+        return f.string(from: NSNumber(value: value)) ?? "$\(value)"
+    }
+}
+
+// MARK: - §4.9 Bench timer toggle card (chrome element — Actions tab)
+
+/// Glass card in Actions tab. Collapses to a single "Start Bench Timer" row;
+/// expands to show `BenchTimerView` inline when `isShowing` is true.
+private struct BenchTimerToggleCard: View {
+    @Binding var isShowing: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button {
+                withAnimation(BrandMotion.stepTransition) { isShowing.toggle() }
+            } label: {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "timer")
+                        .foregroundStyle(.bizarreOrange)
+                        .accessibilityHidden(true)
+                    Text("Bench Timer")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurface)
+                    Spacer()
+                    Image(systemName: isShowing ? "chevron.up" : "chevron.down")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .font(.system(size: 12, weight: .medium))
+                        .accessibilityHidden(true)
+                }
+                .padding(BrandSpacing.base)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(isShowing ? "Collapse bench timer" : "Expand bench timer")
+
+            if isShowing {
+                Divider().overlay(Color.bizarreOutline.opacity(0.3))
+                BenchTimerView()
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.bottom, BrandSpacing.base)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
