@@ -2275,7 +2275,7 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - [x] Qty stepper with haptic + bounds. (feat(§16.22): qty stepper)
 - [x] Discount chip row + custom-amount expansion. (feat(§16.22): discount chip row)
 - [x] Per-line note field with dictation hook. (feat(§16.22): per-line note field)
-- [ ] Dimmed-background + sheet presentation from `PosCartView`.
+- [x] Dimmed-background + sheet presentation from `PosCartView`. (feat(§16.22): dimmed scrim overlay on line-edit sheet open)
 
 ---
 
@@ -2498,7 +2498,7 @@ The six sub-steps follow.
 - [x] `CheckInDiagnosticView` + checklist items. (feat(§16.25.4): CheckInDiagnosticView)
 - [x] Tri-state ✓/✕/? toggle row. (feat(§16.25.4): tri-state toggle)
 - [x] "All OK" quick-fill bar. (feat(§16.25.4): All OK bar)
-- [ ] Required-field warning (touchscreen for cracked-screen tickets).
+- [x] Required-field warning (touchscreen for cracked-screen tickets). (feat(§16.25.4): touchscreen required banner for cracked-screen)
 
 #### 16.25.5 Step 5 — Quote
 
@@ -2599,12 +2599,12 @@ The six sub-steps follow.
 - VoiceOver: spinner announces "Waiting for customer signature on terminal. This may take up to 30 seconds."
 
 **Status**
-- [ ] `SignatureRouter` struct + `SignatureRoute` enum (new file).
-- [ ] Terminal path: `POST /api/v1/blockchyp/capture-signature` with 30s polling.
-- [ ] On-phone fallback: `SignatureSheet` with `PKCanvasView`.
-- [ ] Auto-routing logic (terminal preferred, fallback on timeout / no terminal).
-- [ ] Audit log entries for both paths.
-- [ ] Offline: always route to on-phone when network unavailable.
+- [x] `SignatureRouter` struct + `SignatureRoute` enum (new file). (feat(§16.26): SignatureRouter + SignatureRoute)
+- [x] Terminal path: `POST /api/v1/blockchyp/capture-signature` with 30s polling. (feat(§16.26): TerminalSignatureFetcher scaffold + 30s poll)
+- [x] On-phone fallback: `SignatureSheet` with `PKCanvasView`. (feat(§16.26): SignatureSheet PKCanvasView)
+- [x] Auto-routing logic (terminal preferred, fallback on timeout / no terminal). (feat(§16.26): SignatureRouter routing logic)
+- [x] Audit log entries for both paths. (feat(§16.26): audit log signatureCaptured)
+- [x] Offline: always route to on-phone when network unavailable. (feat(§16.26): offline onPhone routing)
 
 ---
 
