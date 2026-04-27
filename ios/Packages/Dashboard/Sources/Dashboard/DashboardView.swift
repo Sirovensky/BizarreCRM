@@ -49,11 +49,20 @@ public struct DashboardView: View {
     // §3.9 Tap greeting → Settings → Profile
     public var onTapGreeting: (() -> Void)?
 
+    // §3.9 Avatar — shown in toolbar; long-press → Switch user (§2.5)
+    /// URL string for the current user's avatar image. Nil shows initials fallback.
+    public var userAvatarURL: String?
+    /// Initials shown when no avatar URL is available (e.g. "JD").
+    public var userInitials: String?
+    /// Long-press on the avatar chip → Switch user (§2.5). Nil disables long-press.
+    public var onSwitchUser: (() -> Void)?
+
     // §3.10 Sync-status tap callback
     public var onTapSyncSettings: (() -> Void)?
 
-    // §3.12 SMS tile tap callback
+    // §3.12 SMS tile tap callback + Team Inbox tap callback
     public var onTapSMSTab: (() -> Void)?
+    public var onTapTeamInbox: (() -> Void)?
 
     // §3.3 Dismiss attention row — server-backed (POST /notifications/:id/dismiss)
     // The notification ID comes from the attention item. Best-effort; local dismiss
@@ -93,7 +102,11 @@ public struct DashboardView: View {
         onTapGreeting: (() -> Void)? = nil,
         onTapSyncSettings: (() -> Void)? = nil,
         onTapSMSTab: (() -> Void)? = nil,
-        onDismissAttentionItem: ((AttentionRowKind) -> Void)? = nil
+        onTapTeamInbox: (() -> Void)? = nil,
+        onDismissAttentionItem: ((AttentionRowKind) -> Void)? = nil,
+        userAvatarURL: String? = nil,
+        userInitials: String? = nil,
+        onSwitchUser: (() -> Void)? = nil
     ) {
         self.api = api
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
@@ -113,7 +126,11 @@ public struct DashboardView: View {
         self.onTapGreeting = onTapGreeting
         self.onTapSyncSettings = onTapSyncSettings
         self.onTapSMSTab = onTapSMSTab
+        self.onTapTeamInbox = onTapTeamInbox
         self.onDismissAttentionItem = onDismissAttentionItem
+        self.userAvatarURL = userAvatarURL
+        self.userInitials = userInitials
+        self.onSwitchUser = onSwitchUser
     }
 
     public var body: some View {
@@ -129,6 +146,17 @@ public struct DashboardView: View {
                     // §3.10 Sync-status badge (leading)
                     ToolbarItem(placement: .topBarLeading) {
                         SyncStatusBadge(onTapSyncSettings: onTapSyncSettings)
+                    }
+                    // §3.9 User avatar chip — iPhone: top-left companion to SyncBadge
+                    //                       iPad/Mac: top-right of toolbar
+                    // Tap → Settings → Profile; long-press → Switch user (§2.5)
+                    ToolbarItem(placement: Platform.isCompact ? .topBarLeading : .topBarTrailing) {
+                        DashboardUserAvatarChip(
+                            avatarURL: userAvatarURL,
+                            initials: userInitials,
+                            onTap: onTapGreeting,
+                            onSwitchUser: onSwitchUser
+                        )
                     }
                     // Staleness indicator (trailing)
                     ToolbarItem(placement: .topBarTrailing) {
@@ -189,21 +217,33 @@ public struct DashboardView: View {
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             }
         case .loaded(let snapshot):
-            LoadedBody(
-                snapshot: snapshot,
-                clockVM: clockVM,
-                api: api,
-                onTileTap: onTileTap,
-                onCreateTicket: onCreateTicket,
-                onImportData: onImportData,
-                onMyQueueTicketTap: onMyQueueTicketTap,
-                onMyQueueStartWork: onMyQueueStartWork,
-                onMyQueueMarkReady: onMyQueueMarkReady,
-                onMyQueueComplete: onMyQueueComplete,
-                onTapSMSTab: onTapSMSTab,
-                onTapGreeting: onTapGreeting,
-                onDismissAttentionItem: onDismissAttentionItem
-            )
+            ZStack(alignment: .top) {
+                LoadedBody(
+                    snapshot: snapshot,
+                    clockVM: clockVM,
+                    api: api,
+                    onTileTap: onTileTap,
+                    onCreateTicket: onCreateTicket,
+                    onImportData: onImportData,
+                    onMyQueueTicketTap: onMyQueueTicketTap,
+                    onMyQueueStartWork: onMyQueueStartWork,
+                    onMyQueueMarkReady: onMyQueueMarkReady,
+                    onMyQueueComplete: onMyQueueComplete,
+                    onTapSMSTab: onTapSMSTab,
+                    onTapTeamInbox: onTapTeamInbox,
+                    onTapGreeting: onTapGreeting,
+                    onDismissAttentionItem: onDismissAttentionItem
+                )
+                // §3.14 — Sticky glass banner when showing cached KPIs after a
+                // network failure. Retains last good data so the screen doesn't go blank.
+                if vm.loadError != nil {
+                    DashboardCachedDataBanner {
+                        Task { await vm.forceRefresh() }
+                    }
+                    .padding(.top, BrandSpacing.sm)
+                    .padding(.horizontal, BrandSpacing.base)
+                }
+            }
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
     }
@@ -227,8 +267,9 @@ private struct LoadedBody: View {
     var onMyQueueStartWork: ((Int64) -> Void)?
     var onMyQueueMarkReady: ((Int64) -> Void)?
     var onMyQueueComplete: ((Int64) -> Void)?
-    // §3.12 SMS tab callback
+    // §3.12 SMS tab callback + Team Inbox tab callback
     var onTapSMSTab: (() -> Void)?
+    var onTapTeamInbox: (() -> Void)?
 
     var body: some View {
         ScrollView {
@@ -239,8 +280,8 @@ private struct LoadedBody: View {
                 greeting
                 ClockInOutTile(vm: clockVM)
 
-                // §3.12 Unread-SMS tile
-                UnreadSMSTile(api: api, onTapSMSTab: onTapSMSTab)
+                // §3.12 Unread-SMS tile + Team Inbox tile (shown when tenant has inbox)
+                UnreadSMSTile(api: api, onTapSMSTab: onTapSMSTab, onTapTeamInbox: onTapTeamInbox)
 
                 // §3.1 / §3.14 — New-tenant empty state replaces KPI grid
                 // when the shop has never had any activity.
@@ -462,12 +503,22 @@ private struct StatTile: Identifiable {
     let icon: String
     /// Navigation destination for tile taps. Nil = non-tappable tile.
     let destination: DashboardTileDestination?
+    /// §3.14 Permission-gated: when `true`, tile is greyed with a lock glyph
+    /// and an "Ask your admin" overlay instead of real data.
+    var isPermissionGated: Bool = false
 
-    init(label: String, value: String, icon: String, destination: DashboardTileDestination? = nil) {
+    init(
+        label: String,
+        value: String,
+        icon: String,
+        destination: DashboardTileDestination? = nil,
+        isPermissionGated: Bool = false
+    ) {
         self.label = label
         self.value = value
         self.icon = icon
         self.destination = destination
+        self.isPermissionGated = isPermissionGated
     }
 }
 
@@ -476,7 +527,10 @@ private struct StatTileCard: View {
     var onTap: (@MainActor () -> Void)?
 
     var body: some View {
-        if let onTap {
+        if tile.isPermissionGated {
+            // §3.14 Permission-gated tile — greyed out with lock glyph + tooltip.
+            permissionGatedTile
+        } else if let onTap {
             Button { onTap() } label: { tileContent }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(.isButton)
@@ -484,6 +538,25 @@ private struct StatTileCard: View {
         } else {
             tileContent
         }
+    }
+
+    private var permissionGatedTile: some View {
+        ZStack(alignment: .center) {
+            tileContent
+                .opacity(0.35)
+            VStack(spacing: 4) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                Text("Ask your admin\nto enable Reports")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(tile.label), locked. Ask your admin to enable Reports for your role.")
     }
 
     private var tileContent: some View {
@@ -881,6 +954,137 @@ func dashboardGreeting(for date: Date) -> String {
     case 12..<17: return "Good afternoon"
     case 17..<22: return "Good evening"
     default:      return "Working late"
+    }
+}
+
+// MARK: - §3.14 Cached-data sticky banner
+
+/// Shown as a floating glass banner at the top of the loaded dashboard when
+/// the latest network refresh failed but cached KPIs are still visible.
+struct DashboardCachedDataBanner: View {
+    let onRetry: () -> Void
+    @State private var isDismissed = false
+
+    var body: some View {
+        if !isDismissed {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.bizarreWarning)
+                    .accessibilityHidden(true)
+                Text("Showing cached data.")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                Spacer(minLength: 0)
+                Button("Retry") { onRetry() }
+                    .font(.brandLabelLarge().weight(.semibold))
+                    .foregroundStyle(.bizarreOrange)
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { isDismissed = true }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Dismiss cached-data notice")
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(
+                Color.bizarreSurface1.opacity(0.92),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(Color.bizarreWarning.opacity(0.35), lineWidth: 0.5)
+            )
+            .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Showing cached data. Retry or dismiss.")
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+}
+
+// MARK: - §3.9 User avatar chip (toolbar)
+
+/// Small circular avatar in the navigation toolbar.
+/// - iPhone: appears in `topBarLeading` next to the sync badge.
+/// - iPad/Mac: appears in `topBarTrailing`.
+/// Tap → Settings → Profile (via `onTap`).
+/// Long-press → Switch user sheet (§2.5, via `onSwitchUser`).
+struct DashboardUserAvatarChip: View {
+    let avatarURL: String?
+    let initials: String?
+    var onTap: (() -> Void)?
+    var onSwitchUser: (() -> Void)?
+
+    var body: some View {
+        Button {
+            onTap?()
+        } label: {
+            avatarContent
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Your profile. Tap to open settings.")
+        .accessibilityHint(onSwitchUser != nil ? "Long-press to switch user." : "")
+        .contextMenu {
+            if let onTapProfile = onTap {
+                Button {
+                    onTapProfile()
+                } label: {
+                    Label("My Profile", systemImage: "person.crop.circle")
+                }
+            }
+            if let onSwitchUser {
+                Button {
+                    onSwitchUser()
+                } label: {
+                    Label("Switch User", systemImage: "arrow.left.arrow.right.circle")
+                }
+            }
+        }
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                onSwitchUser?()
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var avatarContent: some View {
+        if let urlStr = avatarURL, let url = URL(string: urlStr) {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 30, height: 30)
+                        .clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+                case .failure, .empty:
+                    initialsView
+                @unknown default:
+                    initialsView
+                }
+            }
+        } else {
+            initialsView
+        }
+    }
+
+    private var initialsView: some View {
+        ZStack {
+            Circle()
+                .fill(Color.bizarreOrange.opacity(0.18))
+                .frame(width: 30, height: 30)
+                .overlay(Circle().strokeBorder(Color.bizarreOrange.opacity(0.35), lineWidth: 0.5))
+            Text(initials ?? "?")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.bizarreOrange)
+        }
     }
 }
 

@@ -182,6 +182,23 @@ public extension APIClient {
         let payload = try await get("/api/v1/sms/unread-count", as: SmsUnreadCountPayload.self)
         return payload.count
     }
+
+    // MARK: - §3.12 Team Inbox count
+    /// `GET /inbox` count — number of unread team-inbox threads when the tenant
+    /// has team inbox enabled. Returns nil when the endpoint is absent (404) so
+    /// the tile can hide itself for tenants without team inbox.
+    func teamInboxCount() async throws -> Int? {
+        do {
+            let payload = try await get("/api/v1/inbox", as: TeamInboxCountPayload.self)
+            return payload.unreadCount
+        } catch let error as URLError where error.code == .badServerResponse {
+            return nil
+        } catch {
+            // 404 / feature-not-enabled → nil (tile hidden)
+            AppLog.net.debug("teamInboxCount: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
 }
 
 // MARK: - §3.7 Announcement model
@@ -223,6 +240,26 @@ public struct SmsUnreadCountPayload: Decodable, Sendable {
     }
 
     enum CodingKeys: String, CodingKey { case count }
+}
+
+// MARK: - §3.12 Team Inbox count payload
+
+public struct TeamInboxCountPayload: Decodable, Sendable {
+    /// Total unread thread count across all team-inbox threads.
+    public let unreadCount: Int
+
+    public init(unreadCount: Int = 0) { self.unreadCount = unreadCount }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.unreadCount = (try? c.decode(Int.self, forKey: .unreadCount))
+            ?? (try? c.decode(Int.self, forKey: .count)) ?? 0
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case unreadCount = "unread_count"
+        case count       // fallback if server sends just "count"
+    }
 }
 
 // MARK: - Wire DTOs for GET /api/v1/owner-pl/summary
