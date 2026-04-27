@@ -86,6 +86,14 @@ public extension APIClient {
                        body: req, as: BatchInventoryResponse.self)
     }
 
+    /// §6.1 Bulk delete — `POST /api/v1/inventory/items/batch-delete` with id list.
+    /// Uses POST (not DELETE) because the standard `APIClient.delete(_:)` does not
+    /// accept a request body. Server endpoint: POST /inventory/items/batch-delete { ids }.
+    func batchDeleteInventory(_ req: BatchInventoryRequest) async throws -> BatchInventoryResponse {
+        try await post("/api/v1/inventory/items/batch-delete",
+                       body: req, as: BatchInventoryResponse.self)
+    }
+
     /// `GET /api/v1/inventory` scoped to keyword search — reuses the list
     /// endpoint with a `keyword` query and a small page size for picker use.
     func searchSkus(keyword: String, limit: Int = 20) async throws -> [SkuSearchResult] {

@@ -989,7 +989,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (ae5435bf — `InventorySortOption` + toolbar Menu)
 - [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (ae5435bf — `CriticalLowPulse` modifier)
 - [x] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT). (ae5435bf — adjust icon → `InventoryAdjustSheet`)
-- [ ] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels.
+- [x] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels. (`BatchEditSheet` + `BatchEditViewModel` — price %, category, tags, bulk delete (`POST /inventory/items/batch-delete`), CSV export via `InventoryCSVDocument: FileDocument` + `.fileExporter`; confirmationDialog for delete; Print labels deferred to §6.8 label-print. feat(§6.1) b7)
 - [ ] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch.
 - [ ] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion.
 - [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
