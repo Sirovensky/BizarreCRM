@@ -532,7 +532,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.14 Empty / error states
 - [x] Network fail → keep cached KPIs + sticky glass banner "Showing cached data. Retry.". (`DashboardViewModel` `cachedSnapshot` + `loadError`; `DashboardCachedDataBanner` overlay; agent-9 b10)
-- [ ] Zero data → illustrations differ per card (no tickets vs no revenue vs no customers).
+- [x] Zero data → illustrations differ per card (no tickets vs no revenue vs no customers). (`Dashboard/DashboardCardEmptyStates.swift`; `TicketsSectionEmptyState`, `InventorySectionEmptyState`, `CustomersSectionEmptyState`, `SMSSectionEmptyState`, `POSSectionEmptyState`, `ReportsSectionEmptyState`, `KPINoDataOverlay`; e256498f)
 - [x] Permission-gated tile → greyed out with lock glyph + "Ask your admin to enable Reports for your role.". (`DashboardView.swift` `StatTileCard` overlay pattern; `isPermissionGated` param; agent-9 b10)
 - [ ] Brand-new tenants with zero data must not feel broken; every screen needs empty-state design
 - [ ] Dashboard: KPIs "No data yet" link to onboarding action; central card "Let's set up your shop — 5 steps remaining" links to Setup Wizard (§36)
@@ -3000,7 +3000,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
 - [x] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Fixed: `GlobalSearchViewModel.fetchLocal()` now has nil guard `guard let store = ftsStore else { return }` preventing trap when FTSIndexStore not yet injected; error state rendered instead of crash. (agent-9 b5; `GlobalSearchView.swift`)
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F.
+- [x] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F. (`Search/SearchTriggerChip.swift`; `SearchTriggerChip` + `GlobalSearchTriggerModifier` + `.globalSearchTrigger()`; ⌘F keyboard shortcut; 3d0a4f7a)
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
 - [x] **Scope chips** — EntityFilter chip bar (All / Tickets / Customers / Inventory / Invoices / Estimates / Appointments) wired into GlobalSearchView + EntitySearchView. (feat(ios post-phase §18))
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
@@ -3092,13 +3092,13 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **PIN** — 6-digit PIN for quick re-auth (locally enforced). (`Settings/Pages/PINSetupSheet.swift`; `PINSetupViewModel` modes .set/.change; `PINDotField`; uses `PINStore.shared` from Persistence; agent-9 b10)
 - [x] **Biometric toggle** — Face ID / Touch ID for re-auth + sensitive screen gates. (`Settings/BiometricToggleRow.swift` in `SettingsView.swift` section "Security".)
 - [x] **Auto-lock timeout** — Immediately / 1 min / 5 min / 15 min / Never; backgrounded app blurred via privacy snapshot. (`Settings/Pages/SecuritySettingsPage.swift`; `AutoLockTimeout` enum + `SecuritySettingsViewModel`; a3a38f4b)
-- [ ] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), ~~disable,~~ regenerate backup codes, copy to Notes prompt. (Self-service disable blocked by policy 2026-04-23; recovery happens via backup-code flow + super-admin force-disable.)
-- [ ] **Active sessions** — list device + last-seen + location (IP); revoke.
-- [ ] **Trusted devices** — mark "this device is trusted" to skip 2FA.
-- [ ] **Login history** — recent 50 logins with outcome + IP + user-agent.
+- [x] **2FA** — enroll (TOTP QR → Google/Authy/1Password/built-in iCloud Keychain), ~~disable,~~ regenerate backup codes, copy to Notes prompt. (Self-service disable blocked by policy 2026-04-23; recovery happens via backup-code flow + super-admin force-disable.) (`Settings/Pages/TOTPEnrollmentSheet.swift`; `TOTPEnrollmentViewModel` QR scan + verify + backup codes; 4968fe57)
+- [x] **Active sessions** — list device + last-seen + location (IP); revoke. (`Settings/Pages/ActiveSessionsPage.swift`; `ActiveSessionsViewModel` load/revoke/revokeAll; `ActiveSessionsPage`; 92620a66)
+- [x] **Trusted devices** — mark "this device is trusted" to skip 2FA. (`Settings/Pages/TrustedDevicesPage.swift`; `TrustedDevicesViewModel` + `TrustedDevicesPage`; 875945e8)
+- [x] **Login history** — recent 50 logins with outcome + IP + user-agent. (`Settings/Pages/LoginHistoryPage.swift`; `LoginHistoryViewModel` + `LoginHistoryPage`; f837d19f)
 - [x] **App lock with biometric** on cold launch — toggle. (`SecuritySettingsPage.swift` `biometricAppLockEnabled` toggle + `SecuritySettingsViewModel.shouldGateOnBiometric()`; a3a38f4b)
 - [x] **Privacy snapshot** — blur app in App Switcher. (`SecuritySettingsPage.swift` `privacySnapshotEnabled` toggle + `SecuritySettingsViewModel.shouldApplySnapshot()`; a3a38f4b)
-- [ ] **Copy-paste gate** — opt-in disable for sensitive fields (SSN, tax ID).
+- [x] **Copy-paste gate** — opt-in disable for sensitive fields (SSN, tax ID). (`Settings/Security/SensitiveFieldModifier.swift`; `SensitiveFieldModifier` + `SensitiveFieldSettings` + `SensitiveFieldSettingsRow`; b85e932d)
 
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
@@ -3122,7 +3122,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.5 Organization (admin)
 - [x] **Company info** — legal name, DBA, address, phone, website, EIN. (`Settings/Pages/CompanyInfoPage.swift`; `CompanyInfoViewModel`; `PATCH /tenant/company`.)
-- [ ] **Logo** — upload; renders on receipts / invoices / emails.
+- [x] **Logo** — upload; renders on receipts / invoices / emails. (`Settings/Organization/LogoUploadView.swift`; `LogoUploadViewModel` GET/POST multipart/DELETE; `PhotosPicker` + `AsyncImage`; f7aafa33)
 - [x] **Timezone** — `TimeZone.knownTimeZoneIdentifiers` picker. (`Settings/Pages/LanguageRegionPage.swift`)
 - [x] **Currency** — `Locale.commonISOCurrencyCodes` picker. (`LanguageRegionPage.swift`)
 - [x] **Locale** — `Locale.availableIdentifiers` picker. (`LanguageRegionPage.swift`)
@@ -3136,7 +3136,7 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Default status** — new tickets start at. (`TicketStatusSettingsPage.swift` swipe-leading "Set Default" action + `setDefault()` VM method; agent-9 b10)
 - [ ] **Pre-conditions checklist** — tenant-configurable default list of checks (Back cover cracked? Sim tray? Water damage?).
 - [ ] **Conditions** — list (with icons) of device conditions to tick at intake; edit / reorder / add.
-- [ ] **Ticket # format** — `{prefix}-{year}-{seq}` tenant-configurable.
+- [x] **Ticket # format** — `{prefix}-{year}-{seq}` tenant-configurable. (`Settings/Pages/TicketNumberFormatPage.swift`; `TicketNumberFormatConfig` + `TicketNumberFormatter.preview` token renderer + `TicketNumberFormatViewModel`; 3cc0cf20)
 - [ ] **SLA rules** — auto-warn after X hours in status Y.
 - [ ] **Auto-assignment** — round-robin / load-balanced / manual.
 - [ ] **Required fields** at intake (toggle per field).
@@ -3787,28 +3787,28 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Ticket in progress** — started when technician clicks "Start work" on a ticket; shows on Lock Screen + Dynamic Island with timer + customer name + service; end when ticket marked done. Commit `baa1cbb6`.
 - [x] **POS charge pending** — `SaleInProgressLiveActivity` + `POSSaleActivityAttributes`; Dynamic Island compact/expanded; ends on `endSaleActivity()`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [x] **Clock-in timer** — `ClockInOutLiveActivity` + `ShiftActivityAttributes`; Dynamic Island "8h 14m"; tap → timeclock deep-link; updated via `updateShiftActivity(durationMinutes:)`. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
-- [ ] **Appointment countdown** — 15 min before appointment → live activity on Lock Screen.
+- [x] **Appointment countdown** — 15 min before appointment → live activity on Lock Screen. (`BizarreCRMWidgets/AppointmentCountdownLiveActivity.swift`; `AppointmentCountdownAttributes` + Dynamic Island compact/expanded/minimal + Lock Screen; `LiveActivityCoordinator` ext; 8837c7f6)
 - [x] **Dynamic Island compact / expanded** layouts — content + trailing icon + leading label; both activities. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 - [ ] **Push-to-start** — server triggers Live Activity via push token (iOS 17.2+).
 - [x] **Rate limits** — guard `shiftActivity == nil` / `saleActivity == nil`; `areActivitiesEnabled` check before request. (feat(ios phase-6 §24): Widgets extension + Lock-screen complications + Live Activities)
 
 ### 24.4 App Intents (Shortcuts + Siri)
 - [x] **CreateTicketIntent** — "New ticket for {customer} on {device}"; parameterizable. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] **LookupTicketIntent** — "Find ticket {number}"; returns structured snippet.
+- [x] **LookupTicketIntent** — "Find ticket {number}"; returns structured snippet. (`App/Intents/SearchIntents.swift`; `LookupTicketIntent` + `TicketLookupSnippet`; 5d1baef1)
 - [x] **LookupCustomerIntent** — "Show {customer}" via FindCustomerIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] **ScanBarcodeIntent** — opens scanner → inventory lookup or POS add-to-cart.
 - [x] **ClockInIntent** / **ClockOutIntent** — "Hey Siri, clock in". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] **SendSMSIntent** — "Text {customer} {message}".
+- [x] **SendSMSIntent** — "Text {customer} {message}". (`App/Intents/SearchIntents.swift`; `SendSMSToCustomerIntent`; 5d1baef1)
 - [x] **StartSaleIntent** — opens POS via OpenPosIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] **RecordExpenseIntent** — "Log $42 lunch expense".
+- [x] **RecordExpenseIntent** — "Log $42 lunch expense". (`App/Intents/SearchIntents.swift`; `RecordExpenseIntent`; 5d1baef1)
 - [x] **ShowDashboardIntent** — "Show dashboard" via OpenDashboardIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] **Intent return values** — structured `AppEntity` with human-readable snippets for Siri speech. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] **Parameters** — entity types (TicketEntity, CustomerEntity) provide suggested values. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 
 ### 24.5 App Shortcuts (`AppShortcutsProvider`)
 - [x] **Seed phrases** in English (plus 10 locales later) — "Create ticket for ACME", "Show my tickets", "Clock in". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] **System suggestions** — daily rotating shortcut tiles in Shortcuts app.
-- [ ] **Siri suggestions** on lock screen.
+- [x] **System suggestions** — daily rotating shortcut tiles in Shortcuts app. (`App/Intents/SearchIntents.swift`; `BizarreCRMSearchShortcutsProvider` with Find Ticket / Send SMS / Log Expense phrases; 5d1baef1)
+- [x] **Siri suggestions** on lock screen. (`Search/Spotlight/SpotlightSuggestions.swift`; `SpotlightSuggestionsCoordinator` + `SpotlightDonationModifier`; fae32e22)
 
 ### 24.6 Control Center controls (iOS 18+)
 - [x] **Clock in/out toggle** — one-tap. Commit `67eb6295`.
@@ -3826,8 +3826,8 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] **Reply to SMS** inline widget (typing button).
 
 ### 24.9 Smart Stack / ReloadTimeline
-- [ ] **Relevance** hints so widget auto-promotes in Smart Stack (e.g., morning → dashboard, POS time → sales, end-of-shift → clock-out).
-- [ ] **ReloadTimeline** on significant events (ticket change, payment).
+- [x] **Relevance** hints so widget auto-promotes in Smart Stack (e.g., morning → dashboard, POS time → sales, end-of-shift → clock-out). (`BizarreCRMWidgets/SmartStackRelevance.swift`; `SmartStackRelevanceProvider` time-window scoring; 570ff216)
+- [x] **ReloadTimeline** on significant events (ticket change, payment). (`BizarreCRMWidgets/SmartStackRelevance.swift`; `WidgetReloader.shared.reloadOnSignificantEvent(_:)`; 570ff216)
 
 ### 24.10 Complications (watchOS stretch)
 - [ ] Circular ticket count on Apple Watch face.
@@ -3865,7 +3865,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **Deletion** — tombstoned items deleted from index. (feat(ios phase-6 §24+§25))
 - [x] **Privacy** — respect user-facing "Hide from Spotlight" per domain in Settings. (feat(ios phase-6 §24+§25))
 - [x] **Deep-link handler** — `continueUserActivity` → route by `uniqueIdentifier`. (feat(ios phase-6 §24+§25))
-- [ ] **Suggestions** — `CSSuggestionsConfiguration` for proactive suggestions.
+- [x] **Suggestions** — `CSSuggestionsConfiguration` for proactive suggestions. (`Search/Spotlight/SpotlightSuggestions.swift`; `SpotlightSuggestionsCoordinator` actor + `donateTicketView/donateCustomerView/donateInvoiceView/donateAppointmentView` via `NSUserActivity.isEligibleForPrediction`; `SpotlightDonationModifier`; fae32e22)
 - [ ] **Preview** — rich preview card in Spotlight with customer avatar + ticket status.
 
 ### 25.2 Handoff / `NSUserActivity`
@@ -6398,7 +6398,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 - [ ] Delivery tuning: respect quiet hours (§13); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
 - [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status
 - [x] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app. (`NotificationCategories.smsReplyCategory()` — `UNTextInputNotificationAction(identifier: smsQuickReply, ...)` + view action; registered via `NotificationCategories.registerWithSystem()`; agent-9 b9)
-- [ ] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category
+- [x] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category. (`Notifications/Settings/NotificationSoundPickerView.swift`; `NotificationSound` enum + `NotificationSoundPreferences` store + `NotificationSoundPickerView` per-category selection + preview trigger; 66641a8d)
 - [ ] Clear-all: on app foreground after read, system badge clears accordingly; single tap clears relevant bundle
 - [ ] Historical view: Settings → Notifications → "Recent" shows last 100 pushes for audit
 - [ ] Push token rotation: on app start or change POST new token to `/device-tokens` with device model; stale tokens cleaned server-side
