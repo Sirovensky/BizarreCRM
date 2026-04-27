@@ -1184,13 +1184,13 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Issue refund** — `POST /invoices/:id/refund`; role-gated; partial + full; manager PIN > $100. `InvoiceRefundSheet` + `InvoiceRefundViewModel` + `ManagerPinSheet`. (feat(ios phase-4 §7))
 - [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`. (`InvoiceCreditNoteSheet` + `InvoiceCreditNoteViewModel`; wired in `InvoiceDetailView` ⋯ menu when amountPaid > 0; success shows ref number; 9 tests) (3c5f3522)
 - [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm. `InvoiceVoidConfirmAlert` + `InvoiceVoidViewModel`. Only allowed when no payments or draft. (feat(ios phase-4 §7))
-- [ ] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`.
+- [x] **Send by SMS** — pre-fill "Your invoice: {payment-link-url}" using `POST /sms/send`; short-link via `POST /payment-links`. `InvoiceSMSSheet` + `InvoiceSMSViewModel`; 9 tests. (feat(§7.2) e9c1737e)
 - [x] **Send by email** — `InvoiceEmailReceiptSheet` — `POST /invoices/:id/email-receipt` + SMS copy toggle. (feat(ios phase-4 §7))
-- [ ] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac).
-- [ ] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer.
+- [x] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac). `InvoicePrintService` + `ShareSheet` shim wired in toolbar. (feat(§7.2) e9c1737e)
+- [x] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer. `InvoicePrintService.generatePDF` + `presentAirPrint`. (feat(§7.2) e9c1737e)
 - [x] **Clone invoice** — duplicate line items for new invoice. `POST /api/v1/invoices/:id/clone` + `CloneInvoiceResponse`; cloned detail sheet; error alert. (feat(§7.2) 34788e7d)
 - [ ] **Convert to credit note** — if overpaid.
-- [ ] **Timeline** — every status change, payment, note, email/SMS send.
+- [x] **Timeline** — every status change, payment, note, email/SMS send. `InvoiceTimelineView` + `buildInvoiceTimeline()`; 12 tests. (feat(§7.2) e9c1737e)
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
 
 ### 7.3 Create
