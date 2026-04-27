@@ -104,7 +104,7 @@ cat > "${PLIST}" <<'PLIST_EOF'
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Save ticket photos to your library.</string>
     <key>NSFaceIDUsageDescription</key>
-    <string>Authenticate to unlock Bizarre CRM.</string>
+    <string>Unlock BizarreCRM with Face ID.</string>
     <key>NSBluetoothAlwaysUsageDescription</key>
     <string>Connect to Bluetooth receipt printers and card readers.</string>
     <key>NSContactsUsageDescription</key>
