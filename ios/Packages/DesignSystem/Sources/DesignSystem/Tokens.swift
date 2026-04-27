@@ -87,6 +87,21 @@ public enum DesignTokens {
         public static let maxPerScreen: Int = 6
     }
 
+    // MARK: - Icon sizes (§30.8)
+    //
+    // Three canonical sizes aligned to the iOS HIG tap-target grid.
+    // Rule: navigation bar icons → .medium; tab bar → .medium;
+    //       inline row leading icons → .small; hero / FAB → .large.
+    // Fill vs outline rule: navigation = outline; active/selected = fill.
+    public enum Icon {
+        /// 16 pt — tight contexts: chips, row trailing badges, sub-labels.
+        public static let small:  CGFloat = 16
+        /// 20 pt — standard row leading icon, nav bar, tab bar.
+        public static let medium: CGFloat = 20
+        /// 24 pt — hero cards, FABs, empty-state illustration supplements.
+        public static let large:  CGFloat = 24
+    }
+
     // MARK: - Z-index rhythm (§80.x overlay hierarchy)
     public enum Z {
         public static let surface: Double = 0

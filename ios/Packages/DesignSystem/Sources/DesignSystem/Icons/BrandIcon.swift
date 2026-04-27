@@ -353,6 +353,20 @@ public enum BrandIcon: String, CaseIterable, Sendable {
     case checkmarkShieldFill            = "checkmark.shield.fill"
 }
 
+// MARK: - §30.8 Icon role (fill vs outline)
+
+/// Semantic role that governs the fill/outline choice per §30.8.
+///
+/// - `navigation`: outline (standard unselected nav / toolbar icons).
+/// - `active`: fill (selected tab, active toggle, currently-open item).
+///
+/// Use `BrandIcon.resolvedSymbolName(for:)` to automatically pick the
+/// correct SF Symbol variant.
+public enum BrandIconRole: Sendable {
+    case navigation
+    case active
+}
+
 // MARK: - SwiftUI accessors
 
 public extension BrandIcon {
@@ -360,6 +374,62 @@ public extension BrandIcon {
     /// A SwiftUI `Image` wrapping the corresponding SF Symbol.
     var image: Image {
         Image(systemName: systemName)
+    }
+
+    // MARK: — §30.8 Role-sensitive symbol name
+
+    /// Returns the correct SF Symbol variant for `role`:
+    /// - `.navigation` → outline (no `.fill` suffix where the pair exists).
+    /// - `.active`     → fill.
+    ///
+    /// Falls back to `systemName` when the icon does not have a distinct
+    /// fill/outline pair.
+    public func resolvedSymbolName(for role: BrandIconRole) -> String {
+        switch role {
+        case .active: return filledSystemName
+        case .navigation: return outlineSystemName
+        }
+    }
+
+    /// SF Symbol name for the outline (navigation) variant.
+    private var outlineSystemName: String {
+        // Symbols that have both outline and fill forms.
+        switch self {
+        case .customer:         return "person.circle"
+        case .invoice:          return "doc.text"
+        case .message:          return "message"
+        case .envelope:         return "envelope"
+        case .bell:             return "bell"
+        case .calendar:         return "calendar"
+        case .clock:            return "clock"
+        case .lock:             return "lock"
+        case .star:             return "star"
+        case .heart:            return "heart"
+        case .checkmarkCircle:  return "checkmark.circle"
+        case .checkmarkSeal:    return "checkmark.seal"
+        case .buildingFill:     return "building.2"
+        default:                return systemName
+        }
+    }
+
+    /// SF Symbol name for the fill (active) variant.
+    private var filledSystemName: String {
+        switch self {
+        case .customer:         return "person.circle.fill"
+        case .invoice:          return "doc.text.fill"
+        case .message:          return "message.fill"
+        case .envelope:         return "envelope.fill"
+        case .bell:             return "bell.fill"
+        case .calendar:         return "calendar.fill"
+        case .clock:            return "clock.fill"
+        case .lock:             return "lock.fill"
+        case .star:             return "star.fill"
+        case .heart:            return "heart.fill"
+        case .checkmarkCircle:  return "checkmark.circle.fill"
+        case .checkmarkSeal:    return "checkmark.seal.fill"
+        case .building:         return "building.2.fill"
+        default:                return systemName
+        }
     }
 
     /// The raw SF Symbol name string.
