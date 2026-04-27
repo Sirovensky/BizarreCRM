@@ -1645,9 +1645,9 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [ ] **Mark all read** action (glass toolbar button).
 - [ ] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer).
 - [ ] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`).
-- [ ] **Group by day** (glass day-header).
+- [x] **Group by day** (glass day-header). (`NotificationListView.swift` uses `NotificationDaySectionBuilder.build(from:)` + `DayHeader` private view per section; c28bece8)
 - [ ] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system).
-- [ ] **Empty state** — "All caught up. Nothing new." illustration.
+- [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListView.swift` emptyState(icon:text:) → "You're all caught up" + `bell.slash` icon; shown when items empty + online; pre-existing impl)
 
 ### 13.2 Push pipeline
 - [x] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
