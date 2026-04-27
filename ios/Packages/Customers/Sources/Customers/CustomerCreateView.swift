@@ -177,6 +177,21 @@ public struct CustomerCreateView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                // §5.3 Import from Contacts
+                ToolbarItem(placement: .secondaryAction) {
+                    ImportFromContactsButton(
+                        firstName: $vm.firstName,
+                        lastName: $vm.lastName,
+                        email: $vm.email,
+                        phone: $vm.phone,
+                        mobile: $vm.mobile,
+                        organization: $vm.organization,
+                        address1: $vm.address1,
+                        city: $vm.city,
+                        state: $vm.state,
+                        postcode: $vm.postcode
+                    )
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(vm.isSubmitting ? "Saving…" : "Save") {
                         Task {
