@@ -17,6 +17,17 @@ public final class SmsListViewModel {
     /// Per-row action error shown as inline banner.
     public private(set) var actionError: String?
 
+    // MARK: - §12.1 Filters
+    public var filter: SmsListFilter = .init() {
+        didSet { applyFilter() }
+    }
+
+    /// Conversations filtered + ordered per the active filter tab.
+    public private(set) var filteredConversations: [SmsConversation] = []
+
+    /// Tab-level unread counts for chip badges.
+    public private(set) var tabCounts: [SmsListFilterTab: Int] = [:]
+
     @ObservationIgnored private let repo: SmsRepository
     @ObservationIgnored private let cachedRepo: SmsCachedRepository?
     @ObservationIgnored private var searchTask: Task<Void, Never>?
@@ -24,6 +35,19 @@ public final class SmsListViewModel {
     public init(repo: SmsRepository) {
         self.repo = repo
         self.cachedRepo = repo as? SmsCachedRepository
+    }
+
+    // MARK: - Filter application
+
+    private func applyFilter() {
+        filteredConversations = filter.apply(to: conversations)
+        // Recompute tab counts.
+        var counts: [SmsListFilterTab: Int] = [:]
+        for tab in SmsListFilterTab.allCases {
+            let f = SmsListFilter(tab: tab, currentUserId: filter.currentUserId)
+            counts[tab] = f.apply(to: conversations).count
+        }
+        tabCounts = counts
     }
 
     public func load() async {
@@ -174,6 +198,7 @@ public final class SmsListViewModel {
             } else {
                 conversations = try await repo.listConversations(keyword: keyword)
             }
+            applyFilter()
         } catch {
             AppLog.ui.error("SMS list load failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription

@@ -109,6 +109,7 @@ public struct EmployeeListView: View {
     @State private var showCommissionRules: Bool = false
     @State private var showFilters: Bool = false
     @State private var selectedEmployee: Employee?
+    @State private var showInvite: Bool = false    // §14.4 Invite
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: EmployeeCachedRepository? = nil) {
@@ -328,6 +329,20 @@ public struct EmployeeListView: View {
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
+            Button {
+                showInvite = true
+            } label: {
+                Image(systemName: "person.badge.plus")
+            }
+            .accessibilityLabel("Invite employee (admin)")
+            .keyboardShortcut("n", modifiers: [.command])
+            .sheet(isPresented: $showInvite) {
+                InviteEmployeeSheet(api: api) { newEmployee in
+                    Task { await vm.load() }
+                }
+            }
+        }
+        ToolbarItem(placement: .automatic) {
             Button {
                 showCommissionRules = true
             } label: {

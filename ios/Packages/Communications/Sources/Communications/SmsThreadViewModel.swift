@@ -12,9 +12,23 @@ public final class SmsThreadViewModel {
     public private(set) var errorMessage: String?
     public var draft: String = ""
 
+    /// Set to the ID of a message that just arrived via WS so the view can
+    /// scroll to bottom with a spring animation.
+    public private(set) var newMessageId: Int64?
+
+    /// §12.2 Schedule send — date/time picker for future delivery.
+    /// When set, `send()` includes `send_at` in the POST body.
+    public var scheduledSendAt: Date?
+
+    /// §12.2 Compliance footer — auto-append STOP message on first outbound
+    /// to opt-in-ambiguous numbers.
+    /// When true the composer appends "Reply STOP to opt out" before sending.
+    public var appendComplianceFooter: Bool = false
+
     public let phoneNumber: String
 
     @ObservationIgnored private let repo: SmsThreadRepository
+    @ObservationIgnored var wsListenTask: Task<Void, Never>?
 
     public init(repo: SmsThreadRepository, phoneNumber: String) {
         self.repo = repo
@@ -34,25 +48,43 @@ public final class SmsThreadViewModel {
     }
 
     public func send() async {
-        let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        var trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, !isSending else { return }
+        // §12.2 Compliance footer
+        if appendComplianceFooter {
+            trimmed += "\n\nReply STOP to opt out."
+        }
         isSending = true
         defer { isSending = false }
         errorMessage = nil
         do {
-            _ = try await repo.send(to: phoneNumber, message: trimmed)
+            // §12.2 Schedule send
+            if let sendAt = scheduledSendAt {
+                let iso = ISO8601DateFormatter().string(from: sendAt)
+                _ = try await repo.sendScheduled(to: phoneNumber, message: trimmed, sendAt: iso)
+                scheduledSendAt = nil
+            } else {
+                _ = try await repo.send(to: phoneNumber, message: trimmed)
+            }
             draft = ""
+            newMessageId = nil
             await load() // refresh thread
         } catch {
             AppLog.ui.error("SMS send failed: \(error.localizedDescription, privacy: .public)")
             errorMessage = error.localizedDescription
         }
     }
+
+    func setNewMessageId(_ id: Int64) {
+        newMessageId = id
+    }
 }
 
 public protocol SmsThreadRepository: Sendable {
     func thread(phone: String) async throws -> SmsThread
     func send(to: String, message: String) async throws -> SmsMessage
+    /// §12.2 Schedule send — posts with `send_at` ISO-8601 timestamp.
+    func sendScheduled(to: String, message: String, sendAt: String) async throws -> SmsMessage
 }
 
 public actor SmsThreadRepositoryImpl: SmsThreadRepository {
@@ -66,5 +98,9 @@ public actor SmsThreadRepositoryImpl: SmsThreadRepository {
 
     public func send(to: String, message: String) async throws -> SmsMessage {
         try await api.sendSms(to: to, message: message)
+    }
+
+    public func sendScheduled(to: String, message: String, sendAt: String) async throws -> SmsMessage {
+        try await api.sendSmsScheduled(to: to, message: message, sendAt: sendAt)
     }
 }

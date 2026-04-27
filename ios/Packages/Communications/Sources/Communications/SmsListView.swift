@@ -9,6 +9,7 @@ public struct SmsListView: View {
     @State private var searchText: String = ""
     @State private var path: [String] = []
     @State private var showTemplates: Bool = false
+    @State private var showCompose: Bool = false      // §12.1 Compose FAB
     private let threadRepo: SmsThreadRepository
     private let api: APIClient
 
@@ -122,23 +123,76 @@ public struct SmsListView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if vm.conversations.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "conversations")
-        } else if vm.conversations.isEmpty {
-            VStack(spacing: BrandSpacing.md) {
-                Image(systemName: "message")
-                    .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityHidden(true)
-                Text(searchText.isEmpty ? "No conversations yet" : "No results")
-                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if vm.filteredConversations.isEmpty {
+            emptyFilteredState
         } else {
-            conversationList
+            conversationListWithChips
+        }
+    }
+
+    // MARK: - Empty filtered state
+
+    private var emptyFilteredState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            SmsFilterChipsView(selected: $vm.filter.tab, counts: vm.tabCounts)
+            Spacer()
+            Image(systemName: vm.filter.isDefault ? "message" : "line.3.horizontal.decrease.circle")
+                .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text(vm.filter.isDefault
+                 ? (searchText.isEmpty ? "No conversations yet" : "No results")
+                 : "No \(vm.filter.tab.label.lowercased()) conversations")
+                .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            if !vm.filter.isDefault {
+                Button("Show all") {
+                    withAnimation { vm.filter.tab = .all }
+                }
+                .buttonStyle(.bordered)
+                .tint(.bizarreOrange)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - List with filter chips + FAB
+
+    private var conversationListWithChips: some View {
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 0) {
+                SmsFilterChipsView(selected: $vm.filter.tab, counts: vm.tabCounts)
+                conversationList
+            }
+            // §12.1 Compose new (FAB)
+            composeFAB
+        }
+    }
+
+    // MARK: - Compose FAB (§12.1)
+
+    private var composeFAB: some View {
+        Button {
+            showCompose = true
+        } label: {
+            Image(systemName: "square.and.pencil")
+                .font(.title2)
+                .foregroundStyle(.white)
+                .padding(BrandSpacing.md)
+                .background(Color.bizarreOrange, in: Circle())
+                .shadow(radius: 4, y: 2)
+        }
+        .padding(BrandSpacing.lg)
+        .accessibilityLabel("Compose new message")
+        .keyboardShortcut("n", modifiers: [.command])
+        .sheet(isPresented: $showCompose) {
+            ComposeNewThreadView(api: api) { phone in
+                path.append(phone)
+            }
         }
     }
 
     private var conversationList: some View {
         List {
-            ForEach(vm.conversations) { c in
+            ForEach(vm.filteredConversations) { c in
                 NavigationLink(value: c.convPhone) {
                     ConversationRow(conversation: c)
                 }
