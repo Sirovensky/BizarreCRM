@@ -982,21 +982,21 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 ### 6.1 List
 - [x] Base list + filter chips + search — shipped.
 - [x] **CachedRepository + offline** — `InventoryCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InventoryListItem]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown when offline + cache empty. `Reachability.shared.isOnline` drives `vm.isOffline`. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
-- [ ] **Tabs** — All / Products / Parts. NOT SERVICES - as they are not inventorable. We should however have a settings menu for services to setup the devices types, manufacturers, etc. 
-- [ ] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
-- [ ] **Filters** (collapsible glass drawer): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock.
+- [x] **Tabs** — All / Products / Parts. NOT SERVICES - as they are not inventorable. We should however have a settings menu for services to setup the devices types, manufacturers, etc. (ae5435bf)
+- [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms). (ae5435bf — keyword passed to server, debounce unchanged from prior impl)
+- [x] **Filters** (collapsible glass drawer): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock. (ae5435bf — `InventoryFilterDrawer.swift` + `InventoryAdvancedFilter` DTO)
 - [ ] **Columns picker** (iPad/Mac) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user.
-- [ ] **Sort** — SKU / name / stock / last restocked / price / last sold / margin.
-- [ ] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion).
-- [ ] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT).
+- [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (ae5435bf — `InventorySortOption` + toolbar Menu)
+- [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (ae5435bf — `CriticalLowPulse` modifier)
+- [x] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT). (ae5435bf — adjust icon → `InventoryAdjustSheet`)
 - [ ] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels.
 - [ ] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch.
 - [ ] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion.
 - [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted.
 - [ ] **Mass label print** — multi-select → label printer (AirPrint or MFi).
-- [ ] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete.
+- [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (ae5435bf)
 - [ ] **Cost price hidden** from non-admin roles (server returns null).
-- [ ] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs.
+- [x] **Empty state** — "No items yet. Import a CSV or scan to add." CTAs. (ae5435bf — `InventoryEmptyState` with Import CSV + Add item CTAs)
 
 ### 6.2 Detail
 - [x] Stock card / group prices / movements — shipped.
