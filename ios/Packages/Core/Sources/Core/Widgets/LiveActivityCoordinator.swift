@@ -33,6 +33,36 @@ public struct ShiftActivityAttributes: ActivityAttributes, Sendable {
     }
 }
 
+// MARK: - Ticket in-progress activity (§24.3)
+
+/// Attributes describing a ticket being actively worked on by a technician.
+/// Started when tech taps "Start work"; ended when ticket marked Done.
+public struct TicketInProgressAttributes: ActivityAttributes, Sendable {
+    public struct ContentState: Codable, Hashable, Sendable {
+        /// Elapsed minutes since "Start work" tapped.
+        public let elapsedMinutes: Int
+
+        public init(elapsedMinutes: Int) {
+            self.elapsedMinutes = elapsedMinutes
+        }
+    }
+
+    public let ticketId: Int64
+    /// Short alphanumeric order ID shown in the UI (e.g. "T-1042").
+    public let orderId: String
+    /// Customer display name; nil when ticket has no linked customer.
+    public let customerName: String?
+    /// First service description from the ticket's services list.
+    public let service: String?
+
+    public init(ticketId: Int64, orderId: String, customerName: String?, service: String?) {
+        self.ticketId     = ticketId
+        self.orderId      = orderId
+        self.customerName = customerName
+        self.service      = service
+    }
+}
+
 // MARK: - POS sale activity
 
 /// Attributes describing an in-progress POS sale Live Activity.
@@ -85,11 +115,17 @@ public final class LiveActivityCoordinator {
     @ObservationIgnored
     private var saleActivity: Activity<POSSaleActivityAttributes>?
 
+    @ObservationIgnored
+    private var ticketActivity: Activity<TicketInProgressAttributes>?
+
     /// Whether a shift Live Activity is currently running.
     public private(set) var isShiftActive: Bool = false
 
     /// Whether a POS sale Live Activity is currently running.
     public private(set) var isSaleActive: Bool = false
+
+    /// Whether a ticket-in-progress Live Activity is currently running.
+    public private(set) var isTicketActive: Bool = false
 
     // MARK: - Init
 
@@ -195,6 +231,63 @@ public final class LiveActivityCoordinator {
         }.value
         saleActivity = nil
         isSaleActive = false
+    }
+
+    // MARK: - Ticket in-progress activity (§24.3)
+
+    /// Start a "Ticket in progress" Live Activity. No-ops if one is already running.
+    /// - Parameters:
+    ///   - ticketId: Server-assigned ticket ID (for deep-link).
+    ///   - orderId: Short order string shown in Dynamic Island compact view.
+    ///   - customerName: Customer display name (may be nil).
+    ///   - service: First service description (may be nil).
+    public func startTicketActivity(
+        ticketId: Int64,
+        orderId: String,
+        customerName: String?,
+        service: String?
+    ) async throws {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+        guard ticketActivity == nil else { return }
+
+        let attrs = TicketInProgressAttributes(
+            ticketId: ticketId,
+            orderId: orderId,
+            customerName: customerName,
+            service: service
+        )
+        let initialState = TicketInProgressAttributes.ContentState(elapsedMinutes: 0)
+        let content = ActivityContent(state: initialState, staleDate: nil)
+
+        ticketActivity = try Activity<TicketInProgressAttributes>.request(
+            attributes: attrs,
+            content: content,
+            pushType: nil
+        )
+        isTicketActive = true
+    }
+
+    /// Update elapsed minutes on the running ticket Live Activity.
+    public func updateTicketActivity(elapsedMinutes: Int) async throws {
+        guard let activity = ticketActivity else { return }
+        let newState = TicketInProgressAttributes.ContentState(elapsedMinutes: elapsedMinutes)
+        await Task { @MainActor in
+            await activity.update(ActivityContent(state: newState, staleDate: nil))
+        }.value
+    }
+
+    /// End the ticket Live Activity (call when ticket marked Done or cancelled).
+    public func endTicketActivity() async {
+        guard let activity = ticketActivity else { return }
+        let finalState = activity.content.state
+        await Task { @MainActor in
+            await activity.end(
+                ActivityContent(state: finalState, staleDate: nil),
+                dismissalPolicy: .after(Date.now.addingTimeInterval(10))
+            )
+        }.value
+        ticketActivity = nil
+        isTicketActive = false
     }
 }
 

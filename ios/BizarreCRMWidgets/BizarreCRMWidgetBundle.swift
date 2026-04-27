@@ -23,5 +23,6 @@ struct BizarreCRMWidgetBundle: WidgetBundle {
         // Live Activities
         ClockInOutLiveActivity()
         SaleInProgressLiveActivity()
+        TicketInProgressLiveActivity() // §24.3
     }
 }
