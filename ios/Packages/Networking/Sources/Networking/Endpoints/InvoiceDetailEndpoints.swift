@@ -159,6 +159,19 @@ public extension InvoiceDetail {
         if s == "void" || s == "paid" { return false }
         return (amountPaid ?? 0) == 0 || s == "draft"
     }
+
+    /// Line items can be edited when the invoice is in draft or unpaid with no payments.
+    var canEditLines: Bool {
+        let s = (status ?? "").lowercased()
+        guard s != "void" && s != "paid" && s != "partial" else { return false }
+        return (amountPaid ?? 0) == 0
+    }
+
+    /// Invoice is overpaid (e.g. credit note conversion candidate).
+    var isOverpaid: Bool {
+        guard let paid = amountPaid, let total = total else { return false }
+        return paid > total + 0.001
+    }
 }
 
 public extension APIClient {

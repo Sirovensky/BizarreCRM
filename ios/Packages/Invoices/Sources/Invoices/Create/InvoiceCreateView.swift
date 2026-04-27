@@ -12,10 +12,17 @@ public struct InvoiceCreateView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: InvoiceCreateViewModel
     @State private var showCustomerPicker = false
+    // §7.3 Convert from ticket / estimate entry points
+    @State private var showConvertFromTicket = false
+    @State private var showConvertFromEstimate = false
+    @State private var convertedInvoiceId: Int64?
     private let api: APIClient
+    /// Called when a conversion produces a new invoice the caller should navigate to.
+    private let onOpenConvertedInvoice: ((Int64) -> Void)?
 
-    public init(api: APIClient) {
+    public init(api: APIClient, onOpenConvertedInvoice: ((Int64) -> Void)? = nil) {
         self.api = api
+        self.onOpenConvertedInvoice = onOpenConvertedInvoice
         _vm = State(wrappedValue: InvoiceCreateViewModel(api: api))
     }
 
@@ -176,6 +183,28 @@ public struct InvoiceCreateView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
+                // §7.3 Convert from ticket / estimate
+                ToolbarItem(placement: .automatic) {
+                    Menu {
+                        Button {
+                            showConvertFromTicket = true
+                        } label: {
+                            Label("From Ticket…", systemImage: "wrench.and.screwdriver")
+                        }
+                        .accessibilityLabel("Create invoice from ticket")
+
+                        Button {
+                            showConvertFromEstimate = true
+                        } label: {
+                            Label("From Estimate…", systemImage: "doc.badge.plus")
+                        }
+                        .accessibilityLabel("Create invoice from estimate")
+                    } label: {
+                        Label("Convert", systemImage: "arrow.right.doc.on.clipboard")
+                            .font(.brandLabelSmall())
+                    }
+                    .accessibilityLabel("Convert from existing record")
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(vm.isSubmitting ? "Saving…" : "Save") {
                         Task {
@@ -194,6 +223,20 @@ public struct InvoiceCreateView: View {
                     vm.customerId = id
                     vm.customerDisplayName = name
                     vm.scheduleAutoSave()
+                }
+            }
+            // §7.3 Convert from ticket sheet
+            .sheet(isPresented: $showConvertFromTicket) {
+                InvoiceConvertFromTicketSheet(api: api) { invoiceId in
+                    onOpenConvertedInvoice?(invoiceId)
+                    dismiss()
+                }
+            }
+            // §7.3 Convert from estimate sheet
+            .sheet(isPresented: $showConvertFromEstimate) {
+                InvoiceConvertFromEstimateSheet(api: api) { invoiceId in
+                    onOpenConvertedInvoice?(invoiceId)
+                    dismiss()
                 }
             }
         }

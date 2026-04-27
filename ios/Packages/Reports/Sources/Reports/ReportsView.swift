@@ -16,6 +16,9 @@ public struct ReportsView: View {
     @State private var vm: ReportsViewModel
     private let exportService: ReportExportService
 
+    // §15.9 compare-periods picker state
+    @State private var showComparePicker = false
+
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
     @State private var showCSATDetail = false
@@ -56,7 +59,20 @@ public struct ReportsView: View {
             DrillThroughSheet(
                 context: ctx,
                 repository: vm.repository,
-                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) }
+                fromDate: vm.fromDateString,
+                toDate: vm.toDateString,
+                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) },
+                onCrossReportDrill: { target in
+                    drillContext = nil
+                    // Apply the target's date range if provided
+                    if let f = target.fromDate, let t = target.toDate,
+                       let fromDate = ISO8601DateFormatter.compareFullDate().date(from: f),
+                       let toDate   = ISO8601DateFormatter.compareFullDate().date(from: t) {
+                        vm.applyCustomRange(from: fromDate, to: toDate)
+                        Task { await vm.loadAll() }
+                    }
+                    vm.selectedSubTab = target.targetSubTab
+                }
             )
         }
         .sheet(isPresented: $showCSATDetail) {
@@ -162,6 +178,41 @@ public struct ReportsView: View {
     private var toolbarItems: some ToolbarContent {
         ToolbarItem(placement: .automatic) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+        // §15.9 Compare periods toggle
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                Button {
+                    Task { await vm.setComparePeriod(nil) }
+                } label: {
+                    Label("No comparison", systemImage: "xmark.circle")
+                }
+                .disabled(vm.comparePeriod == nil)
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousWeek) }
+                } label: {
+                    Label("vs Prev Week", systemImage: "calendar")
+                }
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousMonth) }
+                } label: {
+                    Label("vs Prev Month", systemImage: "calendar")
+                }
+
+                Button {
+                    Task { await vm.setComparePeriod(.previousYear) }
+                } label: {
+                    Label("vs Prev Year", systemImage: "calendar.badge.clock")
+                }
+            } label: {
+                Label(vm.comparePeriod?.displayLabel ?? "Compare",
+                      systemImage: "arrow.left.arrow.right")
+                    .font(.brandLabelSmall())
+            }
+            .brandGlass(.clear, in: Capsule())
+            .accessibilityLabel("Compare to prior period")
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
@@ -355,10 +406,14 @@ public struct ReportsView: View {
         case .sales:
             // §15.2 Period summary KPIs
             SalesKPISummaryCard(totals: vm.salesTotals)
-            // §15.2 Revenue chart
-            RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
-                drillContext = .revenue(date: pt.date)
-            }
+            // §15.9 Zoomable revenue chart with optional compare overlay
+            ZoomableRevenueChartCard(
+                currentPoints: vm.revenue,
+                priorPoints: vm.priorRevenue,
+                comparePeriod: vm.comparePeriod,
+                overallVariancePct: vm.compareVariancePct ?? vm.salesTotals.revenueChangePct,
+                onDrillThrough: { pt in drillContext = .revenue(date: pt.date) }
+            )
             // §15.2 Revenue by payment method pie
             RevenueByMethodPieCard(points: vm.revenueByMethod)
             // §15.9 Expenses chart

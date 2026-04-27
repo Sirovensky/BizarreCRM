@@ -11,6 +11,12 @@ public struct InvoiceDetailView: View {
     @State private var showVoidAlert = false
     @State private var showReceiptSheet = false
     @State private var showCreditNoteSheet = false
+    // §7.2 Convert to credit note (overpaid)
+    @State private var showConvertToCreditNote = false
+    // §7.2 Editable line items
+    @State private var showLineItemEditor = false
+    // §7.2 Deposit invoice drill-through (tap deposit → push detail)
+    @State private var depositDrillId: Int64?
     // §7.2 Clone invoice
     @State private var isCloning = false
     @State private var cloneError: String?
@@ -110,6 +116,27 @@ public struct InvoiceDetailView: View {
                     invoiceId: inv.id,
                     maxCents: paidCents
                 ) { showCreditNoteSheet = false; Task { await vm.load() } }
+            }
+        }
+        // §7.2 Editable line items
+        .sheet(isPresented: $showLineItemEditor) {
+            if case let .loaded(inv) = vm.state, let items = inv.lineItems {
+                InvoiceLineItemEditorSheet(
+                    api: api,
+                    invoiceId: inv.id,
+                    items: items
+                ) { Task { await vm.load() } }
+            }
+        }
+        // §7.2 Convert to credit note (overpaid) — reuses InvoiceCreditNoteSheet
+        .sheet(isPresented: $showConvertToCreditNote) {
+            if case let .loaded(inv) = vm.state {
+                let overpaidCents = max(0, Int((((inv.amountPaid ?? 0) - (inv.total ?? 0)) * 100).rounded()))
+                InvoiceCreditNoteSheet(
+                    api: api,
+                    invoiceId: inv.id,
+                    maxCents: overpaidCents
+                ) { showConvertToCreditNote = false; Task { await vm.load() } }
             }
         }
         // §7.2 Clone invoice — navigate to the cloned invoice detail sheet
@@ -237,6 +264,15 @@ public struct InvoiceDetailView: View {
                             Label("Print", systemImage: "printer")
                         }
                         .accessibilityLabel("Print invoice via AirPrint")
+                        // §7.2 Edit line items (if status allows)
+                        if inv.canEditLines {
+                            Button {
+                                showLineItemEditor = true
+                            } label: {
+                                Label("Edit Line Items", systemImage: "pencil.line")
+                            }
+                            .accessibilityLabel("Edit invoice line items")
+                        }
                         // §7.2 Credit note
                         if (inv.amountPaid ?? 0) > 0 {
                             Button {
@@ -245,6 +281,15 @@ public struct InvoiceDetailView: View {
                                 Label("Issue Credit Note", systemImage: "minus.circle")
                             }
                             .accessibilityLabel("Issue credit note for this invoice")
+                        }
+                        // §7.2 Convert to credit note — if overpaid
+                        if inv.isOverpaid {
+                            Button {
+                                showConvertToCreditNote = true
+                            } label: {
+                                Label("Convert Overpayment to Credit", systemImage: "arrow.left.arrow.right.circle")
+                            }
+                            .accessibilityLabel("Convert overpayment to credit note")
                         }
                         // §7.2 Clone invoice
                         Button {
@@ -357,10 +402,17 @@ public struct InvoiceDetailView: View {
                     if let items = inv.lineItems, !items.isEmpty {
                         LineItemsCard(items: items)
                     }
+                    // §7.2 Totals panel — subtotal / discount / tax / total / paid / balance due
                     TotalsCard(invoice: inv)
                     if let notes = inv.notes, !notes.isEmpty {
                         NotesCard(text: notes)
                     }
+                    // §7.2 Deposit invoices linked
+                    DepositInvoicesCard(
+                        api: api,
+                        parentInvoiceId: inv.id,
+                        onTapDeposit: { depositId in depositDrillId = depositId }
+                    )
                     // §7.7 Payment history section
                     InvoicePaymentHistoryView(entries: buildPaymentHistory(from: inv))
                     // §7.2 Timeline — every status change, payment, note, send
@@ -370,6 +422,25 @@ public struct InvoiceDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
+            }
+            // §7.2 Deposit invoice detail drill-through
+            .sheet(
+                isPresented: Binding(
+                    get: { depositDrillId != nil },
+                    set: { if !$0 { depositDrillId = nil } }
+                )
+            ) {
+                if let depId = depositDrillId {
+                    NavigationStack {
+                        InvoiceDetailView(repo: repo, invoiceId: depId, api: api)
+                            .navigationBarTitleDisplayMode(.inline)
+                            .toolbar {
+                                ToolbarItem(placement: .cancellationAction) {
+                                    Button("Close") { depositDrillId = nil }
+                                }
+                            }
+                    }
+                }
             }
         }
     }

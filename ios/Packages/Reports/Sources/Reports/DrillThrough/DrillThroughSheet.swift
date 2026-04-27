@@ -36,13 +36,27 @@ public struct DrillThroughSheet: View {
     public let context: DrillThroughContext
     public let repository: ReportsRepository
     public let onTapSale: (Int64) -> Void
+    /// Called when user taps a cross-report drill target. Parent switches sub-tab + date range.
+    public let onCrossReportDrill: ((CrossReportDrillTarget) -> Void)?
+
+    // §15.9 cross-report drill from the current context+window
+    public let fromDate: String
+    public let toDate: String
+
+    private let crossDrillService = CrossReportDrillService()
 
     public init(context: DrillThroughContext,
                 repository: ReportsRepository,
-                onTapSale: @escaping (Int64) -> Void) {
+                fromDate: String = "",
+                toDate: String = "",
+                onTapSale: @escaping (Int64) -> Void,
+                onCrossReportDrill: ((CrossReportDrillTarget) -> Void)? = nil) {
         self.context = context
         self.repository = repository
+        self.fromDate = fromDate
+        self.toDate = toDate
         self.onTapSale = onTapSale
+        self.onCrossReportDrill = onCrossReportDrill
     }
 
     @State private var records: [DrillThroughRecord] = []
@@ -71,15 +85,47 @@ public struct DrillThroughSheet: View {
         } else if let msg = errorMessage {
             ContentUnavailableView("Error", systemImage: "exclamationmark.triangle",
                                    description: Text(msg))
-        } else if records.isEmpty {
-            ContentUnavailableView("No Records",
-                                   systemImage: "doc.text.magnifyingglass",
-                                   description: Text("No records found for this data point."))
         } else {
-            List(records) { record in
-                drillRow(record)
+            List {
+                // §15.9 Cross-report drill targets section
+                let targets = crossDrillService.targets(for: context, fromDate: fromDate, toDate: toDate)
+                if !targets.isEmpty, let handler = onCrossReportDrill {
+                    Section("Jump to related report") {
+                        ForEach(targets) { target in
+                            Button {
+                                handler(target)
+                            } label: {
+                                HStack {
+                                    Label(target.label, systemImage: "arrow.up.right.square")
+                                        .font(.brandBodyMedium())
+                                        .foregroundStyle(.bizarreOrange)
+                                    Spacer()
+                                    Image(systemName: "chevron.right")
+                                        .imageScale(.small)
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                        .accessibilityHidden(true)
+                                }
+                                .frame(minHeight: DesignTokens.Touch.minTargetSide)
+                            }
+                            .accessibilityLabel("Jump to \(target.label)")
+                        }
+                    }
+                }
+
+                // Drill-through records section
+                if records.isEmpty {
+                    ContentUnavailableView("No Records",
+                                           systemImage: "doc.text.magnifyingglass",
+                                           description: Text("No records found for this data point."))
+                } else {
+                    Section("Records") {
+                        ForEach(records) { record in
+                            drillRow(record)
+                        }
+                    }
+                }
             }
-            .listStyle(.plain)
+            .listStyle(.grouped)
         }
     }
 

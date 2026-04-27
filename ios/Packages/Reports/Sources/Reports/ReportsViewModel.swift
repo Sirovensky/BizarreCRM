@@ -82,6 +82,20 @@ public final class ReportsViewModel {
     public var conversionFunnel: ConversionFunnelStats?
     public var laborUtilization: [LaborUtilizationRow] = []
 
+    // MARK: - §15.9 Compare periods
+    /// The comparison period the user has chosen (nil = no overlay).
+    public var comparePeriod: ComparePeriod? = nil
+    /// Prior-period revenue points fetched when comparePeriod is non-nil.
+    public var priorRevenue: [RevenuePoint] = []
+    /// Overall variance % (current total vs prior total) for the badge.
+    public var compareVariancePct: Double? {
+        guard !priorRevenue.isEmpty, !revenue.isEmpty else { return nil }
+        let current = revenue.reduce(0.0) { $0 + $1.amountDollars }
+        let prior   = priorRevenue.reduce(0.0) { $0 + $1.amountDollars }
+        guard prior > 0 else { return nil }
+        return (current - prior) / prior * 100.0
+    }
+
     // MARK: - Loading / error
 
     public var isLoading = false
@@ -149,6 +163,8 @@ public final class ReportsViewModel {
             group.addTask { await self.loadAvgTicketValueTrend() }
             group.addTask { await self.loadConversionFunnel() }
             group.addTask { await self.loadLaborUtilization() }
+            // §15.9 compare periods — fetch prior window if a period is selected
+            group.addTask { await self.loadPriorRevenue() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -183,6 +199,39 @@ public final class ReportsViewModel {
         } catch {
             errorMessage = "Revenue: \(error.localizedDescription)"
         }
+    }
+
+    // §15.9 — prior-period revenue for compare overlay
+    private func loadPriorRevenue() async {
+        guard let period = comparePeriod else {
+            priorRevenue = []
+            return
+        }
+        // Build current DateInterval from our string dates so ComparePeriod can derive the prior window.
+        let fmt = ISO8601DateFormatter.compareFullDate()
+        guard
+            let fromDate = fmt.date(from: fromDateString),
+            let toDate   = fmt.date(from: toDateString)
+        else {
+            priorRevenue = []
+            return
+        }
+        let current = DateInterval(start: fromDate, end: toDate)
+        let (priorFrom, priorTo) = period.priorDateStrings(relativeTo: current, formatter: fmt)
+        do {
+            let report = try await repository.getSalesReport(
+                from: priorFrom, to: priorTo, groupBy: granularity.rawValue
+            )
+            priorRevenue = report.rows
+        } catch {
+            priorRevenue = []
+        }
+    }
+
+    /// Set (or clear) the compare period and re-fetch the prior series.
+    public func setComparePeriod(_ period: ComparePeriod?) async {
+        comparePeriod = period
+        await loadPriorRevenue()
     }
 
     private func loadTicketsByStatus() async {
