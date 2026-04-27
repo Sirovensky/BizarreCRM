@@ -6,7 +6,9 @@ import DesignSystem
 /// §39.4 — End-of-day wizard. Manager-only flow that walks through 7 steps
 /// before locking the POS terminal.
 ///
-/// Permissions: manager-only; cashier sees "Need manager" alert.
+/// Permissions: manager-only; cashier sees "Need manager" alert and is
+/// prompted for a manager PIN via `ManagerPinSheet` before accessing the
+/// wizard. If denied, the view dismisses immediately.
 ///
 /// iPhone: full-screen `NavigationStack` with step progress bar.
 /// iPad: centred `.large` sheet (the wider canvas lets all steps show
@@ -22,6 +24,11 @@ public struct EndOfDayWizardView: View {
     @State private var showCSVExporter: Bool = false
     @State private var showAbortAlert: Bool = false
 
+    /// §39.4 manager-only gate. Starts `false`; `ManagerPinSheet` fires on
+    /// `.onAppear`. Wizard content is hidden until approved.
+    @State private var isManagerApproved: Bool = false
+    @State private var showManagerPin: Bool = false
+
     @Environment(\.dismiss) private var dismiss
 
     public let sampleTransactions: [ReconciliationRow]
@@ -35,7 +42,26 @@ public struct EndOfDayWizardView: View {
     public var body: some View {
         NavigationStack {
             Group {
-                if Platform.isCompact {
+                if !isManagerApproved {
+                    // Opaque blocker shown while ManagerPinSheet is up
+                    Color.bizarreSurfaceBase
+                        .ignoresSafeArea()
+                        .overlay(
+                            VStack(spacing: BrandSpacing.md) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(Color.bizarreOrange)
+                                Text("Manager access required")
+                                    .font(.brandTitleMedium())
+                                    .foregroundStyle(Color.bizarreOnSurface)
+                                Text("End of Day is a manager-only operation.\nEnter your manager PIN to proceed.")
+                                    .font(.brandBodyMedium())
+                                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                                    .multilineTextAlignment(.center)
+                                    .padding(.horizontal, BrandSpacing.xl)
+                            }
+                        )
+                } else if Platform.isCompact {
                     phoneLayout
                 } else {
                     padLayout
@@ -52,6 +78,28 @@ public struct EndOfDayWizardView: View {
                 Button("Continue", role: .cancel) {}
             } message: {
                 Text("Completed steps are saved. You can resume later.")
+            }
+            .sheet(isPresented: $showManagerPin, onDismiss: {
+                // If manager dismissed the sheet without approving, close wizard
+                if !isManagerApproved { dismiss() }
+            }) {
+                ManagerPinSheet(
+                    reason: "End of Day — manager approval required to run reconciliation and lock POS",
+                    onApproved: { _ in
+                        isManagerApproved = true
+                        showManagerPin = false
+                        AppLog.pos.info("End-of-day wizard: manager PIN approved")
+                    },
+                    onCancelled: {
+                        showManagerPin = false
+                        // onDismiss will fire dismiss() since isManagerApproved == false
+                    }
+                )
+            }
+            .onAppear {
+                if !isManagerApproved {
+                    showManagerPin = true
+                }
             }
         }
         .fileExporter(

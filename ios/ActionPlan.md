@@ -2221,11 +2221,11 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - `[ ]` Blocked on: cream token swap in `Tokens.swift` (§16.26 prerequisite).
 
 **Status**
-- [ ] `PosEntryView` + `PosEntryViewModel` (new files).
-- [ ] `PosSearchBar` animated component with bottom→top spring.
-- [ ] Customer + ticket unified search results list.
-- [ ] "Ready for pickup" contextual banner wiring.
-- [ ] Reduce Motion + Reduce Transparency compliance.
+- [x] `PosEntryView` + `PosEntryViewModel` (new files). (feat(§16.21): PosEntryView + PosEntryViewModel)
+- [x] `PosSearchBar` animated component with bottom→top spring. (feat(§16.21): PosSearchBar animated glass bar)
+- [x] Customer + ticket unified search results list. (feat(§16.21): unified search results)
+- [x] "Ready for pickup" contextual banner wiring. (feat(§16.21): ready-for-pickup banner)
+- [x] Reduce Motion + Reduce Transparency compliance. (feat(§16.21): a11y motion compliance)
 
 ---
 
@@ -2271,10 +2271,10 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - Accessibility: stepper announces "Quantity: 3". Discount chip group has `accessibilityLabel("Discount preset")`. Save button announces "Save changes to USB-C 3ft cable".
 
 **Status**
-- [ ] `CartLineEditSheet` + `CartLineEditViewModel` (new files).
-- [ ] Qty stepper with haptic + bounds.
-- [ ] Discount chip row + custom-amount expansion.
-- [ ] Per-line note field with dictation hook.
+- [x] `CartLineEditSheet` + `CartLineEditViewModel` (new files). (feat(§16.22): CartLineEditSheet + ViewModel)
+- [x] Qty stepper with haptic + bounds. (feat(§16.22): qty stepper)
+- [x] Discount chip row + custom-amount expansion. (feat(§16.22): discount chip row)
+- [x] Per-line note field with dictation hook. (feat(§16.22): per-line note field)
 - [ ] Dimmed-background + sheet presentation from `PosCartView`.
 
 ---
@@ -2321,11 +2321,11 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - iPad: same view but wider progress bar + tender grid can show as 2×3.
 
 **Status**
-- [ ] `PosTenderView` + `PosTenderViewModel` (replaces placeholder).
-- [ ] Hero balance card with animated progress bar.
-- [ ] Applied tenders list with void / ✕ gating.
-- [ ] 2×2 tender grid with disabled state.
-- [ ] `completeSale()` → invoice write → navigation to receipt.
+- [x] `PosTenderView` + `PosTenderViewModel` (replaces placeholder). (feat(§16.23): PosTenderView + ViewModel UX scaffold)
+- [x] Hero balance card with animated progress bar. (feat(§16.23): hero balance card + progress bar)
+- [x] Applied tenders list with void / ✕ gating. (feat(§16.23): applied tenders list)
+- [x] 2×2 tender grid with disabled state. (feat(§16.23): 2×2 tender grid)
+- [x] `completeSale()` → invoice write → navigation to receipt. (feat(§16.23): completeSale scaffold)
 - [ ] Offline card tender queuing via sync queue.
 
 ---
@@ -2430,10 +2430,10 @@ The six sub-steps follow.
 - Footer hint: "Next: customer notes, photos, passcode" (muted, 11pt) — matches mockup.
 
 **Status**
-- [ ] `CheckInSymptomsView` + symptom tile grid.
-- [ ] Multi-select with primary-border selected state.
-- [ ] "Other" free-text expansion.
-- [ ] Minimum-1 validation before advancing.
+- [x] `CheckInSymptomsView` + symptom tile grid. (feat(§16.25.1): CheckInSymptomsView)
+- [x] Multi-select with primary-border selected state. (feat(§16.25.1): symptom multi-select)
+- [x] "Other" free-text expansion. (feat(§16.25.1): Other free-text)
+- [x] Minimum-1 validation before advancing. (feat(§16.25.1): min-1 validation via canAdvance)
 
 #### 16.25.2 Step 2 — Details
 
@@ -2451,10 +2451,10 @@ The six sub-steps follow.
 - Haptic: `BrandHaptics.success()` on passcode field save.
 
 **Status**
-- [ ] `CheckInDetailsView` with four sections.
-- [ ] Diagnostic + internal notes with dictation + @mention.
-- [ ] Passcode type picker + `SecureField` + encrypted patch.
-- [ ] Photo strip via `CameraCaptureView(mode: .multi)`.
+- [x] `CheckInDetailsView` with four sections. (feat(§16.25.2): CheckInDetailsView)
+- [x] Diagnostic + internal notes with dictation + @mention. (feat(§16.25.2): notes TextEditors)
+- [x] Passcode type picker + `SecureField` + encrypted patch. (feat(§16.25.2): passcode picker + SecureField)
+- [ ] Photo strip via `CameraCaptureView(mode: .multi)`. (deferred to Agent 2)
 
 #### 16.25.3 Step 3 — Pre-existing damage
 
@@ -2473,10 +2473,10 @@ The six sub-steps follow.
 - This step is **skippable** — "Skip" button in nav; tech fills from desktop CRM post-drop-off.
 
 **Status**
-- [ ] `CheckInDamageView` + SVG canvas with `DamageMarker` drop.
-- [ ] Marker type picker + long-press remove + pinch zoom.
-- [ ] Condition + accessories chip rows.
-- [ ] LDI card with camera expand.
+- [x] `CheckInDamageView` + SVG canvas with `DamageMarker` drop. (feat(§16.25.3): CheckInDamageView canvas)
+- [ ] Marker type picker + long-press remove + pinch zoom. (deferred — tap-to-add crack only this wave)
+- [x] Condition + accessories chip rows. (feat(§16.25.3): condition + accessories chips)
+- [x] LDI card with camera expand. (feat(§16.25.3): LDI tripped camera expand)
 
 #### 16.25.4 Step 4 — Diagnostic
 
@@ -2495,9 +2495,9 @@ The six sub-steps follow.
 - Skippable — tech can complete from desktop.
 
 **Status**
-- [ ] `CheckInDiagnosticView` + checklist items.
-- [ ] Tri-state ✓/✕/? toggle row.
-- [ ] "All OK" quick-fill bar.
+- [x] `CheckInDiagnosticView` + checklist items. (feat(§16.25.4): CheckInDiagnosticView)
+- [x] Tri-state ✓/✕/? toggle row. (feat(§16.25.4): tri-state toggle)
+- [x] "All OK" quick-fill bar. (feat(§16.25.4): All OK bar)
 - [ ] Required-field warning (touchscreen for cracked-screen tickets).
 
 #### 16.25.5 Step 5 — Quote
@@ -2521,11 +2521,11 @@ The six sub-steps follow.
 - Offline: repair lines from GRDB catalog cache; reservation queued via sync queue.
 
 **Status**
-- [ ] `CheckInQuoteView` + repair lines list.
-- [ ] Stock status chips (reserved / ordered / ETA).
-- [ ] Deposit picker chip row.
-- [ ] Pinned totals bar with `CartMath`.
-- [ ] ETA card with WebSocket refresh.
+- [x] `CheckInQuoteView` + repair lines list. (feat(§16.25.5): CheckInQuoteView)
+- [x] Stock status chips (reserved / ordered / ETA). (feat(§16.25.5): Reserved/Ordered status chips)
+- [x] Deposit picker chip row. (feat(§16.25.5): deposit picker chips)
+- [x] Pinned totals bar with `CartMath`. (feat(§16.25.5): pinned totals bar)
+- [ ] ETA card with WebSocket refresh. (deferred to WS agent)
 
 #### 16.25.6 Step 6 — Sign
 
@@ -2553,9 +2553,9 @@ The six sub-steps follow.
 - Signature required — cannot skip this step (unlike Steps 3–4). "Create ticket" button disabled until both required checkboxes checked AND canvas has at least one stroke.
 
 **Status**
-- [ ] `CheckInSignView` + terms card + acknowledgment checklist.
-- [ ] `CheckInSignaturePad` (`PKCanvasView` wrapper, cream border, clear button).
-- [ ] Signature → PNG → base64 → `POST /api/v1/tickets/:id/signatures` with 500 KB budget enforcement.
+- [x] `CheckInSignView` + terms card + acknowledgment checklist. (feat(§16.25.6): CheckInSignView terms + checklist)
+- [x] `CheckInSignaturePad` (`PKCanvasView` wrapper, cream border, clear button). (feat(§16.25.6): CheckInSignaturePad PKCanvasView wrapper)
+- [x] Signature → PNG → base64 → `POST /api/v1/tickets/:id/signatures` with 500 KB budget enforcement. (feat(§16.25.6): signature PNG budget enforcement)
 - [ ] Deposit payment write → ticket finalize → navigation to drop-off receipt.
 - [ ] Print label via `ReceiptPrinter` (§17 dependency).
 
@@ -5333,7 +5333,7 @@ See §16.10 for core flow. Additional items:
 - [x] Steps: (1) close any open cash shifts; (2) mark still-open tickets → confirm or archive to tomorrow; (3) send day-end status SMS to customers with ready tickets (optional); (4) review outstanding invoices / follow-ups; (5) backup reminder (if tenant schedules local backup); (6) lock POS terminal; (7) post shop's daily summary to tenant admin (push). `EndOfDayStep` enum 7 steps with isOptional. (69c28fdb)
 - [x] Progress indicator: glass progress bar at top; can abort mid-wizard and resume. `EndOfDayWizardView` progress bar + abort alert; `EndOfDayWizardViewModel.abort()`. (69c28fdb)
 - [x] Logging: each step's completion stamped in audit log. `AppLog.pos.info` on markCompleted + skipStep. (69c28fdb)
-- [ ] Permissions: manager-only; cashier gets "Need manager" if attempted
+- [x] Permissions: manager-only; cashier gets "Need manager" if attempted. `ManagerPinSheet` gate on `.onAppear`; dismiss on cancel. (feat(§39.4): EOD manager-only gate)
 - [ ] Daily: sales + payments + cash close + bank deposit all tie out
 - [ ] Dashboard shows variance per period
 - [ ] Monthly: full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging)
