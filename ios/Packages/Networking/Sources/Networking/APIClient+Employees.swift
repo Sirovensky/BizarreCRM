@@ -296,6 +296,28 @@ public extension APIClient {
     func listAllUsers() async throws -> [Employee] {
         try await get("/api/v1/settings/users", as: [Employee].self)
     }
+
+    // MARK: - Invite / create employee (admin only)
+
+    /// POST /api/v1/settings/users — creates a new employee account (admin only).
+    /// §14.4 Invite — the server creates the account and (if email provided)
+    /// can send a welcome email containing login credentials.
+    /// If the server is self-hosted and has no email configured, the account
+    /// is still created — admin must share credentials manually.
+    func inviteEmployee(_ body: CreateEmployeeBody) async throws -> Employee {
+        try await post("/api/v1/settings/users", body: body, as: Employee.self)
+    }
+
+    /// PUT /api/v1/settings/users/:id — resend invite / reset password for employee.
+    /// Equivalent to updating the employee with a freshly-generated password
+    /// so the server can re-email credentials.
+    /// Note: the server currently does not have a dedicated resend-invite endpoint.
+    /// This sends a PUT with `resend_invite: true`; if the server does not support
+    /// this flag it falls back to a no-op update (the caller handles the UX).
+    func resendEmployeeInvite(userId: Int64) async throws -> Employee {
+        let body = ResendInviteBody(resendInvite: true)
+        return try await put("/api/v1/settings/users/\(userId)", body: body, as: Employee.self)
+    }
 }
 
 // MARK: - Employee detail model
@@ -397,5 +419,56 @@ struct SetActiveBody: Encodable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case isActive = "is_active"
+    }
+}
+
+// MARK: - Create employee (invite) body
+
+/// POST /api/v1/settings/users request body.
+/// Server (settings.routes.ts:869) requires: username, first_name, last_name.
+/// email, role, password, pin are optional.
+/// §14.4: email is optional because self-hosted servers may have no SMTP configured.
+public struct CreateEmployeeBody: Encodable, Sendable {
+    /// Required: unique login username.
+    public let username: String
+    public let firstName: String
+    public let lastName: String
+    /// Optional — omit for self-hosted installs without SMTP.
+    public let email: String?
+    /// Role key (technician / cashier / manager / admin). Defaults to "technician".
+    public let role: String
+    /// Optional initial password. If omitted, admin sets one later.
+    public let password: String?
+
+    public init(
+        username: String,
+        firstName: String,
+        lastName: String,
+        email: String? = nil,
+        role: String = "technician",
+        password: String? = nil
+    ) {
+        self.username = username
+        self.firstName = firstName
+        self.lastName = lastName
+        self.email = email
+        self.role = role
+        self.password = password
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case username, email, role, password
+        case firstName = "first_name"
+        case lastName  = "last_name"
+    }
+}
+
+// MARK: - Resend invite body
+
+struct ResendInviteBody: Encodable, Sendable {
+    let resendInvite: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case resendInvite = "resend_invite"
     }
 }
