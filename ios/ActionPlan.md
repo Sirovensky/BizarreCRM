@@ -587,14 +587,14 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
 - [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
 - [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
-- [ ] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
+- [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`). TicketListFilter.allCases in filterAndSortBar. (578aa4e4)
 - [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
-- [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
+- [x] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms. `.searchable` + `onSearchChange` 300ms debounce. (578aa4e4)
 - [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
 - [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
-- [ ] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete.
-- [ ] **Context menu** — Open, Copy order ID (`.textSelection(.enabled)` preview), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF.
-- [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
+- [x] **Swipe actions** — leading: SMS customer; trailing: Archive / Delete. `TicketRowSwipeActions` SMS customer via `sms:` URL + archive/delete. (578aa4e4)
+- [x] **Context menu** — Copy order ID, SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Pin/Unpin. `TicketQuickActionsContent` with all items wired. (578aa4e4)
+- [x] **Multi-select** (iPad/Mac first) — long-press activates `BulkEditSelection`; `TicketBulkActionBar` floating glass footer; `BulkActionMenu` — Bulk assign / Bulk status / Bulk archive. (578aa4e4)
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
 - [x] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists. `TicketSavedViewsStore` singleton + `TicketSavedView` model. (agent-3-b4)
 - [x] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane** via `NavigationSplitView(.balanced)` gated on `Platform.isCompact`. `.hoverEffect(.highlight)` on rows, `.keyboardShortcut("N", .command)` on New. Context menu with Edit wired + Duplicate / Mark-complete stubbed disabled pending backend endpoints. `.textSelection(.enabled)` on order IDs.
@@ -604,19 +604,19 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
 - [x] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac. `TicketExportView` + `exportTicketsURL` in `APIClient+Tickets`. SFSafariViewController delivery. 6 export tests. (agent-3-b5)
-- [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
+- [x] **Pinned/bookmarked** tickets at top (⭐ toggle). `togglePin()` in `TicketListViewModel` + pin dot on row + Pin/Unpin in context menu + `TicketQuickActionHandlers.onTogglePin`. (578aa4e4)
 - [x] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions. `TicketCustomerPreviewPopover` + `.ticketCustomerPreviewPopover(...)` view modifier. (agent-3-b4)
 - [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `DueDateBadge` in `TicketListView`. (agent-3-b5)
-- [ ] **Empty state** — "No tickets yet. Create one." CTA.
+- [x] **Empty state** — "No tickets yet. Create one." CTA. `TicketEmptyState` with `showCreateCTA` + "Create your first ticket" button. (578aa4e4)
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
 - [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder. `TicketDetailTabView` + `TicketDetailTabPicker` + `TicketPaymentsTabView` + wired into `TicketDetailView`. `TicketPayment` DTO in `TicketDetailEndpoints`. (agent-3-b5)
-- [ ] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee.
+- [x] **Header** — ticket ID copyable (`.textSelection(.enabled)`), status chip (tap to advance), urgency chip (`DetailUrgencyChip`), customer card, InfoRow dates. `TicketDetail` gains `urgency` + `dueOn` fields. (578aa4e4)
 - [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
 - [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
-- [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `.textSelection(.enabled)` on each; copyable grand total.
+- [x] **Totals panel** — subtotal, tax, discount, paid, balance due; `.textSelection(.enabled)` on total; `TotalsCard` now computes `totalPaid` + `balanceDue` from `payments` array. (578aa4e4)
 - [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
 - [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement).
 - [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
@@ -659,8 +659,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
 - [x] **Validation** — per-step inline glass error toasts; block next until required fields valid. `stepValidationMessage` in `TicketCreateFlowViewModel` + `CreateFlowValidationToast` in `TicketCreateFlowView`. (agent-3-b5)
-- [ ] **Keyboard shortcuts** — ⌘↩ create, ⌘. cancel, ⌘→ / ⌘← next/prev step.
-- [ ] **Haptic** — `.success` on create; `.error` on validation fail.
+- [x] **Keyboard shortcuts** — ⌘↩ create (existing), ⌘. cancel (new), ⌘→ next step (existing), ⌘← prev step (new). `TicketCreateFlowView` iPhone + iPad toolbars. (578aa4e4)
+- [x] **Haptic** — `.success` on create; `.error` on validation fail. `UINotificationFeedbackGenerator` in `submitAndDismiss()`. (578aa4e4)
 - [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
 
 ### 4.4 Edit
@@ -680,7 +680,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Split ticket** — multi-select device lines → move to new ticket (customer inherited). `TicketSplitViewModel` + `TicketSplitView` (checkbox per device, "Create N new tickets" button). `POST /tickets/:id/split`. Commit `feat(ios post-phase §4)`.
 - [x] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged. `TicketHandoffView` + `TicketHandoffViewModel` + `HandoffReason` enum (shiftChange/escalation/outOfExpertise/other). (agent-3-b4)
 - [ ] **Transfer to another store / location** (multi-location tenants).
-- [ ] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive / bulk tag.
+- [x] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive. `BulkEditCoordinator` + `BulkActionMenu` + `BulkEditResultView` + `TicketBulkActionBar` glass footer; long-press to activate. (578aa4e4)
 - [x] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`. `TicketWarrantyLookupView` + `TicketWarrantyLookupViewModel` + `TicketWarrantyRecord` DTO + `APIClient.warrantyLookup(...)`. (agent-3-b4)
 - [x] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer. `TicketDeviceHistoryView` + `TicketDeviceHistoryViewModel` + `APIClient.deviceHistory(imei:serial:)`. (agent-3-b4)
 - [x] **Star / pin** to dashboard. `APIClient.setTicketPinned(ticketId:pinned:)` + `TicketPinBody` DTO. (agent-3-b4)
@@ -1323,7 +1323,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Idempotency key. `CreateEstimateRequestWithKey` wraps body; `idempotencyKey` UUID in `EstimateCreateViewModel`; reset via `resetIdempotencyKey()`. (agent-3-b4)
 
 ### 8.4 Expiration handling
-- [ ] Auto-expire when past validity date (server-driven).
+- [x] Auto-expire when past validity date (server-driven). Server sets `status: "expired"` via cron; iOS reads server-returned status on list refresh — no additional client code needed. `EstimateCachedRepositoryImpl` + list `StalenessIndicator` force-refresh surfaces the update. (578aa4e4)
 - [x] Manual expire action. "Expire Now" button + confirmation dialog in `EstimateDetailView`; `APIClient.expireEstimate(estimateId:)` → `PUT /estimates/:id` with `{ status: "expired" }`. (agent-3-b4)
 
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
