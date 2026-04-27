@@ -254,6 +254,86 @@ public struct CustomerMergeRequest: Codable, Sendable {
 // so it does not create a Networking→Customers dependency cycle.
 // The server merge endpoint does not accept per-field preferences.
 
+// MARK: - Invoice summary (§5.2 Invoices tab)
+
+/// Minimal invoice row for the customer detail Invoices tab.
+/// Full invoice detail lives in the Invoices package.
+public struct CustomerInvoiceSummary: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let invoiceNumber: String?
+    public let status: String?
+    public let totalCents: Int?
+    public let issuedAt: String?
+    public let paidAt: String?
+
+    public init(id: Int64, invoiceNumber: String? = nil, status: String? = nil,
+                totalCents: Int? = nil, issuedAt: String? = nil, paidAt: String? = nil) {
+        self.id = id
+        self.invoiceNumber = invoiceNumber
+        self.status = status
+        self.totalCents = totalCents
+        self.issuedAt = issuedAt
+        self.paidAt = paidAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, status
+        case invoiceNumber = "invoice_number"
+        case totalCents = "total_cents"
+        case issuedAt = "issued_at"
+        case paidAt = "paid_at"
+    }
+}
+
+// MARK: - Communications entry (§5.2 Communications tab)
+
+/// Unified communications timeline row (SMS / email / call log).
+/// `GET /api/v1/customers/:id/communications`
+public struct CustomerCommEntry: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    /// "sms" | "email" | "call"
+    public let kind: String
+    /// Message body / subject / call notes.
+    public let body: String?
+    /// Direction: "inbound" | "outbound"
+    public let direction: String?
+    public let createdAt: String?
+
+    public init(id: Int64, kind: String, body: String? = nil,
+                direction: String? = nil, createdAt: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.body = body
+        self.direction = direction
+        self.createdAt = createdAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, body, direction
+        case createdAt = "created_at"
+    }
+}
+
+// MARK: - Store credit balance (§5.2 Balance/credit)
+
+public struct CustomerCreditBalance: Decodable, Sendable {
+    public let customerId: Int64
+    public let balanceCents: Int
+    public let expiresAt: String?
+
+    public init(customerId: Int64, balanceCents: Int, expiresAt: String? = nil) {
+        self.customerId = customerId
+        self.balanceCents = balanceCents
+        self.expiresAt = expiresAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case customerId = "customer_id"
+        case balanceCents = "balance_cents"
+        case expiresAt = "expires_at"
+    }
+}
+
 // MARK: - Tag autosuggest (§5.9)
 
 public struct TagSuggestionsResponse: Decodable, Sendable {
@@ -330,5 +410,28 @@ public extension APIClient {
     func suggestCustomerTags(query: String) async throws -> [String] {
         let items = [URLQueryItem(name: "q", value: query)]
         return try await get("/api/v1/customers/tags", query: items, as: TagSuggestionsResponse.self).tags
+    }
+
+    // MARK: — Invoices tab (§5.2)
+
+    /// `GET /api/v1/customers/:id/invoices` — invoice list for the customer detail Invoices tab.
+    func customerInvoices(id: Int64, pageSize: Int = 50) async throws -> [CustomerInvoiceSummary] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/invoices", query: items, as: [CustomerInvoiceSummary].self)
+    }
+
+    // MARK: — Communications tab (§5.2)
+
+    /// `GET /api/v1/customers/:id/communications` — unified SMS/email/call timeline.
+    func customerCommunications(id: Int64, pageSize: Int = 50) async throws -> [CustomerCommEntry] {
+        let items = [URLQueryItem(name: "pagesize", value: String(pageSize))]
+        return try await get("/api/v1/customers/\(id)/communications", query: items, as: [CustomerCommEntry].self)
+    }
+
+    // MARK: — Store credit / balance (§5.2)
+
+    /// `GET /api/v1/refunds/credits/:customerId` — store credit balance for this customer.
+    func customerCreditBalance(customerId: Int64) async throws -> CustomerCreditBalance {
+        try await get("/api/v1/refunds/credits/\(customerId)", as: CustomerCreditBalance.self)
     }
 }
