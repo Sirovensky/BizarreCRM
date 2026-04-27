@@ -28,6 +28,11 @@ import Observation
 /// ```swift
 /// CFDBridge.shared.clear()
 /// ```
+///
+/// **§16 — Tenant branding, language, privacy:**
+/// The host app reads tenant config from Settings (§19) and pushes it here.
+/// CFDView reads these fields to show the correct tagline, language, and
+/// ensures no cashier-private data leaks to the customer display.
 @MainActor
 @Observable
 public final class CFDBridge {
@@ -57,6 +62,39 @@ public final class CFDBridge {
     /// `true` when at least one item is in the cart.
     public var isActive: Bool { !items.isEmpty }
 
+    // MARK: - §16 — Post-sale state
+
+    /// When non-nil the CFD shows the thank-you / receipt state with this token
+    /// for a QR code. Cleared by `clear()` or when a new cart starts.
+    public private(set) var postSaleState: CFDPostSaleState? = nil
+
+    // MARK: - §16 — Tenant branding
+
+    /// Shop name shown in the CFD header. Pushed from tenant settings.
+    public var shopName: String = "BizarreCRM"
+
+    /// Optional tagline shown below the shop name in the CFD header.
+    public var shopTagline: String = ""
+
+    // MARK: - §16 — Language
+
+    /// BCP-47 language tag for the customer display (e.g. "en", "es", "fr").
+    /// Decoupled from the cashier's app locale. CFDView uses this to pick
+    /// localised strings for CTA labels visible to the customer.
+    public var customerLanguageCode: String = "en"
+
+    // MARK: - §16 — Privacy
+
+    /// When `true` the CFD must not display any cashier-private data:
+    /// - cashier name or employee ID
+    /// - other customers' details from prior transactions
+    /// - employee personal information
+    ///
+    /// This is `true` by default and should only be set to `false` by an
+    /// explicit admin action (e.g. a kiosk mode where a single employee runs
+    /// the display).
+    public var privacyModeEnabled: Bool = true
+
     /// Public init for unit tests. Production code uses `CFDBridge.shared`.
     public init() {}
 
@@ -77,6 +115,35 @@ public final class CFDBridge {
         taxCents      = cart.taxCents
         tipCents      = cart.tipCents
         totalCents    = cart.totalCents
+        // Clear post-sale state when a live cart arrives.
+        postSaleState = nil
+    }
+
+    /// Show the thank-you / post-approval celebration state on the CFD.
+    /// Call this from the POS scene immediately after a sale completes.
+    ///
+    /// - Parameters:
+    ///   - trackingToken: Optional opaque token that becomes the QR code URL.
+    ///   - googleReviewURL: Optional shop-configured Google review link shown
+    ///     as a second QR code or text prompt.
+    ///   - membershipSignupURL: Optional membership sign-up URL for the QR
+    ///     alongside the tracking QR.
+    public func showPostSale(
+        trackingToken: String? = nil,
+        googleReviewURL: URL? = nil,
+        membershipSignupURL: URL? = nil
+    ) {
+        postSaleState = CFDPostSaleState(
+            trackingToken: trackingToken,
+            googleReviewURL: googleReviewURL,
+            membershipSignupURL: membershipSignupURL
+        )
+        // Cart is cleared — customer sees the celebration screen, not cart rows.
+        items         = []
+        subtotalCents = 0
+        taxCents      = 0
+        tipCents      = 0
+        totalCents    = 0
     }
 
     /// Reset the display to the idle / between-sales state.
@@ -86,6 +153,31 @@ public final class CFDBridge {
         taxCents      = 0
         tipCents      = 0
         totalCents    = 0
+        postSaleState = nil
+    }
+}
+
+// MARK: - CFDPostSaleState
+
+/// §16 — Carries data for the post-approval "Thank you!" screen shown on the
+/// customer-facing display. Auto-dismissed after 10s by `CFDView`.
+public struct CFDPostSaleState: Equatable, Sendable {
+    /// Opaque tracking token from the server invoice response. Encoded into the
+    /// receipt QR code: `https://app.bizarrecrm.com/track/{token}`.
+    public let trackingToken: String?
+    /// Optional Google review URL (tenant-configured in Settings → POS → Display).
+    public let googleReviewURL: URL?
+    /// Optional membership sign-up URL (tenant-configured in Settings → Loyalty).
+    public let membershipSignupURL: URL?
+
+    public init(
+        trackingToken: String? = nil,
+        googleReviewURL: URL? = nil,
+        membershipSignupURL: URL? = nil
+    ) {
+        self.trackingToken    = trackingToken
+        self.googleReviewURL  = googleReviewURL
+        self.membershipSignupURL = membershipSignupURL
     }
 }
 

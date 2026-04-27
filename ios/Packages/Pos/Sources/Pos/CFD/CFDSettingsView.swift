@@ -28,12 +28,24 @@ public struct CFDSettingsView: View {
     // MARK: - UserDefaults keys
 
     public enum Keys {
-        public static let cfdEnabled   = "pos.cfd.enabled"
-        public static let idleMessage  = "pos.cfd.idleMessage"
+        public static let cfdEnabled       = "pos.cfd.enabled"
+        public static let idleMessage      = "pos.cfd.idleMessage"
+        // §16 Tenant branding
+        public static let shopTagline      = "pos.cfd.shopTagline"
+        public static let slideShowEnabled = "pos.cfd.slideShowEnabled"
+        public static let slideShowItems   = "pos.cfd.slideShowItems"
+        // §16 Multi-language
+        public static let languageCode     = "pos.cfd.languageCode"
+        // §16 Privacy
+        public static let privacyModeEnabled = "pos.cfd.privacyMode"
     }
 
-    @AppStorage(Keys.cfdEnabled)  private var cfdEnabled:  Bool   = false
-    @AppStorage(Keys.idleMessage) private var idleMessage: String = "Welcome! Your cashier will be with you shortly."
+    @AppStorage(Keys.cfdEnabled)          private var cfdEnabled:          Bool   = false
+    @AppStorage(Keys.idleMessage)         private var idleMessage:         String = "Welcome! Your cashier will be with you shortly."
+    @AppStorage(Keys.shopTagline)         private var shopTagline:         String = ""
+    @AppStorage(Keys.slideShowEnabled)    private var slideShowEnabled:    Bool   = false
+    @AppStorage(Keys.languageCode)        private var languageCode:        String = "en"
+    @AppStorage(Keys.privacyModeEnabled)  private var privacyModeEnabled:  Bool   = true
 
     @State private var showPreview = false
     @Environment(\.dismiss) private var dismiss
@@ -70,8 +82,61 @@ public struct CFDSettingsView: View {
                             .accessibilityIdentifier("cfd.settings.idleMessage")
                     }
                     .padding(.vertical, BrandSpacing.xs)
+
+                    // §16 — Tenant tagline shown in CFD header below shop name
+                    VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                        Text("Shop Tagline")
+                            .font(.brandLabelLarge())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        TextField("Your trusted repair partner", text: $shopTagline)
+                            .font(.brandBodyMedium())
+                            .accessibilityIdentifier("cfd.settings.shopTagline")
+                    }
+                    .padding(.vertical, BrandSpacing.xs)
+
+                    // §16 — Marketing slideshow toggle
+                    Toggle("Marketing Slideshow (idle >30s)", isOn: $slideShowEnabled)
+                        .tint(.bizarreOrange)
+                        .accessibilityIdentifier("cfd.settings.slideShow")
+                    if slideShowEnabled {
+                        Text("Customer display rotates promotional slides when idle more than 30 seconds.")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
                 } header: {
                     Text("Idle Screen")
+                }
+
+                // §16 — Language selector
+                Section {
+                    Picker("Customer Display Language", selection: $languageCode) {
+                        Text("English").tag("en")
+                        Text("Español").tag("es")
+                        Text("Français").tag("fr")
+                        Text("Deutsch").tag("de")
+                        Text("中文").tag("zh")
+                        Text("日本語").tag("ja")
+                        Text("한국어").tag("ko")
+                        Text("Português").tag("pt")
+                    }
+                    .accessibilityIdentifier("cfd.settings.language")
+                    Text("Displayed language on the customer-facing screen. Decoupled from the cashier's app language.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                } header: {
+                    Text("Language")
+                }
+
+                // §16 — Privacy mode
+                Section {
+                    Toggle("Privacy Mode", isOn: $privacyModeEnabled)
+                        .tint(.bizarreOrange)
+                        .accessibilityIdentifier("cfd.settings.privacyMode")
+                    Text("Hides cashier name, customer data from other transactions, and employee personal details on the customer display.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                } header: {
+                    Text("Privacy")
                 }
 
                 Section {
