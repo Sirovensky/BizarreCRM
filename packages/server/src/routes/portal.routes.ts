@@ -142,6 +142,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
     // Evict the stale session so reuse of the token still fails on
     // the next request even if the expiry hasn't hit.
     await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
+    res.clearCookie('portalToken');
     res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
     return;
   }
@@ -324,13 +325,14 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'tic
   }
 
   // Sort timeline chronologically
-  timeline.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const toUtc = (s: string) => (s && !s.endsWith('Z') ? s + 'Z' : s);
+  timeline.sort((a, b) => new Date(toUtc(a.created_at)).getTime() - new Date(toUtc(b.created_at)).getTime());
 
   // Find invoice
   let invoice: AnyRow | undefined;
   if (ticket.invoice_id) {
     invoice = await adb.get<AnyRow>(
-      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+      `SELECT id, order_id, ticket_id, issued_at, amount_total_cents,
               amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
          FROM invoices WHERE id = ?`,
       ticket.invoice_id,
@@ -338,7 +340,7 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'tic
   }
   if (!invoice) {
     invoice = await adb.get<AnyRow>(
-      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+      `SELECT id, order_id, ticket_id, issued_at, amount_total_cents,
               amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
          FROM invoices WHERE ticket_id = ? LIMIT 1`,
       ticket.id,

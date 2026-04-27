@@ -128,6 +128,7 @@ export function UnifiedPosPage() {
   const scanBufferRef = useRef('');
   const scanTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastKeyTimeRef = useRef(0);
+  const scanAbortRef = useRef<AbortController | null>(null);
   const { addProduct } = useUnifiedPosStore();
 
   useEffect(() => {
@@ -157,8 +158,12 @@ export function UnifiedPosPage() {
         setScanFlash(true);
         setTimeout(() => setScanFlash(false), 1200);
 
-        // Search and add to cart
-        posApi.products({ keyword: code }).then((res) => {
+        // Search and add to cart — cancel any in-flight lookup first
+        scanAbortRef.current?.abort();
+        const ac = new AbortController();
+        scanAbortRef.current = ac;
+        posApi.products({ keyword: code }, ac.signal).then((res) => {
+          if (ac.signal.aborted) return;
           const found = (res.data?.data?.items || [])[0];
           if (found) {
             addProduct({
@@ -176,7 +181,7 @@ export function UnifiedPosPage() {
           } else {
             toast.error(`No item found for barcode: ${code}`);
           }
-        }).catch(() => toast.error('Barcode search failed'));
+        }).catch((err) => { if (!ac.signal.aborted) toast.error('Barcode search failed'); void err; });
 
         return;
       }

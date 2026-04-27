@@ -3047,3 +3047,15 @@ Bulk move of items that were already marked [x] in TODO.md but never relocated t
 - [x] WEB-W1-004. **ticket_default_view kanban.** CLOSED 2026-04-26 — todofixes426: pre-existing — kanban option was never present in TicketsRepairsSettings.tsx select; only listing + calendar.
 - [x] WEB-W1-006. **ticket_default_pagination key drift.** CLOSED 2026-04-26 — todofixes426: pre-existing — frontend reads ticket_default_pagination via getSetting and passes as `pagesize`; server reads `pagesize`; canonical and consistent.
 - [x] WEB-W1-007. **ticket_auto_status_on_reply.** CLOSED 2026-04-26 — todofixes426: pre-existing — sms.routes.ts reads store_config.ticket_auto_status_on_reply on inbound (line 1133); TicketsRepairsSettings.tsx has UI input.
+
+## todofixes426 — Cleanup pass 6 (2026-04-26) — S7/FM/DASH-ELEC/S5 final batch
+
+WEB-S7 quick wins: 005 (POS barcode AbortController), 009 (all-time 2000-01-01), 015 (NULLS LAST customers), 016 (POS N+1 batch), 017 (calendar pagesize 100), 020 (InventoryImportRow type), 023 (search ticket customer/device joined), 024 (portal invoice strip customer_id), 025 (portal timeline UTC normalize), 028 (search/notes correlated subquery), 032 (FTS accented chars), 042 (search min q=1), 043 (portal idle clearCookie).
+
+WEB-FM-008: 12 page-local formatDate/formatPhone duplicates consolidated to shared utils/format.ts.
+
+DASH-ELEC: 002 (unhandledRejection pre-existing), 004 (execSync doc), 006 (env-settings allowlist verified), 007 (preload dedupInvoke), 009 (stderr logging), 012 (useServerHealth AbortController), 015 (split PageErrorBoundary per-section), 019 (HMR dispose), 024 (tailwind font hierarchy).
+
+WEB-S5 (mostly pre-existing verified): 008/009/010/016/020/023/026/033/034/035/036/037/038/042/043.
+
+All items grep-verified in code before move.

@@ -128,7 +128,7 @@ function getDateRange(preset: DatePreset): { from: string; to: string } {
     case 'thisYear':
       return { from: `${today.getFullYear()}-01-01`, to: fmt(today) };
     case 'all':
-      return { from: '2020-01-01', to: fmt(today) };
+      return { from: '2000-01-01', to: fmt(today) };
   }
 }
 
