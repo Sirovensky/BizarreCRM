@@ -414,32 +414,109 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         </div>
       </section>
 
-      <!-- ============ SCREEN 8: REPAIR PRICING (NEW) ============ -->
+      <!-- ============ SCREEN 8: REPAIR PRICING (NEW) — TIERED ============ -->
       <section id="screen-8">
-        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 8 — Repair pricing baseline</h2></div>
-        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Fixes CROSS31 "no pricing configured" prompt. Owner accepts seed prices or skips.</p>
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 8 — Repair pricing (tiered by model age)</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Real shops price per device. Newer models = profit-drivers ($200+ margin), older = get-in-door ($40 margin). Default UI uses tiers; advanced mode unlocks per-device matrix.</p>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="card max-w-2xl mx-auto">
+            <div class="screen p-8"><div class="card max-w-3xl mx-auto">
               <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
-              <h2 class="font-display text-2xl font-bold">Suggested repair prices</h2>
-              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Based on shop type "Phone repair" — adjust per device or accept defaults. You can customize per-device-model in Settings → Repair pricing later.</p>
+              <h2 class="font-display text-2xl font-bold">Repair pricing</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-4">Set labor by model tier. Auto-applies to all 203 device models in your shop's catalog.</p>
+
+              <!-- Mode toggle -->
+              <div class="inline-flex rounded-full bg-surface-100 dark:bg-surface-800 p-1 mb-6">
+                <button class="px-4 py-1.5 rounded-full bg-white dark:bg-surface-700 shadow-sm text-sm font-medium">Tier by model age</button>
+                <button class="px-4 py-1.5 text-sm text-surface-500">Flat per service</button>
+                <button class="px-4 py-1.5 text-sm text-surface-500">Per-device matrix →</button>
+              </div>
+
+              <!-- Tier explainer -->
+              <div class="grid grid-cols-3 gap-3 mb-6 text-xs">
+                <div class="rounded-xl border border-primary-800 bg-primary-300 p-3">
+                  <div class="font-bold text-primary-900 mb-1">🔥 Tier A — Flagship (0-2 yr)</div>
+                  <p class="text-primary-900">iPhone 15/16, Galaxy S24/S25, Pixel 9. Customers pay premium. Profit driver.</p>
+                  <p class="text-primary-900 mt-1 font-mono text-xs">42 models</p>
+                </div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
+                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">⚖️ Tier B — Mainstream (3-5 yr)</div>
+                  <p class="text-surface-600 dark:text-surface-400">iPhone 11/12/13, Galaxy S20/S21, Pixel 5/6. Bread-and-butter volume.</p>
+                  <p class="text-surface-500 mt-1 font-mono text-xs">87 models</p>
+                </div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
+                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">🚪 Tier C — Older (6+ yr)</div>
+                  <p class="text-surface-600 dark:text-surface-400">iPhone X/XR/8, Galaxy S9/S10. Get-in-door pricing — break-even on labor, upsell add-ons.</p>
+                  <p class="text-surface-500 mt-1 font-mono text-xs">74 models</p>
+                </div>
+              </div>
+
+              <!-- Per-service tier grid -->
               <table class="w-full text-sm">
-                <thead><tr class="border-b border-surface-200 dark:border-surface-700"><th class="text-left py-2">Service</th><th class="text-right py-2">Labor</th><th class="text-right py-2">Time</th></tr></thead>
+                <thead><tr class="border-b border-surface-200 dark:border-surface-700"><th class="text-left py-2">Service</th><th class="text-right py-2 px-2 text-primary-900">Tier A labor</th><th class="text-right py-2 px-2">Tier B labor</th><th class="text-right py-2 px-2">Tier C labor</th><th class="text-right py-2">Time</th></tr></thead>
                 <tbody class="divide-y divide-surface-100 dark:divide-surface-700">
-                  <tr><td class="py-2">iPhone screen replacement</td><td class="text-right"><input class="field-input w-24 text-right" value="$89" /></td><td class="text-right text-surface-500">45 min</td></tr>
-                  <tr><td class="py-2">iPhone battery</td><td class="text-right"><input class="field-input w-24 text-right" value="$59" /></td><td class="text-right text-surface-500">30 min</td></tr>
-                  <tr><td class="py-2">Android screen</td><td class="text-right"><input class="field-input w-24 text-right" value="$79" /></td><td class="text-right text-surface-500">45 min</td></tr>
-                  <tr><td class="py-2">Charge port repair</td><td class="text-right"><input class="field-input w-24 text-right" value="$45" /></td><td class="text-right text-surface-500">30 min</td></tr>
-                  <tr><td class="py-2">Water damage diagnostic</td><td class="text-right"><input class="field-input w-24 text-right" value="$35" /></td><td class="text-right text-surface-500">15 min</td></tr>
+                  <tr>
+                    <td class="py-2">Screen replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$249" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
+                    <td class="text-right text-surface-500">45 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Battery replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$99" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$69" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right text-surface-500">30 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Charge port repair</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$89" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$59" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
+                    <td class="text-right text-surface-500">30 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Water damage diagnostic</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$35" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$25" /></td>
+                    <td class="text-right text-surface-500">15 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Camera lens replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right text-surface-500">40 min</td>
+                  </tr>
                 </tbody>
               </table>
-              <p class="text-xs text-surface-500 mt-3">+ 7 more services seeded. Set to $0 to disable a service from the catalog.</p>
-              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back · Skip pricing</button><button class="btn-primary">Save 12 services →</button></div>
+              <p class="text-xs text-surface-500 mt-3">+ 7 more services. Set $0 in any tier to disable that service for that tier.</p>
+
+              <!-- Profit calculator hint -->
+              <div class="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm">
+                <p class="font-semibold text-amber-900 dark:text-amber-300 mb-2">💡 Profit estimator (Tier A · iPhone 15 Pro screen):</p>
+                <div class="grid grid-cols-4 gap-3 text-xs">
+                  <div><div class="text-amber-700 dark:text-amber-400">Labor charged</div><div class="font-bold text-amber-900 dark:text-amber-300 text-base">$249</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Part cost</div><div class="font-mono text-amber-900 dark:text-amber-300 text-base">−$45</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Tax/fees</div><div class="font-mono text-amber-900 dark:text-amber-300 text-base">−$8</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Profit</div><div class="font-bold text-green-700 dark:text-green-400 text-base">+$196</div></div>
+                </div>
+                <p class="text-xs text-amber-800 dark:text-amber-400 mt-2">Pulls part cost from Mobilesentrix/PhoneLcdParts catalog daily. Updates this estimate as part prices shift.</p>
+              </div>
+
+              <!-- Auto-margin toggle -->
+              <label class="flex items-start gap-3 mt-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700 cursor-pointer">
+                <input type="checkbox" class="mt-1" />
+                <div class="flex-1 text-sm"><strong class="block">Auto-update labor when supplier part costs change</strong><span class="text-xs text-surface-500">If part cost goes up by $20, labor auto-bumps by $20 to preserve margin. Off by default — most owners want to control retail price manually.</span></div>
+              </label>
+
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back · Skip pricing</button><button class="btn-primary">Save 12 services × 3 tiers = 36 rows → 2,436 device prices</button></div>
             </div></div>
           </div>
-          <div class="annot"><h4>Annotations</h4><ul><li>Seeds <span class="kbd">repair_services</span> + <span class="kbd">repair_prices</span> tables</li><li>Per-device-model overrides done later in Settings</li><li>$0 = skip that service</li><li>Skip entirely = empty catalog (CROSS31 manual-price prompt at ticket creation)</li></ul></div>
+          <div class="annot"><h4>Annotations</h4><ul><li><strong>Schema:</strong> writes <span class="kbd">repair_prices(device_model_id, repair_service_id, labor_price)</span> from migration 010 (composite key — already per-device).</li><li><strong>Tier expansion:</strong> server back-fills 2,436 rows: 12 services × 203 device models. Each device's tier looked up by <span class="kbd">device_models.released_year</span>.</li><li><strong>Tier rules (configurable in Settings):</strong> A = released &le; 2yr ago, B = 3-5yr, C = &gt;5yr. Re-evaluated nightly.</li><li><strong>Per-device override:</strong> "Per-device matrix" tab opens grid view (203 rows × 12 cols) for hot models needing custom prices.</li><li><strong>Auto-margin:</strong> when on, labor = (target_profit + supplier_part_cost). Catalog scrape (Mobilesentrix/PhoneLcdParts via cheerio per CLAUDE.md) refreshes part costs nightly.</li><li><strong>$0 sentinel:</strong> disables that service for that tier (CROSS31 manual-price still avail).</li><li><strong>Skip:</strong> empty catalog, manual price prompt per ticket.</li></ul></div>
         </div>
       </section>
 
