@@ -243,23 +243,23 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
 ### 2.1 Setup-status probe
-- [ ] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form.
-- [ ] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login.
-- [ ] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen.
+- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form. (bef1335b)
+- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (bef1335b)
+- [x] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen. (bef1335b)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage — shipped.
-- [ ] **Response branches** `POST /auth/login` returns any of:
+- [x] **Response branches** `POST /auth/login` returns any of: (bef1335b)
   - `{ challengeToken, requiresFirstTimePassword: true }` → push SetPassword step.
   - `{ challengeToken, totpEnabled: true }` → push 2FA step.
   - `{ accessToken, user }` → happy path.
-- [ ] **Username not email** — server uses `username`, mirror that label. Support `@email` login fallback if server accepts it.
-- [ ] **Keyboard flow** — `.submitLabel(.next)` on username, `.submitLabel(.go)` on password; `@FocusState` auto-advance.
-- [ ] **"Show password" eye toggle** with `privacySensitive()` on the field.
+- [x] **Username not email** — server uses `username`, mirror that label. Support `@email` login fallback if server accepts it. (bef1335b)
+- [x] **Keyboard flow** — `.submitLabel(.next)` on username, `.submitLabel(.go)` on password; `@FocusState` auto-advance. (bef1335b)
+- [x] **"Show password" eye toggle** with `privacySensitive()` on the field. (bef1335b)
 - [x] **Remember-me toggle** persists username in Keychain (`CredentialStore.swift` actor — `rememberEmail/lastEmail/forget`; email only, never password). Toggle wiring hook exposed for `LoginFlowView` at merge.
-- [ ] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect.").
-- [ ] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." glass banner with countdown.
-- [ ] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`.
+- [x] **Form validation** — primary CTA disabled until both fields non-empty; inline error on server 401 ("Username or password incorrect."). (bef1335b)
+- [x] **Rate-limit handling** — server throttles IP (5/15min) and username (10/30min); surface "Too many attempts. Wait N minutes." glass banner with countdown. (bef1335b)
+- [x] **Trust-this-device** checkbox on 2FA step → server flag `trustDevice: true`. (bef1335b)
 
 ### 2.3 First-time password set
 - [x] **Endpoint:** `POST /auth/login/set-password` with `{ challengeToken, password }`.
@@ -272,15 +272,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
-- [ ] **Paste-from-clipboard** auto-detect 6-digit string.
+- [x] **Paste-from-clipboard** auto-detect 6-digit string. (bef1335b)
 - [x] Confirmed removed 2026-04-23 (commit 8270aea) — self-service 2FA disable UI + endpoint wiring ripped from iOS per security policy. Legitimate recovery remains via backup-code flow (`POST /auth/recover-with-backup-code` — atomic password + 2FA reset) and super-admin force-disable (`POST /tenants/:slug/users/:id/force-disable-2fa` — Step-Up TOTP gated). **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
 - [x] **Verify PIN** — local via `PINStore.verify(pin:) -> VerifyResult`; server-side mirror deferred.
-- [ ] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`.
+- [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (bef1335b)
 - [ ] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar.
-- [ ] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action.
+- [x] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (bef1335b)
 - [x] **Keypad UX** — custom numeric keypad with haptic on each tap, 6-dot status, escalating lockout (5→30s, 6→1m, 7→5m, 8→15m, 9→1h, 10→revoke+wipe).
 - [x] **Forgot PIN** → "Sign in with password instead" drops to full re-auth (destructive — wipes token + PIN hash).
 - [x] **iPad layout** — keypad centered in `.brandGlass` card, max-width 420, not full-width.
@@ -289,9 +289,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`.
 - [x] **Enable toggle** — login-offer step persists via `BiometricPreference`. Settings toggle follow-up.
 - [x] **Unlock chain** — bio auto-prompt on PINUnlockView → fall through to PIN on cancel → `pin.reauth` on revoke.
-- [ ] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`.
+- [x] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`. (bef1335b)
 - [x] **Respect disabled biometry** gracefully — `BiometricGate.isAvailable` + `kind` guards every call; PIN keypad stays available.
-- [ ] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed).
+- [x] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed). (bef1335b)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
 - [ ] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour).
@@ -317,17 +317,17 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` — shipped.
 - [x] **Refresh-and-retry** on 401 — single-flight `Task<Bool, Error>` in `APIClient.refreshSessionOnce()`; concurrent 401s await the same task, retry replays with the new bearer, refresh failure posts `SessionEvents.sessionRevoked`.
-- [ ] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`.
+- [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`. (bef1335b)
 - [x] **Logout** — `POST /auth/logout` via `APIClient.logout()`; best-effort server call + local wipe (TokenStore + PINStore + BiometricPreference + bearer); optional ServerURLStore clear via Settings → "Change shop".
 - [ ] **Active sessions** (stretch) — if server exposes session list.
-- [ ] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`.
+- [x] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`. (bef1335b)
 
 ### 2.12 Error / empty states
-- [ ] Wrong password → inline error + shake animation + `.error` haptic.
-- [ ] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address.
-- [ ] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA.
-- [ ] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`).
-- [ ] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only).
+- [x] Wrong password → inline error + shake animation + `.error` haptic. (bef1335b)
+- [x] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address. (bef1335b)
+- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (bef1335b)
+- [x] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`). (bef1335b)
+- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (bef1335b)
 - [ ] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable).
 
 ### 2.13 Security polish
@@ -8086,6 +8086,9 @@ Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICAT
 
 ## Discovered
 
-- [Agent 5] §11 Expenses MileageEntrySheet: direct `api.post("/api/v1/expenses/mileage")` call violates §20 containment rule — needs extraction to `MileageRepository` (file owned by Agent 5, `Packages/Expenses/Sources/Expenses/Mileage/MileageEntrySheet.swift`)
-- [Agent 5] §11 Expenses RecurringExpenseRunner: direct `api.post/delete` calls violate §20 containment rule — needs `RecurringExpenseRepository` wrapper (file owned by Agent 5, `Packages/Expenses/Sources/Expenses/Recurring/RecurringExpenseRunner.swift`)
-- [Agent 5] §6 Pre-existing Core build failure: `EnvironmentBanner.swift`, `LoadingStateView.swift`, `CoreErrorStateView.swift` in `Packages/Core/Sources/Core/` use UIKit-only APIs without `#if canImport(UIKit)` guard — causes `swift test` to fail on macOS. Owned by Core/Foundation agent.
+Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to the owning agent's next batch.
+
+- **[Agent 5]** §11 Expenses `MileageEntrySheet`: direct `api.post("/api/v1/expenses/mileage")` call violates §20 containment rule — needs extraction to `MileageRepository` (file owned by Agent 5: `Packages/Expenses/Sources/Expenses/Mileage/MileageEntrySheet.swift`).
+- **[Agent 5]** §11 Expenses `RecurringExpenseRunner`: direct `api.post/delete` calls violate §20 containment rule — needs `RecurringExpenseRepository` wrapper (file owned by Agent 5: `Packages/Expenses/Sources/Expenses/Recurring/RecurringExpenseRunner.swift`).
+- **[Agent 5 → Agent 10]** §6 Pre-existing Core macOS build failure: `EnvironmentBanner.swift`, `LoadingStateView.swift`, `CoreErrorStateView.swift` in `Packages/Core/Sources/Core/` use UIKit-only APIs without `#if canImport(UIKit)` guard — `swift test` fails on macOS. Owned by Agent 10. **Priority: blocks all agent test gates.**
+- **[Agent 8 → Agent 10]** (2026-04-26, bef1335b) `NSFaceIDUsageDescription` for §2.6 biometric login: `ios/scripts/write-info-plist.sh` + `ios/App/Resources/Info.plist` are owned by Agent 10. That script already adds `NSMicrophoneUsageDescription` + `NSLocationWhenInUseUsageDescription` (update 37). Add `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`. Without it, `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` crashes on first Face ID prompt.
