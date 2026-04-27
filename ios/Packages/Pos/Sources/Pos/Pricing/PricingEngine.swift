@@ -83,31 +83,41 @@ public actor PricingEngine {
 
     public init() {}
 
-    /// Apply `rules` to the given `cart`, optionally filtered by `customerSegment`.
+    /// Apply `rules` to the given `cart`, optionally filtered by `customerSegment`
+    /// and `locationSlug`.
     ///
     /// - Parameters:
     ///   - cart:            Cart snapshot to evaluate.
     ///   - rules:           Full tenant rule list.
     ///   - customerSegment: Current customer's segment name (or nil for walk-in).
+    ///   - locationSlug:    Current POS location slug (or nil = no location filtering).
     ///   - now:             Reference date for validity checks.
     /// - Returns: `PricingResult` ready to be stored on the cart.
     public func apply(
         cart: DiscountCartSnapshot,
         rules: [PricingRule],
         customerSegment: String? = nil,
+        locationSlug: String? = nil,
         now: Date = .now
     ) async -> PricingResult {
 
         guard !cart.items.isEmpty, !rules.isEmpty else { return .empty }
 
-        let eligible = rules.filter { $0.isValid(at: now) }
+        let eligible = rules.filter { rule in
+            guard rule.isValid(at: now) else { return false }
+            // Promotion window: must also be admin-enabled.
+            if rule.type == .promotionWindow { return rule.promotionActive }
+            return true
+        }
         guard !eligible.isEmpty else { return .empty }
 
         var allAdjustments: [UUID: [PricingAdjustment]] = [:]
         var totalSaving = 0
 
         for item in cart.items {
-            let matching = eligible.filter { matches(rule: $0, item: item, segment: customerSegment) }
+            let matching = eligible.filter {
+                matches(rule: $0, item: item, segment: customerSegment, locationSlug: locationSlug)
+            }
             guard !matching.isEmpty else { continue }
 
             var lineAdj: [PricingAdjustment] = []
@@ -127,11 +137,22 @@ public actor PricingEngine {
 
     // MARK: - Private: matching
 
-    private func matches(rule: PricingRule, item: CartItemSnapshot, segment: String?) -> Bool {
+    private func matches(
+        rule: PricingRule,
+        item: CartItemSnapshot,
+        segment: String?,
+        locationSlug: String?
+    ) -> Bool {
         // Segment rules only fire when customer segment matches.
         if rule.type == .segmentPrice {
             guard let seg = segment, let rSeg = rule.targetSegment, seg == rSeg else {
                 return false
+            }
+        }
+        // Location rules only fire when the POS location matches.
+        if rule.type == .locationOverride {
+            if let rLoc = rule.targetLocationSlug, !rLoc.isEmpty {
+                guard let loc = locationSlug, loc == rLoc else { return false }
             }
         }
         // SKU match
@@ -162,6 +183,12 @@ public actor PricingEngine {
 
         case .segmentPrice:
             return segmentPriceAdjustment(rule: rule, item: item)
+
+        case .locationOverride:
+            return locationOverrideAdjustment(rule: rule, item: item)
+
+        case .promotionWindow:
+            return promotionWindowAdjustment(rule: rule, item: item)
         }
     }
 
@@ -252,6 +279,46 @@ public actor PricingEngine {
             ruleId: rule.id,
             ruleName: rule.name,
             type: .segmentPrice,
+            newUnitPriceCents: newUnitCents,
+            savingCents: saving
+        )
+    }
+
+    // MARK: Location override
+
+    /// Applies a flat percent discount for a specific store location.
+    private func locationOverrideAdjustment(rule: PricingRule, item: CartItemSnapshot) -> PricingAdjustment? {
+        guard let pct = rule.locationDiscountPercent, pct > 0 else { return nil }
+
+        let saving = Int((Double(item.lineSubtotalCents) * pct).rounded())
+        guard saving > 0 else { return nil }
+
+        let newUnitCents = max(0, item.unitPriceCentsApprox - Int((Double(item.unitPriceCentsApprox) * pct).rounded()))
+
+        return PricingAdjustment(
+            ruleId: rule.id,
+            ruleName: rule.name,
+            type: .locationOverride,
+            newUnitPriceCents: newUnitCents,
+            savingCents: saving
+        )
+    }
+
+    // MARK: Promotion window (flash sale)
+
+    /// Applies the flash-sale percent discount when the promotion is live.
+    private func promotionWindowAdjustment(rule: PricingRule, item: CartItemSnapshot) -> PricingAdjustment? {
+        guard let pct = rule.promotionDiscountPercent, pct > 0 else { return nil }
+
+        let saving = Int((Double(item.lineSubtotalCents) * pct).rounded())
+        guard saving > 0 else { return nil }
+
+        let newUnitCents = max(0, item.unitPriceCentsApprox - Int((Double(item.unitPriceCentsApprox) * pct).rounded()))
+
+        return PricingAdjustment(
+            ruleId: rule.id,
+            ruleName: rule.promotionLabel ?? rule.name,
+            type: .promotionWindow,
             newUnitPriceCents: newUnitCents,
             savingCents: saving
         )

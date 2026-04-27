@@ -54,14 +54,15 @@ public actor DiscountEngine {
     /// into the cart model and re-rendering the UI.
     ///
     /// - Parameters:
-    ///   - cart:  The cart to evaluate. Must be called with a stable snapshot
-    ///            (i.e. no concurrent mutations during the async call).
-    ///   - rules: The full set of configured rules for the tenant.
-    ///   - now:   Reference timestamp for validity checks. Defaults to `Date.now`.
+    ///   - cart:               The cart to evaluate. Must be called with a stable snapshot.
+    ///   - rules:              The full set of configured rules for the tenant.
+    ///   - context:            Customer / employee context for eligibility gating.
+    ///   - now:                Reference timestamp for validity checks. Defaults to `Date.now`.
     /// - Returns: A `DiscountResult` ready to be applied to the cart.
     public func apply(
         cart: DiscountCartSnapshot,
         rules: [DiscountRule],
+        context: DiscountContext = .init(),
         now: Date = .now
     ) async -> DiscountResult {
 
@@ -69,11 +70,29 @@ public actor DiscountEngine {
             return .empty
         }
 
-        // ── 1. Filter to active, threshold-passing rules ──────────────────
+        // ── 1. Filter to active, threshold-passing, channel-matching rules ─
         let eligible = rules.filter { rule in
             guard rule.isValid(at: now) else { return false }
             if let minTotal = rule.minCartTotalCents,
                cart.subtotalCents < minTotal { return false }
+            // Channel gate
+            switch rule.channel {
+            case .any: break
+            case .inStoreOnly: if context.channel != .inStoreOnly { return false }
+            case .onlineOnly:  if context.channel != .onlineOnly  { return false }
+            }
+            // First-time customer gate (optimistic — server re-validates)
+            if rule.firstTimeCustomerOnly, !context.isFirstTimeCustomer { return false }
+            // Loyalty-tier gate
+            if let requiredTier = rule.requiredLoyaltyTier {
+                guard let customerTier = context.customerLoyaltyTier,
+                      customerTier == requiredTier else { return false }
+            }
+            // Employee-role gate
+            if let requiredRole = rule.requiredEmployeeRole {
+                guard let cashierRole = context.cashierRole,
+                      cashierRole == requiredRole else { return false }
+            }
             return true
         }
         guard !eligible.isEmpty else { return .empty }
@@ -128,6 +147,10 @@ public actor DiscountEngine {
         // Gather candidate rules for this line.
         let candidates = rules.filter { rule -> Bool in
             let scope: DiscountScope = rule.scope
+            // Excluded-categories gate — skip this line if its category is in the exclusion set.
+            if let itemCategory = item.category,
+               !rule.excludedCategories.isEmpty,
+               rule.excludedCategories.contains(itemCategory) { return false }
             switch scope {
             case .whole:
                 return false  // handled separately
@@ -203,6 +226,35 @@ public actor DiscountEngine {
         return (try? NSRegularExpression(pattern: pattern))
             .map { $0.firstMatch(in: input, range: NSRange(input.startIndex..., in: input)) != nil }
             ?? false
+    }
+}
+
+// MARK: - DiscountContext
+
+/// Caller-supplied context that gates eligibility rules (§16 discount types).
+///
+/// All properties are optional — pass only what is known at call time.
+/// Missing context simply means the corresponding gate is skipped (open).
+public struct DiscountContext: Sendable {
+    /// Which channel this sale originates from.
+    public let channel: DiscountChannel
+    /// `true` when the attached customer has no prior completed orders at this tenant.
+    public let isFirstTimeCustomer: Bool
+    /// The attached customer's current loyalty tier name (e.g. `"Gold"`).
+    public let customerLoyaltyTier: String?
+    /// The role slug of the cashier initiating the sale (e.g. `"technician"`).
+    public let cashierRole: String?
+
+    public init(
+        channel: DiscountChannel = .any,
+        isFirstTimeCustomer: Bool = false,
+        customerLoyaltyTier: String? = nil,
+        cashierRole: String? = nil
+    ) {
+        self.channel              = channel
+        self.isFirstTimeCustomer  = isFirstTimeCustomer
+        self.customerLoyaltyTier  = customerLoyaltyTier
+        self.cashierRole          = cashierRole
     }
 }
 

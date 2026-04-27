@@ -522,6 +522,9 @@ struct PosCatalogTile: View {
     var isFavorite: Bool = false
     /// Pass `true` from `PosCatalogGrid` to engage iPad sizing/layout.
     var isPad: Bool = false
+    /// §16.2 Optional remote thumbnail URL.  When provided a `PosCatalogTileImage`
+    /// loads the photo lazily; otherwise the SF Symbol placeholder is shown.
+    var imageURL: URL? = nil
     let onTap: () -> Void
     /// §16.2 Long-press → quick-preview sheet.
     var onLongPress: (() -> Void)? = nil
@@ -547,24 +550,13 @@ struct PosCatalogTile: View {
             ZStack(alignment: .topTrailing) {
                 // Card body
                 VStack(alignment: .leading, spacing: 6) {
-                    // Icon row — box on iPhone, bare system image on iPad.
+                    // §16.2 Photo thumbnail (or SF Symbol fallback) + favorite star row.
                     HStack(alignment: .top) {
-                        if isPad {
-                            Image(systemName: tileSystemImage)
-                                .font(.system(size: 22))
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .accessibilityHidden(true)
-                        } else {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.bizarreSurface2.opacity(0.6))
-                                Image(systemName: tileSystemImage)
-                                    .font(.system(size: 18))
-                                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                                    .accessibilityHidden(true)
-                            }
-                            .frame(width: 34, height: 34)
-                        }
+                        PosCatalogTileImage(
+                            imageURL: imageURL,
+                            placeholderSymbol: tileSystemImage,
+                            isPad: isPad
+                        )
                         Spacer(minLength: 0)
                         // §16.2 Favorite star — top-right of icon row.
                         if let onToggleFavorite {
