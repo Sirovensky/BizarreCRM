@@ -10,6 +10,7 @@ import Pos
 import Sync
 import Hardware
 import Core
+import DesignSystem
 
 /// Shared services that must share state across the whole app. Most
 /// importantly the APIClient: LoginFlow writes the bearer token and base URL
@@ -68,6 +69,10 @@ final class AppServices {
         let posExecutor = PosSyncOpExecutor(api: apiClient)
         SyncManager.shared.executor = posExecutor
         SyncManager.shared.autoStart()
+
+        // §66.1 — Start CHHapticEngine on app start so it is warm when the
+        // first sale/scan/status-change arrives. Actor-isolated; no await needed here.
+        _ = CoreHapticsEngine.shared  // triggers actor init + notification registration
 
         // §29.1 Deferred init — non-critical framework init moved off the
         // hot launch path. MetricKit wiring (§32.2) and any future analytics /
