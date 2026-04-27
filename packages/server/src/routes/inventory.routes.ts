@@ -564,12 +564,17 @@ router.get('/variance-report', async (req, res) => {
 });
 
 // GET /inventory/barcode/:code
-router.get('/barcode/:code', async (req, res) => {
+// 2026-04-26 — wrapped in asyncHandler. Without it, a thrown AppError becomes
+// an unhandled promise rejection → Express returns 500 with no body →
+// Cloudflare returns 521 when the origin closes the connection. asyncHandler
+// forwards the throw to Express's error middleware which serialises the
+// AppError as { success:false, message, status }.
+router.get('/barcode/:code', asyncHandler(async (req, res) => {
   const adb: AsyncDb = req.asyncDb;
   const item = await adb.get(`SELECT * FROM inventory_items WHERE (sku = ? OR upc = ?) AND is_active = 1`, req.params.code, req.params.code);
   if (!item) throw new AppError('Item not found', 404);
   res.json({ success: true, data: item });
-});
+}));
 
 // ---------------------------------------------------------------------------
 // ENR-INV11: Kit/bundle definitions
