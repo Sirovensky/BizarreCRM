@@ -283,6 +283,78 @@ public struct TimedSkeletonView<Skeleton: View>: View {
     }
 }
 
+// MARK: — §63.4 SavingChip + SavedTick
+
+/// §63.4 — "Saving…" glass chip displayed top-right while a mutation is in flight.
+public struct SavingChip: View {
+    public init() {}
+
+    public var body: some View {
+        Label("Saving…", systemImage: "arrow.triangle.2.circlepath")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial, in: Capsule())
+            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            .accessibilityLabel("Saving")
+            .accessibilityAddTraits(.updatesFrequently)
+    }
+}
+
+/// §63.4 — Brief green-check confirmation shown for 1.5s after a mutation succeeds.
+public struct SavedTick: View {
+    public init() {}
+
+    public var body: some View {
+        Label("Saved", systemImage: "checkmark.circle.fill")
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.green)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(.ultraThinMaterial, in: Capsule())
+            .transition(.opacity.combined(with: .scale(scale: 0.85)))
+            .accessibilityLabel("Saved")
+    }
+}
+
+/// §63.4 — Combined chip/tick state-machine modifier.
+public struct InlineSavingStateModifier: ViewModifier {
+    public let isSaving: Bool
+    public let isSaved: Bool
+
+    public init(isSaving: Bool, isSaved: Bool) {
+        self.isSaving = isSaving
+        self.isSaved = isSaved
+    }
+
+    public func body(content: Content) -> some View {
+        content
+            .overlay(alignment: .topTrailing) {
+                ZStack(alignment: .topTrailing) {
+                    if isSaving {
+                        SavingChip()
+                            .padding(.trailing, 12)
+                            .padding(.top, 8)
+                    } else if isSaved {
+                        SavedTick()
+                            .padding(.trailing, 12)
+                            .padding(.top, 8)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.18), value: isSaving)
+                .animation(.easeInOut(duration: 0.18), value: isSaved)
+            }
+    }
+}
+
+public extension View {
+    /// Overlays a `SavingChip` while saving, then a brief `SavedTick` on success.
+    func inlineSavingState(isSaving: Bool, isSaved: Bool) -> some View {
+        modifier(InlineSavingStateModifier(isSaving: isSaving, isSaved: isSaved))
+    }
+}
+
 #if DEBUG
 #Preview("InlineSavingSpinner") {
     InlineSavingSpinner()
