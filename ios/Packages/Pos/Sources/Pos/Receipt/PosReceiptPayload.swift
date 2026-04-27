@@ -73,6 +73,13 @@ public struct PosReceiptPayload: Equatable, Sendable {
     /// confirmation banner (iPad only). Nil on iPhone or when unsigned.
     public let signedTicketId: Int64?
 
+    // MARK: - §16.24 — Repair ticket linkage
+
+    /// Linked repair ticket identifier (from `Cart.linkedTicketId` at sale close).
+    /// When non-nil, the §16.24 receipt screen shows "Parts reserved to Ticket #NNNN"
+    /// in teal and an "Open ticket #NNNN" secondary CTA button.
+    public let linkedRepairTicketId: Int64?
+
     // MARK: - Init
 
     public init(
@@ -88,7 +95,8 @@ public struct PosReceiptPayload: Equatable, Sendable {
         loyaltyTierAfter: String? = nil,
         loyaltyPointsTotal: Int? = nil,
         loyaltyNextTierPoints: Int? = nil,
-        signedTicketId: Int64? = nil
+        signedTicketId: Int64? = nil,
+        linkedRepairTicketId: Int64? = nil
     ) {
         self.invoiceId = invoiceId
         self.amountPaidCents = amountPaidCents
@@ -103,5 +111,6 @@ public struct PosReceiptPayload: Equatable, Sendable {
         self.loyaltyPointsTotal = loyaltyPointsTotal
         self.loyaltyNextTierPoints = loyaltyNextTierPoints
         self.signedTicketId = signedTicketId
+        self.linkedRepairTicketId = linkedRepairTicketId
     }
 }

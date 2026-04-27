@@ -103,6 +103,20 @@ public extension APIClient {
     func deleteCoupon(id: String) async throws {
         try await delete("/api/v1/coupons/\(id)")
     }
+
+    // MARK: Notifications (used by PosReceiptViewModel)
+
+    /// `POST /api/v1/notifications/send-receipt` — send receipt via email or SMS.
+    /// - Parameters:
+    ///   - invoiceId:   Server invoice ID.
+    ///   - channel:     `"email"` or `"sms"`. SMS deferred (POS-SMS-001).
+    ///   - destination: Email address or phone number.
+    /// - Returns: Server `messageId` when available.
+    func postSendReceipt(invoiceId: Int64, channel: String, destination: String) async throws -> String? {
+        let body = PosNotificationSendReceiptBody(invoiceId: invoiceId, channel: channel, destination: destination)
+        let resp = try await post("/api/v1/notifications/send-receipt", body: body, as: PosNotificationSendReceiptResponse.self)
+        return resp.data?.messageId
+    }
 }
 
 // MARK: - DTOs
@@ -150,4 +164,21 @@ public struct PosCashMoveResponse: Decodable, Sendable {
 private struct PosCashMoveBody: Encodable, Sendable {
     let amount: Int
     let reason: String?
+}
+
+private struct PosNotificationSendReceiptBody: Encodable, Sendable {
+    let invoiceId: Int64
+    let channel: String
+    let destination: String
+}
+
+// MARK: - Notification response DTOs
+
+/// Response from `POST /api/v1/notifications/send-receipt`.
+public struct PosNotificationSendReceiptResponse: Decodable, Sendable {
+    public let success: Bool
+    public struct DataPayload: Decodable, Sendable {
+        public let messageId: String?
+    }
+    public let data: DataPayload?
 }

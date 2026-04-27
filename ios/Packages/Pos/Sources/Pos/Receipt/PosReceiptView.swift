@@ -5,24 +5,37 @@ import Core
 import CoreImage
 import CoreImage.CIFilterBuiltins
 
-/// §Agent-E — Receipt confirmation screen. Shown immediately after a tender
-/// settles. Replaces (sits alongside) `PosPostSaleView` — the older view is
-/// retained for the spinner/phase transition; this view is the settled state.
+/// §Agent-E / §16.24 — Receipt confirmation screen. Shown immediately after a
+/// tender settles. Replaces (sits alongside) `PosPostSaleView` — the older view
+/// is retained for the spinner/phase transition; this view is the settled state.
+///
+/// §16.24 additions:
+/// - Hero circle with 600ms spring scale animation.
+/// - "SEND RECEIPT" vertical rows (SMS disabled POS-SMS-001, email enabled,
+///   thermal print disabled until §17).
+/// - Teal "Parts reserved to Ticket #N" row when `linkedRepairTicketId` is set.
+/// - Auto-dismiss 10s countdown ("Starting new sale in Ns…") that fires
+///   `vm.nextSale()` when it reaches 0. Any tap cancels it.
+/// - "Open ticket #N" secondary CTA when repair ticket is linked.
 ///
 /// Layout (iPhone + iPad share the same scroll body; iPad gets the collapse
 /// modifier on the cart column via the parent):
 ///
 /// ```
 /// ┌─────────────────────────────────────────┐
-/// │  SUCCESS HERO  (check glyph + amount)   │
+/// │  SUCCESS HERO  (check + spring + amount)│
 /// ├─────────────────────────────────────────┤
-/// │  SHARE 4-UP GRID (Text / Email / Print / AirDrop)│
+/// │  TICKET LINK ROW (teal, if linked)      │
+/// ├─────────────────────────────────────────┤
+/// │  SEND RECEIPT rows                      │
+/// ├─────────────────────────────────────────┤
+/// │  QR CODE                                │
 /// ├─────────────────────────────────────────┤
 /// │  LOYALTY CELEBRATION ROW (if pts > 0)   │
 /// ├─────────────────────────────────────────┤
 /// │  RECEIPT PREVIEW (monospace, scrollable)│
 /// ├─────────────────────────────────────────┤
-/// │  POST-SALE ACTION ROW                   │
+/// │  NEXT-ACTION CTA BAR (glass background) │
 /// └─────────────────────────────────────────┘
 /// ```
 ///
@@ -50,6 +63,10 @@ public struct PosReceiptView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    // MARK: - §16.24 — Hero spring animation state
+    @State private var heroScale: CGFloat = 0.5
+    @State private var heroOpacity: Double = 0.0
 
     // MARK: - §16.7 PDF export
     @State private var pdfExportURL: URL?
@@ -84,7 +101,17 @@ public struct PosReceiptView: View {
             // §16.7 — Persist receipt model on first appear (keyed to paidAt so
             // re-renders don't cause duplicate writes).
             await persistReceiptModel()
+            // §16.24 — Trigger hero spring animation then start auto-dismiss.
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                heroScale = 1.0
+                heroOpacity = 1.0
+            }
+            vm.startAutoDismissCountdown()
         }
+        // Cancel auto-dismiss on any tap.
+        .simultaneousGesture(
+            TapGesture().onEnded { vm.cancelAutoDismiss() }
+        )
     }
 
     // MARK: - §16.7 — Persist receipt model
@@ -188,7 +215,8 @@ public struct PosReceiptView: View {
     private var iPhoneLayout: some View {
         VStack(spacing: BrandSpacing.lg) {
             heroSection
-            shareTileGrid
+            ticketLinkRow
+            sendReceiptSection
             downloadPDFButton
             qrCodeSection
             loyaltyCelebration
@@ -203,10 +231,11 @@ public struct PosReceiptView: View {
 
     private var iPadLayout: some View {
         HStack(alignment: .top, spacing: BrandSpacing.lg) {
-            // Left: hero + share + loyalty + pencil banner + post-sale actions
+            // Left: hero + ticket link + send receipt + loyalty + pencil banner + post-sale actions
             VStack(spacing: BrandSpacing.lg) {
                 heroSection
-                shareTileGrid
+                ticketLinkRow
+                sendReceiptSection
                 downloadPDFButton
                 loyaltyCelebration
                 pencilSignatureBanner
@@ -222,6 +251,177 @@ public struct PosReceiptView: View {
                 qrCodeSection
             }
             .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - §16.24 — Ticket link row
+
+    /// Teal row: "Parts reserved to Ticket #NNNN" — shown when a repair ticket
+    /// is linked to this sale. Matches §16.24 spec hero sub-row.
+    @ViewBuilder
+    private var ticketLinkRow: some View {
+        if let ticketId = vm.payload.linkedRepairTicketId {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.bizarreTeal)
+                    .accessibilityHidden(true)
+                Text("Parts reserved to Ticket #\(ticketId)")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.bizarreTeal)
+                Spacer()
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(Color.bizarreTeal.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                    .strokeBorder(Color.bizarreTeal.opacity(0.30), lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Parts reserved to Ticket \(ticketId)")
+            .accessibilityIdentifier("pos.receipt.ticketLink")
+        }
+    }
+
+    // MARK: - §16.24 — SEND RECEIPT section
+
+    /// Vertical list of send-receipt rows per §16.24 spec.
+    /// SMS: disabled (POS-SMS-001 pending).
+    /// Email: enabled when customer email on file.
+    /// Thermal print: disabled until §17.
+    private var sendReceiptSection: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            // Section label
+            Text("SEND RECEIPT")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .kerning(1.0)
+                .padding(.horizontal, BrandSpacing.sm)
+
+            VStack(spacing: 0) {
+                // SMS row — disabled POS-SMS-001
+                sendReceiptRow(
+                    icon: "message.fill",
+                    label: "SMS",
+                    sublabel: vm.payload.customerPhone ?? "No phone on file",
+                    badge: "POS-SMS-001",
+                    isPrimary: vm.defaultChannel == .sms,
+                    isEnabled: false,
+                    identifier: "pos.receipt.send.sms"
+                ) {
+                    vm.share(channel: .sms)
+                }
+
+                Divider().padding(.leading, BrandSpacing.xl + BrandSpacing.md)
+
+                // Email row — enabled
+                sendReceiptRow(
+                    icon: "envelope.fill",
+                    label: "Email",
+                    sublabel: vm.payload.customerEmail ?? "No email on file",
+                    badge: nil,
+                    isPrimary: vm.defaultChannel == .email,
+                    isEnabled: vm.payload.customerEmail != nil,
+                    identifier: "pos.receipt.send.email"
+                ) {
+                    vm.share(channel: .email)
+                }
+
+                Divider().padding(.leading, BrandSpacing.xl + BrandSpacing.md)
+
+                // Thermal print row — disabled until §17
+                sendReceiptRow(
+                    icon: "printer.fill",
+                    label: "Thermal print",
+                    sublabel: "Printer SDK — §17",
+                    badge: nil,
+                    isPrimary: vm.defaultChannel == .print,
+                    isEnabled: false,
+                    identifier: "pos.receipt.send.thermalPrint"
+                ) {}
+            }
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+            .overlay(
+                RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5)
+            )
+
+            // Send status feedback
+            if vm.sendStatus != .idle {
+                sendStatusBanner
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.top, BrandSpacing.xs)
+            }
+        }
+    }
+
+    private func sendReceiptRow(
+        icon: String,
+        label: String,
+        sublabel: String,
+        badge: String?,
+        isPrimary: Bool,
+        isEnabled: Bool,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: BrandSpacing.md) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(isEnabled ? (isPrimary ? Color.bizarreOrange : Color.bizarreOnSurface) : Color.bizarreOnSurfaceMuted)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(label)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(isEnabled ? Color.bizarreOnSurface : Color.bizarreOnSurfaceMuted)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.bizarreSurface2, in: Capsule())
+                        }
+                    }
+                    Text(sublabel)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                }
+                Spacer()
+                if isPrimary && isEnabled {
+                    Circle()
+                        .fill(Color.bizarreOrange)
+                        .frame(width: 8, height: 8)
+                        .accessibilityHidden(true)
+                }
+                if vm.sendStatus == .sending && isPrimary {
+                    ProgressView().controlSize(.mini)
+                }
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm + 2)
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityIdentifier(identifier)
+    }
+
+    // MARK: - §16.24 — Auto-dismiss countdown label
+
+    @ViewBuilder
+    private var autoDismissCountdownLabel: some View {
+        if let remaining = vm.autoDismissSecondsRemaining {
+            Text("Starting new sale in \(remaining)s…")
+                .font(.system(size: 12))
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Auto-dismiss in \(remaining) seconds. Tap to cancel.")
+                .accessibilityIdentifier("pos.receipt.autoDismissCountdown")
         }
     }
 
@@ -326,45 +526,47 @@ public struct PosReceiptView: View {
         }
     }
 
-    // MARK: - Hero
+    // MARK: - §16.24 Hero (spring animated)
 
     /// Celebration hero — highest visual elevation per mockup spec.
-    /// Glass container with radial success glow, "Payment complete" label,
-    /// hero amount in Barlow Condensed, and cash change row.
+    /// §16.24: 72pt success circle, white checkmark, 600ms spring scale-in.
+    /// Below: total in Barlow Condensed (22pt bold), invoice # + customer name (12pt muted).
     private var heroSection: some View {
         VStack(spacing: BrandSpacing.md) {
-            // Radial glow behind check mark
+            // §16.24 — 72pt success circle with white checkmark, spring animated
             ZStack {
                 RadialGradient(
-                    colors: [Color.bizarreSuccess.opacity(0.40), .clear],
+                    colors: [Color.bizarreSuccess.opacity(0.35), .clear],
                     center: .center,
-                    startRadius: 20,
-                    endRadius: 90
+                    startRadius: 24,
+                    endRadius: 80
                 )
-                .frame(width: 180, height: 180)
+                .frame(width: 160, height: 160)
                 .accessibilityHidden(true)
 
                 Circle()
-                    .fill(Color.bizarreSuccess.opacity(0.18))
-                    .frame(width: 104, height: 104)
+                    .fill(Color.bizarreSuccess)
+                    .frame(width: 72, height: 72)
                     .accessibilityHidden(true)
 
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 80, weight: .semibold))
-                    .foregroundStyle(.bizarreSuccess)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 32, weight: .bold))
+                    .foregroundStyle(Color.white)
                     .accessibilityHidden(true)
             }
+            .scaleEffect(heroScale)
+            .opacity(heroOpacity)
 
-            // "Payment complete" label — matches mockup
+            // "Payment complete" label
             Text("Payment complete")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityIdentifier("pos.receipt.completionLabel")
 
-            // Amount — Barlow Condensed hero, Dynamic Type capped
+            // §16.24 — Amount: Barlow Condensed, 22pt weight-800 equivalent, Dynamic Type capped
             Text(CartMath.formatCents(vm.payload.amountPaidCents))
                 .font(
-                    .custom("BarlowCondensed-SemiBold", size: 60, relativeTo: .largeTitle)
+                    .custom("BarlowCondensed-ExtraBold", size: 60, relativeTo: .largeTitle)
                     .leading(.tight)
                 )
                 .dynamicTypeSize(.large ... .accessibility2)
@@ -373,9 +575,9 @@ public struct PosReceiptView: View {
                 .accessibilityLabel("Amount charged: \(CartMath.formatCents(vm.payload.amountPaidCents))")
                 .accessibilityIdentifier("pos.receipt.amount")
 
-            // Method + optional cash detail
-            Text(cashDetailLabel)
-                .font(.brandBodyMedium())
+            // §16.24 — Invoice number + method (12pt muted)
+            Text("Invoice #\(vm.payload.invoiceId) · \(cashDetailLabel)")
+                .font(.system(size: 12))
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("pos.receipt.methodLabel")
@@ -384,7 +586,6 @@ public struct PosReceiptView: View {
         .padding(.horizontal, BrandSpacing.lg)
         .frame(maxWidth: .infinity)
         .background(
-            // Hero highest elevation: glass surface with success-tinted glow
             RoundedRectangle(cornerRadius: 24)
                 .fill(Color.bizarreSurface1.opacity(0.85))
                 .overlay(
@@ -600,17 +801,23 @@ public struct PosReceiptView: View {
         return nil
     }
 
-    // MARK: - Post-sale action row
+    // MARK: - §16.24 Post-sale action row (glass CTA bar)
 
     private var postSaleActionRow: some View {
         VStack(spacing: BrandSpacing.sm) {
+            // §16.24 — Auto-dismiss countdown (muted, above buttons)
+            autoDismissCountdownLabel
+
             // Secondary actions
             HStack(spacing: BrandSpacing.sm) {
-                secondaryActionButton(
-                    label: "View ticket",
-                    systemImage: "ticket",
-                    identifier: "pos.receipt.viewTicket"
-                ) { vm.viewTicket() }
+                // §16.24 — "Open ticket #N" when repair ticket linked
+                if let ticketId = vm.payload.linkedRepairTicketId {
+                    secondaryActionButton(
+                        label: "Open ticket #\(ticketId)",
+                        systemImage: "wrench.and.screwdriver",
+                        identifier: "pos.receipt.openTicket"
+                    ) { vm.viewTicket() }
+                }
 
                 secondaryActionButton(
                     label: "Customer",
@@ -625,14 +832,14 @@ public struct PosReceiptView: View {
                 ) { vm.startRefund() }
             }
 
-            // Primary CTA — next sale
+            // §16.24 — Primary CTA: "New sale ↗" (cream/orange, glass background)
             Button {
                 vm.nextSale()
                 dismiss()
             } label: {
                 HStack(spacing: BrandSpacing.sm) {
                     Image(systemName: "arrow.forward.circle.fill")
-                    Text("New sale")
+                    Text("New sale ↗")
                         .font(.brandTitleMedium())
                 }
                 .frame(maxWidth: .infinity)
@@ -647,6 +854,10 @@ public struct PosReceiptView: View {
             .accessibilityHint("Clears the cart and returns to the POS")
             .accessibilityIdentifier("pos.receipt.newSale")
         }
+        .padding(BrandSpacing.md)
+        // §16.24 — Glass background on the CTA bar (chrome role per Liquid Glass rules)
+        .background(Color.bizarreSurfaceBase.opacity(0.85))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
     }
 
     private func secondaryActionButton(

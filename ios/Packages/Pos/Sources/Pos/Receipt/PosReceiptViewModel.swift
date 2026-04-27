@@ -3,7 +3,7 @@ import Observation
 import Networking
 import Core
 
-/// §Agent-E — Observable view model for the receipt confirmation screen.
+/// §Agent-E / §16.24 — Observable view model for the receipt confirmation screen.
 ///
 /// Responsibilities:
 /// - Pre-picks the default share channel: SMS when the customer has a phone
@@ -11,7 +11,8 @@ import Core
 /// - Coordinates the four share channels (SMS, Email, Print, AirDrop).
 /// - Drives the post-sale action row (view ticket, customer profile, refund,
 ///   next sale).
-/// - Fires the SMS / email server endpoints and surfaces send status.
+/// - Fires the send-receipt server endpoint and surfaces send status.
+/// - §16.24: Auto-dismiss countdown (10s); cancelable by user interaction.
 ///
 /// Wiring: inject `PosReceiptPayload` produced by `PosTenderCoordinator`
 /// when the transaction settles. The `APIClient` is optional so the type
@@ -56,6 +57,17 @@ public final class PosReceiptViewModel {
     /// `true` after `viewCustomerProfile()` fires.
     public private(set) var didRequestCustomerProfile: Bool = false
 
+    // MARK: - §16.24 — Auto-dismiss countdown
+
+    /// Seconds remaining before auto-navigating to `PosEntryView`.
+    /// Counts down from `autoDismissTotalSeconds`. Nil when cancelled.
+    public private(set) var autoDismissSecondsRemaining: Int? = nil
+
+    /// Total countdown duration (10 seconds per §16.24).
+    public let autoDismissTotalSeconds: Int = 10
+
+    @ObservationIgnored private var countdownTask: Task<Void, Never>?
+
     // MARK: - Deps
 
     @ObservationIgnored private let api: (any APIClient)?
@@ -96,11 +108,12 @@ public final class PosReceiptViewModel {
     /// SwiftUI layer via `PosShareLinkAdapter` — calling this for those
     /// channels is a no-op (the view wires them directly).
     public func share(channel: ShareChannel) {
+        cancelAutoDismiss()
         switch channel {
         case .sms:
-            Task { await sendSms() }
+            Task { await sendViaNotificationsEndpoint(channel: "sms") }
         case .email:
-            Task { await sendEmail() }
+            Task { await sendViaNotificationsEndpoint(channel: "email") }
         case .print, .airDrop:
             // Print and AirDrop are handled locally by the view layer.
             AppLog.pos.debug("PosReceiptViewModel: local share channel \(String(describing: channel))")
@@ -110,96 +123,97 @@ public final class PosReceiptViewModel {
     // MARK: - Post-sale actions
 
     public func nextSale() {
+        cancelAutoDismiss()
         didRequestNextSale = true
         onNextSale()
     }
 
     public func startRefund() {
+        cancelAutoDismiss()
         didRequestRefund = true
         onRefund()
     }
 
     public func viewTicket() {
+        cancelAutoDismiss()
         didRequestViewTicket = true
         onViewTicket()
     }
 
     public func viewCustomerProfile() {
+        cancelAutoDismiss()
         didRequestCustomerProfile = true
         onViewCustomerProfile()
     }
 
-    // MARK: - SMS send
+    // MARK: - §16.24 — Auto-dismiss
 
-    private func sendSms() async {
-        guard let phone = payload.customerPhone, !phone.isEmpty else {
-            sendStatus = .failed("No customer phone on file.")
-            return
-        }
-        sendStatus = .sending
-        guard let api else {
-            AppLog.pos.debug("PosReceiptViewModel: no APIClient — SMS stub")
-            sendStatus = .sent("Receipt sent via SMS (stub).")
-            return
-        }
-        do {
-            let body = SendReceiptSmsRequest(invoice_id: payload.invoiceId, phone: phone)
-            _ = try await api.post(
-                "receipts/send-sms",
-                body: body,
-                as: EmptyResponse.self
-            )
-            sendStatus = .sent("Receipt sent to \(phone).")
-        } catch {
-            AppLog.pos.error("PosReceiptViewModel: SMS send failed — \(error.localizedDescription)")
-            sendStatus = .failed(error.localizedDescription)
+    /// Start the 10-second countdown. Fires `onNextSale` when it reaches 0.
+    /// Any user interaction should call `cancelAutoDismiss()`.
+    public func startAutoDismissCountdown() {
+        guard countdownTask == nil else { return }
+        autoDismissSecondsRemaining = autoDismissTotalSeconds
+        countdownTask = Task {
+            var remaining = autoDismissTotalSeconds
+            while remaining > 0 {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                remaining -= 1
+                autoDismissSecondsRemaining = remaining
+            }
+            guard !Task.isCancelled else { return }
+            // Countdown complete — navigate to next sale.
+            AppLog.pos.info("PosReceiptViewModel: auto-dismiss countdown complete")
+            nextSale()
         }
     }
 
-    // MARK: - Email send
+    /// Cancel the countdown (user tapped somewhere).
+    public func cancelAutoDismiss() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        autoDismissSecondsRemaining = nil
+    }
 
-    private func sendEmail() async {
-        guard let email = payload.customerEmail, !email.isEmpty else {
-            sendStatus = .failed("No customer email on file.")
+    // MARK: - §16.24 — Send receipt via notifications endpoint
+    //
+    // Server: POST /api/v1/notifications/send-receipt
+    // Body: { invoiceId, channel: 'email'|'sms', destination }
+    // SMS: disabled until POS-SMS-001. Email: enabled.
+
+    private func sendViaNotificationsEndpoint(channel: String) async {
+        let destination: String?
+        switch channel {
+        case "sms":   destination = payload.customerPhone
+        case "email": destination = payload.customerEmail
+        default:      destination = nil
+        }
+
+        guard let dest = destination, !dest.isEmpty else {
+            sendStatus = .failed("No contact on file for \(channel).")
             return
         }
+
         sendStatus = .sending
+
         guard let api else {
-            AppLog.pos.debug("PosReceiptViewModel: no APIClient — email stub")
-            sendStatus = .sent("Receipt sent via email (stub).")
+            AppLog.pos.debug("PosReceiptViewModel: no APIClient — \(channel) stub")
+            sendStatus = .sent("Receipt sent via \(channel) (stub).")
             return
         }
+
         do {
-            let body = SendReceiptEmailRequest(invoice_id: payload.invoiceId, email: email)
-            _ = try await api.post(
-                "receipts/send-email",
-                body: body,
-                as: EmptyResponse.self
+            // Typed wrapper in APIClient+CashRegister.swift (§20 containment).
+            _ = try await api.postSendReceipt(
+                invoiceId: payload.invoiceId,
+                channel: channel,
+                destination: dest
             )
-            sendStatus = .sent("Receipt sent to \(email).")
+            sendStatus = .sent("Receipt sent to \(dest).")
+            AppLog.pos.info("PosReceiptViewModel: receipt sent via \(channel, privacy: .public) invoice=\(payload.invoiceId, privacy: .public)")
         } catch {
-            AppLog.pos.error("PosReceiptViewModel: email send failed — \(error.localizedDescription)")
+            AppLog.pos.error("PosReceiptViewModel: \(channel) send failed — \(error.localizedDescription)")
             sendStatus = .failed(error.localizedDescription)
         }
     }
-}
-
-// MARK: - Request types
-
-/// Request body for `POST /api/v1/receipts/send-sms`.
-private struct SendReceiptSmsRequest: Encodable, Sendable {
-    let invoice_id: Int64
-    let phone: String
-}
-
-/// Request body for `POST /api/v1/receipts/send-email`.
-private struct SendReceiptEmailRequest: Encodable, Sendable {
-    let invoice_id: Int64
-    let email: String
-}
-
-/// Generic empty-data response envelope used when the server returns
-/// `{ success: true }` with no `data` field.
-private struct EmptyResponse: Decodable, Sendable {
-    let success: Bool
 }

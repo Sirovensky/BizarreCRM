@@ -2377,13 +2377,13 @@ Sections §§16.21–16.26 document the iOS implementation plan for a ground-up 
 - VoiceOver: success circle announced as "Sale complete, $274.51". QR announced as "Tracking QR code".
 
 **Status**
-- [ ] `PosReceiptView` + `PosReceiptViewModel`.
-- [ ] Hero success animation (scale spring).
-- [ ] Send-receipt rows (email wired; SMS deferred POS-SMS-001).
-- [ ] QR code generation from tracking token.
-- [ ] `ReceiptModel` GRDB snapshot at sale close.
-- [ ] Auto-dismiss 10s countdown.
-- [ ] "Open ticket" CTA when repair path was used.
+- [x] `PosReceiptView` + `PosReceiptViewModel`.
+- [x] Hero success animation (scale spring).
+- [x] Send-receipt rows (email wired; SMS deferred POS-SMS-001).
+- [x] QR code generation from tracking token.
+- [x] `ReceiptModel` GRDB snapshot at sale close.
+- [x] Auto-dismiss 10s countdown.
+- [x] "Open ticket" CTA when repair path was used.
 
 ---
 
