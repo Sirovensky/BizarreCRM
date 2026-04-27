@@ -130,10 +130,16 @@ const PII_RULES: readonly PiiRule[] = [
   },
 ];
 
-const DEFAULT_PII_MONTHS = 24;
-// SCAN-1136 / SCAN-1132: 0 is now a valid sentinel meaning "disabled for
-// this table". Negative values still get clamped to DEFAULT_PII_MONTHS so
-// a fat-fingered `-1` doesn't wipe the table on the next run.
+// Default-OFF policy: no deletion unless the operator explicitly opts in.
+// Shop owners on a self-hosted single-tenant install often want to keep
+// data forever (small repair shop with finite customer count, no GDPR
+// pressure). Setting an aggressive default makes the system feel hostile
+// — operators want to be in charge of their own data lifecycle.
+// 0 = disabled / no deletion (canonical "infinite retention" sentinel).
+const DEFAULT_PII_MONTHS = 0;
+// SCAN-1136 / SCAN-1132: 0 is the valid sentinel meaning "disabled for
+// this table" — also the new default. Negative values get clamped to 0
+// so a fat-fingered `-1` doesn't wipe the table on the next run.
 const MIN_PII_MONTHS = 0;
 const MAX_PII_MONTHS = 120; // 10 years — anything past this is almost certainly a typo.
 
@@ -283,24 +289,27 @@ export interface RetentionSweepResult {
 }
 
 /**
- * Returns true if the tenant has explicitly disabled retention sweeps via the
- * `retention_sweep_enabled` key in `store_config`. Missing row == enabled
- * (default-on), `'0'` == disabled, anything else == enabled.
+ * Returns true if retention sweeps are disabled for this tenant. Default-OFF
+ * policy: missing row == disabled. Operator must explicitly opt IN by setting
+ * `retention_sweep_enabled = '1'`.
  *
- * The sweep is intentionally default-on: operators opt out per tenant, they
- * don't have to opt in. Letting log tables grow unbounded is the bug we're
- * fixing; silent opt-in would preserve the bug.
+ * Rationale: shop owners want to control their own data lifecycle. A small
+ * repair shop with 200 customers/year doesn't need GDPR-grade purges by
+ * default — they want history. The retention UI lets owners turn this on
+ * if/when they need to comply with a specific privacy regime or storage
+ * cap.
  */
 function isSweepDisabledForTenant(db: Database): boolean {
   try {
     const row = db
       .prepare("SELECT value FROM store_config WHERE key = 'retention_sweep_enabled'")
       .get() as { value?: string } | undefined;
-    return row?.value === '0';
+    // Only `'1'` enables the sweep. Missing row, '0', or anything else = disabled.
+    return row?.value !== '1';
   } catch {
     // If store_config doesn't exist yet (fresh tenant, pre-seed), treat as
-    // enabled. The sweep itself handles missing target tables gracefully.
-    return false;
+    // disabled — owner hasn't had a chance to opt in.
+    return true;
   }
 }
 

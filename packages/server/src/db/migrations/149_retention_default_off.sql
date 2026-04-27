@@ -1,0 +1,42 @@
+-- ============================================================================
+-- Migration 149 — Default retention OFF (no deletion) policy reversal
+-- ============================================================================
+--
+-- Policy change (2026-04-26): the retention sweeper defaults flip from
+-- "delete after 24 months" to "keep forever." Rationale:
+--
+--   * Self-hosted single-tenant shops typically have 200-2000 customers and
+--     finite communication volume. Storage isn't the bottleneck; institutional
+--     memory is.
+--   * Default-on aggressive deletion makes the system feel hostile — owners
+--     want to be in charge of their own data lifecycle.
+--   * Privacy-regime compliance (GDPR / CCPA) is opt-in: the owner declares
+--     a retention window when they need it, not the platform deciding for them.
+--
+-- This migration:
+--
+--   1. Seeds `retention_sweep_enabled = '0'` (master kill switch — sweep never
+--      runs unless owner explicitly flips to '1' in Settings → Data).
+--      Pairs with retentionSweeper.ts `isSweepDisabledForTenant()` whose new
+--      default-disabled semantics treat missing/0 as off.
+--
+-- Existing tenants:
+--
+--   Tenants who already ran migration 108 have `retention_*_months = '24'`
+--   in store_config. With the master switch off (this migration) those values
+--   are dormant — no deletions occur. Owners who want the old 24-month
+--   behavior must explicitly enable the sweep in Settings → Data.
+--
+--   Tenants who deliberately customized retention_*_months to a non-24 value
+--   are preserved exactly as-is.
+--
+-- Fresh tenants (post-this-migration):
+--
+--   Get retention_sweep_enabled = '0' (this migration) and the legacy
+--   retention_*_months = '24' (mig 108). Sweep is disabled by default; if
+--   they later enable it, they'll inherit 24-month windows but should
+--   review the values before flipping the switch (UI shows them as the
+--   current policy).
+-- ============================================================================
+
+INSERT OR IGNORE INTO store_config (key, value) VALUES ('retention_sweep_enabled', '0');
