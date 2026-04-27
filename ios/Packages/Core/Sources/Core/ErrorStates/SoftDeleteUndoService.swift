@@ -126,8 +126,16 @@ public final class SoftDeleteUndoService {
 
 // MARK: - EnvironmentKey
 
+// `SoftDeleteUndoService.shared` is `@MainActor`-isolated. EnvironmentKey's
+// `defaultValue` must be nonisolated. Use the same box pattern as
+// `SceneUndoManagerKey` to avoid the Swift 6 actor-isolation error.
+private final class _SoftDeleteBox: @unchecked Sendable {
+    let value: SoftDeleteUndoService = MainActor.assumeIsolated { SoftDeleteUndoService.shared }
+}
+
 private struct SoftDeleteUndoServiceKey: EnvironmentKey {
-    static let defaultValue = SoftDeleteUndoService.shared
+    nonisolated(unsafe) static let _box = _SoftDeleteBox()
+    static var defaultValue: SoftDeleteUndoService { _box.value }
 }
 
 extension EnvironmentValues {

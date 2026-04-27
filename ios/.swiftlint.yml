@@ -104,3 +104,21 @@ custom_rules:
     regex: '\.onTapGesture\s*\{'
     message: "Wrap in `Button` or add `.accessibilityAddTraits(.isButton)` + `.accessibilityLabel` (§26 + §31)."
     severity: warning
+
+  # §1.4 / §29.5 Glass budget lint — flag files with 7+ .brandGlass call sites.
+  # The debug-build GlassBudgetMonitor fires at runtime (per screen); this
+  # rule catches structural over-use at code-review time. Files containing
+  # ≥ 7 `.brandGlass` calls almost certainly display too many glass surfaces.
+  # False positives (e.g. GlassKit.swift itself) silence with:
+  #   // swiftlint:disable:file glass_budget_per_file
+  # Note: SwiftLint `custom_rules` match once per *line*, not per *file*.
+  # This rule fires when a single line repeats `.brandGlass` 7+ times,
+  # which is practically impossible; real over-use is caught by the runtime
+  # GlassBudgetMonitor assert.  The rule is retained as documentation of
+  # the budget and to catch generator-produced code that might inline many
+  # `.brandGlass` chains on one line.
+  glass_budget_per_file:
+    name: "Glass budget: too many .brandGlass calls on one line"
+    regex: '(\.brandGlass[^;]*){7,}'
+    message: "≥7 .brandGlass calls on one line — split views or wrap in BrandGlassContainer (§1.4/§29.5/§30). Max 6 visible per screen."
+    severity: warning

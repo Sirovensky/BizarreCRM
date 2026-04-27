@@ -66,6 +66,25 @@ public final class SceneUndoManager {
     public var undoActionDescription: String? { undoStack.last?.description }
     public var redoActionDescription: String? { redoStack.last?.description }
 
+    /// Total number of undoable actions on the stack.
+    public var undoCount: Int { undoStack.count }
+
+    /// Descriptions of the last N undoable actions, most-recent first.
+    /// Used by `RecentUndoMenuButton` to populate the ⌘Z quick-picker (§63.5).
+    public func recentUndoDescriptions(limit: Int) -> [String] {
+        Array(undoStack.suffix(limit).reversed().map(\.description))
+    }
+
+    /// Undo all actions on the stack sequentially (most-recent first).
+    ///
+    /// Each undo fires the registered compensating closure; if any fail they
+    /// are silently skipped so the rest of the stack can still drain.
+    public func undoAll() async {
+        while canUndo {
+            await undo()
+        }
+    }
+
     // MARK: - Registration
 
     /// Register a new undoable action.
@@ -114,8 +133,20 @@ public final class SceneUndoManager {
 
 // MARK: - EnvironmentKey
 
+// `SceneUndoManager` is `@MainActor`-isolated, so its init can only be called
+// on the main actor. `EnvironmentKey.defaultValue` must be nonisolated. We
+// satisfy both constraints by making the stored default nonisolated(unsafe) and
+// wrapping its creation so it is only ever initialised from the main actor via
+// the `EnvironmentValues` accessor, which SwiftUI always calls on @MainActor.
+private final class _SceneUndoManagerBox: @unchecked Sendable {
+    // `MainActor.assumeIsolated` is safe here: SwiftUI only accesses
+    // `EnvironmentKey.defaultValue` from @MainActor contexts.
+    let value: SceneUndoManager = MainActor.assumeIsolated { SceneUndoManager() }
+}
+
 private struct SceneUndoManagerKey: EnvironmentKey {
-    static let defaultValue = SceneUndoManager()
+    nonisolated(unsafe) static let _box = _SceneUndoManagerBox()
+    static var defaultValue: SceneUndoManager { _box.value }
 }
 
 extension EnvironmentValues {

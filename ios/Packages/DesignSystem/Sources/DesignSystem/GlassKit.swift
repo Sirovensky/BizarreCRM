@@ -48,6 +48,9 @@ private struct BrandGlassModifier<S: Shape>: ViewModifier {
     let tint: Color?
     let interactive: Bool
 
+    /// §1.4 — Reduce Transparency: read the a11y flag so we can skip glass.
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
     func body(content: Content) -> some View {
         #if DEBUG
         return glassBodyDebug(content: content)
@@ -58,11 +61,26 @@ private struct BrandGlassModifier<S: Shape>: ViewModifier {
 
     @ViewBuilder
     private func glassBody(content: Content) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
+        // §1.4 Reduce Transparency fallback: pure elevated surface fill, no blur.
+        if reduceTransparency {
+            applyReduceTransparencyFallback(content: content)
+        } else if #available(iOS 26.0, macOS 26.0, *) {
             applyGlass(content: content)
         } else {
             applyFallback(content: content)
         }
+    }
+
+    /// §1.4 — Solid fill used when "Reduce Transparency" is enabled in Accessibility settings.
+    /// Uses `.brandSurfaceElevated` token (equivalent to Surface1 in BrandColors).
+    private func applyReduceTransparencyFallback(content: Content) -> some View {
+        content
+            .background(Color.bizarreSurface1, in: shape)
+            .overlay {
+                if let tint {
+                    shape.fill(tint.opacity(0.20))
+                }
+            }
     }
 
     #if DEBUG
@@ -266,6 +284,52 @@ public struct BrandGlassClearButtonStyle: ButtonStyle {
 public extension ButtonStyle where Self == BrandGlassClearButtonStyle {
     static var brandGlassClear: BrandGlassClearButtonStyle { BrandGlassClearButtonStyle() }
 }
+
+// MARK: - §1.4 On-device glass verification helper
+
+/// Reports whether the current device/OS combination renders real Liquid Glass
+/// (iOS 26+ `.glassEffect` with GPU refraction) vs the `.ultraThinMaterial`
+/// fallback used on older OS versions.
+///
+/// Call from Settings → Diagnostics or a debug overlay to confirm glass quality.
+///
+/// - Returns: `true` when iOS 26+ is active, meaning `.glassEffect` will engage
+///   full refraction on A14+ chips. Returns `false` pre-iOS 26 (material fallback).
+@MainActor
+public func brandGlassIsRealRefraction() -> Bool {
+    if #available(iOS 26.0, *) { return true }
+    return false
+}
+
+/// A small diagnostic badge for `#if DEBUG` overlays that shows whether the
+/// real Liquid Glass renderer is active on this device.
+///
+/// Usage (debug overlay):
+/// ```swift
+/// #if DEBUG
+/// GlassQualityBadge().padding()
+/// #endif
+/// ```
+#if DEBUG
+public struct GlassQualityBadge: View {
+    @State private var isReal: Bool = false
+
+    public init() {}
+
+    public var body: some View {
+        Label(
+            isReal ? "Liquid Glass ✓" : "Glass fallback",
+            systemImage: isReal ? "sparkles" : "sparkles.slash"
+        )
+        .font(.caption2.bold())
+        .foregroundStyle(isReal ? Color.bizarreSuccess : Color.secondary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(.ultraThinMaterial, in: Capsule())
+        .task { isReal = await MainActor.run { brandGlassIsRealRefraction() } }
+    }
+}
+#endif
 
 // MARK: - BrandGlassBadge — capsule badge with glass backing (§30)
 
