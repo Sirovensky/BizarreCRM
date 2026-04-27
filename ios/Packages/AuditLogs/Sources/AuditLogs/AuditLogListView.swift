@@ -16,6 +16,8 @@ public struct AuditLogListView: View {
     @State private var vm: AuditLogViewModel
     @State private var selectedEntry: AuditLogEntry?
     @State private var searchText = ""
+    // §50.3 Export sheet
+    @State private var showExportSheet = false
 
     /// Called with (entityType, entityId) when the user navigates to an affected entity.
     private let navigateToEntity: ((_ entityType: String, _ entityId: String) -> Void)?
@@ -65,6 +67,10 @@ public struct AuditLogListView: View {
                 AuditLogDetailView(entry: entry, navigateToEntity: navigateToEntity)
             }
             .safeAreaInset(edge: .top) { filterChipBar }
+            // §50.3 Export sheet
+            .sheet(isPresented: $showExportSheet) {
+                AuditLogExportSheet(entries: vm.entries)
+            }
         }
     }
 
@@ -93,6 +99,10 @@ public struct AuditLogListView: View {
             .onChange(of: searchText) { _, q in vm.onQueryChange(q) }
             .toolbar { toolbarItems }
             .navigationSplitViewColumnWidth(min: 340, ideal: 420, max: 560)
+            // §50.3 Export sheet
+            .sheet(isPresented: $showExportSheet) {
+                AuditLogExportSheet(entries: vm.entries)
+            }
         } detail: {
             // Column 3: Diff detail
             ZStack {
@@ -255,15 +265,16 @@ public struct AuditLogListView: View {
             .accessibilityLabel(vm.filters.isActive ? "Filters active, tap to edit" : "Filter logs")
             .accessibilityIdentifier("auditlog.filter.button")
         }
-        // §50.3 Export — stub with TODO. Not implemented this PR.
+        // §50.3 Export CSV — wires to AuditLogExportSheet
         ToolbarItem(placement: .secondaryAction) {
             Button {
-                // TODO: §50.3 — Export CSV/JSON/PDF
+                showExportSheet = true
             } label: {
-                Label("Export", systemImage: "square.and.arrow.up")
+                Label("Export CSV", systemImage: "square.and.arrow.up")
             }
-            .disabled(true)
-            .accessibilityLabel("Export — coming soon")
+            .disabled(vm.entries.isEmpty)
+            .accessibilityLabel("Export audit log as CSV")
+            .accessibilityIdentifier("auditlog.export.button")
         }
         ToolbarItem(placement: .secondaryAction) {
             Button { Task { await vm.load() } } label: {

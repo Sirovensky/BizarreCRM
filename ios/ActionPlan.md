@@ -1163,7 +1163,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Row a11y — combined VoiceOver utterance `displayId. customerName. total. [Status X]. [Due $Y]`. Selectable order IDs, monospaced Due text.
 - [x] **CachedRepository + offline** — `InvoiceCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InvoiceSummary]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired. `OfflineEmptyStateView` shown when offline + cache empty. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
 - [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void. (`InvoiceStatusTab` enum; wired in `InvoiceListView` tab bar + `InvoiceListViewModel.applyStatusTab`; `legacyFilter` + `serverStatus` mapping; 10 tests) (3c5f3522)
-- [ ] **Filters** — date range, customer, amount range, payment method, created-by.
+- [x] **Filters** — date range, customer, amount range, payment method, created-by. `InvoiceFilterSheet` + `InvoiceListFilter` + `InvoicePaymentMethodFilter`; wired in `InvoiceListViewModel.applyAdvancedFilter`; toolbar badge; 14 tests. (feat(§7.1) 884b18b9)
 - [x] **Sort** — date / amount / due date / status. (`InvoiceSortOption` 7-option enum with query items; wired in toolbar sort Menu + `InvoiceListViewModel.applySort`; 4 tests) (3c5f3522)
 - [x] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through). (`InvoiceRowChip` view + `InvoiceRowChipDescriptor`; 12 tests) (3c5f3522)
 - [x] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down. (`InvoiceStatsHeaderView` + `InvoiceStatsViewModel`; `InvoiceStats` model in `InvoicesEndpoints`; `api.invoiceStats()`) (3c5f3522)
@@ -1175,9 +1175,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
-- [ ] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip.
-- [ ] **Customer card** — name + phone + email + quick-actions.
-- [ ] **Line items** — editable table (if status allows); tax per line.
+- [x] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip. (feat(§7.2) 34788e7d)
+- [x] **Customer card** — name + phone + email + quick-actions (tel:/mailto: Links). (feat(§7.2) 34788e7d)
+- [ ] **Line items** — editable table (if status allows); tax per line (read display done feat(§7.2) 34788e7d).
 - [ ] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
 - [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
 - [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
@@ -1188,7 +1188,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Send by email** — `InvoiceEmailReceiptSheet` — `POST /invoices/:id/email-receipt` + SMS copy toggle. (feat(ios phase-4 §7))
 - [ ] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac).
 - [ ] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer.
-- [ ] **Clone invoice** — duplicate line items for new invoice.
+- [x] **Clone invoice** — duplicate line items for new invoice. `POST /api/v1/invoices/:id/clone` + `CloneInvoiceResponse`; cloned detail sheet; error alert. (feat(§7.2) 34788e7d)
 - [ ] **Convert to credit note** — if overpaid.
 - [ ] **Timeline** — every status change, payment, note, email/SMS send.
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
