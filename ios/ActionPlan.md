@@ -3585,15 +3585,15 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Task budgets** — complete within 30s; defer remainder. (`BackgroundTaskScheduler.swift` 30s expiration handlers; agent-9 b6 confirmed)
 
 ### 21.5 WebSocket (Starscream)
-- [ ] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`.
-- [ ] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates.
-- [ ] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%.
-- [ ] **Heartbeat** — ping every 25s; timeout 30s → force reconnect.
-- [ ] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side.
-- [ ] **Event envelope** — `{ type, entity, id, payload, version }`.
-- [ ] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side.
-- [ ] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data.
-- [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.
+- [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (`WebSocketManager.makeWSURL(base:topic:)` for all 4 Topics; `wss` scheme derived from `https` base URL; agent-9 b9)
+- [x] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates. (`WebSocketConnection.connect()` sets `req.setValue("Bearer \(token)", forHTTPHeaderField: "Sec-WebSocket-Protocol")`; agent-9 b9)
+- [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (`WebSocketManager.backoffDelay(attempt:)` + `scheduleReconnect(topic:attempt:)`; agent-9 b9)
+- [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (`WebSocketManager.startHeartbeat()` 25s Task loop calling `pingAll()`; agent-9 b9)
+- [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (`WebSocketManager.subscribe/unsubscribe(topic:)` ref-counted; `subscriptionCounts[Topic: Int]`; agent-9 b9)
+- [x] **Event envelope** — `{ type, entity, id, payload, version }`. (`WebSocketEvent` Decodable struct; agent-9 b9)
+- [x] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side. (`WSBackpressureFilter` actor; `shouldForward(topic:)` 1s gate; applied in `handleEvent` for `.dashboard` topic; `WebSocketBackpressureTests` 5 assertions; agent-9 b9)
+- [x] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data. (`WSConnectionStateObserver` @Observable shared; `WSReconnectChip` glass capsule view; `scheduleReconnect` sets `isReconnecting = true`; agent-9 b9)
+- [x] **Message bus** — `Combine` publisher per event type; repositories subscribe. (`WebSocketEventBus` `PassthroughSubject<WebSocketEvent, Never>` per topic; agent-9 b9)
 
 ### 21.6 Foreground lifecycle
 - [x] **`didBecomeActive`** — lightweight sync + WS re-subscribe. Commit `3404f056`.
@@ -6396,7 +6396,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 - [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
 - [ ] Delivery tuning: respect quiet hours (§13); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
 - [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status
-- [ ] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app
+- [x] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app. (`NotificationCategories.smsReplyCategory()` — `UNTextInputNotificationAction(identifier: smsQuickReply, ...)` + view action; registered via `NotificationCategories.registerWithSystem()`; agent-9 b9)
 - [ ] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category
 - [ ] Clear-all: on app foreground after read, system badge clears accordingly; single tap clears relevant bundle
 - [ ] Historical view: Settings → Notifications → "Recent" shows last 100 pushes for audit
