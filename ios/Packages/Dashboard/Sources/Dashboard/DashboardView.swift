@@ -29,28 +29,79 @@ public struct DashboardView: View {
     /// §3.1 / §3.14 New-tenant empty state CTA — "Import data".
     public var onImportData: (() -> Void)?
 
+    // §3.4 My Queue callbacks
+    /// Called when the user taps a ticket in My Queue — should navigate to ticket detail.
+    public var onMyQueueTicketTap: ((Int64) -> Void)?
+    /// Quick action: Start work on a ticket from My Queue.
+    public var onMyQueueStartWork: ((Int64) -> Void)?
+    /// Quick action: Mark ready on a ticket from My Queue.
+    public var onMyQueueMarkReady: ((Int64) -> Void)?
+    /// Quick action: Complete a ticket from My Queue.
+    public var onMyQueueComplete: ((Int64) -> Void)?
+
+    // §3.8 Quick-action toolbar callbacks (iPad/Mac toolbar items; no FAB on iPad)
+    public var onNewTicket: (() -> Void)?
+    public var onNewSale: (() -> Void)?
+    public var onNewCustomer: (() -> Void)?
+    public var onScanBarcode: (() -> Void)?
+    public var onNewSMS: (() -> Void)?
+
+    // §3.10 Sync-status tap callback
+    public var onTapSyncSettings: (() -> Void)?
+
+    // §3.12 SMS tile tap callback
+    public var onTapSMSTab: (() -> Void)?
+
+    @ObservationIgnored private let api: APIClient
+
     /// - Parameters:
     ///   - repo: Dashboard data repository.
-    ///   - api: APIClient for all network calls (timeclock included).
+    ///   - api: APIClient for all network calls (timeclock + My Queue included).
     ///   - userIdProvider: Closure that returns the current user's ID for
     ///     timeclock calls. Defaults to `{ 0 }` — a placeholder until
     ///     `GET /auth/me` is wired (TODO post-phase-11).
     ///   - onTileTap: Called when the user taps a KPI tile. Nil = non-interactive.
     ///   - onCreateTicket: Called from the new-tenant empty state CTA. Nil hides button.
     ///   - onImportData: Called from the new-tenant empty state CTA. Nil hides button.
+    ///   - onMyQueueTicketTap: Called when the user taps a ticket row in My Queue.
+    ///   - onMyQueueStartWork / onMyQueueMarkReady / onMyQueueComplete: Quick-action
+    ///     callbacks from My Queue swipe / context menu.
     public init(
         repo: DashboardRepository,
         api: APIClient,
         userIdProvider: (@Sendable () async -> Int64)? = nil,
         onTileTap: (@MainActor (DashboardTileDestination) -> Void)? = nil,
         onCreateTicket: (() -> Void)? = nil,
-        onImportData: (() -> Void)? = nil
+        onImportData: (() -> Void)? = nil,
+        onMyQueueTicketTap: ((Int64) -> Void)? = nil,
+        onMyQueueStartWork: ((Int64) -> Void)? = nil,
+        onMyQueueMarkReady: ((Int64) -> Void)? = nil,
+        onMyQueueComplete: ((Int64) -> Void)? = nil,
+        onNewTicket: (() -> Void)? = nil,
+        onNewSale: (() -> Void)? = nil,
+        onNewCustomer: (() -> Void)? = nil,
+        onScanBarcode: (() -> Void)? = nil,
+        onNewSMS: (() -> Void)? = nil,
+        onTapSyncSettings: (() -> Void)? = nil,
+        onTapSMSTab: (() -> Void)? = nil
     ) {
+        self.api = api
         _vm = State(wrappedValue: DashboardViewModel(repo: repo))
         _clockVM = State(wrappedValue: ClockInOutViewModel(api: api, userIdProvider: userIdProvider))
         self.onTileTap = onTileTap
         self.onCreateTicket = onCreateTicket
         self.onImportData = onImportData
+        self.onMyQueueTicketTap = onMyQueueTicketTap
+        self.onMyQueueStartWork = onMyQueueStartWork
+        self.onMyQueueMarkReady = onMyQueueMarkReady
+        self.onMyQueueComplete = onMyQueueComplete
+        self.onNewTicket = onNewTicket
+        self.onNewSale = onNewSale
+        self.onNewCustomer = onNewCustomer
+        self.onScanBarcode = onScanBarcode
+        self.onNewSMS = onNewSMS
+        self.onTapSyncSettings = onTapSyncSettings
+        self.onTapSMSTab = onTapSMSTab
     }
 
     public var body: some View {
@@ -63,8 +114,44 @@ public struct DashboardView: View {
                 .refreshable { await vm.forceRefresh() }
                 .task { await vm.load() }
                 .toolbar {
-                    ToolbarItem(placement: .automatic) {
+                    // §3.10 Sync-status badge (leading)
+                    ToolbarItem(placement: .topBarLeading) {
+                        SyncStatusBadge(onTapSyncSettings: onTapSyncSettings)
+                    }
+                    // Staleness indicator (trailing)
+                    ToolbarItem(placement: .topBarTrailing) {
                         StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                    }
+                    // §3.8 iPad/Mac toolbar group — no FAB on iPad/Mac per CLAUDE.md
+                    if !Platform.isCompact {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { onNewTicket?() } label: {
+                                Label("New Ticket", systemImage: "plus.circle")
+                            }
+                            .keyboardShortcut("n", modifiers: .command)
+                            .accessibilityLabel("New ticket (⌘N)")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { onNewCustomer?() } label: {
+                                Label("New Customer", systemImage: "person.badge.plus")
+                            }
+                            .keyboardShortcut("n", modifiers: [.command, .shift])
+                            .accessibilityLabel("New customer (⌘⇧N)")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { onScanBarcode?() } label: {
+                                Label("Scan", systemImage: "barcode.viewfinder")
+                            }
+                            .keyboardShortcut("s", modifiers: [.command, .shift])
+                            .accessibilityLabel("Scan barcode (⌘⇧S)")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { onNewSMS?() } label: {
+                                Label("New SMS", systemImage: "message.badge.plus")
+                            }
+                            .keyboardShortcut("m", modifiers: [.command, .shift])
+                            .accessibilityLabel("New SMS (⌘⇧M)")
+                        }
                     }
                 }
         }
@@ -93,9 +180,15 @@ public struct DashboardView: View {
             LoadedBody(
                 snapshot: snapshot,
                 clockVM: clockVM,
+                api: api,
                 onTileTap: onTileTap,
                 onCreateTicket: onCreateTicket,
-                onImportData: onImportData
+                onImportData: onImportData,
+                onMyQueueTicketTap: onMyQueueTicketTap,
+                onMyQueueStartWork: onMyQueueStartWork,
+                onMyQueueMarkReady: onMyQueueMarkReady,
+                onMyQueueComplete: onMyQueueComplete,
+                onTapSMSTab: onTapSMSTab
             )
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         }
@@ -107,15 +200,29 @@ public struct DashboardView: View {
 private struct LoadedBody: View {
     let snapshot: DashboardSnapshot
     var clockVM: ClockInOutViewModel
+    let api: APIClient
     var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
     var onCreateTicket: (() -> Void)?
     var onImportData: (() -> Void)?
+    // §3.4 My Queue callbacks
+    var onMyQueueTicketTap: ((Int64) -> Void)?
+    var onMyQueueStartWork: ((Int64) -> Void)?
+    var onMyQueueMarkReady: ((Int64) -> Void)?
+    var onMyQueueComplete: ((Int64) -> Void)?
+    // §3.12 SMS tab callback
+    var onTapSMSTab: (() -> Void)?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                // §3.7 Announcements banner — above everything
+                AnnouncementsBanner(api: api)
+
                 greeting
                 ClockInOutTile(vm: clockVM)
+
+                // §3.12 Unread-SMS tile
+                UnreadSMSTile(api: api, onTapSMSTab: onTapSMSTab)
 
                 // §3.1 / §3.14 — New-tenant empty state replaces KPI grid
                 // when the shop has never had any activity.
@@ -130,6 +237,16 @@ private struct LoadedBody: View {
                 }
 
                 attentionCard
+
+                // §3.4 My Queue — always visible; auto-refreshes every 30s.
+                // Shown below the attention card so the most urgent info leads.
+                MyQueueView(
+                    api: api,
+                    onTicketTap: onMyQueueTicketTap,
+                    onStartWork: onMyQueueStartWork,
+                    onMarkReady: onMyQueueMarkReady,
+                    onComplete: onMyQueueComplete
+                )
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.sm)
@@ -229,16 +346,23 @@ private struct LoadedBody: View {
     @ViewBuilder
     private var attentionCard: some View {
         let a = snapshot.attention
-        let items: [AttentionItem] = [
-            .init(label: "Stale tickets",    count: a.staleTickets.count),
-            .init(label: "Overdue invoices", count: a.overdueInvoices.count),
-            .init(label: "Missing parts",    count: a.missingPartsCount),
-            .init(label: "Low stock",        count: a.lowStockCount),
-        ]
-        let total = items.reduce(0) { $0 + $1.count }
+        let total = a.staleTickets.count + a.overdueInvoices.count
+            + a.missingPartsCount + a.lowStockCount
 
         if total > 0 {
-            AttentionCard(items: items)
+            // §3.3 — Row-level chips, swipe, context menu, dismiss persistence.
+            AttentionCard(
+                attention: a,
+                onViewTicket: nil,   // Agent 10 / App-layer wires navigation
+                onViewInvoice: nil,
+                onSMSCustomer: nil,
+                onMarkResolved: nil,
+                onSnooze: nil,
+                // §3.3 Dismiss persistence: local dismiss (animation); App layer
+                // wires the server call (`POST /notifications/:id/dismiss`) via
+                // onDismiss callback — GRDB mirror is an Agent 10 concern.
+                onDismiss: nil
+            )
         } else if !isNewTenantSnapshot(snapshot) {
             // §3.3 — "All clear" empty state: only shown when there's real
             // data but nothing needs attention (not on a brand-new tenant).
@@ -355,78 +479,301 @@ private struct StatTileCard: View {
     }
 }
 
-// MARK: - Attention card
+// MARK: - Attention card (§3.3 — row-level chips, swipe, context menu, dismiss)
+
+/// Attention item kinds shown in the Needs Attention card.
+enum AttentionRowKind: Sendable {
+    case staleTicket(NeedsAttention.StaleTicket)
+    case overdueInvoice(NeedsAttention.OverdueInvoice)
+    case aggregateMissingParts(Int)
+    case aggregateLowStock(Int)
+
+    var displayId: String {
+        switch self {
+        case .staleTicket(let t):      return "#\(t.orderId)"
+        case .overdueInvoice(let i):   return "#\(i.orderId ?? "\(i.id)")"
+        case .aggregateMissingParts:   return "missing-parts"
+        case .aggregateLowStock:       return "low-stock"
+        }
+    }
+
+    var customerName: String? {
+        switch self {
+        case .staleTicket(let t):     return t.customerName
+        case .overdueInvoice(let i):  return i.customerName
+        default:                      return nil
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .staleTicket(let t):
+            return "Stale ticket \(t.orderId)" + (t.customerName.map { " — \($0)" } ?? "")
+        case .overdueInvoice(let i):
+            let id = i.orderId ?? "\(i.id)"
+            return "Overdue invoice \(id)" + (i.customerName.map { " — \($0)" } ?? "")
+        case .aggregateMissingParts(let n):
+            return "\(n) missing part\(n == 1 ? "" : "s")"
+        case .aggregateLowStock(let n):
+            return "\(n) low-stock item\(n == 1 ? "" : "s")"
+        }
+    }
+}
+
+private struct AttentionCard: View {
+    let attention: NeedsAttention
+    var onViewTicket: ((Int64) -> Void)?
+    var onViewInvoice: ((Int64) -> Void)?
+    var onSMSCustomer: ((String?) -> Void)?
+    var onMarkResolved: ((AttentionRowKind) -> Void)?
+    var onSnooze: ((AttentionRowKind, SnoozeDuration) -> Void)?
+    var onDismiss: ((AttentionRowKind) -> Void)?
+
+    @State private var dismissedIds: Set<String> = []
+
+    private var rows: [AttentionRowKind] {
+        var result: [AttentionRowKind] = []
+        result += attention.staleTickets.map { .staleTicket($0) }
+        result += attention.overdueInvoices.map { .overdueInvoice($0) }
+        if attention.missingPartsCount > 0 {
+            result.append(.aggregateMissingParts(attention.missingPartsCount))
+        }
+        if attention.lowStockCount > 0 {
+            result.append(.aggregateLowStock(attention.lowStockCount))
+        }
+        return result.filter { !dismissedIds.contains($0.displayId) }
+    }
+
+    var body: some View {
+        if rows.isEmpty { return AnyView(EmptyView()) }
+        return AnyView(
+            VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.bizarreWarning)
+                        .accessibilityHidden(true)
+                    Text("Needs attention")
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                        AttentionRow(
+                            kind: row,
+                            onViewTicket: onViewTicket,
+                            onViewInvoice: onViewInvoice,
+                            onSMSCustomer: onSMSCustomer,
+                            onMarkResolved: onMarkResolved,
+                            onSnooze: onSnooze,
+                            onDismiss: { kind in
+                                withAnimation { dismissedIds.insert(kind.displayId) }
+                                onDismiss?(kind)
+                            }
+                        )
+                        if idx < rows.count - 1 {
+                            Divider()
+                                .overlay(Color.bizarreOutline.opacity(0.25))
+                        }
+                    }
+                }
+            }
+            .padding(BrandSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
+        )
+    }
+}
+
+/// Snooze duration options for the attention row.
+enum SnoozeDuration: String, CaseIterable, Sendable {
+    case fourHours = "4 hours"
+    case tomorrow  = "Tomorrow"
+    case nextWeek  = "Next week"
+
+    var seconds: TimeInterval {
+        switch self {
+        case .fourHours: return 4 * 3600
+        case .tomorrow:  return 24 * 3600
+        case .nextWeek:  return 7 * 24 * 3600
+        }
+    }
+}
+
+private struct AttentionRow: View {
+    let kind: AttentionRowKind
+    var onViewTicket: ((Int64) -> Void)?
+    var onViewInvoice: ((Int64) -> Void)?
+    var onSMSCustomer: ((String?) -> Void)?
+    var onMarkResolved: ((AttentionRowKind) -> Void)?
+    var onSnooze: ((AttentionRowKind, SnoozeDuration) -> Void)?
+    var onDismiss: ((AttentionRowKind) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+            // Row label
+            HStack {
+                Text(kind.label)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .lineLimit(2)
+                Spacer(minLength: BrandSpacing.sm)
+            }
+
+            // §3.3 Row-level chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    if case .staleTicket(let t) = kind {
+                        AttentionChip(label: "View ticket", icon: "ticket") {
+                            onViewTicket?(t.id)
+                        }
+                    }
+                    if case .overdueInvoice(let i) = kind {
+                        AttentionChip(label: "View invoice", icon: "doc.text") {
+                            onViewInvoice?(i.id)
+                        }
+                    }
+                    if kind.customerName != nil {
+                        AttentionChip(label: "SMS customer", icon: "message") {
+                            onSMSCustomer?(kind.customerName)
+                        }
+                    }
+                    AttentionChip(label: "Mark resolved", icon: "checkmark.circle") {
+                        onMarkResolved?(kind)
+                    }
+                    Menu {
+                        ForEach(SnoozeDuration.allCases, id: \.rawValue) { dur in
+                            Button(dur.rawValue) { onSnooze?(kind, dur) }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "clock.arrow.circlepath")
+                                .font(.system(size: 11))
+                            Text("Snooze")
+                                .font(.brandLabelSmall())
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(Color.bizarreSurface2, in: Capsule())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                    .accessibilityLabel("Snooze")
+                }
+            }
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .contentShape(Rectangle())
+        // §3.3 Swipe actions (iPhone): leading = snooze, trailing = dismiss
+        .swipeActions(edge: .leading) {
+            Menu {
+                ForEach(SnoozeDuration.allCases, id: \.rawValue) { dur in
+                    Button(dur.rawValue) { onSnooze?(kind, dur) }
+                }
+            } label: {
+                Label("Snooze", systemImage: "clock.arrow.circlepath")
+            }
+            .tint(.bizarreWarning)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                #if canImport(UIKit)
+                let gen = UISelectionFeedbackGenerator()
+                gen.selectionChanged()
+                #endif
+                onDismiss?(kind)
+            } label: {
+                Label("Dismiss", systemImage: "xmark.circle")
+            }
+            .tint(.bizarreError)
+        }
+        // §3.3 Context menu (iPad/Mac)
+        .contextMenu {
+            if case .staleTicket(let t) = kind {
+                Button {
+                    onViewTicket?(t.id)
+                } label: {
+                    Label("View ticket", systemImage: "ticket")
+                }
+            }
+            if case .overdueInvoice(let i) = kind {
+                Button {
+                    onViewInvoice?(i.id)
+                } label: {
+                    Label("View invoice", systemImage: "doc.text")
+                }
+            }
+            if kind.customerName != nil {
+                Button {
+                    onSMSCustomer?(kind.customerName)
+                } label: {
+                    Label("SMS customer", systemImage: "message")
+                }
+            }
+            Button {
+                onMarkResolved?(kind)
+            } label: {
+                Label("Mark resolved", systemImage: "checkmark.circle")
+            }
+            Menu("Snooze") {
+                ForEach(SnoozeDuration.allCases, id: \.rawValue) { dur in
+                    Button(dur.rawValue) { onSnooze?(kind, dur) }
+                }
+            }
+            Divider()
+            Button {
+                #if canImport(UIKit)
+                UIPasteboard.general.string = kind.displayId
+                #endif
+            } label: {
+                Label("Copy ID", systemImage: "doc.on.doc")
+            }
+            Button(role: .destructive) {
+                onDismiss?(kind)
+            } label: {
+                Label("Dismiss", systemImage: "xmark.circle")
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(kind.label)
+    }
+}
+
+// MARK: - Attention chip
+
+private struct AttentionChip: View {
+    let label: String
+    let icon: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: icon)
+                    .font(.system(size: 11))
+                Text(label)
+                    .font(.brandLabelSmall())
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(Color.bizarreSurface2, in: Capsule())
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+// MARK: - Aggregate stat attention item (for the attentionCard helper functions below)
 
 private struct AttentionItem: Identifiable {
     let id = UUID()
     let label: String
     let count: Int
-}
-
-private struct AttentionCard: View {
-    let items: [AttentionItem]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            HStack(spacing: BrandSpacing.xs) {
-                Image(systemName: "exclamationmark.circle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.bizarreWarning)
-                    .accessibilityHidden(true)
-                Text("Needs attention")
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurface)
-            }
-
-            VStack(spacing: 0) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { idx, item in
-                    AttentionRow(item: item)
-                    if idx < items.count - 1 {
-                        Divider()
-                            .overlay(Color.bizarreOutline.opacity(0.25))
-                    }
-                }
-            }
-        }
-        .padding(BrandSpacing.md)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-        )
-    }
-}
-
-private struct AttentionRow: View {
-    let item: AttentionItem
-
-    var body: some View {
-        HStack {
-            Text(item.label)
-                .font(.brandBodyMedium())
-                .foregroundStyle(item.count > 0 ? .bizarreOnSurface : .bizarreOnSurfaceMuted)
-            Spacer(minLength: BrandSpacing.sm)
-            Text("\(item.count)")
-                .font(.brandTitleSmall())
-                .foregroundStyle(item.count > 0 ? .bizarreWarning : .bizarreOnSurfaceMuted)
-                .monospacedDigit()
-        }
-        .padding(.vertical, BrandSpacing.sm)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(item.label)
-        .accessibilityValue("\(item.count)")
-        .contextMenu {
-            #if canImport(UIKit)
-            Button {
-                UIPasteboard.general.string = "\(item.label): \(item.count)"
-            } label: {
-                Label("Copy '\(item.label): \(item.count)'", systemImage: "doc.on.doc")
-            }
-            #endif
-        }
-    }
 }
 
 // MARK: - Attention all-clear
