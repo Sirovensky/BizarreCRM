@@ -3006,10 +3006,10 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
-- [ ] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable.
-- [ ] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone."
-- [ ] **Loading state** — skeleton rows in glass cards.
-- [ ] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation).
+- [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.swift` emptyStateWithRecent; "Try a phone number, ticket ID, SKU, IMEI, or name." + recent searches chips; pre-existing impl)
+- [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.swift` noResultsView; pre-existing impl)
+- [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.swift` skeletonView with SkeletonRow shimmer; pre-existing impl)
+- [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 300ms `Task.sleep` + `searchTask?.cancel()`; pre-existing impl)
 - [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
