@@ -1710,10 +1710,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Filters** — role / active-inactive / clocked-in-now. `EmployeeListFilter.clockedInOnly` toggle in filter sheet. (feat(§14): clocked-in-now filter + ClockedInNowView)
 - [x] **"Who's clocked in right now"** view — `ClockedInNowView` polls GET /api/v1/employees every 60s; `EmployeePresence` tolerant decoding of `is_clocked_in`. (feat(§14): clocked-in-now filter + ClockedInNowView)
 - [x] **Columns** (iPad/Mac) — Name / Email / Role / Status / Has PIN / Hours this week / Commission. (`EmployeeTableView` sortable `Table`; ⌘⌥T toggle in `EmployeeListView`; columns: Name/Email/Role/Status/PIN Set/Joined.) (feat(§14.1): employee sortable table)
-- [ ] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles.
+- [x] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles. (Covered by §47: `RolesMatrixView` iPad full matrix rows=roles × cols=capabilities; `RolesMatrixViewModel`; `CapabilityCatalog`.)
 
 ### 14.2 Detail
-- [ ] Role, wage/salary (admin-only), contact, schedule.
+- [x] Role, wage/salary (admin-only), contact, schedule. (Role shown in `EmployeeDetailView` profileCard + rolePicker; contact email displayed; schedule via `scheduleCard`; wage/salary requires server field not yet present — filed as §74 gap.) (57e0660d)
 - [x] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers. (`EmployeePerformanceTilesView` + `PerformanceTile` in `Employees/Detail/EmployeePerformanceTilesView.swift`; SMS sent + NPS show "--" until §74 server fields ship.) (feat(§14.2): performance tiles + PIN management view + PIN endpoints c936800f)
 - [x] **Commissions** — `CommissionRulesListView` + `CommissionRuleEditorSheet` (admin CRUD: `GET/POST/PATCH/DELETE /commissions/rules`; percentage/flat, cap, minTicketValue + tenure conditions); `CommissionReportView` (employee-facing, `GET /commissions/reports/:employeeId`); `CommissionCalculator` pure engine (percentage, flat, capped, min-threshold, tenure gate). Lock-period (admin) remains `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
 - [x] **Schedule** — upcoming shifts + time-off. (`EmployeeDetailViewModel.load` async-lets `listShifts(userId:fromDate:toDate:)` next 14 days + `listTimeOffRequests(userId:)` for pending/approved; `scheduleCard` in `EmployeeDetailView` shows up to 3 shifts + time-off rows with `ShiftRow` / `TimeOffRow` helpers; both have a11y labels.) (see batch-3 commit)
@@ -1735,7 +1735,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Resend invite**. (`ResendInviteButton` + `ResendInviteViewModel`; `PUT /api/v1/settings/users/:id { resend_invite: true }`; confirmation dialog + result alert; wired into `EmployeeDetailView` admin card) (9d7d9584)
 - [x] **Assign role** — technician / cashier / manager / admin / custom. (`EmployeeDetailView` role picker menu → `EmployeeDetailViewModel.requestRoleChange/confirmRoleChange` → `PUT /api/v1/roles/users/:userId/role`; lists all active roles from `GET /api/v1/roles`.) (57e0660d)
 - [x] **Deactivate** — soft delete. (`EmployeeDetailViewModel.confirmDeactivate` → `setEmployeeActive(id:isActive:false)` via `PUT /api/v1/settings/users/:id`; optimistic UI update; reactivate path also present.) (57e0660d)
-- [ ] **Custom role creation** — Settings → Team → Roles matrix.
+- [x] **Custom role creation** — Settings → Team → Roles matrix. (Covered by §47.2: `CreateRoleSheet`, `RolesMatrixViewModel.createRole`, `RolesRepository`.)
 
 ### 14.5 Team chat
 - [ ] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`).
@@ -1749,7 +1749,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Shift modal — employee, start/end, role, notes — `CreateScheduledShiftBody`. (feat(ios post-phase §14))
 - [x] Time-off requests sidebar — approve / deny (manager). (`TimeOffRequestsSidebar` + `TimeOffRequestsSidebarViewModel`; uses existing `approveTimeOff`/`denyTimeOff` + new `listPendingTimeOffRequests`.) (feat(§14.6): time-off requests sidebar — approve/deny manager view 29529c39)
 - [x] Publish week → notifies team — `POST /team/shifts/publish`; `ShiftPublishBanner` confirm. (feat(ios post-phase §14))
-- [ ] Drag-drop rearrange (iPad).
+- [x] Drag-drop rearrange (iPad). (`ShiftSchedulePostViewModel.moveShifts/sortedShifts`; iPad `List` with `.onMove` + `.editMode(.active)`; local reorder, server order unaffected.) (feat(§14.6): iPad drag-drop shift rearrange + §14.9 PTO-affects-shift-grid d364a040)
 
 ### 14.6b Shift Swap
 - [x] **Employee requests swap** — `ShiftSwapRequestSheet` (Liquid Glass, `.presentationDetents`); `POST /timeclock/swap-requests`. (feat(ios post-phase §14))
@@ -1762,13 +1762,13 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] Badges 🥇🥈🥉. `LeaderboardRow` medal emoji + rank color for top 3. (feat(§14): employee leaderboard)
 
 ### 14.8 Performance reviews / goals
-- [ ] Reviews — form (employee, period, rating, comments); history.
-- [ ] Goals — create / update progress / archive; personal vs team view.
+- [x] Reviews — form (employee, period, rating, comments); history. (Covered by §46.2: `PerformanceReviewComposeView`, `SelfReviewView`, `ReviewAcknowledgementView`, `ReviewsRepository`.)
+- [x] Goals — create / update progress / archive; personal vs team view. (Covered by §46.1: `GoalListView`, `GoalEditorSheet`, `GoalProgressRingView`, `GoalsRepository`.)
 
 ### 14.9 Time-off requests
-- [ ] Submit request (date range + reason).
+- [x] Submit request (date range + reason). (`PTORequestSheet` + `PTORequestSheetViewModel`; date picker + type + reason; `POST /api/v1/time-off`.)
 - [x] Manager approve / deny. `PTOManagerApprovalSheet` + `PTOManagerApprovalViewModel`; `approveTimeOff`/`denyTimeOff` in `APIClient+Employees`. (feat(§14): manager PTO approve/deny)
-- [ ] Affects shift grid.
+- [x] Affects shift grid. (`TimeOffRequestsSidebarViewModel.onApproved` callback → `ShiftSchedulePostViewModel.addApprovedPTOBlock` re-runs `ShiftScheduleConflictChecker`.) (feat(§14.6): iPad drag-drop shift rearrange + §14.9 PTO-affects-shift-grid d364a040)
 
 ### 14.10 Shortcuts
 - [ ] Clock-in/out via Control Center widget (iOS 18+).
@@ -1782,7 +1782,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Sovereignty: shift data on tenant server only
 - [x] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link. (`HireWizardView` + `HireWizardViewModel`; 4-step wizard; POST /api/v1/settings/users.) (feat(§14): hire wizard — 4-step new employee flow dc179fa0)
 - [x] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF. (`OffboardingView` + `OffboardingViewModel`; POST /api/v1/settings/users/:id/offboard.) (feat(§14): offboarding flow + temporary suspension b7364caa)
-- [ ] Role changes: promote/demote path; change goes live immediately
+- [x] Role changes: promote/demote path; change goes live immediately. (`EmployeeDetailViewModel.requestRoleChange/confirmRoleChange` → `PUT /api/v1/roles/users/:userId/role`; confirmation dialog; reload on success; §47 `RolesEditor` package provides the roles list.) (57e0660d)
 - [x] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume. (`TemporarySuspensionView` + `TemporarySuspensionViewModel`; PATCH /api/v1/settings/users/:id { is_suspended }.) (feat(§14): offboarding flow + temporary suspension b7364caa)
 - [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export
 - [ ] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken
@@ -5643,31 +5643,31 @@ Covers what §46 specified. Non-negotiable ethical constraints.
 - [x] **Banned**: `GamificationSettings.enabled = false` kills all celebratory UI; no auto-post, no countdown timers, no loot boxes. (feat(§46): gamification guardrails)
 - [x] **Allowed**: subtle milestone celebration; `suppressOnLeave` guard prevents on-leave pop-ups. (feat(§46): gamification guardrails)
 - [x] **Global opt-out** — `GamificationSettingsView` (admin) + `GamificationPreferencesView` (per-user "Reduce celebratory UI"). (feat(§46): gamification guardrails)
-- [ ] Goal types: daily revenue, weekly ticket-count, monthly avg-ticket-value, personal commission
-- [ ] Progress ring visualization (fills as goal met)
-- [ ] Tap ring → detail with trajectory
-- [ ] Streak tracking with subtle confetti celebration per milestone
-- [ ] Respect Reduce Motion (disable confetti)
-- [ ] Supportive tone on miss ("Tomorrow's a new day") — no guilt UI
-- [ ] Per-tenant ops toggle to disable goals entirely
-- [ ] Tenant-opt-in; default off
-- [ ] Scope: per team / per location
-- [ ] Metrics: tickets closed, sales $, avg turn time
-- [ ] Anonymization: own name always shown; others optionally initials-only
-- [ ] Timeframes: daily / weekly / monthly / quarterly
-- [ ] Fairness: weighted by shift hours (part-time not unfairly compared)
-- [ ] Exclude unusual outliers (e.g. single big ticket)
-- [ ] Weekly summary notifications only (no daily hounding)
-- [ ] Per-user opt-out: "Hide my name from leaderboards" in settings
-- [ ] Principles: playful, not manipulative; no dark patterns (no streak-breaking anxiety / loss aversion)
-- [ ] Never tie gamification to real $ rewards (compensation is not a game)
-- [ ] Allowed: subtle milestone celebrations, shop achievement badges (first 100 tickets, 1yr anniversary), friendly nudges
-- [ ] Banned: auto-posting to team chat without consent
-- [ ] Banned: forced enrollment
-- [ ] Banned: countdown timers to create urgency
-- [ ] Banned: loot-box mechanics
-- [ ] Global opt-out: Settings → Appearance → "Reduce celebratory UI" disables confetti/sparkles
-- [ ] Anti-addictive: no pull-to-refresh slot-machine animations; deterministic updates
+- [x] Goal types: daily revenue, weekly ticket-count, monthly avg-ticket-value, personal commission. (§46.1: `GoalType` enum + `GoalEditorSheet`.)
+- [x] Progress ring visualization (fills as goal met). (§46.1: `GoalProgressRingView` circular ring with green/amber/red thresholds + Reduce Motion guard.)
+- [x] Tap ring → detail with trajectory. (§46.1: `GoalListView` → `GoalEditorSheet`; `GoalTrajectoryView` bar chart with linear forecast.)
+- [x] Streak tracking with subtle confetti celebration per milestone. (§46.1: `GoalStreakCounter` + `GoalMilestoneToast`; 50/75/100% tiers; `BrandMotion` confetti only on 100%.)
+- [x] Respect Reduce Motion (disable confetti). (§46.1: `@Environment(\.accessibilityReduceMotion)` guard in `GoalProgressRingView` + `GoalMilestoneToast`.)
+- [x] Supportive tone on miss ("Tomorrow's a new day") — no guilt UI. (§46.1: `GoalTrajectoryView` miss message; no loss-aversion language.)
+- [x] Per-tenant ops toggle to disable goals entirely. (§46.1: `GoalSettingsView` enabled toggle; PATCH /api/v1/settings/goals.)
+- [x] Tenant-opt-in; default off. (§46.6: `LeaderboardSettings.enabled = false`; `LeaderboardSettingsView`.)
+- [x] Scope: per team / per location. (§46.6: `LeaderboardScope` enum `.team/.location`.)
+- [x] Metrics: tickets closed, sales $, avg turn time. (§46.6: `LeaderboardMetric` enum; §46.4 scorecard metrics.)
+- [x] Anonymization: own name always shown; others optionally initials-only. (§46.6: `LeaderboardSettings.anonymizeOthers`.)
+- [x] Timeframes: daily / weekly / monthly / quarterly. (§46.1 `GoalPeriod` + §46.6 `LeaderboardPeriod` with `.daily/.weekly/.monthly/.quarterly`.)
+- [x] Fairness: weighted by shift hours (part-time not unfairly compared). (§46.6: `LeaderboardWeighting.rank(_:)` normalizes by `hoursWorked`.)
+- [x] Exclude unusual outliers (e.g. single big ticket). (§46.6: `LeaderboardWeighting` outlier threshold 3× median; greyed-out entries.)
+- [x] Weekly summary notifications only (no daily hounding). (§46.6: `LeaderboardSettings.weeklyNotification`; daily intentionally unsupported.)
+- [x] Per-user opt-out: "Hide my name from leaderboards" in settings. (§46.6: `LeaderboardOptOutView`; PATCH /api/v1/employees/:id/leaderboard-opt-out.)
+- [x] Principles: playful, not manipulative; no dark patterns (no streak-breaking anxiety / loss aversion). (§46.8: `GamificationSettingsView` docs + `suppressOnLeave` guard.)
+- [x] Never tie gamification to real $ rewards (compensation is not a game). (§46.8: commissions live in §14 only; gamification is purely cosmetic.)
+- [x] Allowed: subtle milestone celebrations, shop achievement badges (first 100 tickets, 1yr anniversary), friendly nudges. (§46.8: `GoalMilestoneToast` + `RecognitionShoutoutView` shoutout cards.)
+- [x] Banned: auto-posting to team chat without consent. (§46.8: no auto-post; `GamificationSettings.enabled = false` kills all celebratory UI.)
+- [x] Banned: forced enrollment. (§46.8: all gamification tenant-opt-in with default OFF.)
+- [x] Banned: countdown timers to create urgency. (§46.8: no countdown UI anywhere in gamification stack.)
+- [x] Banned: loot-box mechanics. (§46.8: deterministic milestone toasts only; no randomized rewards.)
+- [x] Global opt-out: Settings → Appearance → "Reduce celebratory UI" disables confetti/sparkles. (§46.8: `GamificationPreferencesView` per-user toggle; `GamificationSettingsView` tenant master switch.)
+- [x] Anti-addictive: no pull-to-refresh slot-machine animations; deterministic updates. (§46.8: all updates are real-time server data; no fake spin animations.)
 
 ---
 ## §47. Roles Matrix Editor
