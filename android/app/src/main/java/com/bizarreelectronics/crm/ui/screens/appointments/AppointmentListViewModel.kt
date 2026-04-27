@@ -21,6 +21,8 @@ enum class AppointmentViewMode(val label: String) {
     Day("Day"),
     Week("Week"),
     Month("Month"),
+    /** Tablet-only time-block Kanban (§10.1). */
+    Kanban("Kanban"),
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +114,45 @@ class AppointmentListViewModel @Inject constructor(
 
     fun setFilter(filter: AppointmentFilter) {
         _state.update { it.copy(filter = filter) }
+    }
+
+    /**
+     * Kanban drag-to-reschedule (§10.1).
+     * Optimistically updates [appointments] then issues a PATCH.
+     * On failure the server version is re-fetched.
+     */
+    fun rescheduleAppointment(id: Long, newStartIso: String, newEmployeeId: Long?) {
+        // Optimistic local update
+        _state.update { s ->
+            s.copy(
+                appointments = s.appointments.map { appt ->
+                    if (appt.id != id) appt
+                    else appt.copy(
+                        startTime = newStartIso,
+                        employeeId = newEmployeeId ?: appt.employeeId,
+                    )
+                },
+            )
+        }
+        viewModelScope.launch {
+            val body = buildMap<String, Any?> {
+                put("start_time", newStartIso)
+                if (newEmployeeId != null) put("employee_id", newEmployeeId)
+            }
+            runCatching { appointmentRepository.patchAppointment(id, body) }
+                .onSuccess { updated ->
+                    _state.update { s ->
+                        s.copy(
+                            appointments = s.appointments.map { if (it.id == id) updated else it },
+                        )
+                    }
+                }
+                .onFailure { e ->
+                    // Rollback: reload from server
+                    _state.update { it.copy(toastMessage = "Reschedule failed: ${e.message}") }
+                    load()
+                }
+        }
     }
 
     fun clearToast() {

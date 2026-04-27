@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.ui.screens.tickets
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
@@ -96,9 +97,17 @@ class TicketListViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
     private val ticketApi: TicketApi,
     private val appPreferences: AppPreferences,
+    // §1.8 process-death: SavedStateHandle persists transient search/filter state
+    // across process kill so the user's query is restored on re-launch.
+    private val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow(TicketListUiState())
+    private val _state = MutableStateFlow(
+        TicketListUiState(
+            searchQuery = savedStateHandle.get<String>(SSH_KEY_QUERY) ?: "",
+            selectedFilter = savedStateHandle.get<String>(SSH_KEY_FILTER) ?: "All",
+        ),
+    )
     val state = _state.asStateFlow()
 
     /**
@@ -210,6 +219,8 @@ class TicketListViewModel @Inject constructor(
 
     fun onSearchChanged(query: String) {
         _state.value = _state.value.copy(searchQuery = query)
+        // §1.8 process-death: persist so the query survives a process kill + restore
+        savedStateHandle[SSH_KEY_QUERY] = query
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             delay(300)
@@ -219,6 +230,8 @@ class TicketListViewModel @Inject constructor(
 
     fun onFilterChanged(filter: String) {
         _state.value = _state.value.copy(selectedFilter = filter)
+        // §1.8 process-death: persist so the filter survives a process kill + restore
+        savedStateHandle[SSH_KEY_FILTER] = filter
         _filterKeyFlow.value = resolveFilterKey(filter = filter)
         collectTickets()
     }
@@ -541,6 +554,9 @@ class TicketListViewModel @Inject constructor(
 
     private companion object {
         private const val TAG = "TicketListViewModel"
+        /** SavedStateHandle keys for process-death restoration (§1.8). */
+        const val SSH_KEY_QUERY  = "ticket_list_search_query"
+        const val SSH_KEY_FILTER = "ticket_list_selected_filter"
     }
 }
 

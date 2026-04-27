@@ -140,4 +140,24 @@ interface ReportApi {
     suspend fun getBusyHoursHeatmap(
         @QueryMap params: Map<String, String> = emptyMap()
     ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    // ── §3.2 L504 — aging / overdue receivables ───────────────────────────────
+    /**
+     * GET /reports/aging — returns overdue-receivables summary for the
+     * Cash-Trapped dashboard card.
+     *
+     * Expected response shape:
+     * ```json
+     * { "success": true, "data": {
+     *   "overdue_total_cents": 125000,
+     *   "overdue_count": 7
+     * } }
+     * ```
+     *
+     * **Graceful degradation**: 404 means the endpoint is not yet implemented.
+     * [DashboardRepository.getAgingSummary] catches [retrofit2.HttpException]
+     * with code 404 and returns null so [CashTrappedCard] shows its empty state.
+     */
+    @GET("reports/aging")
+    suspend fun getAging(): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
 }

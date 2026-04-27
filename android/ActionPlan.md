@@ -197,10 +197,12 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 
 ### 1.5 Navigation shell
 - [ ] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+).
-- [ ] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`.
+  - **NOTE (2026-04-26):** Full migration from `sealed class Screen(val route: String)` to `@Serializable` data classes touches every `composable(...)` call, every `navArgument`, and every `navController.navigate(...)` in the 2800-line AppNavGraph. Doing it atomically is high-risk with no incremental compile gate. Needs its own session: split AppNavGraph into per-domain nav builders, then migrate one domain at a time.
+- [x] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`. (session 2026-04-26 — `AppNavGraph.kt` `NavigationSuiteScaffold` replaces manual `NavigationBar`/`NavigationRail` Row branching; dependency `material3-adaptive-navigation-suite` already in `app/build.gradle.kts`; `layoutType` forced to `NavigationSuiteType.None` on pre-login / detail / full-screen routes via existing `showBottomNav` flag; `currentWindowAdaptiveInfo()` from `androidx.compose.material3.adaptive` drives auto-pick; `SharedTransitionLayout` + `NavHost` modifiers updated from `weight(1f)` to `fillMaxSize()`)
 - [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
 - [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
-- [ ] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag.
+  - **NOTE (2026-04-26):** "More" overflow tab already exists. User-reorderable tabs require: (a) persistent order storage in `AppPreferences`, (b) drag-reorder UI in Settings → Appearance, (c) dynamic `bottomNavItems` list built from preferences. Non-trivial feature; owned by Section 3/settings pass.
+- [x] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag. (session 2026-04-26 — `PredictiveBackScaffold` composable (`ui/components/PredictiveBackScaffold.kt`) wired into `TicketDetailScreen` and `CustomerDetailScreen`; `graphicsLayer` scale 0.92 + alpha 0.7 at swipe-complete mirrors M3 exit recommendation; `LocalBackProgress` propagated to child tree; `PredictiveBackHandler` via `androidx.activity:1.10.0` backport to API 26+)
 - [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
 - [~] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`. (commit a629898 — intent-filter + autoVerify added; `assetlinks.json` server-side deploy pending)
 
@@ -226,7 +228,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
 - [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
 - [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
-- [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
+- [x] User-facing strings in `strings.xml` with per-language resource folders (§27). (session 2026-04-26 — `res/values/strings.xml` expanded from 11 → 55 strings covering: nav labels, generic actions (retry/dismiss/cancel/save/delete/undo/open-settings/contact-support), `AppError` taxonomy messages (network/server/not-found/permission/auth/conflict/unknown/offline-cached), banner copy (offline/sync-count/clock-drift/rate-limit), process-death restore hint, ticket + customer list/search copy, draft recovery prompts, biometric/PIN auth labels, settings section titles; per-language `values-*/strings.xml` folders pending §27 full i18n pass)
 - [x] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee + d90f652 — `ErrorRecovery.recover()` util + `Action` enum + `ui/components/ErrorSurface.kt` composable with compact/full layouts, icon mapping, destructive styling; feature modules call `ErrorSurface(error, onAction)` and wire actions)
 - [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
 - [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
@@ -239,14 +241,14 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 + 39556c7 + 0584d26 — ON_STOP reschedules delta-sync via SyncWorker KEEP, calls `ClipboardUtil.clearSensitiveIfPresent`, invokes `DraftStore.flushPending()` on appScope; `AppPreferences.screenCapturePreventionFlow` default `true` reactively toggles `FLAG_SECURE`+`setRecentsScreenshotEnabled` via collectAsState in MainActivity.setContent; eager pre-setContent apply avoids unsecured first frame; DEBUG bypass preserved)
 - [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
 - [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
-- [ ] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes.
+- [x] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes. (session 2026-04-26 — `TicketListViewModel` + `CustomerListViewModel` both inject `SavedStateHandle`; `onSearchChanged` / `onFilterChanged` write SSH keys `ticket_list_search_query`, `ticket_list_selected_filter`, `customer_list_search_query`; initial state seeded from SSH so process-kill restores last query/filter before the ViewModel emits its first load; companion-object key constants guard against typos; existing detail VMs (`AppointmentDetailViewModel`, `ExpenseDetailViewModel`, etc.) already used SSH for nav-arg extraction)
 - [x] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68). (commit 00bc645 — `MainActivity.onNewIntent()` calls `resolveDeepLink()` + `resolveFcmRoute()` → `DeepLinkBus.publish()`; `util/DeepLinkAllowlist.kt` whitelist enforced; FCM extras `navigate_to`+`entity_id` mapped to 9 entity routes)
 - [x] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact. (commit 5800443 — `service/NotificationController.kt` channel-selection + dedup via `util/ActiveChatTracker.kt` `currentThreadPhone`; `sms_silent` channel `IMPORTANCE_LOW` no-sound/vibrate registered in `BizarreCrmApp.createNotificationChannels()`; `FcmService.onMessageReceived` delegates after silent-sync short-circuit)
 - [x] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`. (commit 5800443 — `service/NotificationActionReceiver.kt` `@AndroidEntryPoint` handles `ACTION_REPLY_SMS` via `RemoteInput.getResultsFromIntent` + `SyncQueueEntity(operation="send_sms")` enqueue; `ACTION_MARK_READ` enqueues `mark_read` PATCH; 12 JVM tests; receiver registered in AndroidManifest)
 - [x] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR. (`FcmService.onMessageReceived` short-circuits when `type=silent_sync` / `data.sync=true` / no notification + no body, calls `SyncWorker.syncNow(this)`, and skips notification-post.)
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
-- [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
+- [x] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`. (session 2026-04-26 — already wired; `collectAsStateWithLifecycle` used in `ClockDriftBanner`, `RateLimitBanner`, `SessionTimeoutOverlay`, `AppNavGraph`, `ActiveSessionsScreen`, `AppearanceScreen`, `DiagnosticsScreen`, `RateLimitBucketsScreen`, `ThemeScreen` and many domain screens; `lifecycle-runtime-compose` dep present in `build.gradle.kts`)
 - [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
 - [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 + a762605 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; mounted in root Scaffold when logged in)
 - [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
@@ -299,7 +301,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout. (commit cd36e98 — `ui/screens/auth/BackupCodesDisplay.kt` FlowRow mono chips + warning banner + "Copy all" sensitive clip + checkbox gate → "Done" primary CTA; replaces prior inline AlertDialog)
-- [~] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep)
+- [x] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep) (session 2026-04-26 — Compose BOM 2026.04.01 = UI 1.8+; `ContentType.SmsOtpCode` now public and wired on `TotpCodeInputContent` OutlinedTextField via `Modifier.semantics { contentType = ContentType.SmsOtpCode }`; `smsRetrieverClient` in `OtpInput.kt` now delegates to `SmsRetrieverHelper.startRetriever` — dep was already present; `play-services-auth-api-phone` confirmed in `build.gradle.kts`)
 - [x] **Paste-from-clipboard** auto-detect 6-digit string. (commit 8301aa5 — `detectOtpFromClipboard` + `OtpParser.extractOtpDigits`)
 - [blocked: policy — 2FA disable not allowed per user directive 2026-04-23. Android client must never surface a "Disable 2FA" action; server endpoint may exist but UI is intentionally absent.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
@@ -486,8 +488,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`. (commit 059e249 — `ui/screens/dashboard/components/KpiGrid.kt` + `KpiTile` model wired into DashboardScreen with responsive branching)
-- [~] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
-- [~] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
+- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (session 2026-04-26 — 13-tile KpiTile list in DashboardScreen; taxToday/discountsToday/cogsToday/netProfitToday/refundsToday/expensesToday/receivablesTotal/closedToday added to DashboardUiState + DashboardStats; zero-defaults when server fields absent; server keys: tax_today/discounts_today/cogs_today/net_profit_today/refunds_today/expenses_today/receivables_total/closed_today)
+- [x] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (session 2026-04-26 — Open Tickets/Appointments/Low Stock wired; Receivables tile taps onNavigateToAging → InvoicesAging; Revenue/COGS/Tax/Discounts/Refunds/Expenses/Net Profit/Closed Today inert — no dedicated filtered-list screens exist yet)
 - [x] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default. (commit 059e249 — `DateRangeSelector.kt` `SingleChoiceSegmentedButtonRow` + 6-preset `DashboardDatePreset` enum + Material3 `DateRangePicker` bottom sheet for Custom + `DateRange` emitter; bound to VM `currentRange: StateFlow` + `setCurrentRange()`)
 - [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. (commit 059e249 — `DeltaChip` in `KpiTileCard` with ↗/↘/→ icons + green/red/grey color + a11y "Up X% versus last period"; slot nullable until server `/dashboard/compare` ships)
 - [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
@@ -501,7 +503,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; Vico `ColumnCartesianLayer` + custom cell renderer. (commit 12a8756 — `components/BusyHoursHeatmap.kt` 7×24 LazyVerticalGrid + `lerp` color intensity + hour labels + legend + horizontal scroll)
 - [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (commit 12a8756 — `components/LeaderboardCard.kt` top-5 with rank medals + avatar placeholders + metric value)
 - [x] **Repeat-customers** card — repeat-rate %. (commit 12a8756 — `components/RepeatCustomerCard.kt` % display + trend arrow up/down/flat + 90-day window label)
-- [ ] **Cash-Trapped** card — overdue receivables sum; tap → Aging report.
+- [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (session 2026-04-26 — `components/CashTrappedCard.kt` full-width Card; error-red border+tint when balance >0; overdueCount subtitle; tap → onNavigateToAging → Screen.InvoicesAging; GET /reports/aging via ReportApi.getAging() + DashboardRepository.getAgingSummary() 404-tolerant null; VM _overdueReceivablesCents/_overdueCount StateFlows loaded on init + refresh; AppNavGraph wired)
 - [~] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (commit 12a8756 — `components/ChurnAlertCard.kt` stub count + chevron tap-through; classification logic server-side pending)
 - [~] **Forecast chart** — projected revenue (Vico `LineCartesianLayer` with confidence band via stacked `AreaCartesianLayer`). (commit 12a8756 — `components/ForecastCard.kt` stub progress bar toward 90-day history threshold; full chart deferred until server forecast endpoint)
 - [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (commit 12a8756 — `components/MissingPartsCard.kt` reorder-needed list with qty/threshold + "Connect Inventory data" when null)
@@ -579,14 +581,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [~] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default. (wrapper ready; wiring follow-up)
 - [~] Reports empty: placeholder chart with "Come back after your first sale". (wrapper ready; wiring follow-up)
 - [x] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard. (commit 8cb3e84 — CircularProgressIndicator + `%` label tappable embedded top-right of SetupChecklistCard)
-- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear.
+- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear. NOTE (session 2026-04-26): server-blocked — requires dedicated seed/demo API endpoint + Setup Wizard screen (§36) not yet built; deferred.
 
 ### 3.15 Open-shop checklist
 - [x] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist. (commit 8531526 — `AppPreferences.lastMorningChecklistDate` gate + `MorningOpenCard` dashboard banner with dismiss)
 - [x] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS. (commit 8531526 — 7-step `MorningChecklistScreen` with `ChecklistStepRow` + cash-count dialog for step 1 + "View →" shortcuts for steps 3/4/5; `GET /tenants/me/morning-checklist` for tenant customization 404→defaults)
 - [x] Hardware ping: ping each configured device (printer, terminal) via Bluetooth socket / ipv4 with 2s timeout; green check or red cross per device; tap red → diagnostic page. (commit 8531526 — `util/HardwarePinger.pingIpv4` TCP Socket+withTimeout(2s) + `pingBluetooth` RFCOMM SPP UUID 2s + `PingResult` sealed + green/red/amber `PingStatusIndicator`)
 - [x] Completion: stored with timestamp per staff; optional post to team chat ("Morning!"). (commit 8531526 — `AppPreferences.setMorningChecklistCompleted(dateKey, staffId, completedSteps)` + optional POST `/morning-checklist/complete` 404-tolerated)
-- [ ] Skip: user can skip; skipped state noted in audit log.
+- [ ] Skip: user can skip; skipped state noted in audit log. NOTE (session 2026-04-26): server-blocked — requires server audit-log endpoint; local skip-prefs-only is insufficient per spec; deferred.
 
 ### 3.16 Activity feed (dashboard variant)
 - [x] Real-time event stream (not audit log; no diffs — social-feed style). (commit 6f5eb1f — `ActivityFeedViewModel` WebSocket `activity:new` topic subscription)
@@ -616,12 +618,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Live preview in settings (real dashboard) as user toggles. (commit fc88873 — `AppearanceScreen` SingleChoiceSegmentedButtonRow + live preview card; SettingsScreen row + AppNavGraph route)
 
 ### 3.19 Rollout gates
-- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage.
-- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form.
-- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score.
-- [ ] Kill-switch: flag instantly reverts.
-- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server.
-- [ ] Doc gate: before/after wireframes + rationale + success criteria.
+- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage. NOTE (session 2026-04-26): server-blocked — requires feature-flag infra (§19.x) not yet built; deferred.
+- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form. NOTE (session 2026-04-26): blocked on feature-flag system + §36 Setup Wizard; deferred.
+- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score. NOTE (session 2026-04-26): requires server-side rollout infra; deferred.
+- [ ] Kill-switch: flag instantly reverts. NOTE (session 2026-04-26): blocked on feature-flag system; deferred.
+- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server. NOTE (session 2026-04-26): requires server analytics aggregation endpoint; deferred.
+- [ ] Doc gate: before/after wireframes + rationale + success criteria. NOTE (session 2026-04-26): product/design task, not code; deferred to pre-rollout milestone.
 
 ---
 ## 4. Tickets (Service Jobs)
@@ -1642,7 +1644,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Month** — custom `CalendarGrid` Composable with dot per day for events; tap day → agenda. (commit c00bd78 — `AppointmentMonthView.kt` 6×7 grid via `YearMonth` iteration + dot indicators + month nav arrows + tap → Day drill-down)
 - [x] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin. (baseline `AppointmentWeekView`)
 - [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (baseline Day picker + list)
-- [ ] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`).
+- [x] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`). (session 2026-04-26 — `AppointmentKanbanView.kt`: sw600dp tablet guard, employee columns derived from loaded appointments, 07:00–21:00 × 30-min slot grid, tonal tiles by type, `detectDragGestures` lift + ghost border + `HapticFeedbackType.LongPress` on drop, `AlertDialog` ConfirmDialog before PATCH, `AppointmentListViewModel.rescheduleAppointment()` optimistic update + rollback-on-failure reload; `AppointmentViewMode.Kanban` added to enum; `AppointmentListScreen` wired with `LocalConfiguration.screenWidthDp >= 600` for `isTablet`)
 - [x] **Today** button in top bar; `Ctrl+T` shortcut. (commit c00bd78 — IconButton top-bar + `KeyboardShortcuts.kt` Ctrl+T via `onJumpToToday` param)
 - [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
@@ -1654,7 +1656,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Send-reminder manually (`POST /sms/send` + template). (commit c00bd78 — Send Reminder OutlinedButton → POST /appointments/:id/send-reminder; 404 tolerated)
 
 ### 10.3 Create
-- [ ] Minimal.
+- [x] Minimal. (session 2026-04-26 — `leads/AppointmentCreateScreen.kt` already provides the full form and is the entry point wired from NavGraph `Screen.AppointmentCreate`; no separate minimal form needed as the full form handles the minimal case)
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
 - [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
 - [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
@@ -1667,21 +1669,21 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Recurring-event edits — "This event" / "This and following" / "All".
 
 ### 10.5 Reminders
-- [ ] Server cron sends FCM N min before (per-user setting).
-- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons.
-- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen.
+- [ ] Server cron sends FCM N min before (per-user setting). NOTE: server already runs a 15-min SMS reminder cron (`index.ts`); FCM token registration + FCM send from server is not yet implemented server-side — server-blocked.
+- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons. NOTE: depends on server FCM push — server-blocked until FCM token storage added to server.
+- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen. NOTE: requires FCM push from server — server-blocked.
 
 ### 10.6 Check-in / check-out
-- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket.
-- [ ] "Customer departed" on completion.
+- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. NOTE: server has no `PATCH /appointments/:id/check_in` endpoint and no `checked_in_at` column — server-blocked.
+- [ ] "Customer departed" on completion. NOTE: same server-block as above — `checked_out_at` column and endpoint missing.
 
 ### 10.7 Scheduling engine
-- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool).
-- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.
-- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`).
-- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict.
-- [ ] Multi-location view: combine or filter by location.
-- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy.
+- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). NOTE: server has no appointment_types table or per-type duration config — server-blocked.
+- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. NOTE: requires server-side availability engine (`/appointments/availability` or similar) — server-blocked.
+- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). NOTE: endpoint does not exist on server — server-blocked.
+- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. NOTE: Kanban drag-reschedule implemented in §10.1 above; full scheduling engine drag needs server availability checks — deferred with server dependency.
+- [ ] Multi-location view: combine or filter by location. NOTE: location filter chip exists (§10.1); combined multi-location aggregation needs server support — server-blocked.
+- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. NOTE: requires server-side per-customer no-show counter + tenant settings key — server-blocked.
 
 ---
 ## 11. Expenses

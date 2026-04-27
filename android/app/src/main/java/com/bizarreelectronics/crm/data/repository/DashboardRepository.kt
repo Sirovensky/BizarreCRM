@@ -18,6 +18,30 @@ data class DashboardStats(
     val appointmentsToday: Int = 0,
     val ticketsDueToday: Int = 0,
     val isFromCache: Boolean = false,
+    // §3 L489 — web-mirror KPI fields. All default 0/0.0; populated when
+    // the server includes the field in GET /reports/dashboard response.
+    val taxToday: Double = 0.0,
+    val discountsToday: Double = 0.0,
+    val cogsToday: Double = 0.0,
+    val netProfitToday: Double = 0.0,
+    val refundsToday: Double = 0.0,
+    val expensesToday: Double = 0.0,
+    val receivablesTotal: Double = 0.0,
+    val closedToday: Int = 0,
+)
+
+/**
+ * §3.2 L504 — Summary of overdue receivables for the Cash-Trapped card.
+ *
+ * @property overdueReceivablesCents Total overdue balance in cents.
+ * @property overdueCount            Number of overdue invoices.
+ *
+ * Null instance returned by [DashboardRepository.getAgingSummary] when the
+ * endpoint returns HTTP 404 (not yet implemented) or the device is offline.
+ */
+data class AgingSummary(
+    val overdueReceivablesCents: Long,
+    val overdueCount: Int,
 )
 
 data class NeedsAttention(
@@ -48,6 +72,15 @@ class DashboardRepository @Inject constructor(
                     revenueToday = (data["revenue_today"] as? Number)?.toDouble() ?: 0.0,
                     appointmentsToday = (data["appointments_today"] as? Number)?.toInt() ?: 0,
                     ticketsDueToday = (data["tickets_due_today"] as? Number)?.toInt() ?: 0,
+                    // §3 L489 — web-mirror fields; zero when absent (server hasn't added them yet).
+                    taxToday = (data["tax_today"] as? Number)?.toDouble() ?: 0.0,
+                    discountsToday = (data["discounts_today"] as? Number)?.toDouble() ?: 0.0,
+                    cogsToday = (data["cogs_today"] as? Number)?.toDouble() ?: 0.0,
+                    netProfitToday = (data["net_profit_today"] as? Number)?.toDouble() ?: 0.0,
+                    refundsToday = (data["refunds_today"] as? Number)?.toDouble() ?: 0.0,
+                    expensesToday = (data["expenses_today"] as? Number)?.toDouble() ?: 0.0,
+                    receivablesTotal = (data["receivables_total"] as? Number)?.toDouble() ?: 0.0,
+                    closedToday = (data["closed_today"] as? Number)?.toInt() ?: 0,
                 )
                 // Cache for offline use
                 appPreferences.cachedOpenTickets = stats.openTickets
@@ -104,6 +137,39 @@ class DashboardRepository @Inject constructor(
         } catch (e: Exception) {
             Log.w(TAG, "My Queue refresh failed: ${e.message}")
             emptyList()
+        }
+    }
+
+    /**
+     * §3.2 L504 — Fetch overdue-receivables summary from `GET /reports/aging`.
+     *
+     * Returns null when:
+     * - Device is offline.
+     * - Server returns HTTP 404 (endpoint not yet implemented).
+     * - Any other network error.
+     *
+     * The caller ([DashboardViewModel]) renders [CashTrappedCard] in its
+     * empty state when null is returned — no crash, no stale data.
+     */
+    suspend fun getAgingSummary(): AgingSummary? {
+        if (!serverMonitor.isEffectivelyOnline.value) return null
+        return try {
+            val response = reportApi.getAging()
+            val data = response.data ?: return null
+            AgingSummary(
+                overdueReceivablesCents = (data["overdue_total_cents"] as? Number)?.toLong() ?: 0L,
+                overdueCount = (data["overdue_count"] as? Number)?.toInt() ?: 0,
+            )
+        } catch (e: retrofit2.HttpException) {
+            if (e.code() == 404) {
+                Log.d(TAG, "getAging: endpoint not yet live (404) — Cash-Trapped card will show empty state")
+            } else {
+                Log.w(TAG, "getAging failed (${e.code()}): ${e.message}")
+            }
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "getAging error: ${e.message}")
+            null
         }
     }
 

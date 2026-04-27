@@ -49,6 +49,7 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.BusyHoursHeatmap
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.CashTrappedCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.ChurnAlertCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardDatePreset
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DateRange
@@ -119,6 +120,18 @@ data class DashboardUiState(
     // §3 L488 — pending payments KPI. Populated from server when available;
     // stays 0 until a dedicated dashboard-stats endpoint exposes the field.
     val pendingPayments: Int = 0,
+    // §3 L489 — web-mirror KPI tiles. All default to 0 / 0.0; populated when
+    // the server's dashboard-stats response includes the corresponding field.
+    // Fields intentionally kept nullable-free to avoid null-check boilerplate
+    // throughout the composable: a zero value renders the muted colour.
+    val taxToday: Double = 0.0,
+    val discountsToday: Double = 0.0,
+    val cogsToday: Double = 0.0,
+    val netProfitToday: Double = 0.0,
+    val refundsToday: Double = 0.0,
+    val expensesToday: Double = 0.0,
+    val receivablesTotal: Double = 0.0,
+    val closedToday: Int = 0,
     val myQueue: List<TicketSummary> = emptyList(),
     val needsAttention: List<AttentionItem> = emptyList(),
     // CROSS1: ticket_all_employees_view_all == '0' enables the assignment feature.
@@ -159,7 +172,9 @@ data class DashboardUiState(
             revenueToday == 0.0 &&
             appointmentsToday == 0 &&
             lowStockCount == 0 &&
-            pendingPayments == 0
+            pendingPayments == 0 &&
+            closedToday == 0 &&
+            netProfitToday == 0.0
 
     /** §3.14 L570 — show cached banner when network failed but data is available. */
     val showCachedBanner: Boolean
@@ -261,6 +276,18 @@ class DashboardViewModel @Inject constructor(
     /** §3.2 L506 — inventory items needing reorder. Null = source not connected. */
     private val _missingParts = MutableStateFlow<List<MissingPartItem>?>(null)
     val missingParts: StateFlow<List<MissingPartItem>?> = _missingParts.asStateFlow()
+
+    // -------------------------------------------------------------------------
+    // §3.2 L504 — Cash-Trapped card (overdue receivables)
+    // -------------------------------------------------------------------------
+
+    /** §3.2 L504 — overdue receivables in cents. Null = endpoint not yet live / offline. */
+    private val _overdueReceivablesCents = MutableStateFlow<Long?>(null)
+    val overdueReceivablesCents: StateFlow<Long?> = _overdueReceivablesCents.asStateFlow()
+
+    /** §3.2 L504 — count of overdue invoices. Null = endpoint not yet live / offline. */
+    private val _overdueCount = MutableStateFlow<Int?>(null)
+    val overdueCount: StateFlow<Int?> = _overdueCount.asStateFlow()
 
     // -------------------------------------------------------------------------
     // §3.4 L519 — My Queue section visibility
@@ -650,7 +677,21 @@ class DashboardViewModel @Inject constructor(
         refreshSmsCount()
         refreshTeamInbox()
         loadRoleTemplate()
+        loadAgingSummary()
         startPeriodicRefresh()
+    }
+
+    /**
+     * §3.2 L504 — Fetch overdue-receivables summary for the Cash-Trapped card.
+     * 404-tolerant: null result leaves the card in its "no data" empty state.
+     * Called once on init; re-triggered by [refresh].
+     */
+    private fun loadAgingSummary() {
+        viewModelScope.launch {
+            val summary = dashboardRepository.getAgingSummary()
+            _overdueReceivablesCents.value = summary?.overdueReceivablesCents
+            _overdueCount.value = summary?.overdueCount
+        }
     }
 
     /** §3.12 — auto-refresh SMS unread + team inbox every 30 s. */
@@ -703,6 +744,15 @@ class DashboardViewModel @Inject constructor(
                     openTickets = stats.openTickets,
                     revenueToday = stats.revenueToday,
                     appointmentsToday = stats.appointmentsToday,
+                    // §3 L489 — web-mirror tiles from extended stats response.
+                    taxToday = stats.taxToday,
+                    discountsToday = stats.discountsToday,
+                    cogsToday = stats.cogsToday,
+                    netProfitToday = stats.netProfitToday,
+                    refundsToday = stats.refundsToday,
+                    expensesToday = stats.expensesToday,
+                    receivablesTotal = stats.receivablesTotal,
+                    closedToday = stats.closedToday,
                     statsError = null,
                     // §3.14 L570 — mark that we have live data; clear network-error flag.
                     hasNetworkError = false,
@@ -877,6 +927,7 @@ class DashboardViewModel @Inject constructor(
     fun refresh() {
         _state.value = _state.value.copy(isRefreshing = true)
         loadDashboard()
+        loadAgingSummary()
     }
 }
 
@@ -914,6 +965,8 @@ fun DashboardScreen(
     onNavigateToSetup: (() -> Unit)? = null,
     // §3.16 L593 — "Show more" on Activity Feed card → full Activity Feed screen.
     onNavigateToActivityFeed: (() -> Unit)? = null,
+    // §3.2 L504 — Cash-Trapped card tap → Aging report.
+    onNavigateToAging: (() -> Unit)? = null,
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -935,6 +988,10 @@ fun DashboardScreen(
     // §3.12 — SMS unread + team inbox counts.
     val unreadSmsCount by viewModel.unreadSmsCount.collectAsState()
     val teamInboxCount by viewModel.teamInboxCount.collectAsState()
+
+    // §3.2 L504 — Cash-Trapped card state.
+    val overdueReceivablesCents by viewModel.overdueReceivablesCents.collectAsState()
+    val overdueCount by viewModel.overdueCount.collectAsState()
 
     // §3.17 L602-L610 — Layout config (role templates + customization).
     val layoutConfig by viewModel.layoutConfig.collectAsState()
@@ -967,8 +1024,20 @@ fun DashboardScreen(
     val apptsTint = if (state.appointmentsToday > 0) MaterialTheme.colorScheme.secondary else muted
     val lowStockTint = if (state.lowStockCount > 0) WarningAmber else muted
     val pendingTint = if (state.pendingPayments > 0) MaterialTheme.colorScheme.tertiary else muted
+    // §3 L489 — web-mirror tile tints.
+    val taxTint = if (state.taxToday > 0) MaterialTheme.colorScheme.onSurfaceVariant else muted
+    val discountsTint = if (state.discountsToday > 0) WarningAmber else muted
+    val cogsTint = if (state.cogsToday > 0) MaterialTheme.colorScheme.onSurfaceVariant else muted
+    val netProfitTint = if (state.netProfitToday > 0) SuccessGreen else if (state.netProfitToday < 0) ErrorRed else muted
+    val refundsTint = if (state.refundsToday > 0) ErrorRed else muted
+    val expensesTint = if (state.expensesToday > 0) WarningAmber else muted
+    val receivablesTint = if (state.receivablesTotal > 0) MaterialTheme.colorScheme.secondary else muted
+    val closedTint = if (state.closedToday > 0) SuccessGreen else muted
 
     // §3 L488 — KpiTile list fed into KpiGrid composable.
+    // Mirrors web tile set: Sales today, Tax, Discounts, COGS, Net profit,
+    // Refunds, Expenses, Receivables, Open tickets, Appointments, Low stock,
+    // Closed today, Pending payments.
     // deltaPercent is null for all tiles until /dashboard/compare ships.
     val kpiTiles = listOf(
         KpiTile(
@@ -981,14 +1050,88 @@ fun DashboardScreen(
             onClick = onNavigateToTickets,
         ),
         KpiTile(
-            label = "Revenue",
+            label = "Closed Today",
+            value = state.closedToday.toString(),
+            iconTint = closedTint,
+            icon = {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = closedTint)
+            },
+            // §3 L490 — no dedicated "closed today" filtered list on Android yet; inert.
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Revenue Today",
             value = "$${String.format("%.2f", state.revenueToday)}",
             iconTint = revenueTint,
             icon = {
                 Icon(Icons.Default.AttachMoney, contentDescription = null, tint = revenueTint)
             },
-            // Revenue tile has no detail screen on Android yet — inert tap.
+            // §3 L490 — revenue drill-down deferred; no dedicated screen yet.
             onClick = null,
+        ),
+        KpiTile(
+            label = "Net Profit",
+            value = "$${String.format("%.2f", state.netProfitToday)}",
+            iconTint = netProfitTint,
+            icon = {
+                Icon(Icons.Default.TrendingUp, contentDescription = null, tint = netProfitTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "COGS",
+            value = "$${String.format("%.2f", state.cogsToday)}",
+            iconTint = cogsTint,
+            icon = {
+                Icon(Icons.Default.Inventory, contentDescription = null, tint = cogsTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Tax",
+            value = "$${String.format("%.2f", state.taxToday)}",
+            iconTint = taxTint,
+            icon = {
+                Icon(Icons.Default.Receipt, contentDescription = null, tint = taxTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Discounts",
+            value = "$${String.format("%.2f", state.discountsToday)}",
+            iconTint = discountsTint,
+            icon = {
+                Icon(Icons.Default.LocalOffer, contentDescription = null, tint = discountsTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Refunds",
+            value = "$${String.format("%.2f", state.refundsToday)}",
+            iconTint = refundsTint,
+            icon = {
+                Icon(Icons.Default.Undo, contentDescription = null, tint = refundsTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Expenses",
+            value = "$${String.format("%.2f", state.expensesToday)}",
+            iconTint = expensesTint,
+            icon = {
+                Icon(Icons.Default.MoneyOff, contentDescription = null, tint = expensesTint)
+            },
+            onClick = null,
+        ),
+        KpiTile(
+            label = "Receivables",
+            value = "$${String.format("%.2f", state.receivablesTotal)}",
+            iconTint = receivablesTint,
+            icon = {
+                Icon(Icons.Default.AccountBalance, contentDescription = null, tint = receivablesTint)
+            },
+            // §3 L490 — tap → Aging report (same destination as Cash-Trapped card).
+            onClick = onNavigateToAging,
         ),
         KpiTile(
             label = "Appointments",
@@ -1015,7 +1158,6 @@ fun DashboardScreen(
             icon = {
                 Icon(Icons.Default.Pending, contentDescription = null, tint = pendingTint)
             },
-            // No detail screen yet — inert tap.
             onClick = null,
         ),
     )
@@ -1516,7 +1658,12 @@ fun DashboardScreen(
                 hasPermission = state.canViewReports,
                 modifier = Modifier.padding(horizontal = 0.dp),
             ) {
-                InsightsSection(viewModel = viewModel)
+                InsightsSection(
+                    viewModel = viewModel,
+                    overdueReceivablesCents = overdueReceivablesCents,
+                    overdueCount = overdueCount,
+                    onNavigateToAging = onNavigateToAging,
+                )
             }
         }
     }
@@ -1770,7 +1917,15 @@ fun KpiCardView(kpi: KpiCard, modifier: Modifier = Modifier) {
  * crashes regardless of what the ViewModel emits.
  */
 @Composable
-private fun InsightsSection(viewModel: DashboardViewModel) {
+private fun InsightsSection(
+    viewModel: DashboardViewModel,
+    /** §3.2 L504 — overdue receivables in cents; null = no data. */
+    overdueReceivablesCents: Long? = null,
+    /** §3.2 L504 — number of overdue invoices; null = no data. */
+    overdueCount: Int? = null,
+    /** §3.2 L504 — routes to Aging report from Cash-Trapped card tap. */
+    onNavigateToAging: (() -> Unit)? = null,
+) {
     val windowMode = rememberWindowMode()
     val isTwoCol = windowMode != WindowMode.Phone
     // §3.19 L615 — BI widgets section spacing follows LocalDashboardDensity.
@@ -1838,6 +1993,13 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
                     modifier = Modifier.weight(1f),
                 )
             }
+            // Row 2b: Cash-Trapped (full width — amount warrants prominence)
+            CashTrappedCard(
+                overdueReceivablesCents = overdueReceivablesCents,
+                overdueCount = overdueCount,
+                onNavigateToAging = onNavigateToAging,
+                modifier = Modifier.fillMaxWidth(),
+            )
             // Row 3: Leaderboard (full width)
             LeaderboardCard(
                 entries = leaderboard,
@@ -1868,6 +2030,12 @@ private fun InsightsSection(viewModel: DashboardViewModel) {
             ForecastCard(
                 forecastRevenue = forecastCents,
                 historyDays = forecastHistoryDays,
+            )
+            // §3.2 L504 — Cash-Trapped card (phone: full-width between forecast + leaderboard)
+            CashTrappedCard(
+                overdueReceivablesCents = overdueReceivablesCents,
+                overdueCount = overdueCount,
+                onNavigateToAging = onNavigateToAging,
             )
             LeaderboardCard(entries = leaderboard)
             BusyHoursHeatmap(data = busyHours)

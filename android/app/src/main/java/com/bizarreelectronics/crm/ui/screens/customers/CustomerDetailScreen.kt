@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -56,6 +57,7 @@ import com.bizarreelectronics.crm.data.remote.dto.DeviceHistoryEntry
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateCustomerRequest
 import com.bizarreelectronics.crm.data.repository.CustomerRepository
+import com.bizarreelectronics.crm.ui.components.PredictiveBackScaffold
 import com.bizarreelectronics.crm.ui.components.TagChip
 import com.bizarreelectronics.crm.ui.components.hashTagToColor
 import retrofit2.HttpException
@@ -937,7 +939,17 @@ fun CustomerDetailScreen(
         onDispose { viewModel.undoStack.clear() }
     }
 
+    // §1.5 — PredictiveBackHandler: wraps the Scaffold so the back-swipe
+    // preview tracks the drag live (progress 0→1). The subtle scale mirrors
+    // the M3 recommended 90%-shrink on the exiting screen.
+    PredictiveBackScaffold(onBack = onBack) { backProgress ->
     Scaffold(
+        modifier = Modifier.graphicsLayer {
+            val scale = 1f - backProgress * 0.08f
+            scaleX = scale
+            scaleY = scale
+            alpha = 1f - backProgress * 0.3f
+        },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             val heroName = when {
@@ -1236,6 +1248,7 @@ fun CustomerDetailScreen(
             }
         }
     }
+    } // end PredictiveBackScaffold
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)

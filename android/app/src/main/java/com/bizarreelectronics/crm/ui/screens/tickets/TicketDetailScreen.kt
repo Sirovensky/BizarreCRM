@@ -17,6 +17,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.ui.components.PredictiveBackScaffold
 import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -1395,10 +1397,21 @@ fun TicketDetailScreen(
         )
     }
 
+    // §1.5 — PredictiveBackHandler: wraps the Scaffold so the back-swipe
+    // preview tracks the drag live (progress 0→1). The subtle scale mirrors
+    // the M3 recommended 90%-shrink on the exiting screen.
+    PredictiveBackScaffold(onBack = onBack) { backProgress ->
     Scaffold(
         // D5-8: lift bottom-anchored inputs (notes, comments, SMS composer)
         // above the soft keyboard instead of letting them vanish beneath it.
-        modifier = Modifier.imePadding(),
+        modifier = Modifier
+            .imePadding()
+            .graphicsLayer {
+                val scale = 1f - backProgress * 0.08f
+                scaleX = scale
+                scaleY = scale
+                alpha = 1f - backProgress * 0.3f
+            },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             // BrandTopAppBar with a custom title slot: orderId in mono + status badge.
@@ -1857,6 +1870,7 @@ fun TicketDetailScreen(
             }
         }
     }
+    } // end PredictiveBackScaffold
 }
 
 @OptIn(ExperimentalSharedTransitionApi::class)

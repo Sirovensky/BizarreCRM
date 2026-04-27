@@ -1,5 +1,7 @@
 <resources>
     <string name="app_name">Bizarre CRM</string>
+
+    <!-- Bottom / Rail / Drawer navigation labels (§1.5) -->
     <string name="nav_dashboard">Dashboard</string>
     <string name="nav_tickets">Tickets</string>
     <string name="nav_pos">POS</string>
@@ -16,6 +18,69 @@
     <string name="shortcut_new_customer_long">Add a new customer</string>
     <string name="shortcut_scan_short">Scan</string>
     <string name="shortcut_scan_long">Scan barcode or IMEI</string>
+
     <!-- §17.8 — HCE loyalty card description shown in Android NFC settings -->
     <string name="loyalty_hce_description">Bizarre CRM Loyalty Card</string>
+
+    <!-- Generic actions (§1.6 — user-facing error recovery) -->
+    <string name="action_retry">Retry</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_save">Save</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_undo">Undo</string>
+    <string name="action_open_settings">Open Settings</string>
+    <string name="action_contact_support">Contact support</string>
+
+    <!-- Common error messages (§1.6 AppError taxonomy) -->
+    <string name="error_network">No connection — check your network and try again.</string>
+    <string name="error_server">Server error — our team has been notified.</string>
+    <string name="error_not_found">This record no longer exists.</string>
+    <string name="error_permission_denied">You don\'t have permission to do that.</string>
+    <string name="error_auth_expired">Your session expired — please sign in again.</string>
+    <string name="error_conflict">This record was changed by someone else. Reload to see the latest.</string>
+    <string name="error_unknown">Something went wrong. Please try again.</string>
+    <string name="error_offline_cached">Offline — showing cached data.</string>
+
+    <!-- Offline / sync banner (§1.1 / §20) -->
+    <string name="banner_offline">Offline — showing cached data</string>
+    <string name="banner_pending_sync">%1$d changes pending sync</string>
+    <string name="banner_clock_drift">Device clock is off by %1$s — may cause login issues.</string>
+    <string name="banner_rate_limit">Slow down — too many requests queued.</string>
+
+    <!-- Process-death restore hint (§1.8) -->
+    <string name="restored_search_query">Search restored: “%1$s”</string>
+
+    <!-- Ticket list / detail labels -->
+    <string name="tickets_empty_title">No tickets yet</string>
+    <string name="tickets_empty_subtitle">Create a repair ticket to get started.</string>
+    <string name="ticket_status_label">Status</string>
+    <string name="ticket_search_hint">Search tickets…</string>
+
+    <!-- Customer list / detail labels -->
+    <string name="customers_empty_title">No customers yet</string>
+    <string name="customers_empty_subtitle">Add a customer to get started.</string>
+    <string name="customer_search_hint">Search customers…</string>
+
+    <!-- Draft recovery (§1.7) -->
+    <string name="draft_recovery_title">You have an unfinished %1$s</string>
+    <string name="draft_recovery_resume">Resume</string>
+    <string name="draft_recovery_discard">Discard</string>
+    <string name="draft_recovery_saved_ago">Saved %1$s ago</string>
+
+    <!-- Biometric / PIN auth labels -->
+    <string name="biometric_prompt_title">Verify your identity</string>
+    <string name="biometric_prompt_subtitle">Use biometrics to unlock Bizarre CRM</string>
+    <string name="biometric_prompt_cancel">Use PIN instead</string>
+    <string name="pin_lock_title">Enter PIN</string>
+    <string name="pin_lock_forgot">Forgot PIN?</string>
+    <string name="pin_lock_sign_out">Sign out</string>
+
+    <!-- Settings section titles -->
+    <string name="settings_section_account">Account</string>
+    <string name="settings_section_security">Security</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_notifications">Notifications</string>
+    <string name="settings_section_advanced">Advanced</string>
+    <string name="settings_section_diagnostics">Diagnostics</string>
 </resources>

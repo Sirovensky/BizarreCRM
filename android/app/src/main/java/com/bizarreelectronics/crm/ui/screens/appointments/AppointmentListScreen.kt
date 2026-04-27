@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -24,6 +25,7 @@ import com.bizarreelectronics.crm.ui.components.shared.ErrorState
 import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentAgendaView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentDayView
+import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentKanbanView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentMonthView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.AppointmentWeekView
 import com.bizarreelectronics.crm.ui.screens.appointments.components.FilterChipRow
@@ -39,6 +41,10 @@ fun AppointmentListScreen(
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
     val listState = rememberLazyListState()
+
+    // Tablet detection: >= 600dp width is the standard Android sw600dp breakpoint.
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.screenWidthDp >= 600
 
     LaunchedEffect(state.toastMessage) {
         val msg = state.toastMessage
@@ -147,6 +153,19 @@ fun AppointmentListScreen(
                         onDayClick = { date ->
                             viewModel.setSelectedDate(date)
                             viewModel.setViewMode(AppointmentViewMode.Day)
+                        },
+                    )
+                    // §10.1 — Tablet time-block Kanban
+                    AppointmentViewMode.Kanban -> AppointmentKanbanView(
+                        appointments = state.filtered,
+                        selectedDate = state.selectedDate,
+                        isLoading = state.isLoading,
+                        error = state.error,
+                        isTablet = isTablet,
+                        onAppointmentClick = onAppointmentClick,
+                        onDateChange = viewModel::setSelectedDate,
+                        onReschedule = { id, newStart, newEmpId ->
+                            viewModel.rescheduleAppointment(id, newStart, newEmpId)
                         },
                     )
                 }

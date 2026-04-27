@@ -123,6 +123,10 @@ import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
 import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
 import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffoldDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import java.util.Locale
 import javax.inject.Inject
 
@@ -733,6 +737,18 @@ fun AppNavGraph(
         BottomNavItem(Screen.More, "More") { Icon(Icons.Default.MoreHoriz, "More") },
     )
 
+    // §1.5 — §22.2 Adaptive Navigation Suite.
+    // NavigationSuiteScaffold auto-picks the correct nav component from the
+    // WindowAdaptiveInfo reported by the platform:
+    //   compact  width < 600dp  → NavigationBar  (bottom, thumb reach)
+    //   medium   600–839dp      → NavigationRail (leading edge, large phone / tablet portrait)
+    //   expanded ≥ 840dp        → PermanentNavigationDrawer (foldable large / landscape tablet / ChromeOS)
+    //
+    // When showBottomNav is false (pre-login, detail screens, full-screen flows)
+    // we force NavigationSuiteType.None so the scaffold renders zero chrome,
+    // delegating layout entirely to the outer Scaffold.
+    //
+    // CROSS18 outer Scaffold retained for statusBar inset ownership and banners.
     Scaffold(
         // CROSS18: zero the outer Scaffold's top inset so child screens' own
         // TopAppBar is the sole owner of statusBars padding. Without this,
@@ -746,71 +762,6 @@ fun AppNavGraph(
         contentWindowInsets = WindowInsets.systemBars.only(
             WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom,
         ),
-        bottomBar = {
-            // §22.2 — drop the bottom NavigationBar at tablet+ widths; the
-            // NavigationRail rendered alongside the NavHost (below) takes
-            // over for ≥600dp. Phone width keeps the bottom bar so muscle
-            // memory + thumb-reach stays right.
-            val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
-            if (showBottomNav && !tabletNav) {
-                // [P0] NavigationBar restyle: explicit surface container so the bar
-                // stays anchored to surface1 and does not shift on scroll (Material3
-                // default is surfaceContainer which responds to scroll elevation).
-                // Selected indicator pill and icon tint come from the theme (purple
-                // primary via Wave 1 palette). Labels stay sentence-case in labelSmall
-                // Inter body-sans — do NOT convert to ALL-CAPS.
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ) {
-                    bottomNavItems.forEach { item ->
-                        val isMoreTab = item.screen == Screen.More
-                        val isSelected = if (isMoreTab) {
-                            currentRoute == Screen.More.route || currentRoute in moreChildRoutes
-                        } else {
-                            currentRoute == item.screen.route
-                        }
-                        NavigationBarItem(
-                            selected = isSelected,
-                            onClick = {
-                                if (isMoreTab) {
-                                    // Always navigate to the More menu, never restore a child
-                                    navController.navigate(Screen.More.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = false
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = false
-                                    }
-                                } else if (item.screen == Screen.Pos &&
-                                    currentRoute in setOf(
-                                        Screen.PosCart.route,
-                                        Screen.PosTender.route,
-                                        Screen.PosSplitCart.route,
-                                        Screen.Scanner.route,
-                                    )
-                                ) {
-                                    // Already deep in POS sub-flow — surface
-                                    // the reset/continue prompt instead of
-                                    // restoring the cart screen straight back
-                                    // (which is what restoreState=true did).
-                                    showPosResetDialog = true
-                                } else {
-                                    navController.navigate(item.screen.route) {
-                                        popUpTo(navController.graph.findStartDestination().id) {
-                                            saveState = true
-                                        }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                }
-                            },
-                            icon = item.icon,
-                            label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                        )
-                    }
-                }
-            }
-        },
     ) { padding ->
         val canShowOfflineBanner = authPreferences?.isLoggedIn == true &&
             !authPreferences.serverUrl.isNullOrBlank() &&
@@ -893,53 +844,70 @@ fun AppNavGraph(
                 // §54 — Ctrl+K opens the command palette overlay.
                 onCommandPalette = { showCommandPalette = true },
             ) {
-            // §22.2 — at tablet+ widths render NavigationRail alongside the
-            // NavHost in a Row. Phones fall through to single-column.
-            val tabletNav = com.bizarreelectronics.crm.util.isMediumOrExpandedWidth()
-            androidx.compose.foundation.layout.Row(
-                modifier = Modifier.weight(1f).fillMaxSize(),
-            ) {
-                if (tabletNav && showBottomNav) {
-                    NavigationRail(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ) {
-                        bottomNavItems.forEach { item ->
-                            val isMoreTab = item.screen == Screen.More
-                            val isSelected = if (isMoreTab) {
-                                currentRoute == Screen.More.route || currentRoute in moreChildRoutes
-                            } else {
-                                currentRoute == item.screen.route
-                            }
-                            androidx.compose.material3.NavigationRailItem(
-                                selected = isSelected,
-                                onClick = {
-                                    if (isMoreTab) {
-                                        navController.navigate(Screen.More.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = false
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = false
-                                        }
-                                    } else {
-                                        navController.navigate(item.screen.route) {
-                                            popUpTo(navController.graph.findStartDestination().id) {
-                                                saveState = true
-                                            }
-                                            launchSingleTop = true
-                                            restoreState = true
-                                        }
-                                    }
-                                },
-                                icon = item.icon,
-                                label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
-                            )
+
+            // §1.5 — Adaptive navigation: NavigationSuiteScaffold wraps the
+            // NavHost and auto-selects NavigationBar / NavigationRail /
+            // PermanentNavigationDrawer from currentWindowAdaptiveInfo().
+            // When the nav chrome should be hidden (pre-login, detail views,
+            // full-screen flows), layoutType is forced to None so no chrome
+            // is rendered. The outer Scaffold still owns the insets.
+            val adaptiveInfo = currentWindowAdaptiveInfo()
+            val navSuiteType = if (showBottomNav) {
+                NavigationSuiteScaffoldDefaults.calculateFromAdaptiveInfo(adaptiveInfo)
+            } else {
+                NavigationSuiteType.None
+            }
+
+            NavigationSuiteScaffold(
+                layoutType = navSuiteType,
+                navigationSuiteItems = {
+                    bottomNavItems.forEach { item ->
+                        val isMoreTab = item.screen == Screen.More
+                        val isSelected = if (isMoreTab) {
+                            currentRoute == Screen.More.route || currentRoute in moreChildRoutes
+                        } else {
+                            currentRoute == item.screen.route
                         }
+                        item(
+                            selected = isSelected,
+                            onClick = {
+                                if (isMoreTab) {
+                                    navController.navigate(Screen.More.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = false
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = false
+                                    }
+                                } else if (item.screen == Screen.Pos &&
+                                    currentRoute in setOf(
+                                        Screen.PosCart.route,
+                                        Screen.PosTender.route,
+                                        Screen.PosSplitCart.route,
+                                        Screen.Scanner.route,
+                                    )
+                                ) {
+                                    // Already deep in POS sub-flow — surface
+                                    // the reset/continue prompt instead of
+                                    // restoring the cart screen straight back.
+                                    showPosResetDialog = true
+                                } else {
+                                    navController.navigate(item.screen.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                }
+                            },
+                            icon = item.icon,
+                            label = { Text(item.label, style = MaterialTheme.typography.labelSmall) },
+                        )
                     }
-                    androidx.compose.material3.VerticalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                    )
-                }
+                },
+                containerColor = MaterialTheme.colorScheme.surface,
+            ) {
             // §2.1 — start-destination logic:
             //   isLoggedIn + serverUrl   → Dashboard (already authenticated)
             //   !isLoggedIn + serverUrl  → SetupStatusGate (probe then login)
@@ -951,12 +919,12 @@ fun AppNavGraph(
                 else -> Screen.Login.route
             }
             @OptIn(ExperimentalSharedTransitionApi::class)
-            SharedTransitionLayout(modifier = Modifier.weight(1f)) {
+            SharedTransitionLayout(modifier = Modifier.fillMaxSize()) {
             val sharedTransitionScope = this
             NavHost(
                 navController = navController,
                 startDestination = startDest,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxSize(),
                 // Foldable §23: horizontal slide transitions make predictive-back
                 // system gesture preview meaningful — the back-target screen slides
                 // in from the left as the user swipes. Navigation 2.8+ with
@@ -1147,6 +1115,8 @@ fun AppNavGraph(
                     onNavigateToSyncIssues = { navController.navigate(Screen.SyncIssues.route) },
                     // §3.16 L593 — "Show more" on the Activity Feed card routes to the full screen.
                     onNavigateToActivityFeed = { navController.navigate(Screen.ActivityFeed.route) },
+                    // §3.2 L504 — Cash-Trapped card tap → Aging report.
+                    onNavigateToAging = { navController.navigate(Screen.InvoicesAging.route) },
                 )
             }
             // §3.16 L592-L599 — Full-screen Activity Feed.
@@ -2382,7 +2352,7 @@ fun AppNavGraph(
             }
         }
         } // close SharedTransitionLayout
-        } // close §22.2 Row wrapper (NavigationRail + NavHost)
+        } // close NavigationSuiteScaffold content (§1.5)
         } // close §17.10 KeyboardShortcutsHost wrapper
         }
 

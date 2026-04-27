@@ -43,8 +43,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -78,6 +80,7 @@ import com.bizarreelectronics.crm.util.DeviceBinding
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.QrCodeGenerator
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.SmsOtpBus
 import com.bizarreelectronics.crm.util.SmsRetrieverHelper
 import com.bizarreelectronics.crm.util.SsoLauncher
@@ -296,6 +299,8 @@ class LoginViewModel @Inject constructor(
     private val biometricCredentialStore: BiometricCredentialStore,
     private val biometricAuth: BiometricAuth,
     private val deepLinkBus: DeepLinkBus,
+    // §2.4 drift gate: enforces TOTP window < 30s so OTPs aren't rejected by server.
+    private val clockDrift: ClockDrift,
 ) : ViewModel() {
 
     companion object {
@@ -1089,6 +1094,17 @@ class LoginViewModel @Inject constructor(
     fun verify2FA(onSuccess: () -> Unit) {
         val s = _state.value
         if (s.totpCode.length != 6) { _state.value = s.copy(error = "Enter a 6-digit code"); return }
+        // §2.4 drift gate: block TOTP verify when clock skew ≥ 30 s — the server
+        // will reject the OTP before we even send it.  isSafeFor2FA() returns true
+        // when no server time has been sampled yet (optimistic default) so we only
+        // block when we have confirmed evidence of a problem.
+        if (!clockDrift.isSafeFor2FA()) {
+            _state.value = s.copy(
+                error = "Your device clock is out of sync with the server. " +
+                    "Correct the date/time settings and try again.",
+            )
+            return
+        }
 
         _state.value = s.copy(isLoading = true, error = null)
         viewModelScope.launch {
@@ -3887,7 +3903,12 @@ private fun TotpCodeInputContent(
         },
         label = { Text("6-digit code") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+        // §2.4 L302 — ContentType.SmsOtpCode is public in Compose UI 1.8+ (BOM 2026.04.01).
+        // Signals to the Android autofill framework that this field receives SMS OTPs.
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester)
+            .semantics { contentType = ContentType.SmsOtpCode },
         textStyle = LocalTextStyle.current.copy(
             fontFamily = BrandMono.fontFamily,
             fontSize = 24.sp,
