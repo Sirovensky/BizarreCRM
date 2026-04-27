@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell } from 'lucide-react';
+import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 // WEB-FW-003 (Fixer-A5 2026-04-25): split recharts (~500kB) into its own
 // chunk so it loads AFTER the invoice list is paintable. The pies render
 // inside a fixed 7rem box that we keep reserved during Suspense fallback,
@@ -127,6 +127,22 @@ export function InvoiceListPage() {
   // Bulk selection state
   const [selected, setSelected] = useState<Set<number>>(new Set());
 
+  // WEB-W2-032: sort state stored in URL params for bookmarkability
+  const sortBy = searchParams.get('sort_by') || 'created_at';
+  const sortDir = (searchParams.get('sort_dir') || 'desc') as 'asc' | 'desc';
+
+  const toggleSort = (col: string) => {
+    const p = new URLSearchParams(searchParams);
+    if (sortBy === col) {
+      p.set('sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      p.set('sort_by', col);
+      p.set('sort_dir', 'desc');
+    }
+    p.set('page', '1');
+    setSearchParams(p, { replace: true });
+  };
+
   const dateParams = useMemo(() => getDateRange(dateRange), [dateRange]);
 
   const setParam = (key: string, val: string) => {
@@ -149,30 +165,38 @@ export function InvoiceListPage() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange }],
-    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: status || undefined, keyword: keyword || undefined, ...dateParams }),
+    queryKey: ['invoices', { page, pageSize, status, keyword, dateRange, sortBy, sortDir }],
+    queryFn: () => invoiceApi.list({ page, pagesize: pageSize, status: status || undefined, keyword: keyword || undefined, sort_by: sortBy, sort_dir: sortDir, ...dateParams }),
   });
 
   const { data: statsData } = useQuery({
-    // Include the active filters in the cache key so the stats chart refetches
-    // when the user changes date range or status tab; otherwise the charts
-    // show stale aggregates from the last filter combination.
-    queryKey: ['invoice-stats', { status, dateRange }],
-    queryFn: () => invoiceApi.stats(),
+    // WEB-W2-022: include active filters in both cache key and the API call so
+    // stats KPIs reflect the same subset as the current list view.
+    queryKey: ['invoice-stats', { status, dateRange, keyword }],
+    queryFn: () => invoiceApi.stats({
+      status: status || undefined,
+      keyword: keyword || undefined,
+      ...dateParams,
+    }),
   });
 
   const rawInvoices = data?.data?.data?.invoices;
   const invoices: InvoiceRow[] = Array.isArray(rawInvoices) ? (rawInvoices as InvoiceRow[]) : [];
   const pagination = data?.data?.data?.pagination;
-  const overdueCount = useMemo(() => {
-    if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
+  const stats = statsData?.data?.data;
+  // WEB-W2-023: overdue count now comes from the server (independent of current
+  // page / pagination window).  Falls back to local count if stats haven't
+  // loaded yet so the badge still appears on first render.
+  const serverOverdueCount: number = stats?.overdue_count ?? 0;
+  const localOverdueCount = useMemo(() => {
+    if (!status || status === 'overdue') return 0;
     return invoices.filter((inv) => {
       if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
       const ts = parseDueDateMs(inv.due_on);
       return ts !== null && ts < Date.now();
     }).length;
   }, [invoices, status]);
-  const stats = statsData?.data?.data;
+  const overdueCount = serverOverdueCount > 0 ? serverOverdueCount : localOverdueCount;
   const kpis = stats?.kpis;
   const statusDist: Array<{ status: string; count: number }> = stats?.status_distribution || [];
   const methodDist: Array<{ method: string | null; count: number }> = stats?.method_distribution || [];
@@ -418,8 +442,35 @@ export function InvoiceListPage() {
                         className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
                       />
                     </th>
-                    {['Invoice', 'Customer', 'Ticket', 'Date', 'Total', 'Paid', 'Due', 'Status', 'Actions'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">{h}</th>
+                    {/* WEB-W2-032: sortable column headers */}
+                    {([
+                      { label: 'Invoice', col: 'order_id' },
+                      { label: 'Customer', col: 'customer' },
+                      { label: 'Ticket', col: null },
+                      { label: 'Date', col: 'created_at' },
+                      { label: 'Total', col: 'total' },
+                      { label: 'Paid', col: null },
+                      { label: 'Due', col: 'amount_due' },
+                      { label: 'Status', col: 'status' },
+                      { label: 'Actions', col: null },
+                    ] as Array<{ label: string; col: string | null }>).map(({ label, col }) => (
+                      col ? (
+                        <th
+                          key={label}
+                          onClick={() => toggleSort(col)}
+                          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none"
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {label}
+                            {sortBy === col
+                              ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                              : <ArrowUpDown className="h-3 w-3 opacity-30" />
+                            }
+                          </span>
+                        </th>
+                      ) : (
+                        <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-surface-500 dark:text-surface-400 bg-surface-50 dark:bg-surface-800/50">{label}</th>
+                      )
                     ))}
                   </tr>
                 </thead>

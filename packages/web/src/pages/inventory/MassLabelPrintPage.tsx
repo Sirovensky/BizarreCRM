@@ -17,6 +17,7 @@ import { formatApiError } from '@/utils/apiError';
 interface PrintResponse {
   format: 'zpl' | 'pdf';
   body: string;
+  pdf_base64?: string; // WEB-W3-009: real PDF data (base64) when format='pdf'
   total_labels: number;
   item_count?: number;
 }
@@ -27,6 +28,7 @@ export function MassLabelPrintPage() {
   const [copies, setCopies] = useState(1);
   const [format, setFormat] = useState<'zpl' | 'pdf'>('zpl');
   const [preview, setPreview] = useState<string | null>(null);
+  const [printData, setPrintData] = useState<PrintResponse | null>(null);
 
   const { data } = useQuery({
     queryKey: ['inventory-labels', search],
@@ -52,6 +54,7 @@ export function MassLabelPrintPage() {
     onSuccess: (data) => {
       toast.success(`Generated ${data.total_labels} labels`);
       setPreview(data.body);
+      setPrintData(data);
     },
     // WEB-FL-024 (Fixer-C9 2026-04-25): use shared formatApiError instead of
     // hand-rolled `e?.response?.data?.message` chain so ERR_* + ref id flow
@@ -59,19 +62,36 @@ export function MassLabelPrintPage() {
     onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
+  // WEB-W3-009: download PDF blob when format='pdf', ZPL otherwise
   const downloadFile = () => {
     if (!preview) return;
-    const ext = format === 'zpl' ? 'zpl' : 'txt';
-    const mime = format === 'zpl' ? 'application/octet-stream' : 'text/plain';
-    const blob = new Blob([preview], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `labels-${Date.now()}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    if (format === 'pdf' && printData?.pdf_base64) {
+      // Decode base64 PDF and download as application/pdf
+      const binaryStr = atob(printData.pdf_base64);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `labels-${Date.now()}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } else {
+      const ext = 'zpl';
+      const mime = 'application/octet-stream';
+      const blob = new Blob([preview], { type: mime });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `labels-${Date.now()}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   const toggle = (id: number) => {
@@ -114,7 +134,7 @@ export function MassLabelPrintPage() {
           className="rounded-md border border-surface-300 px-3 py-2 text-sm"
         >
           <option value="zpl">ZPL (Zebra printers)</option>
-          <option value="pdf">Plain text (any printer)</option>
+          <option value="pdf">PDF (any printer)</option>
         </select>
         <input
           value={copies}
@@ -200,18 +220,26 @@ export function MassLabelPrintPage() {
       {preview && (
         <div className="rounded-lg border border-surface-200 bg-white p-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold">Preview ({format.toUpperCase()})</h3>
+            <h3 className="font-semibold">
+              {format === 'pdf' ? 'PDF Labels Ready' : `Preview (${format.toUpperCase()})`}
+            </h3>
             <button
               onClick={downloadFile}
               className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1 text-sm font-semibold text-white"
             >
-              <Download className="h-4 w-4" /> Download
+              <Download className="h-4 w-4" /> Download {format.toUpperCase()}
             </button>
           </div>
-          <pre className="text-xs bg-surface-50 p-3 rounded max-h-96 overflow-auto font-mono whitespace-pre-wrap">
-            {preview.slice(0, 2000)}
-            {preview.length > 2000 && '\n... (truncated)'}
-          </pre>
+          {format === 'pdf' && printData?.pdf_base64 ? (
+            <p className="text-sm text-surface-600 bg-surface-50 p-3 rounded">
+              {preview} — click Download PDF to save.
+            </p>
+          ) : (
+            <pre className="text-xs bg-surface-50 p-3 rounded max-h-96 overflow-auto font-mono whitespace-pre-wrap">
+              {preview.slice(0, 2000)}
+              {preview.length > 2000 && '\n... (truncated)'}
+            </pre>
+          )}
         </div>
       )}
     </div>

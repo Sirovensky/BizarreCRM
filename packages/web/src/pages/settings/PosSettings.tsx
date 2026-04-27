@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Save, Loader2, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { settingsApi } from '@/api/endpoints';
+import { settingsApi, inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 
 // ─── Toggle Row ──────────────────────────────────────────────────────────────
@@ -56,6 +56,16 @@ export function PosSettings() {
       const res = await settingsApi.getConfig();
       return res.data.data as Record<string, string>;
     },
+  });
+
+  // WEB-W1-025: load device categories from inventory table instead of hardcoded list
+  const { data: inventoryCategories } = useQuery({
+    queryKey: ['inventory', 'categories'],
+    queryFn: async () => {
+      const res = await inventoryApi.categories();
+      return res.data.data as string[];
+    },
+    staleTime: 60_000,
   });
 
   useEffect(() => {
@@ -193,13 +203,10 @@ export function PosSettings() {
             className="w-48 text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5"
           >
             <option value="">None (user picks)</option>
-            <option value="phone">Phone</option>
-            <option value="tablet">Tablet</option>
-            <option value="laptop">Laptop</option>
-            <option value="console">Console</option>
-            <option value="tv">TV</option>
-            <option value="desktop">Desktop</option>
-            <option value="other">Other</option>
+            {/* WEB-W1-025: dynamic categories from inventory_items table */}
+            {(inventoryCategories ?? ['phone', 'tablet', 'laptop', 'console', 'tv', 'desktop', 'other']).map((cat) => (
+              <option key={cat} value={cat}>{cat.charAt(0).toUpperCase() + cat.slice(1)}</option>
+            ))}
           </select>
         </div>
         <ToggleRow

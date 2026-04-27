@@ -902,6 +902,68 @@ router.post('/preview-template', async (req, res) => {
   res.json({ success: true, data: { preview, char_count: preview.length } });
 });
 
+// ---------------------------------------------------------------------------
+// GET /sms/email-threads — WEB-S6-017: email inbox for CommunicationPage
+// Returns a list of email threads grouped by (from_address, subject prefix).
+// ---------------------------------------------------------------------------
+router.get('/email-threads', async (req, res) => {
+  const adb = req.asyncDb;
+  const q = (req.query.q as string || '').trim();
+
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (q) {
+    where.push("(em.subject LIKE ? OR em.from_address LIKE ? OR em.body LIKE ?)");
+    const like = `%${q.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+    params.push(like, like, like);
+  }
+  const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+  const threads = await adb.all(`
+    SELECT
+      em.from_address,
+      em.to_address,
+      COUNT(*) AS message_count,
+      MAX(em.created_at) AS last_message_at,
+      (SELECT em2.subject FROM email_messages em2
+       WHERE em2.from_address = em.from_address
+       ORDER BY em2.created_at DESC LIMIT 1) AS subject,
+      (SELECT em3.body FROM email_messages em3
+       WHERE em3.from_address = em.from_address
+       ORDER BY em3.created_at DESC LIMIT 1) AS last_body,
+      c.id AS customer_id,
+      c.first_name,
+      c.last_name
+    FROM email_messages em
+    LEFT JOIN customers c ON c.email = em.from_address
+    ${whereClause}
+    GROUP BY em.from_address
+    ORDER BY last_message_at DESC
+    LIMIT 200
+  `, ...params);
+
+  res.json({ success: true, data: { threads } });
+});
+
+// ---------------------------------------------------------------------------
+// GET /sms/email-threads/:address — messages for one email address
+// ---------------------------------------------------------------------------
+router.get('/email-threads/:address', async (req, res) => {
+  const adb = req.asyncDb;
+  const address = req.params.address;
+
+  const messages = await adb.all(`
+    SELECT em.*, c.first_name, c.last_name
+    FROM email_messages em
+    LEFT JOIN customers c ON c.email = em.from_address
+    WHERE em.from_address = ? OR em.to_address = ?
+    ORDER BY em.created_at ASC
+    LIMIT 500
+  `, address, address);
+
+  res.json({ success: true, data: { messages } });
+});
+
 export default router;
 
 // ---------------------------------------------------------------------------

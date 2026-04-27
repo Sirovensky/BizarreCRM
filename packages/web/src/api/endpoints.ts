@@ -141,6 +141,24 @@ export const customerApi = {
   exportData: (id: number) => api.get(`/customers/${id}/export`),
   merge: (keep_id: number, merge_id: number) =>
     api.post('/customers/merge', { keep_id, merge_id }),
+  bulkDelete: (customerIds: number[]) =>
+    api.post('/customers/bulk-delete', { customer_ids: customerIds }),
+};
+
+// ==================== Geocode ====================
+export const geocodeApi = {
+  lookup: (address: string) =>
+    api.get<{ success: boolean; data: { lat: number; lng: number } | null }>('/geocode', { params: { address } }),
+};
+
+// ==================== Custom Fields ====================
+export const customFieldApi = {
+  listDefinitions: (entityType: string) =>
+    api.get('/custom-fields/definitions', { params: { entity_type: entityType } }),
+  saveValues: (entityType: string, entityId: number, fields: { definition_id: number; value: string }[]) =>
+    api.put(`/custom-fields/values/${entityType}/${entityId}`, { fields }),
+  getValues: (entityType: string, entityId: number) =>
+    api.get(`/custom-fields/values/${entityType}/${entityId}`),
 };
 
 // ==================== Tickets ====================
@@ -168,6 +186,8 @@ export const ticketApi = {
     api.post(`/tickets/${id}/photos`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   deletePhoto: (photoId: number) =>
     api.delete(`/tickets/photos/${photoId}`),
+  updatePhoto: (photoId: number, data: { caption: string | null }) =>
+    api.put(`/tickets/photos/${photoId}`, data),
   convertToInvoice: (id: number) =>
     api.post(`/tickets/${id}/convert-to-invoice`),
   getHistory: (id: number) =>
@@ -238,9 +258,12 @@ export const ticketApi = {
 import type { InvoiceDetail } from '@/types/invoice';
 
 export const invoiceApi = {
-  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number }) =>
+  // WEB-W2-032: sort_by + sort_dir added for sortable columns
+  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
     api.get('/invoices', { params }),
-  stats: () => api.get('/invoices/stats'),
+  // WEB-W2-022: stats accepts same filters as list so KPIs reflect active context
+  stats: (params?: { status?: string; from_date?: string; to_date?: string; customer_id?: number; location_id?: number; keyword?: string }) =>
+    api.get('/invoices/stats', { params }),
   // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
   get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
   // DA-6 / WEB-FH-002: send an idempotency key so a double-click or flaky
@@ -270,7 +293,10 @@ export const invoiceApi = {
       },
     }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
-  createCreditNote: (id: number, data: { amount: number; reason: string }) =>
+  // WEB-W2-018: `code` (RefundReasonCode) and `note` (free text) are stored as
+  // dedicated columns (credit_note_code, credit_note_note) via migration 150.
+  // `reason` is still required for backwards compat (used in line-item notes).
+  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }) =>
     api.post(`/invoices/${id}/credit-note`, data),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
@@ -357,6 +383,15 @@ export const inventoryApi = {
     api.get(`/inventory/${id}/barcode`, { params: { format: format || 'svg' } }),
   varianceReport: (months?: number) =>
     api.get('/inventory/variance-report', { params: { months: months || 6 } }),
+  // WEB-W3-013: Server-streaming CSV export honoring all list filters
+  exportCsv: (params?: { keyword?: string; item_type?: string; category?: string; low_stock?: boolean; supplier_id?: number; manufacturer?: string; min_price?: number; max_price?: number; hide_out_of_stock?: boolean; location_id?: number }) =>
+    api.get('/inventory/export.csv', { params, responseType: 'blob' }),
+  // WEB-S6-009: Cost price history for an item
+  priceHistory: (id: number) => api.get(`/inventory/${id}/price-history`),
+  // WEB-S6-010: Per-location stock breakdown
+  locationStock: (id: number) => api.get(`/inventory/${id}/locations`),
+  // WEB-W3-025: Mark clearance (50% off) on selected items
+  markClearance: (item_ids: number[]) => api.post('/inventory-enrich/mark-clearance', { item_ids }),
 };
 
 // ==================== Settings ====================
@@ -439,11 +474,14 @@ export const settingsApi = {
     api.get(`/settings/receipt-templates/for-type/${type}`),
   updateReceiptTemplate: (id: number, data: { name?: string; header_text?: string; footer_text?: string }) =>
     api.put(`/settings/receipt-templates/${id}`, data),
+  // WEB-W1-034: test SMTP configuration
+  testSmtp: (to?: string) => api.post('/settings/test-smtp', to ? { to } : {}),
 };
 
 // ==================== Automations ====================
 export const automationsApi = {
   list: () => api.get('/automations'),
+  getOne: (id: number) => api.get(`/automations/${id}`),
   create: (data: { name: string; trigger_type: string; trigger_config?: Record<string, unknown>; action_type: string; action_config?: Record<string, unknown>; sort_order?: number }) =>
     api.post('/automations', data),
   update: (id: number, data: Partial<{ name: string; trigger_type: string; trigger_config: Record<string, unknown>; action_type: string; action_config: Record<string, unknown>; sort_order: number }>) =>
@@ -535,6 +573,8 @@ export const reportApi = {
     `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
   partnerReportPdfUrl: (year: string | number) =>
     `/api/v1/reports/partner-report.pdf?year=${encodeURIComponent(String(year))}`,
+  salesReportPdfUrl: (from: string, to: string) =>
+    `/api/v1/reports/sales-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   npsTrend: (months?: number) => api.get('/reports/nps-trend', { params: { months } }),
   referrals: () => api.get('/reports/referrals'),
   submitNps: (data: { customer_id: number; ticket_id?: number; score: number; comment?: string; channel?: string }) =>
@@ -569,7 +609,22 @@ export const smsApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  // WEB-S6-017: email thread inbox
+  emailThreads: (q?: string) => api.get<{ success: boolean; data: { threads: EmailThread[] } }>('/sms/email-threads', { params: q ? { q } : undefined }),
+  emailThread: (address: string) => api.get(`/sms/email-threads/${encodeURIComponent(address)}`),
 };
+
+export interface EmailThread {
+  from_address: string;
+  to_address: string;
+  message_count: number;
+  last_message_at: string;
+  subject: string | null;
+  last_body: string | null;
+  customer_id: number | null;
+  first_name: string | null;
+  last_name: string | null;
+}
 
 // ==================== Voice / Click-to-Call ====================
 
@@ -608,8 +663,18 @@ export const voiceApi = {
   calls: (params?: { page?: number; pagesize?: number; conv_phone?: string; entity_type?: string; entity_id?: number }) =>
     api.get<VoiceCallsResponse>('/voice/calls', { params }),
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
-  /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
+  // WEB-W3-023: issue a short-lived HMAC token then open the recording URL
+  // with ?token= so the browser can fetch it without a cookie/Bearer header.
+  getRecordingToken: (id: number) =>
+    api.post<{ success: boolean; data: { token: string } }>(`/voice/calls/${id}/recording-token`),
+  /** @deprecated raw path — use openRecording() for auth-safe playback */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
+  /** Opens a recording in a new tab via a short-lived signed token. */
+  openRecording: async (id: number): Promise<void> => {
+    const res = await api.post<{ success: boolean; data: { token: string } }>(`/voice/calls/${id}/recording-token`);
+    const token = res.data.data.token;
+    window.open(`/api/v1/voice/calls/${id}/recording?token=${encodeURIComponent(token)}`, '_blank', 'noopener,noreferrer');
+  },
 };
 
 // ==================== POS ====================
@@ -627,7 +692,8 @@ export const posApi = {
   // event so a flaky-network double-click doesn't double-record opening float.
   cashIn: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-in', data),
   cashOut: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-out', data),
-  transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
+  transaction: (data: PosTransactionInput, pinVerified?: boolean) =>
+    api.post('/pos/transaction', data, pinVerified ? { headers: { 'X-Pos-Pin-Verified': '1' } } : undefined),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
   // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
   // cart-session (in the unified-pos store) and reused across every retry
@@ -636,13 +702,14 @@ export const posApi = {
   // middleware returns the cached response, so we never charge twice.
   // Caller is REQUIRED to pass a stable key; internal fallback exists only
   // for legacy callers and should be removed once all callers migrate.
-  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string) =>
+  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string, pinVerified?: boolean) =>
     api.post('/pos/checkout-with-ticket', data, {
       headers: {
         'X-Idempotency-Key':
           idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        ...(pinVerified ? { 'X-Pos-Pin-Verified': '1' } : {}),
       },
     }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
@@ -814,7 +881,8 @@ export const leadApi = {
 // view ever needs in-shop staff signing, add the wrapper here and a
 // matching `<EstimateSignDialog>` component.
 export const estimateApi = {
-  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
+  // WEB-W2-033: sort_by + sort_dir added for sortable columns
+  list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
     api.get('/estimates', { params }),
   get: (id: number) => api.get(`/estimates/${id}`),
   create: (data: CreateEstimateInput) => api.post('/estimates', data),
@@ -824,6 +892,8 @@ export const estimateApi = {
   delete: (id: number) => api.delete(`/estimates/${id}`),
   send: (id: number, method?: 'sms' | 'email') => api.post(`/estimates/${id}/send`, { method: method ?? 'sms' }),
   approve: (id: number, token?: string) => api.post(`/estimates/${id}/approve`, token ? { token } : {}),
+  // WEB-W2-020: reject endpoint — staff-only, sets status to 'rejected'
+  reject: (id: number) => api.post(`/estimates/${id}/reject`),
   versions: (id: number) => api.get(`/estimates/${id}/versions`),
   versionDetail: (id: number, versionId: number) => api.get(`/estimates/${id}/versions/${versionId}`),
 };
@@ -1205,7 +1275,7 @@ export const membershipApi = {
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
 
-  // WEB-W3-020: trigger immediate billing for a subscription (admin only)
+  // WEB-W3-020: run billing for a single subscription (charges stored token)
   runBilling: (id: number) =>
     api.post(`/membership/${id}/run-billing`),
 };

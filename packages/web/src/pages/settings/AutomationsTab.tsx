@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -9,7 +10,7 @@ import { formatDateTime } from '@/utils/format';
 
 // -- Types ------------------------------------------------------------------
 
-interface AutomationRule {
+export interface AutomationRule {
   id: number;
   name: string;
   is_active: number;
@@ -22,13 +23,13 @@ interface AutomationRule {
   updated_at: string;
 }
 
-interface TicketStatus {
+export interface TicketStatus {
   id: number;
   name: string;
   color: string;
 }
 
-interface UserRecord {
+export interface UserRecord {
   id: number;
   username: string;
   first_name: string;
@@ -66,11 +67,11 @@ const TEMPLATE_VARS = [
   { key: '{invoice_total}', desc: 'Invoice total' },
 ];
 
-function triggerLabel(type: string): string {
+export function triggerLabel(type: string): string {
   return TRIGGER_TYPES.find((t) => t.value === type)?.label ?? type;
 }
 
-function actionLabel(type: string): string {
+export function actionLabel(type: string): string {
   return ACTION_TYPES.find((a) => a.value === type)?.label ?? type;
 }
 
@@ -325,7 +326,7 @@ function TemplateVarHints() {
 
 // -- Create/Edit Modal -------------------------------------------------------
 
-function AutomationModal({
+export function AutomationModal({
   rule,
   statuses,
   users,
@@ -501,7 +502,7 @@ function AutomationModal({
 
 // -- Action Config Summary ---------------------------------------------------
 
-function actionConfigSummary(actionType: string, config: Record<string, unknown>, statuses: TicketStatus[], users: UserRecord[]): string {
+export function actionConfigSummary(actionType: string, config: Record<string, unknown>, statuses: TicketStatus[], users: UserRecord[]): string {
   switch (actionType) {
     case 'send_sms':
       return config.template ? `"${String(config.template).slice(0, 60)}${String(config.template).length > 60 ? '...' : ''}"` : 'No template';
@@ -524,7 +525,7 @@ function actionConfigSummary(actionType: string, config: Record<string, unknown>
   }
 }
 
-function triggerConfigSummary(triggerType: string, config: Record<string, unknown>, statuses: TicketStatus[]): string {
+export function triggerConfigSummary(triggerType: string, config: Record<string, unknown>, statuses: TicketStatus[]): string {
   if (triggerType !== 'ticket_status_changed') return '';
   const parts: string[] = [];
   if (config.from_status_id) {
@@ -739,12 +740,16 @@ export function AutomationsTab() {
                   {/* Info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className={cn(
-                        'font-medium text-sm',
-                        rule.is_active ? 'text-surface-900 dark:text-surface-100' : 'text-surface-400'
-                      )}>
+                      <Link
+                        to={`/automations/${rule.id}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className={cn(
+                          'font-medium text-sm hover:underline',
+                          rule.is_active ? 'text-surface-900 dark:text-surface-100' : 'text-surface-400'
+                        )}
+                      >
                         {rule.name}
-                      </span>
+                      </Link>
                       {!rule.is_active && (
                         <span className="text-[10px] uppercase font-semibold bg-surface-200 dark:bg-surface-700 text-surface-500 rounded px-1.5 py-0.5">
                           Disabled

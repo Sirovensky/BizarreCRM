@@ -42,6 +42,7 @@ export function PerformanceReviewsPage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = user?.role === 'admin';
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
+  const [reviewPage, setReviewPage] = useState(1);
   const [draftNotes, setDraftNotes] = useState('');
   const [draftRating, setDraftRating] = useState<number>(0);
 
@@ -55,17 +56,23 @@ export function PerformanceReviewsPage() {
   });
   const employees: Employee[] = employeesData || [];
 
+  interface ReviewsPage {
+    reviews: Review[];
+    pagination: { page: number; limit: number; total: number; total_pages: number };
+  }
+
   const { data: reviewsData } = useQuery({
-    queryKey: ['team', 'reviews', selectedUserId],
+    queryKey: ['team', 'reviews', selectedUserId, reviewPage],
     enabled: isAdmin && !!selectedUserId,
     queryFn: async () => {
-      const res = await api.get<{ success: boolean; data: Review[] }>(
-        `/team/reviews?user_id=${selectedUserId}`,
+      const res = await api.get<{ success: boolean; data: ReviewsPage }>(
+        `/team/reviews?user_id=${selectedUserId}&limit=20&page=${reviewPage}`,
       );
       return res.data.data;
     },
   });
-  const reviews: Review[] = reviewsData || [];
+  const reviews: Review[] = reviewsData?.reviews || [];
+  const pagination = reviewsData?.pagination;
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -79,7 +86,7 @@ export function PerformanceReviewsPage() {
       toast.success('Review saved');
       setDraftNotes('');
       setDraftRating(0);
-      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] });
+      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] }); setReviewPage(1);
     },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to save'),
   });
@@ -90,7 +97,7 @@ export function PerformanceReviewsPage() {
     },
     onSuccess: () => {
       toast.success('Review deleted');
-      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] });
+      queryClient.invalidateQueries({ queryKey: ['team', 'reviews', selectedUserId] }); setReviewPage(1);
     },
   });
 
@@ -125,7 +132,7 @@ export function PerformanceReviewsPage() {
                   ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-800 dark:text-primary-200 font-semibold'
                   : 'hover:bg-gray-50 dark:hover:bg-surface-800/60 text-gray-700 dark:text-surface-200'
               }`}
-              onClick={() => setSelectedUserId(e.id)}
+              onClick={() => { setSelectedUserId(e.id); setReviewPage(1); }}
             >
               <div>
                 {e.first_name} {e.last_name}
@@ -183,7 +190,7 @@ export function PerformanceReviewsPage() {
           {selectedUserId && (
             <div className="bg-white rounded-lg shadow border">
               <div className="px-4 py-3 border-b text-sm font-semibold text-gray-800">
-                Past reviews ({reviews.length})
+                Past reviews ({pagination ? pagination.total : reviews.length})
               </div>
               {reviews.length === 0 && (
                 <p className="px-4 py-6 text-sm text-gray-500 text-center">
@@ -223,6 +230,29 @@ export function PerformanceReviewsPage() {
                   </div>
                 ))}
               </div>
+              {pagination && pagination.total_pages > 1 && (
+                <div className="px-4 py-3 border-t flex items-center justify-between text-sm">
+                  <span className="text-gray-500">
+                    Page {pagination.page} of {pagination.total_pages}
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      disabled={pagination.page <= 1}
+                      onClick={() => setReviewPage((p) => Math.max(1, p - 1))}
+                    >
+                      Previous
+                    </button>
+                    <button
+                      className="px-3 py-1 rounded border text-gray-700 hover:bg-gray-50 disabled:opacity-40"
+                      disabled={pagination.page >= pagination.total_pages}
+                      onClick={() => setReviewPage((p) => p + 1)}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

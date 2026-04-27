@@ -2,7 +2,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Printer, ArrowRightLeft, Send, Pencil, Save, X,
-  CheckCircle, History, ChevronDown, ChevronUp,
+  CheckCircle, History, ChevronDown, ChevronUp, XCircle, Plus, Trash2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
@@ -37,6 +37,15 @@ export function EstimateDetailPage() {
   const [editing, setEditing] = useState(false);
   const [notes, setNotes] = useState('');
   const [showVersions, setShowVersions] = useState(false);
+  // WEB-W2-019: inline line-item editing state
+  const [editingItems, setEditingItems] = useState(false);
+  const [draftItems, setDraftItems] = useState<Array<{
+    id?: number;
+    description: string;
+    quantity: number;
+    unit_price: number;
+    tax_amount: number;
+  }>>([]);
 
   // Guard against a missing route param — `Number(undefined)` is NaN and
   // would otherwise fire the API call with a garbage id.
@@ -103,6 +112,29 @@ export function EstimateDetailPage() {
     onError: () => toast.error('Failed to update'),
   });
 
+  // WEB-W2-020: reject mutation
+  const rejectMut = useMutation({
+    mutationFn: () => estimateApi.reject(Number(id)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+      toast.success('Estimate rejected');
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject'),
+  });
+
+  // WEB-W2-019: line-item save mutation — reuses the existing PUT /:id endpoint
+  const lineItemsMut = useMutation({
+    mutationFn: (items: typeof draftItems) =>
+      estimateApi.update(Number(id), { line_items: items }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['estimate', id] });
+      setEditingItems(false);
+      toast.success('Line items saved');
+    },
+    onError: () => toast.error('Failed to save line items'),
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -125,7 +157,7 @@ export function EstimateDetailPage() {
   // Mutually exclusive action buttons — without this gate a rapid click on
   // Convert mid-Send navigates away while the first mutation is still in
   // flight, leaving the server in an inconsistent state.
-  const anyMutationPending = sendMut.isPending || approveMut.isPending || convertMut.isPending;
+  const anyMutationPending = sendMut.isPending || approveMut.isPending || convertMut.isPending || rejectMut.isPending;
 
   return (
     <div>
@@ -155,7 +187,7 @@ export function EstimateDetailPage() {
             <p className="text-sm text-surface-500">Created {formatDate(estimate.created_at)}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" data-estimate-actions="true">
           {(estimate.status === 'draft' || estimate.status === 'sent') && (
             <button
               onClick={async () => {
@@ -197,6 +229,22 @@ export function EstimateDetailPage() {
               Convert to Ticket
             </button>
           )}
+          {/* WEB-W2-020: Reject button — available on any non-terminal status */}
+          {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
+            <button
+              onClick={async () => {
+                try {
+                  if (await confirm('Mark this estimate as rejected? This cannot be undone.', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true }))
+                    rejectMut.mutate();
+                } catch (err) { toast.error(formatApiError(err)); }
+              }}
+              disabled={anyMutationPending}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/30 disabled:opacity-50"
+            >
+              {rejectMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <XCircle className="h-4 w-4" />}
+              Reject
+            </button>
+          )}
           <button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 rounded-lg border border-surface-200 px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-700 dark:text-surface-300 dark:hover:bg-surface-800"
@@ -235,10 +283,89 @@ export function EstimateDetailPage() {
 
           {/* Line items */}
           <div className="card overflow-hidden">
-            <div className="p-4 border-b border-surface-100 dark:border-surface-800">
+            <div className="p-4 border-b border-surface-100 dark:border-surface-800 flex items-center justify-between">
               <h3 className="font-semibold text-surface-900 dark:text-surface-100">Line Items</h3>
+              {/* WEB-W2-019: edit line items inline (only for non-terminal estimates) */}
+              {!editingItems && estimate.status !== 'converted' && estimate.status !== 'rejected' && (
+                <button
+                  onClick={() => {
+                    setDraftItems(lineItems.map((li: any) => ({
+                      id: li.id,
+                      description: li.description || li.item_name || li.name || '',
+                      quantity: Number(li.quantity) || 1,
+                      unit_price: Number(li.unit_price ?? li.price ?? 0),
+                      tax_amount: Number(li.tax_amount ?? 0),
+                    })));
+                    setEditingItems(true);
+                  }}
+                  className="text-xs text-primary-600 hover:text-primary-700 font-medium flex items-center gap-1"
+                >
+                  <Pencil className="h-3 w-3" /> Edit
+                </button>
+              )}
+              {editingItems && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => lineItemsMut.mutate(draftItems)}
+                    disabled={lineItemsMut.isPending}
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                  >
+                    {lineItemsMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                    Save
+                  </button>
+                  <button onClick={() => setEditingItems(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>
+                </div>
+              )}
             </div>
-            {lineItems.length === 0 ? (
+            {editingItems ? (
+              /* Editable line-items form */
+              <div className="p-4 space-y-3">
+                {draftItems.map((item, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 items-start">
+                    <input
+                      value={item.description}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, description: e.target.value } : r))}
+                      placeholder="Description"
+                      className="input text-sm"
+                    />
+                    <input
+                      type="number" min="1" step="1"
+                      value={item.quantity}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, quantity: Number(e.target.value) || 1 } : r))}
+                      placeholder="Qty"
+                      className="input text-sm w-20 text-right"
+                    />
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={item.unit_price}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, unit_price: Number(e.target.value) || 0 } : r))}
+                      placeholder="Price"
+                      className="input text-sm w-28 text-right"
+                    />
+                    <input
+                      type="number" min="0" step="0.01"
+                      value={item.tax_amount}
+                      onChange={(e) => setDraftItems((prev) => prev.map((r, i) => i === idx ? { ...r, tax_amount: Number(e.target.value) || 0 } : r))}
+                      placeholder="Tax"
+                      className="input text-sm w-24 text-right"
+                    />
+                    <button
+                      onClick={() => setDraftItems((prev) => prev.filter((_, i) => i !== idx))}
+                      className="p-1.5 text-red-400 hover:text-red-600 rounded"
+                      title="Remove row"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setDraftItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0 }])}
+                  className="inline-flex items-center gap-1 text-xs text-primary-600 hover:text-primary-700 font-medium mt-1"
+                >
+                  <Plus className="h-3 w-3" /> Add row
+                </button>
+              </div>
+            ) : lineItems.length === 0 ? (
               <p className="p-4 text-sm text-surface-400">No line items</p>
             ) : (
               <div className="overflow-x-auto">
@@ -381,7 +508,7 @@ export function EstimateDetailPage() {
           </div>
 
           {/* Version History (ENR-LE6) */}
-          <div className="card p-5">
+          <div className="card p-5" data-version-history="true">
             <button
               onClick={() => setShowVersions((v) => !v)}
               className="flex w-full items-center justify-between"

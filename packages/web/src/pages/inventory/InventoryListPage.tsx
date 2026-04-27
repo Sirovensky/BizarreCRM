@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
+import { parseCsvLine } from '@/utils/csv';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
 import { formatCurrency } from '@/utils/format';
 
@@ -318,21 +318,36 @@ export function InventoryListPage() {
     setPriceAdjustReason('');
   };
 
-  // CSV Export
-  // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
-  // WEB-FH-010: prepend UTF-8 BOM so Excel on Windows opens accented /
-  //   non-Latin SKUs and manufacturer names without mojibake.
-  const handleExport = () => {
-    const headers = ['id', 'name', 'sku', 'item_type', 'in_stock', 'cost_price', 'retail_price', 'reorder_level', 'manufacturer', 'category'];
-    const rows = items.map(i => headers.map(h => i[h] ?? ''));
-    const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-    const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // WEB-W3-013: Server-side CSV export — sends all matching rows (not just
+  // current page) honoring every active filter. Backend streams the full dataset
+  // and handles formula-injection sanitization and BOM-prepend server-side.
+  const [exportLoading, setExportLoading] = useState(false);
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      const filterParams: Record<string, unknown> = {};
+      if (tab) filterParams.item_type = tab;
+      if (keyword) filterParams.keyword = keyword;
+      if (manufacturer) filterParams.manufacturer = manufacturer;
+      if (supplierId) filterParams.supplier_id = Number(supplierId);
+      if (minPrice) filterParams.min_price = minPrice;
+      if (maxPrice) filterParams.max_price = maxPrice;
+      if (hideOutOfStock) filterParams.hide_out_of_stock = 'true';
+      const res = await inventoryApi.exportCsv(filterParams as Parameters<typeof inventoryApi.exportCsv>[0]);
+      const blob = res.data as Blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   // CSV Import parse
@@ -414,8 +429,8 @@ export function InventoryListPage() {
           <button onClick={() => setShowVarianceModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <TrendingDown className="h-4 w-4" /> Variance
           </button>
-          <button onClick={handleExport} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
-            <Download className="h-4 w-4" /> Export
+          <button onClick={handleExport} disabled={exportLoading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+            {exportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
           </button>
           <button onClick={() => setShowReceiveModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors">
             <ScanBarcode className="h-4 w-4" /> Receive Items

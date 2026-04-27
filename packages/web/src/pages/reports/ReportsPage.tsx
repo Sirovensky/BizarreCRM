@@ -6,8 +6,9 @@ import {
   DollarSign, Ticket, Users, Package, Receipt,
   Download, TrendingUp,
   Hash, UserCheck, Clock, Boxes, AlertTriangle, BarChart3,
-  ShieldAlert, Smartphone, Cpu, UserPlus, Lock,
+  ShieldAlert, Smartphone, Cpu, UserPlus, Lock, FileText, Loader2,
 } from 'lucide-react';
+import { api } from '@/api/client';
 import { usePlanStore } from '@/stores/planStore';
 import { toCsvRow } from '@/utils/csv';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -138,6 +139,23 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   }, 1000);
 }
 
+// ─── Error helpers ────────────────────────────────────────────────────────────
+
+/**
+ * WEB-W3-032: Extract a human-readable message from an axios/fetch error.
+ * If the server returned a date-range cap error (400), surface the cap limit
+ * and the admin-override note rather than the generic "Failed to load" string.
+ */
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (!err) return fallback;
+  const axiosMsg: string | undefined =
+    (err as any)?.response?.data?.message ??
+    (err as any)?.response?.data?.error;
+  if (axiosMsg) return axiosMsg;
+  const msg = (err as Error)?.message;
+  return msg || fallback;
+}
+
 // ─── Tabs Config ──────────────────────────────────────────────────────────────
 
 type ReportTabConfig = {
@@ -169,8 +187,9 @@ const TABS: ReportTabConfig[] = [
 function SalesTab({ from, to }: { from: string; to: string }) {
   const navigate = useNavigate();
   const [groupBy, setGroupBy] = useState<'day' | 'week' | 'month'>('day');
+  const [pdfLoading, setPdfLoading] = useState(false);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'sales', from, to, groupBy],
     queryFn: async () => {
       const res = await reportApi.sales({ from_date: from, to_date: to, group_by: groupBy });
@@ -179,13 +198,43 @@ function SalesTab({ from, to }: { from: string; to: string }) {
     staleTime: 30_000,
   });
 
+  const openPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const url = reportApi.salesReportPdfUrl(from, to);
+      await api.get(url, { responseType: 'text' });
+      window.open(url, '_blank', 'noopener');
+    } catch (err: any) {
+      const msg = extractErrorMessage(err, 'Failed to generate PDF');
+      toast.error(msg);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load sales report" />;
+  if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load sales report')} />;
 
   const { totals, byMethod, rows } = data;
 
   return (
     <div className="space-y-6">
+      {/* PDF export action */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={openPdf}
+          disabled={pdfLoading}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700 dark:text-surface-300 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-700 disabled:opacity-50 transition-colors"
+          title="Open print-ready PDF in a new tab"
+        >
+          {pdfLoading
+            ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
+            : <><FileText className="h-4 w-4" /> PDF</>
+          }
+        </button>
+      </div>
+
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="card flex items-center gap-4 p-5">
@@ -362,7 +411,7 @@ function SalesTab({ from, to }: { from: string; to: string }) {
 // ─── Tickets Tab ──────────────────────────────────────────────────────────────
 
 function TicketsTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'tickets', from, to],
     queryFn: async () => {
       const res = await reportApi.tickets({ from_date: from, to_date: to });
@@ -372,7 +421,7 @@ function TicketsTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load tickets report" />;
+  if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load tickets report')} />;
 
   const { byStatus, byDay, byTech, summary } = data;
 
@@ -597,7 +646,7 @@ function TechWorkloadChart() {
 }
 
 function EmployeesTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'employees', from, to],
     queryFn: async () => {
       const res = await reportApi.employees({ from_date: from, to_date: to });
@@ -607,7 +656,7 @@ function EmployeesTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load employee report" />;
+  if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load employee report')} />;
 
   const { rows } = data;
 
@@ -822,7 +871,7 @@ function InventoryTab() {
 // ─── Tax Tab ──────────────────────────────────────────────────────────────────
 
 function TaxTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'tax', from, to],
     queryFn: async () => {
       const res = await reportApi.tax({ from_date: from, to_date: to });
@@ -832,7 +881,7 @@ function TaxTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load tax report" />;
+  if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load tax report')} />;
 
   const { rows } = data;
   const totalTax = rows.reduce((sum, r) => sum + (r.tax_collected || 0), 0);
@@ -917,7 +966,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
   const prevFrom = new Date(fromMs - durationMs - 86400_000).toISOString().slice(0, 10);
   const prevTo = new Date(fromMs - 86400_000).toISOString().slice(0, 10);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'insights', from, to],
     queryFn: async () => {
       const res = await reportApi.insights({ from_date: from, to_date: to });
@@ -937,7 +986,7 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load insights data" />;
+  if (isError || !data) return <ErrorState message={extractErrorMessage(error, 'Failed to load insights data')} />;
 
   const { popular_models, repairs_by_month, revenue_by_model, popular_services } = data;
 

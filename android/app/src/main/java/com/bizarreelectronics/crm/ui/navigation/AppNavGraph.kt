@@ -95,6 +95,10 @@ import com.bizarreelectronics.crm.ui.screens.tv.TvQueueBoardScreen
 import com.bizarreelectronics.crm.ui.screens.bench.BenchTabScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DeviceTemplatesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RepairPricingScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.PosSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.BusinessInfoScreen
 import com.bizarreelectronics.crm.ui.screens.auth.StaffPickerScreen
 import com.bizarreelectronics.crm.ui.screens.search.GlobalSearchScreen
 import com.bizarreelectronics.crm.ui.screens.setup.SetupWizardScreen
@@ -433,6 +437,15 @@ sealed class Screen(val route: String) {
     data object TimeOffRequest : Screen("time-off-request")
     data object TimeOffList : Screen("time-off-list")
 
+    // §14.6 — Team shifts / weekly schedule
+    data object ShiftsSchedule : Screen("shifts-schedule")
+
+    // §14.7 — Employee leaderboard
+    data object Leaderboard : Screen("leaderboard")
+
+    // §14.4 — Role management (admin)
+    data object RoleManagement : Screen("role-management")
+
     // §52 — Audit Logs (admin-only)
     data object AuditLogs : Screen("audit-logs")
 
@@ -445,6 +458,18 @@ sealed class Screen(val route: String) {
     // §54 — Command Palette (overlay; not a real nav destination, but registered
     // so Ctrl+K handling in AppNavGraph can check against it)
     data object CommandPalette : Screen("command-palette")
+
+    // §19.7 — Ticket settings sub-screen (defaults, visibility, requirements)
+    data object TicketSettings : Screen("settings/tickets")
+
+    // §19.8 — POS / payment settings sub-screen
+    data object PosSettings : Screen("settings/pos")
+
+    // §19.9 — SMS settings sub-screen
+    data object SmsSettings : Screen("settings/sms")
+
+    // §19.19 — Business info sub-screen
+    data object BusinessInfo : Screen("settings/business-info")
 }
 
 data class BottomNavItem(
@@ -1592,6 +1617,24 @@ fun AppNavGraph(
                     onBack = { navController.popBackStack() },
                 )
             }
+            // §14.6 — Team shifts weekly schedule
+            composable(Screen.ShiftsSchedule.route) {
+                com.bizarreelectronics.crm.ui.screens.shifts.ShiftsScheduleScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §14.7 — Employee leaderboard
+            composable(Screen.Leaderboard.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.LeaderboardScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §14.4 — Role management (admin)
+            composable(Screen.RoleManagement.route) {
+                com.bizarreelectronics.crm.ui.screens.employees.RoleManagementScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
             composable(Screen.Settings.route) {
                 SettingsScreen(
                     onLogout = {
@@ -1637,7 +1680,31 @@ fun AppNavGraph(
                     onCashRegister = { navController.navigate(Screen.CashRegister.route) },
                     // §40 — Gift Cards / Store Credit.
                     onGiftCards = { navController.navigate(Screen.GiftCards.route) },
+                    // §19.7 — Ticket settings.
+                    onTicketSettings = { navController.navigate(Screen.TicketSettings.route) },
+                    // §19.8 — POS / payment settings.
+                    onPosSettings = { navController.navigate(Screen.PosSettings.route) },
+                    // §19.9 — SMS settings.
+                    onSmsSettings = { navController.navigate(Screen.SmsSettings.route) },
+                    // §19.19 — Business info.
+                    onBusinessInfo = { navController.navigate(Screen.BusinessInfo.route) },
                 )
+            }
+            // §19.7 — Ticket settings sub-screen.
+            composable(Screen.TicketSettings.route) {
+                TicketSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.8 — POS / payment settings sub-screen.
+            composable(Screen.PosSettings.route) {
+                PosSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.9 — SMS settings sub-screen.
+            composable(Screen.SmsSettings.route) {
+                SmsSettingsScreen(onBack = { navController.popBackStack() })
+            }
+            // §19.19 — Business info sub-screen.
+            composable(Screen.BusinessInfo.route) {
+                BusinessInfoScreen(onBack = { navController.popBackStack() })
             }
             // §3.13 L565–L567 — Display settings sub-screen.
             composable(Screen.DisplaySettings.route) {
@@ -2455,6 +2522,12 @@ fun MoreScreen(
                 MoreItem(Icons.Default.CardGiftcard,    "Gift Cards",    Screen.GiftCards.route),
                 // §47 — Team Chat internal messaging
                 MoreItem(Icons.Default.Forum,           "Team Chat",     Screen.TeamChat.route),
+                // §14.6 — Team shifts weekly schedule
+                MoreItem(Icons.Default.CalendarMonth,   "Schedule",      Screen.ShiftsSchedule.route),
+                // §14.7 — Employee leaderboard
+                MoreItem(Icons.Default.EmojiEvents,     "Leaderboard",   Screen.Leaderboard.route),
+                // §14.4 — Role management (admin)
+                MoreItem(Icons.Default.ManageAccounts,  "Roles",         Screen.RoleManagement.route),
             ),
         ),
         MoreSection(

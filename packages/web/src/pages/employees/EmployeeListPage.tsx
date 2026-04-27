@@ -22,6 +22,9 @@ interface Employee {
   permissions?: string;
   created_at: string;
   updated_at: string;
+  // WEB-S6-033: list endpoint now includes these fields so no per-row fetch needed
+  is_clocked_in?: number | boolean;
+  weekly_hours?: number;
 }
 
 interface EmployeeDetail extends Employee {
@@ -363,15 +366,8 @@ export function EmployeeListPage() {
   });
   const employees: Employee[] = (listData?.data as any)?.data ?? [];
 
-  // Fetch detail for each employee to get clock status
-  const detailQueries = employees.map((emp) => ({
-    queryKey: ['employee-detail', emp.id],
-    queryFn: () => employeeApi.get(emp.id),
-    enabled: true,
-  }));
-  // Use individual queries for status
-  const employeeDetails = new Map<number, EmployeeDetail>();
-  // We'll fetch details within the table rendering via separate queries
+  // WEB-S6-033: is_clocked_in + weekly_hours are now included in the list
+  // response — no per-row detail queries needed.
 
   // Clock in mutation
   const clockInMutation = useMutation({
@@ -491,34 +487,29 @@ export function EmployeeListPage() {
   );
 }
 
-// ─── Employee Row (with detail query) ───────────────────────────────
+// ─── Employee Row ────────────────────────────────────────────────────
+// WEB-S6-033: clock status + weekly hours are now served by the list endpoint.
+// The per-row detail + hours queries are removed to eliminate the N+1 pattern.
+// The expanded detail panel (commissions, clock history) still fires a single
+// query when the row is expanded — that's intentional: only one employee is
+// expanded at a time and it needs the full payload.
 function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   employee: Employee;
   isExpanded: boolean;
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
-  // Memoized — `getWeekRange()` returned fresh object identity on every
-  // render, so the `['employee-hours', ..., weekRange.from_date]` key drifted
-  // if a render crossed midnight (Date-based). Stable across this row's
-  // lifetime; weekly boundary crossing will be picked up on a page reload.
-  const weekRange = useMemo(() => getWeekRange(), []);
+  // WEB-S6-033: use list-level fields; only fetch detail when expanded.
+  const isClockedIn = !!(employee.is_clocked_in);
+  const weeklyHours = Number(employee.weekly_hours ?? 0);
 
+  // Detail query fires only when the row is expanded (single call per user).
   const { data: detailData } = useQuery({
     queryKey: ['employee-detail', employee.id],
     queryFn: () => employeeApi.get(employee.id),
+    enabled: isExpanded,
     staleTime: 30000,
   });
-
-  const { data: hoursData } = useQuery({
-    queryKey: ['employee-hours', employee.id, weekRange.from_date],
-    queryFn: () => employeeApi.hours(employee.id, weekRange),
-    staleTime: 60000,
-  });
-
-  const detail = (detailData?.data as any)?.data as EmployeeDetail | undefined;
-  const weeklyHours = (hoursData?.data as any)?.data?.total_hours ?? 0;
-  const isClockedIn = detail?.is_clocked_in ?? false;
 
   const roleClass = ROLE_COLORS[employee.role] ?? 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
 

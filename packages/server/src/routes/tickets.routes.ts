@@ -510,6 +510,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const locationIdFilter = /^\d+$/.test(locationIdParam) ? parseInt(locationIdParam, 10) : null;
   const sortBy = (req.query.sort_by as string) || 'created_at';
   const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+  // WEB-W1-002: honour show_closed=0 from the client (mirrors ticket_show_closed store setting).
+  // Only suppress when the param is explicitly '0'; omitting it preserves existing behaviour.
+  const showClosed = req.query.show_closed !== '0';
 
   const allowedSorts = ['created_at', 'updated_at', 'order_id', 'total', 'due_on', 'status_id', 'urgency'];
   let safeSortBy: string;
@@ -543,6 +546,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
     }
   }
+  // WEB-W1-002: suppress closed/cancelled tickets when caller passes show_closed=0.
+  // Skip this condition when a status_id or status_group filter is already applied —
+  // an explicit status filter overrides the visibility setting.
+  if (!showClosed && !statusId && !statusGroup) {
+    conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE COALESCE(is_closed,0) = 0 AND COALESCE(is_cancelled,0) = 0)');
+  }
+
   if (assignedTo) {
     conditions.push('t.assigned_to = ?');
     params.push(assignedTo);
@@ -2595,6 +2605,30 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
   ]);
 
   res.json({ success: true, data: { id: photoId } });
+}));
+
+// ===================================================================
+// PUT /photos/:photoId - Update photo caption
+// ===================================================================
+router.put('/photos/:photoId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const photoId = validateId(req.params.photoId, 'photo id');
+  if (!photoId) throw new AppError('Invalid photo ID');
+
+  const photo = await adb.get<AnyRow>(`
+    SELECT tp.*, td.ticket_id
+    FROM ticket_photos tp
+    JOIN ticket_devices td ON td.id = tp.ticket_device_id
+    WHERE tp.id = ?
+  `, photoId);
+  if (!photo) throw new AppError('Photo not found', 404);
+
+  await assertTicketMutable(adb, photo.ticket_id, req.user?.role);
+
+  const caption = typeof req.body.caption === 'string' ? req.body.caption.slice(0, 500) : null;
+  await adb.run('UPDATE ticket_photos SET caption = ?, updated_at = ? WHERE id = ?', caption, now(), photoId);
+
+  res.json({ success: true, data: { id: photoId, caption } });
 }));
 
 // ===================================================================

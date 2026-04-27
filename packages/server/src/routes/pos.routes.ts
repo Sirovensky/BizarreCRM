@@ -28,6 +28,7 @@ import { buildKitDecrementTxQueries } from './inventory.routes.js';
 import { createLogger } from '../utils/logger.js';
 import { audit } from '../utils/audit.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { requirePosPinSale, requirePosPinByMode } from '../middleware/requirePosPin.js';
 
 const logger = createLogger('pos');
 
@@ -249,7 +250,7 @@ router.post('/cash-out', asyncHandler(async (req, res) => {
 //   S1:    atomic guarded stock decrement (WHERE in_stock >= ?) inside the
 //          transaction — no precheck/deduct race.
 //   EM6:   inserts employee_tips row linking tip to cashier.
-router.post('/transaction', idempotent, asyncHandler(async (req, res) => {
+router.post('/transaction', requirePosPinSale, idempotent, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const cashierId = req.user!.id;
@@ -1356,7 +1357,7 @@ async function calcTaxAsync(adb: AsyncDb, price: number, taxClassId: number | nu
 }
 
 // POST /pos/checkout-with-ticket - Create ticket + invoice + optional payment in one transaction
-router.post('/checkout-with-ticket', idempotent, asyncHandler(async (req, res) => {
+router.post('/checkout-with-ticket', requirePosPinByMode, idempotent, asyncHandler(async (req, res) => {
   const adb = req.asyncDb;
   const db = req.db;
   const userId = req.user!.id;

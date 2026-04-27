@@ -6,10 +6,10 @@ import {
   CheckCheck, Check, Clock, X, FileText, Flag, Pin, Ticket,
   Bell, Loader2, UserPlus, ChevronDown, ChevronUp, Paperclip, Image, CalendarClock,
   Archive, PhoneCall, PhoneIncoming, PhoneOutgoing, PhoneMissed, Play, Mic, Info,
-  Users,
+  Users, Mail,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
+import { smsApi, customerApi, ticketApi, voiceApi, type EmailThread } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
 import { formatPhone, formatCurrency } from '@/utils/format';
@@ -978,9 +978,24 @@ function ThreadSearchBar({
 // ─── Main Component ─────────────────────────────────────────────────
 export function CommunicationPage() {
   const queryClient = useQueryClient();
-  const [mainView, setMainView] = useState<'messages' | 'calls'>('messages');
+  const [mainView, setMainView] = useState<'messages' | 'calls' | 'email'>('messages');
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
+  // WEB-S6-034: debounced value that's actually sent to the server so we
+  // don't fire a request on every keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchFilter.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchFilter]);
+  // WEB-S6-017: email thread state
+  const [selectedEmailAddress, setSelectedEmailAddress] = useState<string | null>(null);
+  const [emailSearch, setEmailSearch] = useState('');
+  const [debouncedEmailSearch, setDebouncedEmailSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedEmailSearch(emailSearch.trim()), 350);
+    return () => clearTimeout(t);
+  }, [emailSearch]);
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
   // WEB-FJ-004 / FIXED-by-Fixer-A11 2026-04-25 — never embed the raw phone
   // number in the draft localStorage key. A counter-staff snoop with a few
@@ -1035,13 +1050,37 @@ export function CommunicationPage() {
   // poll was duplicating the same work plus burning a steady request/min on
   // every open Communications tab. WS reconnect on visibilitychange picks up
   // any messages missed while hidden.
+  // WEB-S6-034: pass debounced search to the server so results include
+  // conversations beyond the current page.
   const { data: convData, isLoading: convLoading } = useQuery({
-    queryKey: ['sms-conversations', includeArchived],
-    queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
+    queryKey: ['sms-conversations', includeArchived, debouncedSearch],
+    queryFn: () => {
+      const params: Record<string, string> = {};
+      if (includeArchived) params.include_archived = '1';
+      if (debouncedSearch) params.keyword = debouncedSearch;
+      return smsApi.conversations(Object.keys(params).length ? params as any : undefined);
+    },
     staleTime: 30_000,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
+
+  // WEB-S6-017: email threads
+  const { data: emailThreadsData, isLoading: emailLoading } = useQuery({
+    queryKey: ['email-threads', debouncedEmailSearch],
+    queryFn: () => smsApi.emailThreads(debouncedEmailSearch || undefined),
+    enabled: mainView === 'email',
+    staleTime: 60_000,
+  });
+  const emailThreads: EmailThread[] = (emailThreadsData?.data as any)?.data?.threads ?? [];
+
+  const { data: emailThreadMessagesData } = useQuery({
+    queryKey: ['email-thread-messages', selectedEmailAddress],
+    queryFn: () => smsApi.emailThread(selectedEmailAddress!),
+    enabled: !!selectedEmailAddress && mainView === 'email',
+    staleTime: 30_000,
+  });
+  const emailThreadMessages: any[] = (emailThreadMessagesData?.data as any)?.data?.messages ?? [];
 
   // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 10s `refetchInterval`.
   // WS now invalidates `['sms-messages']` on `sms:received` +
@@ -1380,6 +1419,19 @@ export function CommunicationPage() {
               <PhoneCall className="h-3.5 w-3.5" />
               Calls
             </button>
+            {/* WEB-S6-017: email thread tab */}
+            <button
+              onClick={() => setMainView('email')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                mainView === 'email'
+                  ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-600 dark:text-surface-100'
+                  : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+              )}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              Email
+            </button>
           </div>
           {mainView === 'messages' && (
             <div className="flex items-center gap-1">
@@ -1601,7 +1653,59 @@ export function CommunicationPage() {
             </div>
           )}
         </div>
-        </>) : (
+        </>) : mainView === 'email' ? (
+          /* WEB-S6-017: email thread list */
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="px-3 py-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  type="text"
+                  placeholder="Search emails..."
+                  value={emailSearch}
+                  onChange={(e) => setEmailSearch(e.target.value)}
+                  className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {emailLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-surface-400" /></div>
+              ) : emailThreads.length === 0 ? (
+                <div className="py-12 text-center text-sm text-surface-400">No email threads found.</div>
+              ) : (
+                emailThreads.map((t) => (
+                  <button
+                    key={t.from_address}
+                    onClick={() => setSelectedEmailAddress(t.from_address)}
+                    className={cn(
+                      'w-full border-b border-surface-100 px-4 py-3 text-left transition-colors hover:bg-surface-50 dark:border-surface-700 dark:hover:bg-surface-800/50',
+                      selectedEmailAddress === t.from_address && 'bg-primary-50 dark:bg-primary-900/20',
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-surface-900 dark:text-surface-100">
+                          {t.first_name && t.last_name ? `${t.first_name} ${t.last_name}` : t.from_address}
+                        </div>
+                        <div className="truncate text-xs text-surface-500">{t.from_address}</div>
+                        <div className="mt-1 truncate text-xs text-surface-600 dark:text-surface-400">
+                          {t.subject ?? '(no subject)'}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <span className="text-[10px] text-surface-400">
+                          {new Date(t.last_message_at).toLocaleDateString()}
+                        </span>
+                        <div className="mt-1 text-[10px] text-surface-400">{t.message_count} msg{t.message_count !== 1 ? 's' : ''}</div>
+                      </div>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
           /* Call log view fills the left panel when calls tab is active */
           <div className="flex-1 flex flex-col text-center text-surface-400 py-8">
             <PhoneCall className="mx-auto mb-2 h-8 w-8" />
@@ -1610,9 +1714,43 @@ export function CommunicationPage() {
         )}
       </div>
 
-      {/* ── Right Panel: Message Thread or Call Log ── */}
+      {/* ── Right Panel: Message Thread, Email Thread, or Call Log ── */}
       {mainView === 'calls' ? (
         <CallLogPanel />
+      ) : mainView === 'email' ? (
+        /* WEB-S6-017: email thread detail panel */
+        <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900 overflow-hidden">
+          {!selectedEmailAddress ? (
+            <div className="flex flex-1 flex-col items-center justify-center text-center text-surface-400">
+              <Mail className="mb-3 h-12 w-12 text-surface-300 dark:text-surface-600" />
+              <p className="text-sm font-medium text-surface-600 dark:text-surface-400">Select an email thread</p>
+            </div>
+          ) : (
+            <div className="flex flex-1 flex-col overflow-hidden">
+              <div className="border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+                <div className="text-sm font-medium text-surface-900 dark:text-surface-100">{selectedEmailAddress}</div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {emailThreadMessages.length === 0 ? (
+                  <p className="text-sm text-center text-surface-400">No messages in this thread.</p>
+                ) : (
+                  emailThreadMessages.map((m: any) => (
+                    <div key={m.id} className="rounded-lg bg-white shadow-sm border border-surface-200 p-4 dark:bg-surface-800 dark:border-surface-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-medium text-surface-600 dark:text-surface-400">{m.from_address}</div>
+                        <div className="text-xs text-surface-400">{new Date(m.created_at).toLocaleString()}</div>
+                      </div>
+                      {m.subject && <div className="text-sm font-semibold text-surface-800 dark:text-surface-200 mb-2">{m.subject}</div>}
+                      <div className="text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap break-words">
+                        {m.body ?? '(no body)'}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
       <div className="flex flex-1 flex-col bg-surface-50 dark:bg-surface-900">
         {!selectedPhone ? (

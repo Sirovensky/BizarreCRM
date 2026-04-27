@@ -231,7 +231,7 @@ function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, on
 // ─── BottomActions ──────────────────────────────────────────────────
 
 export function BottomActions() {
-  const { cartItems, resetAll, setShowCheckout, setShowSuccess, customer, discount, discountReason, meta, sourceTicketId } = useUnifiedPosStore();
+  const { cartItems, resetAll, setShowCheckout, setShowSuccess, customer, discount, discountReason, meta, sourceTicketId, setPosPinVerified } = useUnifiedPosStore();
   const [cashModal, setCashModal] = useState<'in' | 'out' | null>(null);
   const [creatingTicket, setCreatingTicket] = useState(false);
   const [pinAction, setPinAction] = useState<'ticket' | 'checkout' | 'manager' | null>(null);
@@ -287,6 +287,10 @@ export function BottomActions() {
 
   const requirePinSale = getSetting('pos_require_pin_sale') === '1';
   const requirePinTicket = getSetting('pos_require_pin_ticket') === '1';
+
+  // pinVerifiedRef is kept for the create-ticket path (no store read needed);
+  // checkout path uses store.posPinVerified so CheckoutModal can read it.
+  const pinVerifiedRef = useRef(false);
 
   const hasItems = cartItems.length > 0;
   const hasRepair = cartItems.some((i) => i.type === 'repair');
@@ -360,7 +364,9 @@ export function BottomActions() {
       // as the checkout path — covers the create-ticket-without-payment
       // double-submit case (button click + keyboard Enter race).
       const idempotencyKey = useUnifiedPosStore.getState().ensureIdempotencyKey();
-      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
+      const pv = pinVerifiedRef.current;
+      pinVerifiedRef.current = false; // consume once
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey, pv);
       setShowSuccess({ ...res.data.data, mode: 'create_ticket' });
       // Advance the ticket tutorial when a ticket is successfully saved.
       window.dispatchEvent(new CustomEvent('pos:ticket-saved'));
@@ -490,6 +496,8 @@ export function BottomActions() {
           title={pinAction === 'ticket' ? 'PIN required to create ticket' : 'PIN required for checkout'}
           onSuccess={() => {
             const action = pinAction;
+            pinVerifiedRef.current = true; // for create-ticket path
+            setPosPinVerified(true);       // for checkout path (CheckoutModal reads store)
             setPinAction(null);
             if (action === 'ticket') handleCreateTicketFlow();
             else setShowCheckout(true);

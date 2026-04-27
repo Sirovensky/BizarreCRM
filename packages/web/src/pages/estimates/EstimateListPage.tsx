@@ -3,7 +3,8 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Search, Plus, ClipboardList, ChevronLeft, ChevronRight, Trash2,
-  ArrowRightLeft, Send, Eye, X, Loader2, ChevronDown, AlertTriangle, Clock,
+  ArrowRightLeft, Send, Eye, X, Loader2, ChevronDown, AlertTriangle, Clock, XCircle,
+  ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { estimateApi, customerApi } from '@/api/endpoints';
@@ -355,6 +356,34 @@ export function EstimateListPage() {
   const [searchInput, setSearchInput] = useState(keyword);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [showCreate, setShowCreate] = useState(false);
+  // WEB-W2-033: sort state
+  const sortBy = searchParams.get('sort_by') || 'created_at';
+  const sortDir = (searchParams.get('sort_dir') || 'desc') as 'asc' | 'desc';
+  // WEB-W2-033: bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const toggleSelectAll = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(estimates.map((e: any) => e.id)) : new Set());
+  };
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const toggleSort = (col: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (sortBy === col) {
+        next.set('sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
+      } else {
+        next.set('sort_by', col);
+        next.set('sort_dir', 'desc');
+      }
+      next.set('page', '1');
+      return next;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -375,6 +404,8 @@ export function EstimateListPage() {
     pagesize: pageSize,
     ...(keyword ? { keyword } : {}),
     ...(statusFilter ? { status: statusFilter } : {}),
+    sort_by: sortBy,
+    sort_dir: sortDir,
   };
 
   const { data: estData, isLoading, isFetching } = useQuery({
@@ -424,9 +455,19 @@ export function EstimateListPage() {
     onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to delete estimate'),
   });
 
-  // Shared gate so Send/Convert/Delete row buttons can't fire in parallel
+  // WEB-W2-020: reject mutation
+  const rejectMut = useMutation({
+    mutationFn: (id: number) => estimateApi.reject(id),
+    onSuccess: () => {
+      toast.success('Estimate rejected');
+      queryClient.invalidateQueries({ queryKey: ['estimates'] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to reject estimate'),
+  });
+
+  // Shared gate so Send/Convert/Delete/Reject row buttons can't fire in parallel
   // and race the convert->navigate transition (SCAN-984b).
-  const anyMutationPending = sendMut.isPending || convertMut.isPending || deleteMut.isPending;
+  const anyMutationPending = sendMut.isPending || convertMut.isPending || deleteMut.isPending || rejectMut.isPending;
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
@@ -503,14 +544,72 @@ export function EstimateListPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
+              {/* WEB-W2-033: bulk action bar — appears when rows are selected */}
+              {selectedIds.size > 0 && (
+                <tr className="bg-primary-50 dark:bg-primary-950/30">
+                  <td colSpan={8} className="px-4 py-2">
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="font-medium text-primary-700 dark:text-primary-300">
+                        {selectedIds.size} selected
+                      </span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            if (await confirm(`Delete ${selectedIds.size} estimate${selectedIds.size !== 1 ? 's' : ''}?`, { danger: true })) {
+                              await Promise.all([...selectedIds].map((id) => estimateApi.delete(id)));
+                              queryClient.invalidateQueries({ queryKey: ['estimates'] });
+                              setSelectedIds(new Set());
+                              toast.success(`Deleted ${selectedIds.size} estimate${selectedIds.size !== 1 ? 's' : ''}`);
+                            }
+                          } catch (err) { toast.error(formatApiError(err)); }
+                        }}
+                        className="flex items-center gap-1 text-red-600 hover:text-red-700 font-medium"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete selected
+                      </button>
+                      <button onClick={() => setSelectedIds(new Set())} className="text-surface-400 hover:text-surface-600 ml-auto">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              {/* WEB-W2-033: sortable column headers */}
               <tr className="border-b border-surface-200 dark:border-surface-700">
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Estimate ID</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Customer</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Status</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400 text-right">Total</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Valid Until</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400">Created</th>
-                <th className="px-4 py-3 font-medium text-surface-500 dark:text-surface-400 text-right">Actions</th>
+                <th className="px-4 py-3 w-10">
+                  <input
+                    type="checkbox"
+                    checked={estimates.length > 0 && selectedIds.size === estimates.length}
+                    onChange={(e) => toggleSelectAll(e.target.checked)}
+                    className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                  />
+                </th>
+                {([
+                  { label: 'Estimate ID', col: 'order_id' },
+                  { label: 'Customer', col: 'customer' },
+                  { label: 'Status', col: 'status' },
+                  { label: 'Total', col: 'total', right: true },
+                  { label: 'Valid Until', col: 'valid_until' },
+                  { label: 'Created', col: 'created_at' },
+                  { label: 'Actions', col: null, right: true },
+                ] as Array<{ label: string; col: string | null; right?: boolean }>).map(({ label, col, right }) => (
+                  col ? (
+                    <th
+                      key={label}
+                      onClick={() => toggleSort(col)}
+                      className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400 cursor-pointer hover:text-surface-700 dark:hover:text-surface-300 select-none${right ? ' text-right' : ''}`}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {label}
+                        {sortBy === col
+                          ? (sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+                          : <ArrowUpDown className="h-3 w-3 opacity-30" />}
+                      </span>
+                    </th>
+                  ) : (
+                    <th key={label} className={`px-4 py-3 font-medium text-surface-500 dark:text-surface-400${right ? ' text-right' : ''}`}>{label}</th>
+                  )
+                ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100 dark:divide-surface-800">
@@ -537,8 +636,16 @@ export function EstimateListPage() {
                     <tr
                       key={est.id}
                       onClick={() => navigate(`/estimates/${est.id}`)}
-                      className="cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50"
+                      className={`cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50${selectedIds.has(est.id) ? ' bg-primary-50/50 dark:bg-primary-950/20' : ''}`}
                     >
+                      <td className="px-4 py-3 w-10" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(est.id)}
+                          onChange={() => toggleSelect(est.id)}
+                          className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
                       <td className="px-4 py-3 font-medium text-primary-600 dark:text-primary-400">
                         {est.order_id || `EST-${String(est.id).padStart(4, '0')}`}
                       </td>
@@ -643,6 +750,28 @@ export function EstimateListPage() {
                               title="Convert to Ticket"
                             >
                               <ArrowRightLeft aria-hidden="true" className="h-4 w-4" />
+                            </button>
+                          )}
+                          {/* WEB-W2-020: Reject button */}
+                          {est.status !== 'converted' && est.status !== 'rejected' && (
+                            <button
+                              type="button"
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                try {
+                                  if (await confirm('Reject this estimate?', { title: 'Reject estimate?', confirmLabel: 'Reject', danger: true })) {
+                                    rejectMut.mutate(est.id);
+                                  }
+                                } catch (err) {
+                                  toast.error(formatApiError(err));
+                                }
+                              }}
+                              disabled={anyMutationPending}
+                              className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30 dark:hover:text-red-400 disabled:opacity-50"
+                              aria-label="Reject estimate"
+                              title="Reject Estimate"
+                            >
+                              <XCircle aria-hidden="true" className="h-4 w-4" />
                             </button>
                           )}
                           <button

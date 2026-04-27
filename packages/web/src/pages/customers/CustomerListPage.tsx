@@ -63,6 +63,7 @@ export function CustomerListPage() {
   const [searchInput, setSearchInput] = useState(keyword);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; id?: number; name?: string }>({ open: false });
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false);
 
   // Advanced filters
   const [showFilters, setShowFilters] = useState(false);
@@ -244,6 +245,23 @@ export function CustomerListPage() {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
     },
     onError: () => toast.error('Failed to apply tag'),
+  });
+
+  const bulkDeleteMut = useMutation({
+    mutationFn: (ids: number[]) => customerApi.bulkDelete(ids),
+    onSuccess: (res) => {
+      const d = res?.data?.data;
+      toast.success(`Deleted ${d?.deleted ?? 0} customer${(d?.deleted ?? 0) !== 1 ? 's' : ''}`);
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+    },
+    onError: (err: unknown) => {
+      const msg =
+        (err as { response?: { data?: { message?: string; error?: string } } })?.response?.data?.message
+        ?? (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        ?? 'Failed to delete customers';
+      toast.error(msg);
+    },
   });
 
   function toggleSelectAll() {
@@ -677,12 +695,22 @@ export function CustomerListPage() {
                 </button>
               </div>
             ) : (
-              <button
-                onClick={() => setShowTagInput(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
-              >
-                <Tag className="h-3.5 w-3.5" /> Tag Selected
-              </button>
+              <>
+                <button
+                  onClick={() => setShowTagInput(true)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+                >
+                  <Tag className="h-3.5 w-3.5" /> Tag Selected
+                </button>
+                <button
+                  onClick={() => setBulkDeleteConfirm(true)}
+                  disabled={bulkDeleteMut.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-sm text-red-600 shadow-sm transition-colors hover:bg-red-50 dark:border-red-800 dark:bg-surface-800 dark:text-red-400 dark:hover:bg-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkDeleteMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  Delete Selected
+                </button>
+              </>
             )}
             <button
               onClick={() => { setSelected(new Set()); setShowTagInput(false); setTagValue(''); }}
@@ -884,6 +912,19 @@ export function CustomerListPage() {
           setDeleteConfirm({ open: false });
         }}
         onCancel={() => setDeleteConfirm({ open: false })}
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteConfirm}
+        title={`Delete ${selected.size} Customer${selected.size !== 1 ? 's' : ''}`}
+        message={`Permanently delete ${selected.size} selected customer${selected.size !== 1 ? 's' : ''}? Customers with open tickets or unpaid invoices will be blocked. This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        onConfirm={() => {
+          setBulkDeleteConfirm(false);
+          bulkDeleteMut.mutate(Array.from(selected));
+        }}
+        onCancel={() => setBulkDeleteConfirm(false)}
       />
     </div>
   );

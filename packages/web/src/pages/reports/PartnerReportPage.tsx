@@ -2,19 +2,43 @@
  * PartnerReportPage — YTD lender/partner report (audit 47.15)
  * Produces a print-ready HTML report showing revenue, gross profit, margin,
  * receivables, and inventory value.
+ *
+ * WEB-S6-023 (2026-04-26): replaced bare window.open with an async fetch so
+ * slow/erroring PDF generation surfaces as a spinner + toast instead of
+ * a silent blank new tab.
  */
 
 import { useState } from 'react';
-import { Briefcase, Download } from 'lucide-react';
+import { Briefcase, Download, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { api } from '@/api/client';
 import { reportApi } from '@/api/endpoints';
 
 export function PartnerReportPage() {
   const thisYear = new Date().getFullYear();
   const [year, setYear] = useState(String(thisYear));
+  const [generating, setGenerating] = useState(false);
 
-  const openReport = () => {
-    const url = reportApi.partnerReportPdfUrl(year);
-    window.open(url, '_blank', 'noopener');
+  const openReport = async () => {
+    setGenerating(true);
+    try {
+      // Preflight: hit the same URL via axios (which carries credentials) to
+      // confirm the server can build the report before we open the new tab.
+      // On success, open the tab — the browser will reuse the cookie and render
+      // the HTML report directly. On failure, we get the server error message.
+      const url = reportApi.partnerReportPdfUrl(year);
+      await api.get(url, { responseType: 'text' });
+      window.open(url, '_blank', 'noopener');
+    } catch (err: any) {
+      const msg: string =
+        err?.response?.data?.message ??
+        err?.response?.data?.error ??
+        err?.message ??
+        'Failed to generate partner report';
+      toast.error(msg);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   // @audit-fixed: dark mode classes added throughout (was missing all dark: variants)
@@ -47,9 +71,14 @@ export function PartnerReportPage() {
       <button
         type="button"
         onClick={openReport}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 transition-colors"
+        disabled={generating}
+        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 disabled:opacity-60 transition-colors"
       >
-        <Download size={16} /> Generate Partner Report
+        {generating ? (
+          <><Loader2 size={16} className="animate-spin" /> Generating…</>
+        ) : (
+          <><Download size={16} /> Generate Partner Report</>
+        )}
       </button>
     </div>
   );

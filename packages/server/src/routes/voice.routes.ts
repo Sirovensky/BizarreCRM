@@ -243,14 +243,24 @@ router.get('/calls/:id', asyncHandler(async (req: Request, res: Response) => {
 }));
 
 // ---------------------------------------------------------------------------
-// GET /voice/calls/:id/recording — Stream recording audio (auth required)
+// GET /voice/calls/:id/recording-token — Issue a short-lived signed token
 // ---------------------------------------------------------------------------
-// @audit-fixed: §37 — Same authorization gap. Recordings may contain
-// sensitive customer information (CC numbers spoken aloud, PII, etc.) so
-// gate them by user_id or admin/manager just like the detail endpoint.
-router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Response) => {
+// WEB-W3-023: The old pattern opened recordings via a raw URL in a new tab,
+// which bypasses the axios auth header. The fix is a two-step pattern:
+//   1. Frontend calls this endpoint (JWT-authed) to get a short-lived HMAC
+//      token (30s TTL) bound to the call ID.
+//   2. Frontend opens /voice/calls/:id/recording?token=<signed> — that route
+//      validates the HMAC before streaming, so no cookie or Bearer header is
+//      needed for the GET that the browser tab initiates.
+//
+// HMAC construction: HMAC-SHA256( uploadsSecret, "<call_id>|<expires_unix>" )
+// Token wire format: "<expires_unix>.<hex_hmac>" (URL-safe, no padding needed)
+router.post('/calls/:id/recording-token', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const call = await adb.get<AnyRow>('SELECT user_id, direction, recording_local_path, recording_url FROM call_logs WHERE id = ?', req.params.id);
+  const callId = parseInt(String(req.params.id), 10);
+  if (!callId || isNaN(callId)) throw new AppError('Invalid call id', 400);
+
+  const call = await adb.get<AnyRow>('SELECT user_id, direction FROM call_logs WHERE id = ?', callId);
   if (!call) throw new AppError('Call not found', 404);
 
   const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
@@ -258,9 +268,66 @@ router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Respon
     throw new AppError('Not authorized to access this recording', 403);
   }
 
+  const expires = Math.floor(Date.now() / 1000) + 30; // 30-second window
+  const payload = `${callId}|${expires}`;
+  const hmac = crypto.createHmac('sha256', config.uploadsSecret).update(payload).digest('hex');
+  const token = `${expires}.${hmac}`;
+
+  res.json({ success: true, data: { token } });
+}));
+
+// ---------------------------------------------------------------------------
+// GET /voice/calls/:id/recording — Stream recording audio
+// ---------------------------------------------------------------------------
+// Accepts either:
+//   - JWT auth (Bearer / cookie) — full access check (existing flow)
+//   - ?token=<signed> — short-lived HMAC token issued by /recording-token
+//     above; no session cookie needed (browser new-tab / <audio> src).
+//
+// @audit-fixed: §37 — Same authorization gap. Recordings may contain
+// sensitive customer information (CC numbers spoken aloud, PII, etc.) so
+// gate them by user_id or admin/manager just like the detail endpoint.
+router.get('/calls/:id/recording', asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const callId = parseInt(String(req.params.id), 10);
+  if (!callId || isNaN(callId)) throw new AppError('Invalid call id', 400);
+
+  // --- WEB-W3-023: token-based auth path ---
+  const rawToken = req.query.token as string | undefined;
+  if (rawToken) {
+    const dotIdx = rawToken.indexOf('.');
+    if (dotIdx === -1) throw new AppError('Invalid recording token', 403);
+    const expires = parseInt(rawToken.slice(0, dotIdx), 10);
+    const provided = rawToken.slice(dotIdx + 1);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!expires || isNaN(expires) || expires < nowSec) {
+      throw new AppError('Recording token expired', 403);
+    }
+    const payload = `${callId}|${expires}`;
+    const expected = crypto.createHmac('sha256', config.uploadsSecret).update(payload).digest('hex');
+    // Constant-time comparison to prevent timing attacks
+    if (!crypto.timingSafeEqual(Buffer.from(provided, 'hex'), Buffer.from(expected, 'hex'))) {
+      throw new AppError('Invalid recording token', 403);
+    }
+    // Token is valid — skip user-level auth; token already binds to call id.
+  } else {
+    // --- Traditional JWT auth path ---
+    const call = await adb.get<AnyRow>('SELECT user_id, direction FROM call_logs WHERE id = ?', callId);
+    if (!call) throw new AppError('Call not found', 404);
+    const isAdmin = req.user!.role === 'admin' || req.user!.role === 'manager';
+    if (!isAdmin && call.user_id !== req.user!.id && call.direction !== 'inbound') {
+      throw new AppError('Not authorized to access this recording', 403);
+    }
+  }
+
+  const call = await adb.get<AnyRow>('SELECT recording_local_path, recording_url FROM call_logs WHERE id = ?', callId);
+  if (!call) throw new AppError('Call not found', 404);
+
   if (call.recording_local_path && fs.existsSync(path.join(config.uploadsPath, call.recording_local_path.replace(/^\/uploads\//, '')))) {
     const filePath = path.join(config.uploadsPath, call.recording_local_path.replace(/^\/uploads\//, ''));
     res.setHeader('Content-Type', 'audio/mpeg');
+    // WEB-W3-023: allow range requests so the <audio> element can seek.
+    res.setHeader('Accept-Ranges', 'bytes');
     fs.createReadStream(filePath).pipe(res);
     return;
   }

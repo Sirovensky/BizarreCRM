@@ -598,7 +598,7 @@ export function TicketSidebar({
                   ))}
                   {assigned && (
                     <button
-                      onClick={() => { assignMut.mutate(null as any); setShowAssignDropdown(false); }}
+                      onClick={() => { assignMut.mutate(null); setShowAssignDropdown(false); }}
                       className="w-full border-t border-surface-200 px-3 py-1.5 text-left text-xs text-red-500 hover:bg-red-50 dark:border-surface-700 dark:hover:bg-red-900/10"
                     >
                       Unassign

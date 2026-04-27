@@ -227,6 +227,7 @@ router.get(
     const adb: AsyncDb = req.asyncDb;
     const channelId = parseId(req.params.id, 'channel id');
     const after = req.query.after ? parseInt(String(req.query.after), 10) : 0;
+    const before = req.query.before ? parseInt(String(req.query.before), 10) : 0;
     const limit = parsePageSize(req.query.limit, 50);
 
     const ch = await adb.get<ChannelRow>(
@@ -236,14 +237,29 @@ router.get(
     // SCAN-1109: block non-participants from reading direct-message history.
     assertChannelAccess(ch, req);
 
-    const rows = await adb.all(
-      `SELECT m.*, u.first_name, u.last_name, u.username
-       FROM team_chat_messages m
-       LEFT JOIN users u ON u.id = m.user_id
-       WHERE m.channel_id = ? AND m.id > ?
-       ORDER BY m.id ASC LIMIT ?`,
-      channelId, after, limit,
-    );
+    let rows: Record<string, unknown>[];
+    if (before > 0) {
+      // Load older messages: fetch `limit` rows immediately before `before` id,
+      // then reverse so they are returned in ascending order (oldest first).
+      const older = await adb.all<Record<string, unknown>>(
+        `SELECT m.*, u.first_name, u.last_name, u.username
+         FROM team_chat_messages m
+         LEFT JOIN users u ON u.id = m.user_id
+         WHERE m.channel_id = ? AND m.id < ?
+         ORDER BY m.id DESC LIMIT ?`,
+        channelId, before, limit,
+      );
+      rows = [...older].reverse();
+    } else {
+      rows = await adb.all<Record<string, unknown>>(
+        `SELECT m.*, u.first_name, u.last_name, u.username
+         FROM team_chat_messages m
+         LEFT JOIN users u ON u.id = m.user_id
+         WHERE m.channel_id = ? AND m.id > ?
+         ORDER BY m.id ASC LIMIT ?`,
+        channelId, after, limit,
+      );
+    }
     res.json({ success: true, data: rows });
   }),
 );

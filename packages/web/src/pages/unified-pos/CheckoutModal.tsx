@@ -129,11 +129,13 @@ interface CheckoutModalProps {
 
 export function CheckoutModal({ onClose }: CheckoutModalProps) {
   const store = useUnifiedPosStore;
-  const { setShowSuccess, meta, setMeta } = useUnifiedPosStore();
+  const { setShowSuccess, meta, setMeta, posPinVerified, setPosPinVerified } = useUnifiedPosStore();
   const totals = useCheckoutTotals();
 
   const [method, setMethod] = useState<PaymentMethod>('Cash');
   const [cashGiven, setCashGiven] = useState('');
+  // WEB-W1-015: discount reason required when pos_show_discount_reason=1
+  const [localDiscountReason, setLocalDiscountReason] = useState(store.getState().discountReason || '');
   const [processing, setProcessing] = useState(false);
   const [signature, setSignature] = useState('');
   const [showSignature, setShowSignature] = useState(false);
@@ -190,6 +192,9 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     staleTime: 60_000,
   });
   const membershipEnabled = configData?.['membership_enabled'] === 'true';
+  // WEB-W1-015: require reason when a discount is applied and this setting is on
+  const showDiscountReason = configData?.['pos_show_discount_reason'] === '1';
+  const requireDiscountReason = showDiscountReason && totals.discountAmount > 0;
 
   const { data: memberStatus } = useQuery({
     queryKey: ['membership', 'customer', customer?.id],
@@ -294,6 +299,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   }, [totals.total]);
 
   const handleCompleteCheckout = async () => {
+    // WEB-W1-015: block checkout if discount reason is required but missing
+    if (requireDiscountReason && !localDiscountReason.trim()) {
+      toast.error('Please enter a reason for the discount');
+      return;
+    }
+
     if (splitMode) {
       // WEB-FB-009 / WEB-FH-014: cents-int compare. Float compare drifted by
       // 1¢ on three-way even splits (33.33×3) and either blocked legit
@@ -318,18 +329,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
       const validSplits = splitMode
         ? splitPayments.filter((sp) => parseFloat(sp.amount) > 0)
         : undefined;
-      const payload = buildPayload(
+      const rawPayload = buildPayload(
         store.getState(),
         method,
         splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
         validSplits,
       );
+      // WEB-W1-015: when pos_show_discount_reason=1, override the stored
+      // discountReason with the value the cashier typed in this modal.
+      const payload = showDiscountReason
+        ? { ...rawPayload, ticket: { ...rawPayload.ticket, discount_reason: localDiscountReason } }
+        : rawPayload;
       // WEB-FH-001 / WEB-FH-002: stable idempotency key for this cart-session.
       // Reused on every retry of the SAME submit so a double-click or flaky
       // network can't double-charge — server idempotent middleware caches by
       // (user, url, key) for 5 minutes.
       const idempotencyKey = store.getState().ensureIdempotencyKey();
-      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
+      const pv = posPinVerified;
+      setPosPinVerified(false); // consume once
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey, pv);
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then
@@ -404,9 +422,23 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               <span>Subtotal: ${totals.subtotal.toFixed(2)}</span>
             </div>
             {totals.discountAmount > 0 && (
-              <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
-                <span>Discount</span>
-                <span>-${totals.discountAmount.toFixed(2)}</span>
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
+                  <span>Discount</span>
+                  <span>-${totals.discountAmount.toFixed(2)}</span>
+                </div>
+                {/* WEB-W1-015: require reason input when pos_show_discount_reason=1 */}
+                {showDiscountReason && (
+                  <div>
+                    <input
+                      type="text"
+                      value={localDiscountReason}
+                      onChange={(e) => setLocalDiscountReason(e.target.value)}
+                      placeholder={requireDiscountReason ? 'Discount reason (required)' : 'Discount reason (optional)'}
+                      className="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-700 px-2 py-1 text-xs text-surface-700 dark:text-surface-200 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none focus:ring-1 focus:ring-primary-400"
+                    />
+                  </div>
+                )}
               </div>
             )}
             <div className="flex justify-between text-sm text-surface-600 dark:text-surface-300">

@@ -120,6 +120,12 @@ interface UnifiedPosState {
   showSuccess: CheckoutSuccessPayload | null;
   setShowSuccess: (data: CheckoutSuccessPayload | null) => void;
 
+  // Server-side PIN gate (WEB-W1-P0): set true after PinModal verifies
+  // the user's PIN so the X-Pos-Pin-Verified header can be sent to the
+  // server. Consumed (set back to false) after the API call completes.
+  posPinVerified: boolean;
+  setPosPinVerified: (verified: boolean) => void;
+
   // Reset everything
   resetAll: () => void;
 }
@@ -244,6 +250,8 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
   setShowCheckout: (showCheckout) => set({ showCheckout }),
   showSuccess: null,
   setShowSuccess: (showSuccess) => set({ showSuccess }),
+  posPinVerified: false,
+  setPosPinVerified: (posPinVerified) => set({ posPinVerified }),
 
   resetAll: () => set({
     customer: null,
@@ -257,6 +265,7 @@ export const useUnifiedPosStore = create<UnifiedPosState>()(persist((set, get) =
     activeTab: 'repairs',
     showCheckout: false,
     showSuccess: null,
+    posPinVerified: false,
     // WEB-FH-001 / WEB-FH-002: cart fully reset → drop idempotency key so
     // the next sale doesn't accidentally collide with the previous one.
     checkoutIdempotencyKey: null,

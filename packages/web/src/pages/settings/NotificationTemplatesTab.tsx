@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info } from 'lucide-react';
+import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -370,6 +371,44 @@ export function NotificationTemplatesTab() {
             </table>
           </div>
         )}
+      </div>
+
+      {/* Notification Digest — WEB-W1-031: Coming Soon */}
+      <div className="mt-8 card p-5">
+        <div className="flex items-center gap-2 mb-3">
+          <Clock className="w-4 h-4 text-surface-500" />
+          <h3 className="font-semibold text-sm text-surface-900 dark:text-surface-100">Notification Digest</h3>
+          <ComingSoonBadge status="coming_soon" />
+        </div>
+        <p className="text-xs text-surface-500 dark:text-surface-400 mb-4">
+          Instead of sending each notification immediately, batch them into a single daily or hourly digest email.
+        </p>
+        <div className="space-y-3 max-w-sm opacity-60 pointer-events-none select-none">
+          <div>
+            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Digest mode</label>
+            <select
+              disabled
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 px-3 py-2 text-sm text-surface-400 cursor-not-allowed"
+              defaultValue="off"
+            >
+              <option value="off">Off (send immediately)</option>
+              <option value="daily">Daily digest</option>
+              <option value="hourly">Hourly digest</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-600 dark:text-surface-300 mb-1">Daily digest send time</label>
+            <input
+              type="number"
+              disabled
+              min={0}
+              max={23}
+              placeholder="8"
+              className="w-24 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-100 dark:bg-surface-800 px-3 py-2 text-sm text-surface-400 cursor-not-allowed"
+            />
+            <span className="ml-2 text-xs text-surface-400">hour (0–23, local time)</span>
+          </div>
+        </div>
       </div>
 
       {/* Edit Modal */}

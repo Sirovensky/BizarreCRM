@@ -564,8 +564,8 @@ function CustomerMergeModal({
 
   const searchResults: MergeSearchResult[] = (() => {
     const d = searchData?.data?.data;
-    const list: MergeSearchResult[] = Array.isArray(d) ? d : d?.customers || [];
-    // Exclude the current customer from results
+    // /customers/search always returns a bare array — not { customers: [] }
+    const list: MergeSearchResult[] = Array.isArray(d) ? d : [];
     return list.filter((c) => c.id !== keepCustomer.id);
   })();
 

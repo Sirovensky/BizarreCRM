@@ -170,19 +170,44 @@ export async function autoClockOutStaleSessions(adb: AsyncDb, db: any): Promise<
 
 // ---------------------------------------------------------------------------
 // GET / – List employees (active users, no password_hash)
+// WEB-S6-033: include is_clocked_in + weekly_hours in the list response so
+// EmployeeListPage doesn't fire a separate detail fetch per row (N+1).
 // ---------------------------------------------------------------------------
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
+
+    // Week start (Monday 00:00 UTC) for weekly_hours calculation
+    const now = new Date();
+    const dayOfWeek = now.getUTCDay();
+    const daysBackToMonday = (dayOfWeek + 6) % 7;
+    const weekStart = new Date(now);
+    weekStart.setUTCHours(0, 0, 0, 0);
+    weekStart.setUTCDate(weekStart.getUTCDate() - daysBackToMonday);
+    const weekStartIso = weekStart.toISOString();
+
     const employees = await adb.all(`
-      SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
-             created_at, updated_at
-      FROM users
-      WHERE is_active = 1
-      ORDER BY first_name, last_name
-    `);
+      SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role, u.avatar_url,
+             u.is_active, u.pin IS NOT NULL AS has_pin, u.permissions, u.home_location_id,
+             u.created_at, u.updated_at,
+             CASE WHEN open.id IS NOT NULL THEN 1 ELSE 0 END AS is_clocked_in,
+             COALESCE(wk.weekly_hours, 0) AS weekly_hours
+      FROM users u
+      LEFT JOIN (
+        SELECT user_id, id FROM clock_entries
+        WHERE clock_out IS NULL
+        GROUP BY user_id HAVING MIN(id)
+      ) open ON open.user_id = u.id
+      LEFT JOIN (
+        SELECT user_id, ROUND(SUM(total_hours), 2) AS weekly_hours
+        FROM clock_entries
+        WHERE clock_in >= ? AND clock_out IS NOT NULL
+        GROUP BY user_id
+      ) wk ON wk.user_id = u.id
+      WHERE u.is_active = 1
+      ORDER BY u.first_name, u.last_name
+    `, weekStartIso);
 
     res.json({ success: true, data: employees });
   }),

@@ -259,8 +259,8 @@ function StoreInfoTab() {
     { key: 'email', label: 'Email', type: 'email' },
     { key: 'timezone', label: 'Timezone', type: 'text' },
     { key: 'currency', label: 'Currency', type: 'text' },
-    { key: 'receipt_header', label: 'Receipt Header', type: 'text', placeholder: 'e.g. Thank you for choosing our shop!' },
-    { key: 'receipt_footer', label: 'Receipt Footer', type: 'text', placeholder: 'e.g. 30-day warranty on all repairs' },
+    // WEB-W1-026: receipt_header/footer moved to Receipt Settings tab (single source of truth).
+    // Removed from here to prevent duplicate forms writing to the same store_config keys.
   ] as { key: string; label: string; type: string; placeholder?: string }[];
 
   return (

@@ -767,6 +767,36 @@ object Migrations {
         }
     }
 
+    /**
+     * **Migration 11 → 12: add `approval_status` column to `expenses` + index.**
+     *
+     * The server gained an `expenses.status` column (server migration 120,
+     * values: `pending | approved | denied`) which the Android client mirrors as
+     * `approval_status`. This enables:
+     *   - Filtering by approval state without a full re-fetch from the server.
+     *   - Showing a live "Pending approval" count badge on the list summary tile.
+     *   - The advanced filter sheet's approval-status chip row.
+     *
+     * `DEFAULT 'pending'` ensures existing rows get a safe fallback — all pre-v12
+     * cached expenses are treated as pending until the next background refresh
+     * replaces them with accurate server values.
+     *
+     * A separate index on `approval_status` makes the DAO filtered queries O(log n).
+     *
+     * `ALTER TABLE … ADD COLUMN` runs exactly once per device via Room's migration
+     * chain, so this is safe (not idempotent in SQLite).
+     */
+    val MIGRATION_11_12 = object : Migration(11, 12) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "ALTER TABLE expenses ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending'"
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS index_expenses_approval_status ON expenses(approval_status)"
+            )
+        }
+    }
+
     /** Every migration must be registered here. */
     val ALL_MIGRATIONS: Array<Migration> = arrayOf(
         MIGRATION_1_2,
@@ -779,5 +809,6 @@ object Migrations {
         MIGRATION_8_9,
         MIGRATION_9_10,
         MIGRATION_10_11,
+        MIGRATION_11_12,
     )
 }

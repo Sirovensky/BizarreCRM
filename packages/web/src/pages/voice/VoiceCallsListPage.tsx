@@ -36,8 +36,13 @@ function hasRecording(call: VoiceCall): boolean {
   return Boolean(call.recording_url);
 }
 
+// WEB-W3-023: obtain a short-lived HMAC token from the server before opening
+// the recording URL so the request carries auth proof without relying on
+// a browser cookie / session that may not exist in a new tab context.
 function openRecording(callId: number): void {
-  window.open(voiceApi.recordingPath(callId), '_blank', 'noopener,noreferrer');
+  voiceApi.openRecording(callId).catch(() => {
+    // openRecording is async — swallow here; toast shown by axios interceptor.
+  });
 }
 
 interface CallRowProps {

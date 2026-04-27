@@ -850,7 +850,26 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
               <td style={tdStyle}>
                 <div style={{ fontWeight: 'bold' }}>{d.device_name || d.name}</div>
                 {(d.service_name || d.service?.name) && <div>{d.service_name || d.service?.name}</div>}
-                {(d.parts?.length ?? 0) > 0 && (
+                {/* WEB-W1-017: receipt_cfg_*_page toggles for letter layout */}
+                {cfg('receipt_cfg_description_page') && (d.additional_notes || d.description) && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Notes: {d.additional_notes || d.description}</div>
+                )}
+                {cfg('receipt_cfg_security_code_page') && d.security_code && (
+                  <div style={{ fontSize: 10, color: '#555' }}>Security Code: {d.security_code}</div>
+                )}
+                {cfg('receipt_cfg_po_so_page') && d.po_number && (
+                  <div style={{ fontSize: 10, color: '#555' }}>PO/SO#: {d.po_number}</div>
+                )}
+                {cfg('receipt_cfg_pre_conditions_page') && d.pre_conditions?.length > 0 && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Pre-conditions: {d.pre_conditions}</div>
+                )}
+                {cfg('receipt_cfg_post_conditions_page') && d.post_conditions?.length > 0 && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Post-conditions: {d.post_conditions}</div>
+                )}
+                {cfg('receipt_cfg_service_desc_page') && (d.warranty || d.warranty_timeframe) && (
+                  <div style={{ fontSize: 10, color: '#555', marginTop: 2 }}>Warranty: {d.warranty || d.warranty_timeframe}</div>
+                )}
+                {cfg('receipt_cfg_parts_page') && (d.parts?.length ?? 0) > 0 && (
                   <div style={{ marginTop: 4, paddingLeft: 8, fontSize: 10, color: '#444' }}>
                     {(d.parts ?? []).map((p: PrintPart, pi: number) => (
                       <div key={pi}>Part: {p.name || p.item_name} x{p.quantity || 1} — {money((p.price || 0) * (p.quantity || 1))}</div>
@@ -880,7 +899,11 @@ function PageInvoiceReceipt({ ticket, config }: { ticket: PrintTicket; config: P
           <div style={{ fontWeight: 'bold', marginBottom: 4 }}>Payments</div>
           {payments.map((p: PrintPayment, i: number) => (
             <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, padding: '2px 0' }}>
-              <span>{p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}</span>
+              <span>
+                {p.payment_method_name || p.method || 'Payment'}{p.created_at ? ` — ${formatDate(p.created_at)}` : ''}
+                {/* WEB-W1-017: receipt_cfg_transaction_id_page */}
+                {cfg('receipt_cfg_transaction_id_page') && p.transaction_id ? ` (txn: ${p.transaction_id})` : ''}
+              </span>
               <span>{money(p.amount)}</span>
             </div>
           ))}

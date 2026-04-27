@@ -382,16 +382,29 @@ export function TicketsRepairsSettings() {
             />
             <SelectRow
               label="Default Date Filter"
-              description="Default date filter on ticket listing"
-              value={val('ticket_default_filter', 'all')}
+              description="Default date range shown on the ticket listing"
+              value={val('ticket_default_filter', '')}
               options={[
-                { value: 'all', label: 'All' },
+                { value: '', label: 'All time' },
                 { value: 'today', label: 'Today' },
                 { value: '7days', label: '7 Days' },
                 { value: '14days', label: '14 Days' },
                 { value: '30days', label: '30 Days' },
               ]}
               onChange={(v) => set('ticket_default_filter', v)}
+            />
+            <SelectRow
+              label="Default Status Filter"
+              description="Default status group shown on the ticket listing"
+              value={val('ticket_default_status_filter', '')}
+              options={[
+                { value: '', label: 'All statuses' },
+                { value: 'open', label: 'Open' },
+                { value: 'on_hold', label: 'On Hold' },
+                { value: 'closed', label: 'Closed' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]}
+              onChange={(v) => set('ticket_default_status_filter', v)}
             />
             <SelectRow
               label="Default Date Sort"

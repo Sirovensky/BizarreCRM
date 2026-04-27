@@ -97,6 +97,8 @@ const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => (
 // `/automations` is kept as a `<Navigate replace>` to preserve any
 // bookmarked links staff already have. The standalone wrapper page
 // (AutomationsListPage) was removed because it was a 28-LOC duplicate.
+// `/automations/:id` — detail/edit page for a single rule (WEB-S6-019).
+const AutomationDetailPage = lazy(() => import('./pages/settings/AutomationDetailPage').then(m => ({ default: m.AutomationDetailPage })));
 // Super-admin tenant management
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
@@ -489,8 +491,10 @@ export default function App() {
                     <Route path="/loaners" element={<LoanersPage />} />
                     {/* Automations canonical home is Settings → Automations.
                      *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
-                     *  there so navigation memory has one URL per feature. */}
+                     *  there so navigation memory has one URL per feature.
+                     *  WEB-S6-019: `/automations/:id` — detail/edit page for a single rule. */}
                     <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
+                    <Route path="/automations/:id" element={<AutomationDetailPage />} />
                     {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
                     <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}

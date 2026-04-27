@@ -15,6 +15,8 @@ data class ExpenseListItem(
     val amount: Double?,
     val description: String?,
     val date: String?,
+    /** Approval status from server: `pending`, `approved`, or `denied`. */
+    val status: String?,
     @SerializedName("first_name")
     val firstName: String?,
     @SerializedName("last_name")
@@ -36,6 +38,8 @@ data class ExpenseDetail(
     val receiptPath: String?,
     @SerializedName("user_id")
     val userId: Long?,
+    /** Approval status from server: `pending`, `approved`, or `denied`. */
+    val status: String?,
     @SerializedName("first_name")
     val firstName: String?,
     @SerializedName("last_name")

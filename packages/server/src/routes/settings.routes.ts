@@ -13,7 +13,7 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
-import { clearEmailCache } from '../services/email.js';
+import { clearEmailCache, sendEmail, isEmailConfigured } from '../services/email.js';
 import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
@@ -1765,6 +1765,32 @@ router.post('/sms/reload', adminOnly, async (req, res) => {
   const db = req.db;
   const providerName = reloadSmsProvider(db);
   res.json({ success: true, data: { provider: providerName } });
+});
+
+// WEB-W1-034: POST /settings/test-smtp — send a test email to verify SMTP config
+// SEC: admin-only; uses the stored smtp credentials via sendEmail service.
+router.post('/test-smtp', adminOnly, async (req, res) => {
+  const db = req.db;
+  if (!isEmailConfigured(db)) {
+    return res.status(400).json({
+      success: false,
+      message: 'SMTP is not configured. Fill in smtp_host, smtp_user, and smtp_pass first.',
+    });
+  }
+  const recipient = (req.body?.to as string | undefined)?.trim() || req.user?.email;
+  if (!recipient) {
+    return res.status(400).json({ success: false, message: 'No recipient email address. Provide ?to= or log in.' });
+  }
+  const ok = await sendEmail(db, {
+    to: recipient,
+    subject: 'SMTP Test — Bizarre CRM',
+    html: '<p>This is a test email from your Bizarre CRM setup. If you received this, your SMTP configuration is working correctly.</p>',
+    text: 'This is a test email from your Bizarre CRM setup. If you received this, your SMTP configuration is working correctly.',
+  });
+  if (ok) {
+    return res.json({ success: true, data: { message: `Test email sent to ${recipient}` } });
+  }
+  return res.status(500).json({ success: false, message: 'Failed to send test email. Check server logs for SMTP errors.' });
 });
 
 // ---------------------------------------------------------------------------
