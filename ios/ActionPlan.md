@@ -1218,7 +1218,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Haptic** `.success` on payment confirm. `BrandHaptics.success()` called in `InvoicePaymentViewModel.applyPayment()` on success. ([actionplan agent-6 b5] 98fb3559)
 
 ### 7.5 Overdue automation
-- [ ] Server schedules reminders. iOS: overdue badge on dashboard + push notif tap → deep-link to invoice.
+- [x] Server schedules reminders. iOS: overdue badge on dashboard + push notif tap → deep-link to invoice. (`InvoiceListViewModel.overdueCount`; `InvoiceListView.overdueBadgeToolbarItem` amber pill + `overdueNavTitle`; `InvoiceDeepLinkHandler.handleRoute(invoiceId:)` + `Notification.Name.invoiceDeepLinkNavigate`; `.onReceive` in list view pushes to NavigationStack; 8 tests. feat(§7.5) a07d8a18)
 - [ ] Dunning sequences (see §40) manage escalation.
 
 ### 7.6 Aging report
@@ -1243,9 +1243,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Self-service: Apple Pay via pay page
 - [ ] Escalation: after N failed attempts, alert tenant manager + auto-suspend plan
 - [ ] Audit: every dunning event logged
-- [ ] Model: flat fee / percentage / compounding
-- [ ] Model: grace period before applying
-- [ ] Model: max cap
+- [x] Model: flat fee / percentage / compounding (`LateFeePolicy.flatFeeCents` + `percentPerDay` + `compoundDaily`; `LateFeeCalculator.compute` implements all three branches. feat(ios post-phase §7))
+- [x] Model: grace period before applying (`LateFeePolicy.gracePeriodDays`; `LateFeeCalculator` skips fee when `totalDaysLate ≤ gracePeriodDays`. feat(ios post-phase §7))
+- [x] Model: max cap (`LateFeePolicy.maxFeeCents`; `LateFeeCalculator` applies `min(feeCents, cap)`. feat(ios post-phase §7))
 - [ ] Application: auto-added to invoice on overdue
 - [ ] Status change to "Past due" triggers reminder
 - [x] Staff can waive with reason + audit. (`LateFeeWaiverSheet` + `LateFeeWaiverViewModel`; POST /invoices/:id/waive-late-fee with `{ reason, amount_cents }`; audit created server-side. [actionplan agent-6 b9] 482309e6)
