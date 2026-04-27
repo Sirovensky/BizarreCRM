@@ -173,7 +173,8 @@ public extension APIClient {
         pageSize: Int = 50,
         cursor: String? = nil,
         sort: String? = nil,
-        statusOverride: String? = nil
+        statusOverride: String? = nil,
+        extraQueryItems: [URLQueryItem] = []
     ) async throws -> InvoicesListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
@@ -192,6 +193,8 @@ public extension APIClient {
             items.removeAll { $0.name == "status" }
             items.append(URLQueryItem(name: "status", value: statusOverride))
         }
+        // §7.1 Advanced filter axes (date range / customer / amount / payment method / created-by)
+        items.append(contentsOf: extraQueryItems)
         return try await get("/api/v1/invoices", query: items, as: InvoicesListResponse.self)
     }
 
@@ -341,5 +344,60 @@ public extension APIClient {
     /// Creates a pending refund. Separate approval step required: PATCH /api/v1/refunds/:id/approve
     func createRefund(body: CreateRefundRequest) async throws -> CreateRefundResponse {
         try await post("/api/v1/refunds", body: body, as: CreateRefundResponse.self)
+    }
+}
+
+// MARK: - §7.6 Invoice Aging Report
+// Server: GET /api/v1/reports/aging
+// Returns invoices grouped by days-overdue bucket: 0-30, 31-60, 61-90, 90+
+
+public struct InvoiceAgingBucket: Decodable, Sendable, Identifiable {
+    public let id: String           // "0-30", "31-60", "61-90", "90+"
+    public let label: String
+    public let totalCents: Int
+    public let invoiceCount: Int
+    public let invoices: [AgingInvoiceSummary]
+
+    enum CodingKeys: String, CodingKey {
+        case id, label, invoices
+        case totalCents    = "total_cents"
+        case invoiceCount  = "invoice_count"
+    }
+}
+
+public struct AgingInvoiceSummary: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let orderId: String?
+    public let customerName: String?
+    public let totalCents: Int
+    public let daysOverdue: Int
+    public let dueOn: String?
+
+    public var displayId: String { orderId?.isEmpty == false ? orderId! : "INV-?" }
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case orderId      = "order_id"
+        case customerName = "customer_name"
+        case totalCents   = "total_cents"
+        case daysOverdue  = "days_overdue"
+        case dueOn        = "due_on"
+    }
+}
+
+public struct InvoiceAgingReport: Decodable, Sendable {
+    public let buckets: [InvoiceAgingBucket]
+    public let totalOverdueCents: Int
+
+    enum CodingKeys: String, CodingKey {
+        case buckets
+        case totalOverdueCents = "total_overdue_cents"
+    }
+}
+
+public extension APIClient {
+    /// `GET /api/v1/reports/aging`
+    func invoiceAgingReport() async throws -> InvoiceAgingReport {
+        try await get("/api/v1/reports/aging", query: nil, as: InvoiceAgingReport.self)
     }
 }

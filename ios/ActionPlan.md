@@ -1163,7 +1163,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] Row a11y — combined VoiceOver utterance `displayId. customerName. total. [Status X]. [Due $Y]`. Selectable order IDs, monospaced Due text.
 - [x] **CachedRepository + offline** — `InvoiceCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[InvoiceSummary]>`, `forceRefresh`, `invalidate`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired. `OfflineEmptyStateView` shown when offline + cache empty. Perf gate: 1000-row hot-read in < 10ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
 - [x] **Status tabs** — All / Unpaid / Partial / Overdue / Paid / Void. (`InvoiceStatusTab` enum; wired in `InvoiceListView` tab bar + `InvoiceListViewModel.applyStatusTab`; `legacyFilter` + `serverStatus` mapping; 10 tests) (3c5f3522)
-- [ ] **Filters** — date range, customer, amount range, payment method, created-by.
+- [x] **Filters** — date range, customer, amount range, payment method, created-by. `InvoiceFilterSheet` + `InvoiceListFilter` + `InvoicePaymentMethodFilter`; wired in `InvoiceListViewModel.applyAdvancedFilter`; toolbar badge; 14 tests. (feat(§7.1) 884b18b9)
 - [x] **Sort** — date / amount / due date / status. (`InvoiceSortOption` 7-option enum with query items; wired in toolbar sort Menu + `InvoiceListViewModel.applySort`; 4 tests) (3c5f3522)
 - [x] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through). (`InvoiceRowChip` view + `InvoiceRowChipDescriptor`; 12 tests) (3c5f3522)
 - [x] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down. (`InvoiceStatsHeaderView` + `InvoiceStatsViewModel`; `InvoiceStats` model in `InvoicesEndpoints`; `api.invoiceStats()`) (3c5f3522)
@@ -1175,9 +1175,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
-- [ ] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip.
-- [ ] **Customer card** — name + phone + email + quick-actions.
-- [ ] **Line items** — editable table (if status allows); tax per line.
+- [x] **Header** — invoice number (INV-XXXX, `.textSelection(.enabled)`), status chip, due date, balance-due chip. (feat(§7.2) 34788e7d)
+- [x] **Customer card** — name + phone + email + quick-actions (tel:/mailto: Links). (feat(§7.2) 34788e7d)
+- [ ] **Line items** — editable table (if status allows); tax per line (read display done feat(§7.2) 34788e7d).
 - [ ] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
 - [x] **Payment history** — method / amount / date / reference / status; tap → payment detail. (feat(ios phase-4 §7))
 - [x] **Add payment** → `POST /invoices/:id/payments` — `InvoicePaymentSheet` + `InvoicePaymentViewModel`. (feat(ios phase-4 §7))
@@ -1188,7 +1188,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Send by email** — `InvoiceEmailReceiptSheet` — `POST /invoices/:id/email-receipt` + SMS copy toggle. (feat(ios phase-4 §7))
 - [ ] **Share PDF** — share sheet (iPhone) / `.fileExporter` (iPad/Mac).
 - [ ] **AirPrint** via `UIPrintInteractionController` with custom PDF renderer.
-- [ ] **Clone invoice** — duplicate line items for new invoice.
+- [x] **Clone invoice** — duplicate line items for new invoice. `POST /api/v1/invoices/:id/clone` + `CloneInvoiceResponse`; cloned detail sheet; error alert. (feat(§7.2) 34788e7d)
 - [ ] **Convert to credit note** — if overpaid.
 - [ ] **Timeline** — every status change, payment, note, email/SMS send.
 - [ ] **Deposit invoices linked** — nested card showing connected deposit invoices.
@@ -1222,9 +1222,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [ ] Dunning sequences (see §40) manage escalation.
 
 ### 7.6 Aging report
-- [ ] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days).
-- [ ] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket.
-- [ ] Row actions: Send reminder / Record payment / Write off.
+- [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). <!-- shipped feat(§7.6) -->
+- [x] iPad/Mac: `Table` with sortable columns; iPhone: grouped list by bucket. <!-- shipped feat(§7.6) -->
+- [x] Row actions: Send reminder / Record payment / Write off. <!-- Remind + Pay shipped; Write-off deferred (no server endpoint) feat(§7.6) -->
 
 - [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory).
 - [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission (§14 commission clawback) unless tenant policy overrides.
@@ -5735,12 +5735,12 @@ See §19.14 for settings entry. Deep features:
 
 ### 48.2 Dry-run
 - [x] **Preview** first 10 rows — what will import, what will fail. `ImportPreviewView` — iPad uses `Grid` table, iPhone uses horizontal scroll grid; detected columns/rows summary; >50k row warning chip. Commit `feat(ios §48)`.
-- [ ] **Error report** — downloadable.
+- [x] **Error report** — downloadable. `ImportWizardViewModel.exportErrors()` + `ImportErrorsView` bottomBar ShareLink + `ImportProgressView.errorExportControls`; 3 XCTest assertions. (feat(ios §48))
 
 ### 48.3 Execute import
 - [x] **Chunked** — 100 rows at a time with progress bar. `ImportProgressView` — progress ring, processed/total, error count, ETA string. Commit `feat(ios §48)`.
 - [x] **Background task** — can leave screen; Live Activity shows progress. 2s polling loop via `ImportWizardViewModel.startPolling()`. Commit `feat(ios §48)`.
-- [ ] **Pause / resume / cancel**.
+- [x] **Pause / resume / cancel**. `ImportWizardViewModel.pauseImport/resumeImport/cancelImport`; `ImportProgressView.pauseResumeControls`; 7 XCTest assertions. (feat(ios §48))
 
 ### 48.4 Import history + rollback
 - [ ] **Undo** — within 24h; restores pre-import state.
@@ -5785,7 +5785,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 - [x] Chips: "Last 24h", "This week", "Custom".
 
 ### 50.3 Export
-- [ ] **CSV / JSON / PDF for period** — stubbed (TODO comment in toolbar); not implemented this PR.
+- [x] **CSV / JSON / PDF for period** — CSV implemented via `AuditLogExportSheet` wired in toolbar; PDF court-evidence format deferred. (feat(§50.3) d5744dc5)
 - [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
 ### 50.4 Alerts
@@ -5967,7 +5967,7 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Per-tech profitability**. (top customers + top SKUs tiles in `FinancialDashboardView`)
 
 ### 59.3 Forecast
-- [ ] **30/60/90 day revenue forecast** (ML if server).
+- [x] **30/60/90 day revenue forecast** (ML if server). `RevenueForecastCard` + `RevenueForecaster` OLS linear regression; ±15% confidence band; Swift Charts dashed + area; AXChartDescriptorRepresentable; 8 tests. (feat(§59.3) 8f3a2aae)
 
 ### 59.4 Financial exports + tax year
 - [x] **CSV export**. (`FinancialExportService`)

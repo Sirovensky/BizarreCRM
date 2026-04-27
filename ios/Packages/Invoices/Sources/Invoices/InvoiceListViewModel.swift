@@ -5,7 +5,7 @@ import Networking
 import Sync
 
 // §7.1 Invoice list ViewModel
-// Adds: status tabs, sort, bulk select, cursor pagination
+// Adds: status tabs, sort, bulk select, cursor pagination, advanced filter
 
 @MainActor
 @Observable
@@ -31,6 +31,14 @@ public final class InvoiceListViewModel {
 
     public var sort: InvoiceSortOption = .dateDesc
     public var searchQuery: String = ""
+
+    // MARK: - §7.1 Advanced filter (5-axis)
+
+    /// Active advanced filter; updating this triggers a fresh fetch.
+    public var advancedFilter: InvoiceListFilter = InvoiceListFilter()
+
+    /// True when any advanced filter axis is non-default.
+    public var hasActiveFilter: Bool { advancedFilter.isActive }
 
     // MARK: - Bulk selection
 
@@ -84,7 +92,8 @@ public final class InvoiceListViewModel {
                 statusTab: statusTab,
                 keyword: searchQuery.isEmpty ? nil : searchQuery,
                 sort: sort,
-                cursor: cursor
+                cursor: cursor,
+                advancedFilter: advancedFilter
             )
             invoices.append(contentsOf: response.invoices)
             nextCursor = response.pagination?.page.map { String($0 + 1) }
@@ -109,6 +118,22 @@ public final class InvoiceListViewModel {
 
     public func applySort(_ new: InvoiceSortOption) async {
         sort = new
+        nextCursor = nil
+        await fetch(forceRemote: false)
+    }
+
+    // MARK: - §7.1 Advanced filter
+
+    /// Apply a new 5-axis filter and reload.
+    public func applyAdvancedFilter(_ new: InvoiceListFilter) async {
+        advancedFilter = new
+        nextCursor = nil
+        await fetch(forceRemote: false)
+    }
+
+    /// Clear all advanced filter axes and reload.
+    public func clearAdvancedFilter() async {
+        advancedFilter = InvoiceListFilter()
         nextCursor = nil
         await fetch(forceRemote: false)
     }
@@ -153,26 +178,42 @@ public final class InvoiceListViewModel {
         errorMessage = nil
         do {
             if let cached = repo as? InvoiceCachedRepositoryImpl {
-                let result: CachedResult<[InvoiceSummary]>
-                if forceRemote {
-                    result = try await cached.forceRefresh(
-                        filter: statusTab.legacyFilter,
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
+                // Cached path: advanced filter not yet forwarded to cache (cache is keyword+status only).
+                // Fall through to network if filter is active so we always get server-side precision.
+                if advancedFilter.isActive {
+                    let response = try await repo.listExtended(
+                        statusTab: statusTab,
+                        keyword: searchQuery.isEmpty ? nil : searchQuery,
+                        sort: sort,
+                        cursor: nil,
+                        advancedFilter: advancedFilter
                     )
+                    invoices = response.invoices
+                    nextCursor = response.pagination?.page.map { String($0 + 1) }
+                    hasMore = (response.pagination?.totalPages).map { $0 > (response.pagination?.page ?? 0) } ?? false
                 } else {
-                    result = try await cached.cachedList(
-                        filter: statusTab.legacyFilter,
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
-                    )
+                    let result: CachedResult<[InvoiceSummary]>
+                    if forceRemote {
+                        result = try await cached.forceRefresh(
+                            filter: statusTab.legacyFilter,
+                            keyword: searchQuery.isEmpty ? nil : searchQuery
+                        )
+                    } else {
+                        result = try await cached.cachedList(
+                            filter: statusTab.legacyFilter,
+                            keyword: searchQuery.isEmpty ? nil : searchQuery
+                        )
+                    }
+                    invoices = result.value
+                    lastSyncedAt = result.lastSyncedAt
                 }
-                invoices = result.value
-                lastSyncedAt = result.lastSyncedAt
             } else {
                 let response = try await repo.listExtended(
                     statusTab: statusTab,
                     keyword: searchQuery.isEmpty ? nil : searchQuery,
                     sort: sort,
-                    cursor: nil
+                    cursor: nil,
+                    advancedFilter: advancedFilter
                 )
                 invoices = response.invoices
                 nextCursor = response.pagination?.page.map { String($0 + 1) }
