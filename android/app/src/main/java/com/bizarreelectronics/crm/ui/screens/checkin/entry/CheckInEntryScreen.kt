@@ -98,26 +98,37 @@ fun CheckInEntryScreen(
         if (preFillCustomerId >= 0L) viewModel.preFillCustomer(preFillCustomerId)
     }
 
+    // 2026-04-26 — fix flicker: when launched with a preFillCustomerId, the
+    // VM defaults currentStep=0 (Customer) and only advances after the async
+    // fetch completes — so users saw a 1-frame flash of the Customer screen
+    // before it switched to Device. Treat the step as already-1 from the
+    // first frame; once the VM advances, currentStep == 1 anyway.
+    val effectiveStep = if (
+        preFillCustomerId >= 0L &&
+        currentStep == 0 &&
+        step1.attachedCustomer == null
+    ) 1 else currentStep
+
     Scaffold(
         topBar = {
             CheckInEntryTopBar(
-                currentStep = currentStep,
-                onBack = { if (currentStep == 0) onCancel() else viewModel.goBack() },
+                currentStep = effectiveStep,
+                onBack = { if (effectiveStep == 0) onCancel() else viewModel.goBack() },
             )
         },
         bottomBar = {
             CheckInEntryBottomBar(
-                currentStep = currentStep,
+                currentStep = effectiveStep,
                 // Read from the collected state (step1/step2) — NOT from the
                 // VM's plain-getter properties — so recomposition kicks in
                 // when attachedCustomer / deviceModel change. Reading via
                 // `viewModel.canAdvanceStep1` took a non-Compose-tracked
                 // snapshot that left the button stuck-disabled after
                 // attachCustomer() or attachWalkIn().
-                canAdvance = if (currentStep == 0) step1.attachedCustomer != null
+                canAdvance = if (effectiveStep == 0) step1.attachedCustomer != null
                              else step2.deviceModel.isNotBlank(),
                 onAdvance = {
-                    if (currentStep == 0) {
+                    if (effectiveStep == 0) {
                         viewModel.advance()
                     } else {
                         val customer = step1.attachedCustomer ?: return@CheckInEntryBottomBar
@@ -128,7 +139,7 @@ fun CheckInEntryScreen(
             )
         },
     ) { paddingValues ->
-        when (currentStep) {
+        when (effectiveStep) {
             0 -> Step1CustomerContent(
                 state = step1,
                 paddingValues = paddingValues,
