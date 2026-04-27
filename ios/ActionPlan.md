@@ -8081,3 +8081,11 @@ Limitations:
 
 Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
 `/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.
+
+---
+
+## Discovered
+
+- [Agent 5] §11 Expenses MileageEntrySheet: direct `api.post("/api/v1/expenses/mileage")` call violates §20 containment rule — needs extraction to `MileageRepository` (file owned by Agent 5, `Packages/Expenses/Sources/Expenses/Mileage/MileageEntrySheet.swift`)
+- [Agent 5] §11 Expenses RecurringExpenseRunner: direct `api.post/delete` calls violate §20 containment rule — needs `RecurringExpenseRepository` wrapper (file owned by Agent 5, `Packages/Expenses/Sources/Expenses/Recurring/RecurringExpenseRunner.swift`)
+- [Agent 5] §6 Pre-existing Core build failure: `EnvironmentBanner.swift`, `LoadingStateView.swift`, `CoreErrorStateView.swift` in `Packages/Core/Sources/Core/` use UIKit-only APIs without `#if canImport(UIKit)` guard — causes `swift test` to fail on macOS. Owned by Core/Foundation agent.
