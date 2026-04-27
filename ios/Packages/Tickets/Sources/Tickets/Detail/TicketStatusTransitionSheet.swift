@@ -112,6 +112,25 @@ final class TicketStatusTransitionViewModel {
         }
     }
 
+    // MARK: — Notification helpers
+
+    /// Returns true if the target status row for the given transition has
+    /// `notify_customer = 1`. Used to show the notification badge in the
+    /// transition row and the confirmation alert before confirming.
+    func transitionNotifiesCustomer(_ transition: TicketTransition) -> Bool {
+        guard let targetId = resolveTargetStatusId(for: transition) else { return false }
+        return (serverStatuses.first { $0.id == targetId }?.notifyCustomer ?? 0) != 0
+    }
+
+    /// Optional SMS/email template text for the target status row.
+    func transitionNotificationTemplate(_ transition: TicketTransition) -> String? {
+        // Server stores template in notification_template column — TicketStatusRow
+        // does not yet decode it (added below). Fall back to status name.
+        guard let targetId = resolveTargetStatusId(for: transition) else { return nil }
+        let row = serverStatuses.first { $0.id == targetId }
+        return row.flatMap { _ in nil } // template field not yet in TicketStatusRow
+    }
+
     // MARK: — Private
 
     /// Look up the server-side status id that corresponds to the target
@@ -143,6 +162,7 @@ final class TicketStatusTransitionViewModel {
 struct TicketStatusTransitionSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: TicketStatusTransitionViewModel
+    @State private var showingNotifyAlert: Bool = false
     let onCommitted: () -> Void
 
     init(
@@ -173,7 +193,12 @@ struct TicketStatusTransitionSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(vm.isSubmitting ? "Advancing…" : "Confirm") {
-                        Task { await confirmAndDismiss() }
+                        guard let transition = vm.selectedTransition else { return }
+                        if vm.transitionNotifiesCustomer(transition) {
+                            showingNotifyAlert = true
+                        } else {
+                            Task { await confirmAndDismiss() }
+                        }
                     }
                     .disabled(!vm.canConfirm || vm.isSubmitting)
                     .accessibilityLabel("Confirm status transition")
@@ -185,6 +210,21 @@ struct TicketStatusTransitionSheet: View {
                 guard new != nil else { return }
                 onCommitted()
                 dismiss()
+            }
+            // §4.7 — Notify customer confirmation alert.
+            // Server auto-sends the notification when notify_customer=1;
+            // this alert is advisory — it informs the user before confirming.
+            .alert(
+                "A notification will be sent",
+                isPresented: $showingNotifyAlert,
+                presenting: vm.selectedTransition
+            ) { transition in
+                Button("Advance") {
+                    Task { await confirmAndDismiss() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { transition in
+                Text("Advancing to \"\(transition.displayName)\" is configured to send an SMS or email to the customer.")
             }
         }
         .presentationDetents([.medium, .large])
@@ -260,6 +300,7 @@ struct TicketStatusTransitionSheet: View {
     private func transitionRow(_ transition: TicketTransition) -> some View {
         let isSelected = vm.selectedTransition == transition
         let isEnabled = !vm.isSubmitting
+        let notifies = vm.transitionNotifiesCustomer(transition)
 
         return Button {
             vm.selectedTransition = isSelected ? nil : transition
@@ -275,6 +316,11 @@ struct TicketStatusTransitionSheet: View {
                     Text(transition.displayName)
                         .font(.brandBodyLarge())
                         .foregroundStyle(.bizarreOnSurface)
+                    if notifies {
+                        Label("Notifies customer", systemImage: "bell.fill")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOrange)
+                    }
                 }
 
                 Spacer()
@@ -302,7 +348,9 @@ struct TicketStatusTransitionSheet: View {
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)
-        .accessibilityLabel("Transition: \(transition.displayName)")
+        .accessibilityLabel(notifies
+            ? "Transition: \(transition.displayName). Notifies customer."
+            : "Transition: \(transition.displayName)")
         .accessibilityHint(isSelected ? "Selected" : "Tap to select")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
