@@ -210,6 +210,40 @@ class PosEntryViewModel @Inject constructor(
         loadStoreCredit(result.id)
     }
 
+    /**
+     * §POS — Fetch customer by id and attach. Called when the full-screen
+     * CustomerCreate route returns to POS via savedStateHandle.
+     */
+    fun attachByCustomerId(id: Long) {
+        if (id <= 0L) return
+        viewModelScope.launch {
+            runCatching { customerApi.getCustomer(id) }
+                .onSuccess { resp ->
+                    val detail = resp.data ?: return@onSuccess
+                    val attached = PosAttachedCustomer(
+                        id = detail.id,
+                        name = listOfNotNull(detail.firstName, detail.lastName)
+                            .joinToString(" ").ifBlank { "Customer #${detail.id}" },
+                        phone = detail.phone ?: detail.mobile,
+                        email = detail.email,
+                    )
+                    coordinator.attachCustomer(attached)
+                    _uiState.update {
+                        it.copy(
+                            attachedCustomer = attached,
+                            searchQuery = "",
+                            searchResults = SearchResultGroup(),
+                        )
+                    }
+                    loadCustomerHistory(detail.id)
+                    loadStoreCredit(detail.id)
+                }
+                .onFailure { e ->
+                    _uiState.update { it.copy(errorMessage = "Could not load new customer: ${e.message}") }
+                }
+        }
+    }
+
     fun createCustomerAndAttach(firstName: String, lastName: String?, phone: String?, email: String?) {
         viewModelScope.launch {
             runCatching {

@@ -175,6 +175,14 @@ sealed class Screen(val route: String) {
         fun createRoute(id: Long) = "customers/$id"
     }
     data object CustomerCreate : Screen("customer-create")
+    /**
+     * §POS — full-screen customer create variant launched from POS pre-attach.
+     * Renders the same `CustomerCreateScreen` as the standalone route but on
+     * onCreated pops back to POS and writes the new id into the previous
+     * back-stack `savedStateHandle["pos_attach_customer_id"]` so PosEntryScreen
+     * can auto-attach.
+     */
+    data object CustomerCreateForPos : Screen("customer-create-pos")
     data object Inventory : Screen("inventory")
     data object InventoryDetail : Screen("inventory/{id}") {
         fun createRoute(id: Long) = "inventory/$id"
@@ -1289,8 +1297,29 @@ fun AppNavGraph(
                     },
                 )
             }
+            // §POS — full-screen customer create reachable from POS pre-attach
+            // tile. Shares the canonical CustomerCreateScreen so the form fields
+            // stay parity-consistent with web/desktop. On success: pop back to
+            // POS + push the new customer id into the previous back-stack
+            // savedStateHandle for auto-attach.
+            composable(Screen.CustomerCreateForPos.route) {
+                com.bizarreelectronics.crm.ui.screens.customers.CustomerCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { id ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("pos_attach_customer_id", id)
+                        navController.popBackStack()
+                    },
+                )
+            }
             // Phase 2: POS entry → cart → tender → receipt sub-flow
-            composable(Screen.Pos.route) {
+            composable(Screen.Pos.route) { backStack ->
+                // §POS — receive newly-created customer id from CustomerCreateForPos
+                // via savedStateHandle. PosEntryScreen reads + clears the key in a
+                // LaunchedEffect to auto-attach.
+                val createdIdFlow = backStack.savedStateHandle
+                    .getStateFlow<Long?>("pos_attach_customer_id", null)
                 PosEntryScreen(
                     onNavigateToCart = { navController.navigate(Screen.PosCart.route) },
                     onNavigateToCheckin = { customerId ->
@@ -1306,6 +1335,12 @@ fun AppNavGraph(
                     onNavigateToTicket = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     // AUDIT-030: wire dedicated store-credit payment screen.
                     onNavigateToStoreCreditPayment = { navController.navigate(Screen.StoreCreditPayment.route) },
+                    // §POS — full-screen customer create.
+                    onNavigateToCustomerCreate = { navController.navigate(Screen.CustomerCreateForPos.route) },
+                    createdCustomerIdFlow = createdIdFlow,
+                    onCreatedCustomerConsumed = {
+                        backStack.savedStateHandle["pos_attach_customer_id"] = null
+                    },
                 )
             }
             // AUDIT-030: store-credit payment path tile destination (placeholder).
