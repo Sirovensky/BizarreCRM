@@ -124,6 +124,8 @@ public struct FinancialDashboardView: View {
             LazyVStack(spacing: BrandSpacing.md) {
                 pnlHeroTile(data.pnl)
                 cashFlowTile(data.cashFlow)
+                // §59.3 30/60/90 day revenue forecast
+                RevenueForecastCard(cashFlow: data.cashFlow)
                 agedReceivablesTile(data.agedReceivables)
                 topCustomersTile(data.topCustomers)
                 topSkusTile(data.topSkus)
@@ -147,6 +149,9 @@ public struct FinancialDashboardView: View {
                 pnlHeroTile(data.pnl)
                     .gridCellColumns(3)
                 cashFlowTile(data.cashFlow)
+                    .gridCellColumns(2)
+                // §59.3 Revenue forecast — spans 2 columns on iPad
+                RevenueForecastCard(cashFlow: data.cashFlow)
                     .gridCellColumns(2)
                 agedReceivablesTile(data.agedReceivables)
                 topCustomersTile(data.topCustomers)

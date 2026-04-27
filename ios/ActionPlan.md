@@ -5735,12 +5735,12 @@ See §19.14 for settings entry. Deep features:
 
 ### 48.2 Dry-run
 - [x] **Preview** first 10 rows — what will import, what will fail. `ImportPreviewView` — iPad uses `Grid` table, iPhone uses horizontal scroll grid; detected columns/rows summary; >50k row warning chip. Commit `feat(ios §48)`.
-- [ ] **Error report** — downloadable.
+- [x] **Error report** — downloadable. `ImportWizardViewModel.exportErrors()` + `ImportErrorsView` bottomBar ShareLink + `ImportProgressView.errorExportControls`; 3 XCTest assertions. (feat(ios §48))
 
 ### 48.3 Execute import
 - [x] **Chunked** — 100 rows at a time with progress bar. `ImportProgressView` — progress ring, processed/total, error count, ETA string. Commit `feat(ios §48)`.
 - [x] **Background task** — can leave screen; Live Activity shows progress. 2s polling loop via `ImportWizardViewModel.startPolling()`. Commit `feat(ios §48)`.
-- [ ] **Pause / resume / cancel**.
+- [x] **Pause / resume / cancel**. `ImportWizardViewModel.pauseImport/resumeImport/cancelImport`; `ImportProgressView.pauseResumeControls`; 7 XCTest assertions. (feat(ios §48))
 
 ### 48.4 Import history + rollback
 - [ ] **Undo** — within 24h; restores pre-import state.
@@ -5785,7 +5785,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 - [x] Chips: "Last 24h", "This week", "Custom".
 
 ### 50.3 Export
-- [ ] **CSV / JSON / PDF for period** — stubbed (TODO comment in toolbar); not implemented this PR.
+- [x] **CSV / JSON / PDF for period** — CSV implemented via `AuditLogExportSheet` wired in toolbar; PDF court-evidence format deferred. (feat(§50.3) d5744dc5)
 - [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
 ### 50.4 Alerts
