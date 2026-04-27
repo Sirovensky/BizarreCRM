@@ -58,8 +58,52 @@ public enum CallQuickAction {
 
 #if canImport(UIKit)
 import UIKit
+import SwiftUI
 
 private func openURLIfPossible(_ url: URL) {
     UIApplication.shared.open(url)
+}
+
+// MARK: - SwiftUI convenience modifier (§42.2)
+
+/// A tappable phone-number chip that immediately places a call via `tel:`.
+///
+/// Placed directly in a customer or ticket detail view — no extra state needed.
+///
+/// Usage:
+/// ```swift
+/// PhoneCallButton(number: customer.phone, label: customer.phone)
+/// ```
+public struct PhoneCallButton: View {
+    public let number: String
+    /// Display text; defaults to the raw number if nil.
+    public let label: String?
+    public let font: Font
+
+    public init(number: String, label: String? = nil, font: Font = .body) {
+        self.number = number
+        self.label = label
+        self.font = font
+    }
+
+    public var body: some View {
+        Button {
+            CallQuickAction.placeCall(to: number)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "phone.fill")
+                    .font(font)
+                    .accessibilityHidden(true)
+                Text(label ?? number)
+                    .font(font)
+                    .underline()
+            }
+            .foregroundStyle(.blue)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Call \(label ?? number)")
+        .accessibilityHint("Opens the phone dialer")
+        .accessibilityIdentifier("callButton.\(number)")
+    }
 }
 #endif

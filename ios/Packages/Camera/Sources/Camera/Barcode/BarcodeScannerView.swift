@@ -20,6 +20,13 @@ import DesignSystem
 /// simulators) the view falls back to a manual-entry field so no scan is silently
 /// swallowed.
 ///
+/// §17.2 additions:
+/// - Torch toggle button (flashlight on/off)
+/// - Pinch-to-zoom via `AVCaptureDevice` zoom factor
+/// - Region-of-interest (ROI) center rectangle overlay
+/// - Continuous/multi-scan mode with tap-to-stop button
+/// - Mac Catalyst graceful fallback gate
+///
 /// Usage:
 /// ```swift
 /// .fullScreenCover(isPresented: $showScanner) {
@@ -55,6 +62,12 @@ public struct BarcodeScannerView: View {
     @State private var manualCode: String = ""
     @State private var showManualEntry: Bool = false
     @State private var scanCount: Int = 0
+    /// Current torch (flashlight) state.
+    @State private var torchOn: Bool = false
+    /// Zoom factor driven by pinch gesture (1.0 = no zoom).
+    @State private var zoomFactor: CGFloat = 1.0
+    /// Captured zoom at the start of each pinch gesture for delta calculation.
+    @State private var baseZoomFactor: CGFloat = 1.0
     @Environment(\.dismiss) private var dismiss
 
     public init(
@@ -104,15 +117,87 @@ public struct BarcodeScannerView: View {
     @ViewBuilder
     private var scannerBody: some View {
         ZStack(alignment: .bottom) {
-            DataScannerRepresentable(coordinator: coordinator, mode: mode)
+            DataScannerRepresentable(coordinator: coordinator, mode: mode, zoomFactor: zoomFactor)
                 .ignoresSafeArea()
                 .accessibilityHidden(true)
+                // Pinch-to-zoom gesture
+                .gesture(
+                    MagnifyGesture()
+                        .onChanged { value in
+                            let newZoom = (baseZoomFactor * value.magnification)
+                                .clamped(to: 1.0...8.0)
+                            zoomFactor = newZoom
+                            coordinator.setZoom(newZoom)
+                        }
+                        .onEnded { _ in
+                            baseZoomFactor = zoomFactor
+                        }
+                )
+
+            // ROI overlay — semi-transparent frame around center scan zone
+            roiOverlay
 
             glassOverlay
         }
         .background(Color.black.ignoresSafeArea())
         .navigationTitle("Scan Barcode")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Region-of-Interest overlay
+
+    /// Draws a centered transparent rectangle indicating the active scan zone.
+    private var roiOverlay: some View {
+        GeometryReader { geo in
+            let roiWidth = geo.size.width * 0.75
+            let roiHeight: CGFloat = 180
+            let roiX = (geo.size.width - roiWidth) / 2
+            let roiY = (geo.size.height - roiHeight) / 2
+
+            ZStack {
+                // Dim surround
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+
+                // Clear ROI cutout
+                RoundedRectangle(cornerRadius: 12)
+                    .blendMode(.destinationOut)
+                    .frame(width: roiWidth, height: roiHeight)
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
+            .compositingGroup()
+
+            // Corner brackets
+            roiCornerBrackets(x: roiX, y: roiY, w: roiWidth, h: roiHeight)
+                .accessibilityHidden(true)
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func roiCornerBrackets(x: CGFloat, y: CGFloat, w: CGFloat, h: CGFloat) -> some View {
+        let len: CGFloat = 20
+        let thick: CGFloat = 3
+        return ZStack {
+            // Top-left
+            cornerBracket(ax: x, ay: y, dx: len, dy: thick, horizontal: true)
+            cornerBracket(ax: x, ay: y, dx: thick, dy: len, horizontal: false)
+            // Top-right
+            cornerBracket(ax: x + w - len, ay: y, dx: len, dy: thick, horizontal: true)
+            cornerBracket(ax: x + w - thick, ay: y, dx: thick, dy: len, horizontal: false)
+            // Bottom-left
+            cornerBracket(ax: x, ay: y + h - thick, dx: len, dy: thick, horizontal: true)
+            cornerBracket(ax: x, ay: y + h - len, dx: thick, dy: len, horizontal: false)
+            // Bottom-right
+            cornerBracket(ax: x + w - len, ay: y + h - thick, dx: len, dy: thick, horizontal: true)
+            cornerBracket(ax: x + w - thick, ay: y + h - len, dx: thick, dy: len, horizontal: false)
+        }
+    }
+
+    private func cornerBracket(ax: CGFloat, ay: CGFloat, dx: CGFloat, dy: CGFloat, horizontal: Bool) -> some View {
+        Color.white
+            .frame(width: dx, height: dy)
+            .position(x: ax + dx / 2, y: ay + dy / 2)
+            .cornerRadius(1.5)
     }
 
     // MARK: - Glass chrome overlay
@@ -143,19 +228,24 @@ public struct BarcodeScannerView: View {
 
                 Spacer()
 
-                // Manual entry toggle
-                Button {
-                    showManualEntry.toggle()
-                } label: {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.2), in: Circle())
+                HStack(spacing: BrandSpacing.sm) {
+                    // Torch toggle
+                    torchButton
+
+                    // Manual entry toggle
+                    Button {
+                        showManualEntry.toggle()
+                    } label: {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.2), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Enter barcode manually")
+                    .accessibilityIdentifier("scanner.keyboard")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Enter barcode manually")
-                .accessibilityIdentifier("scanner.keyboard")
             }
             .padding(.horizontal, BrandSpacing.base)
             .padding(.top, BrandSpacing.base)
@@ -168,6 +258,12 @@ public struct BarcodeScannerView: View {
 
             Spacer()
 
+            // Multi-scan stop button (continuous mode only)
+            if mode == .continuous {
+                stopScanningButton
+                    .padding(.bottom, BrandSpacing.base)
+            }
+
             // Manual entry card (shown when keyboard button tapped)
             if showManualEntry {
                 manualEntryCard
@@ -177,18 +273,68 @@ public struct BarcodeScannerView: View {
         .animation(.easeInOut(duration: DesignTokens.Motion.snappy), value: showManualEntry)
     }
 
+    // MARK: - Torch button
+
+    private var torchButton: some View {
+        Button {
+            torchOn.toggle()
+            coordinator.setTorch(torchOn)
+        } label: {
+            Image(systemName: torchOn ? "flashlight.on.fill" : "flashlight.off.fill")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(torchOn ? .yellow : .white)
+                .frame(width: 40, height: 40)
+                .background(
+                    torchOn ? Color.yellow.opacity(0.25) : Color.white.opacity(0.2),
+                    in: Circle()
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(torchOn ? "Turn off flashlight" : "Turn on flashlight")
+        .accessibilityIdentifier("scanner.torch")
+    }
+
+    // MARK: - Multi-scan stop button
+
+    private var stopScanningButton: some View {
+        Button {
+            onCancel?()
+            dismiss()
+        } label: {
+            HStack(spacing: BrandSpacing.sm) {
+                Image(systemName: "stop.circle.fill")
+                    .font(.system(size: 18, weight: .medium))
+                Text("Stop Scanning")
+                    .font(.brandBodyMedium())
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, BrandSpacing.lg)
+            .padding(.vertical, BrandSpacing.sm)
+            .background(Color.white.opacity(0.2), in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Stop scanning, \(scanCount) items scanned")
+        .accessibilityIdentifier("scanner.stopMulti")
+    }
+
     // MARK: - Viewfinder hint
 
     private var viewfinderHint: some View {
         VStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "viewfinder")
-                .font(.system(size: 72, weight: .ultraLight))
-                .foregroundStyle(.white.opacity(0.6))
-                .accessibilityHidden(true)
-            Text("Point at a barcode")
+            if zoomFactor > 1.01 {
+                Text(String(format: "%.1f×", zoomFactor))
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, BrandSpacing.sm)
+                    .padding(.vertical, 2)
+                    .background(Color.black.opacity(0.5), in: Capsule())
+                    .transition(.opacity)
+            }
+            Text(mode == .continuous ? "Keep scanning — tap Stop when done" : "Point at a barcode")
                 .font(.brandBodyMedium())
                 .foregroundStyle(.white.opacity(0.8))
         }
+        .animation(.easeInOut(duration: 0.2), value: zoomFactor > 1.01)
     }
 
     // MARK: - Continuous scan count pill
@@ -237,6 +383,9 @@ public struct BarcodeScannerView: View {
     }
 
     // MARK: - Fallback (Mac Catalyst / unsupported)
+    //
+    // §17.2: Mac Catalyst — DataScannerViewController is unavailable on macOS.
+    // Feature-gated to manual-entry + a note pointing to continuity camera.
 
     private var fallbackBody: some View {
         NavigationStack {
@@ -250,11 +399,7 @@ public struct BarcodeScannerView: View {
                     .font(.brandHeadlineMedium())
                     .foregroundStyle(.bizarreOnSurface)
 
-                Text("The camera scanner is not supported on this device. Enter the code manually.")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, BrandSpacing.base)
+                macCatalystHint
 
                 fallbackField
             }
@@ -271,6 +416,28 @@ public struct BarcodeScannerView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var macCatalystHint: some View {
+#if targetEnvironment(macCatalyst)
+        VStack(spacing: BrandSpacing.sm) {
+            Text("On Mac, use Continuity Camera to scan with your iPhone.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, BrandSpacing.base)
+            Text("Or type the barcode / SKU below.")
+                .font(.brandBodySmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.7))
+        }
+#else
+        Text("The camera scanner is not supported on this device. Enter the code manually.")
+            .font(.brandBodyMedium())
+            .foregroundStyle(.bizarreOnSurfaceMuted)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, BrandSpacing.base)
+#endif
     }
 
     private var fallbackField: some View {
@@ -312,6 +479,14 @@ public struct BarcodeScannerView: View {
     }
 }
 
+// MARK: - Comparable clamped helper (local, avoids cross-module import)
+
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
+    }
+}
+
 // MARK: - DataScannerRepresentable
 
 /// `UIViewControllerRepresentable` bridging `DataScannerViewController`
@@ -321,6 +496,9 @@ private struct DataScannerRepresentable: UIViewControllerRepresentable {
 
     let coordinator: BarcodeCoordinator
     let mode: BarcodeScanMode
+    /// Current zoom factor; passed in so SwiftUI re-calls `updateUIViewController`
+    /// when the pinch gesture changes it.
+    var zoomFactor: CGFloat
 
     func makeUIViewController(context: Context) -> DataScannerViewController {
         let vc = DataScannerViewController(
@@ -334,7 +512,15 @@ private struct DataScannerRepresentable: UIViewControllerRepresentable {
         return vc
     }
 
-    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {}
+    func updateUIViewController(_ uiViewController: DataScannerViewController, context: Context) {
+        // Apply zoom factor to the underlying AVCaptureDevice.
+        if let device = AVCaptureDevice.default(for: .video) {
+            try? device.lockForConfiguration()
+            device.videoZoomFactor = max(device.minAvailableVideoZoomFactor,
+                                        min(zoomFactor, device.maxAvailableVideoZoomFactor))
+            device.unlockForConfiguration()
+        }
+    }
 
     func makeCoordinator() -> Void {}
 
