@@ -54,8 +54,8 @@ public final class GlobalSearchViewModel {
             return
         }
         searchTask = Task { @MainActor in
-            // 300ms debounce — cancellable on each keystroke.
-            try? await Task.sleep(nanoseconds: 300_000_000)
+            // §18.1 250ms debounce — cancel prior request on each keystroke.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
             await fetchLocal()
             await fetchRemote()
