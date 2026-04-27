@@ -66,6 +66,26 @@ public final class BatchEditViewModel {
         return ([header] + rows).joined(separator: "\n")
     }
 
+    // MARK: - §6.8 Mass label print
+
+    /// Items fetched for label rendering; populated by fetchItemsForLabels().
+    public private(set) var itemsForLabels: [InventoryListItem] = []
+
+    /// Fetches lightweight item detail (name + SKU) for each selected ID
+    /// concurrently, assembling an array suitable for label rendering.
+    /// On network failure the array stays empty — the label sheet shows
+    /// an empty state instead of crashing.
+    public func fetchItemsForLabels() async {
+        guard !selectedIds.isEmpty else { return }
+        do {
+            let items = try await api.inventoryItemsForLabels(ids: selectedIds)
+            itemsForLabels = items
+        } catch {
+            AppLog.ui.debug("Label data fetch failed: \(error.localizedDescription, privacy: .public)")
+            itemsForLabels = []
+        }
+    }
+
     public func submit() async {
         guard !isSubmitting, hasAnyField, !selectedIds.isEmpty else {
             if !hasAnyField { errorMessage = "Enter at least one update." }
@@ -134,12 +154,14 @@ public struct InventoryCSVDocument: FileDocument {
 }
 
 /// §6.1 — Sheet for batch-editing selected inventory items.
-/// Fields: adjust price by %, reassign category, retag, delete, export CSV.
+/// Fields: adjust price by %, reassign category, retag, delete, export CSV, print labels.
 public struct BatchEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var vm: BatchEditViewModel
     @State private var showDeleteConfirm: Bool = false
     @State private var showExporter: Bool = false
+    @State private var showingLabelPrint: Bool = false
+    @State private var labelItems: [InventoryListItem] = []
 
     public init(api: APIClient, selectedIds: [Int64]) {
         _vm = State(wrappedValue: BatchEditViewModel(api: api, selectedIds: selectedIds))
@@ -217,8 +239,8 @@ public struct BatchEditSheet: View {
                     .accessibilityLabel("Deleted \(count) items")
                 }
 
-                // §6.1 Export CSV
-                Section("Export") {
+                // §6.1/§6.8 Export + Print labels
+                Section("Export & Print") {
                     Button {
                         showExporter = true
                     } label: {
@@ -226,6 +248,16 @@ public struct BatchEditSheet: View {
                             .foregroundStyle(.bizarreOrange)
                     }
                     .accessibilityLabel("Export selected items as CSV")
+
+                    // §6.8 Mass label print — AirPrint or MFi thermal
+                    Button {
+                        Task { await vm.fetchItemsForLabels() }
+                        showingLabelPrint = true
+                    } label: {
+                        Label("Print \(vm.selectedIds.count) label\(vm.selectedIds.count == 1 ? "" : "s")", systemImage: "printer")
+                            .foregroundStyle(.bizarreOrange)
+                    }
+                    .accessibilityLabel("Print barcode labels for selected items")
                 }
 
                 // §6.1 Bulk delete (destructive)
@@ -270,6 +302,10 @@ public struct BatchEditSheet: View {
                 if case .failure(let err) = result {
                     AppLog.ui.error("Inventory CSV export failed: \(err.localizedDescription, privacy: .public)")
                 }
+            }
+            // §6.8 Mass label print sheet
+            .sheet(isPresented: $showingLabelPrint) {
+                InventoryLabelPrintSheet(items: vm.itemsForLabels)
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

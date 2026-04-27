@@ -125,6 +125,31 @@ public extension APIClient {
             throw APITransportError.notImplemented
         }
     }
+
+    /// Fetch InventoryListItem data for a set of IDs concurrently (for label printing).
+    /// Fetches each item individually via GET /api/v1/inventory/:id and maps to
+    /// InventoryListItem. Items that 404 are silently skipped.
+    func inventoryItemsForLabels(ids: [Int64]) async throws -> [InventoryListItem] {
+        try await withThrowingTaskGroup(of: InventoryListItem?.self) { group in
+            for id in ids {
+                group.addTask { [self] in
+                    do {
+                        return try await self.get(
+                            "/api/v1/inventory/\(id)",
+                            as: InventoryListItem.self
+                        )
+                    } catch {
+                        return nil
+                    }
+                }
+            }
+            var results: [InventoryListItem] = []
+            for try await item in group {
+                if let item { results.append(item) }
+            }
+            return results.sorted { ($0.name ?? "") < ($1.name ?? "") }
+        }
+    }
 }
 
 // MARK: - §6.5 Adjust-stock DTOs
