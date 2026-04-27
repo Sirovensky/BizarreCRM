@@ -73,7 +73,11 @@ export function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<{ slug: string; message: string } | null>(null);
+  const [success, setSuccess] = useState<{ slug: string; message: string; adminEmail: string } | null>(null);
+  // WIZARD-EMAIL-1: track dev-skip state on the signup success screen so the
+  // owner can short-circuit email verification while SMTP is still un-wired.
+  const [devSkipState, setDevSkipState] = useState<'idle' | 'submitting' | 'failed'>('idle');
+  const [devSkipError, setDevSkipError] = useState('');
   const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReady, setCaptchaReady] = useState(!captchaSiteKey);
@@ -253,7 +257,7 @@ export function SignupPage() {
         captcha_token: captchaTokenToSend,
       });
       const { message } = res.data.data;
-      setSuccess({ slug: slug.toLowerCase().trim(), message });
+      setSuccess({ slug: slug.toLowerCase().trim(), message, adminEmail: email.trim() });
       // Redirect after brief success message is no longer performed automatically,
       // as the user needs to check their email for the token URL.
     } catch (err: unknown) {
@@ -289,6 +293,72 @@ export function SignupPage() {
           <div style={{ marginTop: 24, fontSize: 14, color: '#666' }}>
             <Link to="/" style={{ color: '#0E7490', fontWeight: 600, textDecoration: 'none' }}>Return to home</Link>
           </div>
+
+          {/* WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
+              Outbound email isn't wired yet, so without this button a dev test
+              cannot complete the signup flow end-to-end. The matching backend
+              route /api/v1/signup/verify/dev-skip is gated behind
+              NODE_ENV !== 'production' AND WIZARD_DEV_SKIP_EMAIL=1. */}
+          {import.meta.env.DEV && (
+            <div style={{ marginTop: 32, padding: 16, background: '#FEF3C7', border: '1px solid #FBBF24', borderRadius: 8, textAlign: 'left' }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dev only</p>
+              <p style={{ fontSize: 13, color: '#78350F', marginBottom: 12 }}>
+                SMTP isn't wired yet. Use this to provision the tenant immediately and bypass the email-link step.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (devSkipState === 'submitting') return;
+                  setDevSkipState('submitting');
+                  setDevSkipError('');
+                  try {
+                    const r = await fetch('/api/v1/signup/verify/dev-skip', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ slug: success.slug, adminEmail: success.adminEmail }),
+                    });
+                    const body = await r.json().catch(() => ({}));
+                    if (!r.ok) {
+                      setDevSkipState('failed');
+                      if (r.status === 404) {
+                        setDevSkipError('Dev-skip not enabled on the server. Set NODE_ENV != production AND WIZARD_DEV_SKIP_EMAIL=1, then restart.');
+                      } else {
+                        setDevSkipError(body?.message || `Dev-skip failed (HTTP ${r.status}).`);
+                      }
+                      return;
+                    }
+                    // Success — backend has provisioned the tenant and set
+                    // refresh-token + csrf cookies. Redirect to the subdomain
+                    // login (or directly into the wizard if accessToken came
+                    // back). The full URL is guaranteed safe since slug is our
+                    // own input.
+                    const url = body?.data?.url || getTenantUrl(success.slug, '/login?verified=1');
+                    window.location.href = url;
+                  } catch (e: unknown) {
+                    setDevSkipState('failed');
+                    setDevSkipError(e instanceof Error ? e.message : 'Network error.');
+                  }
+                }}
+                disabled={devSkipState === 'submitting'}
+                style={{
+                  background: devSkipState === 'submitting' ? '#FBBF24' : '#F59E0B',
+                  color: '#451A03',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: devSkipState === 'submitting' ? 'wait' : 'pointer',
+                }}
+              >
+                {devSkipState === 'submitting' ? 'Skipping…' : 'Skip email check (dev only)'}
+              </button>
+              {devSkipError && (
+                <p style={{ marginTop: 10, fontSize: 12, color: '#991B1B' }}>{devSkipError}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );
