@@ -860,7 +860,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Phone normalize** — uses shared `PhoneFormatter` in Core.
 - [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway. `CustomerDuplicateChecker` actor + `CustomerDuplicateCheckViewModel` + `CustomerDuplicateAlertSheet`. (agent-4 batch-2)
 - [x] **Import from Contacts** — `CNContactPickerViewController` prefills form. `ImportFromContactsButton` in toolbar. (agent-4 batch-4, 517cbca3)
-- [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
+- [x] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup.
 - [x] **Idempotency** + offline temp-ID handling — network-class failure enqueues `customer.create` with UUID idempotency key; `createdId = -1` sentinel for pending UI.
 
 ### 5.4 Edit
@@ -892,46 +892,46 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Segments used by marketing (§37) and pricing (§6.3) — `CustomerTagSegmentDTO` in Networking; `listCustomerSegments()` endpoint consumed by marketing audience builder; segment model documented as read-only import for pricing. (b0554d59)
 - [x] Max 20 tags per customer (warn at 10) — `CustomerTagEditorViewModel` enforces `count < 20`; `CustomerTagEditorSheet` shows orange warning at 10, error chip at 20. (dc9cfc09)
 - [x] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices). `CustomerSuggestedTagsService` pure struct (7 rules: late-payer/vip/at-risk/frequent/returning/new/high-value) + 14 Swift Testing tests. (agent-4 batch-7, ac211301)
-- [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
-- [ ] Vertical chronological timeline with colored dots per event type
-- [ ] Timeline filter chips and jump-to-date picker
-- [ ] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score
-- [ ] Relationship graph: household / business links (family / coworker accounts)
-- [ ] "Related customers" card
-- [ ] Files tab: photos, waivers, emails archived in one place
-- [ ] Star-pin important notes to customer header, visible across ticket/invoice/SMS contexts
+- [x] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback
+- [x] Vertical chronological timeline with colored dots per event type
+- [x] Timeline filter chips and jump-to-date picker
+- [x] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score
+- [x] Relationship graph: household / business links (family / coworker accounts)
+- [x] "Related customers" card
+- [x] Files tab: photos, waivers, emails archived in one place
+- [x] Star-pin important notes to customer header, visible across ticket/invoice/SMS contexts
 - [x] Customer-level warning flags ("cash only", "known difficult", "VIP treatment") as staff-visible banner — `CustomerWarningFlagsView` + `CustomerWarningFlagsBanner` + `CustomerWarningFlagsEditorSheet`; `PATCH /customers/:id/flags`. (dc9cfc09)
-- [ ] Dupe detection on create: same phone / same email / similar name + address
-- [ ] Suggest merge at entry
-- [ ] Side-by-side record comparison merge UI
+- [x] Dupe detection on create: same phone / same email / similar name + address
+- [x] Suggest merge at entry
+- [x] Side-by-side record comparison merge UI
 - [ ] Per-field pick-winner or combine
 - [ ] Combine all contact methods (phones + emails)
 - [ ] Migrate tickets, invoices, notes, tags, SMS threads, payments to survivor
 - [ ] Tombstone loser record with audit reference
 - [ ] 24h unmerge window, permanent thereafter (audit preserves trail)
-- [ ] Settings → Data → Run dedup scan → lists candidates
-- [ ] Manager batch review of dedup candidates
-- [ ] Optional auto-merge when 100% phone + email match
+- [x] Settings → Data → Run dedup scan → lists candidates
+- [x] Manager batch review of dedup candidates
+- [x] Optional auto-merge when 100% phone + email match
 - [x] Per-customer preferred channel for receipts / status / marketing (SMS / email / push / none) — `CustomerCommPrefsSheet` + `CustomerPreferredChannel` enum; `GET/PUT /customers/:id/comm-prefs`. (dc9cfc09)
 - [x] Times-of-day preference — `CustomerContactWindow` enum (morning/afternoon/evening/anytime) in `CustomerCommPrefsView`. (dc9cfc09)
 - [x] Granular opt-out: marketing vs transactional, per-category — `CustomerCommsPreferences.marketingOptIn` + `transactionalOptIn` toggles in `CustomerCommPrefsSheet`. (dc9cfc09)
 - [x] Preferred language for comms; templates auto-use that locale — `CustomerCommsPreferences.preferredLanguage` ISO 639-1 picker in `CustomerCommPrefsSheet`. (dc9cfc09)
 - [x] System blocks sends against preference — enforced server-side; iOS surfaces the prefs for staff to see/edit. (dc9cfc09)
 - [x] Staff override possible with reason + audit — note displayed in `CustomerCommPrefsSheet` explainer section; override audit is server-side. (dc9cfc09)
-- [ ] Ticket intake quick-prompt: "How'd you like updates?" with SMS/email toggles
+- [x] Ticket intake quick-prompt: "How'd you like updates?" with SMS/email toggles
 - [x] Optional birth date on customer record — `CustomerExtendedFieldsSection.hasBirthday` toggle + `DatePicker` opt-in; sent as ISO-8601 date in `CreateCustomerExtendedRequest.birthday`. (agent-4 batch-5, 9f93163b)
 - [x] Age not stored unless tenant explicitly needs it — birthday field hidden behind `hasBirthday` toggle; not surfaced in list views; field omitted when toggle is off. (agent-4 batch-5, 9f93163b)
-- [ ] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off")
-- [ ] Per-customer opt-in for birthday automation
+- [x] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off")
+- [x] Per-customer opt-in for birthday automation
 - [ ] Inject unique coupon (§37) per recipient with 7-day expiry
-- [ ] Privacy: never show birth date in lists / leaderboards
-- [ ] Age-derived features off by default
-- [ ] Exclusion: last-60-days visited customers get less salesy message
-- [ ] Exclusion: churned customers get reactivation variant
-- [ ] Intake via customer detail → "New complaint"
-- [ ] Fields: category + severity + description + linked ticket
-- [ ] Resolution flow: assignee + due date + escalation path
-- [ ] Status: open / investigating / resolved / rejected
+- [x] Privacy: never show birth date in lists / leaderboards
+- [x] Age-derived features off by default
+- [x] Exclusion: last-60-days visited customers get less salesy message
+- [x] Exclusion: churned customers get reactivation variant
+- [x] Intake via customer detail → "New complaint"
+- [x] Fields: category + severity + description + linked ticket
+- [x] Resolution flow: assignee + due date + escalation path
+- [x] Status: open / investigating / resolved / rejected
 - [ ] Required root cause on resolve: product / service / communication / billing / other
 - [ ] Aggregate root causes for trend analysis
 - [ ] SLA: response within 24h / resolution within 7d, with breach alerts
@@ -5272,24 +5272,24 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [x] **Barcode on pass** — scannable at POS. `LoyaltyPassBarcodeView`: CoreImage QR (10× scale, no third-party SDK), glass card with tier header + copyable barcode string, `.textSelection(.enabled)`. (agent-4 batch-2)
 
 ### 38.5 Member-only perks
-- [ ] **Exclusive products** — hidden in catalog for non-members.
-- [ ] **Priority queue** — badge in intake flow.
+- [x] **Exclusive products** — hidden in catalog for non-members.
+- [x] **Priority queue** — badge in intake flow.
 - [x] Plan builder in Settings → Memberships: name / cadence (monthly / quarterly / annual) / price / included-services count / auto-renew toggle. `LoyaltyPlanSettingsView` + `PlanEditorSheet` + `RuleEditorSheet`. Commit `feat(ios phase-8 §38)`.
 - [x] Enroll flow from Customer detail → Plans tab → Enroll; `MembershipEnrollSheet` wired to `MembershipSubscriptionManager`. Card tokenization deferred (BlockChyp §17.3). Commit `feat(ios phase-8 §38)`.
-- [ ] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
+- [x] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
 - [x] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption. `MembershipServiceLedgerView` + `ServiceLedgerEntry`. (agent-4 batch-4, 5d16a1bc)
 - [x] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify. `MembershipDunningView` + retry/cancel actions. (agent-4 batch-4, ef28cbc8)
 - [x] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy. `MembershipCancelSheet` + `CancelPolicy` enum. (agent-4 batch-5, 7616aac3)
 - [x] Cadence: 30 / 14 / 7 / 1 day before expiry. `MembershipRenewalReminderView` shows fire dates relative to `nextBillingAt`. (agent-4 batch-5, 7616aac3)
 - [x] Channels: push + SMS + email (configurable per member). `MembershipRenewalChannelSettingsView` + `MembershipRenewalChannelSettings`. (agent-4 batch-6)
 - [ ] Auto-renew: if enrolled, card on file charged on renewal date
-- [ ] Notify success/failure of auto-renew
+- [x] Notify success/failure of auto-renew
 - [x] Grace period: 7 days post-expiry retain benefits + soft reminder. `MembershipGraceAndReactivationView` (grace countdown, benefits-active indicator). (agent-4 batch-6)
 - [x] After grace: benefits suspended. `MembershipStatus.expired` + `.perksActive = false`; card shows "Benefits suspended". (agent-4 batch-6)
 - [x] Reactivation: one-tap with current card or new. `MembershipGraceAndReactivationView.actionButton` calls `onReactivate`. (agent-4 batch-6)
-- [ ] Pro-rate remaining period credit on reactivation
+- [x] Pro-rate remaining period credit on reactivation
 - [x] Churn insight report: expiring soon / at risk / churned — `MembershipChurnInsightView` + `MembershipChurnInsightViewModel`; summary tiles + bar chart + cohort list; `GET /memberships/churn-cohort`. (dc9cfc09)
-- [ ] Segment for targeted offer (§37)
+- [x] Segment for targeted offer (§37)
 - [x] Visual punch card per service type (e.g. "5th repair free", "10th wash free"). `PunchCard` model + `PunchCardView`. (agent-4 batch-6)
 - [x] Count auto-increments on eligible service. Server-managed `currentPunches` field in `PunchCard`. (agent-4 batch-6)
 - [x] Server-side storage; iOS displays. `PunchCard` Codable with `customer_id` / `current_punches` / `total_punches`. (agent-4 batch-6)
