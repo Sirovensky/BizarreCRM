@@ -15,6 +15,8 @@ public enum MembershipPerk: Codable, Sendable, Equatable {
     case freeService(serviceId: String, displayName: String)
     /// Exclusive access label — display-only, no POS enforcement.
     case exclusiveAccess(String)
+    /// Priority queue — member is served before non-members in ticket intake.
+    case priorityQueue
 
     // MARK: - Codable (tagged union)
 
@@ -23,6 +25,7 @@ public enum MembershipPerk: Codable, Sendable, Equatable {
         case fixedDiscount      = "fixed_discount"
         case freeService        = "free_service"
         case exclusiveAccess    = "exclusive_access"
+        case priorityQueue      = "priority_queue"
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -44,6 +47,8 @@ public enum MembershipPerk: Codable, Sendable, Equatable {
             )
         case .exclusiveAccess:
             self = .exclusiveAccess(try c.decode(String.self, forKey: .label))
+        case .priorityQueue:
+            self = .priorityQueue
         }
     }
 
@@ -63,6 +68,8 @@ public enum MembershipPerk: Codable, Sendable, Equatable {
         case .exclusiveAccess(let label):
             try c.encode(TypeKey.exclusiveAccess, forKey: .type)
             try c.encode(label, forKey: .label)
+        case .priorityQueue:
+            try c.encode(TypeKey.priorityQueue, forKey: .type)
         }
     }
 
@@ -79,6 +86,8 @@ public enum MembershipPerk: Codable, Sendable, Equatable {
             return "Free \(name) per period"
         case .exclusiveAccess(let label):
             return label
+        case .priorityQueue:
+            return "Priority queue access"
         }
     }
 }
