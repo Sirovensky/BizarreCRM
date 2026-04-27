@@ -118,9 +118,11 @@ class PosTenderViewModel @Inject constructor(
      */
     fun applyGiftCard(code: String) {
         val remaining = _uiState.value.remainingCents
-        if (remaining <= 0L) return
+        // session 2026-04-26 — RACE: move isProcessing guard before launch so a second tap cannot
+        // slip through the window between launch() and the first _uiState.update inside the coroutine.
+        if (remaining <= 0L || _uiState.value.isProcessing) return
+        _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
         viewModelScope.launch {
-            _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
             runCatching {
                 posApi.redeemGiftCard(PosGiftCardRedeemRequest(code = code.trim(), amountCents = remaining))
             }.onSuccess { resp ->
@@ -328,7 +330,10 @@ class PosTenderViewModel @Inject constructor(
     }
 
     fun finalizeSale() {
-        if (!_uiState.value.isFullyPaid) return
+        // session 2026-04-26 — RACE: guard isProcessing so rapid double-tap cannot launch a second
+        // coroutine before the first sets isProcessing = true (each coroutine generates its own UUID,
+        // so idempotency key would NOT deduplicate them).
+        if (!_uiState.value.isFullyPaid || _uiState.value.isProcessing) return
         val session = coordinator.session.value
         _uiState.update { it.copy(isProcessing = true, errorMessage = null) }
 

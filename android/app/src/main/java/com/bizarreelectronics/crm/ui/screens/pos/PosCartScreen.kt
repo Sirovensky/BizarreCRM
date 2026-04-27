@@ -34,12 +34,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.screens.pos.components.JurisdictionTaxResult
@@ -123,11 +129,22 @@ fun PosCartScreen(
         onFocusSearch = {},
     ) {
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // session 2026-04-26 — a11y: liveRegion Polite on cart snackbar host
+        // (cart-line additions = Polite per goal 4)
+        snackbarHost = {
+            SnackbarHost(
+                snackbarHostState,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        },
         topBar = {
             TopAppBar(
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    // session 2026-04-26 — a11y: back button contentDescription
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.semantics { contentDescription = "Back" },
+                    ) {
                         Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
                 },
@@ -181,6 +198,8 @@ fun PosCartScreen(
                     )
                     Spacer(modifier = Modifier.width(2.dp))
                     // ── Shift status chip ────────────────────────────────────
+                    // session 2026-04-26 — a11y: color-blind safe: contentDescription
+                    // conveys shift state text so color dot is not sole indicator
                     AssistChip(
                         onClick = { /* TODO: clock-in/out */ },
                         label = {
@@ -192,7 +211,7 @@ fun PosCartScreen(
                         leadingIcon = {
                             Icon(
                                 Icons.Filled.Circle,
-                                contentDescription = null,
+                                contentDescription = if (state.shiftActive) "Active" else "Inactive",
                                 modifier = Modifier.size(8.dp),
                                 tint = if (state.shiftActive) LocalExtendedColors.current.success
                                        else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -491,6 +510,9 @@ private fun CartLineRow(
                         )
                     } else Modifier
                 )
+                // session 2026-04-26 — a11y: 48dp min touch, Role.Button, liveRegion Polite
+                .defaultMinSize(minHeight = 48.dp)
+                .semantics { role = Role.Button }
                 .clickable(onClickLabel = "Edit ${line.name}") { onTap() }
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -521,7 +543,19 @@ private fun CartLineRow(
                 }
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Column(horizontalAlignment = Alignment.End) {
+            // session 2026-04-26 — a11y: color-blind safe price column; semantics
+            // expose full "Price: $X" so screen reader doesn't rely on color alone
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.semantics(mergeDescendants = true) {
+                    val original = line.originalUnitPriceCents
+                    val hasDiscount = (original != null && original > line.unitPriceCents) || line.discountCents > 0
+                    contentDescription = if (hasDiscount)
+                        "Price: ${line.lineTotalCents.toDollarString()} discounted"
+                    else
+                        "Price: ${line.lineTotalCents.toDollarString()}"
+                },
+            ) {
                 Text(
                     line.lineTotalCents.toDollarString(),
                     style = MaterialTheme.typography.bodyMedium,
@@ -554,14 +588,24 @@ private fun CartLineRow(
 
 @Composable
 private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
+    // derivedStateOf gates recomposition of this bottom bar to actual total
+    // changes only — prevents redraws when editingLineId/scanMessage flip
+    // (which would otherwise recompose TotalsAndTenderBar on every keystroke
+    // in the discount dialog because collectAsState in PosCartScreen delivers
+    // a new PosCartUiState object even when totals are unchanged).
+    val subtotal by remember(state) { derivedStateOf { state.subtotalCents } }
+    val discount by remember(state) { derivedStateOf { state.discountCents } }
+    val tax by remember(state) { derivedStateOf { state.taxCents } }
+    val tip by remember(state) { derivedStateOf { state.tipCents } }
+    val total by remember(state) { derivedStateOf { state.totalCents } }
     Surface(
         shadowElevation = 8.dp,
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            TotalsRow("Subtotal", state.subtotalCents.toDollarString())
-            if (state.discountCents > 0) TotalsRow("Discount", "− ${state.discountCents.toDollarString()}", highlight = true)
+            TotalsRow("Subtotal", subtotal.toDollarString())
+            if (discount > 0) TotalsRow("Discount", "− ${discount.toDollarString()}", highlight = true)
             // TASK-5: multi-jurisdiction tax breakdown. When breakdown has
             // > 1 jurisdiction render one row each; else fallback to single
             // 'Tax · X%' line matching mockup PHONE 3.
@@ -574,18 +618,18 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
                 val taxLabel = if (state.taxRate > 0.0) {
                     "Tax · ${"%.2f".format(state.taxRate * 100).trimEnd('0').trimEnd('.')}%"
                 } else "Tax"
-                TotalsRow(taxLabel, state.taxCents.toDollarString())
+                TotalsRow(taxLabel, tax.toDollarString())
             }
             // TASK-1: tip line — only when tip is set
-            if (state.tipCents > 0L) {
-                TotalsRow("Tip", state.tipCents.toDollarString())
+            if (tip > 0L) {
+                TotalsRow("Tip", tip.toDollarString())
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text("Total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-                Text(state.totalCents.toDollarString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Text(total.toDollarString(), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
             }
             Spacer(modifier = Modifier.height(10.dp))
             Button(
@@ -593,21 +637,30 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .semantics { contentDescription = "Tender ${state.totalCents.toDollarString()}" },
+                    .semantics { contentDescription = "Tender ${total.toDollarString()}" },
                 enabled = state.lines.isNotEmpty(),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Text("Tender · ${state.totalCents.toDollarString()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                Text("Tender · ${total.toDollarString()}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
             }
         }
     }
 }
 
+// session 2026-04-26 — a11y: color-blind safe: highlighted discount row gets
+// merged semantics "Discount: −$X (applied)" so screen reader doesn't rely on
+// green color alone; visual design unchanged.
 @Composable
 private fun TotalsRow(label: String, value: String, highlight: Boolean = false) {
     val successGreen = LocalExtendedColors.current.success
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(
+                if (highlight) Modifier.semantics(mergeDescendants = true) {
+                    contentDescription = "$label: $value (applied)"
+                } else Modifier
+            ),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
@@ -630,9 +683,12 @@ private fun DashedSlot(label: String, onClick: () -> Unit, modifier: Modifier = 
     // Modifier.dashedBorder so we draw it inline via drawBehind + Stroke +
     // PathEffect — same recipe as GhostWalkInTile in PosEntryScreen.
     val outlineColor = MaterialTheme.colorScheme.outline
+    // session 2026-04-26 — a11y: Role.Button on tappable Box, 48dp min height
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(10.dp))
+            .defaultMinSize(minHeight = 48.dp)
+            .semantics { role = Role.Button }
             .clickable(onClickLabel = label) { onClick() }
             .drawBehind {
                 val strokeWidth = 1.dp.toPx()
@@ -671,14 +727,22 @@ private fun CartPathTabs(
     ) {
         val primaryColor = MaterialTheme.colorScheme.primary
         val outlineVariantColor = MaterialTheme.colorScheme.outlineVariant
+        // Avoid rebuilding the cart-tab label string on every recompose unrelated
+        // to count/total changes (e.g. editingLineId flips, scanMessage arrives).
+        val cartTabLabel by remember(cartLineCount, cartTotalCents) {
+            derivedStateOf { "Cart · $cartLineCount · ${cartTotalCents.toDollarString()}" }
+        }
         listOf(
             "Catalog" to 0,
-            "Cart · $cartLineCount · ${cartTotalCents.toDollarString()}" to 1,
+            cartTabLabel to 1,
         ).forEach { (label, idx) ->
             val isActive = idx == selectedIndex
+            // session 2026-04-26 — a11y: Role.Button on tappable Box tab
             Box(
                 modifier = Modifier
                     .weight(1f)
+                    .defaultMinSize(minHeight = 48.dp)
+                    .semantics { role = Role.Button }
                     .clickable(onClickLabel = label) { onSelect(idx) }
                     .padding(vertical = 12.dp)
                     .drawBehind {
@@ -820,8 +884,13 @@ private fun CatalogTile(
     ) {
         if (item.photoUrl != null) {
             // Photo fills top half of the tile (1:1 crop).
+            // crossfade(true) + placeholder avoids blank-flash while the image loads.
+            val context = LocalContext.current
             AsyncImage(
-                model = item.photoUrl,
+                model = ImageRequest.Builder(context)
+                    .data(item.photoUrl)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = item.name,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
@@ -851,10 +920,14 @@ private fun CatalogTile(
             }
         }
         // Bottom half: name + price
+        // session 2026-04-26 — a11y: color-blind safe price label via semantics
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${item.name}, ${item.priceCents.toDollarString()}"
+                },
             verticalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(

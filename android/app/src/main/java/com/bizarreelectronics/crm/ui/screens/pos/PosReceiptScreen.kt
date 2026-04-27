@@ -21,6 +21,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -99,9 +100,14 @@ fun PosReceiptScreen(
             TopAppBar(
                 title = { Text("Sale complete") },
                 actions = {
+                    // session 2026-04-26 — a11y: clearAndSetSemantics on visual
+                    // status badge so TalkBack reads "Status: Paid" not "✓ Paid"
                     Surface(
                         shape = RoundedCornerShape(99.dp),
                         color = LocalExtendedColors.current.success,
+                        modifier = Modifier.clearAndSetSemantics {
+                            contentDescription = "Status: Paid"
+                        },
                     ) {
                         Text(
                             "✓ Paid",
@@ -320,16 +326,38 @@ private fun SendRow(
             Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = if (isPrimary) FontWeight.Bold else FontWeight.SemiBold)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        // session 2026-04-26 — a11y: color-blind safe status indicators;
+        // each state uses clearAndSetSemantics to provide text label alongside
+        // the glyph so screen reader/color-blind users aren't reliant on color
         when (sendState) {
             SendState.SENDING -> {
                 // Send row is a bounded surface — ContainedLoadingIndicator
                 // per Phase 4 decision table for in-surface short waits.
                 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-                ContainedLoadingIndicator(modifier = Modifier.size(24.dp))
+                ContainedLoadingIndicator(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clearAndSetSemantics { contentDescription = "Sending" },
+                )
             }
-            SendState.SENT -> Text("✓", style = MaterialTheme.typography.bodyLarge, color = LocalExtendedColors.current.success, fontWeight = FontWeight.Bold)
-            SendState.ERROR -> Text("!", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.error)
-            SendState.IDLE -> Text("›", style = MaterialTheme.typography.bodyLarge, color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+            SendState.SENT -> Text(
+                "✓ Sent",
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalExtendedColors.current.success,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clearAndSetSemantics { contentDescription = "Sent" },
+            )
+            SendState.ERROR -> Text(
+                "! Retry",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.clearAndSetSemantics { contentDescription = "Error — tap to retry" },
+            )
+            SendState.IDLE -> Text(
+                "›",
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

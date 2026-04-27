@@ -378,7 +378,7 @@ private fun EntryContent(
                     modifier = Modifier.heightIn(max = 280.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    items(state.readyForPickupTickets) { ticket ->
+                    items(state.readyForPickupTickets, key = { it.ticketId }) { ticket ->
                         ReadyForPickupCard(ticket = ticket, onOpen = { onOpenPickup(ticket.ticketId) })
                     }
                     if (state.pastRepairs.isNotEmpty()) {
@@ -390,7 +390,7 @@ private fun EntryContent(
                                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
                             )
                         }
-                        items(state.pastRepairs) { repair ->
+                        items(state.pastRepairs, key = { it.ticketId }) { repair ->
                             PastRepairRow(repair = repair, onOpen = { onNavigateToTicket(repair.ticketId) })
                         }
                     }
@@ -968,7 +968,7 @@ private fun SearchResultsContent(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-            items(results.customers) { c ->
+            items(results.customers, key = { it.id }) { c ->
                 CustomerResultRow(customer = c, onClick = { onCustomerSelected(c) })
             }
         }
@@ -981,7 +981,7 @@ private fun SearchResultsContent(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
-            items(results.tickets) { t ->
+            items(results.tickets, key = { it.id }) { t ->
                 TicketResultRow(ticket = t, onClick = { onOpenTicket(t.id) })
             }
         }
