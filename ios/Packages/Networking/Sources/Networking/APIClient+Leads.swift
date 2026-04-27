@@ -65,4 +65,22 @@ public extension APIClient {
     func listLeadReminders(leadId: Int64) async throws -> [LeadReminder] {
         try await get("/api/v1/leads/\(leadId)/reminders", as: [LeadReminder].self)
     }
+
+    /// `DELETE /api/v1/leads/:id` — permanently delete a lead record.
+    ///
+    /// Server endpoint: `DELETE /api/v1/leads/:id` (confirmed in leads.routes.ts).
+    /// Returns `{ success: true, message: "Lead deleted" }`.
+    func deleteLead(id: Int64) async throws {
+        _ = try await delete("/api/v1/leads/\(id)")
+    }
+
+    /// `PATCH /api/v1/leads/:id/tags` — replace the tag list on a lead.
+    ///
+    /// Body: `{ tags: ["vip", "corporate"] }`.
+    /// Server endpoint: `PATCH /api/v1/leads/:id/tags` (§9 extension).
+    @discardableResult
+    func setLeadTags(leadId: Int64, tags: [String]) async throws -> LeadDetail {
+        struct Body: Encodable { let tags: [String] }
+        return try await patch("/api/v1/leads/\(leadId)/tags", body: Body(tags: tags), as: LeadDetail.self)
+    }
 }
