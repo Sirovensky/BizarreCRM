@@ -294,6 +294,40 @@ public final class PosViewModel {
         return pct
     }
 
+    // MARK: Member discount application (§16.15)
+
+    /// Auto-apply the membership tier discount to the cart.
+    ///
+    /// Called at checkout entry (when the tender screen opens) — NOT at cart
+    /// time, per the module-placement guard in `MembershipViewModel`.
+    ///
+    /// - Parameter discountPercent: Tier discount 0–100 from `LoyaltyAccount.discountPercent`.
+    /// - Returns: The fraction applied (0…1), or nil when no discount.
+    @discardableResult
+    public func applyMemberDiscountIfNeeded(to cart: Cart, discountPercent: Int) -> Double? {
+        guard discountPercent > 0 else { return nil }
+        let fraction = Double(discountPercent) / 100.0
+        // Only apply if there is no existing cart-level discount that is larger.
+        // This prevents double-discounting when a manual manager override is higher.
+        let existingPct = cart.cartDiscountPercent ?? 0.0
+        if fraction > existingPct {
+            cart.setCartDiscountPercent(fraction)
+            AppLog.pos.info(
+                "PosVM: member discount \(discountPercent, privacy: .public)% auto-applied"
+            )
+            return fraction
+        }
+        return existingPct > 0 ? existingPct : nil
+    }
+
+    /// Whether the current cart has an active member who qualifies for member-only products.
+    ///
+    /// Views use this to gray out member-only tiles when no qualifying member is attached.
+    public var hasMemberAttached: Bool {
+        (customerContext.loyaltyPointsBalance != nil) &&
+        (customerContext.loyaltyPointsBalance ?? 0) >= 0
+    }
+
     // MARK: Favorites (§16.2 Favorites)
 
     public func toggleFavorite(itemId: Int64) {

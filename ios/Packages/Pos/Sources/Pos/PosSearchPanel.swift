@@ -527,6 +527,12 @@ struct PosCatalogTile: View {
     var onLongPress: (() -> Void)? = nil
     /// §16.2 Star button tap → toggle favorite.
     var onToggleFavorite: (() -> Void)? = nil
+    /// §16.15 When true this is a member-only product.
+    var isMemberOnly: Bool = false
+    /// §16.15 Whether a qualifying member is attached to the cart.
+    /// When `isMemberOnly == true` and `hasMemberAttached == false`, the tile
+    /// is dimmed and tapping is blocked with an explanatory label.
+    var hasMemberAttached: Bool = true
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -628,8 +634,28 @@ struct PosCatalogTile: View {
         .onLongPressGesture(minimumDuration: 0.4) {
             onLongPress?()
         }
+        // §16.15 Member-only overlay: dim tile + lock interaction when no member.
+        .overlay(alignment: .center) {
+            if isMemberOnly && !hasMemberAttached {
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color.bizarreSurfaceBase.opacity(0.72))
+                    .overlay {
+                        VStack(spacing: 3) {
+                            Image(systemName: "star.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundStyle(Color.bizarreOrange.opacity(0.8))
+                            Text("Members only")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
+            }
+        }
+        .allowsHitTesting(!(isMemberOnly && !hasMemberAttached))
         .accessibilityLabel(
             "\(item.displayName)\(isInCart ? ", in cart" : "")\(isFavorite ? ", favorited" : "")" +
+            (isMemberOnly && !hasMemberAttached ? ", members only" : "") +
             (item.priceCents.map { ", \(CartMath.formatCents($0))" } ?? "")
         )
         .accessibilityAddTraits(isInCart ? [.isSelected] : [])
