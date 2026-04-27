@@ -246,6 +246,8 @@ public struct EstimateListView: View {
 
     private struct Row: View {
         let estimate: Estimate
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var pulsing: Bool = false
 
         var body: some View {
             HStack(alignment: .top, spacing: BrandSpacing.md) {
@@ -256,9 +258,15 @@ public struct EstimateListView: View {
                     Text(estimate.customerName)
                         .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).lineLimit(1)
                     if estimate.isExpiring == true, let days = estimate.daysUntilExpiry {
-                        Text("Expires in \(days)d")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreWarning)
+                        // §8.1: pulse animation for ≤3 days remaining (respect Reduce Motion)
+                        ExpiringChip(daysLeft: days, pulsing: pulsing)
+                            .onAppear {
+                                if days <= 3 && !reduceMotion {
+                                    withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                                        pulsing = true
+                                    }
+                                }
+                            }
                     } else if let until = estimate.validUntil, !until.isEmpty {
                         Text("Valid until \(String(until.prefix(10)))")
                             .font(.brandLabelSmall())
@@ -303,6 +311,31 @@ public struct EstimateListView: View {
         }
 
         private func formatMoney(_ v: Double) -> String { Self.formatMoney(v) }
+    }
+}
+
+// MARK: - §8.1 Expiring-soon chip (pulse animation ≤3 days)
+
+private struct ExpiringChip: View {
+    let daysLeft: Int
+    let pulsing: Bool
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 10, weight: .semibold))
+                .accessibilityHidden(true)
+            Text("Expires in \(daysLeft)d")
+                .font(.brandLabelSmall())
+        }
+        .foregroundStyle(daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(
+            (daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning).opacity(pulsing ? 0.2 : 0.08),
+            in: Capsule()
+        )
+        .accessibilityLabel("Expires in \(daysLeft) day\(daysLeft == 1 ? "" : "s")")
     }
 }
 

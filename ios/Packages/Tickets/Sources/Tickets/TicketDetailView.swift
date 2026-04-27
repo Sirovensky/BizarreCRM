@@ -200,6 +200,19 @@ public struct TicketDetailView: View {
                         }
                         .accessibilityIdentifier("ticket.signoff")
                     }
+
+                    // §4.2: Copy link to ticket — Universal Link
+                    if case .loaded(let detail) = vm.state {
+                        Divider()
+                        Button {
+                            let urlString = "https://app.bizarrecrm.com/tickets/\(detail.id)"
+                            UIPasteboard.general.string = urlString
+                        } label: {
+                            Label("Copy Link", systemImage: "link")
+                        }
+                        .accessibilityIdentifier("ticket.copyLink")
+                        .accessibilityLabel("Copy Universal Link to this ticket")
+                    }
                 } label: {
                     Label("Actions", systemImage: "ellipsis.circle")
                 }

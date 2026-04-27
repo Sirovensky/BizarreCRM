@@ -586,9 +586,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Base list + filter chips + search — shipped.
 - [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
 - [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
-- [ ] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
-- [ ] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
-- [ ] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
+- [x] **Footer states** — db339de3 — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
+- [x] **Filter chips** — db339de3 — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
+- [x] **Urgency chips** — db339de3 — Critical / High / Medium / Normal / Low (color-coded dots).
 - [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
 - [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
 - [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
@@ -607,7 +607,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
-- [ ] **Empty state** — "No tickets yet. Create one." CTA.
+- [x] **Empty state** — db339de3 — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
@@ -658,9 +658,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Idempotency key** — client generates UUID, sent as `Idempotency-Key` header to avoid duplicate creates on retry.
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
-- [ ] **Validation** — per-step inline glass error toasts; block next until required fields valid.
+- [x] **Validation** — db339de3 — per-step inline glass error toasts; block next until required fields valid.
 - [ ] **Keyboard shortcuts** — ⌘↩ create, ⌘. cancel, ⌘→ / ⌘← next/prev step.
-- [ ] **Haptic** — `.success` on create; `.error` on validation fail.
+- [x] **Haptic** — db339de3 — `.success` on create; `.error` on validation fail.
 - [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
 
 ### 4.4 Edit
@@ -710,8 +710,8 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Retry failed upload** — dead-letter entry in Sync Issues.
 - [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. `TicketDevicePhotoListView` gallery (tap → full-screen), `TicketPhotoBeforeAfterView` side-by-side. `TicketPhotoUploadService` actor with background URLSession, offline queue, retry. `TicketPhotoAnnotationIntegration` shim into Camera pkg PencilKit. Commit `feat(ios post-phase §4)`.
-- [ ] **EXIF strip** — remove GPS + timestamp metadata on upload.
-- [ ] **Thumbnail cache** — Nuke with disk limit; full-size fetched on tap.
+- [x] **EXIF strip** — db339de3 — remove GPS + timestamp metadata on upload.
+- [x] **Thumbnail cache** — db339de3 — Nuke with disk limit; full-size fetched on tap.
 - [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment.
 
 ### 4.9 Bench workflow
@@ -732,11 +732,11 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets push.
 
 ### 4.13 Empty / error states
-- [ ] No tickets — glass illustration + "Create your first ticket".
+- [x] No tickets — glass illustration — db339de3 + "Create your first ticket".
 - [ ] Network error on detail — keep cached data, glass retry pill.
 - [ ] Deleted on server → banner "Ticket removed. [Close]".
 - [ ] Permission denied on action → inline toast "Ask your admin to enable this.".
-- [ ] 409 stale edit → "This ticket changed. [Reload]".
+- [x] 409 stale edit — db339de3 → "This ticket changed. [Reload]".
 - [ ] Waiver PDF templates managed server-side; iOS renders.
 - [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§5), marketing consent (TCPA SMS / email opt-in).
 - [ ] Waiver sheet UI: scrollable text + `PKCanvasView` signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty.
@@ -1298,7 +1298,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Base list + is-expiring warning — shipped.
 - [x] Row a11y — combined utterance `orderId. customerName. total. [Status X]. [Expires in Nd | Valid until date]`. Selectable order IDs.
 - [x] **CachedRepository + offline** — `EstimateRepository` protocol + `EstimateRepositoryImpl` + `EstimateCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[Estimate]>`, `forceRefresh`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown offline + cache empty. `EstimateListViewModel` migrated from direct-API to repo pattern (legacy `api:` init preserved). Perf gate: 1000-row hot-read in < 15ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
-- [ ] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+- [x] Status tabs — All / Draft — db339de3 / Sent / Approved / Rejected / Expired / Converted.
 - [ ] Filters — date range, customer, amount, validity.
 - [ ] Bulk actions — Send / Delete / Export.
 - [ ] Expiring-soon chip (pulse animation when ≤3 days).
@@ -1324,7 +1324,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 
 ### 8.4 Expiration handling
 - [ ] Auto-expire when past validity date (server-driven).
-- [ ] Manual expire action.
+- [x] Manual expire action — db339de3.
 
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
 - [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
