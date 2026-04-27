@@ -856,7 +856,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 
 ### 5.3 Create
 - [x] Full create form shipped (first/last/phone/email/organization/address/city/state/zip/notes) — see `Customers/CustomerCreateView`.
-- [ ] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes.
+- [x] **Extended fields** — type (person / business), multiple phones with labels (home / work / mobile), multiple emails, mailing vs billing address, tags chip picker, communication preferences toggles, custom fields (render from `GET /custom-fields`), referral source, birthday, notes. `CustomerExtendedFieldsSection` + `CustomerCreateViewModel.ExtendedState` + `CreateCustomerExtendedRequest`. (agent-4 batch-5, 9f93163b)
 - [x] **Phone normalize** — uses shared `PhoneFormatter` in Core.
 - [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway. `CustomerDuplicateChecker` actor + `CustomerDuplicateCheckViewModel` + `CustomerDuplicateAlertSheet`. (agent-4 batch-2)
 - [x] **Import from Contacts** — `CNContactPickerViewController` prefills form. `ImportFromContactsButton` in toolbar. (agent-4 batch-4, 517cbca3)
@@ -876,7 +876,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 ### 5.6 Bulk actions
 - [ ] Bulk tag (`POST /customers/bulk-tag`).
 - [ ] Bulk delete with undo.
-- [ ] Bulk export selected.
+- [x] Bulk export selected. `CustomerCSVExporter.export(_:)` RFC-4180, `UIActivityViewController`. (agent-4 batch-5, fa3443f2)
 
 ### 5.7 Asset tracking
 - [x] Add device to customer (`POST /customers/:id/assets`) — device template picker + serial/IMEI.
@@ -885,7 +885,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [ ] Color-coded with tenant-defined palette
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold")
 - [x] Customer detail header chip row for tags
-- [ ] Tap tag → filter customer list
+- [x] Tap tag → filter customer list. `CustomerTagFilterBar` chip + clear wired into `CustomerListView`. (agent-4 batch-5, b77c1a9b)
 - [ ] Bulk-assign tags via list multi-select
 - [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters
 - [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d")
@@ -1353,9 +1353,9 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [ ] **Columns** — Name / Phone / Email / Lead Score (0–100 progress bar) / Status / Source / Value / Next Action.
 - [x] **Status filter** (multi-select) — New / Contacted / Scheduled / Qualified / Proposal / Converted / Lost. `LeadListFilterSheet` + multi-select `selectedStatuses: Set<String>` + Clear button. (agent-4 batch-2)
 - [x] **Sort** — name / created / lead score / last activity / next action. `LeadSortOrder` enum (8 cases) + `sortOrder` binding in `LeadListFilterSheet`. (agent-4 batch-2)
-- [ ] **Bulk delete** with undo.
-- [ ] **Swipe** — advance / drop stage.
-- [ ] **Context menu** — Open, Call, SMS, Email, Convert to customer, Schedule appointment, Delete.
+- [x] **Bulk delete** with undo. `LeadListViewModel.bulkDelete(ids:)` + `undoBulkDelete(leads:)`. (agent-4 batch-5, 16a2a7ad)
+- [x] **Swipe** — advance / drop stage. `leadingSwipeActions` advance + `trailingSwipeActions` drop/delete. (agent-4 batch-5, 16a2a7ad)
+- [x] **Context menu** — Open, Call, SMS, Email, Convert to customer, Schedule appointment, Delete. `leadContextMenu(for:vm:onOpen:)`. (agent-4 batch-5, 16a2a7ad)
 - [ ] **Preview popover** quick view.
 
 ### 9.2 Pipeline (Kanban view)
@@ -1372,7 +1372,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 - [x] **Lead score** — `LeadScoreCalculator` (pure, weighted factors: engagement/velocity/budget/timeline/source), `LeadScore` model, `LeadScoreBadge` (Red<30/Amber/Green). 18 XCTests pass. (`Scoring/` — feat(ios post-phase §9))
 - [x] **Status workflow** — transition dropdown; Lost → reason dialog (required). `LeadStatusTransitionSheet` + `LeadStatusTransitionViewModel` (state machine per status, "lost" routes to existing `LostReasonSheet`). (agent-4 batch-2)
 - [x] **Activity timeline** — calls, SMS, email, appointments, property changes. `LeadActivityTimelineView` + `LeadActivityEntry` model. (agent-4 batch-4, 94581122)
-- [ ] **Related tickets / estimates** (if any).
+- [x] **Related tickets / estimates** (if any). `LeadRelatedRecordsView` + `LeadConvertToEstimateSheet`. (agent-4 batch-5, b6935a98)
 - [ ] **Communications** — SMS + email + call log; send CTAs.
 - [ ] **Notes** — @mentions.
 - [ ] **Tags** chip picker.
@@ -1384,7 +1384,7 @@ _Server endpoints: `GET /leads`, `POST /leads`, `PUT /leads/{id}`._
 ### 9.4 Create
 - [x] Minimal form — shipped.
 - [x] **Extended fields** — score (manual override), source, value, stage, assignee, follow-up date, notes, tags, custom fields. Company/title/value/stage/follow-up DatePicker in `LeadCreateView`. (agent-4 batch-4, ae7d89ad)
-- [ ] **Offline create** + reconcile.
+- [x] **Offline create** + reconcile. `LeadOfflineQueue` + `PendingSyncLeadId` sentinel; wired into `LeadCreateView.submit()`. (agent-4 batch-5, f9b5f75e)
 
 ### 9.5 Lost-reason modal
 - [x] Required dropdown (price / timing / competitor / no-response / other) + free-text. `LostReasonSheet` + `LostReasonReport` (admin chart). `POST /leads/:id/lose`. (`Lost/` — feat(ios post-phase §9))
@@ -5279,8 +5279,8 @@ _Server: `GET/POST/PUT /memberships`, `GET /memberships/{id}`, `POST /membership
 - [ ] Server cron creates invoices + charges cards + updates ledger daily; iOS shows "Next billing date" on customer detail.
 - [x] Service ledger per period: "Included services remaining: 3 of 5"; decrement at POS redemption. `MembershipServiceLedgerView` + `ServiceLedgerEntry`. (agent-4 batch-4, 5d16a1bc)
 - [x] Dunning cadence: failed charge retry 3d / 7d / 14d + customer notify; exhaustion → pause plan + staff notify. `MembershipDunningView` + retry/cancel actions. (agent-4 batch-4, ef28cbc8)
-- [ ] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy.
-- [ ] Cadence: 30 / 14 / 7 / 1 day before expiry
+- [x] Cancel flow: customer self-cancel via public portal OR staff via customer detail; tenant-configurable end-of-period policy. `MembershipCancelSheet` + `CancelPolicy` enum. (agent-4 batch-5, 7616aac3)
+- [x] Cadence: 30 / 14 / 7 / 1 day before expiry. `MembershipRenewalReminderView` shows fire dates relative to `nextBillingAt`. (agent-4 batch-5, 7616aac3)
 - [ ] Channels: push + SMS + email (configurable per member)
 - [ ] Auto-renew: if enrolled, card on file charged on renewal date
 - [ ] Notify success/failure of auto-renew
