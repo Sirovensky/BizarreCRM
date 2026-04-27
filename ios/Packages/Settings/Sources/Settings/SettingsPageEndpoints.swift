@@ -140,6 +140,39 @@ public extension APIClient {
             as: EmptyResponse.self
         )
     }
+
+    // §19.1 Avatar upload — POST /api/v1/auth/me/avatar (multipart-form or JSON base64).
+    // Uses base64 JSON body to avoid needing multipart implementation here.
+    func settingsUploadAvatar(data: Data) async throws -> AvatarUploadResponse {
+        let base64 = data.base64EncodedString()
+        let body = AvatarUploadWire(imageBase64: base64)
+        return try await post("/api/v1/auth/me/avatar", body: body, as: AvatarUploadResponse.self)
+    }
+
+    // §19.1 Remove avatar — DELETE /api/v1/auth/me/avatar
+    func settingsRemoveAvatar() async throws {
+        try await delete("/api/v1/auth/me/avatar")
+    }
+}
+
+// MARK: - Avatar wire types
+
+private struct AvatarUploadWire: Encodable, Sendable {
+    let imageBase64: String
+    enum CodingKeys: String, CodingKey { case imageBase64 = "image_base64" }
+}
+
+public struct AvatarUploadResponse: Decodable, Sendable {
+    public let url: String
+
+    public init(url: String) { self.url = url }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.url = (try? c.decode(String.self, forKey: .url)) ?? ""
+    }
+
+    enum CodingKeys: String, CodingKey { case url }
 }
 
 // MARK: - Tax Rates

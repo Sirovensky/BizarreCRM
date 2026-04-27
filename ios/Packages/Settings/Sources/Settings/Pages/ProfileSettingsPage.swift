@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Observation
 import Core
 import DesignSystem
@@ -17,6 +18,14 @@ public final class ProfileSettingsViewModel: Sendable {
     var email: String = ""
     var phone: String = ""
     var jobTitle: String = ""
+
+    // MARK: §19.1 Avatar
+    var avatarURL: String?
+    var selectedAvatarItem: PhotosPickerItem?
+    var avatarImage: Image?
+    var showAvatarActionSheet = false
+    var showPhotoPicker = false
+    var isCameraSource = false
 
     // MARK: Password change
     var currentPassword: String = ""
@@ -148,6 +157,59 @@ public final class ProfileSettingsViewModel: Sendable {
             errorMessage = error.localizedDescription
         }
     }
+
+    // §19.1 Avatar helpers
+    func loadSelectedAvatar() async {
+        guard let item = selectedAvatarItem else { return }
+        if let data = try? await item.loadTransferable(type: Data.self),
+           let uiImage = UIImage(data: data) {
+            avatarImage = Image(uiImage: uiImage)
+            await uploadAvatar(data: data)
+        }
+    }
+
+    private func uploadAvatar(data: Data) async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            let result = try await api.settingsUploadAvatar(data: data)
+            avatarURL = result.url
+            successMessage = "Avatar updated."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func removeAvatar() async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await api.settingsRemoveAvatar()
+            avatarURL = nil
+            avatarImage = nil
+            successMessage = "Avatar removed."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // §19.1 Sign out everywhere — delegates to settingsRevokeAllSessions()
+    func signOutEverywhere() async {
+        guard let api else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await api.settingsRevokeAllSessions()
+            successMessage = "Signed out from all devices."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 // Note: Wire types (UserProfileWire, EmptyResponse) live in SettingsPageEndpoints.swift / Networking.
@@ -163,6 +225,66 @@ public struct ProfileSettingsPage: View {
 
     public var body: some View {
         Form {
+            // §19.1 Avatar
+            Section {
+                HStack {
+                    Spacer()
+                    Button {
+                        vm.showAvatarActionSheet = true
+                    } label: {
+                        ZStack(alignment: .bottomTrailing) {
+                            Group {
+                                if let img = vm.avatarImage {
+                                    img
+                                        .resizable()
+                                        .scaledToFill()
+                                } else {
+                                    Image(systemName: "person.circle.fill")
+                                        .resizable()
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                            }
+                            .frame(width: 80, height: 80)
+                            .clipShape(Circle())
+
+                            Circle()
+                                .fill(Color.bizarreOrange)
+                                .frame(width: 24, height: 24)
+                                .overlay(
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.white)
+                                )
+                                .offset(x: 2, y: 2)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change profile photo")
+                    .confirmationDialog("Profile Photo", isPresented: $vm.showAvatarActionSheet, titleVisibility: .visible) {
+                        Button("Take Photo") {
+                            vm.isCameraSource = true
+                            vm.showPhotoPicker = true
+                        }
+                        Button("Choose from Library") {
+                            vm.isCameraSource = false
+                            vm.showPhotoPicker = true
+                        }
+                        if vm.avatarURL != nil || vm.avatarImage != nil {
+                            Button("Remove Photo", role: .destructive) {
+                                Task { await vm.removeAvatar() }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    }
+                    .photosPicker(isPresented: $vm.showPhotoPicker, selection: $vm.selectedAvatarItem, matching: .images)
+                    .onChange(of: vm.selectedAvatarItem) { _, _ in
+                        Task { await vm.loadSelectedAvatar() }
+                    }
+                    Spacer()
+                }
+                .listRowBackground(Color.clear)
+            }
+
             Section("Identity") {
                 TextField("First name", text: $vm.firstName)
                     #if canImport(UIKit)
@@ -246,6 +368,22 @@ public struct ProfileSettingsPage: View {
                     .disabled(!vm.passwordsMatch || vm.isSaving)
                     .accessibilityIdentifier("profile.submitPassword")
                 }
+            }
+
+            // §19.1 Sign out everywhere (cross-link to §19.2 Security — revokes all other sessions)
+            Section {
+                Button(role: .destructive) {
+                    Task { await vm.signOutEverywhere() }
+                } label: {
+                    Label("Sign out everywhere", systemImage: "rectangle.portrait.and.arrow.right")
+                        .foregroundStyle(.bizarreError)
+                }
+                .disabled(vm.isSaving)
+                .accessibilityLabel("Sign out from all devices. This revokes all active sessions.")
+                .accessibilityIdentifier("profile.signOutEverywhere")
+            } footer: {
+                Text("Signs out this device and all other devices where you are currently logged in.")
+                    .font(.brandBodySmall())
             }
 
             if let msg = vm.errorMessage {
