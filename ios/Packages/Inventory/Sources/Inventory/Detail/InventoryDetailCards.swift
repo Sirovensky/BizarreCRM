@@ -255,6 +255,9 @@ public struct SupplierPanelCard: View {
 
     @State private var detail: SupplierDetail?
     @State private var isLoading = false
+    /// §6.9/§58 Vendor degradation: on-time rate < 0.7 → show suggestion banner.
+    @State private var vendorOnTimeRate: Double? = nil
+    @State private var showingComparison: Bool = false
 
     public struct SupplierDetail: Sendable {
         public let name: String
@@ -264,6 +267,7 @@ public struct SupplierPanelCard: View {
         public let lastCostCents: Int?
         public let reorderSKU: String?
         public let leadTimeDays: Int?
+        public let supplierId: Int64?
     }
 
     public init(item: InventoryItemDetail, api: APIClient?) {
@@ -283,6 +287,10 @@ public struct SupplierPanelCard: View {
                     .accessibilityLabel("Loading supplier details")
             } else if let d = detail {
                 supplierRows(d)
+                // §6.9/§58 Vendor degradation banner
+                if let rate = vendorOnTimeRate, rate < 0.7 {
+                    vendorDegradationBanner(onTimePct: Int(rate * 100))
+                }
             } else if let name = item.supplierName, !name.isEmpty {
                 KeyValRow(key: "Supplier", value: name)
                 Text("Detailed supplier info not available.")
@@ -303,6 +311,44 @@ public struct SupplierPanelCard: View {
         }
         .cardBackground()
         .task { await loadSupplier() }
+        .sheet(isPresented: $showingComparison) {
+            if let api {
+                NavigationStack {
+                    SupplierComparisonView(api: api)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button("Done") { showingComparison = false }
+                            }
+                        }
+                }
+                .presentationDetents([.large])
+            }
+        }
+    }
+
+    /// §6.9/§58 Amber degradation banner — shown when primary vendor on-time % < 70%.
+    private func vendorDegradationBanner(onTimePct: Int) -> some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.bizarreWarning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Vendor on-time: \(onTimePct)%")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreWarning)
+                Text("Consider an alternate supplier.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+            Button("Compare") { showingComparison = true }
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOrange)
+        }
+        .padding(BrandSpacing.sm)
+        .background(Color.bizarreWarning.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Vendor on-time rate is \(onTimePct) percent. Tap Compare to view alternatives.")
     }
 
     @ViewBuilder
@@ -354,8 +400,16 @@ public struct SupplierPanelCard: View {
                 phone: d.phone,
                 lastCostCents: d.lastCostCents,
                 reorderSKU: d.reorderSku,
-                leadTimeDays: d.leadTimeDays
+                leadTimeDays: d.leadTimeDays,
+                supplierId: d.supplierId
             )
+            // §6.9/§58 Load vendor analytics in background for degradation banner.
+            if let sid = d.supplierId {
+                Task {
+                    let analytics = try? await api.supplierAnalytics(id: sid)
+                    vendorOnTimeRate = analytics?.onTimeRate
+                }
+            }
         } catch {
             AppLog.ui.info("Supplier detail not available for item \(item.id): \(error.localizedDescription, privacy: .public)")
         }
@@ -646,6 +700,8 @@ public struct InventorySupplierDetailResponse: Decodable, Sendable {
     public let lastCostCents: Int?
     public let reorderSku: String?
     public let leadTimeDays: Int?
+    /// §6.9/§58 Supplier ID — used to fetch analytics for vendor degradation banner.
+    public let supplierId: Int64?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -654,6 +710,7 @@ public struct InventorySupplierDetailResponse: Decodable, Sendable {
         case lastCostCents = "last_cost_cents"
         case reorderSku    = "reorder_sku"
         case leadTimeDays  = "lead_time_days"
+        case supplierId    = "supplier_id"
     }
 }
 
