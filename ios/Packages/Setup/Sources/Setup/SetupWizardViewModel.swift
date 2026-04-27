@@ -146,15 +146,37 @@ public final class SetupWizardViewModel {
 
     // MARK: Server state loading
 
+    /// §36.3 Cross-device resume — loads the furthest completed step from the
+    /// server and resumes there. Call on wizard appear so that if the admin
+    /// finished step 5 on web and opens the app, we pick up at step 6.
     public func loadServerState() async {
         do {
             let status = try await repository.fetchStatus()
+            // Resume at the next uncompleted step (server's `currentStep`).
             if let step = SetupStep(rawValue: status.currentStep) {
                 currentStep = step
             }
             completedSteps = Set(status.completed)
+            AppLog.ui.info("Setup resumed at step \(self.currentStep.rawValue, privacy: .public) (server)")
         } catch {
             AppLog.ui.warning("Could not load setup status: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    // MARK: §36.3 Minimum-viable completion gate
+
+    /// Steps required to unlock POS. Returns true when all MVP steps are done.
+    ///
+    /// MVP steps: 1 (Welcome), 2 (Company), 4 (TZ), 5 (Hours), 6 (Tax),
+    /// 7 (Payment), 15 (Complete). Steps 3, 8–14 are optional.
+    public var isMVPComplete: Bool {
+        let required: Set<Int> = [1, 2, 4, 5, 6, 7, 15]
+        return required.isSubset(of: completedSteps)
+    }
+
+    /// §36.3 Steps remaining before POS is unlocked (for the Dashboard nudge).
+    public var mvpStepsRemaining: Int {
+        let required: Set<Int> = [1, 2, 4, 5, 6, 7, 15]
+        return required.subtracting(completedSteps).count
     }
 }

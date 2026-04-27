@@ -83,6 +83,9 @@ public final class LoginFlow {
     // §2.12 Account-locked modal
     public var isAccountLocked: Bool = false
 
+    // §2.13 Challenge-token expiry task — cancelled when challenge resolves
+    @ObservationIgnored private var challengeExpiryTask: Task<Void, Never>? = nil
+
     // shared
     public var errorMessage: String?
     public var isSubmitting: Bool = false
@@ -352,15 +355,20 @@ public final class LoginFlow {
             // 3. 2FA setup pending (new user or newly-required)
             // 4. 2FA verify (existing user with TOTP enabled)
             if let access = resp.accessToken, let refresh = resp.refreshToken {
+                cancelChallengeExpiry()
                 finishAuth(access: access, refresh: refresh)
             } else if resp.requiresPasswordSetup == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 step = .setPassword(challenge: challenge)
             } else if resp.requires2faSetup == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 await runTwoFactorSetup(challenge: challenge)
             } else if resp.totpEnabled == true, let challenge = resp.challengeToken {
+                startChallengeExpiry()
                 step = .twoFactorVerify(challenge: challenge)
             } else if let challenge = resp.challengeToken {
                 // Fallback: challenge issued but no flags set — treat as 2FA verify.
+                startChallengeExpiry()
                 step = .twoFactorVerify(challenge: challenge)
             } else {
                 errorMessage = "Unexpected response — check with your admin."
@@ -453,6 +461,24 @@ public final class LoginFlow {
     }
 
     // MARK: - Step E · 2FA_SETUP
+
+    // MARK: - §2.13 Challenge token expiry
+
+    /// Start the 10-minute expiry clock for any challenge-based step.
+    /// Cancel any existing task first so only one clock runs at a time.
+    private func startChallengeExpiry() {
+        challengeExpiryTask?.cancel()
+        challengeExpiryTask = ChallengeTokenExpiry.start { [weak self] in
+            guard let self else { return }
+            self.step = .credentials
+            self.errorMessage = "Session expired. Please sign in again."
+        }
+    }
+
+    private func cancelChallengeExpiry() {
+        challengeExpiryTask?.cancel()
+        challengeExpiryTask = nil
+    }
 
     private func runTwoFactorSetup(challenge: String) async {
         // Server response shape (auth.routes.ts:770):
@@ -642,6 +668,7 @@ public final class LoginFlow {
     // MARK: - Internal
 
     private func finishAuth(access: String, refresh: String) {
+        cancelChallengeExpiry()
         TokenStore.shared.save(access: access, refresh: refresh)
         Task { await api.setAuthToken(access) }
         step = PINStore.shared.isEnrolled ? .biometricOffer : .pinSetup

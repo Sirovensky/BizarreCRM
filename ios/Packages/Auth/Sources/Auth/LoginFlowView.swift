@@ -352,6 +352,8 @@ public struct LoginFlowView: View {
         let evaluation = PasswordStrengthEvaluator.evaluate(flow.newPassword)
         let mismatch = !flow.confirmPassword.isEmpty && flow.newPassword != flow.confirmPassword
 
+        // §2.13 — blur password fields during screen capture; applied as
+        // a container modifier so the strength meter is also hidden.
         return VStack(alignment: .leading, spacing: BrandSpacing.md) {
             BrandSecureField(label: "New password", text: $flow.newPassword,
                              placeholder: "At least 8 characters",
@@ -391,6 +393,7 @@ public struct LoginFlowView: View {
         }
         .animation(BrandMotion.snappy, value: flow.newPassword.isEmpty)
         .animation(BrandMotion.snappy, value: mismatch)
+        .sensitiveScreenBlur()
     }
 
     private var twoFactorSetupPanel: some View {
@@ -410,6 +413,8 @@ public struct LoginFlowView: View {
                 .disabled(flow.totpCode.filter(\.isNumber).count != 6)
             secondaryBackButton
         }
+        // §2.13 — Blur QR code / TOTP field when screen is being captured
+        .sensitiveScreenBlur()
     }
 
     private var twoFactorVerifyPanel: some View {
@@ -571,6 +576,10 @@ public struct LoginFlowView: View {
                        pasted.trimmingCharacters(in: .whitespaces) == pasted.filter(\.isNumber) {
                         flow.totpCode = String(pasted.filter(\.isNumber))
                     }
+                }
+                .onDisappear {
+                    // §2.13 Pasteboard cleared when TOTP field leaves screen
+                    OTPPasteboardCleaner.clearIfSensitive()
                 }
         }
         .padding(BrandSpacing.md)
