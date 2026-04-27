@@ -265,6 +265,8 @@ fun PosTenderScreen(
                     onCardReader = { viewModel.chargeCard(state.remainingCents) },
                     onCash = { showCashDialog = true },
                     onAch = { viewModel.applyAch(state.remainingCents) },
+                    // NFC / Tap-to-pay: BlockChyp SDK pending — show snackbar until wired.
+                    onNfc = { viewModel.showMessage("Tap-to-pay coming soon (BlockChyp SDK pending)") },
                     onParkCart = { viewModel.parkCart() },
                     onStoreCredit = { viewModel.applyStoreCredit() },
                     onGiftCard = { showGiftCardDialog = true },
@@ -391,17 +393,14 @@ private fun PaymentMethodGrid(
     onCardReader: () -> Unit,
     onCash: () -> Unit,
     onAch: () -> Unit,
+    onNfc: () -> Unit,
     onParkCart: () -> Unit,
     onStoreCredit: () -> Unit,
     onGiftCard: () -> Unit,
     onInvoiceLater: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Mockup PHONE 5 ships Card-reader + Tap-to-pay as separate tiles, but
-        // the shop's hardware path is a single Bluetooth/USB card reader (no
-        // device-to-device NFC), so the two collapse into one tile labelled
-        // 'Card / Tap'. Cash takes Tap-to-pay's slot since real-world walk-in
-        // sales still hand over physical bills more often than ACH.
+        // Mockup PHONE 5: Card-reader, Tap-to-pay (NFC), Cash, ACH as separate tiles.
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "💳",
@@ -412,6 +411,16 @@ private fun PaymentMethodGrid(
                 modifier = Modifier.weight(1f),
             )
             PaymentTile(
+                emoji = "📱",
+                label = "Tap to pay",
+                sublabel = "NFC",
+                isPrimary = false,
+                onClick = onNfc,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PaymentTile(
                 emoji = "💵",
                 label = "Cash",
                 sublabel = "Receive · change due",
@@ -419,8 +428,6 @@ private fun PaymentMethodGrid(
                 onClick = onCash,
                 modifier = Modifier.weight(1f),
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "🏦",
                 label = "ACH / check",
@@ -429,6 +436,8 @@ private fun PaymentMethodGrid(
                 onClick = onAch,
                 modifier = Modifier.weight(1f),
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PaymentTile(
                 emoji = "⏸",
                 label = "Park cart",
