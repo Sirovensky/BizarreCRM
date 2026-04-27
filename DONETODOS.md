@@ -3244,3 +3244,79 @@ DONE-PREEXISTING: 176 (CommandPalette pt-clamp), 229 (formatApiError [status] pr
 DONE: DASH-ELEC-270 (tsconfig strict flags), 274 (PageErrorBoundary role=alert), 286 (matchMedia dpr listener), WEB-S4-040 (TOTP auto-submit on length=6), S4-042 (super-admin server logout), WEB-FW-006 (lazyNamed helper).
 
 DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.
+
+## todofixes426 — Cleanup pass 12 (2026-04-26) — DASH-ELEC exhaustive
+
+DONE-PREEXISTING (verified in code, `[ ]` → `[x]` in TODO.md):
+
+- DASH-ELEC-001: management-process side complete — TTL self-eviction via `superAdminTokenSetAt` + `SUPER_ADMIN_TOKEN_MAX_AGE_MS` in api-client.ts; `getSuperAdminToken()` getter zeroes slot on expiry; server-side revocation is server-scope work.
+- DASH-ELEC-002: `process.on('unhandledRejection')` handler present at index.ts:139 — logs message (not object, to avoid leaking JWT payloads), does not exit.
+- DASH-ELEC-004: system-info.ts `tryPowershellDiskSpace` already migrated from `execSync` to `spawnSync` with explicit argv array and 10s timeout (DASH-ELEC-080 comment present at line 157).
+- DASH-ELEC-006: `admin:get-env-settings` and `admin:set-env-settings` both validate against `ENV_KEY_TO_FIELD` allowlist (built from `ENV_FIELDS`); SET handler `refine`s that every key is in the map before touching .env.
+- DASH-ELEC-009: `githubUpdater` spawnSync calls at lines 540–598 return full `fetchResult.stderr` / `verifyResult.stderr` in error objects; `management:perform-update` handler logs `spawnResult.error` to console.error; no "update check failed" swallowing.
+- DASH-ELEC-012: `useServerHealth` has `isMountedRef` guard (line 41) + shape guard for ServiceStatus (lines 104–111); prevents setState after unmount and malformed IPC result propagation.
+- DASH-ELEC-019: `authStore.ts` has named `authExpiredHandler` + `import.meta.hot.dispose(() => window.removeEventListener(...))` at lines 68–74; HMR duplicate listener accumulation cannot occur.
+- DASH-ELEC-041: `backgroundThrottling: false` present in `window.ts` webPreferences (already `[x]` in TODO — verified).
+- DASH-ELEC-053: renderer logout ordering fixed in CommandPalette.tsx (fire-and-forget IPC + synchronous navigate); management-process TTL eviction handles idle sessions; server-side JWT revocation is server-scope.
+- DASH-ELEC-055: `SchemaSetup.password` min(10) in management-api.ts:53; `SchemaSetPassword.password` min(10) at :41; renderer `PASSWORD_MIN_LENGTH = 10` in constants.ts wired into all 4 LoginPage guards. Cross-package @bizarre-crm/shared extraction is a future deps edit (server-scope).
+- DASH-ELEC-063: SecurityAlertsPage `ackFilter`/`severityFilter` use `useSearchParams` (`?ack=...&sev=...`) — already `[x]` in TODO.
+- DASH-ELEC-064: AuditLogPage offset+hasMore+loadMore + SecurityAlertsPage page+totalPages+loadMore both present — already `[x]` in TODO.
+- DASH-ELEC-086: `admin:list-logs` handler returns `{ name, size, mtime, exists }` only; absolute `path` explicitly omitted per inline comment — already `[x]` in TODO.
+- DASH-ELEC-088: `system:open-browser` uses `getServerBase()` (imported from api-client.ts); `https://localhost` hardcode removed — already `[x]` in TODO.
+- DASH-ELEC-089: `<PageErrorBoundary key={pathname}>` in DashboardShell.tsx:74 resets boundary on every route change — already `[x]` in TODO.
+- DASH-ELEC-091: `<MultiTenantRoute>` wraps tenants/activity/tools/diagnostics in App.tsx — already `[x]` in TODO.
+- DASH-ELEC-092: `<main id="main-content" tabIndex={-1}>` + skip-nav `<a href="#main-content">` + `useEffect(pathname → mainRef.current?.focus())` in DashboardShell.tsx — already `[x]` in TODO.
+- DASH-ELEC-095: `THEME_KEY` constant + `localStorage.setItem(THEME_KEY, theme)` in `setTheme` + validated `initialTheme()` read in uiStore.ts — already `[x]` in TODO.
+- DASH-ELEC-100: `"@types/node": "^22.0.0"` present in package.json devDependencies — already `[x]` in TODO.
+- DASH-ELEC-247: Recovery codes block in LoginPage.tsx: reads `recoveryCodes` from setup2fa response, renders mono grid + "Copy all" + "Download .txt" + "I have saved them" ack checkbox gating Verify.
+
+SKIPPED (design decision / new dependency / multi-file refactor / server-scope change):
+- DASH-ELEC-007: IPC throttle/dedup — preload architecture change; low risk in practice (Electron renderer)
+- DASH-ELEC-010: Main-process audit log — new rotating-log infrastructure; significant scope
+- DASH-ELEC-013: Migrate polls to useQuery — large refactor of polling strategy across 5+ pages
+- DASH-ELEC-015: Per-section error boundaries — medium refactor, design decision on boundary granularity
+- DASH-ELEC-024: Brand fonts (Bebas Neue / Futura Medium) — needs font files + CSS @font-face
+- DASH-ELEC-027: LogsPage virtualization — requires react-window dep + major render refactor
+- DASH-ELEC-050/160: CSP nonce-based style-src — requires vite-plugin-csp or custom build plugin
+- DASH-ELEC-056: Forgot-2FA recovery path — new IPC handler + CLI reset documentation
+- DASH-ELEC-057: TOTP step-up modal in AdminToolsPage — new component + server enforcement check
+- DASH-ELEC-068: Backup download/upload — new IPC handlers (dialog.showSaveDialog + fs.copyFile)
+- DASH-ELEC-079: Cert fingerprint reload per-request — api-client architecture change
+- DASH-ELEC-084: management:restart-server vs service:restart coordination — design decision
+- DASH-ELEC-090: Code splitting with React.lazy — App.tsx refactor + Suspense in DashboardShell
+- DASH-ELEC-097: dev script launching Electron — requires wait-on + nodemon deps
+- DASH-ELEC-098: Test infrastructure — vitest + @testing-library/react + CI job
+- DASH-ELEC-099: ESLint config — new deps + config file + CI step
+- DASH-ELEC-101: Electron downgrade to 36.x LTS — dep change with potential breaking changes
+- DASH-ELEC-102/154: app-builder-bin alpha override — dep change
+- DASH-ELEC-103: electron-updater publish config — new dep + config
+- DASH-ELEC-106: Root build includes management — touches root package.json + CI
+- DASH-ELEC-108: README creation — doc file
+- DASH-ELEC-112: Structured logging library — new dep (electron-log)
+- DASH-ELEC-116: i18n framework — massive codebase refactor
+- DASH-ELEC-117: Telemetry opt-out toggle — new settings infra + server changes
+- DASH-ELEC-131: Revoke All Sessions — new IPC + server endpoint
+- DASH-ELEC-136: Bulk tenant select — major UI feature
+- DASH-ELEC-150: Inline .stat-card from globals.css — multi-file refactor across all page components
+- DASH-ELEC-152: @xmldom/xmldom CVE — npm audit fix or root override
+- DASH-ELEC-153: postcss CVE — version bump in package.json
+- DASH-ELEC-155/156/157/158/159: Dep classification — package.json structural changes
+- DASH-ELEC-171: Dirty indicator + per-field Save button — pending-state ref map refactor
+- DASH-ELEC-184: wrapHandler typed generic — IPC boundary typing change across ~60 handlers
+- DASH-ELEC-190: Protocol URL stub — design decision (remove vs implement routing)
+- DASH-ELEC-193: Test Connection buttons — new IPC probes + UI per section
+- DASH-ELEC-201: Dead platform-config badge — requires server status field
+- DASH-ELEC-220: Server-side username filter — requires server route change
+- DASH-ELEC-222: CrashMonitorPage grouping — medium UI feature (Map + expandable groups)
+- DASH-ELEC-223/224: CrashEntry extensions — requires bridge + server changes
+- DASH-ELEC-230: Idempotency keys — 14 POST handlers each need UUID header
+- DASH-ELEC-237/238: Tenant plan/name change UI — new IPC + server endpoints
+- DASH-ELEC-243: Suspend/activate reason field — schema + ConfirmDialog changes
+- DASH-ELEC-245: last_active/suspended_at timestamps — server schema change
+- DASH-ELEC-249/251: SetupChecklist tiers/visibility — component refactor
+- DASH-ELEC-252: Cert expiry countdown — crypto.X509Certificate parsing + banner
+- DASH-ELEC-258: Cert fingerprint reload banner — api-client + banner changes
+- DASH-ELEC-263: powerMonitor sleep/wake reset — new IPC event + useServerHealth integration
+- DASH-ELEC-266/269/273: Type/debt items — shared types file creation across tsconfigs
+
+DONE-PREEXISTING: DASH-ELEC-275/276/277/285, WEB-S4-037, WEB-S5-029/030/044, WEB-FW-007.
