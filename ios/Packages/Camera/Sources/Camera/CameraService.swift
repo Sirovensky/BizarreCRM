@@ -28,6 +28,8 @@ public actor CameraService: NSObject {
     private nonisolated let session = AVCaptureSession()
     private var photoOutput: AVCapturePhotoOutput?
     private var currentDevice: AVCaptureDevice?
+    /// `true` when the front camera is active.
+    private var _isFrontCamera: Bool = false
 
     /// Continuation fulfilled when AVCapturePhotoCaptureDelegate fires.
     private var captureContinuation: CheckedContinuation<Data, Error>?
@@ -213,6 +215,53 @@ public actor CameraService: NSObject {
         // On device we'd query UIDevice.current.orientation; here we bake in
         // the default so the CIImage pipeline always produces upright pixels.
         return 1
+    }
+
+    // MARK: - Camera flip
+
+    /// Returns `true` when the front-facing (selfie) camera is currently active.
+    /// Drives the flip button state in `CameraCaptureView`.
+    public var isFrontCamera: Bool { _isFrontCamera }
+
+    /// Switches between front and rear cameras without tearing down the session.
+    ///
+    /// §4.8 — "Camera — AVCaptureSession with flash toggle, flip, grid, shutter haptic."
+    ///
+    /// - Throws: `CameraError.hardwareUnavailable` when the target camera is absent.
+    public func switchCamera() async throws {
+        let newPosition: AVCaptureDevice.Position = _isFrontCamera ? .back : .front
+
+        guard let newDevice = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: newPosition)
+                           ?? AVCaptureDevice.default(for: .video) else {
+            throw CameraError.hardwareUnavailable
+        }
+
+        let newInput: AVCaptureDeviceInput
+        do {
+            newInput = try AVCaptureDeviceInput(device: newDevice)
+        } catch {
+            throw CameraError.hardwareUnavailable
+        }
+
+        let localSession = session
+        await Task.detached(priority: .userInitiated) {
+            localSession.beginConfiguration()
+            // Remove all existing video inputs.
+            for input in localSession.inputs {
+                if let deviceInput = input as? AVCaptureDeviceInput,
+                   deviceInput.device.hasMediaType(.video) {
+                    localSession.removeInput(deviceInput)
+                }
+            }
+            if localSession.canAddInput(newInput) {
+                localSession.addInput(newInput)
+            }
+            localSession.commitConfiguration()
+        }.value
+
+        currentDevice = newDevice
+        _isFrontCamera = (newPosition == .front)
+        AppLog.ui.info("CameraService: switched to \(_isFrontCamera ? "front" : "rear") camera")
     }
 
     // MARK: - Torch
