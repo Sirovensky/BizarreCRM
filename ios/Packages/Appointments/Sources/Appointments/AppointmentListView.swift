@@ -304,8 +304,11 @@ public struct AppointmentListView: View {
             PhaseEmptyView(icon: "calendar", text: "No appointments")
         } else {
             switch viewMode {
-            case .agenda, .day:
+            case .agenda:
                 agendaList
+            case .day:
+                // §10.1 Day view — agenda grouped by time-block (morning/afternoon/evening)
+                dayGroupedList
             case .week:
                 // §10.1 Week view — use AppointmentCalendarGridView (iPad) or compact agenda (iPhone)
                 if Platform.isCompact {
@@ -338,6 +341,66 @@ public struct AppointmentListView: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - §10.1 Day view — grouped by time-block
+
+    /// §10.1 Day view: appointments grouped into Morning (before 12), Afternoon (12–17), Evening (17+).
+    private var dayGroupedList: some View {
+        List {
+            ForEach(TimeBlock.allCases, id: \.self) { block in
+                let blockItems = filteredItems.filter { appt in
+                    guard let raw = appt.startTime, let date = Row.parse(raw) else { return false }
+                    return block.contains(date)
+                }
+                if !blockItems.isEmpty {
+                    Section {
+                        ForEach(blockItems) { appt in
+                            Button { selectedAppointment = appt } label: { Row(appointment: appt) }
+                                .buttonStyle(.plain)
+                                .listRowBackground(Color.bizarreSurface1)
+                                .brandHover()
+                                .contextMenu { appointmentContextMenu(for: appt) }
+                                .accessibilityLabel(Row.a11y(for: appt))
+                                .accessibilityHint("Double tap to view details")
+                        }
+                    } header: {
+                        Text(block.title)
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .textCase(nil)
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+    }
+
+    // MARK: - TimeBlock
+
+    private enum TimeBlock: CaseIterable {
+        case morning    // before 12:00
+        case afternoon  // 12:00–17:00
+        case evening    // 17:00+
+
+        var title: String {
+            switch self {
+            case .morning:   return "Morning"
+            case .afternoon: return "Afternoon"
+            case .evening:   return "Evening"
+            }
+        }
+
+        /// Returns true if `date`'s hour falls in this block.
+        func contains(_ date: Date) -> Bool {
+            let hour = Calendar.current.component(.hour, from: date)
+            switch self {
+            case .morning:   return hour < 12
+            case .afternoon: return hour >= 12 && hour < 17
+            case .evening:   return hour >= 17
+            }
+        }
     }
 
     // MARK: - §22 Appointment context menu

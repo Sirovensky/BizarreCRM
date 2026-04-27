@@ -1046,14 +1046,14 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Multi-user** — multiple scanners feeding same session via WS events. (`Stocktake/StocktakeMultiUserPresence.swift` — `StocktakePresenceViewModel` actor listens on `stocktake:scan` WS topic; `StocktakePresenceBanner` Liquid Glass banner shows active scanner names + counts + last remote scan badge. feat(§6/§10) b5ae5c51)
 
 ### 6.7 Purchase orders
-- [ ] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date.
-- [ ] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes.
+- [x] **List** — status filter (draft / sent / partial / received / cancelled); columns: PO#, supplier, total, status, expected date. (`PurchaseOrderListView` + `PurchaseOrderListViewModel.Filter` enum; iPhone NavigationStack + iPad NavigationSplitView. feat(§6.7) b7)
+- [x] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes. (`PurchaseOrderComposeView` + `PurchaseOrderComposeViewModel`; supplier Picker, DraftPOLine editor, estimated total, offline-safe create. feat(§6.7) b7)
 - [x] **Batch edit** — `BatchEditSheet` + `BatchEditViewModel`; multi-select in `InventoryListView`; adjust price %, reassign category, retag; `POST /inventory/items/batch { ids, updates }`. (feat(ios phase-4 §6))
 - [x] **SKU picker component** — `SkuPicker` reusable: search + 300ms debounce + barcode scan button + Recent 10; used in POS / RepairPricing / receiving. (feat(ios phase-4 §6))
-- [ ] **Send** — email to supplier.
-- [ ] **Receive** — scan items to increment; partial receipt supported.
-- [ ] **Cancel** — confirm.
-- [ ] **PDF export** (`.fileExporter` on iPad/Mac).
+- [x] **Send** — email to supplier. (`PurchaseOrderDetailViewModel.sendToSupplier()` + confirmationDialog shows supplier email; `POST /api/v1/inventory/purchase-orders/:id/send` via `PurchaseOrderRepository.send(id:)`; transitions status to ordered. feat(§6.7) b7)
+- [x] **Receive** — scan items to increment; partial receipt supported. (`PurchaseOrderReceiveSheet` + `PurchaseOrderReceiveViewModel`; qty TextFields per line + Confirm button; `PurchaseOrderCalculator.receivedProgress` for partial tracking. feat(§6.7) b7)
+- [x] **Cancel** — confirm. (`PurchaseOrderDetailViewModel.cancelOrder(reason:)` + confirmationDialog "Cannot be undone"; toolbar destructive button ⌘⌦. feat(§6.7) b7)
+- [x] **PDF export** (`.fileExporter` on iPad/Mac). (`PurchaseOrderPDFRenderer` CoreGraphics A4 PDF — header/supplier/line-items/total/notes; `PDFDocument: FileDocument`; `.fileExporter` wired in detail view; ⌘⇧E shortcut. feat(§6.7) b7)
 
 ### 6.8 Advanced inventory (admin tools, iPad/Mac first)
 - [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
@@ -1407,13 +1407,13 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 ### 10.1 List / calendar views
 - [x] Base list — shipped. Rows parse ISO-8601 / SQL datetimes and render 'Today' / 'Tomorrow' / 'Yesterday' / 'MMM d' + short time; single-utterance accessibilityLabel combining date, title, customer, assignee, status.
 - [x] **CachedRepository + offline** — `AppointmentCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Segmented control** — Agenda / Day / Week / Month.
-- [ ] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda.
-- [ ] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin.
-- [ ] **Day** — agenda list grouped by time-block (morning / afternoon / evening).
+- [x] **Segmented control** — Agenda / Day / Week / Month. (`AppointmentViewMode` enum + `Picker(.segmented)` in both compact/regular layouts; icon per mode. feat(§10.1) b7)
+- [x] **Month** — `CalendarView`-style grid with dot per day for events; tap day → agenda. (`AppointmentMonthView` — month nav header, `LazyVGrid` 7-col, `DayCell` with dot badges + orange-ring today highlight; tapping day filters agenda below; `selectedDate` binding. feat(§10.1) b7)
+- [x] **Week** — 7-column time-grid; events as glass tiles colored by type; scroll-to-now pin. (`AppointmentCalendarGridView` iPad-only 7-col weekly grid + prev/next week nav + ⌘← / ⌘→; iPhone falls back to agenda. feat(§10.1) b7)
+- [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (`dayGroupedList` — `TimeBlock` enum (morning <12, afternoon 12–17, evening ≥17); `List` with `Section` per block; empty blocks hidden. feat(§10.1) b7)
 - [ ] **Time-block Kanban** (iPad) — columns = employees, rows = time slots (drag-drop reschedule).
-- [ ] **Today** button in toolbar; `⌘T` shortcut.
-- [ ] **Filter** — employee / location / type / status.
+- [x] **Today** button in toolbar; `⌘T` shortcut. (`todayButton` ToolbarItem — calls `vm.load()`; `⌘T`. feat(§10.1) b7)
+- [x] **Filter** — employee / location / type / status. (`AppointmentFilterSheet` — status Picker (scheduled/confirmed/completed/cancelled/no-show); `AppointmentListFilter` filter struct; orange fill icon when active; `filteredItems` computed prop applies client-side status filter. feat(§10.1) b7)
 
 ### 10.2 Detail
 - [x] Customer card + linked ticket / estimate / lead. (`AppointmentDetailView` infoCard shows customer + assignee; `customerContactCard` shows Call/SMS/Email chips; `Appointment` model gains `customerPhone`, `customerEmail`, `locationId`, `appointmentType`, `recurrence` fields. feat(§10.2) b5)
