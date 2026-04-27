@@ -81,8 +81,8 @@ public final class ClockInOutViewModel {
         }
     }
 
-    /// Attempt to clock in with the provided PIN (may be empty if tenant
-    /// doesn't require a PIN — the server validates and returns 401 if wrong).
+    /// Attempt to clock in with the provided PIN. When offline, enqueues the
+    /// event in `TimeclockOfflineQueue` and sets state optimistically.
     public func clockIn(pin: String) async {
         state = .loading
         let userId = await userIdProvider()
@@ -90,13 +90,28 @@ public final class ClockInOutViewModel {
             let entry = try await api.clockIn(userId: userId, pin: pin)
             state = .active(entry)
             updateElapsed(from: entry)
+        } catch let URLError.notConnectedToInternet,
+                let URLError.networkConnectionLost:
+            // Offline — queue the event and show optimistic state.
+            let event = PendingTimeclockEvent(userId: userId, action: .clockIn, pin: pin)
+            await TimeclockOfflineQueue.shared.enqueue(event)
+            // Build a synthetic ClockEntry so the UI shows "clocked in".
+            let synthetic = ClockEntry(
+                id: -1,
+                userId: userId,
+                clockIn: ISO8601DateFormatter().string(from: now())
+            )
+            state = .active(synthetic)
+            updateElapsed(from: synthetic)
+            AppLog.sync.info("Clock-in queued offline for userId=\(userId, privacy: .private)")
         } catch {
             AppLog.ui.error("Clock-in failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
         }
     }
 
-    /// Attempt to clock out with the provided PIN.
+    /// Attempt to clock out with the provided PIN. When offline, enqueues the
+    /// event and reverts to idle optimistically.
     public func clockOut(pin: String) async {
         state = .loading
         let userId = await userIdProvider()
@@ -104,6 +119,13 @@ public final class ClockInOutViewModel {
             _ = try await api.clockOut(userId: userId, pin: pin)
             state = .idle
             runningElapsed = 0
+        } catch let URLError.notConnectedToInternet,
+                let URLError.networkConnectionLost:
+            let event = PendingTimeclockEvent(userId: userId, action: .clockOut, pin: pin)
+            await TimeclockOfflineQueue.shared.enqueue(event)
+            state = .idle
+            runningElapsed = 0
+            AppLog.sync.info("Clock-out queued offline for userId=\(userId, privacy: .private)")
         } catch {
             AppLog.ui.error("Clock-out failed: \(error.localizedDescription, privacy: .public)")
             state = .failed(error.localizedDescription)
