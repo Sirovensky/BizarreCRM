@@ -313,6 +313,9 @@ sealed class Screen(val route: String) {
     // §1.2 [plan:L258] — Rate-limit bucket state viewer. DEBUG builds only.
     data object RateLimitBuckets : Screen("settings/rate-limit-buckets")
 
+    // §37 — Marketing & Growth: campaign list/create/send + segment builder.
+    data object Marketing : Screen("marketing")
+
     // §28 / §32 About + diagnostics — copy-bundle for support tickets.
     data object About : Screen("settings/about")
 
@@ -1117,6 +1120,10 @@ fun AppNavGraph(
                     onNavigateToActivityFeed = { navController.navigate(Screen.ActivityFeed.route) },
                     // §3.2 L504 — Cash-Trapped card tap → Aging report.
                     onNavigateToAging = { navController.navigate(Screen.InvoicesAging.route) },
+                    // §48.1 — Goals widget "View all / Manage" → GoalsScreen.
+                    onNavigateToGoals = { navController.navigate(Screen.Goals.route) },
+                    // §43.1 — "My Bench" tile → BenchTabScreen.
+                    onNavigateToBench = { navController.navigate(Screen.Bench.route) },
                 )
             }
             // §3.16 L592-L599 — Full-screen Activity Feed.
@@ -1735,6 +1742,12 @@ fun AppNavGraph(
             }
             composable(Screen.About.route) {
                 com.bizarreelectronics.crm.ui.screens.settings.AboutScreen(
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            // §37 — Marketing & Growth
+            composable(Screen.Marketing.route) {
+                com.bizarreelectronics.crm.ui.screens.marketing.MarketingScreen(
                     onBack = { navController.popBackStack() },
                 )
             }
@@ -2484,6 +2497,8 @@ fun MoreScreen(
             items = listOf(
                 MoreItem(Icons.Default.BarChart,        "Reports",       Screen.Reports.route),
                 MoreItem(Icons.Default.Group,           "Employees",     Screen.Employees.route),
+                // §37 — Marketing & Growth
+                MoreItem(Icons.Default.Campaign,        "Marketing",     Screen.Marketing.route),
                 // §38 — Memberships / Loyalty
                 MoreItem(Icons.Default.CardMembership,  "Memberships",   Screen.Memberships.route),
                 // §39 — Cash Register / Z-Report

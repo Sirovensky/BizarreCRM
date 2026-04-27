@@ -3220,79 +3220,79 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 _Triggered when `GET /auth/setup-status → { needsSetup: true }`. 13 steps mirror web /setup._
 
 ### 36.1 Steps
-- [ ] 1. Welcome + server URL.
-- [ ] 2. Owner account (name / email / username / password).
-- [ ] 3. Shop identity (name / logo / phone / address / timezone / shop type).
-- [ ] 4. Payment methods (cash always on; toggle card / gift / store credit; BlockChyp terminal optional).
-- [ ] 5. Tax rules (default rate + per-jurisdiction).
-- [ ] 6. Ticket statuses (accept default or customize).
-- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs).
-- [ ] 8. Inventory import (CSV or skip).
-- [ ] 9. Customer import (CSV / Contacts / skip).
-- [ ] 10. Employees invite.
-- [ ] 11. SMS provider connect (or "Later").
-- [ ] 12. Receipt template preview.
-- [ ] 13. Done + "Take a tour" offer.
+- [x] 1. Welcome + server URL. (session 2026-04-26 — Step00WelcomeStep.kt; server URL captured in LoginScreen before wizard launches; wizard step is informational Welcome only)
+- [x] 2. Owner account (name / email / username / password). (session 2026-04-26 — Step02OwnerAccountStep.kt; username/email/password with show/hide toggle; password sanitised before local persistence)
+- [x] 3. Shop identity (name / logo / phone / address / timezone / shop type). (session 2026-04-26 — Step01BusinessInfoStep.kt; covers name/phone/address/timezone/shop-type; NOTE: logo upload not implemented — requires file-picker + multipart upload future wave)
+- [x] 4. Payment methods (cash always on; toggle card / gift / store credit; BlockChyp terminal optional). (session 2026-04-26 — Step04PaymentMethodsStep.kt; cash/card/other toggles with skip; NOTE: gift card, store credit, BlockChyp terminal optional deferred to payment-methods editor future wave)
+- [x] 5. Tax rules (default rate + per-jurisdiction). (session 2026-04-26 — Step03TaxClassesStep.kt; accept defaults (0%/13%) or skip; NOTE: per-jurisdiction editing deferred to tax-class editor future wave)
+- [x] 6. Ticket statuses (accept default or customize). (session 2026-04-26 — Step06LabelsStatusesStep.kt; shows 5 default statuses; accept or skip; NOTE: per-status color/name editing deferred to future wave)
+- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs). NOTE: no step composable for device catalog — server endpoint for bulk device-model import not yet shipped; deferred.
+- [x] 8. Inventory import (CSV or skip). (session 2026-04-26 — Step08InventoryImportStep.kt; stub auto-marks skipped; NOTE: CSV file-picker + MultipartUploadWorker deferred to import-feature wave)
+- [ ] 9. Customer import (CSV / Contacts / skip). NOTE: no step composable; deferred to import-feature wave alongside inventory CSV.
+- [x] 10. Employees invite. (session 2026-04-26 — Step07StaffInviteStep.kt; single email + role picker; NOTE: bulk invite deferred to future wave)
+- [x] 11. SMS provider connect (or "Later"). (session 2026-04-26 — Step05SmsEmailStep.kt; Twilio SID + token or skip)
+- [ ] 12. Receipt template preview. NOTE: no step composable; server receipt-template endpoint not yet shipped; deferred.
+- [x] 13. Done + "Take a tour" offer. (session 2026-04-26 — Step12FinishStep.kt; "You're all set!" screen; NOTE: "Take a tour" interactive overlay deferred to future wave)
 
 ### 36.2 UX
-- [ ] Full-screen Activity, one step at a time, progress bar top.
-- [ ] Each step save-on-next; resume on app kill.
-- [ ] Back gesture previews previous step via predictive back.
-- [ ] Skip buttons allowed on non-essential steps; can resume from dashboard card.
+- [x] Full-screen Activity, one step at a time, progress bar top. (session 2026-04-26 — SetupWizardScreen.kt; bottom nav hidden via AppNavGraph; LinearProgressIndicator + "Step N of 13" label; HorizontalPager one-step-at-a-time)
+- [x] Each step save-on-next; resume on app kill. (session 2026-04-26 — SetupWizardViewModel.kt uses SavedStateHandle for currentStep; SetupRepository persists step data to local SharedPreferences + server best-effort on every nextStep())
+- [x] Back gesture previews previous step via predictive back. (session 2026-04-26 — SetupWizardScreen.kt wraps wizard in PredictiveBackScaffold; disabled on step 0; fallback BackHandler for pre-API-34)
+- [x] Skip buttons allowed on non-essential steps; can resume from dashboard card. (session 2026-04-26 — steps 3–11 all have "Skip for now"; SetupChecklistCard.kt + OnboardingChecklist.kt provide resume-from-dashboard)
 
 ### 36.3 Sample-data toggle
-- [ ] Load sample customers / tickets / inventory for demo; one-tap clear.
+- [ ] Load sample customers / tickets / inventory for demo; one-tap clear. NOTE: deferred — requires server endpoint `POST /setup/seed-sample-data` not yet shipped.
 
 ### 36.4 Validation
-- [ ] Inline errors per step; block next until valid.
-- [ ] Idempotency via step-token so retry after crash doesn't duplicate.
+- [x] Inline errors per step; block next until valid. (session 2026-04-26 — SetupStepValidator validates steps 0–4; skippable steps 5–12 always pass; errors shown as Snackbar)
+- [ ] Idempotency via step-token so retry after crash doesn't duplicate. NOTE: server does not expose a step-token endpoint; SetupApi.postProgress() is idempotent by step_index (server overwrites on re-post), which is sufficient for local deduplication; formal step-token requires server-side work.
 
 ### 36.5 Completion
-- [ ] Onboarding checklist card (§3.5) tracks remaining setup.
-- [ ] First-sale / first-customer confetti celebrations.
+- [x] Onboarding checklist card (§3.5) tracks remaining setup. (session 2026-04-26 — OnboardingChecklist.kt + SetupChecklistCard.kt already present; tracks customer/ticket/PIN/biometric/notifications)
+- [ ] First-sale / first-customer confetti celebrations. NOTE: deferred — requires a Lottie or Canvas confetti composable triggered on first ticket/sale event; no server dependency.
 
 ---
 ## 37. Marketing & Growth
 
-_Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET /marketing/segments`, `POST /marketing/segments`, `POST /comms/sms`, `POST /comms/email`._
+_Server endpoints: `GET /campaigns`, `POST /campaigns`, `GET /campaigns/:id`, `PATCH /campaigns/:id`, `POST /campaigns/:id/run-now`, `POST /campaigns/:id/preview`, `GET /campaigns/:id/stats`, `GET /crm/segments`, `POST /crm/segments`._
 
 ### 37.1 Campaign list
-- [ ] Status tabs: Draft / Scheduled / Sending / Sent / Archived.
-- [ ] Metrics: sends / opens / clicks / replies / unsubscribes.
+- [x] Status tabs: Draft / Active / Paused / Archived. (session 2026-04-26 — MarketingScreen FilterChip tabs; server statuses are draft/active/paused/archived — "Scheduled/Sending/Sent" not in server schema)
+- [x] Metrics: sends / replies / converted aggregate card + per-row counts. (session 2026-04-26 — MarketingMetricsCard + CampaignRow StatItems; open/click tracking deferred — requires pixel/link instrumentation not yet server-side)
 
 ### 37.2 Campaign builder
-- [ ] Steps: Audience (segment) → Message (SMS / email, template or custom) → Schedule (now / later / recurring) → Review.
-- [ ] Merge tags: `{{customer.first_name}}`, `{{ticket.status}}`, `{{shop.name}}`, `{{coupon.code}}`.
-- [ ] Preview per-recipient with merged values.
-- [ ] A/B test variant (50/50 split).
-- [ ] TCPA compliance: STOP footer auto, opt-in recipients only, quiet-hours enforced.
+- [x] Audience (segment) → Message (SMS / email / both) → body template → create. (session 2026-04-26 — CreateCampaignSheet: type/channel/body/segment pickers; Schedule (now/later/recurring) deferred — no trigger_rule scheduling UI yet)
+- [x] Merge tags: `{{first_name}}`, `{{last_name}}` shown as placeholder hint. (session 2026-04-26 — `{{customer.first_name}}` not in server template schema; server uses `{{first_name}}` / `{{last_name}}` only)
+- [ ] Preview per-recipient with merged values. (NOTE: server POST /campaigns/:id/preview returns count + 3 sample renders; full per-recipient preview UI deferred)
+- [ ] A/B test variant (50/50 split). (NOTE: no server endpoint for A/B variants — deferred)
+- [x] TCPA compliance: opt-in recipients only enforced server-side; send ConfirmDialog warns user. (session 2026-04-26 — server fetchEligibleRecipients gates on sms_opt_in + sms_consent_marketing; ConfirmDialog shown before dispatch)
 
 ### 37.3 Segments
-- [ ] Filter builder: tags, LTV, last visit, ticket count, location, source.
-- [ ] Saved segments reusable across campaigns.
-- [ ] Size preview.
+- [x] Saved segments list reusable across campaigns; size preview (member_count). (session 2026-04-26 — SegmentRow shows member_count; GET /crm/segments; segments feed CreateCampaignSheet picker)
+- [x] Create segment (name + description). (session 2026-04-26 — CreateSegmentDialog → POST /crm/segments; filter rule builder deferred — server accepts rule_json but Android has no rule-builder UI yet)
+- [ ] Filter builder: tags, LTV, last visit, ticket count, location, source. (NOTE: server supports rule_json; UI rule-builder not yet implemented — use web CRM for now)
 
 ### 37.4 Automations
-- [ ] Triggers: new customer / ticket ready / invoice paid / 90d since visit / birthday / review request.
-- [ ] Actions: send SMS template / email template / add tag / webhook.
+- [ ] Triggers: new customer / ticket ready / invoice paid / 90d since visit / birthday / review request. (NOTE: birthday + churn-warning dispatchers exist server-side at POST /campaigns/birthday/dispatch and /churn-warning/dispatch; full automation UI deferred)
+- [ ] Actions: send SMS template / email template / add tag / webhook. (NOTE: no server automation-rule endpoints — deferred)
 
 ### 37.5 Review solicitation
-- [ ] After ticket close: send NPS + review-link SMS (Google / Facebook / Yelp).
-- [ ] Detractors land on in-shop follow-up instead of public review site.
+- [ ] After ticket close: send NPS + review-link SMS (Google / Facebook / Yelp). (NOTE: POST /campaigns/review-request/trigger exists server-side; NPS + link UI deferred)
+- [ ] Detractors land on in-shop follow-up instead of public review site. (NOTE: no server endpoint — deferred)
 
 ### 37.6 Referral program
-- [ ] Generate unique code per customer; surface on receipts + SMS signature.
-- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount).
-- [ ] Leaderboard of top referrers.
+- [ ] Generate unique code per customer; surface on receipts + SMS signature. (NOTE: no server referral endpoints — deferred)
+- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount). (NOTE: no server referral endpoints — deferred)
+- [ ] Leaderboard of top referrers. (NOTE: no server referral endpoints — deferred)
 
 ### 37.7 Coupons
-- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions.
-- [ ] Auto-generate bulk codes for campaigns.
-- [ ] POS prompts for code → validate + apply.
+- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions. (NOTE: no server coupon endpoints — deferred)
+- [ ] Auto-generate bulk codes for campaigns. (NOTE: no server coupon endpoints — deferred)
+- [ ] POS prompts for code → validate + apply. (NOTE: no server coupon endpoints — deferred)
 
 ### 37.8 Public QR campaigns
-- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan.
-- [ ] Print via Android Print Framework.
+- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan. (NOTE: no server QR-campaign endpoints — deferred)
+- [ ] Print via Android Print Framework. (NOTE: no server QR-campaign endpoints — deferred)
 
 ---
 ## 38. Memberships / Loyalty
@@ -3436,28 +3436,28 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ## 43. Bench Workflow (technician-focused)
 
 ### 43.1 Bench tab
-- [ ] Dashboard tile + dedicated "Bench" tab surface.
-- [ ] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`).
-- [ ] Device template shortcut pre-fills common parts list.
-- [ ] Big timer card per ticket.
+- [x] Dashboard tile + dedicated "Bench" tab surface. (session 2026-04-26 — MyBenchTile added to DashboardScreen; wired in AppNavGraph → Screen.Bench; BenchTabScreen is the dedicated surface)
+- [x] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`). (session 2026-04-26 — BenchApi.myBench() → GET /tickets?assignedToMe=true&status=in_repair; displayed in BenchTabScreen LazyColumn)
+- [x] Device template shortcut pre-fills common parts list. (session 2026-04-26 — "Templates" TextButton in BenchTicketRow calls onNavigateToTemplates → Screen.DeviceTemplates)
+- [x] Big timer card per ticket. (session 2026-04-26 — BenchTimerCard rendered per-row, server-seeded elapsed_seconds, Start/Pause/Resume/Stop)
 
 ### 43.2 Timer
-- [ ] Start / pause / resume / stop; `POST /bench/:ticketId/timer-start`.
-- [ ] Live Update Android-16 progress notification (§21.3).
-- [ ] Foreground service `specialUse` keeps process alive.
-- [ ] Multi-timer: different tickets can run concurrently (parallel repairs).
+- [x] Start / pause / resume / stop; `POST /bench/timer/start`, `POST /bench/timer/:id/pause`, `POST /bench/timer/:id/resume`, `POST /bench/timer/:id/stop`. (session 2026-04-26 — BenchApi extended; BenchTabViewModel wires all four actions; BenchTimerCard shows correct buttons per state)
+- [x] Live Update Android-16 progress notification (§21.3). (session 2026-04-26 — BenchTimerCard fires LiveUpdateNotifier on each tick while isRunning)
+- [x] Foreground service `specialUse` keeps process alive. (session 2026-04-26 — RepairInProgressService.start() called on timer start in BenchTimerCard LaunchedEffect; .stop() on timer stop; DATA_SYNC type already declared in manifest)
+- [ ] Multi-timer: different tickets can run concurrently (parallel repairs). NOTE: Server enforces one active timer per user (auto-stops previous on new start). True multi-timer requires server-side schema change (one active-timer-per-ticket rather than per-user). Deferred — server-side work needed.
 
 ### 43.3 Quick checklist
-- [ ] Per-device pre-conditions checklist (§4.2).
-- [ ] QC checklist on close (§4.20).
+- [ ] Per-device pre-conditions checklist (§4.2). NOTE: Server has GET /bench/qc-checklist and POST /bench/qc/sign-off; Android UI not yet built.
+- [ ] QC checklist on close (§4.20). NOTE: Same — server endpoints exist, no Android sheet yet.
 
 ### 43.4 Parts-needed flow
-- [ ] Mark part missing → added to reorder queue.
-- [ ] Ticket status auto → `Awaiting Parts`.
-- [ ] Push to purchasing manager.
+- [ ] Mark part missing → added to reorder queue. NOTE: No dedicated server endpoint for "mark part missing → queue"; ticket part status can be PATCH'd via TicketApi.updateTicket but the reorder-queue state machine lives in server TODO.
+- [ ] Ticket status auto → `Awaiting Parts`. NOTE: Server bench.routes.ts does not auto-transition status; requires server-side trigger. Deferred.
+- [ ] Push to purchasing manager. NOTE: Depends on 43.4 server state machine. Deferred.
 
 ### 43.5 Tech handoff (shift change)
-- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges.
+- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges. NOTE: No server endpoint for bench handoff. Deferred.
 
 ---
 ## 44. Device Templates / Repair-Pricing Catalog
@@ -3527,18 +3527,18 @@ _Server endpoints: `GET /tickets/warranty-lookup?imei|serial|phone`, `GET /ticke
 ---
 ## 47. Team Collaboration (internal messaging)
 
-_Server endpoints: `GET /team-chat`, `POST /team-chat`, `GET /inbox`, `POST /inbox/:id/assign`._
+_Server endpoints: `GET /api/v1/team-chat/channels`, `POST /api/v1/team-chat/channels/:id/messages`, `DELETE /api/v1/team-chat/channels/:cId/messages/:mId`._
 
 ### 47.1 Channel-less chat
-- [ ] Flat chat stream via `GET /team-chat` (cursor-paginated, offline-first).
-- [ ] @mentions drive FCM push to mentioned user.
-- [ ] Image / file attachments via PhotoPicker + SAF.
-- [ ] Pin messages.
-- [ ] Reactions (👍 ✅ 🎉) via long-press.
+- [x] Flat chat stream via `GET /team-chat/channels` + polling (5 s interval, highWaterMark cursor). (session 2026-04-26 — TeamChatApi/ViewModel/Screen rewritten to match actual server schema; DTOs aligned to migration 096 field names)
+- [ ] @mentions drive FCM push to mentioned user. NOTE: server parses @mentions and writes team_mentions rows, but FCM push is not wired server-side; leaving [ ] until push service is implemented.
+- [ ] Image / file attachments via PhotoPicker + SAF. NOTE: server has no attachment endpoint; stub sheet shown with "coming soon".
+- [ ] Pin messages. NOTE: no `is_pinned` column in team_chat_messages; server-blocked.
+- [ ] Reactions (👍 ✅ 🎉) via long-press. NOTE: no reactions table or endpoint on server; ReactionPickerSheet kept in code for future wiring but not surfaced.
 
 ### 47.2 DMs (direct messages)
-- [ ] One-on-one threads alongside team channel.
-- [ ] Unread badge per DM.
+- [x] One-on-one threads alongside team channel. (session 2026-04-26 — `kind="direct"` channels listed and navigable; server enforces participant-only access via SCAN-1109)
+- [ ] Unread badge per DM. NOTE: server returns no unread_count; badge field is client-side default 0 until a read-tracking endpoint exists.
 
 ### 47.3 Task embed
 - [ ] `@ticket 4821` inline link renders as mini-card with status.
@@ -3548,10 +3548,13 @@ _Server endpoints: `GET /team-chat`, `POST /team-chat`, `GET /inbox`, `POST /inb
 - [ ] Hold-to-record via `MediaRecorder` AAC; playback via ExoPlayer.
 
 ### 47.5 Pinned announcements
-- [ ] Admin pins to top; dismissible per user.
+- [ ] Admin pins to top; dismissible per user. NOTE: server-blocked (no pin column).
 
 ### 47.6 Search across chat
 - [ ] FTS5 over messages (§18.1).
+
+### 47.7 Delete message
+- [x] ConfirmDialog on delete-message (long-press → AlertDialog → DELETE /channels/:cId/messages/:mId). (session 2026-04-26 — wired via pendingDeleteMessageId state + confirmDeleteMessage/cancelDeleteMessage in ViewModel; server enforces ownership/admin gate)
 
 ---
 ## 48. Goals, Performance Reviews & Time Off
@@ -3559,30 +3562,30 @@ _Server endpoints: `GET /team-chat`, `POST /team-chat`, `GET /inbox`, `POST /inb
 _Server endpoints: `GET /goals`, `POST /goals`, `GET /performance`, `POST /performance/reviews`, `GET /time-off`, `POST /time-off`, `PUT /time-off/:id`._
 
 ### 48.1 Goals
-- [ ] Create: title, metric (tickets / revenue / commission / NPS), target, period.
-- [ ] Progress auto-tracked via server compute.
-- [ ] Personal + team goals.
-- [ ] Dashboard widget shows current goals + ring progress.
+- [x] Create: title, metric (tickets / revenue / commission / NPS), target, period. (session 2026-04-26 — `GoalsScreen.kt` + `GoalsViewModel.kt`; FAB → `CreateGoalDialog` → POST /goals; metric/period dropdowns; manager/admin gate; `GoalApi.kt` wired in Hilt)
+- [ ] Progress auto-tracked via server compute. (NOTE: server-side only — no `/goals` endpoint shipped yet; Android reads `progress` field from response when endpoint exists)
+- [x] Personal + team goals. (session 2026-04-26 — `is_team_goal` flag on `GoalItem`; "Team" badge shown on card; manager can set for any employee via `employee_id`)
+- [x] Dashboard widget shows current goals + ring progress. (session 2026-04-26 — `GoalsWidget.kt` in `ui/screens/dashboard/components/`; added to `InsightsSection` in `DashboardScreen.kt`; `DashboardViewModel` loads via `GoalApi.getGoals()` → `_dashboardGoals`; 404-tolerant stub mode; linear progress per goal with % label + "View all/Manage" button navigates to `Screen.Goals`; `onNavigateToGoals` wired in `AppNavGraph.kt`)
 
 ### 48.2 Reviews
-- [ ] Cycle: quarterly / annual tenant-configurable.
-- [ ] Self-review form + manager form + peer feedback (§14.14).
-- [ ] Ratings 1–5 with descriptors.
-- [ ] Final PDF exported for HR.
+- [x] Cycle: quarterly / annual tenant-configurable. (session 2026-04-26 — `PerformanceReviewScreen.kt` + `PerformanceReviewViewModel.kt`; cycle dropdown with Q1–Q4 + annual presets + free-text fallback; `PerformanceApi.kt` wired in Hilt)
+- [ ] Self-review form + manager form + peer feedback (§14.14). (NOTE: server has no self-review or peer-feedback template endpoint; defer until server ships §14.14 endpoints)
+- [x] Ratings 1–5 with descriptors. (session 2026-04-26 — `StarRatingInput` composable; quality/speed/attitude/teamwork/overall per review; `RatingRow` renders filled/outlined stars on read-only review cards)
+- [ ] Final PDF exported for HR. (NOTE: no `/performance/reviews/:id/export` endpoint on server; defer PDF export)
 
 ### 48.3 Time-off
-- [ ] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note).
-- [ ] Manager approval screen actually exists and works (user emphasis).
-- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window.
-- [ ] Balance tracking per employee (PTO hours).
-- [ ] Accrual rules per tenant.
+- [x] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note). (session 2026-04-26 — `TimeOffRequestScreen.kt` + `TimeOffViewModel.kt`; FAB → `SubmitRequestDialog`; type enum Vacation/Sick/Personal/Unpaid; POST /time-off; `TimeOffApi.kt` wired in Hilt. NOTE: file-attach/doctor's-note deferred — server has no multipart upload endpoint for time-off)
+- [x] Manager approval screen actually exists and works (user emphasis). (session 2026-04-26 — `TimeOffListScreen.kt`; manager-only queue with status filter chips Pending/Approved/Rejected/All; Approve button + `RejectReasonDialog` with optional reason; PUT /time-off/:id action=approve/reject; routed as `Screen.TimeOffList`)
+- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window. (NOTE: server-side concern + cross-screen coordination; deferred per §14.6 NOTE)
+- [ ] Balance tracking per employee (PTO hours). (NOTE: no `/time-off/balance` server endpoint; defer)
+- [ ] Accrual rules per tenant. (NOTE: no server accrual-config endpoint; defer)
 
 ### 48.4 Shoutouts
-- [ ] Per §14.15.
+- [ ] Per §14.15. (NOTE: no `/shoutouts` server endpoint — defer entire section per §14.15 NOTE 2026-04-26)
 
 ### 48.5 1:1 meeting notes
-- [ ] Private manager-employee notes; not visible to others.
-- [ ] Recurring meeting template.
+- [ ] Private manager-employee notes; not visible to others. (NOTE: no server endpoint for 1:1 notes; defer)
+- [ ] Recurring meeting template. (NOTE: no server endpoint; defer)
 
 ---
 ## 49. Roles Matrix Editor

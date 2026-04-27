@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.util.Log
 import com.bizarreelectronics.crm.BuildConfig
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
@@ -51,6 +52,15 @@ import javax.net.ssl.X509TrustManager
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class SyncHttp
+
+/**
+ * §36.2 — Qualifier for the unencrypted SharedPreferences file used by
+ * [com.bizarreelectronics.crm.data.repository.SetupRepository] to persist
+ * wizard step progress locally when the server endpoints are unavailable.
+ */
+@Qualifier
+@Retention(AnnotationRetention.BINARY)
+annotation class SetupWizardPrefs
 
 // ============================================================================
 // CERTIFICATE PINNING — REPLACE PLACEHOLDER PINS BEFORE RELEASE
@@ -751,4 +761,15 @@ object RetrofitClient {
     @Provides @Singleton fun provideShiftsApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ShiftsApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ShiftsApi::class.java)
     // §14.4 — custom roles CRUD + user role assignment; admin-only; 404-tolerant
     @Provides @Singleton fun provideRolesApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RolesApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.RolesApi::class.java)
+
+    // §37 — Marketing campaigns (GET/POST /campaigns, run-now, stats) + segments (GET/POST /crm/segments).
+    // Both interfaces are admin-only on the server; 404-tolerant in the repository.
+    @Provides @Singleton fun provideMarketingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.MarketingApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.MarketingApi::class.java)
+    @Provides @Singleton fun provideSegmentApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.SegmentApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.SegmentApi::class.java)
+
+    // §36.2 — Unencrypted prefs for setup-wizard local progress (no secrets stored here;
+    // passwords are never written; step data is non-sensitive configuration).
+    @Provides @Singleton @SetupWizardPrefs
+    fun provideSetupWizardPrefs(@ApplicationContext context: Context): SharedPreferences =
+        context.getSharedPreferences("setup_wizard_prefs", Context.MODE_PRIVATE)
 }
