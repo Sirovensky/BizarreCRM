@@ -355,15 +355,12 @@ fun PosCartScreen(
                             modifier = Modifier.fillMaxWidth().padding(14.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
+                            // 2026-04-26 audit: mockup PHONE 3 has 3 slots
+                            // (Misc / Note / Discount). Tip slot moved to
+                            // tender screen — see PosTenderScreen.
                             DashedSlot(label = "+ Misc item", onClick = { showMiscDialog = true }, modifier = Modifier.weight(1f))
                             DashedSlot(label = "+ Note", onClick = { showNoteDialog = true }, modifier = Modifier.weight(1f))
                             DashedSlot(label = "+ Discount", onClick = { showDiscountDialog = true }, modifier = Modifier.weight(1f))
-                            // TASK-1: tip slot
-                            DashedSlot(
-                                label = if (state.tipCents > 0) "Tip ${state.tipCents.toDollarString()}" else "+ Tip",
-                                onClick = { showTipDialog = true },
-                                modifier = Modifier.weight(1f),
-                            )
                         }
                     }
                 }

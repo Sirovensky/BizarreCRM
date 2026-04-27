@@ -71,14 +71,14 @@ val ConditionAmberBg  = Color(0xFF2B1F0A)  // dark-mode amber bg
 val ConditionAmberText = Color(0xFFE8A33D)
 
 // ---------------------------------------------------------------------------
-// Warm dark surface ramp
+// Dark surface ramp — aligned to ios/pos-phone-mockups.html (2026-04-26 audit)
 // ---------------------------------------------------------------------------
-val BgDark        = Color(0xFF1C1611)  // background
-val Surface1      = Color(0xFF26201A)  // surface / primary surface
-val Surface2      = Color(0xFF322A22)  // elevated surface
-val OutlineColor  = Color(0xFF4A3C30)  // dividers / borders
-val MutedText     = Color(0xFFB09A84)  // onSurfaceVariant muted
-val PrimaryText   = Color(0xFFF5E6D3)  // onBackground / onSurface
+val BgDark        = Color(0xFF0F0A14)  // background — deep purple-black
+val Surface1      = Color(0xFF1A1722)  // surface / primary surface
+val Surface2      = Color(0xFF241F2E)  // elevated surface
+val OutlineColor  = Color(0xFF332C3F)  // dividers / borders
+val MutedText     = Color(0xFFA79FB8)  // onSurfaceVariant — cool muted
+val PrimaryText   = Color(0xFFECE9F3)  // onBackground / onSurface — cool light
 
 // Light-mode surface ramp (retained for when user toggles light)
 val Surface50  = Color(0xFFFAF4EC)  // slightly warm white

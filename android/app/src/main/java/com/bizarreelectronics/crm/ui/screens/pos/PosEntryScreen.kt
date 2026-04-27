@@ -742,19 +742,13 @@ private fun PathTile(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // M3 Expressive: primary tile uses MaterialShapes.Cookie9Sided for
-        // its icon container so the alpha-shape morph is visible on the
-        // brand-cream + tile (mockup uses plain rounded square; we lean into
-        // expressive on the canonical primary action). Non-primary tiles
-        // stay rounded to keep the row readable.
-        @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-        val iconShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
-            MaterialShapes.Cookie9Sided.toShape()
-        else RoundedCornerShape(11.dp)
+        // 2026-04-26 audit: revert Cookie9Sided to plain rounded square
+        // (mockup PHONE 1 uses 11px rounded square on BOTH primary +
+        // non-primary tiles — Cookie9Sided was a styling deviation).
         Box(
             modifier = Modifier
                 .size(44.dp)
-                .clip(iconShape)
+                .clip(RoundedCornerShape(11.dp))
                 .background(if (isPrimary) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {

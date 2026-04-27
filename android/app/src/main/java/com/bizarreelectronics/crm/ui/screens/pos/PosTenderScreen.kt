@@ -531,13 +531,10 @@ private fun PaymentTile(
     }
     val borderWidth = if (isPrimary && enabled) 1.5.dp else 1.dp
     val contentAlpha = if (enabled) 1f else 0.38f
-    // M3 Expressive: primary 'Card / Tap' tile uses MaterialShapes.Cookie9Sided
-    // so the canonical primary payment surface gets the alpha shape morph
-    // (visible cut-off edges). Secondary tiles stay rounded squares.
-    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-    val tileShape: androidx.compose.ui.graphics.Shape = if (isPrimary)
-        MaterialShapes.Cookie9Sided.toShape()
-    else RoundedCornerShape(10.dp)
+    // 2026-04-26 audit: revert Cookie9Sided to plain 10dp rounded square
+    // (mockup PHONE 5 uses uniform 10px rounded square on all tender tiles —
+    // primary differs only via 1.5px border + cream label).
+    val tileShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(10.dp)
 
     // session 2026-04-26 — a11y: Role.Button + 48dp min height on payment tile
     Column(
