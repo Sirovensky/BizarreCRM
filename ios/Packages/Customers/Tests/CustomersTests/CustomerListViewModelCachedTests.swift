@@ -112,6 +112,24 @@ private actor StubCachedCustomerRepo: CustomerCachedRepository {
         throw CVMTestError.boom
     }
 
+    func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        if shouldFail { throw CVMTestError.boom }
+        syncedAt = Date()
+        return CustomerCursorPage(customers: makeCustomers(count: customerCount), nextCursor: nil, stats: nil)
+    }
+
+    func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        if shouldFail { throw CVMTestError.boom }
+        return BulkOperationResult(affected: req.customerIds.count)
+    }
+
+    func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        if shouldFail { throw CVMTestError.boom }
+        customerCount = max(0, customerCount - req.customerIds.count)
+        syncedAt = Date()
+        return BulkOperationResult(affected: req.customerIds.count)
+    }
+
     private func makeCustomers(count: Int) -> [CustomerSummary] {
         (0..<count).map { index in
             let json = """
@@ -142,8 +160,26 @@ private actor PlainStubCustomerRepo: CustomerRepository {
         }
     }
 
+    func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        let customers = (0..<customerCount).map { index -> CustomerSummary in
+            let json = """
+            { "id": \(index), "first_name": "User", "last_name": "\(index)" }
+            """.data(using: .utf8)!
+            return try! JSONDecoder().decode(CustomerSummary.self, from: json)
+        }
+        return CustomerCursorPage(customers: customers, nextCursor: nil, stats: nil)
+    }
+
     func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
         throw CVMTestError.boom
+    }
+
+    func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(affected: req.customerIds.count)
+    }
+
+    func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(affected: req.customerIds.count)
     }
 }
 

@@ -69,10 +69,27 @@ public actor CustomerCachedRepositoryImpl: CustomerCachedRepository {
         return try await fetch(keyword: keyword, key: key)
     }
 
+    /// Pass through to remote — no caching for paginated cursor results.
+    public func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        try await remote.listPage(cursor: cursor, query: query)
+    }
+
     /// Delegates to the underlying repository and invalidates the cache for
     /// all keywords so the next `list(keyword:)` call returns fresh data.
     public func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
         let result = try await remote.update(id: id, req)
+        cache.removeAll()
+        return result
+    }
+
+    public func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        let result = try await remote.bulkTag(req)
+        cache.removeAll()
+        return result
+    }
+
+    public func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        let result = try await remote.bulkDelete(req)
         cache.removeAll()
         return result
     }
