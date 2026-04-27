@@ -66,6 +66,14 @@ public final class AppearanceViewModel: Sendable {
     var isCompact: Bool = false
     var fontScale: Double = 1.0
     var reduceMotion: Bool = false
+    /// §19.4 Glass intensity 0–100 (100 = full glass; <30 → solid material).
+    var glassIntensity: Double = 100.0
+    /// §19.4 Reduce transparency — overrides system for users who find glass heavy.
+    var reduceTransparency: Bool = false
+    /// §19.4 Sounds master toggle.
+    var soundsEnabled: Bool = true
+    /// §19.4 Haptics master toggle.
+    var hapticsEnabled: Bool = true
     /// §wave-5 — persists to `@AppStorage("pos.theme.override")` so
     /// `POSThemeModifier` in `RootView` resolves the right token set.
     var posThemeOverride: POSThemeOverride = .system
@@ -83,6 +91,10 @@ public final class AppearanceViewModel: Sendable {
         isCompact = defaults.bool(forKey: "appearance.compact")
         fontScale = defaults.object(forKey: "appearance.fontScale") as? Double ?? 1.0
         reduceMotion = defaults.bool(forKey: "appearance.reduceMotion")
+        glassIntensity = defaults.object(forKey: "appearance.glassIntensity") as? Double ?? 100.0
+        reduceTransparency = defaults.bool(forKey: "appearance.reduceTransparency")
+        soundsEnabled = defaults.object(forKey: "appearance.soundsEnabled") as? Bool ?? true
+        hapticsEnabled = defaults.object(forKey: "appearance.hapticsEnabled") as? Bool ?? true
         posThemeOverride = POSThemeOverride(rawValue: defaults.string(forKey: "pos.theme.override") ?? "") ?? .system
     }
 
@@ -92,6 +104,10 @@ public final class AppearanceViewModel: Sendable {
         defaults.set(isCompact, forKey: "appearance.compact")
         defaults.set(fontScale, forKey: "appearance.fontScale")
         defaults.set(reduceMotion, forKey: "appearance.reduceMotion")
+        defaults.set(glassIntensity, forKey: "appearance.glassIntensity")
+        defaults.set(reduceTransparency, forKey: "appearance.reduceTransparency")
+        defaults.set(soundsEnabled, forKey: "appearance.soundsEnabled")
+        defaults.set(hapticsEnabled, forKey: "appearance.hapticsEnabled")
         defaults.set(posThemeOverride.rawValue, forKey: "pos.theme.override")
 
         #if canImport(UIKit)
@@ -187,9 +203,40 @@ public struct AppearancePage: View {
                 Text("Font size")
             }
 
+            Section {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    HStack {
+                        Text("Glass intensity")
+                            .foregroundStyle(.bizarreOnSurface)
+                        Spacer()
+                        Text("\(Int(vm.glassIntensity))%")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $vm.glassIntensity, in: 0...100, step: 5)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel("Glass intensity \(Int(vm.glassIntensity)) percent")
+                        .accessibilityIdentifier("appearance.glassIntensity")
+                }
+                Toggle("Reduce transparency", isOn: $vm.reduceTransparency)
+                    .accessibilityIdentifier("appearance.reduceTransparency")
+            } header: {
+                Text("Glass")
+            } footer: {
+                Text("Below 30% intensity, glass elements fall back to solid materials. Reduce transparency removes glass blur entirely.")
+            }
+
             Section("Motion") {
                 Toggle("Reduce motion (override system)", isOn: $vm.reduceMotion)
                     .accessibilityIdentifier("appearance.reduceMotion")
+            }
+
+            Section("Audio & haptics") {
+                Toggle("Sounds", isOn: $vm.soundsEnabled)
+                    .accessibilityIdentifier("appearance.sounds")
+                Toggle("Haptics", isOn: $vm.hapticsEnabled)
+                    .accessibilityIdentifier("appearance.haptics")
             }
 
             // §wave-5 — POS-specific theme override. Stored in
