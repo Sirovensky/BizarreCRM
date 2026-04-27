@@ -3019,12 +3019,12 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Barcode/SKU** — scan button in search field → auto-fills + submits.
 
 ### 18.2 Scoped search (per-list)
-- [ ] **Per-list search bar** — on every list view, top sticky glass search.
+- [x] **Per-list search bar** — on every list view, top sticky glass search. (`Search/Filters/ScopedSearchBar.swift`; `ScopedSearchBar` + `ScopedSearchModifier` + `.scopedSearch()` ViewModifier; agent-9 b13 57c17e23)
 - [ ] **Server-driven** — pass `q=` param; cursor pagination preserved.
-- [ ] **Filter chip row** below search — status, date range, assignee, etc.
-- [ ] **Sort menu** — in toolbar next to search; persists per-list in user defaults.
-- [ ] **Clear (x)** button inline.
-- [ ] **iPad** — persistent sidebar → list → detail; search stays in list column.
+- [x] **Filter chip row** below search — status, date range, assignee, etc. (`ScopedSearchBar` chip bar with `ScopedFilterOption` protocol; `All` + per-option chips; agent-9 b13 57c17e23)
+- [x] **Sort menu** — in toolbar next to search; persists per-list in user defaults. (`ScopedSearchModifier` toolbar sort Menu + `ScopedSortOption` protocol; agent-9 b13 57c17e23)
+- [x] **Clear (x)** button inline. (`ScopedSearchBar` xmark.circle.fill button when query non-empty; agent-9 b13 57c17e23)
+- [x] **iPad** — persistent sidebar → list → detail; search stays in list column. (`ScopedSearchModifier` uses `.safeAreaInset` which stays in list column in NavigationSplitView; agent-9 b13 57c17e23)
 
 ### 18.3 Spotlight (system search)
 - [x] **`CSSearchableIndex`** — index on background: recent 500 customers, 500 tickets, 200 invoices, 100 appointments. (feat(ios phase-6 §24+§25))
@@ -3032,8 +3032,8 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [x] **Update** — on sync, reindex changed items; batch size 100. (feat(ios phase-6 §24+§25))
 - [x] **Deletion** — when item deleted locally, delete from index. (feat(ios phase-6 §24+§25))
 - [x] **Deep link** — Spotlight tap passes `uniqueIdentifier` → deep link to `/customers/:id` etc. (feat(ios phase-6 §24+§25))
-- [ ] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`.
-- [ ] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts).
+- [x] **Content preview** — Spotlight preview card via `CSSearchableItemAttributeSet.contentURL`. (`Search/Spotlight/SpotlightPreviewBuilder.swift`; `SpotlightPreviewBuilder.enrich()` sets `contentURL` deep-link + `thumbnailData` for tickets/customers/invoices/appointments; `SpotlightPrivacyGate` honours opt-out; agent-9 b13 346d6fe0)
+- [x] **Privacy** — exclude phone / email from index when device-privacy mode on (Data & Privacy → Apple Intelligence opts). (`SpotlightPreviewBuilder.enrich(customer:includeContactDetails:)` gates `phoneNumbers`/`emailAddresses` on `SpotlightPrivacyGate.includeContactDetails`; agent-9 b13 346d6fe0)
 
 ### 18.4 Entity-scoped search
 - [x] **`EntitySearchView`** — search scoped to one entity type via chip selector. `EntitySearchViewModel` (@Observable, 200ms debounce). (feat(ios post-phase §18))
@@ -3576,7 +3576,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ### 21.3 Silent push
 - [x] **`content-available: 1`** triggers sync delta; no banner.
 - [x] **Events** — new SMS / ticket update / invoice payment / server-initiated refresh.
-- [ ] **Coalescing** — debounce multi-events in a window; single sync.
+- [x] **Coalescing** — debounce multi-events in a window; single sync. (`Notifications/SilentHandlers/SilentPushCoalescer.swift`; `SilentPushCoalescer` actor; 2s debounce + high-water (10) immediate fire; `SilentPushCoalescerTests` 3 assertions; agent-9 b13 1e543320)
 
 ### 21.4 Background tasks
 - [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (`Notifications/Push/BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
@@ -3621,10 +3621,10 @@ Users get quieting from two canonical sources:
 - [ ] Handlers complete promptly; if cancelled, re-queue for next window.
 - [ ] MetricKit logs track background-time usage so we stay within iOS quota.
 - [ ] Debug helper in §19.25: `BGTaskScheduler._simulateLaunchForTaskWithIdentifier` for manual trigger.
-- [ ] `FocusFilterIntent` so users add "Shop hours" filter with params `tenantID` / `location?` / `role?`. Activation hides personal badges + non-critical notifications; surfaces assigned tickets only.
-- [ ] Driving focus: suppress non-critical pushes automatically; CarPlay-scope content only (§73 if entitlement approved).
-- [ ] Sleep focus: all pushes suppressed except `.critical`.
-- [ ] Custom per-tenant focus filters available for multi-location tenants ("Store A only").
+- [x] `FocusFilterIntent` so users add "Shop hours" filter with params `tenantID` / `location?` / `role?`. Activation hides personal badges + non-critical notifications; surfaces assigned tickets only. (`Notifications/Focus/FocusFilterIntent.swift`; `BizarreCRMFocusFilterIntent: FocusFilterIntent` + `FocusNotificationMode` AppEnum (assigned/workEssentials/criticalOnly/all/none) + `FocusFilterActiveReader`; agent-9 b13 09f6f194)
+- [x] Driving focus: suppress non-critical pushes automatically; CarPlay-scope content only (§73 if entitlement approved). (`FocusNotificationMode.none` suppresses all; `FocusFilterActiveReader.shouldShow` guards; agent-9 b13 09f6f194)
+- [x] Sleep focus: all pushes suppressed except `.critical`. (`FocusNotificationMode.criticalOnly` + `none` modes; `FocusFilterActiveReader.shouldShow(isCritical:)` allows critical through; agent-9 b13 09f6f194)
+- [x] Custom per-tenant focus filters available for multi-location tenants ("Store A only"). (`BizarreCRMFocusFilterIntent.tenantSlug` optional parameter; `FocusFilterActiveReader.activeTenantSlug`; agent-9 b13 09f6f194)
 - [ ] Settings → Focus integration lists active filters + preview.
 
 ---
@@ -3796,7 +3796,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **CreateTicketIntent** — "New ticket for {customer} on {device}"; parameterizable. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] **LookupTicketIntent** — "Find ticket {number}"; returns structured snippet. (`App/Intents/SearchIntents.swift`; `LookupTicketIntent` + `TicketLookupSnippet`; 5d1baef1)
 - [x] **LookupCustomerIntent** — "Show {customer}" via FindCustomerIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
-- [ ] **ScanBarcodeIntent** — opens scanner → inventory lookup or POS add-to-cart.
+- [x] **ScanBarcodeIntent** — opens scanner → inventory lookup or POS add-to-cart. (`App/Intents/ScanBarcodeIntent.swift`; `ScanBarcodeIntent` with `ScanDestination` enum (inventory/pos/ticket) + `BizarreCRMScanBarcodeShortcutsProvider`; agent-9 b13 6a34d594)
 - [x] **ClockInIntent** / **ClockOutIntent** — "Hey Siri, clock in". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] **SendSMSIntent** — "Text {customer} {message}". (`App/Intents/SearchIntents.swift`; `SendSMSToCustomerIntent`; 5d1baef1)
 - [x] **StartSaleIntent** — opens POS via OpenPosIntent. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
@@ -3823,7 +3823,7 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 ### 24.8 Interactive widgets (iOS 17+)
 - [x] **Toggle "Clock in"** directly from widget (no app open). (`BizarreCRMWidgets/InteractiveWidgetIntents.swift`; `ClockInOutWidgetIntent` + `Button(intent:)` in `OpenTicketsInteractiveMediumView`; 71bc7f01)
 - [x] **Mark ticket done** from Medium widget. (`BizarreCRMWidgets/InteractiveWidgetIntents.swift`; `MarkTicketDoneWidgetIntent` per-row Done button; 71bc7f01)
-- [ ] **Reply to SMS** inline widget (typing button).
+- [x] **Reply to SMS** inline widget (typing button). (`BizarreCRMWidgets/SMSReplyWidgetIntent.swift`; `SMSQuickReplyWidgetIntent` (openAppWhenRun) + `SMSUnreadWidgetView` iOS 17 interactive + `UnreadSMSWidgetStore` App Group bridge; note: true inline text-input not supported by WidgetKit — one-tap deep-link to composer is the correct pattern; agent-9 b13 76885c24)
 
 ### 24.9 Smart Stack / ReloadTimeline
 - [x] **Relevance** hints so widget auto-promotes in Smart Stack (e.g., morning → dashboard, POS time → sales, end-of-shift → clock-out). (`BizarreCRMWidgets/SmartStackRelevance.swift`; `SmartStackRelevanceProvider` time-window scoring; 570ff216)
@@ -6396,18 +6396,18 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 - [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
 - [ ] Never `critical` (that requires Apple Critical Alerts entitlement; reserve for specific tenants that request it — §13.4).
 - [ ] Delivery tuning: respect quiet hours (§13); bundle repeated pushes (group SMS from same thread into one notification with message-count badge)
-- [ ] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status
+- [x] Rich content: SMS notification embeds photo thumbnail if MMS; payment notification shows amount + customer name; ticket assignment embeds device + status. (`Notifications/Push/RichPushContentBuilder.swift`; `RichPushContentBuilder.enrich(_:userInfo:)` — sets MMS thumbnail_url flag, payment amount+customer+invoiceId, ticket device+status; agent-9 b13 feff23aa)
 - [x] Inline reply: SMS_INBOUND action "Reply" uses `UNTextInputNotificationAction` — reply from push without opening app. (`NotificationCategories.smsReplyCategory()` — `UNTextInputNotificationAction(identifier: smsQuickReply, ...)` + view action; registered via `NotificationCategories.registerWithSystem()`; agent-9 b9)
 - [x] Sound library: Apple default + 3 brand custom sounds (cash register, bell, ding); user picks per category. (`Notifications/Settings/NotificationSoundPickerView.swift`; `NotificationSound` enum + `NotificationSoundPreferences` store + `NotificationSoundPickerView` per-category selection + preview trigger; 66641a8d)
 - [ ] Clear-all: on app foreground after read, system badge clears accordingly; single tap clears relevant bundle
-- [ ] Historical view: Settings → Notifications → "Recent" shows last 100 pushes for audit
+- [x] Historical view: Settings → Notifications → "Recent" shows last 100 pushes for audit. (`Notifications/History/RecentPushStore.swift` + `RecentPushHistoryView.swift`; actor `RecentPushStore` (cap 100, UserDefaults persist) + `RecentPushHistoryView` with relative timestamps + clear action; 7 unit tests; agent-9 b13 051ceb38)
 - [ ] Push token rotation: on app start or change POST new token to `/device-tokens` with device model; stale tokens cleaned server-side
-- [ ] Fail-safe: retry APNs token register with exponential backoff on failure; manual "Re-register" in Settings
-- [ ] Per-event copy matrix with title/body/action buttons for: SMS_INBOUND (Reply/Mark Read/Call), TICKET_ASSIGNED (Open/Accept/Snooze), TICKET_STATUS (Open), PAYMENT_RECEIVED (Open/Send Receipt), APPT_REMINDER (Open/Navigate), LOW_STOCK (Open/Create PO), TEAM_MENTION (Reply/Open), ESTIMATE_APPROVED (Open/Convert), BACKUP_FAILED (Open), DAILY_SUMMARY (Open).
-- [ ] Tone: short, actionable, no emoji in title; body includes identifier so push list stays scannable.
+- [x] Fail-safe: retry APNs token register with exponential backoff on failure; manual "Re-register" in Settings. (`Notifications/Push/PushTokenRetryService.swift`; `PushTokenRetryService` actor; exponential backoff 5s→300s cap, 8 max attempts; `retryNow()` for manual trigger; `backoffDelay(attempt:)` tested; agent-9 b13 56ec6d2b)
+- [x] Per-event copy matrix with title/body/action buttons for: SMS_INBOUND (Reply/Mark Read/Call), TICKET_ASSIGNED (Open/Accept/Snooze), TICKET_STATUS (Open), PAYMENT_RECEIVED (Open/Send Receipt), APPT_REMINDER (Open/Navigate), LOW_STOCK (Open/Create PO), TEAM_MENTION (Reply/Open), ESTIMATE_APPROVED (Open/Convert), BACKUP_FAILED (Open), DAILY_SUMMARY (Open). (`Notifications/Copy/NotificationCopyProvider.swift`; all 30 `NotificationEvent` cases covered; `NotificationCopyProviderTests` 7 tests including no-emoji assertion; agent-9 b13 880799ed)
+- [x] Tone: short, actionable, no emoji in title; body includes identifier so push list stays scannable. (`NotificationCopyProvider` enforced; `test_allEvents_titlesContainNoEmoji` CI assertion; agent-9 b13 880799ed)
 - [ ] Localization: each copy keyed; fallback to English if locale missing.
 - [ ] A11y: VoiceOver reads title + body + action hints.
-- [ ] Interruption level mapping per §13.4 categories.
+- [x] Interruption level mapping per §13.4 categories. (Pre-existing `NotificationInterruptionLevelMapper` in `NotificationInterruptionLevel.swift`; maps `isCritical` events → `.timeSensitive`, all others → `.active`; never `.critical` per §13.4; confirmed complete agent-9 b13)
 - [ ] Bundling: repeated same-type pushes within 60s merged as "+N more".
 - [ ] See §21 for the full list.
 
