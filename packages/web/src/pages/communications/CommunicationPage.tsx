@@ -1143,8 +1143,19 @@ export function CommunicationPage() {
     enabled: mainView === 'email',
     staleTime: 60_000,
   });
-  const emailPayload = (emailData?.data as any)?.data as { threads: any[]; enabled: boolean } | undefined;
-  const emailThreads: any[] = emailPayload?.threads ?? [];
+  // WEB-FC-017: narrow email thread shape instead of `any[]`.
+  interface EmailThread {
+    id: number | string;
+    subject?: string | null;
+    last_message_at?: string | null;
+    from_address?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    unread_count?: number;
+    [key: string]: unknown;
+  }
+  const emailPayload = (emailData?.data as { data?: { threads?: EmailThread[]; enabled?: boolean } } | undefined)?.data;
+  const emailThreads: EmailThread[] = emailPayload?.threads ?? [];
   const emailEnabled: boolean = emailPayload?.enabled ?? false;
 
   // WEB-S6-034: Debounce search so the API is only hit 300ms after the user
@@ -1797,7 +1808,7 @@ export function CommunicationPage() {
           ) : (
             <div className="space-y-2 max-w-2xl">
               <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">Email Threads</h2>
-              {emailThreads.map((thread: any) => (
+              {emailThreads.map((thread) => (
                 <div
                   key={thread.id}
                   className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-4 py-3"

@@ -57,11 +57,8 @@ material3-adaptive = "1.1.0"
 androidx-window = "1.3.0"
 # §28 L2532 — Play Integrity API (non-blocking on non-GMS devices)
 play-integrity = "1.3.0"
-# §29 — Profile Installer: installs baseline-prof.txt at APK install time so
-# ART pre-compiles hot paths before any cloud profile is available.
-profileinstaller = "1.4.1"
-# §29.8 — Macrobenchmark (benchmark module only; not in app module)
-androidx-benchmark-macro-junit4 = "1.3.4"
+# §33.9 — Play In-App Update API (immediate + flexible update flows via AppUpdateManager)
+app-update = "2.1.0"
 
 [libraries]
 # Core Android
@@ -193,12 +190,8 @@ androidx-window = { group = "androidx.window", name = "window", version.ref = "a
 
 # §28 L2532 — Play Integrity (device attestation, non-blocking on non-GMS)
 play-integrity = { group = "com.google.android.play", name = "integrity", version.ref = "play-integrity" }
-
-# §29 — Profile Installer: ships baseline-prof.txt inside the APK so ART
-# pre-compiles hot-path dex at install time (even before Play cloud profile).
-androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
-# §29.8 — Macrobenchmark JUnit4 runner (benchmark module only)
-androidx-benchmark-macro-junit4 = { group = "androidx.benchmark", name = "benchmark-macro-junit4", version.ref = "androidx-benchmark-macro-junit4" }
+# §33.9 — Play In-App Update API
+app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "app-update" }
 
 # Lint (custom rules module — §1.6 plan:L224)
 lint-api = { group = "com.android.tools.lint", name = "lint-api", version.ref = "lint" }
@@ -217,8 +210,6 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-# §29.8 — android.test plugin for the macrobenchmark module
-android-test = { id = "com.android.test", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

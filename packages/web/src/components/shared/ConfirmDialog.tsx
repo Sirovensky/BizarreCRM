@@ -38,9 +38,9 @@ export function ConfirmDialog({
       lastFocusedRef.current = (document.activeElement as HTMLElement | null) ?? null;
       setTypedValue('');
       if (requireTyping) {
-        setTimeout(() => inputRef.current?.focus(), 50);
+        requestAnimationFrame(() => inputRef.current?.focus());
       } else {
-        confirmRef.current?.focus();
+        requestAnimationFrame(() => confirmRef.current?.focus());
       }
       return () => {
         // Restore focus on close (cleanup runs when `open` flips back to

@@ -134,8 +134,9 @@ export function CampaignsPage() {
       const res = await campaignsApi.runNow(id);
       return res.data;
     },
+    // WEB-FC-017: narrow runNow response shape instead of `any`.
     onSuccess: (data) => {
-      const d: any = (data as any)?.data ?? {};
+      const d = (data as { data?: { sent?: number; failed?: number } } | undefined)?.data ?? {};
       toast.success(`Dispatched: ${d.sent ?? 0} sent, ${d.failed ?? 0} failed`);
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     },
@@ -163,11 +164,13 @@ export function CampaignsPage() {
     // WEB-FF-005 (Fixer-UU 2026-04-25): pause/resume failures used to be silent
     // — operator saw a stale list with no feedback. Surface server rejection
     // (rate-limit, segment deleted, validation error) via toast.
-    onError: (err: any) => {
+    // WEB-FC-017: narrow error shape instead of `any`.
+    onError: (err: unknown) => {
       // WEB-FC-019 (Fixer-KKK 2026-04-25): server returns descriptive errors
       // under .message (per shared httpError helper); .error was a legacy field
       // that no longer ships, so toasts always fell back to the generic string.
-      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to update campaign status');
+      const e = err as { response?: { data?: { message?: string; error?: string } } } | undefined;
+      toast.error(e?.response?.data?.message ?? e?.response?.data?.error ?? 'Failed to update campaign status');
     },
   });
 
@@ -176,8 +179,9 @@ export function CampaignsPage() {
       const res = await campaignsApi.preview(campaign.id);
       return { campaign, data: res.data };
     },
+    // WEB-FC-017: narrow preview response shape.
     onSuccess: ({ campaign, data }) => {
-      const d: any = (data as any)?.data ?? {};
+      const d = (data as { data?: { total_recipients?: number; preview?: Array<{ rendered_body: string }> } } | undefined)?.data ?? {};
       setPreviewData({
         campaign,
         total: d.total_recipients ?? 0,

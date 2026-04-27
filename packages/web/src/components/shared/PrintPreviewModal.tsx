@@ -25,6 +25,16 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
 
     iframe.src = url;
     iframe.onload = () => {
+      // Guard prevents double-fire when the iframe's onload triggers more than
+      // once (e.g. print dialog causes an extra load event on some browsers).
+      let done = false;
+      const firePrint = () => {
+        if (done) return;
+        done = true;
+        try { iframe.contentWindow?.print(); } catch {
+          window.open(url.replace('&embed=1', ''), '_blank', 'noopener,noreferrer');
+        }
+      };
       // Poll until the receipt content is rendered (check for a data attribute)
       const maxWait = 8000;
       const start = Date.now();
@@ -34,21 +44,13 @@ export function PrintPreviewModal({ ticketId, invoiceId, onClose }: PrintModalPr
           const hasContent = doc?.querySelector('[data-print-ready]') || doc?.querySelector('.receipt-content');
           if (hasContent || Date.now() - start > maxWait) {
             // Extra 200ms for images/fonts after content is in DOM
-            setTimeout(() => {
-              try { iframe.contentWindow?.print(); } catch {
-                window.open(url.replace('&embed=1', ''), '_blank', 'noopener,noreferrer');
-              }
-            }, 200);
+            setTimeout(firePrint, 200);
           } else {
             setTimeout(check, 200);
           }
         } catch {
           // Fallback after timeout
-          setTimeout(() => {
-            try { iframe.contentWindow?.print(); } catch {
-              window.open(url.replace('&embed=1', ''), '_blank', 'noopener,noreferrer');
-            }
-          }, 2000);
+          setTimeout(firePrint, 2000);
         }
       };
       check();

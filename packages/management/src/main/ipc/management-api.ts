@@ -556,6 +556,11 @@ function verifyLatestSignedTag(root: string): {
   if (describeResult.status === 0) {
     tag = describeResult.stdout.trim();
   } else {
+    // DASH-ELEC-009: log stderr so operators can diagnose why describe failed
+    // (e.g. no tags at all, shallow clone, corrupted repo).
+    if (describeResult.stderr?.trim()) {
+      console.warn('[Update] git describe stderr:', describeResult.stderr.trim());
+    }
     // Fallback: list tags sorted by version, pick highest.
     const listResult = spawnSync(
       'git',
@@ -565,6 +570,8 @@ function verifyLatestSignedTag(root: string): {
     if (listResult.status === 0) {
       const first = listResult.stdout.trim().split('\n')[0]?.trim();
       if (first) tag = first;
+    } else if (listResult.stderr?.trim()) {
+      console.warn('[Update] git tag list stderr:', listResult.stderr.trim());
     }
   }
 

@@ -53,7 +53,11 @@ android {
         applicationId = "com.bizarreelectronics.crm"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
+        // §33.2 — versionCode is Unix-timestamp / 60 (monotonic, 1-minute granularity).
+        // Guarantees Play Store always receives an increasing code without a CI counter.
+        // Override at build time via -PversionCode=<n> (e.g. GitHub Actions build number).
+        versionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull()
+            ?: (System.currentTimeMillis() / 60_000L).toInt()
         versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -68,6 +72,12 @@ android {
         // regression hits production without requiring a full rebuild cycle —
         // MaterialExpressiveTheme collapses back to MaterialTheme cleanly.
         buildConfigField("boolean", "USE_EXPRESSIVE_THEME", "true")
+
+        // §33.9 — Kill-switch floor version.
+        // InAppUpdateManager forces IMMEDIATE update when the Play Store's
+        // available versionCode exceeds this value. Default 0 = disabled.
+        // Bump to current versionCode in a release that must block older builds.
+        buildConfigField("int", "FORCE_UPDATE_FLOOR_VERSION", "0")
     }
 
     // Release signing config — keystore is read from a properties file outside
@@ -147,6 +157,15 @@ android {
         jniLibs {
             useLegacyPackaging = false
         }
+    }
+
+    // §33.4 — AAB split configuration: per-ABI, density, and language splits
+    // reduce the download size. Play Delivery selects the correct split APKs
+    // per device at install time.
+    bundle {
+        abi { enableSplit = true }
+        density { enableSplit = true }
+        language { enableSplit = true }
     }
 }
 
@@ -298,11 +317,10 @@ dependencies {
     // §28 L2532 — Play Integrity API (device attestation, non-blocking on non-GMS)
     implementation(libs.play.integrity)
 
-    // §29 — Profile Installer: ships baseline-prof.txt inside the APK so ART
-    // pre-compiles hot paths at install time (no Play cloud profile required).
-    // Must be in `implementation`, not `androidTestImplementation`, so the
-    // ProfileVerifier can be called from the production app if needed.
-    implementation(libs.androidx.profileinstaller)
+    // §33.9 — Play In-App Update API (immediate + flexible via AppUpdateManager).
+    // Non-GMS / AOSP builds: AppUpdateManagerFactory.create() returns a no-op so
+    // InAppUpdateManager.checkAndStartUpdate silently skips on non-Play installs.
+    implementation(libs.app.update.ktx)
 
     // Phase 4 — BlockChyp Android SDK decision:
     // BlockChyp does not publish a standalone Android AAR on Maven Central.

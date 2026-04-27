@@ -234,7 +234,9 @@ export function TicketDetailPage() {
     queryFn: () => smsApi.messages(encodeURIComponent(customerPhone!)),
     enabled: !!customerPhone,
   });
-  const smsMessages: any[] = (() => {
+  // WEB-FC-017: narrow away from any[] — SMS messages have a stable wire shape.
+  interface SmsMessageMin { id: number; direction: string; message: string; created_at: string; [key: string]: unknown }
+  const smsMessages: SmsMessageMin[] = (() => {
     const d = smsData?.data?.data;
     return d?.messages || (Array.isArray(d) ? d : []);
   })();
@@ -254,7 +256,9 @@ export function TicketDetailPage() {
     queryFn: () => employeeApi.list(),
     staleTime: 60_000,
   });
-  const employees: any[] = employeesData?.data?.data || [];
+  // WEB-FC-017: minimal employee shape — only id + name used in this page.
+  interface EmployeeMin { id: number; first_name?: string; last_name?: string; full_name?: string; [key: string]: unknown }
+  const employees: EmployeeMin[] = employeesData?.data?.data || [];
 
   // ─── Mutations ────────────────────────────────────────────────────
   const invalidateTicket = useCallback(() => {
@@ -429,11 +433,13 @@ export function TicketDetailPage() {
   const notes: TicketNote[] = ticket?.notes || [];
   const currentStatus = statuses.find((s) => s.id === ticket?.status_id) || ticket?.status;
 
-  // Billing totals
-  const allParts = devices.flatMap((d: any) => (d.parts || []).map((p: any) => ({ ...p, deviceName: d.device_name })));
-  const paidAmount = invoice?.payments?.reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0;
+  // Billing totals — WEB-FC-017: use TicketDevice (typed) + narrow payment/part shapes.
+  interface PartMin { cost_price?: number | null; quantity?: number; [key: string]: unknown }
+  interface PaymentMin { amount?: number | string | null; [key: string]: unknown }
+  const allParts = devices.flatMap((d) => ((d as unknown as { parts?: PartMin[]; device_name?: string }).parts || []).map((p) => ({ ...p, deviceName: (d as unknown as { device_name?: string }).device_name })));
+  const paidAmount = (invoice?.payments as PaymentMin[] | undefined)?.reduce((sum: number, p) => sum + Number(p.amount ?? 0), 0) || 0;
   const dueAmount = (ticket?.total || 0) - paidAmount;
-  const totalCost = allParts.reduce((sum: number, p: any) => sum + ((p.cost_price || 0) * p.quantity), 0);
+  const totalCost = allParts.reduce((sum: number, p) => sum + ((p.cost_price || 0) * (p.quantity || 0)), 0);
   const estimatedProfit = (ticket?.total || 0) - totalCost;
 
   // Repair time
@@ -441,9 +447,9 @@ export function TicketDetailPage() {
   const repairDays = Math.floor(repairTimeMs / 86400000);
   const repairHours = Math.floor((repairTimeMs % 86400000) / 3600000);
 
-  // Tab badge counts
-  const photosCount = devices.reduce((sum, d: any) => sum + (d.photos?.length || 0), 0);
-  const partsCount = devices.reduce((sum, d: any) => sum + (d.parts?.length || 0), 0);
+  // Tab badge counts — WEB-FC-017: TicketDevice has parts; photos is an extra field.
+  const photosCount = devices.reduce((sum, d) => sum + (((d as unknown as { photos?: unknown[] }).photos?.length) || 0), 0);
+  const partsCount = devices.reduce((sum, d) => sum + ((d.parts?.length) || 0), 0);
   const notesCount = notes.length + history.length + smsMessages.length;
 
   // ─── Loading state ────────────────────────────────────────────────

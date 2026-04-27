@@ -1,0 +1,83 @@
+# §33.11 — Fastlane Fastfile for BizarreCRM Android
+#
+# Lanes:
+#   deploy_beta              — bundle release AAB → upload to internal track
+#   promote_to_closed_alpha  — promote internal → closed-alpha (100 tenants)
+#   promote_to_production    — promote closed-alpha → production (staged 10%)
+#
+# Prerequisites:
+#   gem install fastlane
+#   gem install fastlane-plugin-gradle  (if not bundled)
+#   SUPPLY_JSON_KEY env var → path to Google Play service-account JSON
+#   ~/.android-keystores/bizarrecrm-release.properties → signing config
+#
+# NOTE: Actual promotion to production and Play Console enrollment require
+# manual Play Console actions on first use. These lanes are correct Fastlane
+# DSL and will execute once the service account has the required permissions.
+
+default_platform(:android)
+
+platform :android do
+  # ── Build helpers ──────────────────────────────────────────────────────────
+
+  desc "Build a signed release AAB"
+  lane :build_release do
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: "./",           # android/ is the Fastlane working dir
+      print_command: false,        # suppress keystore password from logs
+    )
+  end
+
+  # ── Release tracks ─────────────────────────────────────────────────────────
+
+  desc "§33.1 — Build + upload to internal track (25 testers)"
+  lane :deploy_beta do
+    build_release
+    upload_to_play_store(
+      track: "internal",
+      release_status: "completed",
+      aab: lane_context[SharedValues::GRADLE_AAB_OUTPUT_PATH],
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      version_codes_to_retain: 5,
+    )
+  end
+
+  desc "§33.1 — Promote internal → closed alpha (100 tenant testers)"
+  lane :promote_to_closed_alpha do
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "alpha",
+      rollout: "1.0",
+    )
+  end
+
+  desc "§33.1 — Promote alpha → production at 10% staged rollout"
+  lane :promote_to_production do
+    upload_to_play_store(
+      track: "alpha",
+      track_promote_to: "production",
+      rollout: "0.10",   # 10% — manually bump to 0.20 → 0.50 → 1.0 in Console
+    )
+  end
+
+  # ── Utility ────────────────────────────────────────────────────────────────
+
+  desc "Halt staged rollout (§33.9 crash-free sessions < 99.5%)"
+  lane :halt_rollout do
+    upload_to_play_store(
+      track: "production",
+      rollout: "0.0",    # 0% pauses the rollout without removing the release
+    )
+  end
+
+  # Error handler — print a clear message rather than a raw stacktrace
+  error do |lane, exception|
+    UI.error("Fastlane lane '#{lane}' failed: #{exception.message}")
+  end
+end

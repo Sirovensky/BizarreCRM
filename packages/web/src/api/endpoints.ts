@@ -86,8 +86,13 @@ export const authApi = {
   // breaking auto-login on every page reload. Type now matches the wire shape;
   // LoginPage was patched in tandem to read `res.data?.data` directly.
   me: () => api.get<{ success: boolean; data: User }>('/auth/me'),
-  forgotPassword: (email: string) =>
-    api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/forgot-password', { email }),
+  // WEB-S4-006: optional captcha_token — included from second attempt onward
+  // when the backend starts requiring CAPTCHA after repeated failures.
+  forgotPassword: (email: string, captchaToken?: string) =>
+    api.post<{ success: boolean; data: { message: string }; message?: string }>(
+      '/auth/forgot-password',
+      captchaToken ? { email, captcha_token: captchaToken } : { email },
+    ),
   resetPassword: (token: string, password: string) =>
     api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/reset-password', { token, password }),
 };

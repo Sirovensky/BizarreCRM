@@ -28,19 +28,34 @@ function ToastAvalancheGuard({ max }: { max: number }): null {
         : '';
       // Toggling to empty then back forces the AT to re-announce even when
       // the same message fires twice in a row (e.g. repeated save errors).
+      // setTimeout(0) is used instead of Promise.resolve().then() because
+      // microtasks may not yield a new DOM task in all AT implementations,
+      // whereas a macrotask boundary reliably triggers a fresh announcement.
       if (liveRegion.textContent !== msg) {
         liveRegion.textContent = '';
-        // Micro-task flush so the empty update is processed first.
-        Promise.resolve().then(() => { liveRegion.textContent = msg; });
+        setTimeout(() => { liveRegion.textContent = msg; }, 0);
       }
     }
 
     if (visible.length <= max) return;
-    const overflow = visible.length - max;
+    // Dedup by message before capping — in an error storm the same message
+    // fires N times; dismiss all-but-one duplicate first so the oldest
+    // unique error isn't the collateral victim of the overflow cut.
+    const seen = new Set<string>();
+    const deduped = visible.filter((t) => {
+      const key = typeof t.message === 'string' ? t.message : String(t.id);
+      if (seen.has(key)) {
+        toast.dismiss(t.id);
+        return false;
+      }
+      seen.add(key);
+      return true;
+    });
+    const overflow = deduped.length - max;
     // Oldest first — react-hot-toast pushes new toasts to the front of the
     // array by default, so the tail is the oldest.
     for (let i = 0; i < overflow; i++) {
-      const victim = visible[visible.length - 1 - i];
+      const victim = deduped[deduped.length - 1 - i];
       if (victim) toast.dismiss(victim.id);
     }
   }, [toasts, max]);

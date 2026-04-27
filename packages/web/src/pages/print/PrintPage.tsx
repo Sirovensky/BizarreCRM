@@ -687,7 +687,10 @@ function PageReceipt({ ticket, config, isReceiptType }: {
                       <div style={{ fontWeight: 'normal', fontSize: 8 }}>{n.created_at ? formatDateTime(n.created_at) : ''}</div>
                     </td>
                     <td style={{ ...valueCell, borderRight: 'none', whiteSpace: 'pre-wrap' }}>
-                      {(n.content || n.note || '').replace(/<[^>]*>/g, '')}
+                      {/* WEB-S4-033: use DOMPurify (already imported) instead of a
+                          regex strip so encoded entities, nested tags, and SVG
+                          payloads are handled correctly by the DOM parser. */}
+                      {DOMPurify.sanitize(n.content || n.note || '', { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })}
                     </td>
                   </tr>
                 ))}
@@ -966,7 +969,8 @@ export function PrintPage() {
     queryFn: () => ticketApi.get(numericId),
     enabled: idIsValid,
   });
-  const ticket = data?.data?.data as any;
+  // WEB-S4-032: cast to PrintTicket (defined above) instead of `any`.
+  const ticket = data?.data?.data as PrintTicket | undefined;
 
   const { data: configData } = useQuery({
     queryKey: ['settings', 'config'],

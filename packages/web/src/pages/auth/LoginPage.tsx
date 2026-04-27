@@ -1,9 +1,29 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
+import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail, HelpCircle } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { formatApiError, redactEmails } from '@/utils/apiError';
+
+// WEB-S4-006: hCaptcha type declaration (reuses the shape from SignupPage)
+declare global {
+  interface Window {
+    hcaptcha?: {
+      render: (
+        container: HTMLElement,
+        options: {
+          sitekey: string;
+          callback: (token: string) => void;
+          'expired-callback': () => void;
+          'error-callback': () => void;
+        },
+      ) => string | number;
+      reset: (widgetId?: string | number) => void;
+    };
+  }
+}
+
+const HCAPTCHA_SCRIPT_SRC = 'https://js.hcaptcha.com/1/api.js?render=explicit';
 
 type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
 
@@ -132,9 +152,59 @@ export function LoginPage() {
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotSent, setForgotSent] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
+  // WEB-S4-006: track forgot-password failures so we can show hCaptcha after
+  // the first rejection (backend returns 429 + captcha_required:true once
+  // CAPTCHA_FAILURE_THRESHOLD is exceeded).
+  const [forgotFailCount, setForgotFailCount] = useState(0);
+  const [forgotCaptchaToken, setForgotCaptchaToken] = useState('');
+  const forgotCaptchaContainerRef = useRef<HTMLDivElement | null>(null);
+  const forgotCaptchaWidgetIdRef = useRef<string | number | null>(null);
   const [needsSetupNoToken, setNeedsSetupNoToken] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{ username?: string; password?: string }>({});
   const codeRef = useRef<HTMLInputElement>(null);
+
+  // WEB-S4-006: render hCaptcha widget inside the Forgot panel after first
+  // failure. Widget is lazily loaded (script injected on first need) to avoid
+  // loading hcaptcha.com on every login page visit. `forgotFailCount` drives
+  // the show/hide; once the widget is rendered we keep it.
+  const captchaSiteKey = (typeof import.meta !== 'undefined' ? (import.meta as Record<string, Record<string, string>>).env?.VITE_HCAPTCHA_SITE_KEY : '') || '';
+  useEffect(() => {
+    if (!captchaSiteKey) return;
+    // Only render after first failure AND when the forgot panel is open
+    if (forgotFailCount < 1 || !showForgot) return;
+    if (!forgotCaptchaContainerRef.current) return;
+    // Already rendered
+    if (forgotCaptchaWidgetIdRef.current !== null) return;
+
+    let cancelled = false;
+    const renderWidget = () => {
+      if (cancelled || !forgotCaptchaContainerRef.current || !window.hcaptcha || forgotCaptchaWidgetIdRef.current !== null) return;
+      try {
+        forgotCaptchaWidgetIdRef.current = window.hcaptcha.render(forgotCaptchaContainerRef.current, {
+          sitekey: captchaSiteKey,
+          callback: (token: string) => { setForgotCaptchaToken(token); },
+          'expired-callback': () => { setForgotCaptchaToken(''); },
+          'error-callback': () => { setForgotCaptchaToken(''); },
+        });
+      } catch { /* ignore */ }
+    };
+
+    if (window.hcaptcha) { renderWidget(); return () => { cancelled = true; }; }
+
+    const existing = document.querySelector<HTMLScriptElement>('script[src^="https://js.hcaptcha.com/1/api.js"]');
+    const script = existing || document.createElement('script');
+    const onLoad = () => renderWidget();
+    script.addEventListener('load', onLoad);
+    if (!existing) {
+      script.src = HCAPTCHA_SCRIPT_SRC;
+      script.async = true;
+      script.defer = true;
+      const nonce = document.querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')?.content;
+      if (nonce) script.setAttribute('nonce', nonce);
+      document.head.appendChild(script);
+    }
+    return () => { cancelled = true; script.removeEventListener('load', onLoad); };
+  }, [captchaSiteKey, forgotFailCount, showForgot]);
 
   // Check for setup token in URL (/setup/:token). W11 fix: guard against
   // resolving state updates after unmount — if the user navigates away mid-
@@ -655,6 +725,10 @@ export function LoginPage() {
                       <p className="text-xs text-surface-600 dark:text-surface-300">
                         Enter your email to receive a password reset link.
                       </p>
+                      {/* WEB-S4-006: hCaptcha widget — shown after first failed attempt */}
+                      {forgotFailCount >= 1 && captchaSiteKey && (
+                        <div ref={forgotCaptchaContainerRef} className="mt-1" />
+                      )}
                       <div className="flex gap-2">
                         <label htmlFor="forgot-email" className="sr-only">Email for password reset</label>
                         <input
@@ -667,14 +741,28 @@ export function LoginPage() {
                         />
                         <button
                           type="button"
-                          disabled={forgotLoading || !forgotEmail.includes('@')}
+                          disabled={forgotLoading || !forgotEmail.includes('@') || (forgotFailCount >= 1 && captchaSiteKey && !forgotCaptchaToken)}
                           onClick={async () => {
                             setForgotLoading(true);
                             try {
-                              await authApi.forgotPassword(forgotEmail.trim());
+                              // WEB-S4-006: pass captcha token on second+ attempts
+                              await authApi.forgotPassword(forgotEmail.trim(), forgotFailCount >= 1 ? forgotCaptchaToken : undefined);
                               setForgotSent(true);
-                            } catch {
-                              setForgotSent(true); // Don't reveal errors
+                            } catch (err: unknown) {
+                              // WEB-S4-006: increment failure count so captcha widget
+                              // renders on next attempt; do NOT reveal whether the
+                              // email exists (set forgotSent = true for 404s).
+                              const e = err as { response?: { status?: number } } | undefined;
+                              if (e?.response?.status === 404 || e?.response?.status === 200) {
+                                setForgotSent(true);
+                              } else {
+                                setForgotFailCount(prev => prev + 1);
+                                // Reset captcha so user can get a fresh token
+                                if (forgotCaptchaWidgetIdRef.current !== null && window.hcaptcha) {
+                                  window.hcaptcha.reset(forgotCaptchaWidgetIdRef.current);
+                                  setForgotCaptchaToken('');
+                                }
+                              }
                             } finally {
                               setForgotLoading(false);
                             }
@@ -778,16 +866,39 @@ export function LoginPage() {
                 placeholder="000000" autoFocus
                 className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
-              <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
-                <input
-                  id="trust-device"
-                  type="checkbox"
-                  checked={trustDevice}
-                  onChange={(e) => setTrustDevice(e.target.checked)}
-                  className="h-4 w-4 rounded border-surface-300 dark:border-surface-600 text-primary-600 focus:ring-primary-500"
-                />
-                <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
-              </label>
+              {/* WEB-S4-008: trust-device checkbox with help tooltip explaining
+                  what 90-day trust means and linking to the Sessions settings
+                  page where users can revoke trusted devices. */}
+              <div className="flex items-center gap-2">
+                <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    id="trust-device"
+                    type="checkbox"
+                    checked={trustDevice}
+                    onChange={(e) => setTrustDevice(e.target.checked)}
+                    className="h-4 w-4 rounded border-surface-300 dark:border-surface-600 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
+                </label>
+                <div className="relative group">
+                  <HelpCircle className="h-3.5 w-3.5 text-surface-400 cursor-help" aria-hidden="true" />
+                  <div
+                    role="tooltip"
+                    className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-lg bg-surface-800 dark:bg-surface-700 px-3 py-2 text-xs text-white shadow-lg opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity z-50"
+                  >
+                    Skips the 2FA step on this browser for 90 days. Use only on personal, trusted devices &mdash; not shared computers.{' '}
+                    <a
+                      href="/settings?tab=sessions"
+                      className="underline text-primary-300 pointer-events-auto"
+                      tabIndex={-1}
+                    >
+                      Revoke trusted sessions
+                    </a>{' '}
+                    in Settings if this device is lost or compromised.
+                    <span className="absolute left-1/2 -translate-x-1/2 top-full border-4 border-transparent border-t-surface-800 dark:border-t-surface-700" />
+                  </div>
+                </div>
+              </div>
               <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
                 className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}

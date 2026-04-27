@@ -127,6 +127,9 @@ export function PhotoCapturePage() {
             photosRef.current.forEach((p) => URL.revokeObjectURL(p.preview));
             setUploaded(false);
             setPhotos([]);
+            // WEB-S4-030: clear any lingering upload error so a fresh session
+            // doesn't show stale failure banners.
+            setError('');
           }}
           className="mt-6 px-6 py-3 bg-primary-600 text-primary-950 rounded-2xl font-semibold text-sm"
         >

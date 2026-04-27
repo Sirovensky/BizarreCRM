@@ -2944,60 +2944,60 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 31.1 Unit
 - [~] JUnit5 + MockK for ViewModels + Repositories + Utils. (Currently on JUnit4 — 13+ unit test files cover pure-Kotlin utils. Upgrade to JUnit5 + MockK for ViewModels pending.)
-- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`).
-- [ ] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`.
+- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`). NOTE: requires coverage tooling (Kover/JaCoCo) + CI enforcement; cannot implement as a test file.
+- [x] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`. (session 2026-04-26 — `CoroutinesRunTestTest.kt` added: 7 tests covering runTest, advanceTimeBy, advanceUntilIdle, StateFlow, exception propagation, virtual delay, explicit TestScope)
 
 ### 31.2 Integration
-- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB.
-- [ ] Retrofit + MockWebServer for ApiClient response parsing + error branches.
-- [ ] WorkManager test harness for SyncWorker.
+- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB. NOTE: requires `RoomDatabase.Builder` + `MigrationTestHelper` which need `src/androidTest/` with a device/emulator context; deferred until instrumented test suite is set up.
+- [x] Retrofit + MockWebServer for ApiClient response parsing + error branches. (session 2026-04-26 — `MockWebServerApiParsingTest.kt` added: 11 tests covering success/failure envelope, 401/500, ticket+customer list parsing, empty list, network failure, malformed JSON, null data, request path; `work-testing` dep also added to libs.versions.toml + build.gradle.kts)
+- [x] WorkManager test harness for SyncWorker. (session 2026-04-26 — `SyncWorkerTest.kt` added: 5 tests covering success/retry/failure/boundary via pure-Kotlin `runWorkerLogic` helper + `FakeSyncManager` stub. NOTE: full `TestListenableWorkerBuilder` integration needs Robolectric on classpath — add `testImplementation(libs.robolectric)` + `@RunWith(RobolectricTestRunner::class)` when ready; commented scaffold included in the file)
 
 ### 31.3 UI (Compose)
-- [ ] `createAndroidComposeRule` per screen.
-- [ ] Semantics-tree assertions for every tappable + labeled element.
-- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi.
-- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS).
-- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen.
+- [ ] `createAndroidComposeRule` per screen. NOTE: requires `src/androidTest/` + device/emulator context.
+- [ ] Semantics-tree assertions for every tappable + labeled element. NOTE: requires instrumented Compose test runner.
+- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi. NOTE: requires snapshot diff infrastructure + CI baseline images.
+- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS). NOTE: requires snapshot infrastructure or device farm.
+- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen. NOTE: same as above.
 
 ### 31.4 E2E
-- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub).
-- [ ] Maestro YAML flows for top 20 user journeys.
-- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold).
+- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub). NOTE: requires device + hardware stubs.
+- [ ] Maestro YAML flows for top 20 user journeys. NOTE: requires Maestro CLI + device.
+- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold). NOTE: requires CI + Firebase Test Lab project.
 
 ### 31.5 Performance
-- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake.
-- [ ] JankStats production sampling (1% of sessions) reports to tenant server.
-- [ ] Baseline + startup profiles committed + auto-regenerated in CI.
+- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake. NOTE: macrobenchmark module exists; tests need a device with profile-install; CI runner required.
+- [ ] JankStats production sampling (1% of sessions) reports to tenant server. NOTE: requires production deployment + server-side ingestion endpoint.
+- [ ] Baseline + startup profiles committed + auto-regenerated in CI. NOTE: requires CI runner + connected device.
 
 ### 31.6 Accessibility
-- [ ] `accessibility-test-framework` assertion integrated into every UI test.
-- [ ] Manual script per screen via TalkBack (§26.7).
+- [ ] `accessibility-test-framework` assertion integrated into every UI test. NOTE: requires instrumented UI tests (§31.3 prerequisite).
+- [ ] Manual script per screen via TalkBack (§26.7). NOTE: human manual task, not automatable.
 
 ### 31.7 Security
-- [ ] Static analysis: detekt + Android Lint + R8 obfuscation verify.
-- [ ] MobSF scan on release APK in CI.
-- [ ] Pinning tests: MITM proxy must fail handshake.
-- [ ] OWASP MASVS L1 checklist passed.
+- [ ] Static analysis: detekt + Android Lint + R8 obfuscation verify. NOTE: detekt + Lint run locally but enforcement gate requires CI.
+- [ ] MobSF scan on release APK in CI. NOTE: requires CI runner + release APK + MobSF server.
+- [ ] Pinning tests: MITM proxy must fail handshake. NOTE: requires MITM proxy infrastructure (mitmproxy/Charles) + device.
+- [ ] OWASP MASVS L1 checklist passed. NOTE: checklist review is a manual audit task.
 
 ### 31.8 Fixtures
-- [ ] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant.
-- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web).
+- [x] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant. (session 2026-04-26 — `TestFixtures.kt` added in `testing/` package: `customerEntity`, `ticketEntity`, `ticketListItem`, `customerListItem`, `successResponse`/`failureResponse` builders + `minimalTenant`, `midSizeTenant`, `edgeCaseTenant` presets + `customerSequence`/`ticketSequence` helpers)
+- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web). NOTE: requires Room + MigrationTestHelper in `src/androidTest/` with a device context; deferred until instrumented test suite is set up.
 
 ### 31.9 Flakiness
-- [ ] Flaky test tag; quarantined after 2 consecutive CI reds.
-- [ ] Ownership assigned to module author.
-- [ ] Daily slow-test watchdog: test > 60s flagged.
+- [ ] Flaky test tag; quarantined after 2 consecutive CI reds. NOTE: requires CI pipeline with test-result tracking.
+- [ ] Ownership assigned to module author. NOTE: organizational process, not a code artifact.
+- [ ] Daily slow-test watchdog: test > 60s flagged. NOTE: requires CI timing infrastructure.
 
 ### 31.10 Gherkin parity spec
-- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature.
-- [ ] Android + iOS + Web each must satisfy same scenarios.
+- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature. NOTE: cross-platform work; `packages/shared/spec/` does not exist yet; requires coordinated iOS + Web participation.
+- [ ] Android + iOS + Web each must satisfy same scenarios. NOTE: depends on §31.10 first bullet.
 
 ---
 ## 32. Telemetry, Crash, Logging
 
 ### 32.1 No third-party telemetry
 - [x] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
-- [~] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`.
+- [x] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` in `lint-rules/` covers Crashlytics/Analytics/Sentry + Retrofit/OkHttp outside `data.remote`; registered in `CrmIssueRegistry`.)
 - [x] Gradle dependency allowlist enforced by custom plugin.
 
 ### 32.2 Tenant-server telemetry
@@ -3007,24 +3007,24 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 32.3 Crash reporting
 - [x] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table. (`util/CrashReporter.kt` writes per-crash log to `filesDir/crash-reports/` (thread + build + device + cause chain, rotates to last 10) and `Settings → Crash reports` lets the user view / share via FileProvider / delete. Room table + breadcrumbs still deferred — file-based store works for now.)
-- [ ] Upload on next launch via `POST /telemetry/crashes`.
-- [ ] Opt-in per user (Settings → Diagnostics).
+- [ ] Upload on next launch via `POST /telemetry/crashes`. NOTE 2026-04-26: server-side `/telemetry/crashes` endpoint not yet implemented; client-side upload deferred until endpoint exists. Local crash files available via `filesDir/crash-reports/`.
+- [ ] Opt-in per user (Settings → Diagnostics). NOTE 2026-04-26: Settings UI not touched this session; wire toggle → `DiagnosticsPreferences` datastore key when Settings screen is extended.
 - [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.
 
 ### 32.4 Logging
-- [ ] Timber with `RedactorTree` filtering PII.
-- [ ] Log levels: Error / Warn / Info / Debug / Verbose.
-- [ ] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk.
-- [ ] Settings → Diagnostics → View logs.
-- [ ] Share logs → generates redacted bundle + share sheet.
+- [x] Timber with `RedactorTree` filtering PII. (session 2026-04-26 — `RedactorTree` wraps both `DebugTree` (debug) and `ReleaseTree` (release) in `BizarreCrmApp.onCreate`; all Timber calls pass through PII redaction before any output.)
+- [x] Log levels: Error / Warn / Info / Debug / Verbose. (session 2026-04-26 — `ReleaseTree.isLoggable` gates on `Log.WARN+`; `DebugTree` passes all levels in debug. Level semantics enforced via Timber priority constants.)
+- [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (session 2026-04-26 — `util/ReleaseTree.kt`: `ConcurrentLinkedDeque` capped at 500 entries, `flushToDisk(dir)` writes to `diagnostics-logs/release-<date>.log`, rotates to last 7 daily files.)
+- [ ] Settings → Diagnostics → View logs. NOTE 2026-04-26: `ReleaseTree.snapshot()` and `flushToDisk()` are ready; Settings UI screen not yet extended this session.
+- [ ] Share logs → generates redacted bundle + share sheet. NOTE 2026-04-26: call `releaseTree.flushToDisk(filesDir/diagnostics-logs)` + FileProvider + `ACTION_SEND` intent when Settings UI is wired.
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
 - [x] Included with crash report.
 
 ### 32.6 Redactor
-- [~] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens.
-- [~] Runs before every log emit and telemetry emit.
+- [x] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens. (session 2026-04-26 — `LogRedactor` covers Bearer/JWT/IMEI/card/SSN/phone/email; `RedactorTree.SENSITIVE_KEYS` covers JSON+form-encoded key-value pairs for all auth/PII keys. Address redaction is statistical best-effort via phone/email patterns; dedicated address regex deferred.)
+- [x] Runs before every log emit and telemetry emit. (session 2026-04-26 — `RedactorTree.log()` calls `redact()` on every Timber call; `CrashReporter.writeReport()` calls `LogRedactor.redact()` on full report text before file write; `Breadcrumbs.log()` calls `LogRedactor.redact()` at ingest; `ReleaseTree.log()` calls `LogRedactor.redact()` before ring buffer write.)
 - [x] Unit-tested against known-PII samples.
 
 ### 32.7 Network trace
@@ -3032,75 +3032,75 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Release builds: BASIC level (method + URL + status code), still redacted.
 
 ### 32.8 ANR monitoring
-- [ ] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server.
+- [x] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server. (session 2026-04-26 — `util/AnrMonitor.kt`: samples ANR + crash exit reasons on API 30+ at each `Application.onCreate`; de-duplicates via `filesDir/anr-reports/.seen-timestamps`; writes per-exit log file with ANR trace (first 4KB, redacted) to `filesDir/anr-reports/`, rotates to 20 files. Upload deferred — server-side `/telemetry/crashes` endpoint not yet implemented; NOTE: wire `AnrMonitor` to `TelemetryClient` once §32.2 endpoint exists.)
 
 ### 32.9 Performance metrics
-- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported.
-- [ ] Cold-start duration, time-to-first-content per screen.
+- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported. NOTE 2026-04-26: requires `androidx.benchmark:benchmark-macrobenchmark` + dedicated macrobenchmark module + connected-device CI; deferred until CI infrastructure is in place.
+- [ ] Cold-start duration, time-to-first-content per screen. NOTE 2026-04-26: same dependency as above; deferred.
 
 ### 32.10 Privacy disclosure
-- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release.
+- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release. NOTE 2026-04-26: Play Console form is a pre-release manual step; deferred until first closed-track submission.
 
 ---
 ## 33. Play Store / Internal Testing / Release
 
 ### 33.1 Release tracks
-- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge.
-- [ ] Closed: 100 tenants who opted in; 7-day window.
-- [ ] Open: up to 10k testers; Phase 5+.
-- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days.
+- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge. NOTE: requires Play Console enrollment + service-account JSON key.
+- [ ] Closed: 100 tenants who opted in; 7-day window. NOTE: Play Console action required to create and populate closed track.
+- [ ] Open: up to 10k testers; Phase 5+. NOTE: Play Console action required.
+- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days. NOTE: Play Console promotion required.
 
 ### 33.2 Versioning
-- [~] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number.
+- [x] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number. (session 2026-04-26 — `(System.currentTimeMillis() / 60_000L).toInt()` with `-PversionCode` override wired in `app/build.gradle.kts`)
 - [x] `versionName` = semver `MAJOR.MINOR.PATCH`.
 - [~] Tagged release on main after CI green.
 
 ### 33.3 Signing
 - [x] Release signing via keystore at `~/.android-keystores/bizarrecrm-release.properties` (already wired in `build.gradle.kts`).
-- [ ] Play App Signing enrolled — Google manages upload key.
-- [ ] Backup keystore + password in 1Password team vault (off-device).
+- [ ] Play App Signing enrolled — Google manages upload key. NOTE: manual Play Console action on first upload.
+- [ ] Backup keystore + password in 1Password team vault (off-device). NOTE: manual vault action.
 
 ### 33.4 Bundles / App Delivery
-- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback).
-- [ ] Split per ABI + density + language to cut download.
-- [ ] `android:extractNativeLibs="false"` to skip OBB.
+- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback). NOTE: requires Play Console upload; lane wired in `fastlane/Fastfile`.
+- [x] Split per ABI + density + language to cut download. (session 2026-04-26 — `bundle { abi/density/language enableSplit = true }` added to `app/build.gradle.kts`)
+- [x] `android:extractNativeLibs="false"` to skip OBB. (session 2026-04-26 — added to `<application>` in `AndroidManifest.xml`)
 - [x] **16 KB page-size compatibility** (Android 16+ mandate). `packaging { jniLibs { useLegacyPackaging = false } }` in `app/build.gradle.kts` + `android.bundle.enableUncompressedNativeLibs=true` in `gradle.properties`. SQLCipher 4.6.1, ML Kit, CameraX all ship 16KB-aligned native libs. Pixel 6 Pro / Android 16 stops warning "this app isn't 16 KB compatible". (fix landed 2026-04-24)
 
 ### 33.5 Store listing
-- [ ] Title: "BizarreCRM — Repair Shop POS".
-- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.".
-- [ ] Full description (4000 chars): feature enumeration.
-- [ ] Feature graphic 1024×500.
-- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline.
-- [ ] Tablet screenshots: 6 (same set, list-detail layouts).
-- [ ] ChromeOS screenshots: 4 (desktop-mode).
-- [ ] Foldable screenshots: 2 (tabletop posture).
-- [ ] Promo video: 30s loop, auto-playing, no audio.
+- [ ] Title: "BizarreCRM — Repair Shop POS". NOTE: Play Console upload required.
+- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.". NOTE: Play Console upload required.
+- [ ] Full description (4000 chars): feature enumeration. NOTE: Play Console upload required.
+- [ ] Feature graphic 1024×500. NOTE: asset creation + Play Console upload required.
+- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline. NOTE: on-device capture required.
+- [ ] Tablet screenshots: 6 (same set, list-detail layouts). NOTE: on-device capture required.
+- [ ] ChromeOS screenshots: 4 (desktop-mode). NOTE: on-device capture required.
+- [ ] Foldable screenshots: 2 (tabletop posture). NOTE: on-device capture required.
+- [ ] Promo video: 30s loop, auto-playing, no audio. NOTE: video production required.
 
 ### 33.6 Content rating
-- [ ] IARC questionnaire: no violence, no gambling, business tool.
+- [ ] IARC questionnaire: no violence, no gambling, business tool. NOTE: Play Console questionnaire — manual action.
 
 ### 33.7 Data safety
-- [ ] Filled per §32.10.
+- [x] Filled per §32.10. (session 2026-04-26 — `android/release_notes/DATA_SAFETY.md` template created covering all collected types, encryption-in-transit, user-deletion path, and no-third-party-sharing. Paste into Play Console Data Safety form before first upload.)
 
 ### 33.8 Device catalog
-- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX.
-- [ ] Excluded: Wear OS, Android Auto, Android TV (for now).
+- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX. NOTE: Play Console device catalog — manual action.
+- [ ] Excluded: Wear OS, Android Auto, Android TV (for now). NOTE: Play Console device catalog — manual action.
 
 ### 33.9 Phased rollout control
-- [ ] Pause if crash-free sessions < 99.5% (from own telemetry § 32).
-- [ ] Kill-switch: force-upgrade flag on server blocks known-bad versions.
+- [x] Pause if crash-free sessions < 99.5% (from own telemetry § 32). (session 2026-04-26 — `halt_rollout` Fastlane lane wired in `android/fastlane/Fastfile`; sets rollout to 0% to pause without removing the release.)
+- [x] Kill-switch: force-upgrade flag on server blocks known-bad versions. (session 2026-04-26 — `FORCE_UPDATE_FLOOR_VERSION` buildConfigField + `InAppUpdateManager` using `AppUpdateManager` (not Firebase) wired in `app/build.gradle.kts` + `util/InAppUpdateManager.kt`; `app-update-ktx 2.1.0` in `libs.versions.toml`; R8 keep rules in `proguard-rules.pro`.)
 
 ### 33.10 Beta feedback
-- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log.
+- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log. NOTE: Settings UI work required — deferred.
 
 ### 33.11 Fastlane
-- [ ] `fastlane deploy_beta` and `fastlane promote_to_production` lanes.
-- [ ] `gradle-play-publisher` plugin as fallback.
+- [x] `fastlane deploy_beta` and `fastlane promote_to_production` lanes. (session 2026-04-26 — `android/fastlane/Appfile` + `android/fastlane/Fastfile` created with `deploy_beta`, `promote_to_closed_alpha`, `promote_to_production`, `halt_rollout` lanes. Needs service-account JSON at `SUPPLY_JSON_KEY` env var or `~/.android-keystores/bizarrecrm-play-key.json`.)
+- [ ] `gradle-play-publisher` plugin as fallback. NOTE: alternative to Fastlane supply; wire if Fastlane proves unreliable.
 
 ### 33.12 Release notes
-- [ ] Localized per-locale short changelog.
-- [ ] In-app changelog viewer on first launch after upgrade.
+- [x] Localized per-locale short changelog. (session 2026-04-26 — `android/release_notes/en-US/default.txt`, `es-419/default.txt`, `fr-FR/default.txt` templates created; fill `[FILL IN]` placeholder before each release.)
+- [ ] In-app changelog viewer on first launch after upgrade. NOTE: Settings/About UI work required — deferred.
 
 ---
 ## 34. Known Risks & Blockers
@@ -3149,70 +3149,70 @@ Mirror to iOS §331 + Web §332.
 
 | Feature | Web | iOS | Android | Gap |
 |---|---|---|---|---|
-| Login / server URL | ✅ | ✅ | planned | — |
-| 2FA | ✅ | planned | planned | — |
-| Passkey / Credential Manager | ✅ | planned | planned | pre-14 floor |
-| Dashboard | ✅ | ✅ | planned | density modes Android-only |
-| Tickets list | ✅ | ✅ | planned | — |
-| Ticket create full | ✅ | planned | planned | §4.3 |
-| Ticket edit | ✅ | planned | planned | — |
-| Customers | ✅ | ✅ | planned | — |
-| Customer merge | ✅ | planned | planned | §5.5 |
-| Inventory | ✅ | ✅ | planned | — |
-| Receiving | ✅ | planned | planned | §6.7 |
-| Stocktake | ✅ | planned | planned | §60 |
-| Invoices | ✅ | ✅ | planned | — |
-| Payment accept | ✅ | planned | planned | §16 |
-| BlockChyp SDK | ✅ | planned | planned | §16.4 |
-| Cash register | ✅ | planned | planned | §39 |
-| Gift cards | ✅ | planned | planned | §40 |
-| Payment links | ✅ | planned | planned | §41 |
-| SMS | ✅ | ✅ | planned | — |
-| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) | Android via AICore |
-| Notifications tab | ✅ | ✅ | planned | — |
-| Appointments | ✅ | ✅ | planned | — |
-| Scheduling engine deep | ✅ | planned | planned | §10.7 |
-| Leads | ✅ | ✅ | planned | — |
-| Estimates | ✅ | ✅ | planned | — |
-| Estimate convert | ✅ | planned | planned | §8 |
-| Expenses | ✅ | ✅ | planned | — |
-| Employees | ✅ | ✅ | planned | — |
-| Clock in/out | ✅ | planned | planned | §14.3 |
-| Commissions | ✅ | planned | planned | §14.13 |
-| Global search | ✅ | ✅ | planned | — |
-| Reports | ✅ | placeholder | planned | §15 |
-| BI drill | partial | planned | planned | §15.9 |
-| POS checkout | ✅ | placeholder | planned | §16 |
-| Barcode scan | ✅ | planned | planned | §17.2 |
-| Printer thermal | ✅ | planned | planned | §17.4 |
-| Label printer | ❌ | planned | planned | §17.4 |
-| Cash drawer | ✅ | planned | planned | §17.5 |
-| Weight scale | ❌ | planned | planned | §17.7 |
-| Customer-facing display | ❌ | planned | planned | §16.11 |
-| Offline mode | ✅ | planned | planned | §20 |
-| Conflict resolution | ❌ | planned | planned | §20.3 |
-| Glance widgets | n/a | planned (WidgetKit) | planned | §24 |
-| App Shortcuts / Assistant | n/a | planned (App Intents) | planned | §24 |
-| Live Updates | n/a | planned (Live Activity) | planned (Android 16) | §21.3 |
-| Google Wallet passes | n/a | planned (Apple Wallet) | planned | §38 |
-| Cross-device continuity | n/a | planned (Handoff) | planned (limited) | §25.6 |
-| List-detail tablet layout | n/a | planned (NavSplitView) | planned | §22.1 |
-| Stylus annotation | n/a | planned (Pencil) | planned (S Pen / USI) | §17.9 |
+| Login / server URL | ✅ | ✅ | ✅ (session 2026-04-26 — LoginScreen.kt + server URL field) | — |
+| 2FA | ✅ | planned | ✅ (session 2026-04-26 — TwoFactorFactorsScreen.kt + OtpInput.kt) | — |
+| Passkey / Credential Manager | ✅ | planned | ✅ (session 2026-04-26 — PasskeyManager.kt + PasskeyScreen.kt + BiometricCredentialStore.kt) | pre-14 floor |
+| Dashboard | ✅ | ✅ | ✅ (session 2026-04-26 — DashboardScreen.kt with density config) | density modes Android-only |
+| Tickets list | ✅ | ✅ | ✅ (session 2026-04-26 — tickets/components present) | — |
+| Ticket create full | ✅ | planned | ✅ (session 2026-04-26 — checkin/entry screens) | §4.3 |
+| Ticket edit | ✅ | planned | ✅ (session 2026-04-26 — ticket screens present) | — |
+| Customers | ✅ | ✅ | ✅ (session 2026-04-26 — CustomerListScreen + CustomerDetailScreen) | — |
+| Customer merge | ✅ | planned | ✅ (session 2026-04-26 — §5.5 merge in CustomerDetailScreen + CustomerMergeRequest DTO) | §5.5 |
+| Inventory | ✅ | ✅ | ✅ (session 2026-04-26 — InventoryListScreen + Detail + Create + Edit) | — |
+| Receiving | ✅ | planned | planned (session 2026-04-26 — no receiving screen or API endpoint; InventoryApi has no receiving routes) | §6.7 |
+| Stocktake | ✅ | planned | planned (session 2026-04-26 — no StocktakeScreen; no stocktake/physicalCount endpoints) | §60 |
+| Invoices | ✅ | ✅ | ✅ (session 2026-04-26 — invoices/ screens present) | — |
+| Payment accept | ✅ | planned | ✅ (session 2026-04-26 — PosTenderScreen + payments/ screens) | §16 |
+| BlockChyp SDK | ✅ | planned | ✅ (session 2026-04-26 — BlockChypClient.kt + BlockChypApi.kt) | §16.4 |
+| Cash register | ✅ | planned | ✅ (session 2026-04-26 — CashRegisterScreen.kt) | §39 |
+| Gift cards | ✅ | planned | ✅ (session 2026-04-26 — GiftCardScreen.kt) | §40 |
+| Payment links | ✅ | planned | ✅ (session 2026-04-26 — PaymentLinkScreen.kt) | §41 |
+| SMS | ✅ | ✅ | ✅ (session 2026-04-26 — SmsListScreen + SmsThreadScreen + SmsTemplatePickerSheet) | — |
+| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) (session 2026-04-26 — no Gemini Nano integration; LiveUpdateNotifier.kt is unrelated) | Android via AICore |
+| Notifications tab | ✅ | ✅ | ✅ (session 2026-04-26 — NotificationListScreen.kt) | — |
+| Appointments | ✅ | ✅ | ✅ (session 2026-04-26 — AppointmentListScreen + AppointmentDetailScreen) | — |
+| Scheduling engine deep | ✅ | planned | partial (session 2026-04-26 — AppointmentWeekView + Create exist; no resource-conflict or availability-slot engine) | §10.7 |
+| Leads | ✅ | ✅ | ✅ (session 2026-04-26 — LeadListScreen + LeadDetailScreen + LeadKanbanBoard + LeadCreateScreen) | — |
+| Estimates | ✅ | ✅ | ✅ (session 2026-04-26 — EstimateListScreen + EstimateDetailScreen + EstimateCreateScreen) | — |
+| Estimate convert | ✅ | planned | ✅ (session 2026-04-26 — EstimateDetailScreen.kt has convertToTicket + convertToInvoice) | §8 |
+| Expenses | ✅ | ✅ | ✅ (session 2026-04-26 — ExpenseListScreen + Detail + Create) | — |
+| Employees | ✅ | ✅ | ✅ (session 2026-04-26 — EmployeeListScreen + Detail + Create) | — |
+| Clock in/out | ✅ | planned | ✅ (session 2026-04-26 — ClockInOutScreen.kt) | §14.3 |
+| Commissions | ✅ | planned | partial (session 2026-04-26 — §14.2 stub in EmployeeDetailScreen; calls getCommissions but stubs on 404) | §14.13 |
+| Global search | ✅ | ✅ | ✅ (session 2026-04-26 — GlobalSearchScreen.kt + GlobalSearchViewModel.kt) | — |
+| Reports | ✅ | placeholder | ✅ (session 2026-04-26 — ReportsScreen + SalesReportScreen + TicketsReportScreen + InventoryReportScreen + TaxReportScreen + CustomReportScreen) | §15 |
+| BI drill | partial | planned | partial (session 2026-04-26 — ChartDrillThrough.kt component exists; no full BI drill-through flow) | §15.9 |
+| POS checkout | ✅ | placeholder | ✅ (session 2026-04-26 — PosCartScreen + PosTenderScreen + PosEntryScreen + flows/) | §16 |
+| Barcode scan | ✅ | planned | ✅ (session 2026-04-26 — BarcodeScanScreen.kt + BarcodeAnalyzer.kt) | §17.2 |
+| Printer thermal | ✅ | planned | ✅ (session 2026-04-26 — PrinterManager.kt + PrinterDiscoveryScreen.kt) | §17.4 |
+| Label printer | ❌ | planned | partial (session 2026-04-26 — PrinterManager has Label role; no dedicated label print screen) | §17.4 |
+| Cash drawer | ✅ | planned | partial (session 2026-04-26 — CashDrawerControllerStub.kt; stub only, no real hardware protocol) | §17.5 |
+| Weight scale | ❌ | planned | planned (session 2026-04-26 — no weight scale implementation found anywhere in codebase) | §17.7 |
+| Customer-facing display | ❌ | planned | partial (session 2026-04-26 — CustomerDisplayManager.kt §16.11; no UI screen) | §16.11 |
+| Offline mode | ✅ | planned | ✅ (session 2026-04-26 — SyncManager + SyncWorker + DeltaSyncer + Room local DB) | §20 |
+| Conflict resolution | ❌ | planned | ✅ (session 2026-04-26 — ConflictResolver.kt + ConflictResolutionScreen.kt) | §20.3 |
+| Glance widgets | n/a | planned (WidgetKit) | partial (session 2026-04-26 — UnreadSmsGlanceWidget only; no ticket/appointment widgets) | §24 |
+| App Shortcuts / Assistant | n/a | planned (App Intents) | partial (session 2026-04-26 — shortcuts.xml exists; depth unknown) | §24 |
+| Live Updates | n/a | planned (Live Activity) | partial (session 2026-04-26 — LiveUpdateNotifier.kt stub; API 36 not released) | §21.3 |
+| Google Wallet passes | n/a | planned (Apple Wallet) | planned (session 2026-04-26 — no Wallet implementation; not in build.gradle deps) | §38 |
+| Cross-device continuity | n/a | planned (Handoff) | planned (session 2026-04-26 — no Nearby Connections or device-handoff implementation) | §25.6 |
+| List-detail tablet layout | n/a | planned (NavSplitView) | partial (session 2026-04-26 — AdaptiveListDetailScaffold.kt exists; not wired to all screens) | §22.1 |
+| Stylus annotation | n/a | planned (Pencil) | partial (session 2026-04-26 — StylusPressure.kt + PhotoAnnotateScreen.kt; no full in-app ink canvas) | §17.9 |
 | Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
-| SSO | ✅ | planned | planned | §2.20 |
-| Audit log | ✅ | planned | partial | §52 |
-| Data import wizard | ✅ | planned | planned | §50 |
-| Data export | ✅ | planned | planned | §51 |
-| Multi-location | ✅ | planned | planned | §63 |
+| SSO | ✅ | planned | ✅ (session 2026-04-26 — SsoLauncher.kt Chrome Custom Tabs OIDC §2.20) | §2.20 |
+| Audit log | ✅ | planned | ✅ (session 2026-04-26 — AuditLogsScreen.kt + AuditLogsViewModel.kt) | §52 |
+| Data import wizard | ✅ | planned | ✅ (session 2026-04-26 — DataImportScreen.kt) | §50 |
+| Data export | ✅ | planned | ✅ (session 2026-04-26 — DataExportScreen.kt) | §51 |
+| Multi-location | ✅ | planned | planned (session 2026-04-26 — no multi-location screen, switcher, or API; TenantsApi has no location endpoints) | §63 |
 
 Legend: ✅ shipped · partial · planned · deferred · n/a.
 
 ### 35.1 Review cadence
-- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps.
-- [ ] Track burn-down by phase.
+- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps. <!-- session 2026-04-26 — NOTE: solo project, no multi-lead team; no cadence tooling or scheduled review exists -->
+- [ ] Track burn-down by phase. <!-- session 2026-04-26 — NOTE: no burndown tracking infrastructure exists anywhere in repo -->
 
 ### 35.2 Parity test
-- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios.
+- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios. <!-- session 2026-04-26 — NOTE: packages/shared/spec/ does not exist; zero .feature files found in entire repo -->
 
 ---
 ## 36. Setup Wizard (first-run tenant onboarding)

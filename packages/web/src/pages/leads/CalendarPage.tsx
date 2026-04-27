@@ -207,9 +207,19 @@ function CreateAppointmentModal({
     notes: '',
   });
 
+  // WEB-FC-017: narrow the mutation payload type from `any` to the minimal
+  // shape the API endpoint accepts.
+  interface CreateAppointmentPayload {
+    title: string;
+    start_time: string;
+    end_time?: string;
+    assigned_to?: number | null;
+    status: string;
+    notes?: string;
+  }
   // Reset default date when it changes
   const createMut = useMutation({
-    mutationFn: (data: any) => leadApi.createAppointment(data),
+    mutationFn: (data: CreateAppointmentPayload) => leadApi.createAppointment(data),
     onSuccess: () => {
       toast.success('Appointment created');
       queryClient.invalidateQueries({ queryKey: ['appointments'] });

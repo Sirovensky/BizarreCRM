@@ -360,6 +360,9 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
         {/* Notifications */}
         <div ref={notifRef} className="relative">
+          <span className="sr-only" aria-live="polite">
+            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}` : ''}
+          </span>
           <button
             onClick={handleBellClick}
             className={cn(
