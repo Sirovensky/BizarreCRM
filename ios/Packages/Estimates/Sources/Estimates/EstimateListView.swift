@@ -433,10 +433,22 @@ private struct Row: View {
                 }
 
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                    Text(estimate.orderId ?? "EST-?")
-                        .font(.brandMono(size: 15))
-                        .foregroundStyle(.bizarreOnSurface)
-                        .textSelection(.enabled)
+                    // §8 — order ID + version badge inline
+                    HStack(spacing: BrandSpacing.xs) {
+                        Text(estimate.orderId ?? "EST-?")
+                            .font(.brandMono(size: 15))
+                            .foregroundStyle(.bizarreOnSurface)
+                            .textSelection(.enabled)
+                        if let vn = estimate.versionNumber, vn > 1 {
+                            Text("v\(vn)")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(Color.bizarreSurface2, in: Capsule())
+                                .accessibilityLabel("Version \(vn)")
+                        }
+                    }
                     Text(estimate.customerName)
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurface)

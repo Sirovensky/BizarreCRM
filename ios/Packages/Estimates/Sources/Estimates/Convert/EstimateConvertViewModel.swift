@@ -47,6 +47,28 @@ public final class EstimateConvertViewModel {
     public var totalFormatted: String { Self.formatMoney(estimate.total ?? 0) }
     public var orderId: String { estimate.orderId ?? "EST-?" }
 
+    // MARK: - Computed helpers (version approval)
+
+    /// §8 — True when the customer approved a specific version that is older than
+    /// the current draft. The convert sheet should show which version will be used.
+    public var isConvertingApprovedVersion: Bool {
+        guard let approved = estimate.approvedVersionNumber,
+              let current = estimate.versionNumber else { return false }
+        return current > approved
+    }
+
+    /// §8 — The version number that will be used for conversion (the approved one,
+    /// not necessarily the latest).
+    public var convertVersionLabel: String {
+        if let approved = estimate.approvedVersionNumber {
+            return "v\(approved)"
+        }
+        if let current = estimate.versionNumber {
+            return "v\(current)"
+        }
+        return "latest"
+    }
+
     // MARK: - Actions
 
     public func convert() async {
@@ -56,7 +78,12 @@ public final class EstimateConvertViewModel {
         defer { isConverting = false }
 
         do {
-            let result = try await api.convertEstimateToTicket(estimateId: estimate.id)
+            // §8 — Use the approved version number as reference so downstream
+            //        edits to the estimate don't invalidate the created ticket.
+            let result = try await api.convertEstimateToTicketWithVersion(
+                estimateId: estimate.id,
+                approvedVersionId: estimate.approvedVersionNumber.map { Int64($0) }
+            )
             createdTicketId = result.ticketId
             onSuccess(result.ticketId)
         } catch {

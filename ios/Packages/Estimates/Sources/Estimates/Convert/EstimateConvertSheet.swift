@@ -85,6 +85,21 @@ public struct EstimateConvertSheet: View {
             if let until = vm.estimate.validUntil, !until.isEmpty {
                 summaryRow(label: "Valid until", value: String(until.prefix(10)))
             }
+            // §8 — Show which version will be used for conversion
+            summaryRow(label: "Converting", value: vm.convertVersionLabel)
+            if vm.isConvertingApprovedVersion {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .foregroundStyle(.green)
+                        .font(.system(size: 12))
+                        .accessibilityHidden(true)
+                    Text("Line items from the customer-approved version will be used.")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Note: Using line items from the customer-approved version.")
+            }
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
