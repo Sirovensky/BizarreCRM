@@ -88,14 +88,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 .phase-pill.done { background: #DCFCE7; color: #166534; }
 .phase-pill.pending { background: #F5F5F4; color: #78716C; }
 .dark .phase-pill.pending { background: #44403C; color: #A8A29E; }
-.config-tracker { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; padding: 16px; background: white; border-radius: 16px; border: 1px solid #E7E5E4; box-shadow: 0 4px 12px -4px rgba(0,0,0,0.08); }
-.dark .config-tracker { background: #292524; border-color: #44403C; color: #E7E5E4; }
-.config-tracker h3 { font-weight: 700; font-size: 14px; color: #1C1917; margin-bottom: 8px; }
-.dark .config-tracker h3 { color: #FAFAF9; }
-.config-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: #57534E; }
-.dark .config-row { color: #A8A29E; }
-.config-row.done { color: #166534; }
-.dark .config-row.done { color: #4ade80; }
+.bc { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 14px; border-radius: 9999px; background: white; border: 1px solid #E7E5E4; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap; }
+.dark .bc { background: #292524; border-color: #44403C; }
+.bc-prev, .bc-next { color: #78716C; font-weight: 500; }
+.dark .bc-prev, .dark .bc-next { color: #A8A29E; }
+.bc-current { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 9999px; background: #fdeed0; color: #1a0b00; font-weight: 700; font-size: 14px; }
+.bc-sep { color: #D6D3D1; }
+.dark .bc-sep { color: #57534E; }
 .flow-arrow { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; background: #fdeed0; color: #1a0b00; font-weight: 500; }
 .flow-arrow svg { width: 12px; height: 12px; }
 [data-mode="self-host"] .saas-only, [data-mode="saas"] .self-only { display: none !important; }
@@ -161,7 +160,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
     </div>
   </header>
 
-  <div class="grid grid-cols-[180px_1fr_240px] gap-6" data-mode="self-host" id="root">
+  <div class="grid grid-cols-[180px_1fr] gap-6" data-mode="self-host" id="root">
     <!-- LEFT TOC -->
     <aside class="toc text-sm">
       <h3 class="font-semibold text-surface-900 dark:text-surface-50 px-3 mb-2">Steps</h3>
@@ -937,16 +936,12 @@ body { font-family: 'Inter', system-ui, sans-serif; }
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/dashboard</span><span class="saas-only">https://acme.bizarrecrm.com/dashboard</span></div></div>
             <div class="screen p-8">
-              <div class="card max-w-2xl mx-auto text-center">
+              <div class="card max-w-xl mx-auto text-center">
                 <div class="text-6xl mb-3">🎉</div>
                 <h2 class="font-display text-3xl font-bold">You're all set, Joe!</h2>
-                <p class="text-surface-600 dark:text-surface-400 mt-2 mb-6">Shop is live. Here's what to do next.</p>
-                <div class="grid grid-cols-3 gap-3 mb-6">
-                  <a class="p-4 rounded-xl bg-primary-300 text-primary-900 hover:shadow-lg transition-all"><div class="text-3xl mb-2">📋</div><strong class="text-sm block">Take a tour</strong><span class="text-xs">~3 min walkthrough</span></a>
-                  <a class="p-4 rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-primary-800"><div class="text-3xl mb-2">📱</div><strong class="text-sm block">Create test ticket</strong><span class="text-xs text-surface-500">Try POS + invoice flow</span></a>
-                  <a class="p-4 rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 hover:border-primary-800"><div class="text-3xl mb-2">🛒</div><strong class="text-sm block">Open POS</strong><span class="text-xs text-surface-500">First walk-in sale</span></a>
-                </div>
-                <button class="btn-primary">Go to dashboard →</button>
+                <p class="text-surface-600 dark:text-surface-400 mt-2 mb-2">Shop is live.</p>
+                <p class="text-sm text-surface-500 dark:text-surface-400 mb-8">Dashboard has a first-time view with click-around tips for anything you skipped or want to revisit.</p>
+                <button class="btn-primary text-base px-10 py-3">Go to dashboard →</button>
               </div>
             </div>
           </div>
@@ -955,37 +950,6 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       </section>
 
     </main>
-
-    <!-- RIGHT SIDEBAR: configured tracker -->
-    <aside class="config-tracker text-sm">
-      <h3>What you've configured</h3>
-      <div class="text-xs text-surface-500 mb-2">Updates as you progress</div>
-      <div class="config-row done">✓ Shop name + theme</div>
-      <div class="config-row done">✓ Shop type (Phone repair)</div>
-      <div class="config-row done">✓ Store info (5 fields)</div>
-      <div class="config-row done">✓ Repair pricing (12 services)</div>
-      <div class="config-row done">✓ Statuses (14 active)</div>
-      <div class="config-row done">✓ Business hours</div>
-      <div class="config-row done">✓ Tax (8.25%)</div>
-      <div class="config-row done">✓ Receipts</div>
-      <div class="config-row done">✓ Logo + brand color</div>
-      <div class="config-row done">✓ Payments (BlockChyp)</div>
-      <div class="config-row done">✓ Team (2 employees)</div>
-      <div class="config-row done">✓ SMS (Twilio)</div>
-      <div class="config-row done">✓ Email (SMTP)</div>
-      <div class="config-row done">✓ Notifications (3 templates)</div>
-      <div class="config-row done">✓ Printer (Star TSP100)</div>
-      <div class="config-row done">✓ Cash drawer ($200 float)</div>
-      <div class="config-row done">✓ Booking (both)</div>
-      <div class="config-row done">✓ Warranty (90-day)</div>
-      <div class="config-row done">✓ Backups (local + key saved)</div>
-      <div class="config-row">○ Mobile app QR</div>
-      <hr class="my-3 border-surface-200 dark:border-surface-700" />
-      <div class="text-xs text-surface-500">
-        <p><strong class="text-surface-700 dark:text-surface-300">~12 min</strong> total · skipped: 1 step</p>
-        <p class="mt-1">Per-step time: <span class="kbd">~30s-2min</span></p>
-      </div>
-    </aside>
 
   </div>
 
