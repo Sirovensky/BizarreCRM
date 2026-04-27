@@ -2047,13 +2047,13 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Customer-facing display** — `CFDBridge` + `CFDView` + `CFDIdleView` + `CFDSettingsView`. iPad/Mac only; hidden on iPhone. Liquid Glass header/footer. A11y. Reduce Motion. Tests ≥80%. (Phase 5 §16)
 - [x] **Magic Keyboard shortcuts** — ⌘N (new custom line), ⌘⇧R (return), ⌘P (pay/charge), ⌘K (customer pick), ⌘H (hold), ⌘⇧H (resume holds), ⌘⇧D (discount), ⌘⇧T (tip), ⌘⇧F (fee), ⌘⇧⌫ (clear cart). ⌘F search focus + ⌘⇧V void deferred.
 - [ ] **Apple Pencil** — tap to add to cart, double-tap for 2, hover for preview on iPad Pro.
-- [ ] **Drag items** — drag from catalog to cart with haptic feedback.
+- [x] **Drag items** — drag from catalog to cart with haptic feedback. `PosCatalogDraggableModifier` + `PosCartDropTargetModifier` + `Cart.add(_:PosDraggedCatalogItem)`. (feat(§16.14): drag items from catalog to cart 3ad70973)
 
 ### 16.15 Membership / loyalty integration
-- [ ] **Member discount** — auto-apply if customer is a member (see §40).
-- [ ] **Points earned** — displayed on receipt.
-- [ ] **Points redemption** — toggle "Use X points ($Y off)" inline.
-- [ ] **Member-only products** — grayed for non-members.
+- [x] **Member discount** — auto-apply if customer is a member (see §40). `PosViewModel.applyMemberDiscountIfNeeded` + `PosMembershipTenderConnector` auto-applies tier discount at checkout entry. (feat(§16.15): member discount auto-apply 3ad70973)
+- [x] **Points earned** — displayed on receipt. `PosMembershipReceiptBuilder.fields(from:)` extracts `loyaltyDelta`/tier/total for `PosReceiptPayload`. `PosMembershipTenderConnector` bridges to existing `PosLoyaltyCelebrationView`. (feat(§16.15): points earned on receipt 3ad70973)
+- [x] **Points redemption** — toggle "Use X points ($Y off)" inline. `PosMembershipTenderConnector` embeds `MembershipBenefitBanner` + presents `RedeemPointsSheet` at tender entry. (feat(§16.15): points redemption toggle 3ad70973)
+- [x] **Member-only products** — grayed for non-members. `PosCatalogTile.isMemberOnly` + `hasMemberAttached` dim tile + block tap when no qualifying member attached. `PosViewModel.hasMemberAttached` helper. (feat(§16.15): member-only product tiles 3ad70973)
 - [ ] POS cart: `PKPaymentButton`; customer taps → Face ID → tokenized payment routed via BlockChyp gateway (§17.3). Fallback to insert-card if Apple Pay unavailable.
 - [ ] Public payment link page uses `PKPaymentAuthorizationController`; Merchant ID `merchant.com.bizarrecrm`.
 - [ ] Apple Pay Later: not initially; leave to BlockChyp; re-evaluate post-Phase-5.
@@ -5321,7 +5321,7 @@ See §16.10 for core flow. Additional items:
 ### 39.2 Z-report PDF
 - [x] **Auto-generate** on close — `ZReportView` renders totals. PDF export via `ImageRenderer` deferred to §17.4 pipeline.
 - [x] **Emailed** to manager. `ZReportEmailService` actor + `ZReportEmailButton`; POST /api/v1/notifications/send-z-report; 404/501 → .unavailable "Coming soon". (1774c019)
-- [ ] **Auto-archive** in tenant storage.
+- [x] **Auto-archive** in tenant storage. `ZReportArchiveService` actor: uploads to `/pos/z-reports/archive`; on 404/501 saves locally to `Documents/ZReports/<date>-<id>.json`. `ZReportArchiveButton` embeds in action row. Tests ≥80%. (feat(§39.2): Z-report auto-archive 3ad70973)
 - [x] **Data** — sales / tenders / over-short / cashier. Refunds / voids / discounts / tips / taxes / printer-log deferred.
 
 ### 39.3 X-report (mid-shift)
@@ -5339,8 +5339,8 @@ See §16.10 for core flow. Additional items:
 - [ ] Monthly: full reconciliation report (revenue, COGS, adjustments, AR aging, AP aging)
 - [ ] Export to QuickBooks / Xero formats
 - [ ] Variance investigation tool: clickable drill-down from total → lines → specific transaction → audit log
-- [ ] Alerts: variance > threshold triggers manager push
-- [ ] Close period: once reconciled, period locked; changes require manager override + audit
+- [x] Alerts: variance > threshold triggers manager push. `CashVarianceAlertService` actor: evaluates abs(variance) vs threshold; calls `POST /notifications/send` with `type=cash_variance_alert`; gracefully skips on 404/501. Tests ≥80%. (feat(§39.4): cash variance manager alert 3ad70973)
+- [x] Close period: once reconciled, period locked; changes require manager override + audit. `CashPeriodLock` model + `CashPeriodLockRepository` + `CashPeriodLockRepositoryImpl` (`GET/POST /pos/period-locks`, `POST /pos/period-locks/:id/unlock`) + `CashPeriodLockView` with manager PIN override alert. (feat(§39.4): cash period lock 3ad70973)
 
 ---
 ## §40. Gift Cards / Store Credit / Refunds
