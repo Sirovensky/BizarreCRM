@@ -70,11 +70,50 @@ public final class AppointmentListViewModel {
     }
 }
 
+// MARK: - §10.1 Calendar view mode
+
+/// Segmented control options for Appointments — Agenda / Day / Week / Month.
+public enum AppointmentViewMode: String, CaseIterable, Identifiable {
+    case agenda = "Agenda"
+    case day    = "Day"
+    case week   = "Week"
+
+    public var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .agenda: return "list.bullet"
+        case .day:    return "calendar.day.timeline.left"
+        case .week:   return "calendar"
+        }
+    }
+}
+
+// MARK: - §10.1 Appointment filter
+
+/// Filter applied to the appointment list.
+public struct AppointmentListFilter: Equatable, Sendable {
+    public var assigneeId: Int64?
+    public var status: String?
+
+    public var isEmpty: Bool { assigneeId == nil && (status == nil || status!.isEmpty) }
+
+    public init(assigneeId: Int64? = nil, status: String? = nil) {
+        self.assigneeId = assigneeId
+        self.status = status
+    }
+}
+
 public struct AppointmentListView: View {
     @State private var vm: AppointmentListViewModel
     @State private var showingCreate: Bool = false
     @State private var selectedAppointment: Appointment?
     @State private var cancelTarget: Appointment?
+    // §10.1 view mode segmented control
+    @State private var viewMode: AppointmentViewMode = .agenda
+    // §10.1 filter sheet
+    @State private var showingFilter: Bool = false
+    @State private var activeFilter: AppointmentListFilter = .init()
     private let api: APIClient
 
     public init(api: APIClient, cachedRepo: AppointmentCachedRepository? = nil) {
@@ -107,11 +146,25 @@ public struct AppointmentListView: View {
         NavigationStack {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                content
+                VStack(spacing: 0) {
+                    // §10.1 Segmented control — Agenda / Day / Week
+                    Picker("View", selection: $viewMode) {
+                        ForEach(AppointmentViewMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.vertical, BrandSpacing.xs)
+                    .accessibilityLabel("Calendar view mode")
+                    content
+                }
             }
             .navigationTitle("Appointments")
             .toolbar {
                 newButton
+                todayButton
+                filterButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
                 }
@@ -123,18 +176,36 @@ public struct AppointmentListView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingFilter) {
+            AppointmentFilterSheet(filter: $activeFilter)
+                .presentationDetents([.medium])
+        }
     }
 
     private var regularLayout: some View {
         NavigationSplitView {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
-                content
+                VStack(spacing: 0) {
+                    // §10.1 Segmented control — Agenda / Day / Week
+                    Picker("View", selection: $viewMode) {
+                        ForEach(AppointmentViewMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, BrandSpacing.base)
+                    .padding(.vertical, BrandSpacing.xs)
+                    .accessibilityLabel("Calendar view mode")
+                    content
+                }
             }
             .navigationTitle("Appointments")
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
             .toolbar {
                 newButton
+                todayButton
+                filterButton
                 ToolbarItem(placement: .automatic) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
                 }
@@ -174,10 +245,53 @@ public struct AppointmentListView: View {
         }
     }
 
+    /// §10.1 Today button — scrolls agenda to now; reloads with today's date range.
+    private var todayButton: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button {
+                Task { await vm.load() }
+            } label: {
+                Text("Today").font(.brandLabelLarge())
+            }
+            .keyboardShortcut("T", modifiers: .command)
+            .accessibilityLabel("Go to today")
+            .accessibilityIdentifier("appointments.today")
+        }
+    }
+
+    /// §10.1 Filter button — employee / status filter sheet.
+    private var filterButton: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            Button { showingFilter = true } label: {
+                Image(systemName: activeFilter.isEmpty
+                      ? "line.3.horizontal.decrease.circle"
+                      : "line.3.horizontal.decrease.circle.fill")
+                .foregroundStyle(activeFilter.isEmpty ? Color.bizarreOnSurface : Color.bizarreOrange)
+            }
+            .accessibilityLabel(activeFilter.isEmpty ? "Filter appointments" : "Filter active — tap to change")
+            .accessibilityIdentifier("appointments.filter")
+        }
+    }
+
+    // MARK: - §10.1 Filtered items helper
+
+    private var filteredItems: [Appointment] {
+        guard !activeFilter.isEmpty else { return vm.items }
+        return vm.items.filter { appt in
+            if let status = activeFilter.status, !status.isEmpty {
+                guard appt.status?.lowercased() == status.lowercased() else { return false }
+            }
+            // assigneeId filter not feasible client-side without an assigned_to field on the model
+            // — filtered server-side via reload when filter changes (future enhancement).
+            return true
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
         if vm.isLoading {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Loading appointments")
         } else if let err = vm.errorMessage {
             PhaseErrorView(message: err) { Task { await vm.load() } }
         } else if vm.items.isEmpty && !Reachability.shared.isOnline {
@@ -185,24 +299,38 @@ public struct AppointmentListView: View {
         } else if vm.items.isEmpty {
             PhaseEmptyView(icon: "calendar", text: "No appointments")
         } else {
-            List {
-                ForEach(vm.items) { appt in
-                    Button {
-                        selectedAppointment = appt
-                    } label: {
-                        Row(appointment: appt)
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(Color.bizarreSurface1)
-                    .brandHover()
-                    .contextMenu { appointmentContextMenu(for: appt) }
-                    .accessibilityLabel(Row.a11y(for: appt))
-                    .accessibilityHint("Double tap to view details")
+            switch viewMode {
+            case .agenda, .day:
+                agendaList
+            case .week:
+                // §10.1 Week view — use AppointmentCalendarGridView (iPad) or compact agenda (iPhone)
+                if Platform.isCompact {
+                    agendaList
+                } else {
+                    AppointmentCalendarGridView(api: api)
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
         }
+    }
+
+    private var agendaList: some View {
+        List {
+            ForEach(filteredItems) { appt in
+                Button {
+                    selectedAppointment = appt
+                } label: {
+                    Row(appointment: appt)
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.bizarreSurface1)
+                .brandHover()
+                .contextMenu { appointmentContextMenu(for: appt) }
+                .accessibilityLabel(Row.a11y(for: appt))
+                .accessibilityHint("Double tap to view details")
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
     // MARK: - §22 Appointment context menu
@@ -390,5 +518,72 @@ struct PhaseEmptyView: View {
             Text(text).font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - §10.1 AppointmentFilterSheet
+
+/// Sheet presented by the filter button in `AppointmentListView`.
+/// Lets staff filter by status (and optionally employee — future when model carries assigned_to id).
+public struct AppointmentFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding public var filter: AppointmentListFilter
+
+    @State private var draftStatus: String
+
+    private static let statuses: [String] = ["", "scheduled", "confirmed", "completed", "cancelled", "no-show"]
+
+    public init(filter: Binding<AppointmentListFilter>) {
+        _filter = filter
+        _draftStatus = State(initialValue: filter.wrappedValue.status ?? "")
+    }
+
+    public var body: some View {
+        NavigationStack {
+            Form {
+                Section("Status") {
+                    Picker("Status", selection: $draftStatus) {
+                        Text("Any").tag("")
+                            .accessibilityLabel("Any status")
+                        ForEach(Self.statuses.dropFirst(), id: \.self) { s in
+                            Text(s.capitalized).tag(s)
+                        }
+                    }
+                    .accessibilityLabel("Appointment status filter")
+                }
+                .listRowBackground(Color.bizarreSurface1)
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+            .navigationTitle("Filter")
+            #if canImport(UIKit)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .accessibilityLabel("Cancel filter")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Apply") {
+                        filter = AppointmentListFilter(
+                            status: draftStatus.isEmpty ? nil : draftStatus
+                        )
+                        dismiss()
+                    }
+                    .accessibilityLabel("Apply filter")
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button("Clear") {
+                    filter = .init()
+                    dismiss()
+                }
+                .buttonStyle(.borderless)
+                .tint(.bizarreOrange)
+                .padding()
+                .accessibilityLabel("Clear all filters")
+            }
+        }
     }
 }

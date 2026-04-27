@@ -125,4 +125,10 @@ public extension APIClient {
     func updateInventoryItem(id: Int64, _ req: UpdateInventoryItemRequest) async throws -> CreatedResource {
         try await put("/api/v1/inventory/\(id)", body: req, as: CreatedResource.self)
     }
+
+    /// §6.2 Soft-deactivate (DELETE /api/v1/inventory/:id).
+    /// Server sets is_active = 0; preserves all historical references.
+    func deactivateInventoryItem(id: Int64) async throws {
+        try await delete("/api/v1/inventory/\(id)")
+    }
 }

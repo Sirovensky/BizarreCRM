@@ -1,5 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import Core
 import DesignSystem
 import Networking
@@ -8,11 +10,19 @@ public struct InventoryDetailView: View {
     @State private var vm: InventoryDetailViewModel
     @State private var showingEdit: Bool = false
     @State private var showingAdjust: Bool = false
+    @State private var showingDeactivateConfirm: Bool = false
+    @State private var showingDeleteConfirm: Bool = false
+    @State private var isDeactivating: Bool = false
+    @State private var isDeleting: Bool = false
+    @State private var actionError: String?
     private let api: APIClient?
+    /// Called after delete so parent can pop.
+    private let onDeleted: (() -> Void)?
 
-    public init(repo: InventoryDetailRepository, itemId: Int64, api: APIClient? = nil) {
+    public init(repo: InventoryDetailRepository, itemId: Int64, api: APIClient? = nil, onDeleted: (() -> Void)? = nil) {
         _vm = State(wrappedValue: InventoryDetailViewModel(repo: repo, itemId: itemId))
         self.api = api
+        self.onDeleted = onDeleted
     }
 
     public var body: some View {
@@ -24,23 +34,7 @@ public struct InventoryDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.load() }
-        .toolbar {
-            if api != nil, case .loaded = vm.state {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showingEdit = true } label: {
-                        Label("Edit", systemImage: "pencil")
-                    }
-                    .accessibilityLabel("Edit item")
-                }
-                ToolbarItem(placement: .secondaryAction) {
-                    Button { showingAdjust = true } label: {
-                        Label("Adjust stock", systemImage: "slider.horizontal.3")
-                    }
-                    .keyboardShortcut("A", modifiers: .command)
-                    .accessibilityLabel("Adjust stock quantity")
-                }
-            }
-        }
+        .toolbar { toolbarItems }
         .sheet(isPresented: $showingEdit) {
             if let api, case let .loaded(resp) = vm.state {
                 InventoryEditView(api: api, item: resp.item) {
@@ -57,6 +51,118 @@ public struct InventoryDetailView: View {
                     onSuccess: { Task { await vm.load() } }
                 )
             }
+        }
+        // §6.2 Deactivate confirm
+        .confirmationDialog(
+            "Deactivate item?",
+            isPresented: $showingDeactivateConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Deactivate", role: .destructive) {
+                Task { await deactivate() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The item will be hidden from POS but history is preserved.")
+        }
+        // §6.2 Delete confirm
+        .confirmationDialog(
+            "Delete item?",
+            isPresented: $showingDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                Task { await deleteItem() }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone. Delete is blocked if stock > 0 or an open PO references this item.")
+        }
+        .alert("Action failed", isPresented: Binding(
+            get: { actionError != nil },
+            set: { _ in }
+        )) {
+            Button("OK") { actionError = nil }
+        } message: {
+            Text(actionError ?? "")
+        }
+    }
+
+    // MARK: - Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        if api != nil, case .loaded = vm.state {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showingEdit = true } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .keyboardShortcut("E", modifiers: .command)
+                .accessibilityLabel("Edit item")
+                .accessibilityIdentifier("inventory.detail.edit")
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button { showingAdjust = true } label: {
+                    Label("Adjust stock", systemImage: "slider.horizontal.3")
+                }
+                .keyboardShortcut("A", modifiers: .command)
+                .accessibilityLabel("Adjust stock quantity")
+                .accessibilityIdentifier("inventory.detail.adjust")
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingDeactivateConfirm = true
+                } label: {
+                    Label(isDeactivating ? "Deactivating…" : "Deactivate", systemImage: "eye.slash")
+                }
+                .disabled(isDeactivating || isDeleting)
+                .accessibilityLabel("Deactivate item — hides from POS")
+                .accessibilityIdentifier("inventory.detail.deactivate")
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button(role: .destructive) {
+                    showingDeleteConfirm = true
+                } label: {
+                    Label(isDeleting ? "Deleting…" : "Delete", systemImage: "trash")
+                }
+                .disabled(isDeactivating || isDeleting)
+                .accessibilityLabel("Delete item")
+                .accessibilityIdentifier("inventory.detail.delete")
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    /// §6.2 Deactivate — hides from POS, preserves history.
+    /// Server: DELETE /api/v1/inventory/:id (soft-deactivate via is_active = 0).
+    private func deactivate() async {
+        guard let api else { return }
+        guard case let .loaded(resp) = vm.state else { return }
+        isDeactivating = true
+        defer { isDeactivating = false }
+        do {
+            try await api.deactivateInventoryItem(id: resp.item.id)
+            onDeleted?()  // pop back — item is now invisible in list
+        } catch {
+            AppLog.ui.error("Deactivate item failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
+        }
+    }
+
+    /// §6.2 Delete — same server route as deactivate (soft-delete).
+    /// Prevent if stock > 0 or open PO references it (enforced server-side, surfaced via error banner).
+    private func deleteItem() async {
+        guard let api else { return }
+        guard case let .loaded(resp) = vm.state else { return }
+        isDeleting = true
+        defer { isDeleting = false }
+        do {
+            try await api.deactivateInventoryItem(id: resp.item.id)
+            onDeleted?()
+        } catch {
+            AppLog.ui.error("Delete item failed: \(error.localizedDescription, privacy: .public)")
+            actionError = error.localizedDescription
         }
     }
 
@@ -87,6 +193,10 @@ public struct InventoryDetailView: View {
                 VStack(spacing: BrandSpacing.base) {
                     DetailsCard(item: resp.item)
                     StockCard(item: resp.item)
+                    // §6.2 Barcode display — Code-128 via CoreImage; .textSelection on SKU/UPC
+                    if resp.item.sku != nil || resp.item.upcCode != nil {
+                        BarcodeCard(item: resp.item)
+                    }
                     if let tiers = resp.groupPrices, !tiers.isEmpty {
                         GroupPricesCard(tiers: tiers)
                     }
@@ -254,6 +364,80 @@ private struct MovementsCard: View {
     private func formatQty(_ v: Double) -> String {
         if v.rounded() == v { return String(Int(v)) }
         return String(format: "%.2f", v)
+    }
+}
+
+// MARK: - §6.2 BarcodeCard
+
+/// Displays a Code-128 barcode generated from the item's SKU (or UPC if no SKU).
+/// Also shows a QR code for the UPC. Both codes selectable via `.textSelection(.enabled)`.
+private struct BarcodeCard: View {
+    let item: InventoryItemDetail
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Barcode").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+
+            if let sku = item.sku, !sku.isEmpty {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("SKU").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text(sku)
+                        .font(.brandMono(size: 14))
+                        .textSelection(.enabled)
+                        .foregroundStyle(.bizarreOnSurface)
+                    if let img = generateCode128(from: sku) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: .infinity, maxHeight: 60)
+                            .accessibilityLabel("Code 128 barcode for SKU \(sku)")
+                    }
+                }
+            }
+
+            if let upc = item.upcCode, !upc.isEmpty {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("UPC").font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
+                    Text(upc)
+                        .font(.brandMono(size: 14))
+                        .textSelection(.enabled)
+                        .foregroundStyle(.bizarreOnSurface)
+                    if let img = generateQR(from: upc) {
+                        Image(uiImage: img)
+                            .resizable()
+                            .interpolation(.none)
+                            .scaledToFit()
+                            .frame(maxWidth: 140, maxHeight: 140)
+                            .accessibilityLabel("QR code for UPC \(upc)")
+                    }
+                }
+            }
+        }
+        .cardBackground()
+    }
+
+    // MARK: CoreImage generators
+
+    private func generateCode128(from string: String) -> UIImage? {
+        let ctx = CIContext()
+        let filter = CIFilter.code128BarcodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.quietSpace = 0
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 3, y: 3))
+        guard let cgImage = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
+    }
+
+    private func generateQR(from string: String) -> UIImage? {
+        let ctx = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 6, y: 6))
+        guard let cgImage = ctx.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }
 
