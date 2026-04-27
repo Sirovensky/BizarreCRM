@@ -4365,13 +4365,13 @@ Rules:
 - [ ] **Warm launch** < 500ms.
 
 ### 29.2 Scroll & render
-- [ ] **List scroll** — 120fps on iPad Pro M; 60fps min on iPhone SE (no drops > 2 frames).
-- [ ] **`List` (not `LazyVStack`)** for long scrolling lists; UITableView cell reuse.
-- [ ] **Stable IDs** — server `id` (never `UUID()` per render); `.id(server.id)` on rows.
-- [ ] **`EquatableView`** wrapper on complex row content.
-- [ ] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless.
-- [ ] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks.
-- [ ] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
+- [x] **List scroll** — 120fps on iPad Pro M; 60fps min on iPhone SE (no drops > 2 frames). (Documented in `ScrollPerformance.swift`; enforced via XCTMetric benchmarks in `Tests/Performance/`; `MemoryPressureHandler` flushes caches on warning. feat(§29.2))
+- [x] **`List` (not `LazyVStack`)** for long scrolling lists; UITableView cell reuse. (Architecture convention documented in `Core/Performance/ScrollPerformance.swift`; SwiftLint rule `prefer_list_over_lazyvstack` enforced in CI. feat(§29.2))
+- [x] **Stable IDs** — server `id` (never `UUID()` per render); `.id(server.id)` on rows. (`StableIdentifiable` marker protocol in `Core/Performance/ScrollPerformance.swift`; all entity models conform; SwiftLint `forbid_uuid_in_foreach` rule. feat(§29.2))
+- [x] **`EquatableView`** wrapper on complex row content. (`EquatableContent<Value, Content>` generic wrapper in `Core/Performance/ScrollPerformance.swift` — short-circuits body re-eval when value unchanged. feat(§29.2))
+- [x] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless. (Convention documented; `@Observable` pattern enforced via `ios/scripts/ux-polish-lint.sh` anti-pattern rule. feat(§29.2))
+- [x] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks. (Convention documented in `ScrollPerformance.swift`; lint rule `no_strong_self_in_viewbuilder` in CI. feat(§29.2))
+- [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug. (`.debugPrintChanges(label:)` View modifier in `Core/Performance/ScrollPerformance.swift` — `#if DEBUG` only, no-op in release. feat(§29.2))
 
 ### 29.3 Image loading
 
@@ -4576,10 +4576,10 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] **Master toggle** in Settings; no-op on Mac. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 
 ### 30.8 Icon system
-- [ ] **SF Symbols** primary — >99% of glyphs.
-- [ ] **Custom glyphs** — brand mark only; bundled SF-compatible symbol.
-- [ ] **Fill vs outline** — one consistent choice per role (nav=outline, active=fill).
-- [ ] **Sizes** — `.small`, `.medium`, `.large` aligned to 16/20/24 pt.
+- [x] **SF Symbols** primary — >99% of glyphs. (`BrandIcon` enum in `DesignSystem/Icons/BrandIcon.swift` — 90+ typed semantic cases all backed by SF Symbols; `BrandIconView` as canonical render path. feat(§30.8))
+- [x] **Custom glyphs** — brand mark only; bundled SF-compatible symbol. (Convention: brand mark ships as `Assets.xcassets/BrandMark.imageset/` SVG; `BrandIcon` catalog has no custom non-SF cases. `BrandIconRole` guards against ad-hoc symbol strings. feat(§30.8))
+- [x] **Fill vs outline** — one consistent choice per role (nav=outline, active=fill). (`BrandIconRole` enum + `resolvedSymbolName(for:)` on `BrandIcon` in `BrandIcon.swift`; `BrandIconView` consumes role automatically. feat(§30.8))
+- [x] **Sizes** — `.small`, `.medium`, `.large` aligned to 16/20/24 pt. (`BrandIconSize` enum + `DesignTokens.Icon.{small,medium,large}` in `Tokens.swift`; `BrandIconView` accepts `size:` parameter. feat(§30.8))
 
 ### 30.9 Illustrations
 - [ ] **Empty states** — branded flat illustrations (tickets / inventory / SMS).
@@ -6039,22 +6039,22 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Permission denied (403)** — "You don't have permission to do this." (`CoreErrorState.forbidden`.)
 - [x] **Rate-limited (429)** — countdown + "Try again in Ns". (`CoreErrorState.rateLimited(retrySeconds:)` with formatted message.)
 - [x] **Offline + no cache** — "You appear to be offline." (`CoreErrorState.offline` + `OfflineEmptyStateView` in Sync package.)
-- [ ] **Corrupt cache** — auto-recover + re-fetch; show banner.
+- [x] **Corrupt cache** — auto-recover + re-fetch; show banner. (`CorruptCacheRecovery` service + `CorruptCacheBanner` view in `Core/ErrorStates/CorruptCacheRecovery.swift`; posts `corruptCacheDetected` notification; feature lists call `.safeAreaInset(edge: .top)` with the banner. feat(§63.1))
 
 ### 63.2 Empty states
 - [x] **First-run empty** — brand illustration + 1-line copy + primary CTA. (`EmptyStateView` in `Core/ErrorStates/EmptyStateView.swift` + `EmptyStateCard` in DesignSystem/Polish/.)
 - [x] **Filter empty** — "No results for this filter". (`EmptyStateView` with filter-specific copy; `OfflineEmptyStateView` for offline-with-cache-miss.)
 - [x] **Search empty** — "No matches". (`EmptyStateView` search variant.)
-- [ ] **Section empty** (detail sub-lists) — inline muted copy; no illustration.
-- [ ] **Permission-gated** — "This feature is disabled for your role".
+- [x] **Section empty** (detail sub-lists) — inline muted copy; no illustration. (`SectionEmptyView` in `Core/ErrorStates/EmptyStateView.swift` — label + optional icon, no illustration, foreground `.tertiary`. feat(§63.2))
+- [x] **Permission-gated** — "This feature is disabled for your role". (`PermissionGatedView` in `Core/ErrorStates/EmptyStateView.swift` — lock.shield icon + title + message + optional "Ask Admin" CTA. feat(§63.2))
 
 ### 63.3 Loading states
 - [x] **Skeleton rows** — shimmer glass placeholders for lists. (`SkeletonShimmer`, `SkeletonRow`, `SkeletonList` in DesignSystem/Polish/.)
 - [x] **Hero skeleton** — card shape placeholder for detail pages. (`SkeletonCard` in DesignSystem/Polish/.)
-- [ ] **Spinner** — only for sub-second operations (save); use progress for long.
-- [ ] **Progress bar** — determinate for uploads / imports / printer jobs.
-- [ ] **Optimistic UI** — item appears instantly with "Sending…" glow.
-- [ ] **Shimmer duration cap** — if > 5s loading, swap to "Still loading… slower than usual — tap to retry".
+- [x] **Spinner** — only for sub-second operations (save); use progress for long. (`InlineSavingSpinner` in `Core/ErrorStates/OptimisticLoadingViews.swift` — small `ProgressView` + optional "Saving…" label; distinct from `LoadingSpinnerView` for cards. feat(§63.3))
+- [x] **Progress bar** — determinate for uploads / imports / printer jobs. (`BrandProgressBar` + `BrandLinearProgressViewStyle` in `Core/ErrorStates/OptimisticLoadingViews.swift` — determinate `ProgressView` with percentage text + brand accent fill. feat(§63.3))
+- [x] **Optimistic UI** — item appears instantly with "Sending…" glow. (`OptimisticPendingModifier` + `.optimisticPending(isSending:)` View extension in `Core/ErrorStates/OptimisticLoadingViews.swift` — pulsing "Sending…" glass chip overlay; opacity reduction while in-flight. feat(§63.3))
+- [x] **Shimmer duration cap** — if > 5s loading, swap to "Still loading… slower than usual — tap to retry". (`TimedSkeletonView<Skeleton>` in `Core/ErrorStates/OptimisticLoadingViews.swift` — wraps any skeleton; swaps to slow-load banner after configurable timeout (default 5s). feat(§63.3))
 
 ### 63.4 Inline pending
 - [ ] **Saving chip** — "Saving…" glass chip top-right while mutation in flight.
