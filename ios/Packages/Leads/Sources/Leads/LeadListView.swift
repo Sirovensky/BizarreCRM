@@ -15,9 +15,9 @@ public final class LeadListViewModel {
     /// Exposed for `StalenessIndicator` chip in toolbar.
     public private(set) var lastSyncedAt: Date?
 
-    @ObservationIgnored private let api: APIClient
-    @ObservationIgnored private let cachedRepo: LeadCachedRepository?
-    @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored internal let api: APIClient
+    @ObservationIgnored internal let cachedRepo: LeadCachedRepository?
+    @ObservationIgnored internal var searchTask: Task<Void, Never>?
 
     public init(api: APIClient, cachedRepo: LeadCachedRepository? = nil) {
         self.api = api
