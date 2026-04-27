@@ -29,6 +29,9 @@ public struct EstimateDetailView: View {
     @State private var showApproveSheet: Bool = false   // §8.2 approve
     @State private var showRejectSheet: Bool = false    // §8.2 reject
     #endif
+    // §8.4 expire
+    @State private var showExpireConfirm: Bool = false
+    @State private var isExpiring: Bool = false
 
     public init(
         estimate: Estimate,
@@ -474,6 +477,31 @@ public struct EstimateDetailView: View {
             .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate a signature link to send to customer")
             .keyboardShortcut("g", modifiers: [.command, .shift])
             #endif
+
+            // §8.4 Manual expire
+            let isExpired = (status == "expired")
+            Button {
+                showExpireConfirm = true
+            } label: {
+                Label(isExpiring ? "Expiring…" : "Expire Now", systemImage: "clock.badge.xmark")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .tint(.bizarreOnSurfaceMuted)
+            .disabled(isExpired || isConverted || isExpiring)
+            .accessibilityLabel(isExpired ? "Already expired" : "Manually expire this estimate")
+            .confirmationDialog(
+                "Expire this estimate?",
+                isPresented: $showExpireConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Expire", role: .destructive) {
+                    Task { await expireEstimate() }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The estimate will be marked expired and the customer will no longer be able to view it.")
+            }
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
@@ -537,11 +565,31 @@ public struct EstimateDetailView: View {
                     Label("Send for E-Signature", systemImage: "pencil.and.signature")
                 }
                 .disabled(isSigned)
+
+                Divider()
+
+                // §8.4 Manual expire
+                Button(role: .destructive) {
+                    showExpireConfirm = true
+                } label: {
+                    Label("Expire Now", systemImage: "clock.badge.xmark")
+                }
+                .disabled(isConverted || (status == "expired"))
                 #endif
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("Estimate actions")
+            .confirmationDialog(
+                "Expire this estimate?",
+                isPresented: $showExpireConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Expire", role: .destructive) { Task { await expireEstimate() } }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("The estimate will be marked expired.")
+            }
         }
     }
 
@@ -674,6 +722,19 @@ public struct EstimateDetailView: View {
             }
         } catch {
             AppLog.ui.error("Estimate convert-to-invoice failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    // MARK: - §8.4 Expire action
+
+    @MainActor
+    private func expireEstimate() async {
+        isExpiring = true
+        defer { isExpiring = false }
+        do {
+            _ = try await api.expireEstimate(estimateId: estimate.id)
+        } catch {
+            AppLog.ui.error("Estimate expire failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 

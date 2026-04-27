@@ -180,6 +180,33 @@ public struct EstimateBulkRequest: Encodable, Sendable {
     }
 }
 
+// MARK: - §8.4 Expire body
+
+/// Body for `PUT /api/v1/estimates/:id` — manually expire.
+struct EstimateExpireBody: Encodable, Sendable {
+    let status: String = "expired"
+}
+
+// MARK: - §8.3 Idempotency-key wrapper
+
+/// Wraps `CreateEstimateRequest` to append `idempotency_key` to the JSON body.
+/// The server can use this to deduplicate retries.
+struct CreateEstimateRequestWithKey: Encodable, Sendable {
+    let base: CreateEstimateRequest
+    let idempotencyKey: String
+
+    // Forward all base fields + add idempotency_key.
+    func encode(to encoder: Encoder) throws {
+        try base.encode(to: encoder)
+        var container = encoder.container(keyedBy: ExtraKey.self)
+        try container.encode(idempotencyKey, forKey: .idempotencyKey)
+    }
+
+    private enum ExtraKey: String, CodingKey {
+        case idempotencyKey = "idempotency_key"
+    }
+}
+
 // MARK: - Estimates — sign-URL issuance (append-only)
 //
 // Confirmed server routes (estimateSign.routes.ts — authedRouter):
@@ -304,6 +331,25 @@ public extension APIClient {
     func estimatesBulkAction(ids: [Int64], action: EstimateBulkAction) async throws {
         let body = EstimateBulkRequest(ids: ids, action: action)
         _ = try await post("/api/v1/estimates/bulk", body: body, as: EmptyBody.self)
+    }
+
+    // MARK: - §8.3 Create with idempotency key
+
+    /// `POST /api/v1/estimates` — creates a new estimate.
+    /// The `idempotencyKey` is embedded in the request body as `idempotency_key`
+    /// so retries on the same UUID are deduplicated server-side without requiring
+    /// custom header support from the base APIClient.
+    func createEstimate(_ req: CreateEstimateRequest, idempotencyKey: String) async throws -> CreatedResource {
+        let wrapped = CreateEstimateRequestWithKey(base: req, idempotencyKey: idempotencyKey)
+        return try await post("/api/v1/estimates", body: wrapped, as: CreatedResource.self)
+    }
+
+    // MARK: - §8.4 Expire
+
+    /// `PUT /api/v1/estimates/:id` with `{ status: "expired" }` — manually expires an estimate.
+    @discardableResult
+    func expireEstimate(estimateId: Int64) async throws -> Estimate {
+        return try await put("/api/v1/estimates/\(estimateId)", body: EstimateExpireBody(), as: Estimate.self)
     }
 }
 
