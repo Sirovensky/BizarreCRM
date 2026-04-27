@@ -204,6 +204,11 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-1" class="self-only">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host only</span><h2 class="font-display text-2xl font-bold">Step 1 — First-time login</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Owner opens shop URL. Sees default-credential warning + login form.</p>
+        <div class="bc">
+        <span class="bc-current">Step 1 · First login</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 2 · Set password →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login</div></div>
@@ -224,6 +229,11 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SAAS SCREEN 1: SIGNUP ============ -->
       <section id="screen-saas-1" class="saas-only">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-saas">SaaS only</span><h2 class="font-display text-2xl font-bold">Step 1 — Signup</h2></div>
+        <div class="bc">
+        <span class="bc-current">Step 1 · Signup</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 2 · Verify email →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/signup</div></div>
@@ -243,6 +253,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 
       <section id="screen-saas-2" class="saas-only">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-saas">SaaS only</span><h2 class="font-display text-2xl font-bold">Step 2 — Verify email</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 1 · Signup</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 2 · Verify email</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 3 · 2FA setup →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/verify-email</div></div>
@@ -260,6 +277,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 2: SELF-HOST FORCE PASSWORD ============ -->
       <section id="screen-2" class="self-only">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host only</span><h2 class="font-display text-2xl font-bold">Step 2 — Force new password</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 1 · First login</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 2 · Set password</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 3 · 2FA setup →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login (set-password)</div></div>
@@ -278,6 +302,14 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 3: 2FA ============ -->
       <section id="screen-3">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both modes</span><h2 class="font-display text-2xl font-bold">Step 3 — 2FA setup</h2></div>
+        <div class="bc">
+        <span class="bc-prev self-only">← Step 2 · Set password</span>
+        <span class="bc-prev saas-only">← Step 2 · Verify email</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 3 · 2FA setup</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 4 · Welcome →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/login (2fa)</span><span class="saas-only">https://acme.bizarrecrm.com/login (2fa)</span></div></div>
@@ -310,6 +342,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 4: WELCOME ============ -->
       <section id="screen-4">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both modes</span><h2 class="font-display text-2xl font-bold">Step 4 — Welcome</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 3 · 2FA setup</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 4 · Welcome</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 5 · Shop type →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/setup</span><span class="saas-only">https://acme.bizarrecrm.com/setup</span></div></div>
@@ -335,6 +374,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-5">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 5 — Shop type</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Drives default seed data: repair categories, services, base prices, ticket statuses.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 4 · Welcome</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 5 · Shop type</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 6 · Store info →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -372,6 +418,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-6">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 6 — Store info</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">All fields required. Validation gate (red border + inline error). Includes invalid-input demo.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 5 · Shop type</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 6 · Store info</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 7 · Import →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -396,6 +449,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 7: IMPORT HANDOFF ============ -->
       <section id="screen-7">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 7 — Existing data?</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 6 · Store info</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 7 · Import</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 8 · Repair pricing →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -417,6 +477,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-8">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 8 — Repair pricing (tiered by model age)</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Real shops price per device. Newer models = profit-drivers ($200+ margin), older = get-in-door ($40 margin). Default UI uses tiers; advanced mode unlocks per-device matrix.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 7 · Import</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 8 · Repair pricing</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 9 · Default statuses →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -522,6 +589,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 9: STATUSES ============ -->
       <section id="screen-9">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 9 — Default ticket statuses</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 8 · Repair pricing</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 9 · Default statuses</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 10 · Business hours →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -544,6 +618,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 10: HOURS ============ -->
       <section id="screen-10">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 10 — Business hours</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 9 · Default statuses</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 10 · Business hours</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 11 · Tax →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -569,6 +650,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 11: TAX ============ -->
       <section id="screen-11">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 11 — Sales tax</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 10 · Business hours</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 11 · Tax</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 12 · Receipts →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -589,6 +677,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 12: RECEIPTS ============ -->
       <section id="screen-12">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 12 — Receipts</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 11 · Tax</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 12 · Receipts</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 13 · Logo →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -623,6 +718,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 13: LOGO ============ -->
       <section id="screen-13">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 13 — Logo & color</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 12 · Receipts</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 13 · Logo</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 14 · Payment terminal →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -644,6 +746,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-14">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 14 — Payment terminal (BlockChyp)</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Without this: no card payments. Skip allowed but POS card-leg disabled until configured.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 13 · Logo</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 14 · Payment terminal</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 15 · First employees →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -668,6 +777,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-15">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 15 — First employees</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Without team accounts, owner is alone in tickets. Add 1-3 now or skip.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 14 · Payment terminal</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 15 · First employees</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 16 · SMS provider →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -691,6 +807,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 16: SMS PROVIDER ============ -->
       <section id="screen-16">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 16 — SMS provider</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 15 · First employees</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 16 · SMS provider</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 17 · Email SMTP →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -716,6 +839,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 17: EMAIL ============ -->
       <section id="screen-17">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 17 — Email SMTP</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 16 · SMS provider</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 17 · Email SMTP</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 18 · Notification templates →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -739,6 +869,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-18">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 18 — Notification templates</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">3 default templates active. Owner reviews + tweaks copy. Variables auto-substituted on send.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 17 · Email SMTP</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 18 · Notification templates</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 19 · Receipt printer →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -771,6 +908,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 19: RECEIPT PRINTER (NEW P1) ============ -->
       <section id="screen-19">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host</span><span class="badge badge-saas">SaaS</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 19 — Receipt printer</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 18 · Notification templates</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 19 · Receipt printer</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 20 · Cash drawer →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -793,6 +937,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 20: CASH DRAWER (NEW P1) ============ -->
       <section id="screen-20">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 20 — Cash drawer</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 19 · Receipt printer</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 20 · Cash drawer</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 21 · Booking policy →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -816,6 +967,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 21: BOOKING POLICY (NEW P1) ============ -->
       <section id="screen-21">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 21 — Walk-in vs appointment</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 20 · Cash drawer</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 21 · Booking policy</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 22 · Warranty →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -839,6 +997,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 22: WARRANTY (NEW P1) ============ -->
       <section id="screen-22">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 22 — Warranty defaults</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 21 · Booking policy</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 22 · Warranty defaults</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 23 · Backups →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -859,6 +1024,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <section id="screen-23">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 23 — Backup destination</h2></div>
         <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Per <span class="kbd">project_deployment.md</span>: local-backup default. Cloud opt-in.</p>
+        <div class="bc">
+        <span class="bc-prev">← Step 22 · Warranty defaults</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 23 · Backups</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 24 · Mobile app →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -884,6 +1056,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 24: MOBILE APP QR (NEW P2) ============ -->
       <section id="screen-24">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P2</span><h2 class="font-display text-2xl font-bold">Step 24 — Mobile app for techs</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 23 · Backups</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 24 · Mobile app</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 25 · Review →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -904,6 +1083,13 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 25: REVIEW ============ -->
       <section id="screen-25">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 25 — Review</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 24 · Mobile app</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 25 · Review</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-next">Step 26 · Done →</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
@@ -932,6 +1118,11 @@ body { font-family: 'Inter', system-ui, sans-serif; }
       <!-- ============ SCREEN 26: DONE ============ -->
       <section id="screen-26">
         <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 26 — Done!</h2></div>
+        <div class="bc">
+        <span class="bc-prev">← Step 25 · Review</span>
+        <span class="bc-sep">·</span>
+        <span class="bc-current">Step 26 · Done</span>
+        </div>
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/dashboard</span><span class="saas-only">https://acme.bizarrecrm.com/dashboard</span></div></div>
