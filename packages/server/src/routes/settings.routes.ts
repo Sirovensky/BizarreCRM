@@ -269,6 +269,42 @@ const ALLOWED_CONFIG_KEYS = new Set([
   'widget_allowed_origins',
   'weekly_summary_last_sent_at',
   'setup_imported_legacy_data',
+  // ─── Setup wizard expansion (H2 2026-04-27) ─────────────────────
+  // Keys for new wizard screens 5, 8, 14, 18-23. See
+  // docs/setup-wizard-implementation-plan.md per-agent specs for ownership.
+  // Step 5 — Shop type (Agent 7)
+  'shop_type',
+  // Step 8 — Repair pricing tier matrix (Agent 10)
+  'pricing_tier_a_screen', 'pricing_tier_a_battery', 'pricing_tier_a_charge_port',
+  'pricing_tier_a_back_glass', 'pricing_tier_a_camera',
+  'pricing_tier_b_screen', 'pricing_tier_b_battery', 'pricing_tier_b_charge_port',
+  'pricing_tier_b_back_glass', 'pricing_tier_b_camera',
+  'pricing_tier_c_screen', 'pricing_tier_c_battery', 'pricing_tier_c_charge_port',
+  'pricing_tier_c_back_glass', 'pricing_tier_c_camera',
+  // Step 14 — Payment terminal pairing (Agent 16). blockchyp_* base keys already
+  // listed above; only the IP-pairing key is new here.
+  'blockchyp_terminal_ip',
+  // Step 18 — Notification templates (Agent 20)
+  'notif_tpl_received_subj', 'notif_tpl_received_body',
+  'notif_tpl_ready_subj', 'notif_tpl_ready_body',
+  'notif_tpl_invoice_paid_subj', 'notif_tpl_invoice_paid_body',
+  // Step 19 — Receipt printer (Agent 21)
+  'receipt_printer_driver', 'receipt_printer_connection', 'receipt_printer_address',
+  // Step 20 — Cash drawer (Agent 22)
+  'cash_drawer_driver', 'cash_drawer_address',
+  // Step 21 — Booking policy (Agent 23)
+  'booking_online_enabled', 'booking_lead_hours',
+  'booking_max_days_ahead', 'booking_walkins_enabled',
+  // Step 22 — Warranty defaults (Agent 24)
+  'warranty_default_months_screen', 'warranty_default_months_battery',
+  'warranty_default_months_charge_port', 'warranty_default_months_back_glass',
+  'warranty_default_months_camera', 'warranty_disclaimer',
+  // Step 23 — Backup destination (Agent 25). 'backup_path', 'backup_schedule',
+  // 'backup_retention' already exist above for the legacy local-only mode.
+  'backup_destination_type', 'backup_destination_path',
+  'backup_s3_endpoint', 'backup_s3_bucket', 'backup_s3_access_key', 'backup_s3_secret_key',
+  // SaaS trial / tier metadata written by Agent 31 signup route + visible in Step 25 Review
+  'trial_started_at', 'trial_expires_at', 'tier',
 ]);
 
 // ==================== Generic Config (key-value) ====================
@@ -280,6 +316,8 @@ const SENSITIVE_CONFIG_KEYS = new Set([
   'blockchyp_api_key', 'blockchyp_bearer_token', 'blockchyp_signing_key',
   'sms_twilio_auth_token', 'sms_telnyx_api_key', 'sms_bandwidth_password',
   'sms_plivo_auth_token', 'sms_vonage_api_secret',
+  // H2: backup destination secrets
+  'backup_s3_access_key', 'backup_s3_secret_key',
 ]);
 
 // GET /setup-status — check if initial store setup has been completed

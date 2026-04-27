@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info } from 'lucide-react';
+import { Loader2, AlertCircle, X, Save, Mail, MessageSquare, Info, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -372,8 +373,6 @@ export function NotificationTemplatesTab() {
         )}
       </div>
 
-<<<<<<< Updated upstream
-=======
       {/* Estimate Follow-Up + Lead Auto-Assign — AUDIT-WEB-009: Coming Soon */}
       <div className="mt-8 card p-5">
         <div className="flex items-center gap-2 mb-4">
@@ -455,7 +454,6 @@ export function NotificationTemplatesTab() {
         </div>
       </div>
 
->>>>>>> Stashed changes
       {/* Edit Modal */}
       {editTemplate && (
         <EditTemplateModal

@@ -22,6 +22,31 @@ export const validatePhoneInternational = (v: string): string | null => {
 export const validateEmail = (v: string): string | null =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) ? null : 'Invalid email address';
 
+// ── SaaS shop slug ────────────────────────────────────────────────────────────
+
+/**
+ * Validates a SaaS tenant slug used in `https://<slug>.bizarrecrm.com`.
+ * Rules: 3–30 chars, lowercase a-z / 0-9 / dash, no leading or trailing dash,
+ * no consecutive dashes. Reserved words (admin, api, www, app, signup, login,
+ * dashboard, status) rejected up-front.
+ *
+ * Owned by H (human) per docs/setup-wizard-implementation-plan.md — Agent 3
+ * (StepSignup) consumes this; Agent 31 (signup route) re-validates server-side.
+ */
+const RESERVED_SLUGS = new Set([
+  'admin', 'api', 'www', 'app', 'signup', 'login', 'logout', 'dashboard',
+  'status', 'help', 'docs', 'support', 'static', 'public', 'auth',
+]);
+export const validateShopSlug = (v: string): string | null => {
+  const s = v.trim();
+  if (s.length < 3 || s.length > 30) return 'Slug must be 3–30 characters';
+  if (!/^[a-z0-9-]+$/.test(s)) return 'Slug can only contain lowercase letters, numbers, and dashes';
+  if (s.startsWith('-') || s.endsWith('-')) return 'Slug cannot start or end with a dash';
+  if (s.includes('--')) return 'Slug cannot contain consecutive dashes';
+  if (RESERVED_SLUGS.has(s)) return `"${s}" is reserved — pick another`;
+  return null;
+};
+
 // ── Branding ──────────────────────────────────────────────────────────────────
 
 export const validateHexColor = (v: string): string | null =>
