@@ -537,4 +537,39 @@ public extension APIClient {
         )
         return resp.valid
     }
+
+    // MARK: - §14.2 PIN management
+
+    /// `GET /api/v1/employees/:id/pin-status` — whether a PIN is set for this employee.
+    func getPinStatus(employeeId: Int64) async throws -> PinStatusResponse {
+        try await get("/api/v1/employees/\(employeeId)/pin-status", as: PinStatusResponse.self)
+    }
+
+    /// `POST /api/v1/employees/:id/pin` — set or change the employee PIN.
+    func setEmployeePin(employeeId: Int64, pin: String) async throws {
+        _ = try await post(
+            "/api/v1/employees/\(employeeId)/pin",
+            body: SetPinBody(pin: pin),
+            as: SetPinResponse.self
+        )
+    }
+
+    /// `DELETE /api/v1/employees/:id/pin` — clear the employee PIN.
+    func clearEmployeePin(employeeId: Int64) async throws {
+        try await delete("/api/v1/employees/\(employeeId)/pin")
+    }
 }
+
+// MARK: - PIN management types
+
+struct SetPinBody: Encodable, Sendable { let pin: String }
+struct SetPinResponse: Decodable, Sendable { let success: Bool? }
+
+public struct PinStatusResponse: Decodable, Sendable {
+    public let isSet: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case isSet = "is_set"
+    }
+}
+
