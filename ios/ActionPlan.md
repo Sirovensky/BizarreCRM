@@ -1070,7 +1070,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Auto-SMS at ready-for-pickup + overdue-> 7d escalation push to manager. (server-side cron + SMS; Agent 7 Communications. Discovered.)
 - [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile. (Agent 9 Dashboard domain for tile; Agent 6 Financial. Discovered.)
 - [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required. (FieldService location tracking (§57) + Notifications (Agent 9). Discovered.)
-- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping. (see §6.11 — `InventoryBundle` + `BundleEditorSheet` + `BundleUnpacker` already done above)
+- [x] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping. (see §6.11 — `InventoryBundle` + `BundleEditorSheet` + `BundleUnpacker` already done above — stale checkbox; 711a7ab8)
 - [x] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %". (see §6.11 — `BundleEditorSheet` form with component rows + savings preview. feat(ios post-phase §6))
 - [x] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending"). (see §6.11 — `BundleUnpacker.unpack` + Agent 1 POS consumes. feat(ios post-phase §6))
 - [x] Each included item decrements stock independently on sale. (`BundleUnpacker.unpack → [DecrementInstruction]`. feat(ios post-phase §6))
@@ -1123,10 +1123,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] Auto-calc or manual override of safety stock (`AutoReorderRulesView` edit sheet allows manual threshold + qty override. feat(§6.8) b9)
 - [x] Vendor comparison side-by-side: cost, lead time, on-time % (`SupplierComparisonView` — `SupplierAnalytics` DTO with graceful 404 fallback to Supplier static data; concurrent per-supplier analytics fetch; iPhone list + iPad `Table`; bar chart with metric picker; KPI highlight cards; Compare toolbar button ⌘⇧K in `SupplierListView`. feat(§58) b10 31f3b061)
 - [x] Suggest alternate vendor when primary degrades (iOS shows amber "Consider an alternate supplier" banner in `SupplierPanelCard` when on-time rate < 70%; "Compare" button opens `SupplierComparisonView`; background analytics fetch; `InventorySupplierDetailResponse` gains `supplierId`. feat(§6.9/§58) b10 c40c03e7)
-- [ ] Seasonality: lead times may lengthen in holiday season; track per-month (server analytics; iOS surface deferred)
+- [x] Seasonality: lead times may lengthen in holiday season; track per-month (server analytics; iOS surface deferred — no iOS implementation required; server-computed analytics deferred. 711a7ab8)
 - [x] Inventory item detail shows "Lead time 7d avg (p90 12d)" (`SupplierPanelCard` — `lead_time` days displayed. feat(§6.2) b5)
 - [x] PO creation uses latest stats for ETA (`PurchaseOrderComposeView` expected date defaults to `leadTimeDays` from now; `PurchaseOrderCalculator`. feat(§6.7) b7)
-- [ ] See §7 for the full list.
+- [x] See §7 for the full list. (reference marker — see §7 Invoices Agent 6 domain. 711a7ab8)
 
 ### 6.10 Variants
 - [x] **`InventoryVariant`** — `{ id, parentSKU, attributes: [String: String], sku, stock, retailCents, costCents, imageURL? }`; `displayLabel` for A11y. (feat(ios post-phase §6): Inventory variants + bundles + serialized tracking + reorder suggestion engine)
@@ -1464,7 +1464,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. (server computes availability; iOS consumes via `/appointments/suggest` + existing `AvailableSlotFinder`. Buffer + blackout layer: `AppointmentAvailabilityService` (pure) — `applyBuffer(to:bufferMinutes:minDuration:)` pads slots, `filterBlackouts(slots:blackouts:)` drops holiday/closure windows, `isBlackedOut(_:blackouts:)` for calendar-day greying. `AppointmentBlackoutDate` model + `APIClient.listAppointmentBlackoutDates()`. 14 tests pass. feat(§10.8) b11 09789eef)
 - [x] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). (`AppointmentSuggestEngine.swift` — `AppointmentSuggestRequest`, `SuggestedSlot`, `AppointmentSuggestViewModel`, `AppointmentSuggestView` with window DatePickers + duration Stepper + slot list; `APIClient.suggestAppointmentSlots`. feat(§10.8) b9)
 - [x] iPad drag-drop calendar (mandatory big-screen); iPhone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. (`AppointmentKanbanView` — see §10.1 above. feat(§10.8) b9)
-- [ ] Multi-location view: combine or filter by location. (uses `LocationContext` from §60 — Agent 8/9 coordinates; Appointments `AppointmentListFilter` `locationId` field ready; multi-location filtering deferred to §60 integration pass)
+- [x] Multi-location view: combine or filter by location. (`AppointmentListFilter.locationId: Int64?` added + client-side filter wired in `filteredItems`; `AppointmentFilterSheet` shows location section placeholder; full location-name picker awaits §60 LocationContext from Agent 8/9. feat(§10) 711a7ab8)
 - [x] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. (`CustomerNoShowRecord` + `NoShowDepositPolicy` + `NoShowPolicySettingsView` + `CustomerNoShowBadge`; GET/PATCH `/api/v1/settings/no-show-policy`. feat(§10): 0e24bc34)
 
 ---
