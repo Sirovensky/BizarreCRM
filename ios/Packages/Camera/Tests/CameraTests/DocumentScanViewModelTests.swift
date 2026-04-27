@@ -187,20 +187,66 @@ final class DocumentScanViewModelTests: XCTestCase {
         XCTAssertEqual(vm.pages.count, countBefore)
     }
 
-    // MARK: - assemblePDF (free function)
+    // MARK: - generatePDF with pages (covers assemblePDF internally)
 
-    func test_assemblePDF_emptyImages_returnsData() {
-        // Empty input is valid — PDFKit returns an empty document data blob.
-        let data = assemblePDF(from: [])
-        // Should be a valid PDF header or empty; not crash.
-        XCTAssertNotNil(data)
+    func test_generatePDF_noPages_returnsNil_forAssembly() {
+        // assemblePDF is not called when pages is empty; guard is in generatePDF.
+        let vm = makeVM()
+        XCTAssertNil(vm.generatePDF())
     }
 
-    func test_assemblePDF_singleImage_producesPDFHeader() {
-        let data = assemblePDF(from: [makeImage()])
+    func test_generatePDF_singlePage_producesPDFHeader() {
+        let vm = makeVM()
+        vm.addPages([makeImage()])
+        let data = vm.generatePDF()!
         // %PDF- header is the first 5 bytes of any PDF.
         let header = String(data: data.prefix(5), encoding: .ascii) ?? ""
-        XCTAssertEqual(header, "%PDF-", "assemblePDF output must begin with %PDF-")
+        XCTAssertEqual(header, "%PDF-", "generatePDF output must begin with %PDF-")
+    }
+
+    // MARK: - OCR state initial
+
+    func test_initial_ocrState_isIdle() {
+        let vm = makeVM()
+        XCTAssertEqual(vm.ocrState, .idle)
+    }
+
+    func test_runOCR_emptyPages_setsFailedState() async {
+        let vm = makeVM()
+        // No pages added.
+        await vm.runOCR()
+        if case .failed = vm.ocrState {
+            // expected
+        } else {
+            XCTFail("Expected .failed when no pages, got \(vm.ocrState)")
+        }
+    }
+
+    func test_runOCR_withSolidColorImage_doesNotCrash() async {
+        // Solid color images produce empty OCR text — but must not crash.
+        let vm = makeVM()
+        vm.addPages([makeImage(color: .white)])
+        await vm.runOCR()
+        // ocrState is .done (possibly with empty text) or .failed — either valid.
+        switch vm.ocrState {
+        case .done, .failed: break // both acceptable for a blank image
+        default: XCTFail("Expected .done or .failed, got \(vm.ocrState)")
+        }
+    }
+
+    func test_extractedText_nilWhenIdle() {
+        let vm = makeVM()
+        XCTAssertNil(vm.extractedText)
+    }
+
+    // MARK: - reset clears ocrState
+
+    func test_reset_clearsOCRState() async {
+        let vm = makeVM()
+        vm.addPages([makeImage()])
+        await vm.runOCR()
+        vm.reset()
+        XCTAssertEqual(vm.ocrState, .idle)
     }
 
     // MARK: - attach — success
