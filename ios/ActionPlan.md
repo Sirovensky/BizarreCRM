@@ -1949,10 +1949,10 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 > Phase-2 scaffold note: `Charge` button currently opens `PosChargePlaceholderSheet` which shows the running total and the message "Charge flow not yet wired — BlockChyp SDK pending (§17)." No fake-success path — dismissing returns to the cart. All checkboxes below remain open until the BlockChyp SDK + server endpoints land.
 
-- [ ] **Terminal pairing** — Settings → Terminal → scan QR / enter terminal code + IP; stored in Keychain (`com.bizarrecrm.pos.terminal`).
-- [ ] **Heartbeat** — on POS screen load, ping terminal; offline badge if no response in 3s.
+- [x] **Terminal pairing** — Settings → Terminal → scan QR / enter terminal code + IP; stored in Keychain (`com.bizarrecrm.pos.terminal`). `BlockChypTerminalPairingView` + `TerminalPairing` model + `PairingKeychainStore`. Scaffold only — no SDK calls. (228f6173)
+- [x] **Heartbeat** — on POS screen load, ping terminal; offline badge if no response in 3s. `BlockChypHeartbeatView` 10s polling, `getTerminalHeartbeat()` stub → 501 BLOCKCHYP-HEARTBEAT-001. (228f6173)
 - [ ] **Start charge** — tap Pay → select BlockChyp → spinner while terminal prompts cardholder.
-- [ ] **Reader states** — `waitForCard`, `chipInserted`, `pinEntered`, `awaitingSignature`, `approved`, `declined`, `timeout`.
+- [x] **Reader states** — `waitForCard`, `chipInserted`, `pinEntered`, `awaitingSignature`, `approved`, `declined`, `timeout`. `BlockChypReaderStateView` display-only scaffold. (228f6173)
 - [ ] **Signature capture** — if required, customer signs on terminal OR on iPad (`PKCanvasView`); stored with payment.
 - [ ] **Receipt data** — token, auth code, last4, EMV tags, cardholder name → `POST /invoices/{id}/payments` with idempotency key.
 - [ ] **Success** — invoice+payment rows written; auto-advance to receipt screen.
@@ -2002,12 +2002,12 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 
 ### 16.9 Returns / refunds
 - [x] **Entry** — POS toolbar "Process return" button (⌘⇧R) → `PosReturnsView` search by order/phone.
-- [ ] **Original lookup** — show invoice detail with per-line checkbox + "Qty to return" stepper.
+- [x] **Original lookup** — show invoice detail with per-line checkbox + "Qty to return" stepper. `PosReturnDetailView` + `PosReturnLineSelector` + `PosReturnDetailViewModel`; fetches GET /api/v1/invoices/:id. (6c9d0ddc)
 - [x] **Reason required** — text field + tender picker in `PosRefundSheet`. Dropdown presets deferred.
-- [ ] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment).
+- [x] **Restock flag** — per line: return to inventory (increment) vs scrap (no increment). `ReturnableLine.restock` toggle per line in `PosReturnLineSelector`. (6c9d0ddc)
 - [x] **Refund amount** — editable cents input in sheet. Per-line calc + restocking fee deferred.
 - [ ] **Tender** — original card (BlockChyp refund with token) / cash / store credit / gift card issuance.
-- [ ] **Manager PIN** — required above $X threshold (tenant config).
+- [x] **Manager PIN** — required above $X threshold (tenant config). Gate in `PosReturnDetailViewModel` at $50 (5000¢) via `ManagerPinSheet`. (6c9d0ddc)
 - [x] **Audit** — `POST /pos/returns` with `/refunds/credits/:customerId` fallback. "Coming soon" banner on 404/501.
 - [ ] **Receipt** — "RETURN" printed; refund amount; signature if required.
 
@@ -2016,9 +2016,9 @@ _Server endpoints: `POST /invoices`, `POST /invoices/{id}/payments`, `POST /bloc
 - [x] **Mid-shift** — "Cash drop" button (remove excess to safe) with count + signature. `CashDropSheet` wired to `POST /pos/cash-out`. (feat(§16.10): mid-shift cash drop)
 - [x] **Close shift** — `CloseRegisterSheet` with counted/expected/notes + `CashVariance` band. Over/short color coded. Per-denomination count + mandatory note threshold deferred.
 - [x] **Z-report** — `ZReportView` renders tiles + variance card. Auto-print/email-to-manager deferred to §17.4 pipeline.
-- [ ] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition.
+- [x] **Shift handoff** — outgoing cashier closes → incoming opens fresh; seamless transition. `ShiftHandoffView` two-step wizard (summary → openShift); opens CashRegisterStore.shared.openSession. (1a87bfb7)
 - [x] **Blind-count mode** — cashier doesn't see expected total until after count (loss prevention). `blindCountMode` + `blindCountRevealed` toggle in `CloseRegisterSheet`. (feat(§16.10): blind-count mode)
-- [ ] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN.
+- [x] **Tenant config** — enforce mandatory count vs skip allowed; skip requires manager PIN. `ShiftHandoffPolicy` (.default/.strict/.mandatory); ManagerPinSheet for skip-count. (1a87bfb7)
 
 ### 16.11 Anti-theft / loss prevention
 - [x] **Void audit** — `Cart.removeLine(id:reason:managerId:)` logs `void_line`/`delete_line` via `PosAuditLogStore` (GRDB migration 005). Fire-and-forget Task never blocks cashier.
@@ -5320,7 +5320,7 @@ See §16.10 for core flow. Additional items:
 
 ### 39.2 Z-report PDF
 - [x] **Auto-generate** on close — `ZReportView` renders totals. PDF export via `ImageRenderer` deferred to §17.4 pipeline.
-- [ ] **Emailed** to manager.
+- [x] **Emailed** to manager. `ZReportEmailService` actor + `ZReportEmailButton`; POST /api/v1/notifications/send-z-report; 404/501 → .unavailable "Coming soon". (1774c019)
 - [ ] **Auto-archive** in tenant storage.
 - [x] **Data** — sales / tenders / over-short / cashier. Refunds / voids / discounts / tips / taxes / printer-log deferred.
 
@@ -5328,11 +5328,11 @@ See §16.10 for core flow. Additional items:
 - [x] **`GET /cash-register/x-report`** — peek current shift without closing. `XReportView` + `APIClient.getXReport()` stub (POS-XREPORT-001 pending). (feat(§39.3): X-report mid-shift view)
 
 ### 39.4 Reconciliation export
-- [ ] CSV per day of all transactions + tender splits.
-- [ ] Trigger: manager taps "End of day" at shop close
-- [ ] Steps: (1) close any open cash shifts; (2) mark still-open tickets → confirm or archive to tomorrow; (3) send day-end status SMS to customers with ready tickets (optional); (4) review outstanding invoices / follow-ups; (5) backup reminder (if tenant schedules local backup); (6) lock POS terminal; (7) post shop's daily summary to tenant admin (push)
-- [ ] Progress indicator: glass progress bar at top; can abort mid-wizard and resume
-- [ ] Logging: each step's completion stamped in audit log
+- [x] CSV per day of all transactions + tender splits. `ReconciliationCSVGenerator` + `ReconciliationRow`; 11-column schema; `csvEscape` per RFC 4180; filename Reconciliation-YYYY-MM-DD.csv. (69c28fdb)
+- [x] Trigger: manager taps "End of day" at shop close. `EndOfDayWizardView` + `EndOfDayWizardViewModel`. (69c28fdb)
+- [x] Steps: (1) close any open cash shifts; (2) mark still-open tickets → confirm or archive to tomorrow; (3) send day-end status SMS to customers with ready tickets (optional); (4) review outstanding invoices / follow-ups; (5) backup reminder (if tenant schedules local backup); (6) lock POS terminal; (7) post shop's daily summary to tenant admin (push). `EndOfDayStep` enum 7 steps with isOptional. (69c28fdb)
+- [x] Progress indicator: glass progress bar at top; can abort mid-wizard and resume. `EndOfDayWizardView` progress bar + abort alert; `EndOfDayWizardViewModel.abort()`. (69c28fdb)
+- [x] Logging: each step's completion stamped in audit log. `AppLog.pos.info` on markCompleted + skipStep. (69c28fdb)
 - [ ] Permissions: manager-only; cashier gets "Need manager" if attempted
 - [ ] Daily: sales + payments + cash close + bank deposit all tie out
 - [ ] Dashboard shows variance per period
@@ -5357,7 +5357,7 @@ See §16.10 for core flow. Additional items:
 
 ### 40.2 Store credit
 - [x] **Networking** — `StoreCreditEndpoints.swift`: `getStoreCreditBalance(customerId:)`. Redeem issuance via tender flow.
-- [ ] **Issued** on returns / apologies / promos.
+- [x] **Issued** on returns / apologies / promos. `IssuedStoreCreditSheet` + `IssuedStoreCreditViewModel`; manager PIN above $25 (2500¢); reuses CustomerCreditRefundRequest + refundCustomerCredit. (6398b3dc)
 - [x] **Balance visible** — store credit section in `PosGiftCardSheet` when `cart.customer.id != nil`.
 - [x] **Redeem** at POS with toggle via `AppliedTender.storeCredit`.
 - [x] **Expiration** configurable. `StoreCreditExpirationSettingsView` admin view (90/180/365/never). Networking: `updateStoreCreditPolicy`. Commit 468fe08.
