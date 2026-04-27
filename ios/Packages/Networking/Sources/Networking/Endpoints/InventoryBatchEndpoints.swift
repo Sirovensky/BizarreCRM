@@ -94,6 +94,17 @@ public extension APIClient {
                        body: req, as: BatchInventoryResponse.self)
     }
 
+    // MARK: - §6.1 Import CSV/JSON
+
+    /// `POST /api/v1/inventory/import-csv` — send raw CSV body.
+    /// Server returns `{ success, data: { imported, errors: [{row, message}] } }`.
+    @discardableResult
+    func importInventoryCSV(_ request: InventoryImportCSVRequest) async throws -> InventoryImportResult {
+        try await post("/api/v1/inventory/import-csv",
+                       body: request,
+                       as: InventoryImportResult.self)
+    }
+
     /// `GET /api/v1/inventory` scoped to keyword search — reuses the list
     /// endpoint with a `keyword` query and a small page size for picker use.
     func searchSkus(keyword: String, limit: Int = 20) async throws -> [SkuSearchResult] {
