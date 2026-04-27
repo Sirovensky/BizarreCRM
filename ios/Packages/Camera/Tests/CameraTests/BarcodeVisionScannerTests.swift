@@ -126,4 +126,33 @@ final class BarcodeA11yAnnouncerTests: XCTestCase {
         let announcement = BarcodeA11yAnnouncer.announcement(for: result, itemName: nil)
         XCTAssertTrue(announcement.contains("ITEM-SKU-001"))
     }
+
+    // MARK: - UPC-A (§17 symbologies — added b10)
+
+    func test_upca_validChecksum() throws {
+        guard #available(iOS 16, *) else { throw XCTSkip("VNBarcodeSymbology unavailable") }
+        // Known-valid UPC-A: 012345678905
+        XCTAssertTrue(BarcodeChecksumValidator.validate(value: "012345678905", symbology: .upca))
+    }
+
+    func test_upca_invalidChecksum() throws {
+        guard #available(iOS 16, *) else { throw XCTSkip("VNBarcodeSymbology unavailable") }
+        // Corrupt last digit
+        XCTAssertFalse(BarcodeChecksumValidator.validate(value: "012345678900", symbology: .upca))
+    }
+
+    func test_upca_wrongLength() throws {
+        guard #available(iOS 16, *) else { throw XCTSkip("VNBarcodeSymbology unavailable") }
+        XCTAssertFalse(BarcodeChecksumValidator.validate(value: "01234567890", symbology: .upca))
+    }
+
+    func test_allSymbologies_contains12Types() {
+        // We now support 12 symbologies (EAN-13/8, UPC-A/E, Code 128/39/93, ITF-14, DataMatrix, QR, Aztec, PDF417)
+        XCTAssertEqual(BarcodeVisionScanner.allSymbologies.count, 12)
+    }
+
+    func test_upca_humanReadableName() throws {
+        guard #available(iOS 16, *) else { throw XCTSkip("VNBarcodeSymbology unavailable") }
+        XCTAssertEqual(VNBarcodeSymbology.upca.humanReadableName, "UPC-A")
+    }
 }

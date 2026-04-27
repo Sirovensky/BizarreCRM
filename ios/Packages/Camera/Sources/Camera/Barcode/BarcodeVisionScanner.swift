@@ -67,6 +67,7 @@ public actor BarcodeVisionScanner {
     public static let allSymbologies: [VNBarcodeSymbology] = [
         .ean13,
         .ean8,
+        .upca,   // UPC-A (12-digit; distinct from EAN-13 in Vision framework)
         .upce,
         .code128,
         .code39,
@@ -159,6 +160,9 @@ public enum BarcodeChecksumValidator {
             return validateEAN(value, expectedLength: 13)
         case .ean8:
             return validateEAN(value, expectedLength: 8)
+        case .upca:
+            // UPC-A is a 12-digit code; same mod-10 GS1 algorithm as EAN-13.
+            return validateEAN(value, expectedLength: 12)
         case .upce:
             // UPC-E is typically 6–8 digits; checksum validation requires expansion to UPC-A first.
             // VisionKit delivers the 6-digit zero-suppressed form; we accept it if digit-only.
@@ -218,6 +222,7 @@ extension VNBarcodeSymbology {
         switch self {
         case .ean13:      return "EAN-13"
         case .ean8:       return "EAN-8"
+        case .upca:       return "UPC-A"
         case .upce:       return "UPC-E"
         case .code128:    return "Code 128"
         case .code39:     return "Code 39"
@@ -236,7 +241,7 @@ extension VNBarcodeSymbology {
         switch self {
         case .code128:    return "Inventory SKU (primary)"
         case .qr:         return "Inventory SKU (secondary) / Ticket link"
-        case .ean13, .ean8: return "Retail barcode"
+        case .ean13, .ean8, .upca: return "Retail barcode"
         case .upce:       return "Retail barcode (compact)"
         case .itf14:      return "Shipping / carton"
         case .dataMatrix, .aztec, .pdf417: return "Document / 2D"
