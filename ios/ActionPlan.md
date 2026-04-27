@@ -181,7 +181,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
 - [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
-- [ ] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support".
+- [x] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support". (`DatabaseVersionGuard.checkCompatibility(pool:appVersion:)` + `DatabaseVersionError.databaseNewerThanApp` in `Persistence/DatabaseVersionGuard.swift`; called from `Database.open(at:)` before migration run; throws user-friendly `LocalizedError`. feat(§1.6): forward-only DB version guard PENDING2)
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
 - [ ] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch.
 - [ ] Debug builds: dry-run migration on backup first and report diff before apply.
@@ -3523,7 +3523,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 
 ### 20.6 Connectivity detection
 - [x] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive). (`SyncManager.autoStart()` subscribes and triggers `syncNow()` on reconnect.)
-- [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier PENDING_COMMIT)
+- [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier 173d99c4)
 - [ ] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override).
 - [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
 
@@ -4277,7 +4277,7 @@ Three different iOS signals, three different defenses:
 | Sensitive input fields | — | **Yes, iOS 17+**: `UIView.isSecure = true` marks a view as content-protected; its pixels are excluded from screen-record capture AND from screenshots (replaced with black). Equivalent SwiftUI modifier pattern (via UIViewRepresentable wrapper) until Apple ships one. | Apply on PIN entry, OTP entry, PAN-masked displays, full-card reveal (not used but the plumbing exists). |
 
 Tasks:
-- [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay PENDING_COMMIT)
+- [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay 173d99c4)
 - [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`.
 - [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
 - [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
@@ -4509,10 +4509,10 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 ### 30.1 Color tokens (`DesignSystem/Colors.swift`)
 - [x] **Brand**: `brandPrimary` (orange), `brandSecondary` (teal), `brandTertiary` (magenta). (`bizarrePrimary`, `bizarreTeal`, `bizarreMagenta` in `BrandColors.swift`. shipped bcbccaa8)
 - [x] **Surfaces**: `surfaceBase` (dark near-black), `surfaceElevated`, `surfaceSunken`, `surfaceOverlay`. (`bizarreSurfaceBase/Surface1/Surface2` in `BrandColors.swift`. shipped bcbccaa8)
-- [x] **Text**: `text`, `textSecondary`, `textTertiary`, `textOnBrand`, `textMuted`. (`bizarreText` + `bizarreTextSecondary` + `bizarreTextTertiary` + `bizarreTextOnBrand` + `bizarreTextMuted` added to `BrandColors.swift`. feat(§30.1): text + divider + glass tint color tokens PENDING_COMMIT)
-- [x] **Dividers**: `divider`, `dividerStrong`. (`bizarreDivider` + `bizarreDividerStrong` added to `BrandColors.swift`. feat(§30.1) PENDING_COMMIT)
+- [x] **Text**: `text`, `textSecondary`, `textTertiary`, `textOnBrand`, `textMuted`. (`bizarreText` + `bizarreTextSecondary` + `bizarreTextTertiary` + `bizarreTextOnBrand` + `bizarreTextMuted` added to `BrandColors.swift`. feat(§30.1): text + divider + glass tint color tokens 173d99c4)
+- [x] **Dividers**: `divider`, `dividerStrong`. (`bizarreDivider` + `bizarreDividerStrong` added to `BrandColors.swift`. feat(§30.1) 173d99c4)
 - [x] **Status**: `success`, `warning`, `danger`, `info`. (`bizarreSuccess/Warning/Danger/Info` in `BrandColors.swift`. shipped bcbccaa8)
-- [x] **Glass tints**: `glassTintDark`, `glassTintLight`. (`bizarreGlassTintDark` + `bizarreGlassTintLight` added to `BrandColors.swift`. feat(§30.1) PENDING_COMMIT)
+- [x] **Glass tints**: `glassTintDark`, `glassTintLight`. (`bizarreGlassTintDark` + `bizarreGlassTintLight` added to `BrandColors.swift`. feat(§30.1) 173d99c4)
 - [ ] **All tokens** — asset-catalog with light + dark + high-contrast variants.
 
 ### 30.2 Spacing (8-pt grid)
@@ -4808,7 +4808,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Subsystem** `com.bizarrecrm` with categories: `api`, `sync`, `db`, `auth`, `ws`, `ui`, `pos`, `printer`, `terminal`, `bg`. (`Core/AppLog.swift` — `Logger` per category: `app`, `auth`, `networking`, `persistence`, `sync`, `ws`, `pos`, `hardware`, `ui`.)
 - [ ] **Levels** — `.debug`, `.info`, `.notice`, `.error`, `.fault`.
 - [ ] **Privacy annotations** — `\(..., privacy: .public)` for IDs, `\(..., privacy: .private)` for PII.
-- [x] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders. (`AppLog.Signpost` enum in `Core/Logging/AppLog.swift` — `.sync`, `.api`, `.listRender`, `.dbWrite`, `.imageLoad` `OSSignposter` instances for Instruments Time Profiler. feat(§32.1): OSSignposter catalog PENDING_COMMIT)
+- [x] **Signposts** — `OSSignposter` on sync cycles, API calls, list renders. (`AppLog.Signpost` enum in `Core/Logging/AppLog.swift` — `.sync`, `.api`, `.listRender`, `.dbWrite`, `.imageLoad` `OSSignposter` instances for Instruments Time Profiler. feat(§32.1): OSSignposter catalog 173d99c4)
 - [ ] **In-app viewer** — Settings → Diagnostics streams live log (filters by category/level).
 
 ### 32.2 MetricKit

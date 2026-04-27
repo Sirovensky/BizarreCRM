@@ -57,6 +57,12 @@ public actor Database {
         }
 
         let pool = try DatabasePool(path: url.path, configuration: config)
+
+        // §1.6 Forward-only migration guard: detect if on-disk DB is ahead of
+        // this binary. Throws `DatabaseVersionError.databaseNewerThanApp` which
+        // `SessionBootstrapper` catches and shows an upgrade-required alert.
+        try DatabaseVersionGuard.checkCompatibility(pool: pool, appVersion: Migrator.schemaVersion)
+
         try Migrator.register(on: pool)
         self._pool = pool
 

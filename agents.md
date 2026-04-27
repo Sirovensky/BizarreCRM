@@ -311,14 +311,14 @@ These errors prevent `swift test` from completing across the full package graph.
 
 ### Agent 2 — b9 discoveries
 
-**`UIBackgroundModes bluetooth-central` + `CBCentralManagerOptionRestoreIdentifierKey` — Agent 10 action needed (`scripts/write-info-plist.sh` + `project.yml`)**
+**`UIBackgroundModes bluetooth-central` + `CBCentralManagerOptionRestoreIdentifierKey` — RESOLVED by Agent 10 b6 (commit 18f052de)**
 
-`BluetoothBackgroundManager` (b9, `b4b3b9f0`) implements the Swift-side state-restoration delegate for CoreBluetooth background mode. For the background reconnection to work at runtime, two changes are needed in files owned by Agent 10:
+`BluetoothBackgroundManager` (b9, `b4b3b9f0`) implements the Swift-side state-restoration delegate for CoreBluetooth background mode.
 
-1. `scripts/write-info-plist.sh` — add `bluetooth-central` to the `UIBackgroundModes` array.
-2. `BluetoothManager.init` — pass `[CBCentralManagerOptionRestoreIdentifierKey: BluetoothBackgroundManager.restoreIdentifier]` as options when constructing `CBCentralManager`, and wire `centralManager(_:willRestoreState:)` delegate method to call `BluetoothBackgroundManager.shared.handleWillRestoreState(_:manager:)`.
+1. ✅ `scripts/write-info-plist.sh` — `bluetooth-central` added to `UIBackgroundModes` array. (Agent 10 b6, commit `18f052de`)
+2. ⬜ `BluetoothManager.init` — pass `[CBCentralManagerOptionRestoreIdentifierKey: BluetoothBackgroundManager.restoreIdentifier]` as options + wire `centralManager(_:willRestoreState:)` delegate method. **Agent 2 owns this file — Agent 2 can now proceed with this wiring.**
 
-The `BluetoothManager` init and the `CBCentralManagerDelegate` extension both live in `ios/Packages/Hardware/Sources/Hardware/Bluetooth/BluetoothManager.swift` (Agent 2 owns this file). Agent 2 will implement the delegate wiring in a follow-up batch once Agent 10 confirms the `UIBackgroundModes` key is added (ordering: plist change first so CI doesn't fail on missing entitlement).
+The `BluetoothManager` init and the `CBCentralManagerDelegate` extension both live in `ios/Packages/Hardware/Sources/Hardware/Bluetooth/BluetoothManager.swift` (Agent 2 owns this file). Step 1 is now unblocked.
 
 ### Agent 1 — b10 BlockChyp tasks STOPPED (HIGH RISK — orchestrator review required)
 
