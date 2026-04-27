@@ -12,42 +12,61 @@ import DesignSystem
 
 /// Adds `.swipeActions(edge: .trailing)` (Archive + Delete) and
 /// `.swipeActions(edge: .leading)` (Advance Status + Assign) to any view.
+///
+/// §4 permission gates:
+///   • Delete (trailing, destructive) — admin only.
+///   • Archive (trailing) — manager+.
+///   Pass `userRole: nil` to show all (backwards-compat).
 public struct TicketRowSwipeActions: ViewModifier {
     public let ticket: TicketSummary
     public let currentStatus: TicketStatus?
     public let firstAssignee: TicketAssignee?
     public let handlers: TicketQuickActionHandlers
+    /// Current user's role string from AuthMe.role. Nil = show all.
+    public let userRole: String?
 
     public init(
         ticket: TicketSummary,
         currentStatus: TicketStatus?,
         firstAssignee: TicketAssignee? = nil,
-        handlers: TicketQuickActionHandlers
+        handlers: TicketQuickActionHandlers,
+        userRole: String? = nil
     ) {
         self.ticket = ticket
         self.currentStatus = currentStatus
         self.firstAssignee = firstAssignee
         self.handlers = handlers
+        self.userRole = userRole
+    }
+
+    private var isAdmin: Bool { userRole?.lowercased() == "admin" }
+    private var isManagerOrAbove: Bool {
+        let r = userRole?.lowercased() ?? ""
+        return r == "admin" || r == "manager"
     }
 
     public func body(content: Content) -> some View {
         content
-            // Trailing: Archive + Delete
+            // Trailing: Archive + Delete (permission-gated)
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                Button(role: .destructive) {
-                    handlers.onDelete(ticket)
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                if isAdmin || userRole == nil {
+                    Button(role: .destructive) {
+                        handlers.onDelete(ticket)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                    .accessibilityLabel("Delete ticket")
                 }
-                .accessibilityLabel("Delete ticket")
 
-                Button {
-                    handlers.onArchive(ticket)
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
+                if isManagerOrAbove || userRole == nil {
+                    Button {
+                        handlers.onArchive(ticket)
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                    }
+                    .tint(Color.bizarreWarning)
+                    .accessibilityLabel("Archive ticket")
                 }
-                .tint(Color.bizarreWarning)
-                .accessibilityLabel("Archive ticket")
             }
             // Leading: Advance Status + SMS customer
             .swipeActions(edge: .leading, allowsFullSwipe: false) {

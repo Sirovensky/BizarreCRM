@@ -90,22 +90,41 @@ import DesignSystem
 /// Place inside `.contextMenu { }` or `Menu { }` blocks.
 /// The host is responsible for deriving `currentStatus` from the ticket
 /// (using the `TicketStateMachine`) and providing a list of assignees.
+///
+/// §4 permission-gated actions:
+///   • "Delete" — admin only (role == "admin").
+///   • "Archive" — admin or manager (role is "admin" or "manager").
+///   • "Convert to Invoice" — requires admin or manager.
+///   Other actions visible to all authenticated staff.
 public struct TicketQuickActionsContent: View {
     public let ticket: TicketSummary
     public let currentStatus: TicketStatus?
     public let assignees: [TicketAssignee]
     public let handlers: TicketQuickActionHandlers
+    /// Current user's role string from `AuthMe.role` ("admin", "manager", "cashier", etc.).
+    /// Pass `nil` to show all actions (backwards-compatible with existing call sites).
+    public let userRole: String?
 
     public init(
         ticket: TicketSummary,
         currentStatus: TicketStatus?,
         assignees: [TicketAssignee],
-        handlers: TicketQuickActionHandlers
+        handlers: TicketQuickActionHandlers,
+        userRole: String? = nil
     ) {
         self.ticket = ticket
         self.currentStatus = currentStatus
         self.assignees = assignees
         self.handlers = handlers
+        self.userRole = userRole
+    }
+
+    // MARK: - Permission helpers
+
+    private var isAdmin: Bool { userRole?.lowercased() == "admin" }
+    private var isManagerOrAbove: Bool {
+        let r = userRole?.lowercased() ?? ""
+        return r == "admin" || r == "manager"
     }
 
     public var body: some View {
@@ -184,13 +203,15 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Add note to ticket")
 
-        // 7. Convert to invoice
-        Button {
-            handlers.onConvertToInvoice(ticket)
-        } label: {
-            Label("Convert to Invoice", systemImage: "doc.text")
+        // 7. Convert to invoice (manager+ only)
+        if isManagerOrAbove || userRole == nil {
+            Button {
+                handlers.onConvertToInvoice(ticket)
+            } label: {
+                Label("Convert to Invoice", systemImage: "doc.text")
+            }
+            .accessibilityLabel("Convert ticket to invoice")
         }
-        .accessibilityLabel("Convert ticket to invoice")
 
         // 8. Duplicate
         Button {
@@ -213,21 +234,25 @@ public struct TicketQuickActionsContent: View {
 
         Divider()
 
-        // 10. Archive
-        Button {
-            handlers.onArchive(ticket)
-        } label: {
-            Label("Archive", systemImage: "archivebox")
+        // 10. Archive (manager+ only — §4 permission gate)
+        if isManagerOrAbove || userRole == nil {
+            Button {
+                handlers.onArchive(ticket)
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .accessibilityLabel("Archive ticket")
         }
-        .accessibilityLabel("Archive ticket")
 
-        // 11. Delete (destructive)
-        Button(role: .destructive) {
-            handlers.onDelete(ticket)
-        } label: {
-            Label("Delete", systemImage: "trash")
+        // 11. Delete (admin only — §4 permission gate)
+        if isAdmin || userRole == nil {
+            Button(role: .destructive) {
+                handlers.onDelete(ticket)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .accessibilityLabel("Delete ticket")
         }
-        .accessibilityLabel("Delete ticket")
     }
 }
 
