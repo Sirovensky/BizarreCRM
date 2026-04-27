@@ -138,7 +138,7 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 
 ### 1.2 Pinning & TLS
 - [x] `PinnedURLSessionDelegate` scaffold — shipped (empty pin set).
-- [ ] Decision: leave pins empty for Let's Encrypt on `bizarrecrm.com`, or pin to Let's Encrypt intermediates. Document decision in README and toggle per-build-config.
+- [x] Decision: leave pins empty for Let's Encrypt on `bizarrecrm.com`, or pin to Let's Encrypt intermediates. Document decision in README and toggle per-build-config. (Decision: no pins for cloud tenants — 90-day LE rotation; self-hosted supply optional `tls_pin_sha256`. `PinningPolicyFactory` in `Networking/Pinning/TLSPinningDecision.swift`; `failClosed=false` DEBUG / `!pins.isEmpty` RELEASE. feat(§1.2): 99a6739a)
 - [ ] Custom-server override (self-hosted tenants): allow user-trusted pins per base URL, stored encrypted in Keychain.
 
 ### 1.3 Persistence (GRDB + SQLCipher)
@@ -226,7 +226,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [ ] Purpose: protect server from accidental client storm (over-scroll fetch); improve UX on flaky networks.
 - [x] Impl: token-bucket per endpoint category — read 60/min, write 20/min; excess requests queued with backoff.
 - [x] Honor server hints: `Retry-After`, `X-RateLimit-Remaining`; pause client on near-limit signal.
-- [ ] UI: silent unless sustained; show "Slow down" banner if queue > 10.
+- [x] UI: silent unless sustained; show "Slow down" banner if queue > 10. (`RateLimiter.checkSlowDownThreshold(host:)` posts `Notification.Name.rateLimiterSlowDownWarning` on MainActor at ≥10 waiters; `.rateLimiterSlowDownCleared` when drops below. feat(§1): 4790190a)
 - [ ] Debug drawer exposes current bucket state per endpoint.
 - [ ] Exemptions: auth + offline-queue flush not client-limited (server-side limits instead).
 - [x] Auto-save drafts every 2s to SQLCipher for ticket-create, customer-create, SMS-compose; never lost on crash/background.
@@ -3524,7 +3524,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 ### 20.6 Connectivity detection
 - [x] **`NWPathMonitor`** — reactive publisher of path status (wifi / cellular / none / constrained / expensive). (`SyncManager.autoStart()` subscribes and triggers `syncNow()` on reconnect.)
 - [x] **Offline banner** — glass chip at top of every screen when path == none. (`ConnectivityBannerModifier` + `.connectivityBanner()` View extension in `Sync/ConnectivityBannerModifier.swift`; wraps `Reachability.isOnline` + `SyncManager.pendingCount`; uses `OfflineBanner` from DesignSystem; `safeAreaInset` ensures it never hides list content. feat(§20.6): connectivity banner modifier 173d99c4)
-- [ ] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override).
+- [x] **Metered-network warning** — if cellular + expensive, pause photo uploads until wifi (user override). (`MeteredUploadPolicy` + `MeteredNetworkWarningModifier` + `.meteredNetworkWarning(isUploadPending:)` in `Sync/MeteredNetworkWarning.swift`; glass banner safeAreaInset; per-session user override. feat(§20.6): 7000f88c)
 - [ ] **Stale-cache banner** — if offline > 1h on a data-heavy screen.
 
 ### 20.7 Selective sync (large tenants)
@@ -3988,7 +3988,7 @@ Always-on data (labels, hints, traits) — these cost nothing and only matter wh
 - [x] **Grouping** — `.accessibilityElement(children: .combine)` on compound rows so VoiceOver reads one meaningful line. (Tickets/Customers/Inventory/Invoices rows — feat(ios post-phase §26))
 - [ ] **Container** — `.accessibilityElement(children: .contain)` wraps list for navigation.
 - [ ] **Announcement** — `.announcement` posted on async success/failure ("Ticket created") **only when `UIAccessibility.isVoiceOverRunning`** — silent otherwise to avoid wasted work.
-- [ ] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise.
+- [x] **Focus** — `@AccessibilityFocusState` moves focus to key element on sheet open when VoiceOver is running; ignored otherwise. (`A11ySheetFocusModifier` + `.a11yFocusOnAppear(_:)` + `.a11yCustomAction(label:handler:)` in `Core/A11y/A11ySheetFocusModifier.swift`; 450ms settle delay. feat(§26.1): 1d61493b)
 - [ ] **Custom actions** — swipe actions exposed as accessibility custom actions.
 - [ ] **Image descriptions** — customer avatars use initials; ticket photos labeled "Photo N of M on ticket X".
 
@@ -4227,8 +4227,8 @@ Tasks:
 - [ ] **Developer DX** — debug builds can open local DB via a CLI wrapper that pulls the key from Keychain only when an engineer has Xcode attached; never ship the wrapper in Release.
 
 ### 28.3 Network
-- [ ] **App Transport Security** — HTTPS only; no `NSAllowsArbitraryLoads`.
-- [ ] **SPKI pinning** — `PinnedURLSessionDelegate` pins one or more cert SPKIs; rotation list per tenant.
+- [x] **App Transport Security** — HTTPS only; no `NSAllowsArbitraryLoads`. (`NSAllowsArbitraryLoads` omitted (defaults false) + `NSAllowsLocalNetworking=true` for LAN self-hosted in `write-info-plist.sh`. feat(§28.3): b7ae0101)
+- [x] **SPKI pinning** — `PinnedURLSessionDelegate` pins one or more cert SPKIs; rotation list per tenant. (Decision: no pins by default for cloud tenants — Let's Encrypt 90-day rotation; self-hosted supply optional `tls_pin_sha256` via `/auth/me`. `PinningPolicyFactory` in `Networking/Pinning/TLSPinningDecision.swift`. feat(§1.2): 99a6739a)
 - [ ] **Fallback** — if pin fails, refuse connection + glass alert.
 - [ ] **Proxy / MITM detection** — warn user in dev builds.
 - [ ] **Certificate rotation** — remote config of pin list with 30-day overlap.
@@ -4278,7 +4278,7 @@ Three different iOS signals, three different defenses:
 
 Tasks:
 - [x] **Privacy snapshot on background** — blur overlay always on; no toggle. `willResignActive` → swap root for branded snapshot view → restore on active. (`AppSnapshotPrivacyModifier` + `BrandedSnapshotOverlay` + `.appSnapshotPrivacy()` convenience modifier in `Core/Privacy/AppSnapshotPrivacy.swift`; watches `scenePhase`; attach at `RootView`. feat(§28.8): app snapshot privacy overlay 173d99c4)
-- [ ] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`.
+- [x] **Screen-capture blur** — `UIScreen.capturedDidChange` handler swaps sensitive views for a blur placeholder while `isCaptured == true`. (`ScreenCaptureBlurModifier` + `.screenCaptureProtected()` in `Core/Privacy/ScreenCapturePrivacy.swift`; blurs at 20pt + ultraThinMaterial overlay; animated `.easeInOut(0.22)`. feat(§28.8): ebf86471)
 - [ ] **Screenshot detection** — `userDidTakeScreenshotNotification` observed globally; writes an audit entry with user + screen identifier + UTC timestamp on sensitive screens (payment, 2FA, receipts containing PAN last4, audit export). Optional one-shot banner to the user on receipts. No attempt to block — iOS does not allow it.
 - [ ] **`isSecure`** — iOS 17+ secure-content flag applied to PIN / OTP / masked-card fields so their pixels don't make it into screen recordings or screenshots at all.
 
@@ -4425,11 +4425,11 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Memory warnings** — flush image cache + Nuke memcache + GRDB page cache.
 
 ### 29.7 Networking
-- [ ] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
+- [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo). (timeout 15/30s, urlCache nil, reloadIgnoringLocalCache, cellular/constrained/expensive all allowed. feat(§29.7): 7ae3cd0c)
 - [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
 - [ ] **Request coalescing** — dedupe concurrent same-URL requests.
 - [ ] **Timeout** — 15s default; 30s for large uploads.
-- [ ] **Compression** — Accept-Encoding: gzip, br.
+- [x] **Compression** — Accept-Encoding: gzip, br. (Added to `httpAdditionalHeaders` in `APIClient.swift`. feat(§29.7): 7ae3cd0c)
 
 ### 29.8 Animations
 - [ ] **Springs** — use `.interactiveSpring` for responsiveness.
@@ -4693,7 +4693,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Shown on first load only; background refresh keeps cached content + subtle top indicator.
 - [ ] Error transition: skeleton → error state with same layout footprint.
 - [ ] Count: 3-6 skeleton rows typically; list-specific counts tuned to viewport.
-- [ ] Tokens: `Surface.skeletonBase`, `Surface.skeletonHighlight` (dark/light variants).
+- [x] Tokens: `Surface.skeletonBase`, `Surface.skeletonHighlight` (dark/light variants). (`DesignTokens.Skeleton.base` + `.highlight` in `DesignSystem/Tokens.swift`; asset-catalog backed + dark/light fallbacks. feat(§30.9): 6f177c96)
 - [ ] Reusable components: `SkeletonRow(.ticket)`, `SkeletonRow(.customer)`, centralized.
 - [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
 - [ ] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5).
@@ -4798,7 +4798,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Single sink** — telemetry collector reads `APIClient.baseURL` at send-time. No hardcoded URLs.
 - [ ] **Multi-tenant switch** — when user switches tenant, all in-flight telemetry flushed to old server; new events route to new server.
 - [ ] **Self-hosted endpoints** — `POST /telemetry/events`, `POST /telemetry/metrics`, `POST /telemetry/crashes`, `POST /telemetry/diagnostics`, `POST /telemetry/heartbeat`. Document in server API spec.
-- [ ] **Offline buffer** — events batched in GRDB `telemetry_queue`; flushed when online.
+- [x] **Offline buffer** — events batched in GRDB `telemetry_queue`; flushed when online. (Migration `007_telemetry_queue.sql`: id, event_name, payload_json, session_id, tenant_slug, enqueued_at, status, attempt_count; idx on (status, enqueued_at); 10k row cap at app layer. feat(§32.0): 59a160ca)
 - [ ] **Backpressure** — server returns 429 → back-off; drop oldest events past 10k cap.
 - [x] **Build-time lint** — CI greps for forbidden SDK imports (`Sentry`, `Firebase`, `Mixpanel`, `Amplitude`, `Bugsnag`, etc.) and fails. (`ios/scripts/sdk-ban.sh` + `.github/workflows/ios-lint.yml`; dry-run passes clean on current tree.)
 - [x] **Privacy manifest audit** — `PrivacyInfo.xcprivacy` declares zero `NSPrivacyTrackingDomains`. <!-- verified bcbccaa8 [actionplan agent-10] -->
@@ -4831,9 +4831,9 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Dev console** — `CrashConsoleView` (`#if DEBUG`) showing breadcrumbs + export. <!-- shipped feat(ios phase-11 §32) -->
 
 ### 32.4 Event taxonomy (first-party analytics)
-- [ ] **Screen views** — `screen_view { name, duration_ms }`.
-- [ ] **Action taps** — `action_tap { screen, action, entity_id? }`.
-- [ ] **Mutations** — `mutation_start`, `mutation_complete`, `mutation_failed { reason }`.
+- [x] **Screen views** — `screen_view { name, duration_ms }`. (`ScreenViewModifier` + `.trackScreenView(name:)` in `Core/Telemetry/ScreenViewTracking.swift`; records `screen.viewed` on appear+disappear with duration_ms. feat(§32.4): c342811e)
+- [x] **Action taps** — `action_tap { screen, action, entity_id? }`. (`Analytics.trackAction(_:screen:entityId:)` — entity IDs hashed via `.hashValue` hex; never raw. feat(§32.4): c342811e)
+- [x] **Mutations** — `mutation_start`, `mutation_complete`, `mutation_failed { reason }`. (`Analytics.trackMutationStart/Complete/Failed` routing through `SinkDispatcher` → `AnalyticsRedactor`. feat(§32.4): c342811e)
 - [ ] **Sync** — `sync_start`, `sync_complete { delta_count, duration_ms }`, `sync_failed`.
 - [ ] **POS** — `pos_sale_complete { total, tender }`, `pos_sale_failed { reason }`.
 - [ ] **Performance** — `cold_launch_ms`, `first_paint_ms`.
@@ -6057,8 +6057,8 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Shimmer duration cap** — if > 5s loading, swap to "Still loading… slower than usual — tap to retry". (`TimedSkeletonView<Skeleton>` in `Core/ErrorStates/OptimisticLoadingViews.swift` — wraps any skeleton; swaps to slow-load banner after configurable timeout (default 5s). feat(§63.3))
 
 ### 63.4 Inline pending
-- [ ] **Saving chip** — "Saving…" glass chip top-right while mutation in flight.
-- [ ] **Saved tick** — brief green check on save.
+- [x] **Saving chip** — "Saving…" glass chip top-right while mutation in flight. (`SavingChip` + `SavedTick` + `InlineSavingStateModifier` + `.inlineSavingState(isSaving:isSaved:)` in `Core/ErrorStates/OptimisticLoadingViews.swift`. feat(§63.4): 655cdc18)
+- [x] **Saved tick** — brief green check on save. (Part of `SavedTick` + `InlineSavingStateModifier` state machine. feat(§63.4): 655cdc18)
 
 ### 63.5 Destructive-action flows
 - [ ] **Soft-delete with undo** — toast "Deleted. Undo?" 5-second window.
@@ -6231,7 +6231,7 @@ Slug resolution rules:
 - [x] All haptics respect Settings → Haptics master + iOS accessibility setting. (`HapticsSettings.hapticsEnabled` + `QuietHoursCalculator`.)
 
 ### 66.1 CoreHaptics engine
-- `CHHapticEngine` registered on app start.
+- [x] `CHHapticEngine` registered on app start. (`CoreHapticsEngine.shared` eagerly initialized in `AppServices.restoreSession()`; actor handles interruption restart + foreground resume. feat(§66.1): ec399879)
 - Re-start on `audioSessionInterruption` + `applicationWillEnterForeground`.
 - Single `HapticCatalog.swift` source; ban ad-hoc calls.
 - Non-haptic devices (iPad without Taptic) → silent.
