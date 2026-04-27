@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ArrowLeft, Check, Clock } from 'lucide-react';
 import type { SubStepProps } from '../wizardTypes';
 
@@ -56,6 +56,20 @@ export function StepBusinessHours({ pending, onUpdate, onComplete, onCancel }: S
     setHours((prev) => ({ ...prev, [day]: { ...prev[day], ...patch } }));
   };
 
+  // WEB-S4-013: validate that 'to' > 'from' for open days
+  const timeErrors = useMemo(() => {
+    const errors: Partial<Record<keyof WeekHours, string>> = {};
+    for (const [day] of DAY_LABELS) {
+      const h = hours[day];
+      if (h.open && h.from && h.to && h.to <= h.from) {
+        errors[day] = 'Close time must be after open time';
+      }
+    }
+    return errors;
+  }, [hours]);
+
+  const hasErrors = Object.keys(timeErrors).length > 0;
+
   return (
     <div className="mx-auto max-w-2xl">
       <SubStepHeader title="Business Hours" icon={<Clock className="h-7 w-7 text-primary-600 dark:text-primary-400" />}
@@ -64,39 +78,47 @@ export function StepBusinessHours({ pending, onUpdate, onComplete, onCancel }: S
       <div className="space-y-3 rounded-2xl border border-surface-200 bg-white p-6 shadow-xl dark:border-surface-700 dark:bg-surface-800">
         {DAY_LABELS.map(([day, label]) => {
           const h = hours[day];
+          const dayError = timeErrors[day];
           return (
-            <div key={day} className="flex items-center gap-3">
-              <label className="flex w-28 items-center gap-2 text-sm text-surface-700 dark:text-surface-300">
+            <div key={day} className="flex flex-col gap-1">
+              <div className="flex items-center gap-3">
+                <label className="flex w-28 items-center gap-2 text-sm text-surface-700 dark:text-surface-300">
+                  <input
+                    type="checkbox"
+                    checked={h.open}
+                    onChange={(e) => updateDay(day, { open: e.target.checked })}
+                    className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  <span className="font-medium">{label}</span>
+                </label>
                 <input
-                  type="checkbox"
-                  checked={h.open}
-                  onChange={(e) => updateDay(day, { open: e.target.checked })}
-                  className="h-4 w-4 rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                  type="time"
+                  value={h.from}
+                  onChange={(e) => updateDay(day, { from: e.target.value })}
+                  disabled={!h.open}
+                  aria-invalid={!!dayError}
+                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
                 />
-                <span className="font-medium">{label}</span>
-              </label>
-              <input
-                type="time"
-                value={h.from}
-                onChange={(e) => updateDay(day, { from: e.target.value })}
-                disabled={!h.open}
-                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
-              />
-              <span className="text-sm text-surface-400">to</span>
-              <input
-                type="time"
-                value={h.to}
-                onChange={(e) => updateDay(day, { to: e.target.value })}
-                disabled={!h.open}
-                className="rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
-              />
-              {!h.open && <span className="text-xs text-surface-400">Closed</span>}
+                <span className="text-sm text-surface-400">to</span>
+                <input
+                  type="time"
+                  value={h.to}
+                  onChange={(e) => updateDay(day, { to: e.target.value })}
+                  disabled={!h.open}
+                  aria-invalid={!!dayError}
+                  className={`rounded-lg border bg-surface-50 px-3 py-2 text-sm text-surface-900 disabled:opacity-40 dark:bg-surface-700 dark:text-surface-100 ${dayError ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`}
+                />
+                {!h.open && <span className="text-xs text-surface-400">Closed</span>}
+              </div>
+              {dayError && (
+                <p role="alert" className="ml-32 text-xs text-red-500">{dayError}</p>
+              )}
             </div>
           );
         })}
       </div>
 
-      <SubStepFooter onCancel={onCancel} onComplete={onComplete} completeLabel="Save business hours" />
+      <SubStepFooter onCancel={onCancel} onComplete={onComplete} completeLabel="Save business hours" completeDisabled={hasErrors} />
     </div>
   );
 }

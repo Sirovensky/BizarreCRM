@@ -6,13 +6,31 @@ import toast from 'react-hot-toast';
 
 export function PhotoCapturePage() {
   const { ticketId, deviceId } = useParams<{ ticketId: string; deviceId: string }>();
-  const [searchParams] = useSearchParams();
-  const token = searchParams.get('t');
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // WEB-FC-016: strip ?t from the URL immediately after reading it so the
+  // token never appears in browser history or Referer headers after the first
+  // navigation. We keep it in component state for the lifetime of the page.
+  const [token] = useState<string | null>(() => {
+    const t = searchParams.get('t');
+    return t || null;
+  });
+  useEffect(() => {
+    if (searchParams.has('t')) {
+      // Replace the URL in-place without a new history entry
+      const next = new URLSearchParams(searchParams);
+      next.delete('t');
+      setSearchParams(next, { replace: true });
+    }
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [photos, setPhotos] = useState<{ file: File; preview: string }[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(false);
   const [error, setError] = useState('');
+  const [tokenExpired, setTokenExpired] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef(photos);
   photosRef.current = photos;
@@ -87,7 +105,13 @@ export function PhotoCapturePage() {
       });
       setUploaded(true);
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { message?: string } } } | undefined;
+      const err = e as { response?: { status?: number; data?: { message?: string } } } | undefined;
+      const status = err?.response?.status;
+      // WEB-S4-028: distinguish expired/invalid link from generic upload failure
+      if (status === 401 || status === 403) {
+        setTokenExpired(true);
+        return;
+      }
       const msg = err?.response?.data?.message || 'Upload failed. Please try again.';
       setError(msg);
       // Mobile users often don't see the inline error banner — a toast makes
@@ -104,6 +128,17 @@ export function PhotoCapturePage() {
         <AlertCircle className="h-16 w-16 text-red-400 mb-4" />
         <h1 className="text-xl font-bold text-white mb-2">Invalid Link</h1>
         <p className="text-gray-400 text-sm">This photo link is missing authentication. Please scan the QR code again from the check-in screen.</p>
+      </div>
+    );
+  }
+
+  // WEB-S4-028: show a clear "link expired" message instead of a generic error
+  if (tokenExpired) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col items-center justify-center p-6 text-center">
+        <AlertCircle className="h-16 w-16 text-amber-400 mb-4" />
+        <h1 className="text-xl font-bold text-white mb-2">Link Expired</h1>
+        <p className="text-gray-400 text-sm">This photo link has expired or is no longer valid. Please ask a staff member to generate a new QR code for your ticket.</p>
       </div>
     );
   }

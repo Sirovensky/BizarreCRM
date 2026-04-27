@@ -202,6 +202,10 @@ export async function sendVerificationCode(phone: string): Promise<void> {
   await portalClient.post('/register/send-code', { phone });
 }
 
+export async function verifyRegistrationCode(phone: string, code: string): Promise<void> {
+  await portalClient.post('/register/check-code', { phone, code });
+}
+
 export async function verifyAndRegister(phone: string, code: string, pin: string): Promise<LoginResponse> {
   const res = await portalClient.post('/register/verify', { phone, code, pin });
   const data = res.data.data as LoginResponse;

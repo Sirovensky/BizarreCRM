@@ -27,7 +27,19 @@ export function StepTax({ onComplete, onCancel }: SubStepProps) {
       if (Number.isNaN(parsedRate) || parsedRate < 0 || parsedRate > 100) {
         throw new Error('Tax rate must be a number between 0 and 100.');
       }
-      await api.post('/settings/tax-classes', { name: name.trim(), rate: parsedRate });
+      const trimmedName = name.trim();
+
+      // WEB-S4-016: check for an existing tax class with the same name so re-opening
+      // the step does not create duplicates. If found, update the rate instead of
+      // inserting a new row.
+      const existing = await api.get('/settings/tax-classes');
+      const classes = (existing?.data as { data?: Array<{ id: number; name: string }> })?.data ?? [];
+      const match = classes.find((tc) => tc.name.toLowerCase() === trimmedName.toLowerCase());
+      if (match) {
+        await api.put(`/settings/tax-classes/${match.id}`, { name: trimmedName, rate: parsedRate });
+      } else {
+        await api.post('/settings/tax-classes', { name: trimmedName, rate: parsedRate });
+      }
       onComplete();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to save tax rate.';

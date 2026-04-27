@@ -83,6 +83,37 @@ function LoginError({ message, kind }: { message: string; kind: ErrorKind }) {
   );
 }
 
+// WEB-S4-005: Password strength indicator — weak/ok/strong based on length + char classes
+function getPasswordStrength(pw: string): { level: 0 | 1 | 2 | 3; label: string } {
+  if (!pw) return { level: 0, label: '' };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { level: 1, label: 'Weak' };
+  if (score <= 3) return { level: 2, label: 'OK' };
+  return { level: 3, label: 'Strong' };
+}
+
+function PasswordStrengthBar({ password }: { password: string }) {
+  const { level, label } = getPasswordStrength(password);
+  if (!password) return null;
+  const colors = ['', 'bg-red-500', 'bg-amber-400', 'bg-green-500'];
+  const textColors = ['', 'text-red-600 dark:text-red-400', 'text-amber-600 dark:text-amber-400', 'text-green-600 dark:text-green-400'];
+  return (
+    <div className="mt-1.5 space-y-1">
+      <div className="flex gap-1">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className={`h-1 flex-1 rounded-full transition-colors ${i <= level ? colors[level] : 'bg-surface-200 dark:bg-surface-600'}`} />
+        ))}
+      </div>
+      <p className={`text-xs font-medium ${textColors[level]}`}>{label}</p>
+    </div>
+  );
+}
+
 type Step = 'password' | 'setPassword' | 'setup' | 'verify' | 'firstTimeSetup';
 
 export function LoginPage() {
@@ -102,8 +133,11 @@ export function LoginPage() {
   const { isAuthenticated, completeLogin } = useAuthStore();
 
   const [step, setStep] = useState<Step>('password');
+  // WEB-S4-002: track which step preceded 'setup' so the Back button returns there
+  const [prevStep, setPrevStep] = useState<Step>('setPassword');
   const [setupUsername, setSetupUsername] = useState('');
   const [setupPassword, setSetupPassword] = useState('');
+  const [setupConfirmPassword, setSetupConfirmPassword] = useState('');
   const [setupEmail, setSetupEmail] = useState('');
   const [setupFirstName, setSetupFirstName] = useState('');
   const [setupLastName, setSetupLastName] = useState('');
@@ -327,6 +361,7 @@ export function LoginPage() {
         if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
         setQrUrl(setupData.qr);
         setManualSecret(setupData.secret);
+        setPrevStep('password'); // WEB-S4-002: back from 2FA setup → password step
         setStep('setup');
       } else {
         setStep('verify');
@@ -391,6 +426,7 @@ export function LoginPage() {
       if (setupData.challengeToken) setChallengeToken(setupData.challengeToken);
       setQrUrl(setupData.qr);
       setManualSecret(setupData.secret);
+      setPrevStep('setPassword'); // WEB-S4-002: back from 2FA setup → setPassword step
       setStep('setup');
     } catch (err: unknown) {
       setError(redactEmails(formatApiError(err) || 'Failed to set password'));
@@ -468,6 +504,10 @@ export function LoginPage() {
                 setError('Password must be at least 8 characters');
                 return;
               }
+              if (setupPassword !== setupConfirmPassword) {
+                setError('Passwords do not match');
+                return;
+              }
               if (isSingleTenantSetup) {
                 if (!setupEmail.trim()) {
                   setError('Email is required');
@@ -496,6 +536,7 @@ export function LoginPage() {
                 setIsSingleTenantSetup(false);
                 // Wipe credentials from memory immediately — section 41 fix.
                 setSetupPassword('');
+                setSetupConfirmPassword('');
                 window.history.replaceState(null, '', '/login');
               } catch (err: unknown) {
                 setError(formatApiError(err) || 'Setup failed');
@@ -598,11 +639,30 @@ export function LoginPage() {
                   aria-describedby={error ? 'setup-form-error' : undefined}
                   className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
+                {/* WEB-S4-005: strength bar */}
+                <PasswordStrengthBar password={setupPassword} />
+              </div>
+              <div>
+                <label htmlFor="setup-confirm-password" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm password</label>
+                <input
+                  id="setup-confirm-password"
+                  type="password"
+                  value={setupConfirmPassword}
+                  onChange={(e) => setSetupConfirmPassword(e.target.value)}
+                  autoComplete="new-password"
+                  placeholder="Re-enter password"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+                {setupConfirmPassword && setupPassword !== setupConfirmPassword && (
+                  <p className="mt-1 text-xs text-red-500">Passwords do not match</p>
+                )}
               </div>
               {error && <p id="setup-form-error" role="alert" aria-live="polite" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (!!setupConfirmPassword && setupPassword !== setupConfirmPassword)}
                 aria-busy={loading}
                 className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -760,6 +820,11 @@ export function LoginPage() {
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
               </form>
+              {/* WEB-S4-002: Back button — returns to whichever step preceded 'setup' */}
+              <button type="button" onClick={() => { setStep(prevStep); setError(''); setTotpCode(''); }}
+                className="w-full text-xs text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
+                Back
+              </button>
             </div>
           )}
 

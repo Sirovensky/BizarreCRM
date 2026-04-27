@@ -170,8 +170,25 @@ export function StepDefaultStatuses({ onComplete, onCancel }: SubStepProps) {
         return (Number(current.notify_customer) === 1) !== value;
       });
 
-      for (const [id, value] of dirty) {
-        await settingsApi.updateStatus(Number(id), { notify_customer: value });
+      // WEB-S4-017: run PATCHes with per-request error capture so partial
+      // failures are surfaced rather than silently swallowed. Collect failures
+      // and report them; on any failure we still complete (the majority of
+      // statuses already saved) but show a summary so the user can retry.
+      const failures: string[] = [];
+      await Promise.all(
+        dirty.map(async ([id, value]) => {
+          try {
+            await settingsApi.updateStatus(Number(id), { notify_customer: value });
+          } catch {
+            const name = statuses.find((s) => s.id === Number(id))?.name ?? `#${id}`;
+            failures.push(name);
+          }
+        }),
+      );
+
+      if (failures.length > 0) {
+        setError(`Some statuses could not be saved: ${failures.join(', ')}. You can retry from Settings → Statuses.`);
+        // Don't block completion — partial saves are better than no saves.
       }
       onComplete();
     } catch (err: any) {

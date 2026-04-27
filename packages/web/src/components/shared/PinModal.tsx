@@ -12,7 +12,7 @@ interface PinModalProps {
 }
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_SECONDS = 30;
+const LOCKOUT_SECONDS = 60;
 // SCAN-1168: persist the lockout across full page reloads — previously the
 // counter lived in useState only, so a user who hit the 5-attempt cap could
 // just refresh the page and get 5 fresh attempts. sessionStorage scopes per

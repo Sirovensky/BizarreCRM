@@ -13,7 +13,8 @@ import type { ProviderType } from '../services/smsProvider.js';
 import { ENCRYPTED_CONFIG_KEYS, encryptConfigValue, decryptConfigValue } from '../utils/configEncryption.js';
 import { audit } from '../utils/audit.js';
 import { checkWindowRate, recordWindowFailure } from '../utils/rateLimiter.js';
-import { clearEmailCache, sendEmail, isEmailConfigured } from '../services/email.js';
+import nodemailer from 'nodemailer';
+import { clearEmailCache } from '../services/email.js';
 import { refreshClient as refreshBlockChypClient } from '../services/blockchyp.js';
 import { requireStepUpTotp } from '../middleware/stepUpTotp.js';
 import { reserveStorage, decrementStorageBytes } from '../services/usageTracker.js';
@@ -1759,6 +1760,39 @@ router.post('/sms/test-connection', adminOnly, async (req, res, next) => {
   }
 });
 
+// POST /settings/sms/test-send — WEB-S4-010
+// Sends a real test SMS to a supplied phone number using the credentials
+// provided in the request body (not necessarily saved yet). Allows the user
+// to verify their provider setup without committing the credentials first.
+// Credentials are validated for completeness before the outbound send is
+// attempted; the request never touches store_config.
+router.post('/sms/test-send', adminOnly, async (req, res, next) => {
+  try {
+    const { provider_type, credentials, to, body: msgBody } = req.body as {
+      provider_type?: ProviderType;
+      credentials?: Record<string, string>;
+      to?: string;
+      body?: string;
+    };
+    if (!provider_type) throw new AppError('provider_type is required', 400);
+    if (!credentials || typeof credentials !== 'object') throw new AppError('credentials are required', 400);
+    if (!to) throw new AppError('to (phone number) is required', 400);
+    const safeBody = (msgBody || 'Test SMS from BizarreCRM wizard').slice(0, 160);
+
+    const testProvider = createTestProvider(provider_type, credentials);
+    if (testProvider.name === 'console' && provider_type !== 'console') {
+      throw new AppError('Credentials incomplete — provider fell back to console', 400);
+    }
+    const result = await testProvider.send(to, safeBody);
+    if (!result.success) {
+      throw new AppError(result.error || 'SMS send failed', 502);
+    }
+    res.json({ success: true, data: { message: `Test SMS sent to ${to}`, providerId: result.providerId } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /settings/sms/reload — Hot-reload SMS provider from store_config
 // Note: reloadSmsProvider uses sync db internally, keep req.db
 router.post('/sms/reload', adminOnly, async (req, res) => {
@@ -1767,30 +1801,38 @@ router.post('/sms/reload', adminOnly, async (req, res) => {
   res.json({ success: true, data: { provider: providerName } });
 });
 
-// WEB-W1-034: POST /settings/test-smtp — send a test email to verify SMTP config
-// SEC: admin-only; uses the stored smtp credentials via sendEmail service.
-router.post('/test-smtp', adminOnly, async (req, res) => {
-  const db = req.db;
-  if (!isEmailConfigured(db)) {
-    return res.status(400).json({
-      success: false,
-      message: 'SMTP is not configured. Fill in smtp_host, smtp_user, and smtp_pass first.',
+// POST /settings/email/test-smtp — WEB-S4-009 / WEB-W1-034
+// Verifies SMTP credentials supplied in the request body (not necessarily saved yet)
+// by creating a transient nodemailer transport and calling .verify(). Never touches
+// store_config — purely a connectivity check during wizard or settings setup.
+router.post('/email/test-smtp', adminOnly, async (req, res, next) => {
+  try {
+    const { host, port, user, pass } = req.body as {
+      host?: string; port?: string | number; user?: string; pass?: string;
+    };
+    if (!host) throw new AppError('smtp_host is required', 400);
+    const portNum = port ? parseInt(String(port), 10) : 587;
+    if (Number.isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      throw new AppError('Invalid port number', 400);
+    }
+
+    const transport = nodemailer.createTransport({
+      host: String(host).trim(),
+      port: portNum,
+      secure: portNum === 465,
+      auth: user ? { user: String(user), pass: String(pass ?? '') } : undefined,
+      connectionTimeout: 10_000,
+      socketTimeout: 10_000,
+      greetingTimeout: 10_000,
     });
+    await transport.verify();
+    transport.close();
+    res.json({ success: true, data: { message: 'SMTP connection verified successfully.' } });
+  } catch (err) {
+    if (err instanceof AppError) return next(err);
+    const msg = (err as Error).message || 'SMTP connection failed';
+    next(new AppError(`SMTP test failed: ${msg}`, 502));
   }
-  const recipient = (req.body?.to as string | undefined)?.trim() || req.user?.email;
-  if (!recipient) {
-    return res.status(400).json({ success: false, message: 'No recipient email address. Provide ?to= or log in.' });
-  }
-  const ok = await sendEmail(db, {
-    to: recipient,
-    subject: 'SMTP Test — Bizarre CRM',
-    html: '<p>This is a test email from your Bizarre CRM setup. If you received this, your SMTP configuration is working correctly.</p>',
-    text: 'This is a test email from your Bizarre CRM setup. If you received this, your SMTP configuration is working correctly.',
-  });
-  if (ok) {
-    return res.json({ success: true, data: { message: `Test email sent to ${recipient}` } });
-  }
-  return res.status(500).json({ success: false, message: 'Failed to send test email. Check server logs for SMTP errors.' });
 });
 
 // ---------------------------------------------------------------------------

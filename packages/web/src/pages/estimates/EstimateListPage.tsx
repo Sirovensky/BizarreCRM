@@ -7,7 +7,7 @@ import {
   ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { estimateApi, customerApi } from '@/api/endpoints';
+import { estimateApi, customerApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
@@ -70,10 +70,17 @@ function CreateEstimateModal({
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const [lineItems, setLineItems] = useState([
-    { description: '', quantity: 1, unit_price: 0, tax_amount: 0 },
+    { description: '', quantity: 1, unit_price: 0, tax_class_id: '' as string | number },
   ]);
   const [notes, setNotes] = useState('');
   const [validUntil, setValidUntil] = useState('');
+
+  const { data: taxClassData } = useQuery({
+    queryKey: ['tax-classes'],
+    queryFn: () => settingsApi.getTaxClasses(),
+    staleTime: 60_000,
+  });
+  const taxClasses: { id: number; name: string; rate: number }[] = taxClassData?.data?.data || [];
 
   // Customer search
   const { data: customerData } = useQuery({
@@ -118,13 +125,13 @@ function CreateEstimateModal({
   function resetForm() {
     setSelectedCustomer(null);
     setCustomerSearch('');
-    setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_amount: 0 }]);
+    setLineItems([{ description: '', quantity: 1, unit_price: 0, tax_class_id: '' }]);
     setNotes('');
     setValidUntil('');
   }
 
   function addLineItem() {
-    setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_amount: 0 }]);
+    setLineItems((prev) => [...prev, { description: '', quantity: 1, unit_price: 0, tax_class_id: '' }]);
   }
 
   function removeLineItem(idx: number) {
@@ -138,7 +145,10 @@ function CreateEstimateModal({
   }
 
   const subtotal = lineItems.reduce((sum, li) => sum + li.quantity * li.unit_price, 0);
-  const totalTax = lineItems.reduce((sum, li) => sum + li.tax_amount, 0);
+  const totalTax = lineItems.reduce((sum, li) => {
+    const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
+    return sum + (tc ? li.quantity * li.unit_price * (tc.rate / 100) : 0);
+  }, 0);
   const total = subtotal + totalTax;
 
   if (!open) return null;
@@ -179,7 +189,16 @@ function CreateEstimateModal({
               customer_id: selectedCustomer.id,
               notes: notes || null,
               valid_until: validUntil || null,
-              line_items: validItems,
+              line_items: validItems.map((li) => {
+                const tc = taxClasses.find((t) => t.id === Number(li.tax_class_id));
+                return {
+                  description: li.description,
+                  quantity: li.quantity,
+                  unit_price: li.unit_price,
+                  tax_amount: tc ? Math.round(li.quantity * li.unit_price * (tc.rate / 100) * 100) / 100 : 0,
+                  tax_class_id: tc ? tc.id : undefined,
+                };
+              }),
             });
           }}
         >
@@ -201,6 +220,7 @@ function CreateEstimateModal({
               </div>
             ) : (
               <input
+                id="estimate-customer-search"
                 value={customerSearch}
                 onChange={(e) => {
                   setCustomerSearch(e.target.value);
@@ -208,6 +228,8 @@ function CreateEstimateModal({
                 }}
                 onFocus={() => customerSearch.length >= 2 && setShowCustomerDropdown(true)}
                 placeholder="Search customers..."
+                aria-invalid={!selectedCustomer && createMut.isError ? true : undefined}
+                aria-describedby={!selectedCustomer && createMut.isError ? 'estimate-customer-error' : undefined}
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
               />
             )}
@@ -262,6 +284,16 @@ function CreateEstimateModal({
                     className="w-24 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm text-right dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
                     placeholder="Price"
                   />
+                  <select
+                    value={item.tax_class_id}
+                    onChange={(e) => updateLineItem(idx, 'tax_class_id', e.target.value)}
+                    className="w-28 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+                  >
+                    <option value="">No tax</option>
+                    {taxClasses.map((tc) => (
+                      <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>
+                    ))}
+                  </select>
                   {lineItems.length > 1 && (
                     <button
                       type="button"

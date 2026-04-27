@@ -721,14 +721,10 @@ export function TicketListPage() {
   const page = Number(searchParams.get('page') || '1');
   const pageSize = Number(searchParams.get('pagesize') || localStorage.getItem('tickets_pagesize') || getSetting('ticket_default_pagination', '25') || '25');
   const keyword = searchParams.get('keyword') || '';
-  // WEB-W1-005: ticket_default_filter stores a date-range value; ticket_default_status_filter
-  // stores a status-group value. Previously both were conflated in ticket_default_filter,
-  // causing a date string like "7days" to be forwarded as status_id.
-  const statusFilter = searchParams.get('status_id') || '';
-  // status_group from URL takes precedence; fall back to ticket_default_status_filter setting.
-  const statusGroupFilter = searchParams.get('status_group') || getSetting('ticket_default_status_filter', '');
+  const statusFilter = searchParams.get('status_id') || getSetting('ticket_default_filter', '');
+  const statusGroupFilter = searchParams.get('status_group') || '';
   const assignedTo = searchParams.get('assigned_to') || '';
-  const dateFilter = searchParams.get('date_filter') || getSetting('ticket_default_filter', '');
+  const dateFilter = searchParams.get('date_filter') || '';
   const sortBy = (searchParams.get('sort_by') || getSetting('ticket_default_sort', 'urgency')) as SortColumn;
   const sortOrder = searchParams.get('sort_order') || getSetting('ticket_default_sort_order', 'DESC');
 
@@ -837,11 +833,6 @@ export function TicketListPage() {
   const users: { id: number; first_name: string; last_name: string }[] =
     usersData?.data?.data?.users || usersData?.data?.data || [];
 
-  // F19: ticket_show_closed / F20: ticket_show_empty read before ticketParams
-  // so show_closed can be forwarded to the server (WEB-W1-002).
-  const showClosed = getSetting('ticket_show_closed', '1') !== '0';
-  const showEmpty = getSetting('ticket_show_empty', '1') !== '0';
-
   // ─── Fetch tickets ────────────────────────────────────────────────
   const ticketParams = {
     page,
@@ -851,7 +842,6 @@ export function TicketListPage() {
     ...(statusGroupFilter ? { status_group: statusGroupFilter } : {}),
     ...(assignedTo ? { assigned_to: assignedTo === 'me' ? 'me' as const : Number(assignedTo) } : {}),
     ...(dateFilter ? { date_filter: dateFilter } : {}),
-    ...(!showClosed ? { show_closed: '0' } : {}),
     sort_by: sortBy,
     sort_order: sortOrder,
   };
@@ -889,12 +879,22 @@ export function TicketListPage() {
   const rawTickets: Ticket[] = ticketData?.data?.data?.tickets || ticketData?.data?.tickets || [];
   const pagination = ticketData?.data?.data?.pagination || ticketData?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 25 };
 
-  // F20: ticket_show_empty — hide tickets with no devices when '0' (client-side only;
-  // device count requires the devices join already done in the response).
+  // F19: ticket_show_closed — hide closed tickets when '0'
+  // F20: ticket_show_empty — hide tickets with no devices when '0'
+  const showClosed = getSetting('ticket_show_closed', '1') !== '0';
+  const showEmpty = getSetting('ticket_show_empty', '1') !== '0';
+
   const tickets = useMemo(() => {
-    if (!showEmpty) return rawTickets.filter(t => (t.devices?.length ?? 0) > 0);
-    return rawTickets;
-  }, [rawTickets, showEmpty]);
+    let filtered = rawTickets;
+    if (!showClosed) {
+      const closedStatuses = statuses.filter(s => s.is_closed).map(s => s.id);
+      filtered = filtered.filter(t => !closedStatuses.includes(t.status_id));
+    }
+    if (!showEmpty) {
+      filtered = filtered.filter(t => (t.devices?.length ?? 0) > 0);
+    }
+    return filtered;
+  }, [rawTickets, showClosed, showEmpty, statuses]);
   const statusCounts: { status_id?: number; id?: number; name?: string; status_name?: string; color: string; count: number }[] =
     ticketData?.data?.data?.status_counts || ticketData?.data?.status_counts || [];
 
@@ -1236,16 +1236,16 @@ export function TicketListPage() {
                 {groups.map((g) => (
                   <button
                     key={g.label}
-                    onClick={() => setParam('status_group', statusGroupFilter === g.filter ? '' : g.filter)}
+                    onClick={() => setParam('status_id', statusFilter === g.filter ? '' : g.filter)}
                     className={cn(
                       'inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 transition-all',
-                      statusGroupFilter === g.filter
+                      statusFilter === g.filter
                         ? 'ring-2 ring-offset-1 ring-offset-white dark:ring-offset-surface-900 shadow-sm'
                         : 'hover:bg-surface-50 dark:hover:bg-surface-800',
                     )}
                     style={{
-                      backgroundColor: statusGroupFilter === g.filter ? `${g.color}20` : undefined,
-                      ...(statusGroupFilter === g.filter ? { ringColor: g.color } : {}),
+                      backgroundColor: statusFilter === g.filter ? `${g.color}20` : undefined,
+                      ...(statusFilter === g.filter ? { ringColor: g.color } : {}),
                     }}
                   >
                     <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: g.dotColor }} />
@@ -1338,17 +1338,11 @@ export function TicketListPage() {
                   {d}
                 </div>
               ))}
-              {cells.map((day, i) => {
-                const isoDate = day
-                  ? `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-                  : null;
-                return (
+              {cells.map((day, i) => (
                 <div
                   key={i}
-                  onClick={isoDate ? () => navigate(`/tickets/new?due_date=${isoDate}`) : undefined}
                   className={cn(
                     'min-h-[100px] border-b border-r border-surface-100 p-1.5 dark:border-surface-800',
-                    day && 'cursor-pointer hover:bg-primary-50/30 dark:hover:bg-primary-950/10 transition-colors',
                     day && isToday(day) && 'bg-primary-50/50 dark:bg-primary-950/20',
                     !day && 'bg-surface-50/50 dark:bg-surface-900/30',
                   )}
@@ -1360,13 +1354,12 @@ export function TicketListPage() {
                         isToday(day) ? 'text-primary-600 dark:text-primary-400' : 'text-surface-500 dark:text-surface-400',
                       )}>
                         {day}
-                        <span className="ml-1 text-[9px] text-surface-300 dark:text-surface-600 hidden group-hover:inline">+ New</span>
                       </div>
                       <div className="space-y-0.5">
                         {(ticketsByDay[day] || []).slice(0, 3).map((t) => (
                           <button
                             key={t.id}
-                            onClick={(e) => { e.stopPropagation(); navigate(`/tickets/${t.id}`); }}
+                            onClick={() => navigate(`/tickets/${t.id}`)}
                             className="relative w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium text-white transition-opacity hover:opacity-80 before:absolute before:inset-x-0 before:-inset-y-1 before:content-[''] md:before:hidden"
                             style={{ backgroundColor: safeColor(t.status?.color) }}
                             title={`${formatTicketId(t.order_id || t.id)} - ${t.customer?.first_name || ''} ${t.customer?.last_name || ''} - ${(t as any).device_name || ''}`}
@@ -1375,14 +1368,13 @@ export function TicketListPage() {
                           </button>
                         ))}
                         {(ticketsByDay[day] || []).length > 3 && (
-                          <div className="text-[10px] text-surface-400" onClick={(e) => e.stopPropagation()}>+{(ticketsByDay[day] || []).length - 3} more</div>
+                          <div className="text-[10px] text-surface-400">+{(ticketsByDay[day] || []).length - 3} more</div>
                         )}
                       </div>
                     </>
                   )}
                 </div>
-                );
-              })}
+              ))}
             </div>
           </div>
         );
@@ -1568,24 +1560,23 @@ export function TicketListPage() {
                 </div>
               )}
             </div>
-            {/* WEB-W2-010: Bulk Assign — wire to existing /bulk-action assign endpoint */}
             {assignmentEnabled && (
               <div className="relative" ref={bulkAssignRef}>
                 <button
                   onClick={() => setBulkAssignOpen((v) => !v)}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm transition-colors hover:bg-surface-50 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
                 >
-                  Assign To <ChevronDown className="h-3.5 w-3.5" />
+                  Assign <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {bulkAssignOpen && (
-                  <div className="absolute left-0 top-full z-50 mt-1 w-56 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
+                  <div className="absolute left-0 top-full z-50 mt-1 w-48 rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-800">
                     <div className="max-h-64 overflow-y-auto py-1">
                       <button
                         onClick={() => {
                           bulkMut.mutate({ action: 'assign', value: undefined });
                           setBulkAssignOpen(false);
                         }}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-500 hover:bg-surface-50 dark:hover:bg-surface-700"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700 text-surface-500 dark:text-surface-400 italic"
                       >
                         Unassign
                       </button>
@@ -1596,9 +1587,9 @@ export function TicketListPage() {
                             bulkMut.mutate({ action: 'assign', value: u.id });
                             setBulkAssignOpen(false);
                           }}
-                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-700"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-surface-50 dark:hover:bg-surface-700"
                         >
-                          {u.first_name} {u.last_name}
+                          <span className="text-surface-700 dark:text-surface-200">{u.first_name} {u.last_name}</span>
                         </button>
                       ))}
                     </div>

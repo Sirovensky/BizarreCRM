@@ -34,6 +34,15 @@ export function PayNowButton({
     );
   }
 
+  // WEB-S4-025: BlockChyp Hosted Checkout URLs are external by design — allow
+  // them alongside our own origin. Anchored to *.blockchyp.com so subdomains
+  // (checkout.blockchyp.com, etc.) are accepted without wildcarding all hosts.
+  function isAllowedPaymentUrl(parsed: URL): boolean {
+    if (parsed.origin === window.location.origin) return true;
+    if (/^https:\/\/([a-z0-9-]+\.)*blockchyp\.com$/i.test(parsed.origin)) return true;
+    return false;
+  }
+
   const handlePay = async (): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -47,7 +56,7 @@ export function PayNowButton({
           setError('Payment request not available. Please call the shop.');
           return;
         }
-        if (parsed.origin !== window.location.origin) {
+        if (!isAllowedPaymentUrl(parsed)) {
           setError('Payment request not available. Please call the shop.');
           return;
         }

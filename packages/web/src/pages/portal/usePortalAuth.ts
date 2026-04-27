@@ -56,7 +56,16 @@ export function usePortalAuth() {
     });
   }, []);
 
-  const loginWithToken = useCallback((token: string, scope: 'ticket' | 'full', customerName: string, ticketId?: number) => {
+  // WEB-S4-023: accept optional hasAccount from verifySession so that ticket-
+  // scoped sessions for customers who have a registered portal account still
+  // show the "Create account" upsell correctly (or suppress it when they do).
+  const loginWithToken = useCallback((
+    token: string,
+    scope: 'ticket' | 'full',
+    customerName: string,
+    ticketId?: number,
+    hasAccount?: boolean,
+  ) => {
     sessionStorage.setItem('portal_token', token);
     sessionStorage.setItem('portal_scope', scope);
     setState({
@@ -65,7 +74,8 @@ export function usePortalAuth() {
       customerName,
       scope,
       ticketId: ticketId || null,
-      hasAccount: scope === 'full',
+      // Prefer explicit hasAccount when provided; fall back to scope inference.
+      hasAccount: hasAccount !== undefined ? hasAccount : scope === 'full',
     });
   }, []);
 

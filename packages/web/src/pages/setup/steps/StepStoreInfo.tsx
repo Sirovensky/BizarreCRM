@@ -77,11 +77,16 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               <Phone className="h-4 w-4 text-surface-400" />
               Phone <span className="text-red-500">*</span>
             </label>
+            {/* WEB-S4-014: only strip+reformat on blur to avoid double-formatting while
+                the user edits an already-formatted number. On change we store raw digits
+                (via stripPhone) so the cursor stays stable; on blur we apply the display
+                format so the field always shows the pretty version when unfocused. */}
             <input
               id="setup-store-phone"
               type="tel"
               value={phone}
-              onChange={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
+              onChange={(e) => onUpdate({ store_phone: stripPhone(e.target.value) })}
+              onBlur={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
               placeholder="+1 (555)-123-4567"
               inputMode="tel"
               autoComplete="tel"

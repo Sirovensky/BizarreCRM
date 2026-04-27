@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, Package, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Loader2, Package, CheckCircle2, AlertCircle, X, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { loanerApi, type LoanerDevice } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
@@ -155,10 +155,163 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
   );
 }
 
+// ─── Add Loaner Dialog ─────────────────────────────────────────────────────
+
+function AddLoanerDialog({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const [serial, setSerial] = useState('');
+  const [imei, setImei] = useState('');
+  const [condition, setCondition] = useState('good');
+  const [notes, setNotes] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  const createMutation = useMutation({
+    mutationFn: () => loanerApi.create({
+      name: name.trim(),
+      serial: serial.trim() || undefined,
+      imei: imei.trim() || undefined,
+      condition,
+      notes: notes.trim() || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['loaners'] });
+      toast.success('Loaner device added');
+      onClose();
+    },
+    onError: (e: unknown) => {
+      const err = e as { response?: { data?: { message?: string } } };
+      toast.error(err?.response?.data?.message || 'Failed to add loaner device');
+    },
+  });
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) {
+      setNameError('Name is required');
+      return;
+    }
+    setNameError('');
+    createMutation.mutate();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="add-loaner-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 id="add-loaner-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Add Loaner Device</h2>
+          <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:text-surface-600">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="loaner-name" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Device Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="loaner-name"
+              value={name}
+              onChange={(e) => { setName(e.target.value); if (nameError) setNameError(''); }}
+              placeholder="e.g. iPhone 11 Loaner"
+              aria-invalid={!!nameError}
+              aria-describedby={nameError ? 'loaner-name-error' : undefined}
+              className={cn('input w-full', nameError && 'border-red-500 dark:border-red-500')}
+              autoFocus
+            />
+            {nameError && <p id="loaner-name-error" className="mt-1 text-xs text-red-500">{nameError}</p>}
+          </div>
+          <div>
+            <label htmlFor="loaner-condition" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Condition
+            </label>
+            <select
+              id="loaner-condition"
+              value={condition}
+              onChange={(e) => setCondition(e.target.value)}
+              className="input w-full"
+            >
+              <option value="good">Good</option>
+              <option value="fair">Fair</option>
+              <option value="poor">Poor</option>
+            </select>
+          </div>
+          <div>
+            <label htmlFor="loaner-serial" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Serial <span className="text-surface-400 font-normal">(optional)</span>
+            </label>
+            <input
+              id="loaner-serial"
+              value={serial}
+              onChange={(e) => setSerial(e.target.value)}
+              placeholder="Serial number"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label htmlFor="loaner-imei" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              IMEI <span className="text-surface-400 font-normal">(optional)</span>
+            </label>
+            <input
+              id="loaner-imei"
+              value={imei}
+              onChange={(e) => setImei(e.target.value)}
+              placeholder="IMEI"
+              className="input w-full"
+            />
+          </div>
+          <div>
+            <label htmlFor="loaner-notes" className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+              Notes <span className="text-surface-400 font-normal">(optional)</span>
+            </label>
+            <textarea
+              id="loaner-notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              className="input w-full resize-none"
+              placeholder="Any notes about this device..."
+            />
+          </div>
+          <div className="flex gap-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={createMutation.isPending}
+              className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {createMutation.isPending ? 'Adding...' : 'Add Device'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────
 
 export function LoanersPage() {
   const [returningDevice, setReturningDevice] = useState<LoanerDevice | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['loaners'],
@@ -178,11 +331,20 @@ export function LoanersPage() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Loaner Devices</h1>
-        <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
-          Track devices loaned to customers during repairs.
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-surface-900 dark:text-surface-100">Loaner Devices</h1>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-1">
+            Track devices loaned to customers during repairs.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddDialog(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 shrink-0"
+        >
+          <Plus className="h-4 w-4" /> Add Loaner
+        </button>
       </div>
 
       {devices.length === 0 ? (
@@ -251,6 +413,9 @@ export function LoanersPage() {
 
       {returningDevice && (
         <ReturnDialog device={returningDevice} onClose={() => setReturningDevice(null)} />
+      )}
+      {showAddDialog && (
+        <AddLoanerDialog onClose={() => setShowAddDialog(false)} />
       )}
     </div>
   );

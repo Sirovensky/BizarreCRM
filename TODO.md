@@ -32,15 +32,6 @@ type: project
 ### P1 (silent no-op / broken feature)
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
   - Fix: map group label → status_id before query param.
-- [ ] WEB-W2-006. **Bulk "Assign" missing from UI although backend supports it.**
-  - File: `packages/web/src/pages/tickets/TicketListPage.tsx` (bulk action menu)
-  - Fix: add Assign action wired to existing bulk endpoint.
-  - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
-  - Fix: persist via `preferences.routes.ts` (per-user JSON blob) or `localStorage` keyed by user.
-  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
-  - Fix: type assignee field as `number | null`; route accepts null.
-  - File: `packages/web/src/pages/tickets/TicketSidebar.tsx`
-  - Fix: normalize to `notes` in DB + payload + display.
 - [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
   - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
 - [ ] WEB-W2-011. **Activity filter tabs are client-side only — incomplete if backend paginates.**
@@ -630,10 +621,6 @@ Verified working. Not TODOs.
   FIXED 2026-04-24 by Fixer-D — Removed opacity-0 hover trap on the move button; it is now always visible and tappable on touch. Added aria-haspopup/aria-expanded/aria-label, role="menu" on the popover, Esc-to-dismiss with focus return to the trigger, and auto-focus of the first menu option when opened.
 - [x] WEB-FC-007. **[MED] Segment delete button has no confirm dialog — destructive single-click.** `SegmentsPage.tsx:171` `remove.mutate(s.id)` deletes the segment immediately; a mis-click destroys a hand-built customer segment that may be referenced by running campaigns. FIXED-by-Fixer-VV 2026-04-25 — wired the existing themed `confirm()` (`@/stores/confirmStore`) into the trash-can click; now opens "Delete segment '{name}'? Campaigns referencing it will fail to send to its members." with `danger: true` styling. The auto-segment guard (`s.is_auto === 0`) above already prevents deletion of seeded segments. Server-side cascade-into-running-campaigns check deferred — UI guard alone closes the mis-click foot-gun.
   <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/SegmentsPage.tsx:171; fix=add-ConfirmDialog-and-check-for-campaigns-referencing-segment -->
-- [ ] WEB-FC-008. **[MED] Loaners page has no "Add loaner device" CTA — page is viewer-only.** `LoanersPage.tsx` renders devices + a return dialog, but offers zero way to register a new loaner, edit one, or assign one to a customer. Page is only useful if loaners are seeded elsewhere (no such UI exists in scope); staff must hit the API directly.
-  <!-- meta: scope=web/pages/loaners; files=packages/web/src/pages/loaners/LoanersPage.tsx; fix=add-Create+Edit+Assign-UI-and-status-filters -->
-  <!-- meta: scope=web/pages/tv; files=packages/web/src/pages/tv/TvDisplayPage.tsx:159; fix=show-initials-like-J.-or-gate-behind-store_config.tv_show_names-toggle-default-off -->
-  FIXED 2026-04-24 by Fixer-D — TV ticket card now renders only the first-name initial followed by a period (e.g. "J.") instead of the full first name; "Walk-in" fallback preserved.
 - [x] WEB-FC-010. **[MED] `NpsTrendPage` monthly chart ignores sign — negative NPS looks identical to positive NPS.** Bar height is `Math.max(4, Math.abs(m.nps))` at NpsTrendPage.tsx:96, so nps=-60 renders the same tall bar as nps=+60. Owners viewing a crisis month see a reassuring chart. **Fixer-KKK 2026-04-25** — chart now renders a zero-baseline two-zone layout: positive bars push up from the axis, negative bars hang below (with red label). A -60 month visually crashes through the baseline instead of mirroring +60.
   <!-- meta: scope=web/pages/marketing; files=packages/web/src/pages/marketing/NpsTrendPage.tsx:94-105; fix=center-axis-at-0+position-bars-above-or-below-baseline-by-sign+red-below-zero -->
 - [x] WEB-FC-011. **[MED] `NpsTrendPage` + `ReferralsDashboard` swallow all query errors into empty-state.** Both `queryFn` wrap the call in `try/catch` and return a fabricated "zeros / unavailable" payload on ANY failure — 401 (session expired), 500 (server bug), and CORS errors all render identically to "no data yet". Owners cannot distinguish "I have no reviews" from "the server is broken". — **Fixer-B23 2026-04-25**: NpsTrendPage now lets react-query expose `isError`/`error` and renders a red `role="alert"` banner with Retry button instead of fabricating zeros. ReferralsDashboard narrows the swallow to expected 401/403/404 (kept the FA-M15 friendly "Not available" panel for those) and re-throws everything else (5xx, network, CORS) so the same banner surfaces.
@@ -646,8 +633,6 @@ Verified working. Not TODOs.
   <!-- meta: scope=web/pages/reports; files=packages/web/src/pages/reports/TaxReportPage.tsx:20-28 packages/web/src/pages/reports/PartnerReportPage.tsx:15-18; fix=validate-from<=to+HEAD-preflight-or-fetch+blob+open-with-revocation-or-inline-iframe-preview -->
 - [ ] WEB-FC-015. **[MED] Voice recording playback opens an auth-bearing URL via `window.open` — fails if session token is an axios header interceptor rather than a cookie.** `VoiceCallsListPage.tsx:48` opens recordings in a new tab relying on credentials being present on the new-tab request; if only the axios interceptor carries the bearer, the new tab gets 401. Also no filters (date, direction, caller), so the list is linear-only.
   <!-- meta: scope=web/pages/voice; files=packages/web/src/pages/voice/VoiceCallsListPage.tsx:47-49,115-124; fix=fetch-recording-as-blob-via-api-client-then-URL.createObjectURL+add-filters -->
-- [ ] WEB-FC-016. **[MED] `PhotoCapturePage` passes a bearer token via `?t=<token>` query string — exposes token in browser history, referrer headers, and server access logs.** `PhotoCapturePage.tsx:10,72` reads `t` from search params and uses it as `Authorization: Bearer ${token}`; the token lingers in history even after upload. Shoulder-surf + shared-device risk for the photo-upload token.
-  <!-- meta: scope=web/pages/photo-capture; files=packages/web/src/pages/photo-capture/PhotoCapturePage.tsx:10,72; fix=single-use-short-TTL-token+scrub-from-URL-on-mount-via-history.replaceState -->
 - [ ] WEB-FC-017. **[MED] Aggressive `any` leaks across ticket + communications + calendar + campaigns surfaces.** 40+ `: any` annotations in `TicketDetailPage`, `TicketListPage`, `TicketWizard`, `TicketDevices`, `CommunicationPage`, `CalendarPage`, `CampaignsPage`, etc. — e.g. `const smsMessages: any[]`, `const grades: any[] = pricingData?.grades || []`, `mutationFn: (data: any) => ticketApi.create(data)`. Invalidates compile-time guards on mutation payloads and list renders.
   <!-- meta: scope=web/pages; files=packages/web/src/pages/tickets/TicketDetailPage.tsx:91,140,222,242,379 packages/web/src/pages/tickets/TicketWizard.tsx:180,324,408,420,435,910,1901 packages/web/src/pages/communications/CommunicationPage.tsx:680,767,793,1107,2141 packages/web/src/pages/leads/CalendarPage.tsx:191 packages/web/src/pages/marketing/CampaignsPage.tsx:106,139,314,329; fix=share-types-via-@bizarre-crm/shared-and-tighten-mutation-payload-types -->
 - [x] WEB-FC-018. **[MED] `ExpensesPage` renders edit form inline above the table instead of as a modal — loses scroll position on edit.** `ExpensesPage.tsx:156-184` the "Add/Edit Expense" form appears between filters and the table, pushing data below the fold. Editing an expense on page 3 scrolls the user up to the form and loses row context; on mobile the form takes the full viewport with no dim overlay. — Fixer-B23 PARTIAL (scroll + focus only). FIXED-by-Fixer-A23 2026-04-25 — promoted to a real modal: fixed-position backdrop overlay (`bg-black/50 backdrop-blur-sm`), dialog/aria-modal roles, click-outside + Esc-key close, header X button, `max-w-2xl` panel that no longer pushes the table down. Editing a row on page 3 leaves the table scroll position intact. Mobile gets the dim overlay it was missing.
@@ -684,14 +669,10 @@ Verified working. Not TODOs.
 - [x] WEB-FB-005. **[HIGH] InventoryListPage "Order All on Supplier Sites" loop fires up to 20 `window.open` in one click — browsers block all but the first.** Popup-blockers enforce a 1-per-gesture quota. Toast claims "Opened 20 supplier pages" but only 1 tab opens in Chrome/Safari/Firefox. FIXED 2026-04-24 by Fixer-F — handler now opens ONE tab synchronously inside the click (the only popup the gesture can fire), then renders the rest as a list of `<a target=_blank rel=noopener>` rows in a `role="dialog"` panel. Each row click is its own user gesture and bypasses the blocker quota; rows flip to "Opened ✓" once clicked. Cap of 20 dropped (queue is no longer a popup-blocker hazard); skip-with-bad-protocol and skip-no-URLs branches preserved.
   <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:591-616; fix=open-first-tab-inline-then-queue-rest-behind-sequential-user-clicks-or-render-staging-page-with-manual-links -->
 
-- [ ] WEB-FB-006. **[MED] InvoiceDetailPage print windows bypass axios auth.** `window.open('/print/ticket/<id>?...', '_blank')` can't attach `Authorization: Bearer`. If the print route is behind normal auth (localStorage token), tab 401s with no UX. Mirror the `FA-M26` wallet-pass blob-URL pattern instead.
-  <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceDetailPage.tsx:305,625; fix=fetch-HTML-with-axios-then-open-blob-URL -->
 
 - [x] WEB-FB-007 (FULLY CLOSED). **[MED] Native `window.confirm` vs async `confirm(...)` from `@/stores/confirmStore` used inconsistently across inventory/invoices.** StocktakePage, BinLocationsPage, AutoReorderPage, InvoiceListPage drop into blocking native dialog (ignores dark mode + brand fonts). Estimates/pos/customers/tickets all use the themed `await confirm(...)`. **Fixer-KKK 2026-04-25** — three inventory pages migrated to themed async confirm: StocktakePage (Commit + Cancel), AutoReorderPage (Run + Remove rule), BinLocationsPage (Deactivate). Each call now passes `title`/`confirmLabel` and tags destructive ops with `danger: true`. InvoiceListPage was already migrated under WEB-FV-001 (Fixer-V). **Fixer-QQQ 2026-04-25** — final sweep: only one native `confirm()` site remained (`packages/web/src/pages/settings/DeviceTemplatesPage.tsx:301` Delete-template button); migrated to themed async confirm with `danger: true` + `confirmLabel: 'Delete'`. Cumulative count across all passes: 8 sites converted (StocktakePage x2, AutoReorderPage x2, BinLocationsPage x1, InvoiceListPage x1, DeviceTemplatesPage x1, plus historical Fixer-V invoice sweep). Repo-wide `grep -rEn '\bconfirm\('` (filtered) now returns zero non-await native sites in `packages/web/src`.
   <!-- meta: scope=web/inventory+invoices+settings; files=packages/web/src/pages/inventory/AutoReorderPage.tsx:148,290,packages/web/src/pages/inventory/BinLocationsPage.tsx:206,packages/web/src/pages/inventory/StocktakePage.tsx:332,343,packages/web/src/pages/invoices/InvoiceListPage.tsx:171,packages/web/src/pages/settings/DeviceTemplatesPage.tsx:301; fix=swap-native-confirm-for-await-confirm -->
 
-- [ ] WEB-FB-008. **[MED] EstimateList create-modal asks for per-line `tax_amount` as a flat dollar — no rate, no taxability flag.** Creates estimates that can't round-trip through CheckoutModal's tax engine (which applies `useDefaultTaxRate * taxableAmount`). Converting estimate → ticket drops or double-counts tax.
-  <!-- meta: scope=web/estimates; files=packages/web/src/pages/estimates/EstimateListPage.tsx:70-71,109,128-130; fix=replace-tax_amount-with-per-line-taxable:boolean-apply-store-rate-on-submit -->
 
 - [x] WEB-FB-009. **[MED] CheckoutModal split-payment "covers total" check compares floats.** `splitTotal < totals.total` — both floats. Combined with WEB-FB-002 drift, a cashier can hit a phantom under-by-a-cent error or, worse, pass a sale a cent short. Compare ints in cents. FIXED-by-Fixer-V 2026-04-25 — `CheckoutModal.tsx` now keeps `splitTotalCents` as an int (sum of per-row `Math.round(amount*100)`) and compares `splitTotalCents >= totals.totalCents` (new field on `computePosTotals`). `handleCompleteCheckout`, `canComplete`, and the "Fully covered / Remaining" UI all read the cents-int value; the dollar `splitTotal`/`splitRemaining` floats are kept only for display.
   <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/CheckoutModal.tsx:145-159,287-293,376; fix=compare-splitTotalCents<totalCents-both-ints -->
@@ -705,8 +686,6 @@ Verified working. Not TODOs.
 - [ ] WEB-FB-012. **[MED] CustomerDetailPage tickets/invoices/communications renderers all `any`-typed.** `sorted: any[]`, `communications: any[]`, `(msg: any, i: number)`, `(inv: any)`, `(ticket: any)`, `updateField(key: string, value: any)`. Server field rename goes silent.
   <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerDetailPage.tsx:855,1110,1464,1479,1596,1640,1654; fix=consume-shared-Customer/Ticket/Invoice/Communication-types -->
 
-- [ ] WEB-FB-013. **[MED] Manager-PIN form allows unlimited retries with no visible lockout UX.** 4-digit PIN (10k combos, trivially brute-forceable from an in-store tablet) with generic "Invalid manager PIN" error, no disabled cooldown, no audit-log surface. `/pos-enrich/manager-verify-pin` may rate-limit server-side but the UI never shows it.
-  <!-- meta: scope=web/unified-pos; files=packages/web/src/pages/unified-pos/BottomActions.tsx:488-570; fix=surface-server-lockout+exponential-backoff+6-8-digit-PIN-minimum -->
 
 - [x] WEB-FB-014. **[MED] InventoryListPage bulk filters type items as `any`.** `items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts')` etc. — any backend field rename silently yields empty filters. — Fixer-B10 2026-04-25: introduced local SupplierItemRow shape on the filter call sites so renames trip typecheck.
   <!-- meta: scope=web/inventory; files=packages/web/src/pages/inventory/InventoryListPage.tsx:593-594; fix=introduce-InventoryItem-type -->
@@ -794,8 +773,6 @@ Verified working. Not TODOs.
 - [~] WEB-FF-015 (partial — ReportsPage TechWorkloadChart). **[MED] DashboardPage / NpsTrendPage / ReportsPage useQuery never check `isError` — any 401/500 keeps the skeleton or empties to "0" indefinitely.** DashboardPage.tsx has 12+ `useQuery` calls, every one only destructures `{ data, isLoading }`. A logged-out token shows pulsing skeletons forever; staff think dashboard is "loading slow" when it's actually 401-looped. ReportsPage same pattern (existing FC-011 covers Nps/Referrals). — Fixer-B17 2026-04-25: ReportsPage `TechWorkloadChart` now destructures `isError` and renders `<ErrorState />` so a 401/500 stops masquerading as "No technician workload data". Remaining DashboardPage useQuery calls (12+) still ungated.
   <!-- meta: scope=web/dashboard,web/reports; files=packages/web/src/pages/dashboard/DashboardPage.tsx:858,866,874,1182,1507,1629,1665,1673; fix=destructure-isError-and-render-error-state-or-bubble-to-ErrorBoundary -->
 
-- [ ] WEB-FF-016. **[MED] CustomerListPage importMutation invalidates AFTER server returns but never optimistically inserts rows — UI feels frozen for ~1s on Import-N.** Big CSV imports run server-side; the toast appears with count but `customers` cache only refreshes after `invalidateQueries`. Optimistic insert of `importPreview` rows would be immediate.
-  <!-- meta: scope=web/customers; files=packages/web/src/pages/customers/CustomerListPage.tsx:228-239; fix=onMutate-prepend-importPreview-to-cache+rollback-in-onError -->
 
 - [x] WEB-FF-017. **[MED] InvoiceListPage uses `new Date(inv.due_on) < new Date()` for "overdue" — string-without-Z is parsed as local time vs UTC depending on browser.** FIXED-by-Fixer-B1 2026-04-25 — added `parseDueDateMs(due)` helper in `InvoiceListPage.tsx` that anchors `YYYY-MM-DD` strings to UTC end-of-day (so "due today" is never overdue) and naive `YYYY-MM-DDTHH:MM[:SS]` strings to UTC by appending Z; both the `overdueCount` memo and the per-row `isOverdue` flag now route through it.
   <!-- meta: scope=web/invoices; files=packages/web/src/pages/invoices/InvoiceListPage.tsx:47,378,501; fix=normalize-due_on-server-side-to-Z+use-shared-isoToDate-helper -->
@@ -954,8 +931,6 @@ Verified working. Not TODOs.
 - [~] WEB-FE-013 (PARTIAL). **[MED] App-wide tables (`CustomerListPage`, `CustomerDetailPage`, `NotificationTemplatesTab`, `SettingsPage`, `AuditLogsTab`) have zero `scope="col"` / `scope="row"` / `<caption>` — screen readers can't associate cells to headers.** *(PARTIAL Fixer-OOO 2026-04-25 — `AuditLogsTab.tsx` table now ships `scope="col"` on all 5 `<th>` cells + an sr-only `<caption>`. CustomerListPage / CustomerDetailPage / NotificationTemplatesTab / SettingsPage still pending; same pattern applies (1 line per th + 1 caption).)*
   <!-- meta: scope=web/a11y; files=packages/web/src/pages/customers/CustomerListPage.tsx:705-710,packages/web/src/pages/settings/AuditLogsTab.tsx,packages/web/src/pages/settings/NotificationTemplatesTab.tsx; fix=add-scope=col-on-th+visually-hidden-caption -->
 
-- [ ] WEB-FE-014. **[MED] Forms across pages have only 3 `aria-invalid` / `aria-describedby` hits total — 99 % of inputs render error text in a sibling `<p>` with no programmatic association.** Screen readers don't announce "required, error: phone number invalid" alongside the field. WCAG 3.3.1, 4.1.2.
-  <!-- meta: scope=web/a11y; files=packages/web/src/pages/auth/LoginPage.tsx,packages/web/src/pages/signup/SignupPage.tsx,packages/web/src/pages/customers/CustomerCreatePage.tsx; fix=wire-aria-invalid+aria-describedby=field-name-error-id-for-every-validated-input -->
 
 - [x] WEB-FE-015. **[MED] `CashRegisterPage` cash in/out form has two unlabeled `<input>` (only `placeholder=`) — placeholder-as-label is a known WCAG 1.3.1 + 3.3.2 fail and breaks autofill.** *(FIXED Fixer-OOO 2026-04-25 — `CashRegisterPage.tsx:128-131` rebuilt as `<label htmlFor>` wrappers with visible "Amount" / "Reason (optional)" caption strings; Amount input also got `aria-required="true"` + `inputMode="decimal"` so screen readers and POS-tablet keyboards behave correctly.)*
   <!-- meta: scope=web/a11y; files=packages/web/src/pages/pos/CashRegisterPage.tsx:128-131; fix=add-visually-hidden-label+for-attr-or-aria-label -->
@@ -994,37 +969,16 @@ Verified working. Not TODOs.
 ## Web Audit Wave-WEB-2026-04-24 Search S4 — auth + setup + portal
 
 ### Auth pages (`packages/web/src/pages/auth/`)
-- [ ] WEB-S4-002. **P1 — `LoginPage` 2FA setup step has no Back button.** `LoginPage.tsx:576-611`. Fix: add Back button calling setStep('password').
-- [ ] WEB-S4-004. **P2 — `LoginPage` first-run setup has no confirm-password.** `LoginPage.tsx:447-467`. Fix: add confirm-password field.
-- [ ] WEB-S4-005. **P2 — `LoginPage` first-run setup: no password strength indicator.** `LoginPage.tsx:380-467`. Fix: zxcvbn bar or complexity hint.
 - [ ] WEB-S4-006. **P2 — `LoginPage` no hCaptcha widget in Forgot panel despite backend demanding it after CAPTCHA_FAILURE_THRESHOLD.** `LoginPage.tsx:520-535`. Fix: read captcha_required from 429, render widget, attach token.
 - [ ] WEB-S4-008. **P2 — Trusted-device "90 days" checkbox has no help text or revoke link.** `LoginPage.tsx:626-634`. Fix: tooltip + link to sessions settings.
 
 ### Setup wizard (`packages/web/src/pages/setup/`)
-- [ ] WEB-S4-009. **P1 — `StepEmailSmtp` no test-connection button.** Fix: add POST /settings/test-smtp + button.
-- [ ] WEB-S4-010. **P1 — `StepSmsProvider` no test-SMS button.** Fix: add POST /settings/test-sms + button.
-- [ ] WEB-S4-011. **P1 — `StepReceipts` "Save receipt layout" only marks completedCards visually; no data check.** Fix: require ≥1 non-empty field before onComplete.
-- [ ] WEB-S4-012. **P2 — `StepLogo` accent-color text input has no hex validation — accepts `javascript:alert(1)`.** Fix: hex regex check.
-- [ ] WEB-S4-013. **P2 — `StepBusinessHours` `to < from` not validated; closed-day inputs persist values.** Fix: validate range per open day.
-- [ ] WEB-S4-014. **P2 — `StepStoreInfo` phone field double-formats on edit.** Fix: stripPhone before formatStorePhoneAsYouType.
-- [ ] WEB-S4-015. **P2 — Wizard re-entry possible during isLoading flicker.** `SetupPage.tsx:156-167`. Fix: render Loader2 until status resolves.
-- [ ] WEB-S4-016. **P2 — `StepTax` POSTs immediately, can dup `Sales Tax`.** Fix: idempotency upsert by name.
-- [ ] WEB-S4-017. **P2 — `StepDefaultStatuses` 25 serial PATCHes with no rollback.** Fix: bulk endpoint or Promise.allSettled with partial-failure surfaced.
-- [ ] WEB-S4-018. **P2 — Skip from welcome step writes empty store_name.** Fix: hide skip on welcome+store steps OR validate non-empty store_name.
 
 ### Customer portal (`packages/web/src/pages/portal/`)
-- [ ] WEB-S4-019. **P1 — `PortalRegister` step 2 advances without API verify; no resend timer.** Fix: Resend with 30s cooldown + clearer error attribution.
 - [x] WEB-S4-020. **P1 — Portal Sign In phone has no formatting/strip — backend gets unstripped value.** Fix: strip non-digits before submit. FIXED 2026-04-25 by Fixer-S — `PortalLogin.handleSignIn` now does `phone.replace(/\D/g, '')` before validation + `api.portalLogin(...)`. The visible `phone` state is left untouched (so the user keeps their formatting); only the wire value is normalized. Validation still gates on having any digits.
-- [ ] WEB-S4-021. **P1 — `PortalTicketDetail` fetch errors silently swallowed.** Fix: error state + retry button + 404-vs-network distinction.
-- [ ] WEB-S4-022. **P1 — Portal widget `postMessage` uses wrong target origin for cross-origin embeds.** `CustomerPortalPage.tsx:109,217`. Fix: use '*' or configured allowed parent origins.
-- [ ] WEB-S4-023. **P2 — `loginWithToken` discards `has_account` from verifySession response.** `usePortalAuth.ts:59-70`. Fix: pass has_account through.
-- [ ] WEB-S4-024. **P2 — `PortalDashboard`/`PortalEstimatesView`/`PortalInvoicesView` no error boundaries.** Fix: error+retry per view.
-- [ ] WEB-S4-025. **P2 — `PayNowButton` same-origin guard rejects external BlockChyp URLs.** `PayNowButton.tsx:43-56`. Fix: relax to https-only or config allowlist.
 - [ ] WEB-S4-026. **P2 — `enrichApi.ts` base `/portal/api/v2` differs from main `/api/v1/portal` — proxy mismatch risk.** Fix: verify mount + add error logging.
-- [ ] WEB-S4-027. **P2 — `PortalRegister` no Resend code; back-link clears phone.** Fix: Resend button + 30s timer; preserve phone.
 
 ### Photo capture
-- [ ] WEB-S4-028. **P1 — `PhotoCapturePage` no token-expiry detection — generic "Upload failed" on 401.** Fix: detect 401, show "QR expired, ask shop for new link".
 - [x] WEB-S4-029. **P2 — No 20-photo cap enforcement.** `PhotoCapturePage.tsx:156-167`. Fix: disable add-more when length>=20. FIXED-by-Fixer-QQ 2026-04-25: added `MAX_PHOTOS=20` constant; `handleCapture` toasts when full + trims multi-select to remaining capacity; "Add more" tile hidden when at cap.
 - [ ] WEB-S4-030. **P2 — "Add More Photos" doesn't reset error.** Fix: setError('') in onClick.
 

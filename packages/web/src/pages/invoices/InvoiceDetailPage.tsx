@@ -6,6 +6,7 @@ import toast from 'react-hot-toast';
 import { invoiceApi, settingsApi, smsApi, blockchypApi, notificationApi, installmentApi } from '@/api/endpoints';
 import type { CreateInstallmentPlanInput } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -48,6 +49,7 @@ export function InvoiceDetailPage() {
     note: string;
   }>({ amount: '', reason: null, note: '' });
   const [emailReceiptSending, setEmailReceiptSending] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
   // normal "record payment" flow. Opens only on demand, once per invoice.
   const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
@@ -364,7 +366,7 @@ export function InvoiceDetailPage() {
             )}
             <button onClick={() => {
               if (invoice.ticket_id) {
-                window.open(`/print/ticket/${invoice.ticket_id}?size=letter`, '_blank');
+                setShowPrintModal(true);
               } else {
                 window.print();
               }
@@ -602,10 +604,13 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
+                    id="payment-amount"
                     type="number" step="0.01" min="0.01"
                     value={paymentForm.amount}
                     onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                     placeholder={Number(invoice.amount_due).toFixed(2)}
+                    aria-invalid={paymentForm.amount !== '' && parseFloat(paymentForm.amount) <= 0 ? true : undefined}
+                    aria-describedby="payment-amount-label"
                     className="input w-full pl-6"
                     autoFocus
                   />
@@ -682,8 +687,8 @@ export function InvoiceDetailPage() {
               {invoice?.ticket_id && (
                 <button
                   onClick={() => {
-                    window.open(`/print/ticket/${invoice.ticket_id}?size=receipt80`, '_blank');
                     setShowReceiptPrompt(false);
+                    setShowPrintModal(true);
                   }}
                   className="flex items-center gap-2 rounded-lg border border-surface-200 dark:border-surface-700 px-4 py-2.5 text-sm font-medium text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-700 transition-colors"
                 >
@@ -754,10 +759,13 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
+                    id="credit-amount"
                     type="number" step="0.01" min="0.01" max={Number(invoice.amount_paid) || 0}
                     value={creditNoteForm.amount}
                     onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
                     placeholder={(Number(invoice.amount_paid) || 0).toFixed(2)}
+                    aria-invalid={creditNoteForm.amount !== '' && (parseFloat(creditNoteForm.amount) <= 0 || parseFloat(creditNoteForm.amount) > (Number(invoice.amount_paid) || 0)) ? true : undefined}
+                    aria-describedby="credit-amount-label"
                     className="input w-full pl-6"
                     autoFocus
                   />
@@ -826,6 +834,14 @@ export function InvoiceDetailPage() {
             />
           </div>
         </div>
+      )}
+
+      {showPrintModal && invoice.ticket_id && (
+        <PrintPreviewModal
+          ticketId={invoice.ticket_id}
+          invoiceId={invoiceId}
+          onClose={() => setShowPrintModal(false)}
+        />
       )}
     </div>
   );

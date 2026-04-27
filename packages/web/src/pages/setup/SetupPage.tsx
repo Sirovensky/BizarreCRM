@@ -112,6 +112,12 @@ export function SetupPage() {
    * the setup-status query and navigates to the dashboard.
    */
   const flushAndExit = useCallback(async (mode: 'complete' | 'skip') => {
+    // WEB-S4-018: when skipping from the welcome step, require at least a store
+    // name so we don't POST an empty string that overwrites any existing value.
+    if (mode === 'skip' && phase === 'welcome' && !pending.store_name?.trim()) {
+      setError('Please enter a store name before skipping, or type one above and then skip.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -138,7 +144,7 @@ export function SetupPage() {
     } finally {
       setSaving(false);
     }
-  }, [pending, setTheme, queryClient, navigate]);
+  }, [pending, phase, setTheme, queryClient, navigate]);
 
   const handleSkip = useCallback(() => flushAndExit('skip'), [flushAndExit]);
   const handleComplete = useCallback(() => flushAndExit('complete'), [flushAndExit]);
@@ -244,6 +250,16 @@ export function SetupPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-950 dark:to-surface-900">
+      {/* WEB-S4-015: stable overlay spinner during status re-check so navigating
+          back to /setup after partial completion doesn't flash the welcome step
+          while the query resolves. The overlay sits above all content so the
+          user sees a smooth transition instead of a layout jump. */}
+      {checkingStatus && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-50/80 backdrop-blur-sm dark:bg-surface-950/80">
+          <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+        </div>
+      )}
+
       {/* Top bar with phase indicator + skip */}
       <div className="sticky top-0 z-10 border-b border-surface-200 bg-white/80 backdrop-blur dark:border-surface-700 dark:bg-surface-900/80">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-3">

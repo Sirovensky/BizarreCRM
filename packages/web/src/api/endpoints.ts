@@ -1134,6 +1134,8 @@ export const loanerApi = {
     api.get<{ success: boolean; data: LoanerDevice & { history: LoanerHistoryEntry[] } }>(`/loaners/${id}`),
   returnDevice: (id: number, body: { condition_in?: string; notes?: string }) =>
     api.post<{ success: boolean; data: { returned: boolean } }>(`/loaners/${id}/return`, body),
+  create: (body: { name: string; serial?: string; imei?: string; condition?: string; notes?: string }) =>
+    api.post<{ success: boolean; data: { id: number } }>('/loaners', body),
 };
 
 export interface LoanerDevice {
