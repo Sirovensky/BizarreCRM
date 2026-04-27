@@ -79,6 +79,14 @@ public final class PeerFeedbackPromptSheetViewModel {
             errorMessage = "Select a colleague."
             return
         }
+        // §46.5 — Frequency cap: max 1 request per peer per quarter.
+        if let capMessage = PeerFeedbackFrequencyCap.checkCap(
+            fromEmployeeId: fromEmployeeId,
+            toEmployeeId: selectedColleagueId
+        ) {
+            errorMessage = capMessage
+            return
+        }
         guard !whatWentWell.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             errorMessage = "Please answer \"What went well?\"."
             return
@@ -96,6 +104,11 @@ public final class PeerFeedbackPromptSheetViewModel {
                 isAnonymous: isAnonymous
             )
             let saved = try await repo.submitFeedback(fb)
+            // Record successful request for frequency cap tracking.
+            PeerFeedbackFrequencyCap.recordRequest(
+                fromEmployeeId: fromEmployeeId,
+                toEmployeeId: selectedColleagueId
+            )
             onSaved(saved)
         } catch {
             AppLog.ui.error("PeerFeedback submit failed: \(error.localizedDescription, privacy: .public)")
