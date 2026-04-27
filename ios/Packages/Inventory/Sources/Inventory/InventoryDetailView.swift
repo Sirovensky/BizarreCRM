@@ -193,6 +193,11 @@ public struct InventoryDetailView: View {
                 VStack(spacing: BrandSpacing.base) {
                     DetailsCard(item: resp.item)
                     StockCard(item: resp.item)
+                    // §6.1 Cost price hidden from non-admin (server returns nil)
+                    if resp.item.costPrice == nil {
+                        CostPriceHiddenBadge()
+                            .padding(.horizontal, BrandSpacing.xs)
+                    }
                     // §6.2 Cost vs retail variance analysis
                     if let cost = resp.item.costPrice, let retail = resp.item.retailPrice, cost > 0 {
                         VarianceCard(costPrice: cost, retailPrice: retail)
@@ -209,6 +214,16 @@ public struct InventoryDetailView: View {
                     if let movements = resp.movements, !movements.isEmpty {
                         MovementsCard(movements: movements)
                     }
+                    // §6.2 Price history chart — retail vs cost over time
+                    PriceHistoryCard(itemId: resp.item.id, api: api)
+                    // §6.2 Sales history — last 30d qty + revenue
+                    SalesHistoryCard(itemId: resp.item.id, api: api)
+                    // §6.2 Supplier panel
+                    SupplierPanelCard(item: resp.item, api: api)
+                    // §6.2 Auto-reorder rule
+                    AutoReorderRuleCard(item: resp.item, api: api)
+                    // §6.2 Bin location
+                    BinLocationCard(item: resp.item, api: api)
                     // §6.2 Used in tickets placeholder — deep link when ticket module ships
                     UsedInTicketsCard(itemId: resp.item.id)
                 }

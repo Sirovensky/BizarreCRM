@@ -101,10 +101,14 @@ public struct CreateAppointmentRequest: Encodable, Sendable {
     public let notes: String?
     /// §10.3 idempotency key — server ignores duplicate submissions within 24h.
     public let idempotencyKey: String?
+    /// §10.2 Reminder offsets in minutes before the appointment start.
+    /// e.g. [15, 60, 1440] = 15 min, 1 hour, 1 day before.
+    public let reminderOffsets: [Int]?
 
     public init(title: String, startTime: String, endTime: String? = nil,
                 customerId: Int64? = nil, leadId: Int64? = nil, notes: String? = nil,
-                idempotencyKey: String? = nil) {
+                idempotencyKey: String? = nil,
+                reminderOffsets: [Int]? = nil) {
         self.title = title
         self.startTime = startTime
         self.endTime = endTime
@@ -112,15 +116,17 @@ public struct CreateAppointmentRequest: Encodable, Sendable {
         self.leadId = leadId
         self.notes = notes
         self.idempotencyKey = idempotencyKey
+        self.reminderOffsets = reminderOffsets
     }
 
     enum CodingKeys: String, CodingKey {
         case title, notes
-        case startTime = "start_time"
-        case endTime = "end_time"
-        case customerId = "customer_id"
-        case leadId = "lead_id"
+        case startTime      = "start_time"
+        case endTime        = "end_time"
+        case customerId     = "customer_id"
+        case leadId         = "lead_id"
         case idempotencyKey = "idempotency_key"
+        case reminderOffsets = "reminder_offsets"
     }
 }
 

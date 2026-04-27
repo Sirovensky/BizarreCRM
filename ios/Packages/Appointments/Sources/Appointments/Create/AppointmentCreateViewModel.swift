@@ -33,6 +33,9 @@ public final class AppointmentCreateFullViewModel {
     public var duration: TimeInterval = 60 * 60   // 1 hour default
     public var notes: String = ""
     public var repeatRule: RepeatRule?
+    /// §10.2 Reminder offsets — minutes before the appointment.
+    /// Default: 15 min + 1 day (60*24 min). User can toggle each.
+    public var reminderOffsets: Set<Int> = [15, 60, 1440]  // 15 min, 1h, 1 day
 
     // MARK: - Availability
 
@@ -184,7 +187,8 @@ public final class AppointmentCreateFullViewModel {
             endTime: slot.end,
             customerId: cid,
             notes: notes.isEmpty ? nil : notes,
-            idempotencyKey: idempotencyKey
+            idempotencyKey: idempotencyKey,
+            reminderOffsets: reminderOffsets.isEmpty ? nil : reminderOffsets.sorted()
         )
 
         do {
