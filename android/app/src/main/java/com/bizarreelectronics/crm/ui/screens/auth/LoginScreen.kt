@@ -2104,21 +2104,15 @@ fun LoginScreen(
             modifier = Modifier
                 .widthIn(max = 420.dp)
                 .padding(horizontal = 16.dp, vertical = if (imeVisible) 8.dp else 24.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                // 2026-04-26 — Compose-native layout animation. Replaces hand-
+                // rolled animateDpAsState + AnimatedVisibility chain. Column
+                // measures itself before/after; Compose tweens the diff.
+                .animateContentSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            // Logo / App name — animate height so wordmark hide/show isn't jerky.
-            // 2026-04-26 — collapse to 4dp top + animated-out wordmark when IME visible.
-            val topSpacer by animateDpAsState(
-                targetValue = if (imeVisible) 4.dp else 32.dp,
-                label = "loginTopSpacer",
-            )
-            Spacer(Modifier.height(topSpacer))
-            AnimatedVisibility(
-                visible = !imeVisible,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
+            Spacer(Modifier.height(if (imeVisible) 4.dp else 32.dp))
+            if (!imeVisible) {
                 // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
                 Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
                     Text(
@@ -2805,13 +2799,11 @@ private fun CredentialsStep(
     // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
     var showPassword by rememberSaveable { mutableStateOf(false) }
     // 2026-04-26 — when keyboard up, compress field gaps so both Username +
-    // Password + Sign In fit on smaller phones without scrolling.
+    // Password + Sign In fit on smaller phones without scrolling. Layout
+    // animation handled by ancestor Column's Modifier.animateContentSize().
     @OptIn(ExperimentalLayoutApi::class)
     val imeVisible = WindowInsets.isImeVisible
-    val fieldGap by animateDpAsState(
-        targetValue = if (imeVisible) 8.dp else 16.dp,
-        label = "loginFieldGap",
-    )
+    val fieldGap = if (imeVisible) 8.dp else 16.dp
 
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
