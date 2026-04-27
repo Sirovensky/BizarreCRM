@@ -5786,7 +5786,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 
 ### 50.3 Export
 - [x] **CSV / JSON / PDF for period** — CSV implemented via `AuditLogExportSheet` wired in toolbar; PDF court-evidence format deferred. (feat(§50.3) d5744dc5)
-- [ ] PDF formatted for court evidence: header + footer + page numbers + signature page.
+- [x] PDF formatted for court evidence: header + footer + page numbers + signature page.
 
 ### 50.4 Alerts
 - [ ] **Sensitive action** (role change, bulk delete) → admin push. (server concern)

@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A bottom sheet that lets the user pick a date range and then export
-/// visible audit log entries as a CSV file via `ShareLink`.
+/// A bottom sheet that lets the user pick a date range and export
+/// visible audit log entries as CSV or PDF (court-evidence format).
 ///
 /// Usage (from `AuditLogListView` toolbar):
 /// ```swift
@@ -10,11 +10,17 @@ import SwiftUI
 /// }
 /// ```
 ///
-/// - The sheet is pure SwiftUI + Foundation (no UIKit imports).
-/// - Composing and writing the CSV happens on a background `Task` when
-///   the user taps "Export".
-/// - The resulting file URL is handed to `ShareLink` once ready.
+/// - CSV: pure SwiftUI + Foundation, cross-platform.
+/// - PDF: §50.3 court-evidence format; UIKit-guarded (`AuditLogPDFComposer`).
 public struct AuditLogExportSheet: View {
+
+    // MARK: - Export format
+
+    public enum ExportFormat: String, CaseIterable, Identifiable {
+        case csv = "CSV"
+        case pdf = "PDF (Court Evidence)"
+        public var id: String { rawValue }
+    }
 
     // MARK: - Input
 
@@ -34,7 +40,10 @@ public struct AuditLogExportSheet: View {
     /// Whether the date-range filter is active.
     @State private var filterByDateRange: Bool = false
 
-    /// CSV file URL produced after tapping Export.
+    /// Selected export format.
+    @State private var exportFormat: ExportFormat = .csv
+
+    /// File URL produced after tapping Export.
     @State private var exportURL: URL?
 
     /// Transient error shown if writing fails.
@@ -58,11 +67,12 @@ public struct AuditLogExportSheet: View {
             Form {
                 entrySummarySection
                 dateRangeSection
+                formatSection
                 exportSection
             }
             .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase)
-            .navigationTitle("Export CSV")
+            .navigationTitle("Export Audit Log")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
             #endif
@@ -75,6 +85,33 @@ public struct AuditLogExportSheet: View {
     }
 
     // MARK: - Sections
+
+    private var formatSection: some View {
+        Section {
+            Picker("Format", selection: $exportFormat) {
+                ForEach(ExportFormat.allCases) { fmt in
+                    Text(fmt.rawValue).tag(fmt)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(.bizarreOrange)
+            .onChange(of: exportFormat) { _, _ in
+                // Reset prior export when format changes.
+                exportURL = nil
+                errorMessage = nil
+            }
+            .accessibilityIdentifier("export.formatPicker")
+            if exportFormat == .pdf {
+                Label("Court-evidence PDF includes cover page, paginated entry table, and signature block.",
+                      systemImage: "info.circle")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+            }
+        } header: {
+            Text("Format")
+        }
+        .listRowBackground(Color.bizarreSurface1)
+    }
 
     private var entrySummarySection: some View {
         Section {
@@ -135,7 +172,8 @@ public struct AuditLogExportSheet: View {
                     subject: Text("Audit Log Export"),
                     message: Text("Exported from BizarreCRM on \(Date().formatted(.dateTime.year().month().day()))")
                 ) {
-                    Label("Share CSV", systemImage: "square.and.arrow.up")
+                    Label(exportFormat == .pdf ? "Share PDF" : "Share CSV",
+                          systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
                         .font(.brandBodyMedium().weight(.semibold))
                         .foregroundStyle(.bizarreOrange)
@@ -170,7 +208,7 @@ public struct AuditLogExportSheet: View {
             .buttonStyle(.borderedProminent)
             .tint(.bizarreOrange)
             .accessibilityIdentifier("export.exportButton")
-            .accessibilityLabel(isExporting ? "Preparing export" : "Export \(filteredEntries.count) entries")
+            .accessibilityLabel(isExporting ? "Preparing export" : "Export \(filteredEntries.count) entries as \(exportFormat.rawValue)")
         } header: {
             Text("Export")
         }
@@ -197,18 +235,26 @@ public struct AuditLogExportSheet: View {
         let entriesToExport = filteredEntries
         let sinceFilter: Date? = filterByDateRange ? since : nil
         let untilFilter: Date? = filterByDateRange ? until : nil
+        let format = exportFormat
 
         do {
-            // Compose CSV on a non-isolated context to avoid blocking the main actor.
-            let csv = await Task.detached(priority: .userInitiated) {
-                AuditLogCSVComposer.compose(
-                    entries: entriesToExport,
-                    since: sinceFilter,
-                    until: untilFilter
-                )
+            let url: URL = try await Task.detached(priority: .userInitiated) {
+                switch format {
+                case .csv:
+                    let csv = AuditLogCSVComposer.compose(
+                        entries: entriesToExport,
+                        since: sinceFilter,
+                        until: untilFilter
+                    )
+                    return try AuditLogExportFileWriter.write(csvString: csv)
+                case .pdf:
+                    return try AuditLogPDFComposer.compose(
+                        entries: entriesToExport,
+                        since: sinceFilter,
+                        until: untilFilter
+                    )
+                }
             }.value
-
-            let url = try AuditLogExportFileWriter.write(csvString: csv)
             exportURL = url
         } catch {
             errorMessage = error.localizedDescription
