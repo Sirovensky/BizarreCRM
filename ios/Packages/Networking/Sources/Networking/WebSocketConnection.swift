@@ -37,13 +37,13 @@ public final class WebSocketConnection: @unchecked Sendable {
         wsTask = session.webSocketTask(with: req)
         wsTask?.resume()
         receive()
-        AppLog.sync.info("WebSocketConnection: opened \(url.absoluteString, privacy: .public)")
+        AppLog.sync.info("WebSocketConnection: opened \(self.url.absoluteString, privacy: .public)")
     }
 
     public func disconnect() {
         wsTask?.cancel(with: .goingAway, reason: nil)
         wsTask = nil
-        AppLog.sync.info("WebSocketConnection: closed \(url.absoluteString, privacy: .public)")
+        AppLog.sync.info("WebSocketConnection: closed \(self.url.absoluteString, privacy: .public)")
     }
 
     public func ping(onComplete: ((Error?) -> Void)? = nil) {

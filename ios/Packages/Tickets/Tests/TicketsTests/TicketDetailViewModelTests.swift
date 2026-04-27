@@ -100,7 +100,7 @@ final class TicketDetailViewModelTests: XCTestCase {
 
     // §4.5 — Successful duplicate sets duplicatedTicketId.
     func test_duplicate_success_setsId() async {
-        let response = DuplicateTicketResponse(id: 99, ticketId: nil)
+        let response = try! JSONDecoder().decode(DuplicateTicketResponse.self, from: #"{"id":99}"#.data(using: .utf8)!)
         let repo = StubTicketRepository(duplicateResult: .success(response))
         let vm = TicketDetailViewModel(repo: repo, ticketId: 42)
         await vm.duplicateTicket()
@@ -119,7 +119,7 @@ final class TicketDetailViewModelTests: XCTestCase {
 
     // §4.5 — Successful convertToInvoice sets convertedInvoiceId.
     func test_convertToInvoice_success_setsId() async {
-        let response = ConvertToInvoiceResponse(invoiceId: 77, id: nil)
+        let response = try! JSONDecoder().decode(ConvertToInvoiceResponse.self, from: #"{"invoice_id":77}"#.data(using: .utf8)!)
         let repo = StubTicketRepository(convertResult: .success(response))
         let vm = TicketDetailViewModel(repo: repo, ticketId: 42)
         await vm.convertToInvoice()

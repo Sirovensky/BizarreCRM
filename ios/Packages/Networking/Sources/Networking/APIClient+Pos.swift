@@ -256,33 +256,37 @@ public extension APIClient {
         diagnosticNotes: String? = nil,
         internalNotes: String? = nil
     ) async throws -> CreatedResource {
-        struct PatchTicketDraftBody: Encodable, Sendable {
-            let diagnosticNotes: String?
-            let internalNotes: String?
-            enum CodingKeys: String, CodingKey {
-                case diagnosticNotes = "diagnostic_notes"
-                case internalNotes = "internal_notes"
-            }
-        }
-        let body = PatchTicketDraftBody(diagnosticNotes: diagnosticNotes, internalNotes: internalNotes)
+        let body = TicketDraftPatchBody(diagnosticNotes: diagnosticNotes, internalNotes: internalNotes)
         return try await patch("/api/v1/tickets/\(id)", body: body, as: CreatedResource.self)
     }
 
     /// `POST /api/v1/tickets/:id/signatures` — upload base64 PNG signature.
     /// Server: ticketSignatures.routes.ts:72-87. Max 500 KB enforced server-side.
     func uploadTicketSignature(ticketId: Int64, base64PNG: String) async throws -> TicketSignatureResponse {
-        struct SignatureBody: Encodable, Sendable {
-            let signature: String      // base64 data-URL or raw base64
-            let sigFormat: String
-            let sigWidth: Int
-            enum CodingKeys: String, CodingKey {
-                case signature = "signature_data"
-                case sigFormat = "sig_format"
-                case sigWidth = "sig_width"
-            }
-        }
-        let body = SignatureBody(signature: base64PNG, sigFormat: "PNG", sigWidth: 400)
+        let body = TicketSignatureUploadBody(signature: base64PNG, sigFormat: "PNG", sigWidth: 400)
         return try await post("/api/v1/tickets/\(ticketId)/signatures", body: body, as: TicketSignatureResponse.self)
+    }
+}
+
+// MARK: - POS ticket body helpers
+
+struct TicketDraftPatchBody: Encodable, Sendable {
+    let diagnosticNotes: String?
+    let internalNotes: String?
+    enum CodingKeys: String, CodingKey {
+        case diagnosticNotes = "diagnostic_notes"
+        case internalNotes = "internal_notes"
+    }
+}
+
+struct TicketSignatureUploadBody: Encodable, Sendable {
+    let signature: String
+    let sigFormat: String
+    let sigWidth: Int
+    enum CodingKeys: String, CodingKey {
+        case signature = "signature_data"
+        case sigFormat = "sig_format"
+        case sigWidth = "sig_width"
     }
 }
 

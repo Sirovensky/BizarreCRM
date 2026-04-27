@@ -1,11 +1,4 @@
-#if canImport(UIKit)
-import SwiftUI
-import Core
-import DesignSystem
-import Networking
-import Sync
-import Contacts
-import ContactsUI
+import Foundation
 
 // MARK: - CustomerSortOrder
 
@@ -19,6 +12,15 @@ public enum CustomerSortOrder: String, CaseIterable, Sendable {
     case ltvTier      = "LTV tier ↑"
     case churnRisk    = "Churn risk ↑"
 }
+
+#if canImport(UIKit)
+import SwiftUI
+import Core
+import DesignSystem
+import Networking
+import Sync
+import Contacts
+import ContactsUI
 
 public struct CustomerListView: View {
     @State private var vm: CustomerListViewModel

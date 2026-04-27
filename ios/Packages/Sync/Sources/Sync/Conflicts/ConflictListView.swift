@@ -38,7 +38,9 @@ public struct ConflictListView: View {
         NavigationStack {
             conflictListContent
                 .navigationTitle("Sync Conflicts")
+                #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar { filterToolbarItems }
                 .navigationDestination(item: $selectedConflict) { conflict in
                     ConflictDiffView(initialConflict: conflict, viewModel: viewModel)
@@ -104,22 +106,7 @@ public struct ConflictListView: View {
             ForEach(viewModel.conflictsByEntityKind, id: \.key) { group in
                 Section {
                     ForEach(group.items) { conflict in
-                        ConflictRowView(conflict: conflict)
-                            .tag(conflict.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                selectedConflict = conflict
-                                Task { await viewModel.selectConflict(conflict) }
-                            }
-                            .hoverEffect(.highlight)
-                            .contextMenu {
-                                Button("View Details") {
-                                    selectedConflict = conflict
-                                    Task { await viewModel.selectConflict(conflict) }
-                                }
-                            }
-                            .accessibilityLabel(conflictA11yLabel(conflict))
-                            .accessibilityHint("Double-tap to review and resolve this conflict")
+                        conflictRow(conflict)
                     }
                 } header: {
                     HStack {
@@ -160,10 +147,33 @@ public struct ConflictListView: View {
         .listStyle(.inset)
         #endif
         .refreshable { await viewModel.refresh() }
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
     }
 
     // MARK: - Empty state
+
+    private func conflictRow(_ conflict: ConflictItem) -> some View {
+        ConflictRowView(conflict: conflict)
+            .tag(conflict.id)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedConflict = conflict
+                Task { await viewModel.selectConflict(conflict) }
+            }
+            #if os(iOS)
+            .hoverEffect(.highlight)
+            #endif
+            .contextMenu {
+                Button("View Details") {
+                    selectedConflict = conflict
+                    Task { await viewModel.selectConflict(conflict) }
+                }
+            }
+            .accessibilityLabel(conflictA11yLabel(conflict))
+            .accessibilityHint("Double-tap to review and resolve this conflict")
+    }
 
     private var emptyState: some View {
         VStack(spacing: BrandSpacing.base) {
@@ -187,7 +197,7 @@ public struct ConflictListView: View {
 
     @ToolbarContentBuilder
     private var filterToolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+        ToolbarItem(placement: .automatic) {
             Menu {
                 Picker("Status", selection: $viewModel.statusFilter) {
                     Text("All").tag(Optional<ConflictStatus>.none)

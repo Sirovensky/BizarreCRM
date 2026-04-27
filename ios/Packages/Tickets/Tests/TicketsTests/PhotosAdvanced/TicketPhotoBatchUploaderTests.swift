@@ -1,3 +1,4 @@
+#if canImport(UIKit)
 import XCTest
 @testable import Tickets
 @testable import Networking
@@ -144,3 +145,4 @@ final class TicketPhotoBatchUploaderTests: XCTestCase {
         XCTAssertEqual(result.failed.count + result.succeeded.count, 3)
     }
 }
+#endif

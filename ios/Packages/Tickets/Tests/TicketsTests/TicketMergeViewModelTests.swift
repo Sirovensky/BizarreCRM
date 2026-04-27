@@ -215,7 +215,7 @@ private final class StubTicketRepo: TicketRepository {
         self.shouldFail = shouldFail
     }
 
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
         if shouldFail { throw StubRepoError.boom }
         return summaries
     }
@@ -225,6 +225,22 @@ private final class StubTicketRepo: TicketRepository {
         if let d = detailById[id] { return d }
         if let d = detail { return d }
         throw StubRepoError.boom
+    }
+
+    func delete(id: Int64) async throws {
+        if shouldFail { throw StubRepoError.boom }
+    }
+
+    func duplicate(id: Int64) async throws -> DuplicateTicketResponse {
+        if shouldFail { throw StubRepoError.boom }
+        let json = "{\"id\":\(id + 1000)}".data(using: .utf8)!
+        return try! JSONDecoder().decode(DuplicateTicketResponse.self, from: json)
+    }
+
+    func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse {
+        if shouldFail { throw StubRepoError.boom }
+        let json = "{\"invoice_id\":\(id + 2000)}".data(using: .utf8)!
+        return try! JSONDecoder().decode(ConvertToInvoiceResponse.self, from: json)
     }
 
     private enum StubRepoError: Error { case boom }

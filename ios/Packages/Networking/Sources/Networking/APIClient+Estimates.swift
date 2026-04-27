@@ -330,7 +330,7 @@ public extension APIClient {
     /// NOTE: endpoint may not exist; §74 gap. Will produce 404 until server wired.
     func estimatesBulkAction(ids: [Int64], action: EstimateBulkAction) async throws {
         let body = EstimateBulkRequest(ids: ids, action: action)
-        _ = try await post("/api/v1/estimates/bulk", body: body, as: EmptyBody.self)
+        _ = try await post("/api/v1/estimates/bulk", body: body, as: CreatedResource.self)
     }
 
     // MARK: - §8.3 Create with idempotency key

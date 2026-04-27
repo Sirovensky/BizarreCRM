@@ -60,7 +60,7 @@ public final class TicketDetailViewModel {
             try await repo.delete(id: ticketId)
             wasDeleted = true
         } catch {
-            AppLog.ui.error("Delete ticket \(ticketId) failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.ui.error("Delete ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
         }
     }
@@ -72,7 +72,7 @@ public final class TicketDetailViewModel {
             let response = try await repo.convertToInvoice(id: ticketId)
             convertedInvoiceId = response.resolvedInvoiceId
         } catch {
-            AppLog.ui.error("Convert ticket \(ticketId) to invoice failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.ui.error("Convert ticket \(self.ticketId) to invoice failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
         }
     }
@@ -84,7 +84,7 @@ public final class TicketDetailViewModel {
             let response = try await repo.duplicate(id: ticketId)
             duplicatedTicketId = response.resolvedId
         } catch {
-            AppLog.ui.error("Duplicate ticket \(ticketId) failed: \(error.localizedDescription, privacy: .public)")
+            AppLog.ui.error("Duplicate ticket \(self.ticketId) failed: \(error.localizedDescription, privacy: .public)")
             actionErrorMessage = error.localizedDescription
         }
     }

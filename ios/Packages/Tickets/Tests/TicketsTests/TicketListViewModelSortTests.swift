@@ -50,9 +50,7 @@ private func makeSummary(id: Int64) -> TicketSummary {
       "updated_at": "2024-01-01T00:00:00Z"
     }
     """
-    let decoder = JSONDecoder()
-    decoder.keyDecodingStrategy = .convertFromSnakeCase
-    return try! decoder.decode(TicketSummary.self, from: Data(json.utf8))
+    return try! JSONDecoder().decode(TicketSummary.self, from: Data(json.utf8))
 }
 
 // MARK: - Tests

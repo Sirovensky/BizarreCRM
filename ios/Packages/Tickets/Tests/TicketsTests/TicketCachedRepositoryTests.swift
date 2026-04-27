@@ -174,7 +174,7 @@ private actor SpyTicketRepo: TicketRepository {
         self.ticketCount = ticketCount
     }
 
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
         callCount += 1
         if shouldFail { throw RepoTestError.boom }
         return (0..<ticketCount).map { makeTicket(index: $0) }
@@ -183,6 +183,10 @@ private actor SpyTicketRepo: TicketRepository {
     func detail(id: Int64) async throws -> TicketDetail {
         throw RepoTestError.boom
     }
+
+    func delete(id: Int64) async throws { throw RepoTestError.boom }
+    func duplicate(id: Int64) async throws -> DuplicateTicketResponse { throw RepoTestError.boom }
+    func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse { throw RepoTestError.boom }
 
     private func makeTicket(index: Int) -> TicketSummary {
         // TicketSummary has explicit CodingKeys that map snake_case JSON keys.
