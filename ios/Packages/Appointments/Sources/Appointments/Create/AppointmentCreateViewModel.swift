@@ -26,11 +26,24 @@ public final class AppointmentCreateFullViewModel {
 
     public var customerId: Int64?
     public var customerDisplayName: String = ""
-    public var serviceType: AppointmentServiceType = .dropOff
+    public var serviceType: AppointmentServiceType = .dropOff {
+        didSet {
+            // §10 — auto-apply type policy: update default duration and required resources.
+            let policy = AppointmentTypePolicy.policy(for: serviceType.rawValue)
+            // Only auto-update if user hasn't manually changed duration (still at previous policy default).
+            let prevPolicy = AppointmentTypePolicy.policy(for: oldValue.rawValue)
+            if duration == prevPolicy.defaultDurationSeconds {
+                duration = policy.defaultDurationSeconds
+            }
+            requiredResources = policy.requiredResources
+        }
+    }
+    /// §10 — resource categories required for the selected appointment type.
+    public var requiredResources: [String] = AppointmentTypePolicy.policy(for: "Drop-off").requiredResources
     public var technicianId: Int64?
     public var technicianDisplayName: String = ""
     public var selectedSlot: AvailabilitySlot?
-    public var duration: TimeInterval = 60 * 60   // 1 hour default
+    public var duration: TimeInterval = AppointmentTypePolicy.policy(for: "Drop-off").defaultDurationSeconds
     public var notes: String = ""
     public var repeatRule: RepeatRule?
     /// §10.2 Reminder offsets — minutes before the appointment.
