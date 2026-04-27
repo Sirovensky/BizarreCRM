@@ -13,6 +13,7 @@ import Core
 //  - "Open Drawer" test button (manager PIN gated in production)
 //  - Live status badge (open / closed / warning)
 //  - Anti-theft & open-warning configuration
+//  - USB direct-to-iPad alternate path note
 //
 // iPhone: compact scrollable Form
 // iPad: same form in a NavigationSplitView detail pane (caller provides split)
@@ -26,6 +27,16 @@ public struct DrawerSettingsView: View {
 
     private let drawerManager: CashDrawerManager
 
+    // MARK: - Printer binding state
+
+    /// Available ESC/POS printers the drawer RJ11 port can be bound to.
+    /// The caller injects this list from PrinterSettingsViewModel.
+    public var availablePrinters: [PersistedPrinter]
+    /// Identifier of the currently bound printer (persisted in UserDefaults).
+    @State private var boundPrinterId: String?
+
+    private static let boundPrinterUdKey = "com.bizarrecrm.drawer.boundPrinterId"
+
     // MARK: - Local UI state
 
     @State private var showingPinSheet = false
@@ -33,14 +44,21 @@ public struct DrawerSettingsView: View {
     @State private var testResult: TestResult? = nil
     @State private var isTestInFlight = false
 
-    public init(drawerManager: CashDrawerManager) {
+    public init(drawerManager: CashDrawerManager, availablePrinters: [PersistedPrinter] = []) {
         self.drawerManager = drawerManager
+        self.availablePrinters = availablePrinters
+        self._boundPrinterId = State(
+            initialValue: UserDefaults.standard.string(forKey: Self.boundPrinterUdKey)
+        )
     }
 
     // MARK: - Body
 
     public var body: some View {
         Form {
+            // Printer binding
+            printerBindingSection
+
             // Status
             statusSection
 
@@ -52,6 +70,17 @@ public struct DrawerSettingsView: View {
 
             // Timing / anti-theft
             timingSection
+
+            // Alternate path
+            alternatePathSection
+        }
+        .onChange(of: boundPrinterId) { _, newId in
+            // Persist the binding immediately on change.
+            if let id = newId {
+                UserDefaults.standard.set(id, forKey: Self.boundPrinterUdKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.boundPrinterUdKey)
+            }
         }
         .navigationTitle("Cash Drawer")
         .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
@@ -71,6 +100,78 @@ public struct DrawerSettingsView: View {
     }
 
     // MARK: - Sections
+
+    // MARK: Printer binding
+
+    private var printerBindingSection: some View {
+        Section {
+            if availablePrinters.isEmpty {
+                Label(
+                    "No receipt printers configured. Add one in Settings → Hardware → Printers.",
+                    systemImage: "printer.slash"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("No receipt printers configured.")
+            } else {
+                Picker(
+                    "Bound Printer",
+                    selection: Binding(
+                        get: { boundPrinterId ?? "" },
+                        set: { boundPrinterId = $0.isEmpty ? nil : $0 }
+                    )
+                ) {
+                    Text("None").tag("")
+                    ForEach(availablePrinters) { printer in
+                        Text(printer.name).tag(printer.id)
+                    }
+                }
+                .pickerStyle(.menu)
+                .accessibilityLabel("Receipt printer that drives this cash drawer via its RJ11 port.")
+
+                if let id = boundPrinterId,
+                   let bound = availablePrinters.first(where: { $0.id == id }) {
+                    Label("Drawer kicks via \(bound.name)", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                        .accessibilityLabel("Drawer is bound to \(bound.name). Kick commands route through this printer.")
+                }
+            }
+        } header: {
+            Text("Printer Binding (RJ11 Port)")
+        } footer: {
+            Text("""
+            Most receipt printers have an RJ11 cash-drawer port. Binding a printer here \
+            routes kick commands through that printer's ESC/POS interface.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Alternate path
+
+    private var alternatePathSection: some View {
+        Section {
+            Label("USB-connected drawer (via adapter)", systemImage: "cable.connector")
+                .font(.subheadline)
+                .accessibilityAddTraits(.isHeader)
+            Text("""
+            Some shops use a USB cash drawer connected directly to the iPad via a \
+            USB-C adapter. These drawers typically expose a serial USB interface. \
+            On iOS without MFi certification, the most reliable path is to route \
+            the kick through a networked or Bluetooth receipt printer with an RJ11 \
+            port (the primary path above).
+
+            If you have a USB direct drawer, configure it by binding it to a \
+            network-connected printer that provides the RJ11 port, or contact support.
+            """)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        } header: {
+            Text("USB Direct (Less Common)")
+        }
+    }
 
     private var statusSection: some View {
         Section("STATUS") {
