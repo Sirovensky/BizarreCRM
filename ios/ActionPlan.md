@@ -584,14 +584,14 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.1 List
 - [x] Base list + filter chips + search — shipped.
-- [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
+- [x] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field. `TicketsCursorEndpoints` + `TicketCursorPaginationController`. (agent-3-b7)
 - [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
 - [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
 - [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`). TicketListFilter.allCases in filterAndSortBar. (578aa4e4)
 - [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
 - [x] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms. `.searchable` + `onSearchChange` 300ms debounce. (578aa4e4)
 - [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
-- [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
+- [x] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. `TicketColumnDensityPicker` + `TicketColumnPrefs` (UserDefaults JSON); wired in `TicketListView`. (agent-3-b7)
 - [x] **Swipe actions** — leading: SMS customer; trailing: Archive / Delete. `TicketRowSwipeActions` SMS customer via `sms:` URL + archive/delete. (578aa4e4)
 - [x] **Context menu** — Copy order ID, SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Pin/Unpin. `TicketQuickActionsContent` with all items wired. (578aa4e4)
 - [x] **Multi-select** (iPad/Mac first) — long-press activates `BulkEditSelection`; `TicketBulkActionBar` floating glass footer; `BulkActionMenu` — Bulk assign / Bulk status / Bulk archive. (578aa4e4)
@@ -623,7 +623,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
 - [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
 - [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
-- [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
+- [x] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load. `TicketWarrantySLABadge` + `TicketWarrantySLAViewModel`; wired in `TicketDetailView`. (agent-3-b7)
 - [x] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
 - [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
 - [x] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
@@ -674,12 +674,12 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.5 Ticket actions
 - [x] **Convert to invoice** — `POST /tickets/:id/convert-to-invoice` → jumps to new invoice detail; prefill ticket line items; respect deposit credit.
-- [ ] **Attach to existing invoice** — picker; append line items.
+- [x] **Attach to existing invoice** — picker; append line items. `TicketAttachInvoiceSheet` + `TicketAttachInvoiceViewModel` + `InvoiceSummary` DTO + `APIClient.listInvoices`; wired in `TicketDetailView`. (agent-3-b7)
 - [x] **Duplicate ticket** — same customer + device + clear status.
 - [x] **Merge tickets** — pick a duplicate candidate (search dialog); confirm; server merges notes / photos / devices. `TicketMergeViewModel` + `TicketMergeView` (iPad 3-col / iPhone sheet) + `TicketMergeCandidatePicker`. `POST /tickets/merge`. Commit `feat(ios post-phase §4)`.
 - [x] **Split ticket** — multi-select device lines → move to new ticket (customer inherited). `TicketSplitViewModel` + `TicketSplitView` (checkbox per device, "Create N new tickets" button). `POST /tickets/:id/split`. Commit `feat(ios post-phase §4)`.
 - [x] **Transfer to another technician** — handoff modal with reason (required) — `PUT /tickets/:id` with `{ assigned_to }` + note auto-logged. `TicketHandoffView` + `TicketHandoffViewModel` + `HandoffReason` enum (shiftChange/escalation/outOfExpertise/other). (agent-3-b4)
-- [ ] **Transfer to another store / location** (multi-location tenants).
+- [x] **Transfer to another store / location** (multi-location tenants). `TicketTransferLocationSheet` + `TicketTransferLocationViewModel` + `TenantLocation` DTO + `APIClient.listTenantLocations`; wired in `TicketDetailView`. (agent-3-b7)
 - [x] **Bulk action** — `POST /tickets/bulk-action` with `{ ticket_ids, action, value }` — bulk assign / bulk status / bulk archive. `BulkEditCoordinator` + `BulkActionMenu` + `BulkEditResultView` + `TicketBulkActionBar` glass footer; long-press to activate. (578aa4e4)
 - [x] **Warranty lookup** — quick action "Check warranty" — `GET /tickets/warranty-lookup?imei|serial|phone`. `TicketWarrantyLookupView` + `TicketWarrantyLookupViewModel` + `TicketWarrantyRecord` DTO + `APIClient.warrantyLookup(...)`. (agent-3-b4)
 - [x] **Device history** — `GET /tickets/device-history?imei|serial` — shows past repairs for this device on any customer. `TicketDeviceHistoryView` + `TicketDeviceHistoryViewModel` + `APIClient.deviceHistory(imei:serial:)`. (agent-3-b4)
@@ -690,7 +690,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **`@` trigger** — inline employee picker (`GET /employees?keyword=`); insert `@{name}` token. `TicketNoteMentionPicker` + `MentionCandidate` + `TicketNoteMentionPickerViewModel` wired into `TicketNoteComposeView`. (agent-3-b5)
 - [ ] **Mention push** — server sends APNs to mentioned employee.
 - [x] **Markdown-lite** — bold / italic / bullet lists / inline code render with `AttributedString`. `TicketNoteMarkdownRenderer` (pure enum, `**bold**`, `*italic*`, `` `code` ``, `- bullet`, `@mention`). (agent-3-b5)
-- [ ] **Link detection** — phone / email / URL auto-tappable.
+- [x] **Link detection** — phone / email / URL auto-tappable. `TicketNoteLinkDetector` (NSDataDetector, phone+link, AttributedString with .link + orange tint). (agent-3-b7)
 - [ ] **Attachment** — add image from camera/library → inline preview; stored as note attachment.
 
 ### 4.7 Statuses & transitions
@@ -705,13 +705,13 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.8 Photos — advanced
 - [ ] **Camera** — `AVCaptureSession` with flash toggle, flip, grid, shutter haptic.
-- [ ] **Library picker** — `PhotosUI.PhotosPicker` with selection limit 10.
+- [x] **Library picker** — `PhotosUI.PhotosPicker` with selection limit 10. `TicketPhotoLibraryPickerButton` + `TicketPhotoLibraryPickerViewModel`; EXIF-strip applied per §4.8. (agent-3-b7)
 - [ ] **Upload** — background `URLSession` surviving app exit; progress chip per photo.
 - [x] **Retry failed upload** — dead-letter entry in Sync Issues. `PhotoUploadService.recordDeadLetter` / `clearDeadLetter` / `deadLetterEntries` persist failures to UserDefaults; `PhotoUploadDeadLetterEntry` model carries retry count + error description for Sync Issues screen. Commit `ccfa0a18`.
 - [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. `TicketDevicePhotoListView` gallery (tap → full-screen), `TicketPhotoBeforeAfterView` side-by-side. `TicketPhotoUploadService` actor with background URLSession, offline queue, retry. `TicketPhotoAnnotationIntegration` shim into Camera pkg PencilKit. Commit `feat(ios post-phase §4)`.
-- [x] **EXIF strip** — remove GPS + timestamp metadata on upload. `PhotoUploadService.stripExifAndCompress` uses `CGImageDestination` to explicitly drop `kCGImagePropertyGPSDictionary` + EXIF date fields from any photo (covers library-picker paths not routed through `CameraService`). Commit `ccfa0a18`.
-- [x] **Thumbnail cache** — Nuke with disk limit; full-size fetched on tap. `PhotoThumbnailCache` actor: ImageIO `kCGImageSourceThumbnailMaxPixelSize` downscale + `NSCache` (32 MB / 500 entries) in-memory + `AppSupport/thumbnails/` disk cache; `ThumbnailSize` enum (small=80/medium=200/large=400); `evict` / `evictAll` hooks. Commit `ccfa0a18`.
+- [x] **EXIF strip** — remove GPS + timestamp metadata on upload. `PhotoUploadService.stripExifAndCompress` (Camera pkg, ccfa0a18) + `ExifStripper` applied in `TicketPhotoLibraryPickerViewModel` (agent-3-b7).
+- [x] **Thumbnail cache** — `PhotoThumbnailCache` actor (Camera pkg ImageIO + NSCache 32MB + disk; ccfa0a18) + `TicketPhotoThumbnailView` AsyncImage+URLCache fallback (agent-3-b7).
 - [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment.
 
 ### 4.9 Bench workflow
@@ -1337,7 +1337,7 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [ ] Side-by-side diff of v-n vs v-n+1
 - [ ] Highlight adds / removes / price changes
 - [ ] Customer approval tied to specific version
-- [ ] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?")
+- [x] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?"). `versionWarningBanner` in `EstimateDetailView`; `approvedVersionNumber` field on `Estimate` DTO. (agent-3-b7)
 - [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate)
 - [ ] Reuse same versioning machinery for receipt templates + waivers (§4.6)
 
