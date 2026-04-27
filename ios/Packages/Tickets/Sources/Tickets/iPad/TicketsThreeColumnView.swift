@@ -317,23 +317,25 @@ public struct TicketsThreeColumnView: View {
     private var emptyHint: String {
         if !searchText.isEmpty { return "No results for \"\(searchText)\"." }
         switch selectedFilter {
-        case .all:        return "Create a ticket to get started."
-        case .myTickets:  return "No tickets are assigned to you."
-        case .open:       return "Nothing open right now."
-        case .inProgress: return "No tickets in progress."
-        case .waiting:    return "Nothing waiting."
-        case .closed:     return "Nothing closed yet."
+        case .all:       return "Create a ticket to get started."
+        case .open:      return "Nothing open right now."
+        case .onHold:    return "Nothing on hold."
+        case .closed:    return "Nothing closed yet."
+        case .cancelled: return "No cancelled tickets."
+        case .active:    return "No active tickets in progress."
+        case .myTickets: return "No tickets are assigned to you."
         }
     }
 
     private func filterSystemImage(_ filter: TicketListFilter) -> String {
         switch filter {
-        case .all:        return "tray.2"
-        case .myTickets:  return "person.crop.circle"
-        case .open:       return "tray"
-        case .inProgress: return "wrench.and.screwdriver"
-        case .waiting:    return "clock"
-        case .closed:     return "checkmark.circle"
+        case .all:       return "tray.2"
+        case .open:      return "tray"
+        case .onHold:    return "clock"
+        case .closed:    return "checkmark.circle"
+        case .cancelled: return "xmark.circle"
+        case .active:    return "wrench.and.screwdriver"
+        case .myTickets: return "person.crop.circle"
         }
     }
 }

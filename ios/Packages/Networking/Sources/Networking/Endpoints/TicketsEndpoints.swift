@@ -164,44 +164,49 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
     }
 }
 
-/// Client-side filter chips. Mapped to server query params in the repository.
+/// Client-side filter chips — §4.1 spec: All / Open / On hold / Closed / Cancelled / Active.
+/// Mapped to server query params in the repository.
 public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
     case all
-    case myTickets
     case open
-    case inProgress
-    case waiting
+    case onHold
     case closed
+    case cancelled
+    case active
+    case myTickets
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .all:        return "All"
-        case .myTickets:  return "My Tickets"
-        case .open:       return "Open"
-        case .inProgress: return "In Progress"
-        case .waiting:    return "Waiting"
-        case .closed:     return "Closed"
+        case .all:       return "All"
+        case .open:      return "Open"
+        case .onHold:    return "On hold"
+        case .closed:    return "Closed"
+        case .cancelled: return "Cancelled"
+        case .active:    return "Active"
+        case .myTickets: return "My Tickets"
         }
     }
 
-    /// Query params the server understands. Some filters are client-side
-    /// refinements (my tickets → assigned_to=me); the rest map to status_group.
+    /// Query params the server understands.
+    /// Maps to `status_group` query param; `myTickets` appends `assigned_to=me`.
     public var queryItems: [URLQueryItem] {
         switch self {
         case .all:
             return []
-        case .myTickets:
-            return [URLQueryItem(name: "assigned_to", value: "me")]
         case .open:
             return [URLQueryItem(name: "status_group", value: "open")]
-        case .inProgress:
-            return [URLQueryItem(name: "status_group", value: "active")]
-        case .waiting:
+        case .onHold:
             return [URLQueryItem(name: "status_group", value: "on_hold")]
         case .closed:
             return [URLQueryItem(name: "status_group", value: "closed")]
+        case .cancelled:
+            return [URLQueryItem(name: "status_group", value: "cancelled")]
+        case .active:
+            return [URLQueryItem(name: "status_group", value: "active")]
+        case .myTickets:
+            return [URLQueryItem(name: "assigned_to", value: "me")]
         }
     }
 }

@@ -317,12 +317,13 @@ public struct TicketListView: View {
     private var emptyHint: String {
         if !searchText.isEmpty { return "No results for \"\(searchText)\"." }
         switch vm.filter {
-        case .all:        return "No tickets yet."
-        case .myTickets:  return "No tickets are assigned to you."
-        case .open:       return "Nothing open right now."
-        case .inProgress: return "No tickets in progress."
-        case .waiting:    return "Nothing waiting."
-        case .closed:     return "Nothing closed yet."
+        case .all:       return "No tickets yet."
+        case .open:      return "Nothing open right now."
+        case .onHold:    return "Nothing on hold."
+        case .closed:    return "Nothing closed yet."
+        case .cancelled: return "No cancelled tickets."
+        case .active:    return "No active tickets in progress."
+        case .myTickets: return "No tickets are assigned to you."
         }
     }
 }
