@@ -9,6 +9,10 @@ public protocol ReviewsRepository: Sendable {
     func createReview(_ req: CreateReviewRequest) async throws -> PerformanceReview
     func updateReview(id: String, _ req: UpdateReviewRequest) async throws -> PerformanceReview
     func deleteReview(id: String) async throws
+    /// §46.2 Archive — mark review immutable and kept indefinitely on server.
+    func archiveReview(id: String) async throws -> PerformanceReview
+    /// §46.2 Archive — list archived reviews for HR file export.
+    func listArchivedReviews(employeeId: String?) async throws -> [PerformanceReview]
 }
 
 // MARK: - ReviewsRepositoryImpl
@@ -34,5 +38,13 @@ public actor ReviewsRepositoryImpl: ReviewsRepository {
 
     public func deleteReview(id: String) async throws {
         try await api.deleteReview(id: id)
+    }
+
+    public func archiveReview(id: String) async throws -> PerformanceReview {
+        try await api.archiveReview(id: id)
+    }
+
+    public func listArchivedReviews(employeeId: String?) async throws -> [PerformanceReview] {
+        try await api.listArchivedReviews(employeeId: employeeId)
     }
 }

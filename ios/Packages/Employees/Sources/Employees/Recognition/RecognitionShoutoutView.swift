@@ -306,6 +306,20 @@ public struct ShoutoutsListView: View {
                 .accessibilityLabel("Send shoutout to a colleague")
                 .keyboardShortcut("n", modifiers: .command)
             }
+            // §46.7 Recognition book — end-of-year PDF export
+            if !vm.shoutouts.isEmpty {
+                ToolbarItem(placement: .automatic) {
+                    Menu {
+                        RecognitionBookButton(
+                            shoutouts: vm.shoutouts,
+                            employeeName: vm.shoutouts.first?.toDisplayName ?? "Employee"
+                        )
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("More options")
+                }
+            }
         }
         .task { await vm.load() }
         .refreshable { await vm.load() }

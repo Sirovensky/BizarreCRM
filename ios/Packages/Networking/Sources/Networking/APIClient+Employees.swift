@@ -500,3 +500,41 @@ struct ResendInviteBody: Encodable, Sendable {
         case resendInvite = "resend_invite"
     }
 }
+
+// MARK: - §14.3 PIN verification
+
+/// Body for `POST /api/v1/auth/verify-pin`.
+public struct VerifyPinRequest: Encodable, Sendable {
+    public let userId: Int64
+    public let pin: String
+
+    public init(userId: Int64, pin: String) {
+        self.userId = userId
+        self.pin = pin
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+        case pin
+    }
+}
+
+/// Response from `POST /api/v1/auth/verify-pin`.
+public struct VerifyPinResponse: Decodable, Sendable {
+    public let valid: Bool
+    public let message: String?
+}
+
+public extension APIClient {
+    /// `POST /api/v1/auth/verify-pin` — verify an employee PIN.
+    /// Used before privileged clock-in / PIN-gated actions.
+    /// Returns `true` when the PIN matches; `false` on mismatch (no error thrown).
+    func verifyPin(userId: Int64, pin: String) async throws -> Bool {
+        let resp = try await post(
+            "/api/v1/auth/verify-pin",
+            body: VerifyPinRequest(userId: userId, pin: pin),
+            as: VerifyPinResponse.self
+        )
+        return resp.valid
+    }
+}

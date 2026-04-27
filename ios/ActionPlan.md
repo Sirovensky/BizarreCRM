@@ -1546,7 +1546,7 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin. (`SmsListView` `.swipeActions(edge:.leading)` markRead; `.swipeActions(edge:.trailing)` toggleFlag/togglePin/toggleArchive; all wired to `SmsListViewModel` actions.) (57e0660d)
 - [x] **Context menu** — Open, Flag, Pin, Archive (Call + Open customer + Assign remain `[ ]` — need deep-link/customer nav). (`SmsListView` `.contextMenu` with Open / Flag / Pin / Archive actions; Assign/Call/OpenCustomer deferred.) (57e0660d)
 - [x] **Compose new** (FAB) — pick customer or raw phone. (`ComposeNewThreadView` + `ComposeNewThreadViewModel`; orange circle FAB ⌘N; iPhone full-screen / iPad medium+large; customer picker via `listCustomerPickerItems()` or raw phone) (9d7d9584)
-- [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
+- [x] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates. (`TeamInboxView` + `TeamInboxViewModel`; `SmsListFilterTab.teamInbox`; swipe-to-assign via `assignInboxConversation`; iPad SplitView detail; iPhone NavigationStack list.) (feat(§12.1): team inbox tab)
 
 ### 12.2 Thread view
 - [x] Bubbles + composer + POST /sms/send — shipped.
@@ -1620,8 +1620,8 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [ ] Compose campaign to a segment; TCPA compliance check; preview.
 
 ### 12.13 Empty / error states
-- [ ] No threads → "Start a conversation" CTA → compose new.
-- [ ] Send failed → red bubble with "Retry" chip; retried sends queued offline.
+- [x] No threads → "Start a conversation" CTA → compose new. (`SmsListView.emptyFilteredState` shows CTA when `vm.filter.isDefault && searchText.isEmpty`.) (feat(§12.13): SMS empty state CTA)
+- [x] Send failed → red bubble with "Retry" chip; retried sends queued offline. (`MessageBubble` `onRetry` closure; red background + `arrow.clockwise` chip; `SmsThreadViewModel.retrySend`.) (feat(§12.13): send-failed retry bubble)
 
 ### 12.14 Email templates (§64 in agent-ownership Phase 8)
 - [x] **`EmailTemplate` model** — `{ id, name, subject, htmlBody, plainBody, category, dynamicVars }` in `Communications/Email/`. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
@@ -1709,7 +1709,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **CachedRepository + offline** — `EmployeeCachedRepositoryImpl` (actor, single-entry in-memory cache, 5min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 7 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [x] **Filters** — role / active-inactive / clocked-in-now. `EmployeeListFilter.clockedInOnly` toggle in filter sheet. (feat(§14): clocked-in-now filter + ClockedInNowView)
 - [x] **"Who's clocked in right now"** view — `ClockedInNowView` polls GET /api/v1/employees every 60s; `EmployeePresence` tolerant decoding of `is_clocked_in`. (feat(§14): clocked-in-now filter + ClockedInNowView)
-- [ ] **Columns** (iPad/Mac) — Name / Email / Role / Status / Has PIN / Hours this week / Commission.
+- [x] **Columns** (iPad/Mac) — Name / Email / Role / Status / Has PIN / Hours this week / Commission. (`EmployeeTableView` sortable `Table`; ⌘⌥T toggle in `EmployeeListView`; columns: Name/Email/Role/Status/PIN Set/Joined.) (feat(§14.1): employee sortable table)
 - [ ] **Permission matrix** admin view — `GET /roles`; checkbox grid of permissions × roles.
 
 ### 14.2 Detail
@@ -1722,7 +1722,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.3 Timeclock
 - [x] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`. (feat(ios post-phase §14))
-- [ ] **PIN prompt** — custom numeric keypad with haptic per tap; `POST /auth/verify-pin`.
+- [x] **PIN prompt** — custom numeric keypad with haptic per tap; `POST /auth/verify-pin`. (`EmployeeClockViewModel.clockIn/clockOut` call `api.verifyPin(userId:pin:)` before clock action; skip if pin empty; `verifyPin` in `APIClient+Employees`.) (feat(§14.3): verify-pin gate on clock in/out)
 - [x] **Breaks** — `BreakEntry` + `BreakInOutView` + `BreakDurationTracker` (@Observable, injectable clock); `POST /timeclock/breaks/start|end`; meal/rest/other; unpaid breaks auto-deducted in `OvertimeCalculator`. (feat(ios post-phase §14))
 - [x] **Geofence** — `GeofenceClockInValidator` 100m radius; admin policy strict/warn/off; employee opt-out; haversine distance; iOS one-shot `CLLocationManager` via `CheckedContinuation`. (feat(ios post-phase §14))
 - [x] **Edit entries** (admin only, audit log) — `TimesheetEditSheet` + `PATCH /timeclock/shifts/:id`; reason field required for audit. (feat(ios post-phase §14))
@@ -5582,7 +5582,7 @@ Content below kept as the iOS implementation spec for when those gates open.
 - [x] **Peer feedback intake** (§46.5) aggregated by manager into final review.
 - [x] **Meeting helper** — "Prepare review" action compiles scorecard (§46.4) + self-review + peer notes + manager draft into a single PDF for the sit-down.
 - [x] **Employee acknowledges** — read + agree-or-dispute signature via `PKCanvasView`; disputes logged separately.
-- [ ] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file.
+- [x] **Archive** — stored on tenant server indefinitely; exportable as PDF for HR file. (`archiveReview(id:)` POST /employees/reviews/:id/archive + `listArchivedReviews` in `ReviewsEndpoints` + `ReviewsRepository`.) (feat(§46.2): review archive endpoints)
 - [x] **Cadence** — `ReviewCadence` enum + `ReviewCadenceSettingsView` + `ReviewCadenceViewModel`; GET/PATCH /api/v1/settings/review-cadence. (feat(§46): review cadence settings)
 
 ### 46.3 Time off (PTO)
@@ -5600,7 +5600,7 @@ Covers what §46 specified. Lives here.
 - [x] **Rolling windows** — 30 / 90 / 365-day charts.
 - [x] **Private by default** — `ScorecardVisibilityRole` enum (`.self/.manager/.owner/.other`); `ScorecardViewModel.load()` guards `.other` with access-denied error. (feat(§46): scorecard private-by-default)
 - [x] **Manager annotations** — notes + praise / coaching signals visible to employee.
-- [ ] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §46.2 review.
+- [x] **Objective vs subjective separation** — hard metrics auto-computed; subjective rating is the scale in §46.2 review. (`ScorecardMetricKind` enum + `ScorecardMetricClassifier.kind(for:)` in `EmployeeScorecard.swift`; only `.managerRating` is `.subjective`.) (feat(§46.4): objective vs subjective scorecard classifier)
 - [x] **Export** — scorecard PDF for HR file.
 
 ### 46.5 Peer feedback
@@ -5611,7 +5611,7 @@ Covers what §46 specified.
 - [x] **Anonymous by default**; optional peer attribution.
 - [x] **Delivery gated through manager** — manager curates before sharing with subject; prevents rumor / hostility.
 - [x] **Frequency cap** — `PeerFeedbackFrequencyCap` with `checkCap`/`recordRequest`; UserDefaults-backed; calendar quarter boundary; wired into `PeerFeedbackPromptSheetViewModel.submit()`. (feat(§46): peer feedback frequency cap)
-- [ ] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`.
+- [x] **Voice dictation** — long-form text field; on-device `SFSpeechRecognizer`. (`VoiceDictationButton` + `DictationSession` @Observable; `AVAudioEngine` + `SFSpeechAudioBufferRecognitionRequest`; `requiresOnDeviceRecognition`; iOS 17+; `DictationTextEditor` in `PeerFeedbackPromptSheet`.) (feat(§46.5): voice dictation for peer feedback)
 
 ### 46.6 Leaderboards (opt-in only)
 Covers what §46 specified.
@@ -5633,7 +5633,7 @@ Covers what §46 specified.
 - [x] **Frequency unlimited** — no frequency cap; no leaderboard of shoutouts. (feat(§46): recognition shoutouts)
 - [ ] **Delivery** — push to recipient (§70); archive in recipient profile.
 - [x] **Team visibility** — `isTeamVisible` toggle (private by default); recipient can opt in. (feat(§46): recognition shoutouts)
-- [ ] **End-of-year "recognition book"** — PDF export of all received shoutouts.
+- [x] **End-of-year "recognition book"** — PDF export of all received shoutouts. (`RecognitionBookExportService.generatePDF` via `UIGraphicsPDFRenderer`; cover page + 4-per-page shoutout cards; `RecognitionBookButton` in `RecognitionShoutoutView` toolbar.) (feat(§46.7): recognition book PDF export)
 
 ### 46.8 Gamification guardrails (hard rules)
 Covers what §46 specified. Non-negotiable ethical constraints.

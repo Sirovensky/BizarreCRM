@@ -78,6 +78,25 @@ public final class SmsThreadViewModel {
     func setNewMessageId(_ id: Int64) {
         newMessageId = id
     }
+
+    /// §12.13 Send-failed retry — re-sends the body of a failed message.
+    /// The original failed message remains in the thread (server handles dedup
+    /// based on idempotency key if supported; otherwise creates a new message).
+    public func retrySend(message: SmsMessage) async {
+        let body = message.message ?? ""
+        guard !body.isEmpty, !isSending else { return }
+        isSending = true
+        defer { isSending = false }
+        errorMessage = nil
+        do {
+            _ = try await repo.send(to: phoneNumber, message: body)
+            draft = ""
+            await load()
+        } catch {
+            AppLog.ui.error("SMS retry failed: \(error.localizedDescription, privacy: .public)")
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 public protocol SmsThreadRepository: Sendable {

@@ -17,6 +17,8 @@ public enum SmsListFilterTab: String, CaseIterable, Sendable, Identifiable {
     case archived   = "Archived"
     case assignedMe = "Assigned to me"
     case unassigned = "Unassigned"
+    /// §12.1 Team inbox — shared inbox (when tenant has it enabled).
+    case teamInbox  = "Team Inbox"
 
     public var id: String { rawValue }
 
@@ -32,6 +34,7 @@ public enum SmsListFilterTab: String, CaseIterable, Sendable, Identifiable {
         case .archived:   return "archivebox"
         case .assignedMe: return "person.crop.circle.badge.checkmark"
         case .unassigned: return "person.crop.circle.badge.questionmark"
+        case .teamInbox:  return "tray.full"
         }
     }
 }
@@ -71,6 +74,10 @@ public struct SmsListFilter: Equatable, Sendable {
         case .unassigned:
             // Similarly, "assigned" concept maps to assignedUserId == nil.
             // Pass-through until server adds the field.
+            return conversations.filter { !$0.isArchived }
+        case .teamInbox:
+            // §12.1 Team inbox — all non-archived conversations (shared inbox view).
+            // Server-side assignee field will narrow this when available.
             return conversations.filter { !$0.isArchived }
         }
     }

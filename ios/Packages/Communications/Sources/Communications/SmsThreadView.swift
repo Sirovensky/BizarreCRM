@@ -66,7 +66,9 @@ public struct SmsThreadView: View {
                             .padding(.top, BrandSpacing.xxl)
                         } else {
                             ForEach(thread.messages) { message in
-                                MessageBubble(message: message).id(message.id)
+                                MessageBubble(message: message, onRetry: message.failed ? {
+                                    Task { await vm.retrySend(message: message) }
+                                } : nil).id(message.id)
                             }
                         }
                     }
@@ -133,10 +135,17 @@ public struct SmsThreadView: View {
     }
 }
 
-// MARK: - Bubble
+// MARK: - Bubble — §12.13 includes retry chip on failed messages
 
 private struct MessageBubble: View {
     let message: SmsMessage
+    /// Non-nil on failed outbound messages only.
+    let onRetry: (() -> Void)?
+
+    init(message: SmsMessage, onRetry: (() -> Void)? = nil) {
+        self.message = message
+        self.onRetry = onRetry
+    }
 
     var body: some View {
         HStack {
@@ -144,13 +153,35 @@ private struct MessageBubble: View {
             VStack(alignment: message.isOutbound ? .trailing : .leading, spacing: 2) {
                 Text(message.message ?? "")
                     .font(.brandBodyMedium())
-                    .foregroundStyle(message.isOutbound ? .bizarreOnOrange : .bizarreOnSurface)
+                    .foregroundStyle(
+                        message.failed
+                            ? Color.white
+                            : (message.isOutbound ? Color.bizarreOnOrange : Color.bizarreOnSurface)
+                    )
                     .padding(.horizontal, BrandSpacing.md)
                     .padding(.vertical, BrandSpacing.sm)
                     .background(
-                        message.isOutbound ? Color.bizarreOrangeContainer : Color.bizarreSurface2,
+                        message.failed
+                            ? Color.bizarreError.opacity(0.85)
+                            : (message.isOutbound ? Color.bizarreOrangeContainer : Color.bizarreSurface2),
                         in: RoundedRectangle(cornerRadius: 14)
                     )
+                    .accessibilityLabel(bubbleA11y)
+
+                // §12.13 Send-failed retry chip
+                if message.failed, let retry = onRetry {
+                    Button(action: retry) {
+                        Label("Retry", systemImage: "arrow.clockwise")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreError)
+                            .padding(.horizontal, BrandSpacing.sm)
+                            .padding(.vertical, BrandSpacing.xxs)
+                            .background(Color.bizarreError.opacity(0.1), in: Capsule())
+                            .overlay(Capsule().strokeBorder(Color.bizarreError.opacity(0.4), lineWidth: 0.5))
+                    }
+                    .accessibilityLabel("Retry sending this message")
+                }
+
                 HStack(spacing: BrandSpacing.xs) {
                     if let ts = message.createdAt {
                         Text(String(ts.prefix(16)).replacingOccurrences(of: "T", with: " "))
@@ -166,5 +197,12 @@ private struct MessageBubble: View {
             }
             if !message.isOutbound { Spacer(minLength: 40) }
         }
+    }
+
+    private var bubbleA11y: String {
+        var parts: [String] = []
+        if let body = message.message, !body.isEmpty { parts.append(body) }
+        if message.failed { parts.append("Failed to send. Double-tap to retry.") }
+        return parts.joined(separator: ". ")
     }
 }

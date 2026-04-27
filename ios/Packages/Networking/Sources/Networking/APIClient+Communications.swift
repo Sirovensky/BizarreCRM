@@ -5,6 +5,7 @@ import Foundation
 /// Ground truth routes (packages/server/src/routes/sms.routes.ts):
 ///   PATCH /sms/conversations/:phone/archive  → SmsConversationArchiveResult  (ENR-SMS7)
 ///   POST  /sms/preview-template             → SmsTemplatePreviewResult
+///   POST  /inbox/:phone/assign              → InboxAssignResult  (§12.1 team inbox)
 ///
 /// All other SMS/template endpoints live in their canonical endpoint files:
 ///   SmsEndpoints.swift      — conversations list, flag, pin, read, archive, mark-read
@@ -43,6 +44,15 @@ public extension APIClient {
     ) async throws -> SmsTemplatePreviewResult {
         let body = SmsTemplatePreviewRequest(templateId: templateId, vars: vars)
         return try await post("/api/v1/sms/preview-template", body: body, as: SmsTemplatePreviewResult.self)
+    }
+
+    // MARK: - Team inbox assign (§12.1)
+
+    /// `POST /api/v1/inbox/:phone/assign` — assign conversation to current user (self-assign).
+    /// Server: sms.routes.ts inbox handler.
+    func assignInboxConversation(phone: String) async throws {
+        let encoded = phone.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? phone
+        _ = try await post("/api/v1/inbox/\(encoded)/assign", body: InboxAssignBody(), as: InboxAssignResult.self)
     }
 }
 
@@ -120,4 +130,19 @@ struct CustomerPickerItemRaw: Decodable, Sendable {
 /// Response for `GET /api/v1/sms/unread-count`.
 public struct SmsUnreadCountResponse: Decodable, Sendable {
     public let count: Int
+}
+
+// MARK: - Team inbox assign types
+
+/// Body for `POST /api/v1/inbox/:phone/assign`.
+/// Server reads `assignee_id`; nil = assign to caller (self-assign).
+struct InboxAssignBody: Encodable, Sendable {
+    let assigneeId: Int64?
+    init(assigneeId: Int64? = nil) { self.assigneeId = assigneeId }
+    enum CodingKeys: String, CodingKey { case assigneeId = "assignee_id" }
+}
+
+/// Response for inbox assign.
+public struct InboxAssignResult: Decodable, Sendable {
+    public let success: Bool
 }

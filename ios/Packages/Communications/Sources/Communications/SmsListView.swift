@@ -130,7 +130,7 @@ public struct SmsListView: View {
         }
     }
 
-    // MARK: - Empty filtered state
+    // MARK: - Empty filtered state — §12.13
 
     private var emptyFilteredState: some View {
         VStack(spacing: BrandSpacing.md) {
@@ -139,16 +139,38 @@ public struct SmsListView: View {
             Image(systemName: vm.filter.isDefault ? "message" : "line.3.horizontal.decrease.circle")
                 .font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
-            Text(vm.filter.isDefault
-                 ? (searchText.isEmpty ? "No conversations yet" : "No results")
-                 : "No \(vm.filter.tab.label.lowercased()) conversations")
-                .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
-            if !vm.filter.isDefault {
-                Button("Show all") {
-                    withAnimation { vm.filter.tab = .all }
+            if vm.filter.isDefault && searchText.isEmpty {
+                // §12.13 "No threads" empty state — CTA to compose new
+                Text("No conversations yet")
+                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Text("Start a conversation with a customer.")
+                    .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                Button {
+                    showCompose = true
+                } label: {
+                    Label("Start a Conversation", systemImage: "square.and.pencil")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
                 .tint(.bizarreOrange)
+                .accessibilityLabel("Start a new conversation")
+                .sheet(isPresented: $showCompose) {
+                    ComposeNewThreadView(api: api) { phone in
+                        path.append(phone)
+                    }
+                }
+            } else {
+                Text(searchText.isEmpty
+                     ? "No \(vm.filter.tab.label.lowercased()) conversations"
+                     : "No results for \"\(searchText)\"")
+                    .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                if !vm.filter.isDefault {
+                    Button("Show all") {
+                        withAnimation { vm.filter.tab = .all }
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.bizarreOrange)
+                }
             }
             Spacer()
         }
