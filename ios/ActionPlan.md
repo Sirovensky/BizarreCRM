@@ -991,7 +991,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Quick stock adjust** — inline +/- buttons on row (qty stepper, debounced PUT). (ae5435bf — adjust icon → `InventoryAdjustSheet`)
 - [x] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels. (`BatchEditSheet` + `BatchEditViewModel` — price %, category, tags, bulk delete (`POST /inventory/items/batch-delete`), CSV export via `InventoryCSVDocument: FileDocument` + `.fileExporter`; confirmationDialog for delete; Print labels deferred to §6.8 label-print. feat(§6.1) b7)
 - [x] **Receive items** modal — scan items into stock or add manually; creates a stock-movement batch. (feat(§6.1): InventoryReceiveItemsSheet — 12e1c70c)
-- [ ] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion.
+- [x] **Receive by PO** — pick a PO, scan items to increment received qty; close PO on completion. (`ReceiveByPOSheet` + `ReceiveByPOViewModel` — lists open POs, `POReceiveDetailSheet` per-line qty entry + confirm → `PurchaseOrderRepository.receive`; success alert + "Receive another". feat(§6.1) b9)
 - [x] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted. (feat(§6.1): InventoryImportCSVSheet — 21d47122)
 - [ ] **Mass label print** — multi-select → label printer (AirPrint or MFi).
 - [x] **Context menu** — Open, Copy SKU, Adjust stock, Create PO, Deactivate, Delete. (ae5435bf)
@@ -1056,12 +1056,12 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **PDF export** (`.fileExporter` on iPad/Mac). (`PurchaseOrderPDFRenderer` CoreGraphics A4 PDF — header/supplier/line-items/total/notes; `PDFDocument: FileDocument`; `.fileExporter` wired in detail view; ⌘⇧E shortcut. feat(§6.7) b7)
 
 ### 6.8 Advanced inventory (admin tools, iPad/Mac first)
-- [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
-- [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
-- [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup.
-- [ ] **Shrinkage report** — expected vs actual; variance trend chart.
-- [ ] **ABC analysis** — A/B/C classification; `Chart` bar.
-- [ ] **Age report** — days-in-stock; markdown / clearance suggestions.
+- [x] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation. (`BinLocationManager.swift` — `BinLocation` model, `BinLocationRepository`, `BinLocationManagerViewModel`, `BinLocationManagerView` + `BinPickListView`; CRUD via `/api/v1/inventory/bin-locations`; `POST /batch-assign`. feat(§6.8) b9)
+- [x] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs. (`AutoReorderRulesView` + `AutoReorderRulesViewModel` — lists all rules with triggered badge, edit sheet, "Run now" → `POST /api/v1/inventory/reorder-rules/run-now`; success toast with draft PO count. feat(§6.8) b9)
+- [x] **Serials** — assign serial to item; link to customer/ticket; serial lookup. (feat(ios post-phase §6) — `SerializedItem`, `SerialScanView`, `SerialReceiveSheet`, `SerialSellSheet`, `SerialTraceReport`, `SerialEndpoints`, `SerialStatusCalculator` — see §6.12 above)
+- [x] **Shrinkage report** — expected vs actual; variance trend chart. (`ShrinkageReport.swift` — `ShrinkagePoint`/`ShrinkageReason`/`ShrinkageSummary` models, `ShrinkageCalculator` pure (9 tests), `ShrinkageReportView` with KPI tiles + variance `BarMark` + by-reason chart + period picker; `GET /api/v1/inventory/reports/shrinkage?months=`. feat(§6.8) b9)
+- [x] **ABC analysis** — A/B/C classification; `Chart` bar. (`ABCAnalysis.swift` — `ABCItem`/`ABCClass` models, `ABCClassifier` pure (8 tests), `ABCAnalysisView` with classification `BarMark` + class filter chips + sorted item list; `GET /api/v1/inventory/reports/abc`. feat(§6.8) b9)
+- [x] **Age report** — days-in-stock; markdown / clearance suggestions. (`AgeReport.swift` — `AgedItem`/`AgingTier` models, `AgingCalculator` pure (9 tests), `AgeReportView` with tier distribution `BarMark` + filter chips + clearance suggestions sheet; `GET /api/v1/inventory/reports/aging`. feat(§6.8) b9)
 - [ ] **Mass label print** — select items → label format → print (AirPrint or MFi thermal).
 - [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`.
 - [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature (§4 intake signature) → updates asset status to loaned + ties to ticket.
