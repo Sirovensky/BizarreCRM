@@ -16,6 +16,7 @@ public struct InventoryListView: View {
     @State private var showingStocktake: Bool = false
     @State private var showingBatchEdit: Bool = false
     @State private var showingImport: Bool = false
+    @State private var showingReceiveItems: Bool = false
     @State private var showingFilterDrawer: Bool = false
     @State private var multiSelection: Set<Int64> = []
     @State private var isBatchSelectMode: Bool = false
@@ -148,6 +149,14 @@ public struct InventoryListView: View {
                     InventoryQuickScanSheet(api: api)
                 }
             }
+            // §6.1 Import CSV/JSON sheet
+            .sheet(isPresented: $showingImport, onDismiss: { Task { await vm.refresh() } }) {
+                if let api { InventoryImportCSVSheet(api: api) }
+            }
+            // §6.1 Receive items quick modal
+            .sheet(isPresented: $showingReceiveItems, onDismiss: { Task { await vm.refresh() } }) {
+                if let api { InventoryReceiveItemsSheet(api: api) }
+            }
         }
     }
 
@@ -226,6 +235,14 @@ public struct InventoryListView: View {
                 if let api {
                     InventoryQuickScanSheet(api: api)
                 }
+            }
+            // §6.1 Import CSV/JSON sheet (iPad)
+            .sheet(isPresented: $showingImport, onDismiss: { Task { await vm.refresh() } }) {
+                if let api { InventoryImportCSVSheet(api: api) }
+            }
+            // §6.1 Receive items quick modal (iPad)
+            .sheet(isPresented: $showingReceiveItems, onDismiss: { Task { await vm.refresh() } }) {
+                if let api { InventoryReceiveItemsSheet(api: api) }
             }
         } detail: {
             if let id = selected {
@@ -379,6 +396,22 @@ public struct InventoryListView: View {
             }
             .keyboardShortcut("R", modifiers: [.command, .shift])
             .accessibilityLabel("Open receiving orders")
+            .disabled(api == nil)
+        }
+        // §6.1 Receive items quick modal (scan/manual, no PO required)
+        ToolbarItem(placement: .secondaryAction) {
+            Button { showingReceiveItems = true } label: {
+                Label("Receive items", systemImage: "arrow.down.circle")
+            }
+            .accessibilityLabel("Receive items into stock")
+            .disabled(api == nil)
+        }
+        // §6.1 Import CSV
+        ToolbarItem(placement: .secondaryAction) {
+            Button { showingImport = true } label: {
+                Label("Import CSV", systemImage: "doc.badge.plus")
+            }
+            .accessibilityLabel("Import inventory from CSV file")
             .disabled(api == nil)
         }
         ToolbarItem(placement: .secondaryAction) {
