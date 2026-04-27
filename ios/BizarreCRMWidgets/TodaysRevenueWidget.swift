@@ -82,6 +82,9 @@ struct TodaysRevenueEntry: TimelineEntry {
 
 struct TodaysRevenueSmallView: View {
     let entry: TodaysRevenueEntry
+    // §24.1 Privacy — redact revenue amount on lock screen / redacted widget family.
+    @Environment(\.redactionReasons) private var redactionReasons
+    private var isRedacted: Bool { redactionReasons.contains(.privacy) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DesignTokens.Spacing.xs) {
@@ -98,21 +101,26 @@ struct TodaysRevenueSmallView: View {
 
             Spacer()
 
-            Text(entry.formattedRevenue)
+            // §24.1 — Revenue replaced with "••••" when privacy redaction is active.
+            Text(isRedacted ? "••••" : entry.formattedRevenue)
                 .font(.brandHeadlineMedium())
                 .fontWeight(.bold)
                 .minimumScaleFactor(0.5)
-                .accessibilityLabel("Revenue today: \(entry.formattedRevenue)")
+                .accessibilityLabel(isRedacted ? "Revenue hidden" : "Revenue today: \(entry.formattedRevenue)")
+                .privacySensitive()
 
-            HStack(spacing: DesignTokens.Spacing.xxs) {
-                Image(systemName: entry.revenueDeltaCents >= 0 ? "arrow.up.right" : "arrow.down.right")
-                    .font(.caption2)
-                    .foregroundStyle(entry.deltaColor)
-                    .accessibilityHidden(true)
-                Text(entry.formattedDelta)
-                    .font(.caption2)
-                    .foregroundStyle(entry.deltaColor)
-                    .accessibilityLabel("vs yesterday: \(entry.formattedDelta)")
+            if !isRedacted {
+                HStack(spacing: DesignTokens.Spacing.xxs) {
+                    Image(systemName: entry.revenueDeltaCents >= 0 ? "arrow.up.right" : "arrow.down.right")
+                        .font(.caption2)
+                        .foregroundStyle(entry.deltaColor)
+                        .accessibilityHidden(true)
+                    Text(entry.formattedDelta)
+                        .font(.caption2)
+                        .foregroundStyle(entry.deltaColor)
+                        .accessibilityLabel("vs yesterday: \(entry.formattedDelta)")
+                }
+                .privacySensitive()
             }
         }
         .padding(DesignTokens.Spacing.sm)
@@ -125,6 +133,9 @@ struct TodaysRevenueSmallView: View {
 
 struct TodaysRevenueMediumView: View {
     let entry: TodaysRevenueEntry
+    // §24.1 Privacy — redact revenue amount on lock screen / redacted widget family.
+    @Environment(\.redactionReasons) private var redactionReasons
+    private var isRedacted: Bool { redactionReasons.contains(.privacy) }
 
     var body: some View {
         HStack(alignment: .center, spacing: DesignTokens.Spacing.xl) {
@@ -134,11 +145,13 @@ struct TodaysRevenueMediumView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Today's Revenue")
 
-                Text(entry.formattedRevenue)
+                // §24.1 — Revenue replaced with "••••" when privacy redaction is active.
+                Text(isRedacted ? "••••" : entry.formattedRevenue)
                     .font(.brandDisplayMedium())
                     .fontWeight(.bold)
                     .minimumScaleFactor(0.4)
-                    .accessibilityLabel("Revenue: \(entry.formattedRevenue)")
+                    .accessibilityLabel(isRedacted ? "Revenue hidden" : "Revenue: \(entry.formattedRevenue)")
+                    .privacySensitive()
             }
 
             Divider()
@@ -149,14 +162,23 @@ struct TodaysRevenueMediumView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
 
-                HStack(spacing: DesignTokens.Spacing.xxs) {
-                    Image(systemName: entry.revenueDeltaCents >= 0 ? "arrow.up.right" : "arrow.down.right")
-                        .foregroundStyle(entry.deltaColor)
-                        .accessibilityHidden(true)
-                    Text(entry.formattedDelta)
+                if isRedacted {
+                    Text("••••")
                         .font(.brandTitleSmall())
-                        .foregroundStyle(entry.deltaColor)
-                        .accessibilityLabel("Delta vs yesterday: \(entry.formattedDelta)")
+                        .foregroundStyle(.secondary)
+                        .privacySensitive()
+                        .accessibilityLabel("Delta hidden")
+                } else {
+                    HStack(spacing: DesignTokens.Spacing.xxs) {
+                        Image(systemName: entry.revenueDeltaCents >= 0 ? "arrow.up.right" : "arrow.down.right")
+                            .foregroundStyle(entry.deltaColor)
+                            .accessibilityHidden(true)
+                        Text(entry.formattedDelta)
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(entry.deltaColor)
+                            .accessibilityLabel("Delta vs yesterday: \(entry.formattedDelta)")
+                    }
+                    .privacySensitive()
                 }
 
                 Text("Updated \(entry.date, style: .time)")
