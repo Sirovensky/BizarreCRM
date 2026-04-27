@@ -2833,7 +2833,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [x] PDF share-sheet fallback when no printer configured. `PrintService.fallbackToShareSheet(_:from:)` → `UIActivityViewController` with temp PDF. Commit `b1d56e2c`.
 - [x] Receipt template editor (Settings → Printing): header logo + shop info + body (lines / totals / payment / tax) + footer (return policy, thank-you, QR lookup) + live preview. `ReceiptTemplateEditorView` + `ReceiptTemplate` + `ReceiptTemplateStore` + `ReceiptPreviewCard` live preview. iPhone: scroll form + preview; iPad: split pane. Persisted in UserDefaults. Commit `[agent-2 b4]`.
 - [x] Print works offline — printer on local network or Bluetooth has no internet dependency. `PrintJobQueue` + `PrintService` use local-only ESC/POS/BT/AirPrint transports; no internet needed. `OfflineReceiptPrintRegressionTests` verify. Commit `b1d56e2c`.
-- [ ] Support symbologies: EAN-13/EAN-8, UPC-A/UPC-E, Code 128, Code 39, Code 93, ITF-14, DataMatrix, QR, Aztec, PDF417
+- [x] Support symbologies: EAN-13/EAN-8, UPC-A/UPC-E, Code 128, Code 39, Code 93, ITF-14, DataMatrix, QR, Aztec, PDF417 — `BarcodeVisionScanner.allSymbologies` + `BarcodeCoordinator.recognizedDataTypes` include all 11 symbologies; `BarcodeChecksumValidator` handles per-symbology validation. Commit `[agent-2 b4]`.
 - [x] Priority per use-case: Inventory SKU Code 128 primary + QR secondary; retail EAN-13/UPC-A auto-detect; IMEI/serial Code 128 or bare numeric; loaner/asset tag QR with scan-to-view URL. `BarcodeVisionScanner` + `VNBarcodeSymbology.useCasePriority` document priority per symbology. Commit `[agent-2 b4]`.
 - [x] Scanner via `VNBarcodeObservation`: recognize all formats concurrently. `BarcodeVisionScanner` actor with `VNDetectBarcodesRequest` + all 11 symbologies concurrently. Commit `[agent-2 b4]`.
 - [x] Preview layer marks detected code with glass chip + content preview; tap chip to accept. `BarcodePreviewChip` SwiftUI glass overlay. Commit `258f346b`.
@@ -2842,14 +2842,14 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] Tenant bulk relabel: Inventory "Regenerate barcodes" for all SKUs → print via §17
 - [ ] Gift cards: unique Code 128 per card (§40)
 - [x] A11y: VoiceOver announces scanned code and matched item. `BarcodeA11yAnnouncer.announcement(for:itemName:)` returns accessibility string for `UIAccessibility.post(notification: .announcement)`. Commit `[agent-2 b4]`.
-- [ ] Entry: any past invoice/receipt → detail → Reprint button
-- [ ] Entry: from POS "Recent sales" list
-- [ ] Options: printer choice (if multiple configured)
-- [ ] Options: paper size (80mm / Letter)
-- [ ] Options: number of copies
-- [ ] Tenant-configurable: require reason for reprints older than 7 days (e.g. "Customer lost it", "Accountant request")
-- [ ] Audit entry (§50) per reprint
-- [ ] Fallback: no printer → PDF share
+- [ ] Entry: any past invoice/receipt → detail → Reprint button (Agent 1 / Pos domain — embeds `PrintOptionsSheet` + calls `PrintService.submitWithOptions`)
+- [ ] Entry: from POS "Recent sales" list (Agent 1 / Pos domain)
+- [x] Options: printer choice (if multiple configured) — `PrintOptionsSheet.printerSection` Picker driven by `availablePrinters`. Commit `[agent-2 b3]`.
+- [x] Options: paper size (80mm / Letter) — `PrintOptionsSheet.paperSizeSection` Picker over all `PrintMedium.allCases`; defaults to `PrintMedium.tenantDefault`. Commit `[agent-2 b3]`.
+- [x] Options: number of copies — `PrintOptionsSheet.copiesSection` Stepper 1–10; `PrintOptions.copies` forwarded to `PrintJob.copies`; queue sends N engine calls. Commit `a1eaa2cc`.
+- [x] Tenant-configurable: require reason for reprints older than 7 days — `PrintOptionsSheet(requireReasonForOldJobs:isOldJob:)` shows `reasonSection` when both flags true; `ReprintReason` enum with 5 preset options. Commit `[agent-2 b3]`.
+- [x] Audit entry (§50) per reprint — `PrintService.submitWithOptions(auditLogger:entityKind:entityId:)` fires `auditLogger` closure (wired to `APIClient.logReprintEvent`) per reprint when entityId > 0. Commit `a1eaa2cc`.
+- [x] Fallback: no printer → PDF share — `PrintService.submitWithOptions` delegates to `fallbackToShareSheet` when no printer resolved from options or profile. Commit `a1eaa2cc`.
 - [x] Entry from customer detail / ticket detail → "Scan document". `DocumentScanButton(entityKind:entityId:onFinished:)` presents `DocumentScannerView` as sheet; gracefully disabled when `VNDocumentCameraViewController.isSupported == false`. Commit `b1d56e2c`.
 - [x] Use `VNDocumentCameraViewController`. `DocumentScanner` UIViewControllerRepresentable + `DocumentScanViewModel` + `DocumentScanPreviewView`. Camera/DocScan/. Commit 468fe08.
 - [x] Multi-page scan with auto-crop + perspective correction — VisionKit handles perspective; pages collected via `VNDocumentCameraScan.imageOfPage(at:)`.
@@ -2877,7 +2877,7 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] MFi cert required for commercial printers
 - [x] Register `bluetooth-central` background mode — `BluetoothBackgroundManager` Swift-side restoration handler; `UIBackgroundModes` key in `write-info-plist.sh` filed as Discovered for Agent 10 (advisory lock). Commit `b4b3b9f0`.
 - [x] Maintain connection across app backgrounding (required for POS) — `BluetoothBackgroundManager.handleWillRestoreState` re-hydrates `CBPeripheral` list on app relaunch; `BluetoothScanPolicy` enforces foreground-only scan. Commit `b4b3b9f0`.
-- [ ] `NSBluetoothAlwaysUsageDescription` in Info.plist
+- [x] `NSBluetoothAlwaysUsageDescription` in Info.plist — confirmed present in `scripts/write-info-plist.sh`: `"Connect to Bluetooth receipt printers and card readers."`. Commit `[agent-2 b10]`.
 - [x] Settings → Hardware → Bluetooth paired list with connection state. `BluetoothSettingsView` + `BluetoothSettingsViewModel` (pre-existing, confirmed complete). Commit `258f346b`.
 - [x] Forget button per paired device. `BluetoothSettingsViewModel.forget()` + destructive context menu in `BluetoothDeviceRow`. Commit `258f346b`.
 - [x] Surface peripheral battery level where published. `BluetoothDevice.batteryPercent` + `BluetoothBatteryMonitor` GATT 0x180F/0x2A19 reader. Commit `258f346b`.
