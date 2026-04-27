@@ -1540,11 +1540,11 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **CachedRepository + offline** — `SmsCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, extends `SmsRepository`, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [x] **Unread badge** on tab icon (`UIApplication.shared.applicationIconBadgeNumber`) + per-thread bubble. (`UnreadBadgeService` singleton 30s poll → `GET /api/v1/sms/unread-count`; `smsUnreadCount()` in `APIClient+Communications.swift`) (9d7d9584)
 - [x] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned. (`SmsListFilter` + `SmsFilterChipsView`; `SmsListViewModel.filter` + `filteredConversations` + `tabCounts`; 10 XCTest assertions) (9d7d9584)
-- [ ] **Search** — across all messages + phone numbers.
-- [ ] **Pin important threads** to top.
+- [x] **Search** — across all messages + phone numbers. (`SmsListViewModel.onSearchChange` debounced 300ms → `listSmsConversations(keyword:)` server-side search via `GET /api/v1/sms/conversations?keyword=`; `searchable` modifier in `SmsListView`.) (57e0660d)
+- [x] **Pin important threads** to top. (`SmsListViewModel.togglePin` optimistic update + re-sort so pinned rows float first; `SmsRepository.togglePin` → `PATCH /sms/conversations/:phone/pin`; pin icon in `ConversationRow`.) (57e0660d)
 - [x] **Sentiment badge** (positive / neutral / negative) if server computes. (`SentimentBadge` graceful stub — renders nothing until server computes `SmsSentiment`; ready to wire when endpoint ships) (9d7d9584)
-- [ ] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin.
-- [ ] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive.
+- [x] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin. (`SmsListView` `.swipeActions(edge:.leading)` markRead; `.swipeActions(edge:.trailing)` toggleFlag/togglePin/toggleArchive; all wired to `SmsListViewModel` actions.) (57e0660d)
+- [x] **Context menu** — Open, Flag, Pin, Archive (Call + Open customer + Assign remain `[ ]` — need deep-link/customer nav). (`SmsListView` `.contextMenu` with Open / Flag / Pin / Archive actions; Assign/Call/OpenCustomer deferred.) (57e0660d)
 - [x] **Compose new** (FAB) — pick customer or raw phone. (`ComposeNewThreadView` + `ComposeNewThreadViewModel`; orange circle FAB ⌘N; iPhone full-screen / iPad medium+large; customer picker via `listCustomerPickerItems()` or raw phone) (9d7d9584)
 - [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
 
@@ -1716,9 +1716,9 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] Role, wage/salary (admin-only), contact, schedule.
 - [ ] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers.
 - [x] **Commissions** — `CommissionRulesListView` + `CommissionRuleEditorSheet` (admin CRUD: `GET/POST/PATCH/DELETE /commissions/rules`; percentage/flat, cap, minTicketValue + tenure conditions); `CommissionReportView` (employee-facing, `GET /commissions/reports/:employeeId`); `CommissionCalculator` pure engine (percentage, flat, capped, min-threshold, tenure gate). Lock-period (admin) remains `[ ]`. (feat(ios phase-4): Estimate convert + Appt scheduling engine + Msg templates + Commissions)
-- [ ] **Schedule** — upcoming shifts + time-off.
+- [x] **Schedule** — upcoming shifts + time-off. (`EmployeeDetailViewModel.load` async-lets `listShifts(userId:fromDate:toDate:)` next 14 days + `listTimeOffRequests(userId:)` for pending/approved; `scheduleCard` in `EmployeeDetailView` shows up to 3 shifts + time-off rows with `ShiftRow` / `TimeOffRow` helpers; both have a11y labels.) (see batch-3 commit)
 - [ ] **PIN management** — view (as set?) / change / clear.
-- [ ] **Deactivate** — soft-delete; grey out future logins.
+- [x] **Deactivate** — soft-delete; grey out future logins. (`EmployeeDetailView` deactivate/reactivate confirm dialogs; `EmployeeDetailViewModel.confirmDeactivate/confirmReactivate` → `PUT /api/v1/settings/users/:id`; inactive employees greyed in list via `EmployeeListFilter.activeOnly`.) (57e0660d)
 
 ### 14.3 Timeclock
 - [x] **Clock in / out** — dashboard tile + dedicated screen; `POST /employees/:id/clock-in` / `-out`. (feat(ios post-phase §14))
@@ -1733,8 +1733,8 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 ### 14.4 Invite / manage (admin)
 - [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. The server may not have an email if self hosted though - lets make sure we account for that. (`InviteEmployeeSheet` + `InviteEmployeeViewModel`; targets `POST /api/v1/settings/users` admin endpoint; email optional with self-hosted footer note; role picker; `deriveUsername()` auto; 9 XCTest assertions; `inviteEmployee()` in `APIClient+Employees`) (9d7d9584)
 - [x] **Resend invite**. (`ResendInviteButton` + `ResendInviteViewModel`; `PUT /api/v1/settings/users/:id { resend_invite: true }`; confirmation dialog + result alert; wired into `EmployeeDetailView` admin card) (9d7d9584)
-- [ ] **Assign role** — technician / cashier / manager / admin / custom.
-- [ ] **Deactivate** — soft delete.
+- [x] **Assign role** — technician / cashier / manager / admin / custom. (`EmployeeDetailView` role picker menu → `EmployeeDetailViewModel.requestRoleChange/confirmRoleChange` → `PUT /api/v1/roles/users/:userId/role`; lists all active roles from `GET /api/v1/roles`.) (57e0660d)
+- [x] **Deactivate** — soft delete. (`EmployeeDetailViewModel.confirmDeactivate` → `setEmployeeActive(id:isActive:false)` via `PUT /api/v1/settings/users/:id`; optimistic UI update; reactivate path also present.) (57e0660d)
 - [ ] **Custom role creation** — Settings → Team → Roles matrix.
 
 ### 14.5 Team chat
