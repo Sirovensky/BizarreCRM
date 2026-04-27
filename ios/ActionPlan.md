@@ -449,13 +449,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — shipped.
-- [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
+- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (`DashboardEndpoints.swift` DashboardKPIs + dashboardKPIs(); `DashboardView.swift` secondaryGrid; `DashboardRepository.swift` parallel fetch; 4dcf7c71)
 - [ ] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
-- [ ] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present.
-- [ ] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column.
+- [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
+- [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
@@ -3073,11 +3073,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `GET/PUT /settings/security`, `GET/PUT /settings/notifications`, `GET/PUT /settings/organization`, `GET /settings/integrations`, `GET/PUT /settings/tickets`, `GET/PUT /settings/invoices`, `GET/PUT /settings/tax`, `GET/PUT /settings/payment`, `GET/PUT /settings/sms`, `GET/PUT /settings/automations`, `GET/PUT /settings/membership`, `GET/PUT /settings/customer-groups`, `GET/PUT /settings/roles`, `GET/PUT /settings/statuses`, `GET/PUT /settings/conditions`, `GET/PUT /settings/device-templates`, `GET/PUT /settings/repair-pricing`, `GET /audit-logs`, `GET /billing`._
 
 ### 19.0 Shell
-- [ ] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`).
-- [ ] **iPhone** — `List` of categories → push to individual tab views.
-- [ ] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`.
-- [ ] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field.
-- [ ] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty.
+- [x] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`). (`Settings/SettingsView.swift` iPadLayout; 3-col NavigationSplitView with sidebar + content + detail; 4dcf7c71)
+- [x] **iPhone** — `List` of categories → push to individual tab views. (`Settings/SettingsView.swift` iPhoneLayout + NavigationStack; 4dcf7c71)
+- [x] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`. (`SettingsView.swift` isAdmin guard; iPadSections admin section gated; 4dcf7c71)
+- [x] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field. (`Settings/Search/SettingsSearchView.swift` + `SettingsSearchViewModel` + `SettingsSearchIndex`; 4dcf7c71)
+- [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (`Settings/UnsavedChangesBanner.swift`; `.unsavedChangesBanner(isDirty:onSave:onDiscard:)` modifier; wired into ProfileSettingsPage; 4dcf7c71)
 
 ### 19.1 Profile
 - [ ] **Avatar** — circular tap → action sheet (Camera / Library / Remove).
