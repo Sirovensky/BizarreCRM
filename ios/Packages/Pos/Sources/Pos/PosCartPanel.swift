@@ -66,6 +66,15 @@ struct PosCartPanel: View {
                 cartContent
                 totalsFooter
             }
+            // §16.22 — Dimmed-background overlay when line-edit sheet is open.
+            // Cart rows visible but dim to 0.35 opacity and ignore taps (per mockup).
+            if editingLineItem != nil {
+                Color.black.opacity(0.35)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+                    .animation(BrandMotion.snappy, value: editingLineItem != nil)
+                    .accessibilityHidden(true)
+            }
         }
         // Line-edit bottom sheet — mockup screen 4
         .sheet(item: $editingLineItem) { item in

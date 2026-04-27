@@ -12,11 +12,27 @@ import DesignSystem
 struct CheckInDiagnosticView: View {
     @Bindable var draft: CheckInDraft
 
+    /// §16.25.4 — True when the cracked-screen symptom is selected AND
+    /// the Touchscreen item is still in the `.untested` state.
+    private var showTouchscreenWarning: Bool {
+        let hasCrackedScreen = draft.symptoms.contains("crackedScreen")
+        guard hasCrackedScreen else { return false }
+        let touchscreen = draft.diagnosticResults.first(where: { $0.id == "touchscreen" })
+        return touchscreen?.state == .untested
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: BrandSpacing.md) {
                 // "All OK" quick-fill bar
                 allOKBar
+
+                // §16.25.4 — Required-field warning: Touchscreen for cracked-screen tickets.
+                if showTouchscreenWarning {
+                    touchscreenRequiredBanner
+                        .padding(.horizontal, BrandSpacing.base)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 // Checklist
                 LazyVStack(spacing: 0) {
@@ -34,7 +50,36 @@ struct CheckInDiagnosticView: View {
             }
             .padding(.vertical, BrandSpacing.md)
             .padding(.bottom, BrandSpacing.xl)
+            .animation(BrandMotion.snappy, value: showTouchscreenWarning)
         }
+    }
+
+    // MARK: - Touchscreen required banner (§16.25.4)
+
+    private var touchscreenRequiredBanner: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.bizarreWarning)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Touchscreen result required")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.bizarreWarning)
+                Text("Cracked-screen tickets must have Touchscreen set to ✓ or ✕ before advancing.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+            Spacer()
+        }
+        .padding(BrandSpacing.sm)
+        .background(Color.bizarreWarning.opacity(0.08), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
+                .strokeBorder(Color.bizarreWarning.opacity(0.3), lineWidth: 1)
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Warning: Touchscreen result required for cracked screen tickets")
     }
 
     // MARK: - All OK bar
