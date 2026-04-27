@@ -139,7 +139,17 @@ public actor APIClientImpl: APIClient {
     }
 
     private func perform<T: Decodable & Sendable>(_ req: URLRequest, as type: T.Type) async throws -> APIResponse<T> {
-        return try await performOnce(req, as: type, allowRetryAfterRefresh: true)
+        // §1.1 — Rate-limit before the first attempt (reads bucket; throws on sustained overload).
+        if let host = req.url?.host {
+            try await RateLimiters.perHost.acquireIfEnabled(host: host)
+        }
+
+        // §1.1 — Retry with jitter on 5xx / timeout / connection-lost.
+        // The inner closure calls performOnce which handles 401-refresh internally.
+        let executor = RetryExecutor(policy: .default)
+        return try await executor.execute {
+            try await self.performOnce(req, as: T.self, allowRetryAfterRefresh: true)
+        }
     }
 
     private func performOnce<T: Decodable & Sendable>(
@@ -165,6 +175,15 @@ public actor APIClientImpl: APIClient {
                 }
             }
             SessionEvents.post(.sessionRevoked)
+        }
+
+        // §1.1 — Apply Retry-After to the per-host bucket so concurrent waiters
+        // also pause. This mirrors what RetryClassifier does for the executor.
+        if http.statusCode == 429,
+           let retryAfterValue = http.value(forHTTPHeaderField: "Retry-After"),
+           let seconds = Int(retryAfterValue),
+           let host = req.url?.host {
+            await RateLimiters.perHost.applyRetryAfter(seconds, host: host)
         }
 
         do {

@@ -47,10 +47,12 @@ public struct BrandHoverModifier: ViewModifier {
 // MARK: - HoverEffectModifier (cross-platform)
 
 /// Applies a SwiftUI `hoverEffect` appropriate for the given `BrandHoverStyle`.
+/// `hoverEffect` is only available on iOS/iPadOS — on macOS it's a no-op.
 private struct HoverEffectModifier: ViewModifier {
     let style: BrandHoverStyle
 
     func body(content: Content) -> some View {
+        #if os(iOS)
         switch style {
         case .lift:
             content.hoverEffect(.lift)
@@ -59,6 +61,9 @@ private struct HoverEffectModifier: ViewModifier {
         case .automatic:
             content.hoverEffect(.automatic)
         }
+        #else
+        content
+        #endif
     }
 }
 

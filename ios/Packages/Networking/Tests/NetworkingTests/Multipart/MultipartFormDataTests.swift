@@ -117,7 +117,9 @@ final class MultipartFormDataTests: XCTestCase {
         form.appendField(name: "caption", value: "Nice")
 
         let (body, _) = form.encode()
-        let text = String(data: body, encoding: .utf8)!
+        // Binary data (0xFF) is not valid UTF-8; use lossy conversion to inspect headers only.
+        let text = String(data: body, encoding: .isoLatin1)
+            ?? String(decoding: body, as: UTF8.self)
 
         let fileRange = text.range(of: "name=\"photo\"")!
         let fieldRange = text.range(of: "name=\"caption\"")!

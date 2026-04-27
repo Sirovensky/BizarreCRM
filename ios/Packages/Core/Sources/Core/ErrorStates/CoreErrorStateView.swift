@@ -95,7 +95,7 @@ public struct CoreErrorStateScreen: View {
 
     public var body: some View {
         ZStack {
-            Color(.systemGroupedBackground)
+            Color.primary.opacity(0.04)
                 .ignoresSafeArea()
 
             CoreErrorStateView(state: state, onRetry: onRetry)

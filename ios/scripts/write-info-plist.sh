@@ -62,8 +62,7 @@ cat > "${PLIST}" <<'PLIST_EOF'
                     <string>Default Configuration</string>
                     <key>UISceneClassName</key>
                     <string>UIWindowScene</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string></string>
+                    <!-- No UISceneDelegateClassName — SwiftUI lifecycle; omitting the empty key removes console noise (§1.6) -->
                 </dict>
             </array>
         </dict>
@@ -145,16 +144,20 @@ cat > "${PLIST}" <<'PLIST_EOF'
         </dict>
     </array>
 
+    <!-- §30.4 Brand fonts: Bebas Neue (display) + League Spartan (accent) + Roboto (body) + Roboto Mono (mono) + Roboto Slab (slab accent) -->
+    <!-- Fetched by scripts/fetch-fonts.sh; fall back to SF Pro if missing (no crash) -->
     <key>UIAppFonts</key>
     <array>
-        <string>Inter-Regular.ttf</string>
-        <string>Inter-Medium.ttf</string>
-        <string>Inter-SemiBold.ttf</string>
-        <string>Inter-Bold.ttf</string>
-        <string>BarlowCondensed-SemiBold.ttf</string>
-        <string>BarlowCondensed-Bold.ttf</string>
-        <string>JetBrainsMono-Regular.ttf</string>
-        <string>JetBrainsMono-Medium.ttf</string>
+        <string>BebasNeue-Regular.ttf</string>
+        <string>LeagueSpartan-Medium.ttf</string>
+        <string>LeagueSpartan-SemiBold.ttf</string>
+        <string>LeagueSpartan-Bold.ttf</string>
+        <string>Roboto-Regular.ttf</string>
+        <string>Roboto-Medium.ttf</string>
+        <string>Roboto-SemiBold.ttf</string>
+        <string>Roboto-Bold.ttf</string>
+        <string>RobotoMono-Regular.ttf</string>
+        <string>RobotoSlab-SemiBold.ttf</string>
     </array>
 
     <!-- §24 Live Activities — required for ActivityKit -->

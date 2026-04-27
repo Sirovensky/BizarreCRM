@@ -55,14 +55,14 @@ public extension View {
     ///            Defaults to `Color(.systemBackground)`.
     ///   - shape: The clip/fill shape — should match the shape passed to `.brandGlass`.
     func reduceTransparencyFallback<S: Shape>(
-        _ color: Color = Color(.systemBackground),
+        _ color: Color = Color.primary.opacity(0.06),
         in shape: S
     ) -> some View {
         modifier(ReduceTransparencyFallbackModifier(replacementColor: color, in: shape))
     }
 
     /// Capsule-shape convenience overload.
-    func reduceTransparencyFallback(_ color: Color = Color(.systemBackground)) -> some View {
+    func reduceTransparencyFallback(_ color: Color = Color.primary.opacity(0.06)) -> some View {
         reduceTransparencyFallback(color, in: Capsule())
     }
 }

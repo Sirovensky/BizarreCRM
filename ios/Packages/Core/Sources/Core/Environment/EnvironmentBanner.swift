@@ -75,21 +75,21 @@ extension View {
 
 #Preview("Staging") {
     Rectangle()
-        .fill(Color(.systemBackground))
+        .fill(Color.primary.opacity(0.05))
         .frame(width: 300, height: 200)
         .environmentBanner(flavor: .staging)
 }
 
 #Preview("Development") {
     Rectangle()
-        .fill(Color(.systemBackground))
+        .fill(Color.primary.opacity(0.05))
         .frame(width: 300, height: 200)
         .environmentBanner(flavor: .development)
 }
 
 #Preview("Production (invisible)") {
     Rectangle()
-        .fill(Color(.systemBackground))
+        .fill(Color.primary.opacity(0.05))
         .frame(width: 300, height: 200)
         .environmentBanner(flavor: .production)
 }

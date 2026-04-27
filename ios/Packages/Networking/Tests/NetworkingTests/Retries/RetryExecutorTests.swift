@@ -3,6 +3,14 @@ import XCTest
 
 // MARK: - RetryExecutorTests
 
+// Swift 6 note: RetryExecutor.execute() takes a @Sendable closure, so local
+// `var callCount` variables cannot be captured mutably. We use an actor-isolated
+// counter per test to satisfy the compiler without changing the executor API.
+private actor Counter {
+    private(set) var value: Int = 0
+    func increment() { value += 1 }
+}
+
 final class RetryExecutorTests: XCTestCase {
 
     // MARK: Mulberry32 PRNG
@@ -96,13 +104,14 @@ final class RetryExecutorTests: XCTestCase {
 
     func testSucceedsOnFirstAttempt() async throws {
         let executor = RetryExecutor(policy: .noRetry)
-        var callCount = 0
+        let counter = Counter()
         let result = try await executor.execute {
-            callCount += 1
+            await counter.increment()
             return 42
         }
         XCTAssertEqual(result, 42)
-        XCTAssertEqual(callCount, 1)
+        let count = await counter.value
+        XCTAssertEqual(count, 1)
     }
 
     // MARK: RetryExecutor — non-retryable error propagates immediately
@@ -111,15 +120,16 @@ final class RetryExecutorTests: XCTestCase {
         let executor = RetryExecutor(
             policy: RetryPolicy(maxAttempts: 3, baseDelay: 0, maxDelay: 0, jitter: false)
         )
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.badURL)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 1, "Should not retry on non-retryable error")
+            let count = await counter.value
+            XCTAssertEqual(count, 1, "Should not retry on non-retryable error")
         }
     }
 
@@ -128,60 +138,64 @@ final class RetryExecutorTests: XCTestCase {
     func testRetryableErrorExhaustsAttempts() async throws {
         let policy = RetryPolicy(maxAttempts: 3, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.timedOut)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 3, "Should have attempted exactly maxAttempts times")
+            let count = await counter.value
+            XCTAssertEqual(count, 3, "Should have attempted exactly maxAttempts times")
         }
     }
 
     func testNetworkConnectionLostIsRetried() async throws {
         let policy = RetryPolicy(maxAttempts: 2, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.networkConnectionLost)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 2)
+            let count = await counter.value
+            XCTAssertEqual(count, 2)
         }
     }
 
     func testNotConnectedToInternetIsRetried() async throws {
         let policy = RetryPolicy(maxAttempts: 2, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.notConnectedToInternet)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 2)
+            let count = await counter.value
+            XCTAssertEqual(count, 2)
         }
     }
 
     func testDataNotAllowedIsRetried() async throws {
         let policy = RetryPolicy(maxAttempts: 2, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.dataNotAllowed)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 2)
+            let count = await counter.value
+            XCTAssertEqual(count, 2)
         }
     }
 
@@ -190,14 +204,16 @@ final class RetryExecutorTests: XCTestCase {
     func testSucceedsOnSecondAttempt() async throws {
         let policy = RetryPolicy(maxAttempts: 3, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         let result = try await executor.execute {
-            callCount += 1
-            if callCount < 2 { throw URLError(.timedOut) }
+            await counter.increment()
+            let n = await counter.value
+            if n < 2 { throw URLError(.timedOut) }
             return "ok"
         }
         XCTAssertEqual(result, "ok")
-        XCTAssertEqual(callCount, 2)
+        let count = await counter.value
+        XCTAssertEqual(count, 2)
     }
 
     // MARK: RetryExecutor — HTTP response variant
@@ -205,10 +221,10 @@ final class RetryExecutorTests: XCTestCase {
     func testHTTP503IsRetriedViaResponseVariant() async throws {
         let policy = RetryPolicy(maxAttempts: 3, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await executor.execute { () -> (String, HTTPURLResponse) in
-                callCount += 1
+                await counter.increment()
                 let response = HTTPURLResponse(
                     url: URL(string: "https://example.com")!,
                     statusCode: 503,
@@ -219,16 +235,17 @@ final class RetryExecutorTests: XCTestCase {
             }
             XCTFail("Should have thrown after exhausting attempts")
         } catch {
-            XCTAssertEqual(callCount, 3)
+            let count = await counter.value
+            XCTAssertEqual(count, 3)
         }
     }
 
     func testHTTP200IsNotRetriedViaResponseVariant() async throws {
         let policy = RetryPolicy(maxAttempts: 3, baseDelay: 0, maxDelay: 0, jitter: false)
         let executor = RetryExecutor(policy: policy)
-        var callCount = 0
+        let counter = Counter()
         let result = try await executor.execute { () -> (String, HTTPURLResponse) in
-            callCount += 1
+            await counter.increment()
             let response = HTTPURLResponse(
                 url: URL(string: "https://example.com")!,
                 statusCode: 200,
@@ -238,7 +255,8 @@ final class RetryExecutorTests: XCTestCase {
             return ("success", response)
         }
         XCTAssertEqual(result.0, "success")
-        XCTAssertEqual(callCount, 1)
+        let count = await counter.value
+        XCTAssertEqual(count, 1)
     }
 
     // MARK: RetryExecutorError
@@ -260,17 +278,18 @@ final class RetryExecutorTests: XCTestCase {
     }
 
     func testStaticConvenienceWrapperThrowsAfterExhaust() async throws {
-        var callCount = 0
+        let counter = Counter()
         do {
             _ = try await RetryExecutor.execute(
                 policy: RetryPolicy(maxAttempts: 2, baseDelay: 0, maxDelay: 0, jitter: false)
             ) {
-                callCount += 1
+                await counter.increment()
                 throw URLError(.timedOut)
             }
             XCTFail("Should have thrown")
         } catch {
-            XCTAssertEqual(callCount, 2)
+            let count = await counter.value
+            XCTAssertEqual(count, 2)
         }
     }
 

@@ -4,6 +4,7 @@ import SwiftUI
 
 // MARK: - AdaptiveContentWidthBreakpoint Tests
 
+@MainActor
 final class AdaptiveContentWidthBreakpointTests: XCTestCase {
 
     // MARK: - maxWidth values
@@ -33,6 +34,7 @@ final class AdaptiveContentWidthBreakpointTests: XCTestCase {
 
 // MARK: - resolveAdaptiveBreakpoint Tests
 
+@MainActor
 final class ResolveAdaptiveBreakpointTests: XCTestCase {
 
     // MARK: - Compact size class always yields .compact
@@ -95,6 +97,7 @@ final class ResolveAdaptiveBreakpointTests: XCTestCase {
 
 // MARK: - MaxContentWidthModifier Tests
 
+@MainActor
 final class MaxContentWidthModifierTests: XCTestCase {
 
     // MARK: - Default init
@@ -136,19 +139,20 @@ final class MaxContentWidthModifierTests: XCTestCase {
 
     func testViewExtensionInstantiates() {
         let view = Text("Hello").maxContentWidth()
-        let _: some View = view
+        _ = view
         XCTAssertTrue(true)
     }
 
     func testViewExtensionCustomWidthInstantiates() {
         let view = Text("Hello").maxContentWidth(560, padding: 12)
-        let _: some View = view
+        _ = view
         XCTAssertTrue(true)
     }
 }
 
 // MARK: - AdaptiveContentWidthModifier Tests
 
+@MainActor
 final class AdaptiveContentWidthModifierTests: XCTestCase {
 
     // MARK: - Default init
@@ -173,13 +177,13 @@ final class AdaptiveContentWidthModifierTests: XCTestCase {
 
     func testViewExtensionInstantiates() {
         let view = Text("Hello").adaptiveContentWidth()
-        let _: some View = view
+        _ = view
         XCTAssertTrue(true)
     }
 
     func testViewExtensionCustomPaddingInstantiates() {
         let view = Text("Hello").adaptiveContentWidth(padding: 24)
-        let _: some View = view
+        _ = view
         XCTAssertTrue(true)
     }
 }

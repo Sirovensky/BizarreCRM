@@ -4,6 +4,7 @@ import SwiftUI
 
 // MARK: - MinTapTargetModifierTests
 
+@MainActor
 final class MinTapTargetModifierTests: XCTestCase {
 
     // MARK: Constant
@@ -36,6 +37,7 @@ final class MinTapTargetModifierTests: XCTestCase {
 
 // MARK: - DynamicTypeClampModifierTests
 
+@MainActor
 final class DynamicTypeClampModifierTests: XCTestCase {
 
     // MARK: Init storage
@@ -82,6 +84,7 @@ final class DynamicTypeClampModifierTests: XCTestCase {
 
 // MARK: - ReduceMotionCompliantModifierTests
 
+@MainActor
 final class ReduceMotionCompliantModifierTests: XCTestCase {
 
     // MARK: View extension compiles
@@ -112,6 +115,7 @@ final class ReduceMotionCompliantModifierTests: XCTestCase {
 
 // MARK: - ContrastBoostModifierTests
 
+@MainActor
 final class ContrastBoostModifierTests: XCTestCase {
 
     // MARK: Defaults
@@ -179,6 +183,7 @@ final class ContrastBoostModifierTests: XCTestCase {
 
 #if DEBUG
 
+@MainActor
 final class PolishInspectorOverlayTests: XCTestCase {
 
     // MARK: PolishViolation model

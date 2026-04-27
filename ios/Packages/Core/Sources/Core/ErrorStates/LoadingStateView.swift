@@ -187,7 +187,6 @@ public struct LoadingSpinnerView: View {
     List {
         SkeletonListView(rowCount: 5)
     }
-    .listStyle(.insetGrouped)
 }
 
 #Preview("Spinner — no label") {
