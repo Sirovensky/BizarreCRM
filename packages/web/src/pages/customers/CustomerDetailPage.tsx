@@ -37,10 +37,15 @@ import toast from 'react-hot-toast';
 import { customerApi, membershipApi, settingsApi, crmApi, privacyApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
+import { getImpersonationSession } from '@/components/ImpersonationBanner';
+// WEB-FAE-003: write recent_views under a per-user key so signing in as a
+// different user on the same browser can't read another user's recent
+// customer labels (PII). Reader is `Sidebar.RecentViews`.
+import { recentViewsKey } from '@/components/layout/Sidebar';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatShortDateTime } from '@/utils/format';
 import { formatPhoneAsYouType, stripPhone } from '@/utils/phoneFormat';
 import { CopyButton } from '@/components/shared/CopyButton';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
@@ -88,6 +93,7 @@ export function CustomerDetailPage() {
   // Hide the actions from other roles so non-privileged staff aren't shown
   // buttons that would just 403.
   const userRole = useAuthStore((s) => s.user?.role);
+  const userId = useAuthStore((s) => s.user?.id);
   const canUseEnrichmentActions = userRole === 'admin' || userRole === 'manager';
 
   const [activeTab, setActiveTab] = useState<TabId>('info');
@@ -117,12 +123,12 @@ export function CustomerDetailPage() {
   // re-writes the stored label. Bounded at 20 entries (W7 fix) with the oldest
   // entries sliced off, so the localStorage quota can't grow unbounded as users
   // browse hundreds of customers.
-  const RECENT_VIEWS_KEY = 'recent_views';
   const RECENT_VIEWS_MAX = 20;
   useEffect(() => {
     if (!customer) return;
     try {
-      const raw = localStorage.getItem(RECENT_VIEWS_KEY);
+      const key = recentViewsKey(userId);
+      const raw = localStorage.getItem(key);
       const existing: { type: string; id: number; label: string; path: string }[] = raw
         ? JSON.parse(raw)
         : [];
@@ -130,11 +136,11 @@ export function CustomerDetailPage() {
       const entry = { type: 'customer', id: customer.id, label, path: `/customers/${customer.id}` };
       const filtered = existing.filter((e) => !(e.type === 'customer' && e.id === customer.id));
       filtered.unshift(entry);
-      localStorage.setItem(RECENT_VIEWS_KEY, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
+      localStorage.setItem(key, JSON.stringify(filtered.slice(0, RECENT_VIEWS_MAX)));
     } catch (err) {
       console.warn('Failed to update recent views:', err);
     }
-  }, [customer?.id, customer?.first_name, customer?.last_name]);
+  }, [customer?.id, customer?.first_name, customer?.last_name, userId]);
 
   // Delete mutation
   const deleteMutation = useMutation({
@@ -205,9 +211,29 @@ export function CustomerDetailPage() {
       const contentType = (res.headers?.['content-type'] as string | undefined) || 'text/html';
       const blob = new Blob([res.data as BlobPart], { type: contentType });
       const url = URL.createObjectURL(blob);
-      const win = window.open(url, '_blank', 'noopener,noreferrer');
-      if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // WEB-FB-011: Safari on iPad rewrites `window.open(blobUrl)` to
+      // `about:blank`, so the pass never renders. For .pkpass binaries we
+      // synthesize an <a download> click instead — iOS Safari then hands
+      // the file off to the Wallet system intent. HTML wallet-pass response
+      // (the dev/preview path) keeps the popup behaviour.
+      const isPkpass = contentType.includes('application/vnd.apple.pkpass');
+      if (isPkpass) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wallet-pass-${customerId}.pkpass`;
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else {
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (!win) toast.error('Pop-up blocked. Allow pop-ups for this site to view the wallet pass.');
+      }
+      // WEB-FJ-017: bumped from 60s → 5min so staff have time to print or
+      // screenshot the loyalty pass before the blob URL is revoked. After
+      // revoke the popup's reload/back keys produce a broken page silently
+      // (no toast — popup window doesn't share the parent's <Toaster />).
+      setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
     } catch (err: unknown) {
       const message =
         err && typeof err === 'object' && 'response' in err
@@ -258,7 +284,12 @@ export function CustomerDetailPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
+      // WEB-FJ-011: include tenant_slug (when impersonating) in the filename so
+      // super-admins exporting from multiple tenants on the same day don't get
+      // colliding filenames in their Downloads folder.
+      const impersonation = getImpersonationSession();
+      const tenantPart = impersonation?.tenant_slug ? `${impersonation.tenant_slug}-` : '';
+      a.download = `${tenantPart}customer-${customerId}-data-export-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       URL.revokeObjectURL(url);
       toast.success('Customer data exported successfully');
@@ -287,7 +318,7 @@ export function CustomerDetailPage() {
         </p>
         <Link
           to="/customers"
-          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors"
+          className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Customers
@@ -382,7 +413,7 @@ export function CustomerDetailPage() {
           <button
             onClick={handleExportData}
             disabled={exporting}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-surface-600 dark:text-surface-300 border border-surface-200 dark:border-surface-700 rounded-lg hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export Data
@@ -399,7 +430,7 @@ export function CustomerDetailPage() {
             <button
               onClick={() => setShowEraseConfirm(true)}
               disabled={erasePiiMutation.isPending}
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300 border border-red-300 dark:border-red-700 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Eraser className="h-4 w-4" />
               Erase PII (GDPR)
@@ -559,8 +590,23 @@ function CustomerMergeModal({
     searchRef.current?.focus();
   }, []);
 
+  // Esc-to-close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="merge-customer-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg rounded-xl bg-white shadow-xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
@@ -569,7 +615,7 @@ function CustomerMergeModal({
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
           <div className="flex items-center gap-2">
             <GitMerge className="h-5 w-5 text-primary-600" />
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+            <h2 id="merge-customer-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
               Merge Customer
             </h2>
           </div>
@@ -595,7 +641,7 @@ function CustomerMergeModal({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search by name, phone, or email..."
-                  className="w-full rounded-lg border border-surface-300 bg-white py-2.5 pl-10 pr-4 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white py-2.5 pl-10 pr-4 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
@@ -711,7 +757,7 @@ function CustomerMergeModal({
             <button
               onClick={() => mergeMutation.mutate()}
               disabled={mergeMutation.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {mergeMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -916,6 +962,12 @@ function MembershipCard({ customerId }: { customerId: number }) {
               >
                 {memberData.tier_name}
               </span>
+              {/* @audit-cents WEB-FF-019 (Fixer-C11 2026-04-25): server still
+                  returns memberData.monthly_price as dollars-as-float. When
+                  the membership-price column migrates to integer cents (to
+                  match POS), every value rendered here will silently be 100×
+                  wrong. Replace with `formatCents(memberData.monthly_price_cents)`
+                  on the migration PR — same risk class as WEB-FB-001. */}
               <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
                 ${memberData.monthly_price.toFixed(2)}/mo
               </span>
@@ -984,7 +1036,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
           <button
             onClick={() => setEnrollOpen(true)}
             disabled={tiers.length === 0}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
             Enroll in Membership
@@ -1022,7 +1074,7 @@ function MembershipCard({ customerId }: { customerId: number }) {
             <button
               onClick={() => selectedTier && subscribeMut.mutate(selectedTier)}
               disabled={!selectedTier || subscribeMut.isPending}
-              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {subscribeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Crown className="h-4 w-4" />}
               Activate Membership
@@ -1247,7 +1299,7 @@ function InfoTab({
                   Additional Phones
                 </label>
                 <div className="space-y-1">
-                  {customer.phones.map((p) => (
+                  {customer.phones.map((p: any) => (
                     <div
                       key={p.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1274,7 +1326,7 @@ function InfoTab({
                   Additional Emails
                 </label>
                 <div className="space-y-1">
-                  {customer.emails.map((em) => (
+                  {customer.emails.map((em: any) => (
                     <div
                       key={em.id}
                       className="flex items-center gap-2 text-sm text-surface-600 dark:text-surface-400"
@@ -1421,7 +1473,7 @@ function InfoTab({
         <button
           onClick={handleSave}
           disabled={updateMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {updateMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -1656,7 +1708,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
           <div className={cn(
             'max-w-[75%] rounded-lg px-3 py-2 text-sm',
             msg.direction === 'outbound'
-              ? 'bg-primary-600 text-white rounded-br-none'
+              ? 'bg-primary-600 text-primary-950 rounded-br-none'
               : 'bg-surface-100 dark:bg-surface-800 text-surface-900 dark:text-surface-100 rounded-bl-none'
           )}>
             {msg.comm_type && msg.comm_type !== 'sms' && (
@@ -1667,7 +1719,7 @@ function CommunicationsTab({ customerId }: { customerId: number }) {
             )}
             <p>{msg.content ?? msg.message ?? ''}</p>
             <p className={cn('text-[10px] mt-1', msg.direction === 'outbound' ? 'text-primary-200' : 'text-surface-400')}>
-              {msg.created_at ? new Date(msg.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : ''}
+              {msg.created_at ? formatShortDateTime(msg.created_at) : ''}
             </p>
           </div>
         </div>
@@ -1815,7 +1867,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             resetForm();
             setShowForm(true);
           }}
-          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
+          className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm"
         >
           <Plus className="h-4 w-4" />
           Add Asset
@@ -1924,7 +1976,7 @@ function AssetsTab({ customerId }: { customerId: number }) {
             <button
               onClick={handleSubmitAsset}
               disabled={addMutation.isPending || updateAssetMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {(addMutation.isPending || updateAssetMutation.isPending) && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -19,6 +19,7 @@ import { PrintPreviewModal } from '@/components/shared/PrintPreviewModal';
 import KanbanBoard from './KanbanBoard';
 import type { Ticket, TicketStatus } from '@bizarre-crm/shared';
 import { formatCurrency, formatDate, timeAgo } from '@/utils/format';
+import { safeColor } from '@/utils/safeColor';
 
 // ─── Optional column definitions ──────────────────────────────────
 type OptionalColumn = 'internal_note' | 'diagnostic_note' | 'ticket_items' | 'assigned_to';
@@ -60,10 +61,11 @@ function formatTicketId(orderId: string | number) {
 
 
 // ─── Hex color validation ────────────────────────────────────────────
-const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
-function safeColor(color?: string | null): string {
-  return color && HEX_RE.test(color) ? color : '#6b7280';
-}
+// WEB-FM-007: routes through the canonical `utils/safeColor` so a brand-recolor
+// of the global fallback ('#6b7280') flows here. The shared helper accepts
+// 4- + 8-digit hex (alpha channel) too, which is a strict superset of the
+// previous local regex — no callers here pass alpha but the wider grammar
+// is harmless and prevents silent grey on a future "#aabbcc80" status color.
 
 
 // ─── Urgency config ─────────────────────────────────────────────────
@@ -287,9 +289,9 @@ function SavedFiltersDropdown({
                   value={filterName}
                   onChange={(e) => setFilterName(e.target.value)}
                   placeholder="Filter name..."
-                  className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="flex-1 rounded border border-surface-200 px-2 py-1 text-xs dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
                 />
-                <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-white hover:bg-primary-700">
+                <button type="submit" className="rounded bg-primary-600 px-2 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700">
                   Save
                 </button>
               </form>
@@ -628,8 +630,12 @@ const TicketRow = memo(function TicketRow({
                   if (!input.value.trim()) return;
                   onAddNote(ticket.id, input.value.trim()).then(() => { input.value = ''; });
                 }}>
-                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-500" />
-                  <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add</button>
+                  <input name="quicknote" type="text" placeholder="Quick note..." className="w-48 rounded-lg border border-surface-200 bg-white px-2.5 py-1.5 text-xs dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400" />
+                  {/* WEB-FQ-017 (Fixer-C12 2026-04-25): bare ">Add<" was ambiguous next
+                      to the "Add Customer" / "Add Ticket" / "Create" labels elsewhere.
+                      Spelled-out object name keeps the same row-CRUD verb but disambiguates
+                      from the page-level "Add Ticket" CTA. */}
+                  <button type="submit" className="rounded-lg bg-surface-200 px-2.5 py-1.5 text-xs font-medium dark:bg-surface-700 hover:bg-surface-300 dark:hover:bg-surface-600">Add note</button>
                 </form>
                 {customer?.phone && (
                   <form className="flex gap-1.5" onClick={(e) => e.stopPropagation()} onSubmit={(e) => {
@@ -642,7 +648,7 @@ const TicketRow = memo(function TicketRow({
                       input.value = '';
                     }).finally(() => { btn.disabled = false; });
                   }}>
-                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-green-500" />
+                    <input name="quicksms" type="text" placeholder="Quick SMS..." className="w-48 rounded-lg border border-green-200 bg-white px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-green-500 focus-visible:border-green-500" />
                     <button type="submit" className="rounded-lg bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50 flex items-center gap-1">
                       <Send className="h-3 w-3" /> Send
                     </button>
@@ -669,7 +675,7 @@ const TicketRow = memo(function TicketRow({
             <div className="shrink-0 flex flex-col gap-2 items-end">
               <button
                 onClick={() => onNavigate(`/tickets/${ticket.id}`)}
-                className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 transition-colors"
+                className="rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 transition-colors"
               >
                 Open Full
               </button>
@@ -846,18 +852,29 @@ export function TicketListPage() {
     placeholderData: (prev) => prev,
   });
 
-  // D4-3: only show the skeleton if loading persists past 150ms. Local SQLite
+  // D4-3: only show the skeleton if loading persists past 150ms WHEN we have
+  // a previous render to keep on screen (placeholderData hit). Local SQLite
   // responses often resolve in <80ms; flashing the skeleton makes the whole
-  // table jitter as it paints over. Defer the visual loading state.
+  // table jitter as it paints over.
+  // WEB-S7-035 (FIXED-by-Fixer-A19 2026-04-25): on the FIRST load there is no
+  // placeholderData — the user sees a blank-area-then-rows FOUT-style flicker
+  // for fast responses, and a 150ms blank pause before any feedback for slow
+  // ones. When `ticketData` is undefined we have nothing to keep on screen,
+  // so render the skeleton immediately. When we already have prior data
+  // (placeholderData hit) keep the 150ms debounce so the table doesn't jitter.
   const [showSkeleton, setShowSkeleton] = useState(false);
   useEffect(() => {
     if (!isLoading) {
       setShowSkeleton(false);
       return;
     }
+    if (!ticketData) {
+      setShowSkeleton(true);
+      return;
+    }
     const timer = setTimeout(() => setShowSkeleton(true), 150);
     return () => clearTimeout(timer);
-  }, [isLoading]);
+  }, [isLoading, ticketData]);
 
   const rawTickets: Ticket[] = ticketData?.data?.data?.tickets || ticketData?.data?.tickets || [];
   const pagination = ticketData?.data?.data?.pagination || ticketData?.data?.pagination || { page: 1, total: 0, total_pages: 1, per_page: 25 };
@@ -1158,7 +1175,7 @@ export function TicketListPage() {
           </div>
           <Link
             to="/tickets/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
           >
             <Plus className="h-4 w-4" />
             New Ticket
@@ -1264,7 +1281,13 @@ export function TicketListPage() {
         const month = calendarMonth.month;
         const firstDay = new Date(year, month, 1).getDay();
         const daysInMonth = new Date(year, month + 1, 0).getDate();
-        const monthName = new Date(year, month).toLocaleString('en-US', { month: 'long', year: 'numeric' });
+        // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `'en-US'`
+        // locale on calendar header → respect browser locale via `undefined`.
+        // Could route through `formatDate` but month-only + year format isn't
+        // covered by the canonical helpers and adding one for a single site
+        // would be over-engineering; `undefined` matches the format.ts
+        // `_locale` semantics for the common case.
+        const monthName = new Date(year, month).toLocaleString(undefined, { month: 'long', year: 'numeric' });
         const today = new Date();
         const isToday = (d: number) => today.getFullYear() === year && today.getMonth() === month && today.getDate() === d;
 
@@ -1710,7 +1733,7 @@ export function TicketListPage() {
                       return next;
                     });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 focus-visible:border-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>
@@ -1754,7 +1777,7 @@ export function TicketListPage() {
                     className={cn(
                       'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-primary-950'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
                   >

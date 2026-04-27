@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
+import { CopyText } from '@/components/CopyText';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
@@ -182,8 +183,19 @@ export function AutomationRunsPanel({ slug }: { slug: string }) {
                         {r.status}
                       </span>
                     </td>
-                    <td className="py-1.5 px-2 text-red-400/80 max-w-xs truncate" title={r.error_message ?? ''}>
-                      {r.error_message ?? '—'}
+                    <td className="py-1.5 px-2 text-red-400/80 max-w-xs">
+                      {r.error_message ? (
+                        // DASH-ELEC-283: replace title-only tooltip with
+                        // keyboard-accessible + copyable CopyText so the full
+                        // automation error can be lifted out without hover.
+                        <CopyText
+                          value={r.error_message}
+                          className="truncate block"
+                          toastLabel="Copied error"
+                        >
+                          {r.error_message}
+                        </CopyText>
+                      ) : '—'}
                     </td>
                   </tr>
                 );

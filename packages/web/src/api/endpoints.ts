@@ -243,22 +243,28 @@ export const invoiceApi = {
   stats: () => api.get('/invoices/stats'),
   // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
   get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
-  // DA-6: send an idempotency key so a double-click or flaky network can't
-  // create two invoices for the same ticket. Server middleware (idempotent)
-  // caches responses keyed on (user, url, key) for 5 minutes.
-  create: (data: CreateInvoiceInput) =>
+  // DA-6 / WEB-FH-002: send an idempotency key so a double-click or flaky
+  // network can't create two invoices for the same ticket. Server middleware
+  // (idempotent) caches responses keyed on (user, url, key) for 5 minutes.
+  // The key MUST be stable across retries — caller mints once at form-open
+  // / cart-create time and passes it for every retry of the same submission.
+  // Falls back to an internal mint only if the caller didn't supply one
+  // (legacy paths). Same pattern on `recordPayment` and `posApi.checkoutWithTicket`.
+  create: (data: CreateInvoiceInput, idempotencyKey?: string) =>
     api.post('/invoices', data, {
       headers: {
         'X-Idempotency-Key':
+          idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `inv-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
       },
     }),
   update: (id: number, data: UpdateInvoiceInput) => api.put(`/invoices/${id}`, data),
-  recordPayment: (id: number, data: RecordPaymentInput) =>
+  recordPayment: (id: number, data: RecordPaymentInput, idempotencyKey?: string) =>
     api.post(`/invoices/${id}/payments`, data, {
       headers: {
         'X-Idempotency-Key':
+          idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
       },
@@ -305,8 +311,10 @@ export const inventoryApi = {
     api.get('/inventory', { params }),
   manufacturers: () => api.get('/inventory/manufacturers'),
   importCsv: (items: ImportInventoryItem[]) => api.post('/inventory/import-csv', { items }),
-  bulkAction: (item_ids: number[], action: string, value?: string | number) =>
-    api.post('/inventory/bulk-action', { item_ids, action, value }),
+  // WEB-FH-012: `reason` accompanies bulk price updates for audit-trail
+  //   compliance. Server requires it when action='update_price'.
+  bulkAction: (item_ids: number[], action: string, value?: string | number, reason?: string) =>
+    api.post('/inventory/bulk-action', { item_ids, action, value, reason }),
   get: (id: number) => api.get(`/inventory/${id}`),
   create: (data: CreateInventoryInput) => api.post('/inventory', data),
   // @audit-fixed: switched from `Partial<InventoryItem>` to a write-safe DTO
@@ -512,6 +520,17 @@ export const reportApi = {
     api.get('/reports/churn', { params: { days_inactive } }),
   overstaffing: (days?: number) =>
     api.get('/reports/overstaffing', { params: { days } }),
+  // WEB-FI-025 (Fixer-C15 2026-04-25): these URL builders return raw `/api/v1/...`
+  // strings the caller passes to `window.open(url, '_blank')`. The new tab carries
+  // the httpOnly auth cookie (axios `withCredentials: true` in client.ts; same
+  // origin so cookie auto-attaches), but the request DOES NOT carry the
+  // `Authorization: Bearer …` header that the request interceptor adds for
+  // tenant access tokens. Cookie auth is currently the canonical path so this
+  // works today; if any tenant flips to bearer-only auth (no cookie) these tabs
+  // will get 401s. Long-term fix: replace with a blob fetch through the axios
+  // `client` (same pattern as `dataExportApi.downloadAll`) and trigger an
+  // `<a download>` programmatically. Same caveat applies to
+  // `voiceApi.recordingPath` below.
   taxReportPdfUrl: (from: string, to: string, jurisdiction?: string) =>
     `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
   partnerReportPdfUrl: (year: string | number) =>
@@ -562,7 +581,12 @@ export interface VoiceCall {
   duration: number | null;
   status: string;
   recording_url: string | null;
-  recording_local_path: string | null;
+  // WEB-FN-013: server-side filesystem path (`/var/data/tenants/foo/...`)
+  // that the API used to leak in the calls list. The web client must NEVER
+  // depend on this value — it discloses on-disk layout and tenant slugs to
+  // a path-traversal probe. The field is kept here intentionally absent so
+  // that if the server ever re-emits it, a future tsc run does not silently
+  // type-check it. Use `recording_url` for playback / download.
   created_at: string;
   user_name: string | null;
   conv_phone: string | null;
@@ -590,15 +614,80 @@ export const voiceApi = {
 
 // ==================== POS ====================
 export const posApi = {
-  products: (params?: { keyword?: string; category?: string; item_type?: string }) =>
+  // WEB-FN-006 (Fixer-B18 2026-04-25): dropped `item_type` from the typed
+  // wrapper. Server (`pos.routes.ts:102`) hard-codes `item_type IN
+  // ('product','part')` and silently ignores any client-supplied value, so
+  // the field misled callers into thinking they could query the service
+  // catalog from POS. If/when the server supports a `service` filter, add
+  // it back as a real param.
+  products: (params?: { keyword?: string; category?: string }) =>
     api.get('/pos/products', { params }),
   register: () => api.get('/pos/register'),
-  cashIn: (data: { amount: number; reason?: string }) => api.post('/pos/cash-in', data),
-  cashOut: (data: { amount: number; reason?: string }) => api.post('/pos/cash-out', data),
+  // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
+  // event so a flaky-network double-click doesn't double-record opening float.
+  cashIn: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-in', data),
+  cashOut: (data: { amount: number; reason?: string; idempotency_key?: string }) => api.post('/pos/cash-out', data),
   transaction: (data: PosTransactionInput) => api.post('/pos/transaction', data),
   transactions: (params?: GetTransactionsParams) => api.get('/pos/transactions', { params }),
-  checkoutWithTicket: (data: CheckoutWithTicketInput) => api.post('/pos/checkout-with-ticket', data),
+  // WEB-FH-001 / WEB-FH-002: mandatory idempotency key, minted ONCE per
+  // cart-session (in the unified-pos store) and reused across every retry
+  // of the same checkout. A double-click on "Complete Checkout" or a
+  // browser-initiated retry sends the same key — server idempotent
+  // middleware returns the cached response, so we never charge twice.
+  // Caller is REQUIRED to pass a stable key; internal fallback exists only
+  // for legacy callers and should be removed once all callers migrate.
+  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string) =>
+    api.post('/pos/checkout-with-ticket', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
+
+  // WEB-FN-012 (Fixer-C12 2026-04-25): wrappers for the orphan POS server
+  // routes that audit flagged. Pages were either hand-rolling axios calls
+  // or the features were silently unreachable. All four are guarded by
+  // `requirePermission` server-side, so a missing wrapper here does not
+  // weaken auth — but having a typed wrapper means new callers can't
+  // accidentally hit `/api/v1/...` directly and bypass the bearer interceptor
+  // (cf. WEB-FB-006 / WEB-FD-021 cookie-vs-bearer footgun).
+  /**
+   * Non-checkout-with-ticket sale path (legacy walk-in cash sale).
+   * `/pos/sales` is a separate server route from `checkoutWithTicket`.
+   * Pass an idempotency key from the caller-side cart session — server
+   * idempotent middleware will short-circuit double-submits.
+   */
+  sales: (data: unknown, idempotencyKey?: string) =>
+    api.post('/pos/sales', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-sale-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
+  /**
+   * Cash refund on an existing sale. Idempotency key required to avoid
+   * double-refunds on a flaky-network double-click.
+   */
+  return: (data: unknown, idempotencyKey?: string) =>
+    api.post('/pos/return', data, {
+      headers: {
+        'X-Idempotency-Key':
+          idempotencyKey ??
+          (globalThis.crypto?.randomUUID?.() ??
+            `pos-return-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+      },
+    }),
+  /** Multi-station kiosk workstations CRUD (`/pos/workstations*`). */
+  listWorkstations: () => api.get('/pos/workstations'),
+  createWorkstation: (data: { name: string; description?: string }) =>
+    api.post('/pos/workstations', data),
+  updateWorkstation: (id: number, data: { name?: string; description?: string; active?: boolean }) =>
+    api.put(`/pos/workstations/${id}`, data),
 };
 
 // ==================== Notifications ====================
@@ -713,6 +802,17 @@ export const leadApi = {
 };
 
 // ==================== Estimates ====================
+// WEB-FN-011: the server also exposes
+//   POST /estimates/:id/sign        (auth-gated, staff-side e-sign)
+//   /public/api/v1/estimate-sign/*  (customer-side magic-link sign flow)
+// from `packages/server/src/routes/estimateSign.routes.ts`. Both are
+// **mobile-only** today — the iOS + Android clients drive the customer
+// e-sign UX directly off the device camera + signature pad. No web caller
+// is wired (and no desktop EstimateSignDialog exists). This comment is the
+// canonical record so a future audit can `grep estimate-sign` and see why
+// no `estimateApi.sign` wrapper exists; if the desktop estimate-detail
+// view ever needs in-shop staff signing, add the wrapper here and a
+// matching `<EstimateSignDialog>` component.
 export const estimateApi = {
   list: (params?: { page?: number; pagesize?: number; keyword?: string; status?: string }) =>
     api.get('/estimates', { params }),
@@ -938,11 +1038,45 @@ export const blockchypApi = {
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-checkin-signature'),
   captureSignature: (ticketId: number) =>
     api.post<{ success: boolean; data: { success: boolean; signatureFile?: string; transactionId?: string; error?: string } }>('/blockchyp/capture-signature', { ticketId }),
+  // @audit-fixed (WEB-FN-004 / Fixer-K 2026-04-24): the typed response was
+  // missing six fields the server actually returns across its three branches:
+  //   1. Idempotency replay (blockchyp.routes.ts:245-254): adds `replayed: true`
+  //   2. Indeterminate / pending-reconciliation (HTTP 202, blockchyp.routes.ts:318-326):
+  //      `success: false` + `status: 'pending_reconciliation'` + `transactionRef`
+  //   3. Success path: `transactionRef`, `signatureFilePath`, `testMode`, `receiptSuggestions`
+  // Without these the UI couldn't tell a 200 success from a 202 pending — the
+  // exact bug SEC-M34 was trying to prevent. Pages should branch on
+  // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
+  // recording a "successful" payment.
   processPayment: (invoiceId: number, tip?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    return api.post<{ success: boolean; data: { success: boolean; transactionId?: string; authCode?: string; amount?: string; cardType?: string; last4?: string; signatureFile?: string; error?: string; responseDescription?: string } }>(
+    return api.post<{
+      success: boolean;
+      data: {
+        success: boolean;
+        // Idempotency replay marker — set when the server returned a previously
+        // captured charge for the same idempotency key. UI MUST NOT double-record.
+        replayed?: boolean;
+        // 202 indeterminate outcome — terminal charge result unknown. UI MUST
+        // surface a "pending reconciliation" state instead of treating as success.
+        status?: 'pending_reconciliation';
+        transactionId?: string;
+        transactionRef?: string;
+        authCode?: string;
+        amount?: string;
+        cardType?: string;
+        last4?: string;
+        signatureFile?: string;
+        signatureFilePath?: string;
+        testMode?: boolean;
+        receiptSuggestions?: Record<string, unknown>;
+        message?: string;
+        error?: string;
+        responseDescription?: string;
+      };
+    }>(
       '/blockchyp/process-payment',
       { invoiceId, tip, idempotency_key: idempotencyKey },
     );
@@ -1179,7 +1313,8 @@ export const campaignsApi = {
     trigger_rule_json: string | null;
   }>) => api.patch(`/campaigns/${id}`, data),
   delete: (id: number) => api.delete(`/campaigns/${id}`),
-  preview: (id: number) => api.post(`/campaigns/${id}/preview`),
+  preview: (id: number, opts?: { signal?: AbortSignal }) =>
+    api.post(`/campaigns/${id}/preview`, undefined, { signal: opts?.signal }),
   runNow: (id: number) => api.post(`/campaigns/${id}/run-now`),
   stats: (id: number) => api.get(`/campaigns/${id}/stats`),
   triggerReviewRequest: (ticketId: number) =>
@@ -1210,7 +1345,14 @@ const publicApi = axios.create({
 export const signupApi = {
   checkSlug: (slug: string) =>
     publicApi.get<{ success: boolean; data: { available: boolean; reason: string | null }; message?: string }>(`/signup/check-slug/${encodeURIComponent(slug)}`),
-  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; captcha_token?: string }) =>
+  // @audit-fixed (WEB-FN-001 / Fixer-K 2026-04-24): server destructures
+  // `admin_first_name` + `admin_last_name` from the body (signup.routes.ts:478)
+  // and persists them through `provisionTenant`, but the typed wrapper here
+  // omitted both fields so callers had no way to pass them — every tenant
+  // admin record landed with empty `first_name` / `last_name`. Adding them
+  // as optional fields keeps the existing slug-only signup flow working
+  // while letting future signup forms collect and forward names.
+  createShop: (data: { slug: string; shop_name: string; admin_email: string; admin_password: string; admin_first_name?: string; admin_last_name?: string; captcha_token?: string }) =>
     publicApi.post<{ success: boolean; data: { tenant_id?: number; slug?: string; url?: string; message: string }; message?: string }>('/signup', data),
 };
 
@@ -1223,6 +1365,11 @@ export const privacyApi = {
 // ==================== Super-Admin ====================
 interface ImpersonateResponse {
   token: string;
+  // WEB-FN-003 / FIXED-by-Fixer-EEE 2026-04-25 — server already returns `jti`
+  // (super-admin.routes.ts:2292). Without it on the client type we cannot
+  // call `POST /tenants/:slug/impersonate/:jti/end` to revoke an active
+  // impersonation early; super-admin had to wait the 15-minute JWT TTL.
+  jti?: string;
   tenant_slug: string;
   expires_in_seconds: number;
   target_user: { id: number; username: string; role: string };
@@ -1257,8 +1404,20 @@ export const superAdminApi = {
       '/tenants',
       { params },
     ),
-  impersonate: (slug: string) =>
+  // WEB-FG-003 / FIXED-by-Fixer-U 2026-04-25 — pass operator-supplied reason
+  // so the audit log on the server can attribute intent (ticket #, customer
+  // name, etc.). Server already accepts an optional body; if absent it stays
+  // backwards compatible.
+  impersonate: (slug: string, reason?: string) =>
     superAdminClient.post<{ success: boolean; data: ImpersonateResponse; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate`,
+      reason ? { reason } : undefined,
+    ),
+  // WEB-FN-003 / FIXED-by-Fixer-EEE 2026-04-25 — pair the now-typed `jti`
+  // with a revocation method so super-admin can terminate an impersonation
+  // session immediately instead of waiting 15 minutes for the JWT TTL.
+  endImpersonation: (slug: string, jti: string) =>
+    superAdminClient.post<{ success: boolean; message?: string }>(
+      `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
 };

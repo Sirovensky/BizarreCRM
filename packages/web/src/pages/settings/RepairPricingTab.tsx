@@ -6,8 +6,11 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { repairPricingApi, catalogApi, inventoryApi } from '@/api/endpoints';
+import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
+import { formatCurrency } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -156,7 +159,7 @@ function ServicesSubTab() {
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" />
           Add Service
@@ -201,7 +204,7 @@ function ServicesSubTab() {
             <button
               onClick={() => createMutation.mutate(addForm)}
               disabled={!addForm.name || !addForm.slug || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -232,27 +235,32 @@ function ServicesSubTab() {
                     <>
                       <td className="px-4 py-2">
                         <input value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          aria-label="Service name"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2">
                         <input value={editForm.slug || ''} onChange={(e) => setEditForm({ ...editForm, slug: e.target.value })}
+                          aria-label="Service slug"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2">
                         <select value={editForm.category || 'phone'} onChange={(e) => setEditForm({ ...editForm, category: e.target.value })}
+                          aria-label="Service category"
                           className="px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
                           {CATEGORIES.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                         </select>
                       </td>
                       <td className="px-4 py-2">
                         <input value={editForm.description || ''} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                          aria-label="Service description"
                           className="w-full px-2 py-1 text-sm border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2 text-center">
-                        <input type="checkbox" checked={!!editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked ? 1 : 0 })} />
+                        <input type="checkbox" checked={!!editForm.is_active} onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked ? 1 : 0 })} aria-label="Active" />
                       </td>
                       <td className="px-4 py-2 text-center">
                         <input type="number" value={editForm.sort_order ?? 0} onChange={(e) => setEditForm({ ...editForm, sort_order: parseInt(e.target.value) || 0 })}
+                          aria-label="Sort order"
                           className="w-16 px-2 py-1 text-sm text-center border border-surface-200 dark:border-surface-700 rounded bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
                       </td>
                       <td className="px-4 py-2 text-right">
@@ -286,7 +294,10 @@ function ServicesSubTab() {
                             className="p-1 text-surface-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button aria-label="Delete" onClick={async () => { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }}
+                          <button aria-label="Delete" onClick={async () => {
+                            try { if (await confirm(`Delete "${svc.name}"?`, { danger: true })) deleteMutation.mutate(svc.id); }
+                            catch (err) { toast.error(formatApiError(err)); }
+                          }}
                             className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -334,7 +345,7 @@ function DeviceModelPicker({ value, onChange }: { value: number | null; onChange
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           placeholder="Search device model..."
-          className="w-full pl-8 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-8 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
       </div>
       {open && devices && devices.length > 0 && (
@@ -378,7 +389,7 @@ function InventoryPartPicker({ value, onChange }: { value: number | null; onChan
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         placeholder="Search inventory part..."
-        className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+        className="w-full px-3 py-1.5 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       />
       {open && items && items.length > 0 && (
         <div className="absolute z-20 mt-1 w-full max-h-40 overflow-y-auto bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg">
@@ -468,10 +479,9 @@ function GradesSection({ priceId }: { priceId: number }) {
       // I can work around it. Actually, I set up the POST /prices/:id/grades for adding.
       // Let me add an inline fetch using the api client directly.
 
-      const res = await repairPricingApi.getPrices();
-      // This doesn't return grades. We need to call a different way.
-      // Let me just use the raw api to fetch grades for this price.
-      const { api } = await import('@/api/client');
+      // WEB-FF-010: was 3 serial awaits — `getPrices()` (result discarded),
+      // dynamic `import('@/api/client')` per render, then the grades GET.
+      // Now a single GET; the api client is imported statically at module top.
       const gradesRes = await api.get(`/repair-pricing/prices/${priceId}/grades`);
       return gradesRes.data.data as RepairGrade[];
     },
@@ -534,7 +544,7 @@ function GradesSection({ priceId }: { priceId: number }) {
             <div className="flex gap-2">
               <button onClick={() => addGradeMutation.mutate({ ...addForm, labor_price_override: addForm.labor_price_override === '' ? null : parseFloat(String(addForm.labor_price_override)) })}
                 disabled={!addForm.grade || !addForm.grade_label}
-                className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50">
+                className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded hover:bg-primary-700 disabled:opacity-50">
                 Add
               </button>
               <button onClick={() => setShowAdd(false)} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
@@ -565,11 +575,15 @@ function GradesSection({ priceId }: { priceId: number }) {
               <tr key={g.id} className="border-t border-surface-100 dark:border-surface-700/50">
                 <td className="py-1.5 pr-3 font-mono text-xs">{g.grade}</td>
                 <td className="py-1.5 pr-3 text-surface-900 dark:text-surface-100">{g.grade_label}</td>
-                <td className="py-1.5 pr-3 text-right">${g.part_price.toFixed(2)}</td>
-                <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? `$${g.labor_price_override.toFixed(2)}` : '-'}</td>
+                {/* @audit-fixed (WEB-FF-003/FF-022 / Fixer-PP 2026-04-25): hardcoded `$` + toFixed → tenant-aware currency. */}
+                <td className="py-1.5 pr-3 text-right">{formatCurrency(g.part_price)}</td>
+                <td className="py-1.5 pr-3 text-right text-surface-500">{g.labor_price_override != null ? formatCurrency(g.labor_price_override) : '-'}</td>
                 <td className="py-1.5 pr-3 text-center">{g.is_default ? <Check className="h-3 w-3 text-green-500 inline" /> : '-'}</td>
                 <td className="py-1.5 text-right">
-                  <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }}
+                  <button aria-label="Delete" onClick={async () => {
+                    try { if (await confirm('Delete this grade?', { danger: true })) deleteGradeMutation.mutate(g.id); }
+                    catch (err) { toast.error(formatApiError(err)); }
+                  }}
                     className="p-1 text-surface-400 hover:text-red-500">
                     <Trash2 className="h-3 w-3" />
                   </button>
@@ -677,7 +691,7 @@ function PricesSubTab() {
           {services?.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.category})</option>)}
         </select>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors">
           <Plus className="h-4 w-4" />
           Add Price
         </button>
@@ -722,7 +736,7 @@ function PricesSubTab() {
                 default_grade: addForm.default_grade,
               })}
               disabled={!addForm.device_model_id || !addForm.repair_service_id || createMutation.isPending}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50 transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
               Create
@@ -775,7 +789,10 @@ function PricesSubTab() {
                           <span className={cn('inline-block w-2 h-2 rounded-full', price.is_active ? 'bg-green-500' : 'bg-surface-300')} />
                         </td>
                         <td className="px-4 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={async () => { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }}
+                          <button onClick={async () => {
+                            try { if (await confirm('Delete this price and all its grades?', { danger: true })) deleteMutation.mutate(price.id); }
+                            catch (err) { toast.error(formatApiError(err)); }
+                          }}
                             className="p-1 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
@@ -940,7 +957,7 @@ function AdjustmentsSubTab() {
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors',
               dirty
-                ? 'bg-primary-600 text-white hover:bg-primary-700'
+                ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-400 cursor-not-allowed'
             )}
           >
@@ -975,7 +992,7 @@ export function RepairPricingTab() {
             className={cn(
               'px-4 py-2 text-sm font-medium rounded-lg transition-colors',
               subTab === tab.key
-                ? 'bg-primary-600 text-white'
+                ? 'bg-primary-600 text-primary-950'
                 : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:text-surface-900 dark:hover:text-surface-100'
             )}
           >

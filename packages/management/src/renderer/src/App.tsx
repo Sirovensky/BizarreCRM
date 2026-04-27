@@ -16,11 +16,37 @@ import { LogsPage } from '@/pages/LogsPage';
 import { ActivityPage } from '@/pages/ActivityPage';
 import { DiagnosticsPage } from '@/pages/DiagnosticsPage';
 import { useAuthStore } from '@/stores/authStore';
+import { useServerStore } from '@/stores/serverStore';
+import toast from 'react-hot-toast';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+  return <>{children}</>;
+}
+
+/**
+ * DASH-ELEC-091 (Fixer-C24 2026-04-25): multi-tenant-only routes are filtered
+ * from the Sidebar but the routes themselves were unguarded — typing
+ * `/#/tenants` reached the full page in single-tenant mode. Wrap each
+ * multi-tenant page in this guard so a direct URL hit redirects to the
+ * Overview with an explanatory toast.
+ */
+function MultiTenantRoute({ children }: { children: React.ReactNode }) {
+  const stats = useServerStore((s) => s.stats);
+  // While stats are loading we don't know yet — render children to avoid
+  // a redirect flicker. Sidebar already hides the link in single-tenant
+  // mode, so this guard only matters for direct URL entry.
+  const blocked = !!stats && stats.multiTenant === false;
+  useEffect(() => {
+    if (blocked) {
+      toast.error('That page is only available in multi-tenant mode.');
+    }
+  }, [blocked]);
+  if (blocked) {
+    return <Navigate to="/" replace />;
   }
   return <>{children}</>;
 }
@@ -55,19 +81,19 @@ export default function App() {
         }
       >
         <Route index element={<OverviewPage />} />
-        <Route path="tenants" element={<TenantsPage />} />
+        <Route path="tenants" element={<MultiTenantRoute><TenantsPage /></MultiTenantRoute>} />
         <Route path="server" element={<ServerControlPage />} />
         <Route path="backups" element={<BackupPage />} />
         <Route path="crashes" element={<CrashMonitorPage />} />
         <Route path="updates" element={<UpdatesPage />} />
-        <Route path="activity" element={<ActivityPage />} />
+        <Route path="activity" element={<MultiTenantRoute><ActivityPage /></MultiTenantRoute>} />
         {/* Direct deep links from notifications/banners still resolve. */}
         <Route path="audit" element={<Navigate to="/activity?tab=audit" replace />} />
         <Route path="alerts" element={<Navigate to="/activity?tab=alerts" replace />} />
         <Route path="sessions" element={<Navigate to="/activity?tab=sessions" replace />} />
-        <Route path="tools" element={<AdminToolsPage />} />
+        <Route path="tools" element={<MultiTenantRoute><AdminToolsPage /></MultiTenantRoute>} />
         <Route path="logs" element={<LogsPage />} />
-        <Route path="diagnostics" element={<DiagnosticsPage />} />
+        <Route path="diagnostics" element={<MultiTenantRoute><DiagnosticsPage /></MultiTenantRoute>} />
         {/* Legacy /comms deep links (sidebar + toasts pre-rename) redirect to new tab. */}
         <Route path="comms" element={<Navigate to="/diagnostics?tab=notifications" replace />} />
         <Route path="settings" element={<SettingsPage />} />

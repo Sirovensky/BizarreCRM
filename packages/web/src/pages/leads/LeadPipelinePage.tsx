@@ -153,7 +153,7 @@ function LeadCard({
                       onMove(lead.id, stage.key);
                       setShowMoveMenu(false);
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 focus:bg-surface-50 focus:outline-none dark:hover:bg-surface-700 dark:focus:bg-surface-700"
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs hover:bg-surface-50 focus-visible:bg-surface-50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:hover:bg-surface-700 dark:focus-visible:bg-surface-700"
                   >
                     <span className="h-2 w-2 rounded-full" style={{ backgroundColor: stage.color }} />
                     <span className="text-surface-700 dark:text-surface-300">{stage.label}</span>
@@ -236,14 +236,48 @@ export function LeadPipelinePage() {
 
   const pipeline: Record<string, any[]> = data?.data?.data ?? {};
 
+  // WEB-FF-004 (Fixer-RRR 2026-04-25): optimistic update + rollback. On a
+  // 1.5 s mobile request the card used to stay in the OLD column for ~2 s,
+  // so staff frequently double-moved past the intended stage. Now we
+  // reorder the local cache immediately, then either invalidate on success
+  // or restore the snapshot on error.
   const updateMut = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
       leadApi.update(id, { status }),
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['leads', 'pipeline'] });
+      const previous = queryClient.getQueryData<any>(['leads', 'pipeline']);
+      queryClient.setQueryData<any>(['leads', 'pipeline'], (old: any) => {
+        if (!old?.data?.data) return old;
+        const cloned: Record<string, any[]> = {};
+        let moved: any = null;
+        for (const [stage, leads] of Object.entries(old.data.data as Record<string, any[]>)) {
+          const next: any[] = [];
+          for (const lead of leads) {
+            if (lead?.id === id) {
+              moved = { ...lead, status };
+            } else {
+              next.push(lead);
+            }
+          }
+          cloned[stage] = next;
+        }
+        if (moved) {
+          if (!cloned[status]) cloned[status] = [];
+          cloned[status] = [moved, ...cloned[status]];
+        }
+        return { ...old, data: { ...old.data, data: cloned } };
+      });
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       toast.success('Lead moved');
     },
-    onError: (err: any) => toast.error(err?.response?.data?.message || 'Failed to move lead'),
+    onError: (err: any, _vars, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(['leads', 'pipeline'], ctx.previous);
+      toast.error(err?.response?.data?.message || 'Failed to move lead');
+    },
   });
 
   function handleMove(leadId: number, newStatus: string) {

@@ -44,6 +44,10 @@ public struct PosView: View {
     /// by asking "who is this sale for?".
     @State private var phase: PosPhase = .gate
 
+    /// §16.28.1 bug 2 — post-gate sell-vs-service decision. Reset to
+    /// `.undecided` whenever phase returns to `.gate` (next sale).
+    @State private var pathChoice: PosPathChoice = .undecided
+
     /// Tracks when the transaction settled so `PosReceiptView` can fire
     /// its success haptic (`.sensoryFeedback(.success, trigger: paidAt)`).
     @State private var paidAt: Date = Date()
@@ -92,6 +96,13 @@ public struct PosView: View {
     @State private var showingTenderSelect: Bool = false
     @State private var cashTenderVM: CashTenderViewModel?
     @State private var tenderErrorMessage: String?
+    /// §16.6 — Store-credit balance for the attached customer.
+    /// Loaded lazily when the tender phase begins. Nil = not yet fetched or
+    /// no customer attached. `PosTenderMethodPickerView` / `PosTenderAmountEntryView`
+    /// fall back to "Avail. balance" subtitle when nil.
+    // TODO(b2): wire via api.storeCredit(customerId:) once APIClient exposes the
+    // GET /api/v1/store-credit/:customerId endpoint (§16.6).
+    @State private var storeCreditCents: Int? = nil
 
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
@@ -412,7 +423,9 @@ public struct PosView: View {
             gateView
 
         case .cart:
-            if Platform.isCompact {
+            if shouldShowPathChoice {
+                pathChoiceView
+            } else if Platform.isCompact {
                 compactLayout
             } else {
                 regularLayout
@@ -420,12 +433,19 @@ public struct PosView: View {
 
         case .repair(let coordinator):
             if let api {
-                RepairFlowAdapter(
-                    coordinator: coordinator,
-                    devicePickerVM: PosDevicePickerViewModel(
-                        repository: PosDevicePickerRepositoryImpl(api: api)
+                if Platform.isCompact {
+                    // iPhone: full-screen NavigationStack via RepairFlowAdapter.
+                    RepairFlowAdapter(
+                        coordinator: coordinator,
+                        devicePickerVM: PosDevicePickerViewModel(
+                            repository: PosDevicePickerRepositoryImpl(api: api)
+                        )
                     )
-                )
+                } else {
+                    // iPad: catalog dim + cart "in progress" + step in inspector
+                    // pane (mockup pos-ipad-mockups.html frames 1b–1e).
+                    iPadRepairLayout(coordinator: coordinator, api: api)
+                }
             } else {
                 // No API — cannot run repair flow; fall back to cart.
                 Color.clear.onAppear { phase = .cart }
@@ -443,6 +463,63 @@ public struct PosView: View {
 
     private var gateView: some View {
         PosGateView(vm: makeGateVM())
+    }
+
+    // MARK: - Path choice (sell vs service · §16.28.1 bug 2)
+
+    /// Show the post-gate sell-vs-service decision when:
+    /// - Customer is attached (gate already cleared)
+    /// - Cart is empty (no items already chosen)
+    /// - Cashier hasn't picked a path yet this sale
+    private var shouldShowPathChoice: Bool {
+        cart.hasCustomer && cart.isEmpty && pathChoice == .undecided
+    }
+
+    @ViewBuilder
+    private var pathChoiceView: some View {
+        let displayName = cart.customer?.displayName ?? "this customer"
+        PosPathChoiceView(
+            customerName: displayName,
+            onSell: { pathChoice = .selling },
+            onStartRepair: startRepairFlow
+        )
+    }
+
+    /// Build a `PosRepairFlowCoordinator`, attach it to the phase machine,
+    /// and route `onCancel` / `onComplete` back to `.cart` (or `.gate` for
+    /// a fresh sale on completion).
+    @MainActor
+    private func startRepairFlow() {
+        guard let api else {
+            // No API — cannot run repair flow; surface a typed message
+            // (parity with PosPhase.repair fallback in phaseBody).
+            tenderErrorMessage = "Repair check-in unavailable: no server connection."
+            return
+        }
+        let customerId = cart.customer?.id ?? 0
+        let coordinator = PosRepairRouter.makeCoordinator(
+            customerId: customerId,
+            customerDisplayName: cart.customer?.displayName,
+            api: api,
+            onCancel: {
+                pathChoice = .undecided
+                phase = .cart
+            },
+            onComplete: { _ in
+                // Deposit tendered (or quote saved) → return to cart so
+                // the cashier can either keep selling parts or charge.
+                pathChoice = .selling
+                phase = .cart
+            }
+        )
+        phase = .repair(coordinator)
+    }
+
+    /// Reset the path choice on every return to gate so the next sale
+    /// starts fresh. Called from `handleGateRoute` and the receipt's
+    /// "Next sale" callback.
+    private func resetPathChoice() {
+        pathChoice = .undecided
     }
 
     private func makeGateVM() -> PosGateViewModel {
@@ -513,20 +590,36 @@ public struct PosView: View {
                         advanceToReceipt(from: coordinator)
                     }
             } else if coordinator.method != nil {
-                PosTenderAmountEntryView(coordinator: coordinator)
-                    .onChange(of: coordinator.stage) { _, new in
-                        if new == .confirmed {
-                            advanceToReceipt(from: coordinator)
-                        }
+                PosTenderAmountEntryView(
+                    coordinator: coordinator,
+                    storeCreditBalanceCents: storeCreditCents
+                )
+                .onChange(of: coordinator.stage) { _, new in
+                    if new == .confirmed {
+                        advanceToReceipt(from: coordinator)
                     }
+                }
             } else {
                 PosTenderMethodPickerView(
                     coordinator: coordinator,
                     loyaltyTierLabel: nil,
+                    storeCreditCents: storeCreditCents,
                     bottomBar: AnyView(EmptyView())
                 )
             }
         }
+        .task { await loadStoreCredit() }
+    }
+
+    /// §16.6 — Loads the attached customer's store-credit balance from the server.
+    /// Silently no-ops when no customer is attached or API is unavailable.
+    // TODO(b2): implement once APIClient exposes storeCredit(customerId:) for
+    // GET /api/v1/store-credit/:customerId (§16.6). Current value stays nil,
+    // causing PosTenderAmountEntryView to show the generic "Avail. balance" subtitle.
+    private func loadStoreCredit() async {
+        guard let customer = cart.customer, let customerId = customer.id, customerId > 0 else { return }
+        // TODO(b2): storeCreditCents = try? await api?.storeCredit(customerId: customerId)
+        _ = customerId // suppress unused-variable warning until API extension lands
     }
 
     private func advanceToReceipt(from coordinator: PosTenderCoordinator) {
@@ -560,6 +653,7 @@ public struct PosView: View {
             api: api,
             onNextSale: {
                 self.cart.clear()
+                self.pathChoice = .undecided
                 self.phase = .gate
             }
         )
@@ -606,6 +700,18 @@ public struct PosView: View {
         }
     }
 
+    // MARK: - iPad inspector state
+
+    /// The cart line currently open in the inspector pane. `nil` = inspector
+    /// closed. Set by tapping a line in `PosIPadCartPanel`.
+    @State private var editingCartItem: CartItem?
+
+    /// Ephemeral edit buffers for the inspector pane — mirrors the selected
+    /// `CartItem` fields while the cashier makes changes before Save.
+    @State private var inspectorQty: Int = 1
+    @State private var inspectorDiscountCents: Int = 0
+    @State private var inspectorNote: String = ""
+
     // MARK: - Cart layouts (Frame 2/3)
 
     private var compactLayout: some View {
@@ -637,16 +743,25 @@ public struct PosView: View {
         }
     }
 
-    /// iPad regular layout. Uses an `HStack` rather than a nested
-    /// `NavigationSplitView` — POS is already mounted inside the outer
-    /// `MainShellView` split view's detail column, and stacking split views
-    /// forces SwiftUI to render two sets of navigation chrome, pushing the
-    /// Items + Cart columns down below the top of the screen. An `HStack`
-    /// inside a single `NavigationStack` keeps both columns flush with the
-    /// top edge while still giving us a single nav bar for the toolbar.
+    /// iPad regular layout — `PosRegisterLayout` two-column split with an
+    /// inspector pane that slides in from the trailing edge when a cart line
+    /// is tapped for editing.
+    ///
+    /// Layout geometry:
+    ///   - Left ~65 % — catalog (search + tile grid)
+    ///   - Right ~35 % — condensed cart totals panel
+    ///   - Trailing overlay — inspector pane (slides over the cart column)
     private var regularLayout: some View {
         NavigationStack {
-            HStack(spacing: 0) {
+            PosRegisterLayout(
+                catalogFraction: 0.65,
+                inspectorActive: editingCartItem != nil
+            ) {
+                // ── Topbar slot ───────────────────────────────────────
+                // Empty: SwiftUI nav-bar already hosts posToolbar below.
+                Color.clear.frame(height: 0)
+            } catalog: {
+                // ── Catalog slot ──────────────────────────────────────
                 PosSearchPanel(
                     search: search,
                     onPick: pick,
@@ -656,28 +771,477 @@ public struct PosView: View {
                     onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
                     onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
                 )
-                .frame(minWidth: 320, idealWidth: 420, maxWidth: 540)
-
-                Divider()
-
-                PosCartPanel(
+            } cart: {
+                // ── Cart slot (condensed iPad panel) ──────────────────
+                // Cart-row tap → opens inspector pane (W2-MIGRATE gap).
+                PosIPadCartPanel(
                     cart: cart,
                     onCharge: startChargeV5,
-                    onOpenDrawer: openDrawer,
-                    onChangeCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
-                    onRemoveCustomer: { cart.detachCustomer() },
-                    editQuantityFor: $editQuantityFor,
-                    editPriceFor: $editPriceFor,
-                    onShowDiscount: { showingDiscountSheet = true },
-                    onShowTip: { showingTipSheet = true },
-                    onShowFees: { showingFeesSheet = true }
+                    onEditItem: { item in editingCartItem = item },
+                    editingItemId: editingCartItem?.id
                 )
-                .frame(maxWidth: .infinity)
+            } inspector: {
+                // ── Inspector slot (sliding pane) ─────────────────────
+                if let item = editingCartItem {
+                    iPadInspectorPane(item: item)
+                } else {
+                    Color.clear
+                }
             }
+            .animation(BrandMotion.snappy, value: editingCartItem?.id)
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { posToolbar }
         }
+    }
+
+    // MARK: - iPad repair-flow layout (PosPhase.repair on regular size class)
+
+    /// iPad-only routing for `PosPhase.repair`. Matches mockup spec
+    /// `pos-ipad-mockups.html` frames 1b–1e: items area dims with a
+    /// "Creating ticket…" placeholder, cart column shows a draft-state
+    /// "Repair ticket — in progress" placeholder with a per-step disabled
+    /// charge button, and the active repair step view slides into the
+    /// trailing inspector pane with a Cancel + Continue footer.
+    @ViewBuilder
+    private func iPadRepairLayout(coordinator: PosRepairFlowCoordinator,
+                                   api: APIClient) -> some View {
+        let devicePickerVM = PosDevicePickerViewModel(
+            repository: PosDevicePickerRepositoryImpl(api: api)
+        )
+        PosRegisterLayout(
+            catalogFraction: 0.65,
+            inspectorActive: true
+        ) {
+            // Topbar — empty; nav bar hosts posToolbar.
+            Color.clear.frame(height: 0)
+        } catalog: {
+            iPadRepairCatalogPlaceholder(coordinator: coordinator)
+        } cart: {
+            iPadRepairCartPlaceholder(coordinator: coordinator)
+        } inspector: {
+            iPadRepairInspectorPane(
+                coordinator: coordinator,
+                devicePickerVM: devicePickerVM
+            )
+        }
+        .animation(BrandMotion.snappy, value: coordinator.currentStep)
+    }
+
+    /// Items column — dimmed centered "Creating ticket…" hint per mockup
+    /// (`pos-ipad-mockups.html` line 1741).
+    private func iPadRepairCatalogPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
+        VStack(spacing: 12) {
+            Text("🧾").font(.system(size: 56))
+            Text("Creating repair ticket…")
+                .font(.brandTitleSmall())
+                .foregroundStyle(.bizarreOnSurface)
+            Text(coordinator.currentStep.accessibilityDescription)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+        .opacity(0.45)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
+    }
+
+    /// Cart column — header + repair-in-progress placeholder + disabled
+    /// per-step charge button (mockup line 1750-1768).
+    private func iPadRepairCartPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
+        VStack(spacing: 0) {
+            if let customer = cart.customer {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.title2)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(customer.displayName)
+                            .font(.brandTitleSmall())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Text("Repair ticket — in progress")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreWarning)
+                    }
+                    Spacer(minLength: BrandSpacing.xs)
+                    Text("Draft")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.bizarreWarning.opacity(0.18), in: Capsule())
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                Divider().background(.bizarreOutline)
+            }
+            Spacer(minLength: 0)
+            VStack(spacing: 10) {
+                Text("🔧").font(.system(size: 40))
+                Text("Complete the inspector to start adding parts.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+            }
+            Spacer(minLength: 0)
+            Button(action: {}) {
+                Text(repairStepDisabledChargeLabel(coordinator.currentStep))
+                    .font(.brandTitleSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+            }
+            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 18)
+            .padding(.bottom, 18)
+            .disabled(true)
+            .accessibilityIdentifier("pos.ipad.repair.disabledCharge")
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func repairStepDisabledChargeLabel(_ step: RepairStep) -> String {
+        switch step {
+        case .pickDevice:      return "Pick device first"
+        case .describeIssue:   return "Describe issue first"
+        case .diagnosticQuote: return "Set diagnostic & quote first"
+        case .deposit:         return "Pay deposit first"
+        }
+    }
+
+    /// Inspector pane — hosts the active repair step view + footer with
+    /// Cancel + Continue (per mockup line 1809-1812).
+    @ViewBuilder
+    private func iPadRepairInspectorPane(coordinator: PosRepairFlowCoordinator,
+                                          devicePickerVM: PosDevicePickerViewModel) -> some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(coordinator.currentStep.navigationTitle)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                    if let name = coordinator.customerDisplayName {
+                        Text("\(coordinator.currentStep.accessibilityDescription) · \(name)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    } else {
+                        Text(coordinator.currentStep.accessibilityDescription)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                Spacer(minLength: BrandSpacing.xs)
+                Button {
+                    coordinator.cancel()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .accessibilityLabel("Close repair flow")
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.top, BrandSpacing.md)
+            .padding(.bottom, BrandSpacing.sm)
+
+            Divider().background(.bizarreOutline)
+
+            // Step body
+            ScrollView {
+                Group {
+                    switch coordinator.currentStep {
+                    case .pickDevice:
+                        PosRepairDevicePickerView(coordinator: coordinator,
+                                                   devicePickerVM: devicePickerVM)
+                    case .describeIssue:
+                        PosRepairSymptomView(coordinator: coordinator)
+                    case .diagnosticQuote:
+                        PosRepairQuoteView(coordinator: coordinator)
+                    case .deposit:
+                        PosRepairDepositView(coordinator: coordinator)
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+
+            Divider().background(.bizarreOutline)
+
+            // Footer — Cancel + Skip (skippable steps only) + Continue
+            HStack(spacing: BrandSpacing.sm) {
+                Button(role: .destructive) {
+                    coordinator.cancel()
+                } label: {
+                    Text("Cancel")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("pos.ipad.repair.cancel")
+
+                // Skip — only for steps where mockup CI-3 / CI-4 declares skippable
+                // (.describeIssue, .diagnosticQuote). Pick-device + Deposit required.
+                if coordinator.currentStep == .describeIssue ||
+                   coordinator.currentStep == .diagnosticQuote {
+                    Button {
+                        coordinator.skipCurrent()
+                    } label: {
+                        Text("Skip")
+                            .font(.brandTitleSmall())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, BrandSpacing.sm)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.bizarreOnSurfaceMuted)
+                    .accessibilityIdentifier("pos.ipad.repair.skip")
+                }
+
+                Button {
+                    coordinator.advance()
+                } label: {
+                    Text(repairContinueLabel(coordinator.currentStep))
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .disabled(coordinator.isLoading)
+                .accessibilityIdentifier("pos.ipad.repair.continue")
+            }
+            .padding(BrandSpacing.md)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.bizarreSurface1)
+    }
+
+    private func repairContinueLabel(_ step: RepairStep) -> String {
+        switch step {
+        case .pickDevice:      return "Continue → issue"
+        case .describeIssue:   return "Continue → quote"
+        case .diagnosticQuote: return "Continue → deposit"
+        case .deposit:         return "Confirm deposit"
+        }
+    }
+
+    /// The inspector pane rendered inline (not as a sheet) when a cart line
+    /// is tapped on iPad. Matches mockup screen 3: qty stepper / unit price
+    /// display / line discount / note field / Remove + Save actions.
+    @ViewBuilder
+    private func iPadInspectorPane(item: CartItem) -> some View {
+        VStack(spacing: 0) {
+            // ── Header ────────────────────────────────────────────────────
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    Text(item.name)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnSurface)
+                        .lineLimit(2)
+                    if let sku = item.sku {
+                        Text("SKU \(sku)")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+                Spacer(minLength: BrandSpacing.xs)
+                Button {
+                    editingCartItem = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close inspector")
+                .accessibilityIdentifier("pos.inspector.close")
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface2)
+
+            Divider().background(.bizarreOutline)
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    // ── Qty stepper ───────────────────────────────────────
+                    inspectorRow {
+                        HStack {
+                            Text("Qty")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            HStack(spacing: 0) {
+                                Button {
+                                    if inspectorQty > 1 { inspectorQty -= 1 }
+                                } label: {
+                                    Image(systemName: "minus")
+                                        .frame(width: DesignTokens.Touch.minTargetSide,
+                                               height: DesignTokens.Touch.minTargetSide)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(inspectorQty <= 1)
+                                .accessibilityLabel("Decrease quantity")
+
+                                Text("\(inspectorQty)")
+                                    .font(.brandTitleMedium())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                    .monospacedDigit()
+                                    .frame(minWidth: 36)
+
+                                Button {
+                                    inspectorQty += 1
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .frame(width: DesignTokens.Touch.minTargetSide,
+                                               height: DesignTokens.Touch.minTargetSide)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Increase quantity")
+                            }
+                            .foregroundStyle(.bizarreOrange)
+                            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 10))
+                            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Unit price (display only — tap editPriceFor to edit) ──
+                    inspectorRow {
+                        HStack {
+                            Text("Unit price")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            Text(CartMath.formatCents(CartMath.toCents(item.unitPrice)))
+                                .font(.brandHeadlineMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .monospacedDigit()
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Line discount ─────────────────────────────────────
+                    inspectorRow {
+                        HStack {
+                            Text("Line discount")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            Spacer()
+                            if inspectorDiscountCents > 0 {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    Text("−\(CartMath.formatCents(inspectorDiscountCents))")
+                                        .font(.brandBodyLarge())
+                                        .foregroundStyle(.bizarreTeal)
+                                        .monospacedDigit()
+                                    Button {
+                                        inspectorDiscountCents = 0
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.footnote)
+                                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel("Remove discount")
+                                }
+                            } else {
+                                Button("+ Apply") {
+                                    showingDiscountSheet = true
+                                }
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreTeal)
+                                .buttonStyle(.plain)
+                                .accessibilityIdentifier("pos.inspector.applyDiscount")
+                            }
+                        }
+                    }
+                    Divider().background(.bizarreOutline)
+
+                    // ── Note field ────────────────────────────────────────
+                    inspectorRow {
+                        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                            Text("Note")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                            TextField("Add a note for the receipt…", text: $inspectorNote, axis: .vertical)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .lineLimit(3, reservesSpace: true)
+                                .padding(BrandSpacing.sm)
+                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
+                                .accessibilityIdentifier("pos.inspector.note")
+                        }
+                    }
+                }
+            }
+
+            Divider().background(.bizarreOutline)
+
+            // ── Footer: Remove + Save ─────────────────────────────────────
+            HStack(spacing: BrandSpacing.sm) {
+                Button(role: .destructive) {
+                    cart.removeLine(id: item.id)
+                    editingCartItem = nil
+                    BrandHaptics.tap()
+                } label: {
+                    Text("Remove")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .accessibilityIdentifier("pos.inspector.remove")
+
+                Button {
+                    cart.update(id: item.id, quantity: inspectorQty)
+                    if inspectorDiscountCents != item.discountCents {
+                        cart.update(id: item.id, discountCents: inspectorDiscountCents)
+                    }
+                    if inspectorNote != (item.notes ?? "") {
+                        cart.update(id: item.id, notes: inspectorNote)
+                    }
+                    editingCartItem = nil
+                    BrandHaptics.success()
+                } label: {
+                    Text("Save")
+                        .font(.brandTitleSmall())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, BrandSpacing.sm)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.bizarreOrange)
+                .accessibilityIdentifier("pos.inspector.save")
+            }
+            .padding(BrandSpacing.md)
+            .background(Color.bizarreSurface1)
+        }
+        .background(Color.bizarreSurface1.ignoresSafeArea())
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 24, x: -4, y: 0)
+        .padding(.vertical, BrandSpacing.sm)
+        .padding(.trailing, BrandSpacing.xs)
+        .onAppear {
+            inspectorQty = item.quantity
+            inspectorDiscountCents = item.discountCents
+            inspectorNote = item.notes ?? ""
+        }
+        .onChange(of: item.id) { _, _ in
+            inspectorQty = item.quantity
+            inspectorDiscountCents = item.discountCents
+            inspectorNote = item.notes ?? ""
+        }
+        .accessibilityIdentifier("pos.inspector")
+    }
+
+    /// Uniform padding wrapper for each inspector section row.
+    @ViewBuilder
+    private func inspectorRow<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.sm)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var posToolbar: some ToolbarContent {

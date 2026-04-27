@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, Trash2, X, Save, Zap, AlertCircle, ChevronDown, ChevronUp, FlaskConical } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { automationsApi, settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 // -- Types ------------------------------------------------------------------
 
@@ -84,7 +85,7 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
       onClick={() => onChange(!checked)}
       disabled={disabled}
       className={cn(
-        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-1',
+        'relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-1',
         checked ? 'bg-primary-600' : 'bg-surface-300 dark:bg-surface-600',
         disabled && 'opacity-50 cursor-not-allowed'
       )}
@@ -351,6 +352,13 @@ function AutomationModal({
   const [actionType, setActionType] = useState(rule?.action_type ?? 'send_sms');
   const [actionConfig, setActionConfig] = useState<Record<string, unknown>>(rule?.action_config ?? {});
 
+  // WEB-FX-003: Esc closes the modal so keyboard users aren't trapped.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   function handleSave() {
     if (!name.trim()) {
       toast.error('Name is required');
@@ -363,15 +371,48 @@ function AutomationModal({
     const cleanAction = Object.fromEntries(
       Object.entries(actionConfig).filter(([, v]) => v !== undefined && v !== '')
     );
+    // WEB-FK-005: client-side loop detection. The dangerous shape is
+    // trigger=ticket_status_changed paired with action=change_status — every
+    // status flip the rule does fires the rule again. Reject when the
+    // trigger isn't narrowed to a specific destination that differs from
+    // the action's target. Even the "narrowed to same status" case is a
+    // foot-gun (rule fires forever as long as the system keeps re-emitting
+    // the event), so we forbid it. The only safe shape is when the trigger
+    // is constrained to a `to_status_id` that's NOT equal to the action's
+    // `status_id` — in that case the action moves the ticket out of the
+    // trigger window.
+    if (triggerType === 'ticket_status_changed' && actionType === 'change_status') {
+      const triggerTo = cleanTrigger.to_status_id ? Number(cleanTrigger.to_status_id) : null;
+      const actionStatus = cleanAction.status_id ? Number(cleanAction.status_id) : null;
+      const wouldLoop = triggerTo === null || actionStatus === null || triggerTo === actionStatus;
+      if (wouldLoop) {
+        toast.error(
+          'Loop detected: this rule changes a status while listening for status changes. ' +
+          'Narrow the trigger to a specific "To Status" different from the action target.',
+          { duration: 7000 },
+        );
+        return;
+      }
+    }
     onSave({ name: name.trim(), trigger_type: triggerType, trigger_config: cleanTrigger, action_type: actionType, action_config: cleanAction });
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="automation-rule-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
-          <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h3 id="automation-rule-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {rule ? 'Edit Automation Rule' : 'Create Automation Rule'}
           </h3>
           <button aria-label="Close" onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
@@ -390,7 +431,7 @@ function AutomationModal({
               onChange={(e) => setName(e.target.value)}
               maxLength={255}
               placeholder="e.g. Notify customer on status change"
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
           </div>
 
@@ -400,7 +441,7 @@ function AutomationModal({
             <select
               value={triggerType}
               onChange={(e) => { setTriggerType(e.target.value); setTriggerConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             >
               {TRIGGER_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -420,7 +461,7 @@ function AutomationModal({
             <select
               value={actionType}
               onChange={(e) => { setActionType(e.target.value); setActionConfig({}); }}
-              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full rounded-lg border border-surface-200 bg-white px-3 py-2 text-sm text-surface-900 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             >
               {ACTION_TYPES.map((a) => (
                 <option key={a.value} value={a.value}>{a.label}</option>
@@ -447,7 +488,7 @@ function AutomationModal({
           <button
             onClick={handleSave}
             disabled={saving || !name.trim()}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {rule ? 'Update Rule' : 'Create Rule'}
@@ -652,7 +693,7 @@ export function AutomationsTab() {
         </div>
         <button
           onClick={() => { setEditingRule(null); setShowModal(true); }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> New Rule
         </button>
@@ -669,7 +710,7 @@ export function AutomationsTab() {
             </p>
             <button
               onClick={() => { setEditingRule(null); setShowModal(true); }}
-              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-4 w-4" /> Create First Rule
             </button>
@@ -766,9 +807,9 @@ export function AutomationsTab() {
                     </div>
                     <div className="flex items-center justify-between pt-1">
                       <div className="text-surface-400">
-                        Created: {new Date(rule.created_at.replace(' ', 'T')).toLocaleString()}
+                        Created: {formatDateTime(rule.created_at.replace(' ', 'T'))}
                         {rule.updated_at !== rule.created_at && (
-                          <> | Updated: {new Date(rule.updated_at.replace(' ', 'T')).toLocaleString()}</>
+                          <> | Updated: {formatDateTime(rule.updated_at.replace(' ', 'T'))}</>
                         )}
                       </div>
                       <button

@@ -73,4 +73,18 @@ export interface RecordPaymentInput {
   method_detail?: string;
   transaction_id?: string;
   notes?: string;
+  /**
+   * Booked as a deposit ledger entry (server validates against ['payment','deposit']
+   * — invoices.routes.ts:687-689). Defaults to 'payment' on the server when omitted.
+   * Added 2026-04-24 (WEB-FN-002): the server already supported this field but the
+   * shared input type omitted it, so the deposit-vs-payment split was unselectable
+   * from the web client.
+   */
+  payment_type?: 'payment' | 'deposit';
+  /**
+   * Optional cross-check against the invoice's customer (server reads it at
+   * invoices.routes.ts:674-679 to reject mis-routed payments). Pass it whenever
+   * the caller already has the customer id loaded — server returns 400 on mismatch.
+   */
+  customer_id?: number;
 }

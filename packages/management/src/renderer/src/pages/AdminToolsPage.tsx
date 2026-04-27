@@ -5,6 +5,7 @@ import {
 import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { CopyText } from '@/components/CopyText';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
@@ -39,6 +40,11 @@ export function AdminToolsPage() {
   const [jwtAccess, setJwtAccess] = useState<string | null>(null);
   const [jwtRefresh, setJwtRefresh] = useState<string | null>(null);
   const [jwtInstructions, setJwtInstructions] = useState<string[] | null>(null);
+
+  // DASH-ELEC-173 (Fixer-C24 2026-04-25): replace window.confirm() with
+  // ConfirmDialog for visual + a11y consistency with Tenants/Sessions pages.
+  // confirmTarget tracks which destructive action's dialog is open.
+  const [confirmTarget, setConfirmTarget] = useState<null | 'reset' | 'rotateJwt' | 'backfillDns'>(null);
 
   // Rate-limit inspector
   const [rlRows, setRlRows] = useState<RateLimitRow[]>([]);
@@ -75,21 +81,16 @@ export function AdminToolsPage() {
     return () => clearInterval(id);
   }, []);
 
-  async function handleReset() {
+  function handleReset() {
     if (resetScope === 'single' && !/^[a-z0-9-]{1,64}$/.test(resetTenant)) {
       toast.error('Enter a valid tenant slug (lowercase, hyphens only).');
       return;
     }
-    const proceed = window.confirm(
-      resetScope === 'all'
-        ? `Clear rate-limit rows from the master DB and EVERY tenant DB? ${
-            resetCategoriesAll ? 'ALL categories will be wiped.' : 'Only auth categories (login, totp, pin, etc).'
-          }`
-        : `Clear rate-limit rows for tenant "${resetTenant}"? ${
-            resetCategoriesAll ? 'ALL categories.' : 'Only auth categories.'
-          }`
-    );
-    if (!proceed) return;
+    setConfirmTarget('reset');
+  }
+
+  async function performReset() {
+    setConfirmTarget(null);
     setResetBusy(true);
     setResetResult(null);
     try {
@@ -99,9 +100,11 @@ export function AdminToolsPage() {
       });
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
-        const details = res.data.results.map((r) => ({
+        // DASH-ELEC-272: ternary already narrows to the literal union; the
+        // explicit `as` cast was redundant noise. TS infers correctly.
+        const details = res.data.results.map((r): { label: string; status: 'ok' | 'warn' | 'error'; message: string } => ({
           label: r.dbLabel,
-          status: (r.error ? 'error' : r.skipped ? 'warn' : 'ok') as 'ok' | 'warn' | 'error',
+          status: r.error ? 'error' : r.skipped ? 'warn' : 'ok',
           message: r.error
             ? r.error
             : r.skipped
@@ -129,16 +132,12 @@ export function AdminToolsPage() {
     }
   }
 
-  async function handleRotateJwt() {
-    const proceed = window.confirm(
-      `Generate a new JWT ${jwtPurpose === 'both' ? 'access + refresh' : jwtPurpose} secret?
+  function handleRotateJwt() {
+    setConfirmTarget('rotateJwt');
+  }
 
-` +
-        'The new value is shown ONCE on this screen — copy it before closing. ' +
-        'Paste into .env as the new primary and keep the old value as ' +
-        '{JWT,JWT_REFRESH}_SECRET_PREVIOUS until existing sessions expire.'
-    );
-    if (!proceed) return;
+  async function performRotateJwt() {
+    setConfirmTarget(null);
     setJwtBusy(true);
     try {
       const res = await getAPI().superAdmin.rotateJwtSecret(jwtPurpose);
@@ -158,12 +157,12 @@ export function AdminToolsPage() {
     }
   }
 
-  async function handleBackfillDns() {
-    const proceed = window.confirm(
-      'Re-create Cloudflare DNS records for every active tenant that is missing one? ' +
-        'Idempotent — tenants that already have a record_id are skipped.'
-    );
-    if (!proceed) return;
+  function handleBackfillDns() {
+    setConfirmTarget('backfillDns');
+  }
+
+  async function performBackfillDns() {
+    setConfirmTarget(null);
     setDnsBusy(true);
     setDnsResult(null);
     try {
@@ -171,9 +170,10 @@ export function AdminToolsPage() {
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const { summary, rows } = res.data;
-        const details = rows.map((r) => ({
+        // DASH-ELEC-272: drop redundant `as` cast — return-type annotation pins the union.
+        const details = rows.map((r): { label: string; status: 'ok' | 'warn' | 'error'; message: string } => ({
           label: r.slug,
-          status: (r.status === 'error' ? 'error' : r.status === 'created' ? 'ok' : 'warn') as 'ok' | 'warn' | 'error',
+          status: r.status === 'error' ? 'error' : r.status === 'created' ? 'ok' : 'warn',
           message: r.message ?? (r.recordId ? `record_id ${r.recordId.slice(0, 12)}…` : r.status),
         }));
         setDnsResult({
@@ -305,6 +305,15 @@ export function AdminToolsPage() {
                 <span className="font-mono">{rlSummary.dbsTouched}</span>
                 <span className="text-surface-500 ml-1">DBs</span>
               </span>
+              {/* DASH-ELEC-137: server caps results at 200; surface this so the
+                  operator knows the table isn't the whole picture when the
+                  summary total exceeds what's actually rendered. */}
+              {rlRows.length < rlSummary.total && (
+                <span className="px-2 py-0.5 rounded border border-amber-900/60 bg-amber-950/30 text-amber-300">
+                  Showing <span className="font-mono">{rlRows.length}</span> of{' '}
+                  <span className="font-mono">{rlSummary.total}</span> — narrow filter to see more
+                </span>
+              )}
             </div>
           )}
 
@@ -384,12 +393,22 @@ export function AdminToolsPage() {
                 className="cursor-pointer"
               />
               <span>Single tenant</span>
+              {/* DASH-ELEC-170 (Fixer-B27 2026-04-25): the previous handler ran
+                  `.toLowerCase().trim()` on every keystroke. `.trim()` strips
+                  any whitespace the user just typed, which causes the caret
+                  to jump to the front of the field if they paste a value with
+                  a leading space, and silently discards trailing whitespace
+                  mid-edit before the user is finished. Whitespace handling is
+                  now performed once at submit (`handleReset` already enforces
+                  the `^[a-z0-9-]{1,64}$` regex). For per-keystroke normalisation
+                  we only lowercase + strip internal whitespace, matching what
+                  the slug regex permits without yanking the cursor. */}
               <input
                 type="text"
                 placeholder="tenant-slug"
                 value={resetTenant}
                 disabled={resetScope !== 'single'}
-                onChange={(e) => setResetTenant(e.target.value.toLowerCase().trim())}
+                onChange={(e) => setResetTenant(e.target.value.toLowerCase().replace(/\s/g, ''))}
                 className="ml-2 px-2 py-1 text-xs bg-surface-950 border border-surface-700 rounded text-surface-200 disabled:opacity-40 font-mono w-48"
               />
             </label>
@@ -419,6 +438,52 @@ export function AdminToolsPage() {
         <ActionButton onClick={handleBackfillDns} busy={dnsBusy} label="Run backfill" busyLabel="Running…" />
         <ResultPanel result={dnsResult} />
       </ToolCard>
+
+      {/* DASH-ELEC-173 (Fixer-C24 2026-04-25): ConfirmDialog instances for the
+          three destructive operations. window.confirm was OS-modal which froze
+          the renderer focus and bypassed the app's a11y/focus-trap pattern. */}
+      <ConfirmDialog
+        open={confirmTarget === 'reset'}
+        title="Clear rate-limit rows?"
+        message={
+          resetScope === 'all'
+            ? `This will clear rate-limit rows from the master DB and EVERY tenant DB. ${
+                resetCategoriesAll ? 'ALL categories will be wiped.' : 'Only auth categories (login, totp, pin, etc).'
+              }`
+            : `Clear rate-limit rows for tenant "${resetTenant}"? ${
+                resetCategoriesAll ? 'ALL categories.' : 'Only auth categories.'
+              }`
+        }
+        confirmLabel="Clear rate limits"
+        danger
+        onConfirm={performReset}
+        onCancel={() => setConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        open={confirmTarget === 'rotateJwt'}
+        title="Generate a new JWT secret?"
+        message={
+          `Generate a new JWT ${jwtPurpose === 'both' ? 'access + refresh' : jwtPurpose} secret. ` +
+          'The new value is shown ONCE on this screen — copy it before closing. ' +
+          'Paste into .env as the new primary and keep the old value as ' +
+          '{JWT,JWT_REFRESH}_SECRET_PREVIOUS until existing sessions expire.'
+        }
+        confirmLabel="Generate secret"
+        danger
+        onConfirm={performRotateJwt}
+        onCancel={() => setConfirmTarget(null)}
+      />
+      <ConfirmDialog
+        open={confirmTarget === 'backfillDns'}
+        title="Backfill Cloudflare DNS records?"
+        message={
+          'Re-create Cloudflare DNS records for every active tenant that is missing one. ' +
+          'Idempotent — tenants that already have a record_id are skipped.'
+        }
+        confirmLabel="Run backfill"
+        onConfirm={performBackfillDns}
+        onCancel={() => setConfirmTarget(null)}
+      />
     </div>
   );
 }

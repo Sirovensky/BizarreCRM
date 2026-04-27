@@ -87,7 +87,7 @@ public struct PosIPadCartPanel: View {
 
     private func cartCustomerHeader(customer: PosCustomer) -> some View {
         HStack(spacing: BrandSpacing.md) {
-            // 32pt teal avatar
+            // 42pt teal avatar with strokeBorder ring (mockup: box-shadow 0 0 0 1px rgba(255,255,255,0.12))
             ZStack {
                 Circle()
                     .fill(
@@ -97,11 +97,15 @@ public struct PosIPadCartPanel: View {
                             endPoint: .bottomTrailing
                         )
                     )
+                    .overlay(
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    )
                 Text(customer.initials)
-                    .font(.system(size: 12.5, weight: .bold))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(Color(hex: 0x002D35))
             }
-            .frame(width: 32, height: 32)
+            .frame(width: 42, height: 42)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
@@ -130,8 +134,9 @@ public struct PosIPadCartPanel: View {
                     .accessibilityLabel("\(cart.lineCount) cart lines")
             }
         }
-        .padding(.horizontal, BrandSpacing.md)
-        .padding(.vertical, BrandSpacing.sm)
+        .padding(.horizontal, 18)
+        .padding(.top, 14)
+        .padding(.bottom, 12)
     }
 
     private func customerSubtitle(_ customer: PosCustomer) -> String? {
@@ -150,16 +155,20 @@ public struct PosIPadCartPanel: View {
             onEditItem?(item)
         } label: {
             HStack(alignment: .center, spacing: 12) {
-                // Icon
+                // Icon (mockup: bg rgba(255,255,255,0.04) + border rgba(255,255,255,0.08), 38pt)
                 ZStack {
                     RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.bizarreSurface2.opacity(0.7))
+                        .fill(Color.bizarreOnSurface.opacity(0.04))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .strokeBorder(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1)
+                        )
                     Image(systemName: item.inventoryItemId == nil ? "pencil" : "shippingbox.fill")
                         .font(.system(size: 13))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .accessibilityHidden(true)
                 }
-                .frame(width: 34, height: 34)
+                .frame(width: 38, height: 38)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(item.name)
@@ -287,11 +296,11 @@ public struct PosIPadCartPanel: View {
 
             Divider().background(.bizarreOutline)
 
-            // Total — large
+            // Total — large (mockup: .ttotal .tl uppercase muted + .ta large)
             HStack(alignment: .lastTextBaseline) {
-                Text("Total")
-                    .font(.brandTitleMedium())
-                    .foregroundStyle(.bizarreOnSurface)
+                Text("TOTAL")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                 Spacer()
                 Text(CartMath.formatCents(cart.totalCents))
                     .font(.brandHeadlineMedium())
@@ -366,8 +375,8 @@ public struct PosIPadCartPanel: View {
                         Text("⌘ P")
                             .font(.system(size: 14))
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .frame(maxWidth: .infinity, minHeight: 56)
+                    .padding(.vertical, 17)
                     .padding(.horizontal, 16)
                     .foregroundStyle(Color(hex: 0x2B1400))
                     .background(
@@ -376,11 +385,21 @@ public struct PosIPadCartPanel: View {
                             startPoint: .top,
                             endPoint: .bottom
                         ),
-                        in: RoundedRectangle(cornerRadius: 14)
+                        in: RoundedRectangle(cornerRadius: 18)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 14)
-                            .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+                        // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
+                        RadialGradient(
+                            colors: [Color.white.opacity(0.42), Color.clear],
+                            center: UnitPoint(x: 0.5, y: 0),
+                            startRadius: 0,
+                            endRadius: 60
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 18))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18)
+                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
                     )
                 }
                 .buttonStyle(.plain)
@@ -409,7 +428,7 @@ public struct PosIPadCartPanel: View {
             let isNegative = cents < 0
             Text(isNegative ? "− \(CartMath.formatCents(-cents))" : CartMath.formatCents(cents))
                 .font(emphasized ? .brandHeadlineMedium() : .brandBodyLarge())
-                .foregroundStyle(color ?? (emphasized ? .bizarreOnSurface : .bizarreOnSurface))
+                .foregroundStyle(color ?? (emphasized ? .bizarreOnSurface : .bizarreOnSurfaceMuted))
                 .monospacedDigit()
         }
     }

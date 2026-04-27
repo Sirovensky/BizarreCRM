@@ -12,6 +12,7 @@ import { api } from '@/api/client';
 import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 interface PrintResponse {
   format: 'zpl' | 'pdf';
@@ -52,7 +53,10 @@ export function MassLabelPrintPage() {
       toast.success(`Generated ${data.total_labels} labels`);
       setPreview(data.body);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Print failed'),
+    // WEB-FL-024 (Fixer-C9 2026-04-25): use shared formatApiError instead of
+    // hand-rolled `e?.response?.data?.message` chain so ERR_* + ref id flow
+    // through and non-axios shapes are handled safely.
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const downloadFile = () => {
@@ -138,7 +142,7 @@ export function MassLabelPrintPage() {
           <button
             onClick={() => printMut.mutate()}
             disabled={selected.size === 0 || printMut.isPending}
-            className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-1 text-sm font-semibold text-white disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-md bg-primary-600 px-4 py-1 text-sm font-semibold text-primary-950 disabled:opacity-50"
           >
             {printMut.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

@@ -6,9 +6,9 @@ import DesignSystem
 /// `PosReceiptView` when `PosReceiptPayload.loyaltyDelta` is non-nil and > 0.
 ///
 /// Shows:
-/// - Star glow badge with the points earned
-/// - Tier progress bar (before → after)
-/// - "+N pts earned" label
+/// - Star glow badge with the points earned + tier on the same headline line
+///   e.g. "+55 pts earned · GOLD tier held"
+/// - Progress bar with endpoint labels "GOLD 285 pts" / "PLATINUM 500 pts"
 /// - Optional tier-up crown when `tierBefore != tierAfter`
 ///
 /// Hidden entirely when the payload has no loyalty data.
@@ -21,16 +21,28 @@ public struct PosLoyaltyCelebrationView: View {
     /// loyalty account; defaults to 0.5 for preview.
     public let tierProgress: Double
 
+    /// Total loyalty points after this sale. Shown in the left bar label
+    /// e.g. "GOLD 285 pts". When nil the left label shows the tier name only.
+    public let pointsTotal: Int?
+
+    /// Points threshold for the next tier. Shown in the right bar label
+    /// e.g. "PLATINUM 500 pts". When nil the label shows "Next tier".
+    public let nextTierPoints: Int?
+
     public init(
         pointsDelta: Int,
         tierBefore: String?,
         tierAfter: String?,
-        tierProgress: Double = 0.5
+        tierProgress: Double = 0.5,
+        pointsTotal: Int? = nil,
+        nextTierPoints: Int? = nil
     ) {
         self.pointsDelta = pointsDelta
         self.tierBefore = tierBefore
         self.tierAfter = tierAfter
         self.tierProgress = max(0, min(1, tierProgress))
+        self.pointsTotal = pointsTotal
+        self.nextTierPoints = nextTierPoints
     }
 
     private var didTierUp: Bool {
@@ -43,10 +55,11 @@ public struct PosLoyaltyCelebrationView: View {
             HStack(spacing: BrandSpacing.sm) {
                 starGlow
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    // Headline: "+55 pts earned · GOLD tier held"  (or "Welcome to PLATINUM!")
                     HStack(spacing: BrandSpacing.xs) {
-                        Text("+\(pointsDelta) pts earned")
+                        Text(headlineText)
                             .font(.brandTitleSmall())
-                            .foregroundStyle(.bizarreOnSurface)
+                            .foregroundStyle(.bizarreOrange)
                         if didTierUp {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 12))
@@ -54,12 +67,19 @@ public struct PosLoyaltyCelebrationView: View {
                                 .accessibilityHidden(true)
                         }
                     }
-                    if didTierUp, let after = tierAfter {
+                    // Sub-line: total pts + pts to next tier
+                    if let total = pointsTotal, let next = nextTierPoints {
+                        let toNext = max(0, next - total)
+                        let nextTierName = (didTierUp ? tierAfter : tierAfter) ?? "next tier"
+                        Text("\(total) pts total · \(toNext) to \(nextTierName.uppercased())")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    } else if didTierUp, let after = tierAfter {
                         Text("Welcome to \(after)!")
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreWarning)
                     } else if let tier = tierAfter ?? tierBefore {
-                        Text(tier)
+                        Text(tier.uppercased())
                             .font(.brandLabelSmall())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                     }
@@ -78,6 +98,18 @@ public struct PosLoyaltyCelebrationView: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+    }
+
+    /// Combined headline. Matches mockup: "+55 pts earned · GOLD tier held"
+    /// or "Welcome to PLATINUM!" on tier-up.
+    private var headlineText: String {
+        if didTierUp, let after = tierAfter {
+            return "+\(pointsDelta) pts earned · Welcome to \(after.uppercased())!"
+        }
+        if let tier = tierAfter ?? tierBefore {
+            return "+\(pointsDelta) pts earned · \(tier.uppercased()) tier held"
+        }
+        return "+\(pointsDelta) pts earned"
     }
 
     // MARK: - Sub-views
@@ -109,16 +141,36 @@ public struct PosLoyaltyCelebrationView: View {
 
             // Tier label row — matches mockup "GOLD 285 pts" / "PLATINUM 500 pts"
             HStack {
-                Text(tierBefore?.uppercased() ?? "—")
+                Text(leftBarLabel)
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                 Spacer()
-                Text((didTierUp ? tierAfter : (tierAfter.flatMap { "Next: \($0)" } ?? "Next tier"))?.uppercased() ?? "NEXT TIER")
+                Text(rightBarLabel)
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
         }
         .accessibilityHidden(true)
+    }
+
+    // MARK: - Bar endpoint labels
+
+    /// Left label: "GOLD 285 pts" when pointsTotal is known, else "GOLD".
+    private var leftBarLabel: String {
+        let tier = (tierAfter ?? tierBefore)?.uppercased() ?? "—"
+        if let total = pointsTotal {
+            return "\(tier) \(total) pts"
+        }
+        return tier
+    }
+
+    /// Right label: "PLATINUM 500 pts" when nextTierPoints is known, else "NEXT TIER".
+    private var rightBarLabel: String {
+        let nextTier = (didTierUp ? tierAfter : tierAfter)?.uppercased() ?? "NEXT TIER"
+        if let next = nextTierPoints {
+            return "\(nextTier) \(next) pts"
+        }
+        return nextTier
     }
 
     // MARK: - Accessibility
@@ -137,10 +189,20 @@ public struct PosLoyaltyCelebrationView: View {
 #Preview {
     VStack(spacing: 16) {
         PosLoyaltyCelebrationView(
+            pointsDelta: 55,
+            tierBefore: "Gold",
+            tierAfter: "Gold",
+            tierProgress: 0.57,
+            pointsTotal: 285,
+            nextTierPoints: 500
+        )
+        PosLoyaltyCelebrationView(
             pointsDelta: 127,
             tierBefore: "Gold",
             tierAfter: "Platinum",
-            tierProgress: 1.0
+            tierProgress: 1.0,
+            pointsTotal: 500,
+            nextTierPoints: nil
         )
         PosLoyaltyCelebrationView(
             pointsDelta: 45,

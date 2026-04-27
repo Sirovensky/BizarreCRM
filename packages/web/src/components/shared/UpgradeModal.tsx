@@ -95,13 +95,13 @@ export function UpgradeModal() {
           <X aria-hidden="true" className="h-5 w-5" />
         </button>
 
-        <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 px-8 py-6 text-white">
+        <div className="bg-gradient-to-br from-primary-500 via-primary-600 to-primary-700 px-8 py-6 text-primary-950">
           <div className="flex items-center gap-2">
             <Sparkles aria-hidden="true" className="h-6 w-6" />
             <span className="text-sm font-semibold uppercase tracking-wider">Upgrade to Pro</span>
           </div>
           <h2 id="upgrade-modal-title" className="mt-2 text-2xl font-bold">Unlock {featureLabel}</h2>
-          <p className="mt-1 text-sm text-white/90">
+          <p className="mt-1 text-sm text-primary-900/80">
             Your current plan: <strong>{plan === 'free' ? 'Free' : 'Pro'}</strong>
           </p>
         </div>
@@ -119,7 +119,7 @@ export function UpgradeModal() {
           </h3>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {proFeatures.map((f) => (
-              <li key={f.key} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
+              <li key={f.key as string} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
                 <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
                 <span>{f.label}</span>
               </li>
@@ -138,7 +138,7 @@ export function UpgradeModal() {
             <button
               onClick={handleUpgrade}
               disabled={loading || plan === 'pro'}
-              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Starting checkout…' : plan === 'pro' ? 'Already on Pro' : 'Upgrade to Pro'}
             </button>

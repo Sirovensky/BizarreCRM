@@ -1,12 +1,20 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, lazy, Suspense } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { FileText, Search, ChevronLeft, ChevronRight, Loader2, DollarSign, Receipt, Landmark, AlertCircle, Ban, CheckCircle2, Bell } from 'lucide-react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+// WEB-FW-003 (Fixer-A5 2026-04-25): split recharts (~500kB) into its own
+// chunk so it loads AFTER the invoice list is paintable. The pies render
+// inside a fixed 7rem box that we keep reserved during Suspense fallback,
+// so dropping the chart in late doesn't cause layout shift.
+const InvoicePieChart = lazy(() =>
+  import('./InvoicePieCharts').then((m) => ({ default: m.InvoicePieChart })),
+);
 import toast from 'react-hot-toast';
 import { invoiceApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 const STATUS_TABS = [
   { key: '', label: 'All' },
@@ -56,6 +64,33 @@ function formatInvoiceId(orderId: string | number | null | undefined): string {
   if (!orderId) return '\u2014';
   const s = String(orderId);
   return s.startsWith('INV') ? s : `INV-${s}`;
+}
+
+// @audit-fixed (WEB-FF-017 / Fixer-B1 2026-04-25): UTC-safe parse of a server
+// `due_on` string. Server sometimes returns `2026-04-24` or
+// `2026-04-24T00:00:00` with no `Z` \u2014 Safari treats those as LOCAL time, Chrome
+// as UTC, so a bill "due today" appears overdue on Safari east of UTC. We
+// anchor naive ISO strings to UTC end-of-day so "today is the due date" is
+// never overdue regardless of viewer timezone or browser.
+function parseDueDateMs(due: string | null | undefined): number | null {
+  if (!due) return null;
+  const trimmed = due.trim();
+  if (!trimmed) return null;
+  // Date-only `YYYY-MM-DD` \u2192 end of that calendar day in UTC (one ms before the
+  // following midnight). This matches the server's "due-on date" semantics.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const ms = Date.parse(`${trimmed}T23:59:59.999Z`);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  // Naive datetime `YYYY-MM-DDTHH:MM(:SS)?` (no Z, no offset) \u2192 treat as UTC
+  // by appending Z, instead of Safari's local-time interpretation.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?$/.test(trimmed)) {
+    const ms = Date.parse(`${trimmed}Z`);
+    return Number.isNaN(ms) ? null : ms;
+  }
+  // Already explicit (Z or \u00b1HH:MM) \u2014 let the browser parse it.
+  const ms = Date.parse(trimmed);
+  return Number.isNaN(ms) ? null : ms;
 }
 
 // Matches the subset of invoice row fields the list UI reads. Nullable per
@@ -133,9 +168,8 @@ export function InvoiceListPage() {
     if (!status || status === 'overdue') return 0; // only show count on non-overdue tabs
     return invoices.filter((inv) => {
       if (inv.status !== 'unpaid' && inv.status !== 'partial') return false;
-      if (!inv.due_on) return false;
-      const ts = Date.parse(inv.due_on);
-      return !isNaN(ts) && ts < Date.now();
+      const ts = parseDueDateMs(inv.due_on);
+      return ts !== null && ts < Date.now();
     }).length;
   }, [invoices, status]);
   const stats = statsData?.data?.data;
@@ -162,15 +196,32 @@ export function InvoiceListPage() {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoice-stats'] });
     },
-    onError: () => toast.error('Bulk action failed'),
+    // WEB-FB-023 (Fixer-C9 2026-04-25): surface the server's actual reason
+    // (ERR_* code + ref id) instead of a generic "Bulk action failed". When a
+    // colleague voids one of the selected invoices mid-click, the server now
+    // tells the user which guard tripped via formatApiError's structured
+    // suffix. Note: per-invoice partial-success reporting still requires a
+    // server-side response shape change (separate task) — this just stops
+    // swallowing the message we already get back.
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   // @audit-fixed: confirm before destructive bulk actions (was firing on single click)
-  const handleBulkAction = (action: string, label: string) => {
+  // WEB-FV-001: replaced native window.confirm with confirmStore (async modal)
+  const handleBulkAction = async (action: string, label: string) => {
+    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
     if (bulkMut.isPending) return;
-    const ok = window.confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`);
-    if (!ok) return;
-    bulkMut.mutate({ action });
+    try {
+      const ok = await confirm(`${label} ${selected.size} invoice(s)? This action cannot be undone.`, {
+        title: `${label} invoices`,
+        confirmLabel: label,
+        danger: true,
+      });
+      if (!ok) return;
+      bulkMut.mutate({ action });
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   };
 
   function toggleSelectAll() {
@@ -218,20 +269,20 @@ export function InvoiceListPage() {
               <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Status</h3>
               <div className="flex items-center gap-4">
                 <div className="w-28 h-28">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {statusPieData.map((entry, i) => (
-                          <Cell key={i} fill={PIE_COLORS_STATUS[entry.name] || '#94a3b8'} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [value, 'Count']} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={<div className="w-full h-full" aria-hidden="true" />}>
+                    <InvoicePieChart
+                      data={statusPieData}
+                      colorFor={(entry) => PIE_COLORS_STATUS[entry.name] || '#94a3b8'}
+                    />
+                  </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
-                  {statusPieData.map((s, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
+                  {/* WEB-FF-014 (Fixer-B7 2026-04-25): key by status `name`
+                      (stable across re-renders) instead of array index — keeps
+                      legend animations/highlights pinned to the right status
+                      when the chart slice ordering shifts on data refresh. */}
+                  {statusPieData.map((s) => (
+                    <div key={s.name} className="flex items-center gap-2 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_STATUS[s.name] || '#94a3b8' }} />
                       <span className="capitalize text-surface-600 dark:text-surface-400">{s.name}</span>
                       <span className="font-medium text-surface-800 dark:text-surface-200">{s.value}</span>
@@ -246,20 +297,19 @@ export function InvoiceListPage() {
               <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Payment Methods</h3>
               <div className="flex items-center gap-4">
                 <div className="w-28 h-28">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={methodPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={25} outerRadius={50} paddingAngle={2}>
-                        {methodPieData.map((_, i) => (
-                          <Cell key={i} fill={PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => [value, 'Count']} />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <Suspense fallback={<div className="w-full h-full" aria-hidden="true" />}>
+                    <InvoicePieChart
+                      data={methodPieData}
+                      colorFor={(_entry, i) => PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length]}
+                    />
+                  </Suspense>
                 </div>
                 <div className="flex flex-col gap-1">
+                  {/* WEB-FF-014 (Fixer-B7 2026-04-25): key by method `name` for
+                      stable React reconciliation. `i` is still passed to the
+                      style for color rotation — keying != coloring. */}
                   {methodPieData.map((m, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs">
+                    <div key={m.name} className="flex items-center gap-2 text-xs">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: PIE_COLORS_METHOD[i % PIE_COLORS_METHOD.length] }} />
                       <span className="text-surface-600 dark:text-surface-400">{m.name}</span>
                       <span className="font-medium text-surface-800 dark:text-surface-200">{m.value}</span>
@@ -305,7 +355,7 @@ export function InvoiceListPage() {
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <input type="text" placeholder="Search invoices..." value={searchInput} onChange={(e) => handleSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors" />
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
         </div>
       </div>
 
@@ -375,7 +425,8 @@ export function InvoiceListPage() {
                 </thead>
                 <tbody className="divide-y divide-surface-100 dark:divide-surface-700/50">
                   {invoices.map((inv: any) => {
-                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && inv.due_on && new Date(inv.due_on) < new Date();
+                    const dueMs = parseDueDateMs(inv.due_on);
+                    const isOverdue = (inv.status === 'unpaid' || inv.status === 'partial') && dueMs !== null && dueMs < Date.now();
                     const isSelected = selected.has(inv.id);
                     return (
                     <tr key={inv.id} onClick={() => navigate(`/invoices/${inv.id}`)}
@@ -454,7 +505,7 @@ export function InvoiceListPage() {
                         p.set('page', '1');
                         setSearchParams(p, { replace: true });
                       }}
-                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                     >
                       {[10, 25, 50, 100, 250].map((n) => (
                         <option key={n} value={n}>{n}</option>

@@ -5,12 +5,12 @@ import { posApi, blockchypApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatCurrency } from '@/utils/format';
 import { useUnifiedPosStore } from './store';
 import { useSettings } from '@/hooks/useSettings';
 import { useQuery } from '@tanstack/react-query';
 import { PinModal } from '@/components/shared/PinModal';
 import { CashDrawerWidget } from './CashDrawerWidget';
-import { TrainingModeBanner, useIsTraining } from './TrainingModeBanner';
 import type { RepairCartItem } from './types';
 
 // ─── Cash In/Out Modal ──────────────────────────────────────────────
@@ -25,6 +25,15 @@ function CashModal({ type, onClose }: CashModalProps) {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // WEB-FX-003: Esc dismisses unless we're mid-submit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
+
   const handleSubmit = async () => {
     const num = parseFloat(amount);
     if (!num || num <= 0) {
@@ -35,7 +44,9 @@ function CashModal({ type, onClose }: CashModalProps) {
     try {
       const fn = type === 'in' ? posApi.cashIn : posApi.cashOut;
       await fn({ amount: num, reason: reason.trim() || undefined });
-      toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: $${num.toFixed(2)}`);
+      // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): hardcoded `$` + `toFixed(2)`
+      // → tenant-aware currency formatter.
+      toast.success(`Cash ${type === 'in' ? 'in' : 'out'}: ${formatCurrency(num)}`);
       onClose();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : `Cash ${type} failed`);
@@ -45,10 +56,21 @@ function CashModal({ type, onClose }: CashModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cash-modal-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="cash-modal-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Cash {type === 'in' ? 'In' : 'Out'}
           </h3>
           <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -64,7 +86,7 @@ function CashModal({ type, onClose }: CashModalProps) {
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="0.00"
               autoFocus
             />
@@ -75,7 +97,7 @@ function CashModal({ type, onClose }: CashModalProps) {
               type="text"
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="e.g. Change for customer"
             />
           </div>
@@ -109,11 +131,31 @@ interface SignatureGateModalProps {
 }
 
 function SignatureGateModal({ state, error, signatureFile, onRetry, onBypass, onCancel, onProceed }: SignatureGateModalProps) {
+  // WEB-FX-003: Esc cancels (but only when not actively waiting on hardware).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && state !== 'pending') onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, state]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && state !== 'pending') onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signature-gate-title"
+        className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="signature-gate-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Customer Signature Required
           </h3>
           <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -198,7 +240,6 @@ export function BottomActions() {
   // If the cart grows past this amount, re-approval is required.
   const approvedAtCentsRef = useRef<number>(0);
   const { getSetting } = useSettings();
-  const isTraining = useIsTraining();
 
   // Audit §43.12: manager PIN on high-value sales. Threshold is cents,
   // stored in store_config.pos_manager_pin_threshold. 0 / null disables.
@@ -315,7 +356,11 @@ export function BottomActions() {
     setCreatingTicket(true);
     try {
       const payload = buildTicketPayload(signatureFile);
-      const res = await posApi.checkoutWithTicket(payload);
+      // WEB-FH-001 / WEB-FH-002: same stable cart-session idempotency key
+      // as the checkout path — covers the create-ticket-without-payment
+      // double-submit case (button click + keyboard Enter race).
+      const idempotencyKey = useUnifiedPosStore.getState().ensureIdempotencyKey();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
       setShowSuccess({ ...res.data.data, mode: 'create_ticket' });
       // Advance the ticket tutorial when a ticket is successfully saved.
       window.dispatchEvent(new CustomEvent('pos:ticket-saved'));
@@ -392,8 +437,6 @@ export function BottomActions() {
           </button>
           {/* Audit §43.4/§43.8: cash drawer shift controls + Z-report */}
           <CashDrawerWidget />
-          {/* Audit §43.15: training/sandbox mode toggle */}
-          <TrainingModeBanner />
         </div>
         <div className="flex items-center gap-4">
           <button
@@ -428,7 +471,7 @@ export function BottomActions() {
               setShowCheckout(true);
             }}
             disabled={!hasItems}
-            title={isTraining ? 'Training mode — sale will not be recorded' : needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
+            title={needsManagerPin ? `Manager PIN required (>${(managerThresholdCents / 100).toFixed(0)})` : !hasItems ? 'Add items to cart first' : ''}
             className={cn(
               'rounded-lg border px-6 py-2.5 text-base font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40',
               hasItems
@@ -522,11 +565,31 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
     }
   };
 
+  // WEB-FX-003: Esc cancels unless mid-verify.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !verifying) onCancel();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onCancel, verifying]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !verifying) onCancel();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="manager-pin-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-50">
+          <h3 id="manager-pin-title" className="text-sm font-semibold text-surface-900 dark:text-surface-50">
             Manager PIN required
           </h3>
           <button aria-label="Close" onClick={onCancel} className="rounded p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800">
@@ -547,9 +610,9 @@ function ManagerPinModal({ saleCents, thresholdCents, onSuccess, onCancel }: Man
             autoFocus
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="Manager PIN"
-            className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 px-3 py-2 text-center text-xl tracking-[0.4em] focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
           />
-          {error && <p className="text-center text-xs text-red-500">{error}</p>}
+          {error && <p role="alert" aria-live="polite" className="text-center text-xs text-red-500">{error}</p>}
           <div className="flex gap-2">
             <button
               type="button"

@@ -244,9 +244,17 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), async (r
   // Defence-in-depth: requirePermission above is authoritative.
   if (req.user?.role !== 'admin' && req.user?.role !== 'manager') throw new AppError('Admin or manager access required', 403);
   const adb: AsyncDb = req.asyncDb;
-  const { item_ids, action, value } = req.body;
+  const { item_ids, action, value, reason } = req.body;
   if (!Array.isArray(item_ids) || item_ids.length === 0) throw new AppError('item_ids array required', 400);
   if (!action) throw new AppError('action is required', 400);
+  // WEB-FH-012: bulk price changes need an auditable reason (tax write-down,
+  // supplier-cost change, MAP correction). Free-text, capped at 240 chars to
+  // keep the audit row small. Required only for `update_price` so we don't
+  // break delete / update_category / update_item_type callers.
+  const trimmedReason = typeof reason === 'string' ? reason.trim().slice(0, 240) : '';
+  if (action === 'update_price' && !trimmedReason) {
+    throw new AppError('reason is required for bulk price updates', 400);
+  }
 
   let affected = 0;
   for (const id of item_ids) {
@@ -276,7 +284,15 @@ router.post('/bulk-action', requirePermission('inventory.bulk_action'), async (r
     }
   }
 
-  audit(req.db, 'inventory_bulk_action', req.user!.id, req.ip || 'unknown', { action, item_count: item_ids.length, affected });
+  audit(req.db, 'inventory_bulk_action', req.user!.id, req.ip || 'unknown', {
+    action,
+    item_count: item_ids.length,
+    affected,
+    // WEB-FH-012: persist the reason on the audit row so compliance can
+    // reconstruct margin-change history without joining to a separate table.
+    reason: trimmedReason || undefined,
+    value: value !== undefined ? value : undefined,
+  });
   res.json({ success: true, data: { affected } });
 });
 

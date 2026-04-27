@@ -257,7 +257,7 @@ export function TicketNotes({
                     addNoteMut.mutate({ type: noteType, content: noteContent.trim(), is_flagged: noteFlagged });
                   }}
                   disabled={addNoteMut.isPending || !noteContent.trim()}
-                  className="inline-flex items-center justify-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center justify-center gap-1 rounded-md bg-primary-600 hover:bg-primary-700 text-primary-950 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1 text-xs font-medium disabled:opacity-50 transition-colors"
                 >
                   {addNoteMut.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   Save
@@ -281,13 +281,13 @@ export function TicketNotes({
         {!smsMode ? (
           <textarea value={noteContent} onChange={(e) => setNoteContent(e.target.value)}
             rows={3} placeholder={`Enter ${noteType} comment...`}
-            className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none resize-y" />
+            className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y" />
         ) : (
           <div>
             <textarea value={smsContent} onChange={(e) => setSmsContent(e.target.value)}
               rows={3} placeholder="Type SMS message..."
               maxLength={1600}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none resize-y" />
+              className="w-full px-3 py-2 text-sm bg-white dark:bg-surface-900 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-y" />
             {smsContent.length > 0 && (
               <div className="px-3 pb-1 text-right text-[10px] text-surface-400">
                 {smsContent.length} / {Math.ceil(smsContent.length / 160) || 1} segment{Math.ceil(smsContent.length / 160) > 1 ? 's' : ''}

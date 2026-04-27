@@ -13,7 +13,7 @@
  * to be 100% correct when they are.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus,
@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { deviceTemplateApi, inventoryApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 
 interface TemplatePart {
   inventory_item_id: number;
@@ -69,10 +70,35 @@ const EMPTY_FORM: TemplateForm = {
 
 const CATEGORIES = ['phone', 'tablet', 'laptop', 'tv', 'watch', 'other'];
 
+// WEB-FF-001 / FIXED-by-Fixer-ZZ 2026-04-25 — float * 100 + round drops a cent
+// when the dollar input came from a binary-fp computation (e.g. 0.1+0.2). Parse
+// the input as a string and split on the decimal so 19.995 -> 1999, 19.99 ->
+// 1999, 0.1 -> 10 deterministically. Falls back to 0 on bad input.
+function dollarsToCents(value: number | string): number {
+  const raw = String(value ?? '').trim();
+  if (!raw) return 0;
+  const m = raw.match(/^(-?)(\d*)(?:\.(\d{0,2}))?\d*$/);
+  if (!m) {
+    const fallback = Number(raw);
+    return Number.isFinite(fallback) ? Math.round(fallback * 100) : 0;
+  }
+  const [, sign, whole, frac = ''] = m;
+  const cents = Number(whole || '0') * 100 + Number((frac + '00').slice(0, 2) || '0');
+  return sign === '-' ? -cents : cents;
+}
+
 export function DeviceTemplatesPage() {
   const qc = useQueryClient();
   const [editing, setEditing] = useState<TemplateForm | null>(null);
   const [partSearch, setPartSearch] = useState('');
+
+  // WEB-FX-003: Esc closes the editor modal so keyboard users aren't trapped.
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setEditing(null); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [editing]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['device-templates-admin'],
@@ -103,8 +129,8 @@ export function DeviceTemplatesPage() {
         device_model: form.device_model || null,
         fault: form.fault || null,
         est_labor_minutes: form.est_labor_minutes,
-        est_labor_cost: Math.round(form.est_labor_cost_dollars * 100),
-        suggested_price: Math.round(form.suggested_price_dollars * 100),
+        est_labor_cost: dollarsToCents(form.est_labor_cost_dollars),
+        suggested_price: dollarsToCents(form.suggested_price_dollars),
         warranty_days: form.warranty_days,
         parts: form.parts.map((p) => ({ inventory_item_id: p.inventory_item_id, qty: p.qty })),
         diagnostic_checklist: form.diagnostic_checklist,
@@ -216,7 +242,7 @@ export function DeviceTemplatesPage() {
         </div>
         <button
           onClick={() => setEditing({ ...EMPTY_FORM })}
-          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+          className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> New template
         </button>
@@ -272,8 +298,11 @@ export function DeviceTemplatesPage() {
                   <Pencil className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm(`Delete template "${t.name}"?`)) deleteMut.mutate(t.id);
+                  onClick={async () => {
+                    // WEB-FB-007 (Fixer-QQQ 2026-04-25): swap native confirm for
+                    // themed async confirm so the dialog respects dark mode +
+                    // brand fonts and queues correctly with other modals.
+                    if (await confirm(`Delete template "${t.name}"?`, { danger: true, confirmLabel: 'Delete' })) deleteMut.mutate(t.id);
                   }}
                   className="rounded-lg p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                 >
@@ -286,13 +315,16 @@ export function DeviceTemplatesPage() {
       )}
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onClick={() => setEditing(null)}>
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="device-tpl-edit-title"
             className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+              <h2 id="device-tpl-edit-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
                 {editing.id ? 'Edit template' : 'New template'}
               </h2>
               <button onClick={() => setEditing(null)} className="p-1 text-surface-400 hover:text-surface-600">
@@ -302,13 +334,23 @@ export function DeviceTemplatesPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-xs font-semibold uppercase text-surface-500">Name *</label>
+                <label htmlFor="dt-name" className="mb-1 block text-xs font-semibold uppercase text-surface-500">Name *</label>
                 <input
+                  id="dt-name"
                   value={editing.name}
                   onChange={(e) => setEditing({ ...editing, name: e.target.value })}
                   placeholder="iPhone 13 Screen Replacement"
-                  className="w-full rounded-lg border border-surface-200 bg-surface-50 p-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+                  required
+                  aria-required="true"
+                  aria-invalid={!editing.name.trim() ? true : undefined}
+                  aria-describedby={!editing.name.trim() ? 'dt-name-error' : undefined}
+                  className={`w-full rounded-lg border bg-surface-50 p-2 text-sm dark:bg-surface-900 dark:text-surface-100 ${!editing.name.trim() ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`}
                 />
+                {!editing.name.trim() && (
+                  <p id="dt-name-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">
+                    Name is required.
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-2">
@@ -507,7 +549,7 @@ export function DeviceTemplatesPage() {
               <button
                 onClick={() => saveMut.mutate(editing)}
                 disabled={!editing.name || saveMut.isPending}
-                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+                className="flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
               >
                 {saveMut.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" />

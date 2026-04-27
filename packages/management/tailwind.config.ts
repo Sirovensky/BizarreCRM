@@ -16,16 +16,16 @@ export default {
         // project-wide primary across Android, web, and management. Dark
         // end of ramp = onPrimary `#2b1400` dark brown for AA on light fills.
         primary: {
-          50:  '#fffdf8',
-          100: '#fdf5e1',
-          200: '#fdeed0',   // ← brand cream
-          300: '#f5dca7',
-          400: '#e9c477',
-          500: '#d6a54b',
-          600: '#a66d1f',   // caramel, AA on light
-          700: '#7d4e14',
-          800: '#56330b',
-          900: '#2b1400',
+          50:  '#fffefb',
+          100: '#fefcf4',
+          200: '#fdf8e8',
+          300: '#fdf4d6',
+          400: '#fdf0c8',
+          500: '#fdeed0',   // ← brand cream (canonical primary — matches iOS/Android dark accent)
+          600: '#f5dca7',   // warm honey (hover on dark surfaces)
+          700: '#e9c477',   // golden (active/focus on dark)
+          800: '#d6a54b',   // amber
+          900: '#2b1400',   // onPrimary dark brown
           950: '#1a0b00',
         },
         accent: {

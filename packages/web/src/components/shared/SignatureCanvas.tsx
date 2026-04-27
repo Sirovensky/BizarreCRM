@@ -35,12 +35,40 @@ function getGuideColors() {
   };
 }
 
+function computePenColor(explicit?: string): string {
+  if (explicit) return explicit;
+  const cssVar = (typeof getComputedStyle !== 'undefined'
+    ? getComputedStyle(document.documentElement).getPropertyValue('--signature-pen-color').trim()
+    : '');
+  if (cssVar) return cssVar;
+  return isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR;
+}
+
 export function SignatureCanvas({ onSave, width = 400, height = 150, initialValue, penColor }: SignatureCanvasProps) {
-  const resolvedPenColor = penColor
-    || (typeof getComputedStyle !== 'undefined'
-      ? getComputedStyle(document.documentElement).getPropertyValue('--signature-pen-color').trim()
-      : '')
-    || (isDarkMode() ? DARK_PEN_COLOR : LIGHT_PEN_COLOR);
+  // WEB-S5-021 (FIXED-by-Fixer-A19 2026-04-25): the original implementation
+  // computed `resolvedPenColor` synchronously during render. If the parent
+  // mounts SignatureCanvas before the `dark` class lands on <html> (e.g. when
+  // the theme listener applies after the first paint, or the canvas is in a
+  // modal that opens during the system-theme flip), the first render reads
+  // the wrong scheme and bakes the LIGHT pen color into the canvas context
+  // for what should be a dark-mode signature. Move the resolution into state
+  // updated by an effect so we re-resolve once on mount, plus subscribe to
+  // the system color-scheme media query so a runtime flip re-paints the pen.
+  const [resolvedPenColor, setResolvedPenColor] = useState<string>(() => computePenColor(penColor));
+  useEffect(() => {
+    setResolvedPenColor(computePenColor(penColor));
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = () => setResolvedPenColor(computePenColor(penColor));
+    try {
+      mql.addEventListener('change', handler);
+    } catch {
+      return;
+    }
+    return () => {
+      try { mql.removeEventListener('change', handler); } catch { /* legacy */ }
+    };
+  }, [penColor]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasSignature, setHasSignature] = useState(!!initialValue);

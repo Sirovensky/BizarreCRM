@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Search, ShoppingCart, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -10,7 +11,7 @@ import type { ProductCartItem } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500';
 
 // ─── ProductsTab ────────────────────────────────────────────────────
 
@@ -52,7 +53,27 @@ export function ProductsTab() {
       taxable: true,
       taxInclusive: !!product.tax_inclusive,
     };
-    addProduct(item);
+    // WEB-FH-004: pass available stock so the store can clamp the running
+    // cart quantity. Services (item_type==='service') have no in_stock so
+    // skip the cap. Toast warns the cashier when the cap engages.
+    const isService = product.item_type === 'service';
+    const stockCap = isService ? undefined : Number(product.in_stock ?? 0);
+    if (stockCap === 0 && !isService) {
+      toast.error(`${product.name} is out of stock`);
+      return;
+    }
+    // Look up current cart qty for this inventoryItemId BEFORE the add so
+    // we can compare against the cap and toast if we hit it.
+    const cartItems = useUnifiedPosStore.getState().cartItems;
+    const existing = cartItems.find(
+      (c) => c.type === 'product' && c.inventoryItemId === product.id,
+    );
+    const existingQty = existing && existing.type === 'product' ? existing.quantity : 0;
+    if (stockCap != null && existingQty + 1 > stockCap) {
+      toast.error(`Only ${stockCap} of "${product.name}" in stock`);
+      return;
+    }
+    addProduct(item, { stockCap });
   };
 
   return (
@@ -80,7 +101,7 @@ export function ProductsTab() {
               className={cn(
                 'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
                 !category
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 text-primary-950'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
               )}
             >
@@ -93,7 +114,7 @@ export function ProductsTab() {
                 className={cn(
                   'flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium transition-colors',
                   category === cat
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 text-surface-600 hover:bg-surface-200 dark:bg-surface-800 dark:text-surface-300 dark:hover:bg-surface-700',
                 )}
               >

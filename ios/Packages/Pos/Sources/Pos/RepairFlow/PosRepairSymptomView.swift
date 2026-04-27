@@ -67,6 +67,7 @@ public struct PosRepairSymptomView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Step 2/4 progress bar pinned directly below nav bar (3pt strip, 33%)
+            // Gradient: primary (orange) → primary-bright, left → right per mockup.
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
@@ -74,7 +75,7 @@ public struct PosRepairSymptomView: View {
                     Rectangle()
                         .fill(
                             LinearGradient(
-                                colors: [Color.bizarreOrange, Color.bizarreOrange.opacity(0.7)],
+                                colors: [Color.bizarreOrange, Color.bizarreOrangeBright],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
@@ -204,7 +205,7 @@ public struct PosRepairSymptomView: View {
                 }
             } label: {
                 HStack {
-                    Text(selectedCondition.map { "\($0.displayName) — visible damage" } ?? "Select condition…")
+                    Text(selectedCondition.map { $0.displayName } ?? "Select condition…")
                         .font(.system(size: 13.5, weight: .semibold))
                         .foregroundStyle(selectedCondition == nil ? .bizarreOnSurfaceMuted : .bizarreOnSurface)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
@@ -296,14 +297,14 @@ public struct PosRepairSymptomView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(12)
-                // Dashed amber border per mockup: rgba(232,163,61,0.45)
-                .background(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
+                // Dashed amber border per mockup: rgba(232,163,61,0.45) — use bizarreWarning token.
+                .background(Color.bizarreWarning.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(
+                            Color.bizarreWarning.opacity(0.45),
                             style: StrokeStyle(lineWidth: 1, dash: [5, 3])
                         )
-                        .foregroundStyle(Color(red: 0.91, green: 0.64, blue: 0.24).opacity(0.45))
                 )
                 .onChange(of: internalNotes) { _, _ in
                     vm.internalNotes = internalNotes
@@ -329,21 +330,28 @@ public struct PosRepairSymptomView: View {
                 coordinator.advance()
                 BrandHaptics.tapMedium()
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     if coordinator.isLoading {
                         ProgressView()
-                            .tint(.white)
+                            .tint(Color.bizarreOnPrimary)
                     } else {
                         Text("Next → diagnostic quote")
                             .font(.brandTitleSmall())
-                        Image(systemName: "chevron.right")
+                        Text("›")
+                            .font(.system(size: 15, weight: .bold))
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, BrandSpacing.sm)
+                .background(
+                    (!vm.isValid || coordinator.isLoading)
+                        ? Color.bizarreOrange.opacity(0.4)
+                        : Color.bizarreOrange,
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+                .foregroundStyle(Color.bizarreOnPrimary)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.bizarreOrange)
+            .buttonStyle(.plain)
             .disabled(!vm.isValid || coordinator.isLoading)
             .accessibilityLabel("Continue to diagnostic quote")
             .accessibilityHint("Advances to step 3 of 4")

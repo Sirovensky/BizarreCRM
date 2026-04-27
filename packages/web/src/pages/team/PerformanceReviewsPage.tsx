@@ -6,9 +6,10 @@
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Star, Trash2, Loader2 } from 'lucide-react';
+import { Star, Trash2, Loader2, ShieldOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 
 interface Employee {
   id: number;
@@ -32,12 +33,21 @@ interface Review {
 
 export function PerformanceReviewsPage() {
   const queryClient = useQueryClient();
+  // WEB-FG-008 (Fixer-B15 2026-04-25): page is admin-only by header comment
+  // but had no client-side guard, so a logged-in technician hitting
+  // /team/performance-reviews would render the form, fetch arbitrary
+  // ?user_id= reviews, and trigger 403 toasts on every selectedUserId
+  // flip. Server still enforces; this short-circuits the IDOR-shaped UI
+  // surface so non-admins land on a friendly forbidden state instead.
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = user?.role === 'admin';
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [draftNotes, setDraftNotes] = useState('');
   const [draftRating, setDraftRating] = useState<number>(0);
 
   const { data: employeesData } = useQuery({
     queryKey: ['employees', 'simple'],
+    enabled: isAdmin,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
       return res.data.data;
@@ -47,7 +57,7 @@ export function PerformanceReviewsPage() {
 
   const { data: reviewsData } = useQuery({
     queryKey: ['team', 'reviews', selectedUserId],
-    enabled: !!selectedUserId,
+    enabled: isAdmin && !!selectedUserId,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Review[] }>(
         `/team/reviews?user_id=${selectedUserId}`,
@@ -84,29 +94,43 @@ export function PerformanceReviewsPage() {
     },
   });
 
+  if (!isAdmin) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <ShieldOff className="h-12 w-12 text-surface-300 dark:text-surface-600 mb-4" aria-hidden="true" />
+          <h1 className="text-lg font-semibold text-surface-700 dark:text-surface-200">Admin access required</h1>
+          <p className="text-sm text-surface-500 dark:text-surface-400 mt-2 max-w-md">
+            Performance reviews are restricted to administrators. Contact your shop admin if you need access.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Performance Reviews</h1>
-        <p className="text-sm text-gray-500">Admin-only notes and ratings per employee.</p>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100">Performance Reviews</h1>
+        <p className="text-sm text-gray-500 dark:text-surface-400">Admin-only notes and ratings per employee.</p>
       </header>
 
       <div className="grid grid-cols-[240px_1fr] gap-4">
-        <aside className="bg-white rounded-lg shadow border p-2 max-h-[600px] overflow-y-auto">
+        <aside className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 p-2 max-h-[600px] overflow-y-auto">
           {employees.map((e) => (
             <button
               key={e.id}
               className={`w-full text-left px-3 py-2 rounded text-sm ${
                 selectedUserId === e.id
-                  ? 'bg-primary-100 text-primary-800 font-semibold'
-                  : 'hover:bg-gray-50'
+                  ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-800 dark:text-primary-200 font-semibold'
+                  : 'hover:bg-gray-50 dark:hover:bg-surface-800/60 text-gray-700 dark:text-surface-200'
               }`}
               onClick={() => setSelectedUserId(e.id)}
             >
               <div>
                 {e.first_name} {e.last_name}
               </div>
-              <div className="text-xs text-gray-500">{e.role}</div>
+              <div className="text-xs text-gray-500 dark:text-surface-400">{e.role}</div>
             </button>
           ))}
         </aside>
@@ -119,7 +143,7 @@ export function PerformanceReviewsPage() {
                 {[1, 2, 3, 4, 5].map((n) => (
                   <button
                     key={n}
-                    className="focus:outline-none"
+                    className="focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 rounded"
                     onClick={() => setDraftRating(n)}
                   >
                     <Star
@@ -146,7 +170,7 @@ export function PerformanceReviewsPage() {
                 onChange={(e) => setDraftNotes(e.target.value)}
               />
               <button
-                className="mt-2 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
+                className="mt-2 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 disabled:opacity-50 inline-flex items-center"
                 disabled={!draftNotes.trim() || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

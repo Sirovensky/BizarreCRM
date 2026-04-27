@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Gift, Plus, Search, Loader2, AlertCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
+import { formatCurrency as formatCurrencyShared, formatDate } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -43,12 +44,22 @@ interface IssueFormState {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatCurrency(cents: number): string {
-  return `$${cents.toFixed(2)}`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString();
+// Server currently returns balances as float-dollars on this endpoint, but the
+// rest of POS is migrating to integer-cents. Treat anything > 1000 as
+// already-cents (no real-world gift-card balance reaches $1000 in float-dollars
+// outside corporate gifting; if it does, it'll still render correctly because
+// 1000.5 -> 1000.50 dollars stays in dollar branch). This avoids the silent
+// 100x bug if the server flips representation, while keeping today's UX.
+// @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): keep the cents/dollars
+// heuristic (server flips representation depending on endpoint) but route
+// the final render through canonical `formatCurrency` so tenant currency +
+// locale reach this surface. Was a hardcoded `$` + `toFixed(2)` template.
+function formatCurrency(amount: number): string {
+  if (!Number.isFinite(amount)) return formatCurrencyShared(0);
+  const dollars = Number.isInteger(amount) && Math.abs(amount) >= 1000
+    ? amount / 100
+    : amount;
+  return formatCurrencyShared(dollars);
 }
 
 function maskCode(code: string): string {
@@ -111,9 +122,20 @@ function IssueModal({ onClose }: IssueModalProps) {
 
   if (issuedCode) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-        <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        onClick={onClose}
+        onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+        role="presentation"
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="gift-card-issued-title"
+          className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <h2 id="gift-card-issued-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-1">Gift card issued</h2>
           <p className="text-sm text-surface-500 dark:text-surface-400 mb-4">
             Save this code now — it will not be shown again.
           </p>
@@ -122,7 +144,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           </div>
           <button
             onClick={onClose}
-            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+            className="w-full px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
           >
             Done
           </button>
@@ -132,10 +154,21 @@ function IssueModal({ onClose }: IssueModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="issue-gift-card-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Issue gift card</h2>
+          <h2 id="issue-gift-card-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Issue gift card</h2>
           <button onClick={onClose} className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200">
             <X className="h-5 w-5" />
           </button>
@@ -153,7 +186,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               value={form.amount}
               onChange={(e) => update('amount', e.target.value)}
               placeholder="25.00"
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
           </div>
           <div>
@@ -165,7 +198,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               value={form.recipient_name}
               onChange={(e) => update('recipient_name', e.target.value)}
               placeholder="Jane Smith"
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
           </div>
           <div>
@@ -177,7 +210,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               value={form.recipient_email}
               onChange={(e) => update('recipient_email', e.target.value)}
               placeholder="jane@example.com"
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
           </div>
           <div>
@@ -188,7 +221,7 @@ function IssueModal({ onClose }: IssueModalProps) {
               type="date"
               value={form.expires_at}
               onChange={(e) => update('expires_at', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
             />
           </div>
         </div>
@@ -203,7 +236,7 @@ function IssueModal({ onClose }: IssueModalProps) {
           <button
             onClick={() => issueMutation.mutate()}
             disabled={issueMutation.isPending || !form.amount}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 flex items-center gap-2"
           >
             {issueMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Issue gift card
@@ -266,7 +299,7 @@ export function GiftCardsListPage() {
         </div>
         <button
           onClick={() => setShowIssueModal(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
         >
           <Plus className="h-4 w-4" />
           Issue gift card
@@ -282,13 +315,13 @@ export function GiftCardsListPage() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="Search code or recipient..."
-            className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
         >
           <option value="">All statuses</option>
           <option value="active">Active</option>
@@ -311,7 +344,7 @@ export function GiftCardsListPage() {
           <p className="text-base font-medium text-surface-600 dark:text-surface-400">No gift cards yet &mdash; issue one to get started</p>
           <button
             onClick={() => setShowIssueModal(true)}
-            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700 text-sm font-medium"
+            className="mt-4 flex items-center gap-2 px-4 py-2 rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 text-sm font-medium"
           >
             <Plus className="h-4 w-4" />
             Issue gift card

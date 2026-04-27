@@ -51,6 +51,18 @@ export class PageErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // eslint-disable-next-line no-console
     console.error('PageErrorBoundary caught:', error, info.componentStack);
+    // WEB-FI-022: forward to global error reporter (Sentry/Datadog) when
+    // production deploys assign window.__bizarrecrm_reportError in main.tsx.
+    // Skip for chunk-load errors since those are deploy-rotation false alarms
+    // and the auto-reload below handles them.
+    if (!isChunkLoadError(error)) {
+      try {
+        const w = window as unknown as { __bizarrecrm_reportError?: (e: Error, ctx: unknown) => void };
+        w.__bizarrecrm_reportError?.(error, { boundary: 'PageErrorBoundary', componentStack: info.componentStack });
+      } catch {
+        // reporter threw — swallow so the auto-reload path below still runs
+      }
+    }
 
     // Stale lazy-chunk after deploy: auto-reload ONCE per (url, recent
     // window). Sentinel stores `{ ts, url }` so two independent conditions
@@ -68,7 +80,13 @@ export class PageErrorBoundary extends Component<Props, State> {
       try {
         const raw = sessionStorage.getItem(CHUNK_RELOAD_SENTINEL);
         const now = Date.now();
-        const url = window.location.href;
+        // WEB-FD-023: previously keyed on `window.location.href`, which
+        // includes the search/hash fragments. A page that errors at
+        // `/tickets?status=open` then redirects to `/tickets?status=closed`
+        // (or just toggles a hash) would each get a fresh "first reload"
+        // pass and could loop indefinitely. Strip query+hash so the loop
+        // guard is by pathname only — chunk URLs do not depend on them.
+        const url = window.location.pathname;
         let alreadyTriedForThisUrl = false;
         if (raw) {
           try {
@@ -122,7 +140,7 @@ export class PageErrorBoundary extends Component<Props, State> {
             <div className="flex items-center justify-center gap-3">
               <button
                 onClick={this.handleReload}
-                className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors"
               >
                 <RotateCcw className="h-4 w-4" />
                 Reload

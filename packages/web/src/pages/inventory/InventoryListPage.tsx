@@ -6,7 +6,9 @@ import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { toCsvRow } from '@/utils/csv';
+import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
+import { formatCurrency } from '@/utils/format';
 
 // CROSS3: "service" tab removed — services are non-stockable labor and
 // live in the `repair_services` table, not `inventory_items`. Existing
@@ -60,6 +62,9 @@ export function InventoryListPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
   const [priceAdjustPct, setPriceAdjustPct] = useState('');
+  // WEB-FH-012: required reason note for bulk price adjustments so the
+  // audit log captures WHO + WHY, matching the per-item adjustStock flow.
+  const [priceAdjustReason, setPriceAdjustReason] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
   const [importPreview, setImportPreview] = useState<any[]>([]);
@@ -213,6 +218,13 @@ export function InventoryListPage() {
   // Stock adjust confirmation for low-stock view
   const [stockConfirm, setStockConfirm] = useState<{ id: number; name: string; delta: number } | null>(null);
   const [dismissConfirm, setDismissConfirm] = useState(false);
+  // Order-All queue: popup-blockers cap a single click at 1 new tab, so we
+  // present the remaining links as a list the user can click one-by-one
+  // (each click is a fresh user gesture and bypasses the quota).
+  const [orderAllQueue, setOrderAllQueue] = useState<
+    Array<{ id: number; name: string; url: string; supplier: string }>
+  >([]);
+  const [orderAllOpened, setOrderAllOpened] = useState<Set<number>>(new Set());
   const lowStockCount = lowStockData?.data?.data?.items?.length || 0;
   const manufacturers: string[] = manufacturersData?.data?.data?.manufacturers || [];
   const suppliers: any[] = suppliersData?.data?.data?.suppliers || [];
@@ -227,8 +239,8 @@ export function InventoryListPage() {
   });
 
   const bulkMutation = useMutation({
-    mutationFn: ({ ids, action, value }: { ids: number[]; action: string; value?: string | number }) =>
-      inventoryApi.bulkAction(ids, action, value),
+    mutationFn: ({ ids, action, value, reason }: { ids: number[]; action: string; value?: string | number; reason?: string }) =>
+      inventoryApi.bulkAction(ids, action, value, reason),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       setSelectedIds(new Set());
@@ -296,18 +308,25 @@ export function InventoryListPage() {
     const pct = parseFloat(priceAdjustPct);
     if (isNaN(pct)) { toast.error('Enter a valid percentage'); return; }
     if (pct < -100 || pct > 500) { toast.error('Adjustment must be between -100% and +500%'); return; }
-    bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct });
+    // WEB-FH-012: require an audit reason. Mirrors the adjustStock note flow
+    // so compliance can answer "why did margin drop on these SKUs?".
+    const reason = priceAdjustReason.trim();
+    if (reason.length < 3) { toast.error('Enter a reason for the price change'); return; }
+    bulkMutation.mutate({ ids: Array.from(selectedIds), action: 'update_price', value: pct, reason });
     setShowBulkPriceModal(false);
     setPriceAdjustPct('');
+    setPriceAdjustReason('');
   };
 
   // CSV Export
   // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
+  // WEB-FH-010: prepend UTF-8 BOM so Excel on Windows opens accented /
+  //   non-Latin SKUs and manufacturer names without mojibake.
   const handleExport = () => {
     const headers = ['id', 'name', 'sku', 'item_type', 'in_stock', 'cost_price', 'retail_price', 'reorder_level', 'manufacturer', 'category'];
     const rows = items.map(i => headers.map(h => i[h] ?? ''));
     const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -317,18 +336,36 @@ export function InventoryListPage() {
   };
 
   // CSV Import parse
+  // WEB-FH-011: use shared RFC-4180 parser instead of naive split(',') so
+  //   quoted fields containing commas (e.g. `"Smith, Jr Inc."`) round-trip
+  //   correctly with our own export.
   const parseImportCsv = (text: string) => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) { toast.error('CSV must have a header row and at least one data row'); return; }
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
     const rows = lines.slice(1).map(line => {
-      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       return obj;
     });
     setImportPreview(rows);
   };
+
+  // WEB-FX-003: shared Esc-to-close for the page-level modals on this page.
+  // Closes the most-recently-opened first.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (stockConfirm) { setStockConfirm(null); return; }
+      if (dismissConfirm) { setDismissConfirm(false); return; }
+      if (orderAllQueue.length > 0) { setOrderAllQueue([]); setOrderAllOpened(new Set()); return; }
+      if (showBulkPriceModal) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); return; }
+      if (showImportModal) { setShowImportModal(false); setImportText(''); setImportPreview([]); return; }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showBulkPriceModal, showImportModal, stockConfirm, dismissConfirm, orderAllQueue.length]);
 
   // Price preview for bulk update
   const pricePreviewItems = useMemo(() => {
@@ -388,7 +425,7 @@ export function InventoryListPage() {
           </button>
           <Link
             to="/inventory/new"
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm"
           >
             <Plus className="h-4 w-4" />
             New Item
@@ -436,7 +473,7 @@ export function InventoryListPage() {
             placeholder="Search by name, SKU, UPC..."
             value={searchInput}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors"
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors"
           />
         </div>
         <button
@@ -541,7 +578,7 @@ export function InventoryListPage() {
             </label>
           </div>
           <div className="col-span-full flex gap-2 mt-1">
-            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors">
+            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-primary-950 hover:bg-primary-700 transition-colors">
               Apply
             </button>
             <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">
@@ -589,31 +626,61 @@ export function InventoryListPage() {
                     <>
                       <button
                         onClick={() => {
-                          // Group items by supplier source and open cart URLs
-                          const plpItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'phonelcdparts');
-                          const msItems = items.filter((i: any) => i.supplier_url && i.supplier_source === 'mobilesentrix');
-                          let opened = 0;
+                          // Browsers cap window.open() to 1 tab per user gesture
+                          // (popup blocker). Looping `for (...) window.open(...)`
+                          // silently drops every tab after the first. Instead:
+                          // open the first item synchronously inside the click
+                          // (counts as the gesture's allowed popup), then queue
+                          // the rest into a panel where each item is opened by
+                          // its own click — one user gesture per tab.
+                          // WEB-FB-014 (Fixer-B10 2026-04-25): drop `any` cast in
+                          // bulk supplier filter — define the minimal shape used
+                          // here so a backend rename of `supplier_url` /
+                          // `supplier_source` surfaces at typecheck instead of
+                          // silently yielding empty filter results.
+                          interface SupplierItemRow {
+                            id: number | string;
+                            name?: string;
+                            sku?: string;
+                            supplier_url?: string | null;
+                            supplier_source?: string | null;
+                          }
+                          const supplierRows = items as SupplierItemRow[];
+                          const plpItems = supplierRows.filter((i) => i.supplier_url && i.supplier_source === 'phonelcdparts');
+                          const msItems = supplierRows.filter((i) => i.supplier_url && i.supplier_source === 'mobilesentrix');
+                          const validated: Array<{ id: number; name: string; url: string; supplier: string }> = [];
                           let skipped = 0;
-                          // Open each supplier URL. Validate protocol first so
-                          // a poisoned `javascript:` / `data:` URL from the
-                          // catalog can't execute code in the new window.
-                          for (const item of [...plpItems, ...msItems].slice(0, 20)) {
+                          for (const item of [...plpItems, ...msItems]) {
                             try {
                               const parsed = new URL(String(item.supplier_url));
                               if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
                                 skipped++;
                                 continue;
                               }
-                              window.open(parsed.href, '_blank', 'noopener,noreferrer');
-                              opened++;
+                              validated.push({
+                                id: Number(item.id),
+                                name: String(item.name || item.sku || `Item #${item.id}`),
+                                url: parsed.href,
+                                supplier: String(item.supplier_source || ''),
+                              });
                             } catch {
                               skipped++;
                             }
                           }
-                          if (opened > 0) toast.success(`Opened ${opened} supplier pages`);
-                          if (plpItems.length + msItems.length > 20) toast(`Showing first 20 of ${plpItems.length + msItems.length}. Open rest manually.`);
+                          if (validated.length === 0) {
+                            if (skipped > 0) toast.error(`Skipped ${skipped} item${skipped > 1 ? 's' : ''} with invalid supplier URL`);
+                            else toast.error('No supplier URLs found for these items');
+                            return;
+                          }
+                          // Open the first synchronously (within the user gesture)
+                          // and mark it as opened so the panel shows progress.
+                          const first = validated[0];
+                          window.open(first.url, '_blank', 'noopener,noreferrer');
+                          setOrderAllOpened(new Set([first.id]));
+                          setOrderAllQueue(validated);
                           if (skipped > 0) toast.error(`Skipped ${skipped} item${skipped > 1 ? 's' : ''} with invalid supplier URL`);
-                          if (opened === 0 && skipped === 0) toast.error('No supplier URLs found for these items');
+                          if (validated.length > 1) toast(`Opened 1 of ${validated.length}. Click the rest in the side panel — popup-blockers require one click per tab.`);
+                          else toast.success('Opened supplier page');
                         }}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-teal-600 text-white hover:bg-teal-700 transition-colors"
                       >
@@ -764,7 +831,7 @@ export function InventoryListPage() {
                       )}
                       {isColVisible('cost') && (
                       <td className="px-4 py-3 text-sm text-surface-500 dark:text-surface-400">
-                        {item.cost_price > 0 ? `$${Number(item.cost_price).toFixed(2)}` : '\u2014'}
+                        {item.cost_price > 0 ? formatCurrency(Number(item.cost_price)) : '\u2014'}
                       </td>
                       )}
                       {isColVisible('price') && (
@@ -772,7 +839,7 @@ export function InventoryListPage() {
                         {Number(item.retail_price) === 0 ? (
                           <span className="text-surface-400 dark:text-surface-500 italic">No price</span>
                         ) : (
-                          <>${Number(item.retail_price).toFixed(2)}</>
+                          <>{formatCurrency(Number(item.retail_price))}</>
                         )}
                       </td>
                       )}
@@ -809,7 +876,7 @@ export function InventoryListPage() {
                     <select
                       value={pageSize}
                       onChange={(e) => { const v = e.target.value; localStorage.setItem('inventory_pagesize', v); setSavedPageSize(Number(v)); const p = new URLSearchParams(searchParams); p.set('pagesize', v); p.set('page', '1'); setSearchParams(p, { replace: true }); }}
-                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                     >
                       {[10, 25, 50, 100, 250].map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -842,11 +909,17 @@ export function InventoryListPage() {
 
       {/* Bulk Price Update Modal */}
       {showBulkPriceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bulk-price-title"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); } }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
-              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); }} className="text-surface-400 hover:text-surface-600">
+              <h3 id="bulk-price-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Update Prices</h3>
+              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -857,6 +930,24 @@ export function InventoryListPage() {
               <input type="number" value={priceAdjustPct} onChange={e => setPriceAdjustPct(e.target.value)}
                 placeholder="e.g. 10 for +10%, -15 for -15%"
                 className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2" />
+            </div>
+            {/* WEB-FH-012: reason captured for audit trail (margin changes
+                must be defensible to tax/compliance). Server requires it. */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+                Reason <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={priceAdjustReason}
+                onChange={e => setPriceAdjustReason(e.target.value)}
+                maxLength={240}
+                placeholder="e.g. Supplier cost increase, MAP correction, seasonal markdown"
+                className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2"
+              />
+              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+                Recorded in the inventory audit log alongside who + when.
+              </p>
             </div>
             {pricePreviewItems.length > 0 && (
               <div className="flex-1 overflow-auto mb-4 max-h-60">
@@ -870,9 +961,9 @@ export function InventoryListPage() {
                     {pricePreviewItems.slice(0, 20).map((p, i) => (
                       <tr key={i} className="border-b border-surface-100 dark:border-surface-700/50">
                         <td className="py-1 truncate max-w-[200px]">{p.name}</td>
-                        <td className="py-1 text-right text-surface-500">${p.current.toFixed(2)}</td>
+                        <td className="py-1 text-right text-surface-500">{formatCurrency(p.current)}</td>
                         <td className={cn('py-1 text-right font-medium', p.new > p.current ? 'text-green-600' : p.new < p.current ? 'text-red-600' : '')}>
-                          ${p.new.toFixed(2)}
+                          {formatCurrency(p.new)}
                         </td>
                       </tr>
                     ))}
@@ -881,12 +972,15 @@ export function InventoryListPage() {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); }}
+              <button onClick={() => { setShowBulkPriceModal(false); setPriceAdjustPct(''); setPriceAdjustReason(''); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">
                 Cancel
               </button>
-              <button onClick={handlePriceUpdate} disabled={!priceAdjustPct}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+              <button
+                onClick={handlePriceUpdate}
+                disabled={!priceAdjustPct || priceAdjustReason.trim().length < 3}
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+              >
                 Apply to {selectedIds.size} items
               </button>
             </div>
@@ -896,10 +990,16 @@ export function InventoryListPage() {
 
       {/* Import CSV Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="import-csv-title"
+          onClick={(e) => { if (e.target === e.currentTarget) { setShowImportModal(false); setImportText(''); setImportPreview([]); } }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Inventory CSV</h3>
+              <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Inventory CSV</h3>
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
@@ -959,7 +1059,7 @@ export function InventoryListPage() {
               <button
                 onClick={() => importMutation.mutate(importPreview)}
                 disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5"
               >
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} items
@@ -970,9 +1070,20 @@ export function InventoryListPage() {
       )}
       {/* Dismiss all low stock confirmation */}
       {dismissConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6">
-            <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setDismissConfirm(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dismiss-low-stock-title"
+            className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="dismiss-low-stock-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
               Dismiss All Low Stock Alerts
             </h3>
             <p className="text-sm text-surface-600 dark:text-surface-400 mb-1">
@@ -1007,6 +1118,76 @@ export function InventoryListPage() {
         </div>
       )}
 
+      {/* Order All on Supplier Sites — popup-blocker-safe queue */}
+      {orderAllQueue.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-labelledby="order-all-title">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-5 max-h-[80vh] flex flex-col">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h3 id="order-all-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                  Order on supplier sites
+                </h3>
+                <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+                  {orderAllOpened.size} of {orderAllQueue.length} opened. Click each row to open in a new tab — popup blockers require one click per tab.
+                </p>
+              </div>
+              <button
+                onClick={() => { setOrderAllQueue([]); setOrderAllOpened(new Set()); }}
+                aria-label="Close supplier order list"
+                className="text-surface-400 hover:text-surface-700 dark:hover:text-surface-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ul className="flex-1 overflow-y-auto -mx-1 px-1 space-y-1.5 mt-2">
+              {orderAllQueue.map((entry) => {
+                const opened = orderAllOpened.has(entry.id);
+                return (
+                  <li key={entry.id}>
+                    <a
+                      href={entry.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => {
+                        // Each link click is its own user gesture, so the
+                        // browser allows the popup. Mark it opened for UX.
+                        setOrderAllOpened((prev) => {
+                          const next = new Set(prev);
+                          next.add(entry.id);
+                          return next;
+                        });
+                      }}
+                      className={cn(
+                        'flex items-center justify-between gap-3 px-3 py-2 rounded-lg border text-sm transition-colors',
+                        opened
+                          ? 'border-teal-200 bg-teal-50 dark:border-teal-800 dark:bg-teal-900/20'
+                          : 'border-surface-200 dark:border-surface-700 hover:bg-surface-50 dark:hover:bg-surface-800'
+                      )}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-medium text-surface-900 dark:text-surface-100">{entry.name}</span>
+                        <span className="block truncate text-xs text-surface-400">{entry.supplier}</span>
+                      </span>
+                      <span className="text-xs font-medium text-teal-700 dark:text-teal-300">
+                        {opened ? 'Opened ✓' : 'Open'}
+                      </span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-3 flex justify-end">
+              <button
+                onClick={() => { setOrderAllQueue([]); setOrderAllOpened(new Set()); }}
+                className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Variance Analysis Modal */}
       {showVarianceModal && (
         <VarianceAnalysisModal onClose={() => setShowVarianceModal(false)} />
@@ -1025,9 +1206,20 @@ export function InventoryListPage() {
 
       {/* Stock adjustment confirmation dialog */}
       {stockConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6">
-            <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setStockConfirm(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="adjust-stock-title"
+            className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="adjust-stock-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
               Adjust Stock
             </h3>
             <p className="text-sm text-surface-600 dark:text-surface-400 mb-4">
@@ -1097,6 +1289,15 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
 
   // Auto-focus input on mount and after each scan
   useEffect(() => { inputRef.current?.focus(); }, [scannedItems.length]);
+
+  // WEB-FX-003: Esc dismisses unless we're mid-submit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !submitting) onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, submitting]);
 
   const handleScan = async (barcode: string) => {
     const trimmed = barcode.trim();
@@ -1199,35 +1400,50 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
         received = res.data.data?.received?.length || 0;
       }
 
-      // 2. Create from catalog matches
-      for (const item of scannedItems.filter(s => s.status === 'catalog' && s.catalogMatch)) {
-        try {
-          await inventoryApi.receiveScanFromCatalog({
+      // 2. Create from catalog matches — WEB-FF-009: run in parallel via
+      // Promise.allSettled so a 50-row session takes 1× RTT instead of 50×.
+      // Errors stay per-item: rejected promises still toast the failing row.
+      const catalogTargets = scannedItems.filter(s => s.status === 'catalog' && s.catalogMatch);
+      if (catalogTargets.length > 0) {
+        const results = await Promise.allSettled(catalogTargets.map(item =>
+          inventoryApi.receiveScanFromCatalog({
             catalog_id: item.catalogMatch!.id,
             quantity: item.quantity,
-          });
-          created++;
-        } catch (err: any) {
-          const msg = err?.response?.data?.message || 'Failed';
-          toast.error(`${item.catalogMatch!.name}: ${msg}`);
-        }
+          }),
+        ));
+        results.forEach((r, idx) => {
+          if (r.status === 'fulfilled') {
+            created++;
+          } else {
+            const item = catalogTargets[idx];
+            const msg = (r.reason as any)?.response?.data?.message || 'Failed';
+            toast.error(`${item.catalogMatch!.name}: ${msg}`);
+          }
+        });
       }
 
-      // 3. Quick-add unknown items
-      for (const item of scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name)) {
-        try {
-          await inventoryApi.receiveScanQuickAdd({
+      // 3. Quick-add unknown items — WEB-FF-009: same parallelization as above.
+      const quickTargets = scannedItems.filter(s => s.status === 'unknown' && s.quickAdd?.name);
+      if (quickTargets.length > 0) {
+        const results = await Promise.allSettled(quickTargets.map(item =>
+          inventoryApi.receiveScanQuickAdd({
             barcode: item.barcode,
             name: item.quickAdd!.name,
             cost_price: parseFloat(item.quickAdd!.cost_price) || undefined,
             retail_price: parseFloat(item.quickAdd!.retail_price) || undefined,
             category: item.quickAdd!.category || undefined,
             quantity: item.quantity,
-          });
-          created++;
-        } catch (err: any) {
-          toast.error(`${item.quickAdd!.name}: ${err?.response?.data?.message || 'Failed'}`);
-        }
+          }),
+        ));
+        results.forEach((r, idx) => {
+          if (r.status === 'fulfilled') {
+            created++;
+          } else {
+            const item = quickTargets[idx];
+            const msg = (r.reason as any)?.response?.data?.message || 'Failed';
+            toast.error(`${item.quickAdd!.name}: ${msg}`);
+          }
+        });
       }
 
       setSummary({ received, created });
@@ -1246,16 +1462,27 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   // Summary screen after successful receive
   if (summary) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-        <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-8 w-full max-w-md text-center">
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onComplete();
+        }}
+      >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receive-summary-title"
+          className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-8 w-full max-w-md text-center"
+          onClick={(e) => e.stopPropagation()}
+        >
           <div className="text-5xl mb-4">&#9989;</div>
-          <h3 className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Items Received</h3>
+          <h3 id="receive-summary-title" className="text-xl font-bold text-surface-900 dark:text-surface-100 mb-2">Items Received</h3>
           <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.received} existing items restocked</p>
           {summary.created > 0 && (
             <p className="text-surface-600 dark:text-surface-400 mb-1">{summary.created} new items created</p>
           )}
           <button onClick={onComplete}
-            className="mt-6 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors">
+            className="mt-6 px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors">
             Done
           </button>
         </div>
@@ -1264,12 +1491,23 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="receive-items-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-surface-200 dark:border-surface-700">
           <div>
-            <h3 className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+            <h3 id="receive-items-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
               <ScanBarcode className="h-5 w-5 text-primary-600" /> Receive Items
             </h3>
             <p className="text-sm text-surface-500 mt-0.5">Scan barcodes or type SKU/UPC to receive inventory</p>
@@ -1292,12 +1530,12 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                 onKeyDown={handleKeyDown}
                 placeholder="Scan barcode or type SKU..."
                 autoFocus
-                className="w-full pl-9 pr-4 py-2.5 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 text-sm focus:border-primary-500 focus:outline-none"
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border-2 border-primary-300 dark:border-primary-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 text-sm focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
               />
               {scanning && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary-500" />}
             </div>
             <button onClick={() => handleScan(barcodeInput)} disabled={!barcodeInput.trim() || scanning}
-              className="px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+              className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
               Add
             </button>
           </div>
@@ -1344,7 +1582,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                       </p>
                       <p className="text-xs text-surface-500">{item.barcode}
                         {item.currentStock != null && <span className="ml-2">Current: {item.currentStock}</span>}
-                        {item.catalogMatch && <span className="ml-2">${item.catalogMatch.cost_price?.toFixed(2)} ({item.catalogMatch.source})</span>}
+                        {item.catalogMatch && <span className="ml-2">{formatCurrency(item.catalogMatch.cost_price ?? 0)} ({item.catalogMatch.source})</span>}
                       </p>
                     </div>
 
@@ -1405,7 +1643,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                 Cancel
               </button>
               <button onClick={handleReceiveAll} disabled={submitting || readyCount === 0}
-                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Receive {readyCount} Items
               </button>
@@ -1463,13 +1701,28 @@ function VarianceAnalysisModal({ onClose }: { onClose: () => void }) {
       .finally(() => setLoading(false));
   }, [months]);
 
+  // WEB-FX-003: Esc dismisses.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-4xl max-h-[85vh] rounded-xl bg-white dark:bg-surface-900 shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="variance-analysis-title"
+        className="w-full max-w-4xl max-h-[85vh] rounded-xl bg-white dark:bg-surface-900 shadow-2xl flex flex-col"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-surface-200 dark:border-surface-700">
           <div>
-            <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+            <h2 id="variance-analysis-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
               <TrendingDown className="h-5 w-5 text-red-500" />
               Variance Analysis
             </h2>
@@ -1645,7 +1898,7 @@ function InventoryEmptyState({ activeFilterCount, keyword }: InventoryEmptyState
       <div className="mt-5 flex items-center gap-3">
         <Link
           to="/inventory/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add an item
         </Link>

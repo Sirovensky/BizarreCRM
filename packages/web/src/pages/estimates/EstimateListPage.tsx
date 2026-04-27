@@ -10,6 +10,7 @@ import { estimateApi, customerApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Status config ───────────────────────────────────────────────
 const ESTIMATE_STATUSES = [
@@ -92,6 +93,16 @@ function CreateEstimateModal({
     return () => document.removeEventListener('mousedown', handleClick);
   }, [showCustomerDropdown]);
 
+  // Esc-to-close (gated on `open`)
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   const createMut = useMutation({
     mutationFn: (data: any) => estimateApi.create(data),
     onSuccess: () => {
@@ -132,10 +143,16 @@ function CreateEstimateModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8">
-      <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-estimate-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 overflow-y-auto py-8 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-2xl rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Estimate</h2>
+          <h2 id="new-estimate-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Estimate</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -312,7 +329,7 @@ function CreateEstimateModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Estimate
@@ -430,7 +447,7 @@ export function EstimateListPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" />
           New Estimate
@@ -581,10 +598,18 @@ export function EstimateListPage() {
                           {(est.status === 'draft' || est.status === 'sent') && (
                             <button
                               type="button"
+                              // WEB-FM-020 (Fixer-C26 2026-04-25): wrap async
+                              // handler in try/catch so a `confirm()` modal-
+                              // teardown rejection doesn't surface as an
+                              // uncaught promise on window.onunhandledrejection.
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
-                                  sendMut.mutate(est.id);
+                                try {
+                                  if (await confirm(`Send this estimate to the customer${est.status === 'sent' ? ' again' : ''}?`)) {
+                                    sendMut.mutate(est.id);
+                                  }
+                                } catch (err) {
+                                  toast.error(formatApiError(err));
                                 }
                               }}
                               // Mutually disable all row actions while any mutation is in flight —
@@ -601,10 +626,15 @@ export function EstimateListPage() {
                           {est.status !== 'converted' && est.status !== 'rejected' && (
                             <button
                               type="button"
+                              // WEB-FM-020 (Fixer-C26 2026-04-25): see Send button above.
                               onClick={async (e) => {
                                 e.stopPropagation();
-                                if (await confirm('Convert this estimate to a ticket?')) {
-                                  convertMut.mutate(est.id);
+                                try {
+                                  if (await confirm('Convert this estimate to a ticket?')) {
+                                    convertMut.mutate(est.id);
+                                  }
+                                } catch (err) {
+                                  toast.error(formatApiError(err));
                                 }
                               }}
                               disabled={anyMutationPending}
@@ -617,10 +647,15 @@ export function EstimateListPage() {
                           )}
                           <button
                             type="button"
+                            // WEB-FM-020 (Fixer-C26 2026-04-25): see Send button above.
                             onClick={async (e) => {
                               e.stopPropagation();
-                              if (await confirm('Delete this estimate?', { danger: true })) {
-                                deleteMut.mutate(est.id);
+                              try {
+                                if (await confirm('Delete this estimate?', { danger: true })) {
+                                  deleteMut.mutate(est.id);
+                                }
+                              } catch (err) {
+                                toast.error(formatApiError(err));
                               }
                             }}
                             disabled={anyMutationPending}
@@ -655,7 +690,7 @@ export function EstimateListPage() {
                     p.set('page', '1');
                     setSearchParams(p, { replace: true });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>
@@ -697,7 +732,7 @@ export function EstimateListPage() {
                     className={cn(
                       'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-primary-950'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
                   >

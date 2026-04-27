@@ -151,6 +151,7 @@ struct PaymentLinkRow: View {
                         .font(.brandMono(size: 11))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .lineLimit(1)
+                        .textSelection(.enabled)
                 }
             }
             Spacer()
@@ -160,11 +161,18 @@ struct PaymentLinkRow: View {
                     .foregroundStyle(.bizarreOrange)
             }
             .buttonStyle(.plain)
+            .hoverEffect(.highlight)
             .disabled(link.url.isEmpty)
             .accessibilityLabel("Copy payment URL")
             .accessibilityIdentifier("paymentLinks.row.copy")
         }
         .padding(.vertical, BrandSpacing.xs)
+        .contextMenu {
+            Button(action: onCopy) {
+                Label("Copy URL", systemImage: "doc.on.doc")
+            }
+            .disabled(link.url.isEmpty)
+        }
     }
 }
 

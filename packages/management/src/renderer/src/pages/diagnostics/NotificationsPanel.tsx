@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { downloadCsv, toCsv } from '@/utils/csv';
+import { CopyText } from '@/components/CopyText';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
 
@@ -174,9 +175,16 @@ export function NotificationsPanel({ slug }: { slug: string }) {
                     <td className="py-1.5 px-2 text-surface-400 max-w-md truncate" title={r.subject ?? r.error ?? ''}>
                       {r.subject ?? '—'}
                       {r.error && (
-                        <div className="text-[11px] text-red-400 mt-0.5 truncate" title={r.error}>
+                        // DASH-ELEC-283: keyboard-accessible + click-to-copy
+                        // so SMTP errors >100 chars can be lifted out of the
+                        // truncated cell without a hover-only tooltip dance.
+                        <CopyText
+                          value={r.error}
+                          className="text-[11px] text-red-400 mt-0.5 truncate block"
+                          toastLabel="Copied error"
+                        >
                           {r.error}
-                        </div>
+                        </CopyText>
                       )}
                     </td>
                     <td className="py-1.5 px-2">

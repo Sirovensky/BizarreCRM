@@ -37,10 +37,15 @@ export function DiagnosticsPage() {
   }, [requested, active, params, setParams]);
 
   useEffect(() => {
-    let cancelled = false;
+    // DASH-ELEC-011 (Fixer-B26 2026-04-25): swap ad-hoc `cancelled` boolean
+    // for AbortController. signal.aborted gates state-setters identically;
+    // when the IPC bridge supports it, we can pass `controller.signal`
+    // through to actually terminate the in-flight request.
+    const controller = new AbortController();
+    const { signal } = controller;
     getAPI().superAdmin.listTenants()
       .then((res) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setTenants(res.data.tenants);
@@ -48,9 +53,9 @@ export function DiagnosticsPage() {
           if (first) setSelectedSlug(first.slug);
         }
       })
-      .catch((err) => console.warn('[Diagnostics] listTenants failed', err))
-      .finally(() => !cancelled && setTenantsLoading(false));
-    return () => { cancelled = true; };
+      .catch((err) => { if (!signal.aborted) console.warn('[Diagnostics] listTenants failed', err); })
+      .finally(() => { if (!signal.aborted) setTenantsLoading(false); });
+    return () => { controller.abort(); };
   }, []);
 
   function setTab(id: TabId) {
@@ -114,19 +119,43 @@ export function DiagnosticsPage() {
       {tenantsLoading ? (
         <p className="text-xs text-surface-500">Loading tenants…</p>
       ) : tenants.length === 0 ? (
-        <p className="text-xs text-surface-500">No tenants found.</p>
+        <p className="text-xs text-surface-500">No tenants found</p>
       ) : !selectedSlug ? (
         <p className="text-xs text-surface-500">Select a tenant above to start diagnosing.</p>
       ) : (
-        <div
-          role="tabpanel"
-          id={`tabpanel-${active}`}
-          aria-labelledby={`tab-${active}`}
-          className="flex-1 min-h-0"
-        >
-          {active === 'notifications' && <NotificationsPanel slug={selectedSlug} />}
-          {active === 'webhooks' && <WebhookFailuresPanel slug={selectedSlug} />}
-          {active === 'automations' && <AutomationRunsPanel slug={selectedSlug} />}
+        // DASH-ELEC-074 (Fixer-C24 2026-04-25): keep all three panels mounted
+        // and toggle visibility via `hidden` so flipping tabs doesn't unmount
+        // the active panel (which previously caused a flash of empty state +
+        // re-fetch). aria-labelledby is set per panel; hidden=true short-
+        // circuits screen readers from announcing inactive panels.
+        <div className="flex-1 min-h-0">
+          <div
+            role="tabpanel"
+            id="tabpanel-notifications"
+            aria-labelledby="tab-notifications"
+            hidden={active !== 'notifications'}
+            className={active === 'notifications' ? 'h-full' : ''}
+          >
+            <NotificationsPanel slug={selectedSlug} />
+          </div>
+          <div
+            role="tabpanel"
+            id="tabpanel-webhooks"
+            aria-labelledby="tab-webhooks"
+            hidden={active !== 'webhooks'}
+            className={active === 'webhooks' ? 'h-full' : ''}
+          >
+            <WebhookFailuresPanel slug={selectedSlug} />
+          </div>
+          <div
+            role="tabpanel"
+            id="tabpanel-automations"
+            aria-labelledby="tab-automations"
+            hidden={active !== 'automations'}
+            className={active === 'automations' ? 'h-full' : ''}
+          >
+            <AutomationRunsPanel slug={selectedSlug} />
+          </div>
         </div>
       )}
     </div>

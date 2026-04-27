@@ -24,7 +24,6 @@ import {
   ChevronsRight,
   ChevronDown,
   ChevronRight,
-  Zap,
   Receipt,
   Store,
   ListTodo,
@@ -33,6 +32,14 @@ import {
   Target,
   TrendingUp,
   Gift,
+  Star,
+  Phone,
+  DollarSign,
+  BookOpen,
+  Smartphone,
+  Repeat,
+  Award,
+  Trophy,
 } from 'lucide-react';
 
 interface NavItem {
@@ -67,15 +74,21 @@ const navSections: NavSection[] = [
     title: 'Operations',
     items: [
       { label: 'Inventory', path: '/inventory', icon: Package },
+      { label: 'Catalog', path: '/catalog', icon: BookOpen },
       { label: 'Invoices', path: '/invoices', icon: FileText },
       { label: 'Expenses', path: '/expenses', icon: Receipt },
       { label: 'Purchase Orders', path: '/purchase-orders', icon: Package },
+      { label: 'Cash Register', path: '/cash-register', icon: DollarSign },
+      { label: 'Loaners', path: '/loaners', icon: Smartphone },
+      { label: 'Gift Cards', path: '/gift-cards', icon: Gift },
+      { label: 'Subscriptions', path: '/subscriptions', icon: Repeat },
     ],
   },
   {
     title: 'Communications',
     items: [
       { label: 'Messages', path: '/communications', icon: MessageSquare },
+      { label: 'Voice Calls', path: '/voice', icon: Phone },
       { label: 'Leads', path: '/leads', icon: UserPlus },
       { label: 'Pipeline', path: '/pipeline', icon: Kanban },
       { label: 'Calendar', path: '/calendar', icon: Calendar },
@@ -89,10 +102,13 @@ const navSections: NavSection[] = [
       { label: 'Segments', path: '/marketing/segments', icon: Target },
       { label: 'NPS Trend', path: '/marketing/nps-trend', icon: TrendingUp },
       { label: 'Referrals', path: '/marketing/referrals', icon: Gift },
+      { label: 'Reviews', path: '/reviews', icon: Star },
     ],
   },
   // FA-L3: Team + Billing sections were routed but missing from the sidebar,
   // making them effectively invisible unless staff memorized the URLs.
+  // WEB-FL-006 (Fixer-B14): added Performance Reviews + Goals so the
+  // /team/reviews and /team/goals routes have a discoverable entry.
   {
     title: 'Team',
     items: [
@@ -100,6 +116,8 @@ const navSections: NavSection[] = [
       { label: 'Shifts', path: '/team/shifts', icon: Calendar },
       { label: 'Team Chat', path: '/team/chat', icon: MessageSquare },
       { label: 'Leaderboard', path: '/team/leaderboard', icon: BarChart3 },
+      { label: 'Goals', path: '/team/goals', icon: Trophy },
+      { label: 'Performance Reviews', path: '/team/reviews', icon: Award, adminOnly: true },
     ],
   },
   {
@@ -155,25 +173,26 @@ export function Sidebar() {
 
   return (
     <aside
+      data-app-chrome="true"
       className={cn(
         'fixed inset-y-0 left-0 z-30 flex flex-col border-r border-surface-200 bg-white transition-all duration-200 dark:border-surface-800 dark:bg-surface-900',
         sidebarCollapsed ? 'w-16' : 'w-64'
       )}
     >
-      {/* Logo / App Name */}
+      {/* App Name */}
       <div
         className={cn(
           'flex h-16 shrink-0 items-center border-b border-surface-200 dark:border-surface-800',
-          sidebarCollapsed ? 'justify-center px-2' : 'gap-3 px-5'
+          sidebarCollapsed ? 'justify-center px-2' : 'px-5'
         )}
       >
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand-500 to-brand-600 shadow-sm">
-          <Zap className="h-4.5 w-4.5 text-white" strokeWidth={2.5} />
-        </div>
         {!sidebarCollapsed && (
-          <span className="truncate text-lg font-bold tracking-tight text-surface-900 dark:text-surface-50">
+          <NavLink
+            to="/"
+            className="truncate text-lg font-bold tracking-tight text-surface-900 hover:text-primary-500 dark:text-surface-50 dark:hover:text-primary-500 transition-colors"
+          >
             Bizarre CRM
-          </span>
+          </NavLink>
         )}
       </div>
 
@@ -249,32 +268,79 @@ export function Sidebar() {
   );
 }
 
+// WEB-FAE-003: namespace `recent_views` per user.id so logging out User A and
+// signing in User B on the same browser doesn't leak A's last 20 customers /
+// tickets into B's sidebar. The User type has no `tenant_id` field
+// (packages/shared/src/types/employee.ts:1), so per-user is the strongest
+// scope we can express client-side; cross-tenant leak follows for free since
+// a single user.id can't span tenants. The `auth-cleared` listener below
+// also wipes any persisted `recent_views:*` keys + the legacy unscoped key.
+export function recentViewsKey(userId: number | null | undefined): string {
+  return userId ? `recent_views:u${userId}` : 'recent_views';
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try {
+      // Drop the legacy unscoped key (pre-fix data) and every per-user
+      // namespaced entry so a kiosk handoff doesn't expose the previous
+      // user's recent customer/ticket labels.
+      localStorage.removeItem('recent_views');
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith('recent_views:')) localStorage.removeItem(k);
+      }
+    } catch (err) {
+      console.warn('[Sidebar] recent_views auth-cleared wipe failed', err);
+    }
+  });
+}
+
 function RecentViews({ collapsed }: { collapsed: boolean }) {
   const location = useLocation();
+  const userId = useAuthStore((s) => s.user?.id);
   const [items, setItems] = useState<{ type: string; id: number; label: string; path: string }[]>([]);
 
   useEffect(() => {
     try {
-      const stored: unknown = JSON.parse(localStorage.getItem('recent_views') || '[]');
+      const stored: unknown = JSON.parse(localStorage.getItem(recentViewsKey(userId)) || '[]');
       if (!Array.isArray(stored)) return;
       // Validate each entry — without this, a corrupted or XSS-injected
       // `path` field would flow straight into <NavLink to={item.path}>.
+      // WEB-FD-001 (Fixer-RRR 2026-04-25): also lock down `type` to a small
+      // allowlist (used as React `key` and to drive future icon mapping) and
+      // cap `label` length + strip control chars so a malicious localStorage
+      // writer cannot phish via the truncated collapsed-mode label.
+      const ALLOWED_TYPES = new Set(['ticket', 'customer', 'invoice', 'estimate', 'lead', 'product', 'employee']);
       const safe: { type: string; id: number; label: string; path: string }[] = [];
       for (const raw of stored.slice(0, 5)) {
         if (!raw || typeof raw !== 'object') continue;
         const it = raw as Record<string, unknown>;
         const path = it.path;
         if (typeof path !== 'string' || !path.startsWith('/')) continue;
+        // Reject paths with embedded protocol/host (e.g. "/\\evil.com") that
+        // some browsers normalize away from the leading slash.
+        if (path.startsWith('//') || path.includes('\\')) continue;
+        const type = typeof it.type === 'string' && ALLOWED_TYPES.has(it.type) ? it.type : '';
+        const rawLabel = typeof it.label === 'string' ? it.label : '';
+        // Strip C0/DEL control chars + cap at 64 chars so collapsed-mode
+        // 6-char slice cannot be primed with control chars or oversized
+        // blobs designed to spoof 'Settings'/'Reports' in the truncated UI.
+        // eslint-disable-next-line no-control-regex
+        const label = rawLabel.replace(/[ -]/g, '').slice(0, 64);
         safe.push({
-          type: typeof it.type === 'string' ? it.type : '',
-          id: typeof it.id === 'number' ? it.id : 0,
-          label: typeof it.label === 'string' ? it.label : '',
+          type,
+          id: typeof it.id === 'number' && Number.isFinite(it.id) ? it.id : 0,
+          label,
           path,
         });
       }
       setItems(safe);
-    } catch { /* ignore */ }
-  }, [location.pathname]);
+    } catch (err) {
+      // Corrupted recent_views JSON or storage unavailable — clear list silently.
+      console.warn('[Sidebar] recent_views parse failed', err);
+    }
+  }, [location.pathname, userId]);
 
   if (items.length === 0) return null;
 

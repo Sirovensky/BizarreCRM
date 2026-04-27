@@ -10,6 +10,7 @@ import { ChevronLeft, AlertTriangle, Plus, Loader2, Camera } from 'lucide-react'
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 
 // Returns the given path only if it's safe to render as an `<a href>` target.
 // Accepts relative paths starting with `/` (typical uploads location) and
@@ -17,6 +18,10 @@ import { cn } from '@/utils/cn';
 // stripped out so a poisoned server value can't execute in the user's tab.
 function safeHref(raw: string | null | undefined): string | null {
   if (!raw) return null;
+  // Fixer-WW (WEB-FB-015): reject protocol-relative `//attacker/foo` first —
+  // browsers treat those as absolute cross-origin even though they pass a
+  // naive `startsWith('/')` allow-list.
+  if (raw.startsWith('//')) return null;
   if (raw.startsWith('/')) return raw;
   try {
     const parsed = new URL(raw);
@@ -87,7 +92,10 @@ export function ShrinkagePage() {
       setNotes('');
       if (photoRef.current) photoRef.current.value = '';
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to record'),
+    // WEB-FL-024 (Fixer-C9 2026-04-25): consolidate hand-rolled
+    // `e?.response?.data?.message` chain onto shared formatApiError, which
+    // also surfaces ERR_* code + ref id and handles non-axios shapes safely.
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const total = rows.reduce((s, r) => s + r.quantity, 0);

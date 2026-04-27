@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import {
@@ -126,8 +126,16 @@ function downloadCsv(filename: string, headers: string[], rows: string[][]) {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  // WEB-FC-022: revokeObjectURL synchronously after `.click()` races on
+  // Firefox/Safari — the browser may not have started the download when the
+  // URL is invalidated, cancelling the save. Defer cleanup so the navigation
+  // for the blob URL has time to begin.
+  setTimeout(() => {
+    if (a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 
 // ─── Tabs Config ──────────────────────────────────────────────────────────────
@@ -518,7 +526,12 @@ interface TechWorkloadItem {
 const WORKLOAD_COLORS = ['#3b82f6', '#f59e0b', '#ef4444', '#10b981', '#8b5cf6', '#ec4899'];
 
 function TechWorkloadChart() {
-  const { data, isLoading } = useQuery({
+  // WEB-FF-015 (Fixer-B17 2026-04-25): query previously destructured only
+  // `{ data, isLoading }` — a 401 / 500 quietly fell through to the
+  // "No technician workload data" empty-state, indistinguishable from a
+  // shop with zero techs. Wire `isError` so a failed fetch surfaces as a
+  // real ErrorState and managers know to refresh / re-auth.
+  const { data, isLoading, isError } = useQuery({
     queryKey: ['reports', 'tech-workload'],
     queryFn: async () => {
       const res = await reportApi.techWorkload();
@@ -528,6 +541,7 @@ function TechWorkloadChart() {
   });
 
   if (isLoading) return <LoadingState />;
+  if (isError) return <ErrorState message="Failed to load technician workload" />;
   if (!data || data.length === 0) return <EmptyState message="No technician workload data" />;
 
   const chartData = data.map((t) => ({
@@ -1103,11 +1117,12 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   {comparisonRevenue ? (
                     <BarChart data={comparisonRevenue} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      {/* @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): chart axes/tooltips honored hardcoded "$" — switched to formatCurrency for tenant currency */}
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}`]}
+                        formatter={(value: number) => [formatCurrency(value)]}
                       />
                       <Bar dataKey="previous" fill="#d1d5db" radius={[0, 4, 4, 0]} name="Previous Period" />
                       <Bar dataKey="current" fill="#3b82f6" radius={[0, 4, 4, 0]} name="Current Period" />
@@ -1115,11 +1130,11 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
                   ) : (
                     <BarChart data={revenue_by_model} layout="vertical" margin={{ left: 10, right: 20, top: 5, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-surface-200, #e5e7eb)" />
-                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v) => `$${v}`} />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#9ca3af' }} tickFormatter={(v: number) => formatCurrency(v)} />
                       <YAxis dataKey="name" type="category" width={140} tick={{ fontSize: 11, fill: '#9ca3af' }} />
                       <Tooltip
                         contentStyle={{ backgroundColor: 'var(--color-surface-800, #1f2937)', border: 'none', borderRadius: 8, color: '#f3f4f6' }}
-                        formatter={(value: number) => [`$${value.toFixed(2)}`, 'Revenue']}
+                        formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                       />
                       <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
                         {revenue_by_model.map((_, i) => (
@@ -1141,7 +1156,24 @@ function InsightsTab({ from, to }: { from: string; to: string }) {
 // ─── Main ReportsPage ─────────────────────────────────────────────────────────
 
 export function ReportsPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('sales');
+  // WEB-FK-010 (Fixer-B10 2026-04-25): persist activeTab to URL search params
+  // so refresh / shared link keeps the user on the tab they drilled into.
+  // Refresh on `tickets` tab no longer kicks back to `sales`; managers can
+  // copy-paste a permalink to a colleague.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const TAB_KEYS = TABS.map(t => t.key) as Tab[];
+  const isValidTab = (v: string | null): v is Tab => !!v && (TAB_KEYS as string[]).includes(v);
+  const initialTab: Tab = isValidTab(searchParams.get('tab')) ? (searchParams.get('tab') as Tab) : 'sales';
+  const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
+  const setActiveTab = useCallback((next: Tab) => {
+    setActiveTabState(next);
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      if (next === 'sales') sp.delete('tab');
+      else sp.set('tab', next);
+      return sp;
+    }, { replace: true });
+  }, [setSearchParams]);
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string; preset?: string }>({
     preset: 'last_30',
   });

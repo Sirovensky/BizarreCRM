@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -8,6 +9,62 @@ import { ticketApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 import type { Ticket, TicketDevice } from '@bizarre-crm/shared';
+
+// ─── Inline Price Editor ────────────────────────────────────────────
+// Replaces window.prompt() — works on mobile Safari, themable, and lets us
+// reject NaN/negative numbers visually instead of silently. Press Enter to
+// commit, Esc/blur-without-change to cancel.
+
+interface InlinePriceEditorProps {
+  value: number;
+  onCommit: (next: number) => void;
+  ariaLabel: string;
+  display: string;
+}
+
+function InlinePriceEditor({ value, onCommit, ariaLabel, display }: InlinePriceEditorProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(String(value));
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setDraft(String(value)); setEditing(true); }}
+        aria-label={`${ariaLabel}: ${display}. Click to edit.`}
+        className="text-surface-800 dark:text-surface-200 shrink-0 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
+        title="Click to edit"
+      >
+        {display}
+      </button>
+    );
+  }
+
+  const commit = () => {
+    const parsed = parseFloat(draft);
+    if (!Number.isNaN(parsed) && parsed >= 0 && parsed !== value) onCommit(parsed);
+    setEditing(false);
+  };
+
+  return (
+    <input
+      type="number"
+      inputMode="decimal"
+      step="0.01"
+      min="0"
+      autoFocus
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); }
+        if (e.key === 'Escape') { e.preventDefault(); setEditing(false); }
+      }}
+      aria-label={ariaLabel}
+      className="w-24 shrink-0 rounded-md border border-primary-400 bg-white dark:bg-surface-900 px-2 py-0.5 text-right text-sm text-surface-800 dark:text-surface-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/30"
+    />
+  );
+}
 
 // ─── Props ──────────────────────────────────────────────────────────
 
@@ -80,18 +137,12 @@ export function TicketPayments({
               <span className="text-surface-600 dark:text-surface-400 truncate pr-2" title={`${d.device_name} — ${d.service?.name || 'Labor'}`}>
                 {d.service?.name || 'Labor / Service'} — {d.device_name}
               </span>
-              <button
-                onClick={() => {
-                  const newPrice = prompt('Service / Labor Price:', String(d.price));
-                  if (newPrice !== null && !isNaN(parseFloat(newPrice))) {
-                    updateDeviceMut.mutate({ deviceId: d.id, data: { price: parseFloat(newPrice) } });
-                  }
-                }}
-                className="text-surface-800 dark:text-surface-200 shrink-0 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
-                title="Click to edit"
-              >
-                {formatCurrency(d.price)}
-              </button>
+              <InlinePriceEditor
+                value={Number(d.price) || 0}
+                display={formatCurrency(d.price)}
+                ariaLabel={`Service / labor price for ${d.device_name}`}
+                onCommit={(price) => updateDeviceMut.mutate({ deviceId: d.id, data: { price } })}
+              />
             </div>
           ))}
           {/* Line items: parts */}
@@ -100,18 +151,12 @@ export function TicketPayments({
               <span className="text-surface-600 dark:text-surface-400 truncate pr-2">
                 {p.item_name || `Part #${p.inventory_item_id}`} x{p.quantity}
               </span>
-              <button
-                onClick={() => {
-                  const newPrice = prompt('Part price per unit:', String(p.price));
-                  if (newPrice !== null && !isNaN(parseFloat(newPrice))) {
-                    updatePartMut.mutate({ partId: p.id, data: { price: parseFloat(newPrice) } });
-                  }
-                }}
-                className="text-surface-800 dark:text-surface-200 shrink-0 hover:text-primary-600 dark:hover:text-primary-400 cursor-pointer transition-colors"
-                title="Click to edit"
-              >
-                {formatCurrency(p.price * p.quantity)}
-              </button>
+              <InlinePriceEditor
+                value={Number(p.price) || 0}
+                display={formatCurrency(p.price * p.quantity)}
+                ariaLabel={`Unit price for ${p.item_name || `part ${p.inventory_item_id}`}`}
+                onCommit={(price) => updatePartMut.mutate({ partId: p.id, data: { price } })}
+              />
             </div>
           ))}
 

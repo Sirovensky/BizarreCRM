@@ -90,4 +90,38 @@ public enum DesignTokens {
         /// Min spacing between adjacent tappable rows.
         public static let minRowSpacing: CGFloat = 8
     }
+
+    // MARK: - Brand palette (cream wave — §16.27, 2026-04-24)
+    // Source of truth: ios/pos-iphone-mockups.html <style> :root block.
+    // Android parity: ui/theme/Theme.kt lines 100–154.
+    // Use `.bizarrePrimary` asset-catalog token in views; these static values
+    // are for programmatic use (e.g. tests, non-SwiftUI rendering).
+    public enum BrandPalette {
+        // Primary action — cream in dark mode; adaptive via BrandPrimary asset.
+        public static let primary:       UInt32 = 0xFDEED0  // --primary (dark)
+        public static let primaryLight:  UInt32 = 0xE8C98A  // --primary (light, contrast tint)
+        public static let onPrimary:     UInt32 = 0x2B1400  // --on-primary (AAA on cream)
+        // Warm Zinc backgrounds (dark mode)
+        public static let bgDeep:        UInt32 = 0x050403  // --bg-deep
+        public static let bg:            UInt32 = 0x0C0B09  // --bg
+        public static let surfaceSolid:  UInt32 = 0x141211  // --surface-solid
+        public static let surfaceElev:   UInt32 = 0x1B1917  // --surface-elev
+        // Light mode backgrounds
+        public static let bgDeepLight:   UInt32 = 0xFAF8F5  // --bg-deep (light)
+        public static let bgLight:       UInt32 = 0xF5F2ED  // --bg (light)
+        // Text
+        public static let on:            UInt32 = 0xF2EEF9  // --on (dark)
+        public static let onLight:       UInt32 = 0x1A1816  // --on (light)
+        public static let muted:         UInt32 = 0xA8A4A0  // --muted (dark)
+        public static let mutedLight:    UInt32 = 0x5A5550  // --muted (light)
+        // Semantic
+        public static let success:       UInt32 = 0x34C47E  // --success (dark)
+        public static let successLight:  UInt32 = 0x1A7C4D  // --success (light)
+        public static let warning:       UInt32 = 0xE8A33D  // --warning (dark)
+        public static let warningLight:  UInt32 = 0xA15B00  // --warning (light)
+        public static let error:         UInt32 = 0xE2526C  // --error (dark)
+        public static let errorLight:    UInt32 = 0xB72A3E  // --error (light)
+        public static let teal:          UInt32 = 0x4DB8C9  // --teal (dark)
+        public static let tealLight:     UInt32 = 0x0B5260  // --teal (light)
+    }
 }

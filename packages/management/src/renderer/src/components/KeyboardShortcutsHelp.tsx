@@ -130,7 +130,7 @@ export function KeyboardShortcutsHelp() {
           </div>
           <button
             onClick={() => setOpen(false)}
-            aria-label="Close keyboard shortcuts"
+            aria-label="Close"
             className="text-[10px] text-surface-500 font-mono border border-surface-700 rounded px-1.5 py-0.5 hover:bg-surface-800 hover:text-surface-300 transition-colors"
           >
             esc

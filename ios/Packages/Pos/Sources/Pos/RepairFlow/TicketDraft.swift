@@ -48,19 +48,24 @@ public struct RepairQuoteLine: Identifiable, Sendable, Equatable {
     public let isIncluded: Bool
     /// When `true` this line came from the BOM resolver (Agent F).
     public let isPrePopulated: Bool
+    /// Optional subtitle shown beneath the name: stock info, estimated time, etc.
+    /// Examples: "OEM grade · 22 in stock", "~45 min", "3 in stock — low"
+    public let subtitle: String?
 
     public init(
         id: UUID = UUID(),
         name: String,
         priceCents: Int,
         isIncluded: Bool = true,
-        isPrePopulated: Bool = false
+        isPrePopulated: Bool = false,
+        subtitle: String? = nil
     ) {
         self.id = id
         self.name = name
         self.priceCents = priceCents
         self.isIncluded = isIncluded
         self.isPrePopulated = isPrePopulated
+        self.subtitle = subtitle
     }
 
     /// Returns a copy with `isIncluded` toggled.
@@ -70,7 +75,8 @@ public struct RepairQuoteLine: Identifiable, Sendable, Equatable {
             name: name,
             priceCents: priceCents,
             isIncluded: !isIncluded,
-            isPrePopulated: isPrePopulated
+            isPrePopulated: isPrePopulated,
+            subtitle: subtitle
         )
     }
 }

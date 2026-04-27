@@ -109,6 +109,7 @@ export function CustomerPreviewPopover({ customerId, children }: CustomerPreview
                 {(customer.mobile || customer.phone) && (
                   <a
                     href={`tel:${customer.mobile || customer.phone}`}
+                    rel="noreferrer noopener"
                     className="flex items-center gap-2 text-xs text-surface-600 dark:text-surface-400 hover:text-primary-600 dark:hover:text-primary-400"
                   >
                     <Phone className="h-3 w-3 flex-shrink-0" />

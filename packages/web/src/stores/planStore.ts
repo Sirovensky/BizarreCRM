@@ -57,6 +57,12 @@ export function isUpgradeFeatureKey(value: unknown): value is UpgradeFeatureKey 
 
 // Singleton in-flight fetch promise — prevents concurrent calls from racing
 let inFlightFetch: Promise<void> | null = null;
+// WEB-FI-017 (Fixer-B4 2026-04-25): AbortController for the in-flight axios
+// call so we can cancel it when `bizarre-crm:auth-cleared` fires. Without the
+// abort, a /account/usage GET that started under tenant A could resolve AFTER
+// the auth-cleared listener wiped the store and then write A's plan/features
+// into B's freshly-signed-in session.
+let inFlightAbort: AbortController | null = null;
 
 export const usePlanStore = create<PlanState>((set) => ({
   plan: 'free',
@@ -76,10 +82,17 @@ export const usePlanStore = create<PlanState>((set) => ({
     // De-duplicate concurrent calls — return the in-flight promise instead of racing
     if (inFlightFetch) return inFlightFetch;
 
+    inFlightAbort = new AbortController();
+    const controller = inFlightAbort;
     inFlightFetch = (async () => {
       set({ isLoading: true, error: null });
       try {
-        const res = await api.get('/account/usage');
+        const res = await api.get('/account/usage', { signal: controller.signal });
+        // WEB-FI-017 (Fixer-B4 2026-04-25): if auth-cleared fired between the
+        // request start and now, the controller is aborted but axios may have
+        // already resolved. Bail before writing to the store so the prior
+        // tenant's payload cannot leak into the freshly-cleared state.
+        if (controller.signal.aborted) return;
         const data = res.data.data;
         set({
           plan: data.plan,
@@ -94,6 +107,9 @@ export const usePlanStore = create<PlanState>((set) => ({
           error: null,
         });
       } catch (err) {
+        // Swallow the AbortError — it means auth-cleared cancelled us; the
+        // listener already reset the store and any error toast would be wrong.
+        if (controller.signal.aborted) return;
         // Expose the failure on the store so feature gates can distinguish
         // "plan fetch failed, retry" from "plan is genuinely empty". Previously
         // every 500 silently defaulted to all-features-off with no way for the
@@ -107,6 +123,7 @@ export const usePlanStore = create<PlanState>((set) => ({
         set({ isLoading: false, hasFetched: true, error: message });
       } finally {
         inFlightFetch = null;
+        if (inFlightAbort === controller) inFlightAbort = null;
       }
     })();
 
@@ -124,6 +141,13 @@ export const usePlanStore = create<PlanState>((set) => ({
 // first /account/usage round-trip completed.
 if (typeof window !== 'undefined') {
   window.addEventListener('bizarre-crm:auth-cleared', () => {
+    // WEB-FI-017 (Fixer-B4 2026-04-25): abort the in-flight /account/usage
+    // request so it cannot resolve AFTER the reset and overwrite the new
+    // tenant's empty state with the previous tenant's plan/features.
+    if (inFlightAbort) {
+      try { inFlightAbort.abort(); } catch { /* best-effort */ }
+      inFlightAbort = null;
+    }
     inFlightFetch = null;
     usePlanStore.setState({
       plan: 'free',

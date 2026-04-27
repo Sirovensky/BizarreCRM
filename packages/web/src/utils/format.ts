@@ -35,12 +35,34 @@ export function initCurrencyFromSettings(code: string | undefined | null, locale
   }
 }
 
-export function formatCurrency(amount: number | null | undefined, currencyOverride?: string): string {
+// @audit-fixed (WEB-FM-001 / Fixer-K 2026-04-24): merged the standalone
+// portal-safe `formatCurrency` (formerly utils/formatCurrency.ts) into this
+// canonical helper. Third positional arg accepts an explicit locale so portal
+// pages — which run before AppShell ever calls `initCurrencyFromSettings` —
+// can format using the visitor's preferred language while still picking the
+// tenant's currency from the explicit override. When `localeOverride` is
+// omitted we keep the previous behaviour of using the module-level locale.
+export function formatCurrency(
+  amount: number | null | undefined,
+  currencyOverride?: string,
+  localeOverride?: string,
+): string {
+  const code = currencyOverride ?? _currencyCode;
+  const useCustomLocale = !!localeOverride;
+  const fmt = useCustomLocale || currencyOverride
+    ? buildFormatter(code, localeOverride ?? _locale)
+    : _currencyFmt;
   if (amount == null || isNaN(Number(amount))) {
-    return buildFormatter(currencyOverride ?? _currencyCode).format(0);
+    return fmt.format(0);
   }
-  const fmt = currencyOverride ? buildFormatter(currencyOverride) : _currencyFmt;
-  return fmt.format(Number(amount));
+  try {
+    return fmt.format(Number(amount));
+  } catch (err) {
+    // Fallback for unknown currency codes — surface the bad code so misconfigured
+    // tenant currency settings don't hide behind a silent USD substitution.
+    console.error(`[formatCurrency] format failed for code "${code}" — falling back to USD`, err);
+    return new Intl.NumberFormat(localeOverride ?? _locale, { style: 'currency', currency: 'USD' }).format(Number(amount) || 0);
+  }
 }
 
 /**
@@ -61,28 +83,54 @@ export function formatCents(cents: number | null | undefined, currencyOverride?:
 
 // ─── Dates ──────────────────────────────────────────────────────────────────
 
-export function formatDate(iso: string | null | undefined): string {
+// @audit-fixed (WEB-FM-008 / Fixer-C1 2026-04-25): added optional `localeOverride`
+// arg mirroring `formatCurrency` so portal pages \u2014 which run before AppShell ever
+// calls `initCurrencyFromSettings` \u2014 can format dates against a visitor-supplied
+// locale (`usePortalI18n`) instead of falling back to the module default.
+export function formatDate(iso: string | null | undefined, localeOverride?: string): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleDateString('en-US', {
+  return d.toLocaleDateString(localeOverride ?? _locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
 }
 
-export function formatDateTime(iso: string | null | undefined): string {
+export function formatDateTime(iso: string | null | undefined, localeOverride?: string): string {
   if (!iso) return '\u2014';
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '\u2014';
-  return d.toLocaleString('en-US', {
+  return d.toLocaleString(localeOverride ?? _locale, {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+// @audit-fixed (WEB-FF-003 / Fixer-DD 2026-04-25): short date+time used widely
+// across detail pages (Leads, Customer chat, Portal, etc.). Each had its own
+// hardcoded `toLocaleString('en-US', { month: 'short', ... })`. Centralised
+// here so locale flows from `initCurrencyFromSettings` instead of being pinned.
+export function formatShortDateTime(iso: string | Date | null | undefined): string {
+  if (iso == null) return '\u2014';
+  const d = iso instanceof Date ? iso : new Date(iso);
+  if (isNaN(d.getTime())) return '\u2014';
+  return d.toLocaleString(_locale, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/** Locale-aware integer formatter \u2014 replaces ad-hoc `n.toLocaleString()`. */
+export function formatNumber(n: number | null | undefined): string {
+  if (n == null || !isFinite(Number(n))) return '0';
+  return new Intl.NumberFormat(_locale).format(Number(n));
 }
 
 // ─── Relative time ──────────────────────────────────────────────────────────
@@ -127,5 +175,18 @@ export function formatPhone(phone: string | null | undefined): string {
   const trimmed = phone.trim();
   if (trimmed.startsWith('+')) return trimmed;
   if (digits.length > 11) return `+${digits}`;
+  // WEB-FD-018 (Fixer-C12 2026-04-25): half-formatted US numbers (e.g. user
+  // typed "(303) 261-19" while still entering it) used to echo back raw with
+  // no `+1` hint, so display surfaces showed an inconsistent mix of
+  // canonical "+1 (303)-261-1900" and raw "(303) 261-19" side-by-side. For
+  // partial inputs of 4-9 digits with no leading "+" / "00" we promote to
+  // a partial-progressive canonical form: keep the typed digits, add the
+  // `+1` prefix and as much of the parens-dashes ladder as we have. Fewer
+  // than 4 digits (area-code prefix only) is too ambiguous — fall through.
+  if (digits.length >= 4 && digits.length < 10) {
+    const a = digits.slice(0, 3);
+    if (digits.length <= 6) return `+1 (${a})-${digits.slice(3)}`;
+    return `+1 (${a})-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
   return trimmed;
 }

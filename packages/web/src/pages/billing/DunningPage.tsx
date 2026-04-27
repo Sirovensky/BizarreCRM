@@ -13,6 +13,19 @@ interface DunningStep {
   template_id?: string;
 }
 
+/**
+ * Known notification template IDs. Until the server exposes a
+ * `GET /notifications/templates` enum, this list is the contract that
+ * `dunningScheduler.ts` honors. Keep in sync.
+ *
+ * WEB-FA-018 / FIXED-by-Fixer-U 2026-04-25 — replace the previous bare
+ * `"overdue_1"` literal in the textarea placeholder with the first entry
+ * from this list and surface the full set as a datalist hint so operators
+ * don't invent template IDs that the dispatcher will silently drop.
+ */
+const KNOWN_TEMPLATE_IDS = ['overdue_1', 'overdue_2', 'overdue_final'] as const;
+const DEFAULT_TEMPLATE_ID = KNOWN_TEMPLATE_IDS[0];
+
 interface DunningSequence {
   id: number;
   name: string;
@@ -50,7 +63,7 @@ export function DunningPage() {
   const qc = useQueryClient();
   const [name, setName] = useState('');
   const [stepsText, setStepsText] = useState(
-    '[{"days_offset":3,"action":"email","template_id":"overdue_1"}]',
+    `[{"days_offset":3,"action":"email","template_id":"${DEFAULT_TEMPLATE_ID}"}]`,
   );
 
   const { data: sequences, isLoading } = useQuery({
@@ -68,6 +81,21 @@ export function DunningPage() {
         steps = JSON.parse(stepsText);
       } catch {
         throw new Error('steps must be valid JSON array');
+      }
+      if (!Array.isArray(steps) || steps.length === 0) {
+        throw new Error('steps must be a non-empty JSON array');
+      }
+      // WEB-FA-018: warn when an unknown template_id slips through —
+      // the dispatcher will skip the step rather than crash, so the
+      // user gets a chance to fix it before submission.
+      const unknown = steps
+        .map((s) => s?.template_id)
+        .filter((t): t is string => typeof t === 'string' && t.length > 0)
+        .filter((t) => !(KNOWN_TEMPLATE_IDS as readonly string[]).includes(t));
+      if (unknown.length > 0) {
+        throw new Error(
+          `Unknown template_id(s): ${unknown.join(', ')}. Known: ${KNOWN_TEMPLATE_IDS.join(', ')}`,
+        );
       }
       const res = await api.post('/dunning/sequences', { name, steps });
       return res.data.data;
@@ -137,10 +165,10 @@ export function DunningPage() {
       </div>
 
       {lastSummary && (
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
+        <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">Last run summary</h2>
-            <span className="text-xs text-gray-400">
+            <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-200">Last run summary</h2>
+            <span className="text-xs text-surface-400">
               {lastSummary.invoices_touched} invoice{lastSummary.invoices_touched === 1 ? '' : 's'} touched
             </span>
           </div>
@@ -180,36 +208,47 @@ export function DunningPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
+      <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4 shadow-sm space-y-3">
         <h2 className="text-lg font-semibold">Create sequence</h2>
         <input
           type="text"
           placeholder="Sequence name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          className="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm"
         />
-        <label className="block text-sm text-gray-600">
+        <label className="block text-sm text-surface-600 dark:text-surface-300">
           Steps (JSON array):
           <textarea
             rows={4}
             value={stepsText}
             onChange={(e) => setStepsText(e.target.value)}
-            className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs"
+            className="mt-1 w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 font-mono text-xs"
           />
         </label>
+        <p className="text-xs text-surface-500">
+          Known template_id values:{' '}
+          {KNOWN_TEMPLATE_IDS.map((t) => (
+            <code
+              key={t}
+              className="mr-1 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-200 px-1 py-0.5 font-mono text-[11px]"
+            >
+              {t}
+            </code>
+          ))}
+        </p>
         <button type="button"
           onClick={() => createMutation.mutate()}
           disabled={!name.trim() || createMutation.isPending}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 disabled:opacity-50"
+          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
         >
           Create
         </button>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+      <div className="overflow-x-auto rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-gray-600">
+          <thead className="bg-surface-50 dark:bg-surface-800 text-surface-600 dark:text-surface-300">
             <tr>
               <th className="px-3 py-2 text-left">Name</th>
               <th className="px-3 py-2 text-left">Steps</th>
@@ -219,18 +258,18 @@ export function DunningPage() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">Loading…</td></tr>
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-surface-400">Loading…</td></tr>
             ) : !sequences || sequences.length === 0 ? (
-              <tr><td colSpan={4} className="px-3 py-6 text-center text-gray-400">No sequences</td></tr>
+              <tr><td colSpan={4} className="px-3 py-6 text-center text-surface-400">No sequences</td></tr>
             ) : (
               sequences.map((seq) => (
-                <tr key={seq.id} className="border-t border-gray-100">
+                <tr key={seq.id} className="border-t border-surface-100 dark:border-surface-800">
                   <td className="px-3 py-2 font-medium">{seq.name}</td>
                   <td className="px-3 py-2">
                     {seq.steps.map((s, i) => (
                       <span
                         key={i}
-                        className="mr-1 inline-flex rounded bg-gray-100 px-2 py-0.5 text-xs"
+                        className="mr-1 inline-flex rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-200 px-2 py-0.5 text-xs"
                       >
                         d+{s.days_offset} {s.action}
                       </span>
@@ -240,12 +279,12 @@ export function DunningPage() {
                     {seq.is_active ? (
                       <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800">Active</span>
                     ) : (
-                      <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">Off</span>
+                      <span className="rounded-full bg-surface-100 dark:bg-surface-800 px-2 py-0.5 text-xs text-surface-700 dark:text-surface-200">Off</span>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button type="button"
-                      className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50 disabled:opacity-50"
+                      className="rounded border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
                       onClick={() =>
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })
                       }
@@ -271,7 +310,7 @@ const TONE_CLASSES: Record<SummaryTone, string> = {
   green: 'border-green-200 bg-green-50 text-green-800',
   amber: 'border-amber-200 bg-amber-50 text-amber-900',
   red: 'border-red-200 bg-red-50 text-red-800',
-  gray: 'border-gray-200 bg-gray-50 text-gray-700',
+  gray: 'border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 text-surface-700 dark:text-surface-200',
 };
 
 function SummaryCell({

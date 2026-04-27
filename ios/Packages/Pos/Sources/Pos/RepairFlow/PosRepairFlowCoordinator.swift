@@ -27,6 +27,10 @@ public final class PosRepairFlowCoordinator {
     /// Currently active step.
     public private(set) var currentStep: RepairStep = .pickDevice
 
+    /// Customer display name shown in the nav bar chip on step 1b ("Sarah M.").
+    /// Set by the caller before presenting the repair flow.
+    public var customerDisplayName: String?
+
     /// Server-assigned ticket id once the draft has been persisted.
     public private(set) var savedDraftId: Int64?
 
@@ -132,6 +136,18 @@ public final class PosRepairFlowCoordinator {
         errorMessage = nil
         isLoading = false
         onCancel?()
+    }
+
+    /// Skip the current step without validation. Advances directly to the next
+    /// step; if already on the last step, stays in place.
+    ///
+    /// Only valid for skippable steps (`.describeIssue`, `.diagnosticQuote`).
+    /// Server-side audit wiring is deferred — see §16.6 skip-audit route.
+    public func skipCurrent() {
+        errorMessage = nil
+        let before = currentStep
+        currentStep = currentStep.next ?? currentStep
+        print("Skipped step \(before) at \(Date())")
     }
 
     // MARK: - Draft mutations (called by step VMs)

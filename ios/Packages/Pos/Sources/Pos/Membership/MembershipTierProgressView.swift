@@ -180,7 +180,7 @@ public struct MembershipTierProgressView: View {
 
     private var primaryColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816)  // #fdeed0 cream
+            ? Color.bizarreOrange  // #fdeed0 cream
             : .bizarreOrange
     }
 
@@ -191,10 +191,10 @@ public struct MembershipTierProgressView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(
+                                Color.bizarreOrange.opacity(
                                     reduceTransparency ? 0.14 : 0.08
                                 ),
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.01)
+                                Color.bizarreOrange.opacity(0.01)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -205,10 +205,10 @@ public struct MembershipTierProgressView: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(
+                                Color.bizarreOrange.opacity(
                                     reduceTransparency ? 0.32 : 0.30
                                 ),
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.05)
+                                Color.bizarreOrange.opacity(0.05)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -220,14 +220,14 @@ public struct MembershipTierProgressView: View {
 
     private var borderColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.40)
-            : Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.70)
+            ? Color.bizarreOrange.opacity(0.40)
+            : Color.bizarreOrange.opacity(0.70)
     }
 
     private var shadowColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.08)
-            : Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.18)
+            ? Color.bizarreOrange.opacity(0.08)
+            : Color.bizarreOrange.opacity(0.18)
     }
 
     // MARK: - Accessibility

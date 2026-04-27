@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
  * F-key quick tabs for the unified POS page (audit §43.10).
  *
  *   F1 → Repairs tab        F4 → Customer search (focuses input)
- *   F2 → Products tab       F5 → Complete sale (opens checkout)
+ *   F2 → Products tab       Shift+F5 → Complete sale (opens checkout)
  *   F3 → Misc tab           F6 → Returns hotkey (scan invoice)
  *
  * Keep the surface small: the hook just binds listeners and calls back into
@@ -13,6 +13,14 @@ import { useEffect, useRef } from 'react';
  *
  * Matches the rule in common-coding-style.md: a tiny, focused module with
  * one public hook and zero side effects besides the listener.
+ *
+ * WEB-FD-005 (FIXED-by-Fixer-A3 2026-04-25): bare F5 is reserved by every
+ * browser as "reload". Binding it as Complete-sale stole the cashier's
+ * universal refresh affordance — a frozen POS could not be recovered with
+ * F5; pressing it instead popped the checkout modal. We require Shift+F5
+ * for Complete-sale so plain F5 still reloads the page. Cashiers who want
+ * the keyboard shortcut hold Shift; everyone else gets browser refresh
+ * back as a safety valve.
  */
 export interface PosKeyboardHandlers {
   onRepairsTab?: () => void;
@@ -30,8 +38,13 @@ const KEY_MAP: Record<string, HandlerKey> = {
   F2: 'onProductsTab',
   F3: 'onMiscTab',
   F4: 'onCustomerSearch',
-  F5: 'onCompleteSale',
   F6: 'onReturnsHotkey',
+};
+
+// WEB-FD-005: keys that require Shift to fire — keeps the bare key
+// available for the browser default (F5 = reload).
+const SHIFT_KEY_MAP: Record<string, HandlerKey> = {
+  F5: 'onCompleteSale',
 };
 
 function isTypingInField(target: EventTarget | null): boolean {
@@ -57,7 +70,15 @@ export function usePosKeyboardShortcuts(handlers: PosKeyboardHandlers, enabled =
     if (!enabled) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      const handlerKey = KEY_MAP[event.key];
+      // WEB-FD-005: Shift+F5 → Complete sale; bare F5 falls through to the
+      // browser's reload. Modifier-keyed shortcuts must NOT also match the
+      // bare-key map (no F1–F4/F6 with Shift held).
+      let handlerKey: HandlerKey | undefined;
+      if (event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        handlerKey = SHIFT_KEY_MAP[event.key];
+      } else if (!event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        handlerKey = KEY_MAP[event.key];
+      }
       if (!handlerKey) return;
       // F4 (customer search) is the only one that's safe to fire from inside
       // a field — the rest would be jarring if the cashier is mid-entry.

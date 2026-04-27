@@ -16,6 +16,91 @@ import { useUnifiedPosStore } from './store';
 import { genId } from './types';
 import type { RepairDrillState, PartEntry, DeviceData } from './types';
 
+// ─── API payload shapes ─────────────────────────────────────────────
+// EXTENDED-by-Fixer-A25 2026-04-25 (WEB-FB-003): narrow the device/service/
+// grade/condition payloads from `any[]` to local interfaces. These mirror what
+// the back-end actually serialises; a server rename (e.g. `is_default` → `default`)
+// will now surface as a TS error rather than silently dropping the default-grade
+// auto-selection at runtime.
+
+interface ApiDeviceModel {
+  id: number;
+  name: string;
+  category?: string;
+  manufacturer_name?: string | null;
+}
+
+interface ApiRepairService {
+  id: number;
+  name: string;
+  is_active: boolean;
+}
+
+interface ApiRepairPriceRow {
+  repair_service_id: number;
+  labor_price: number;
+}
+
+interface ApiRepairGrade {
+  id: number;
+  grade_label: string;
+  is_default?: boolean;
+  effective_labor_price?: number | null;
+  part_inventory_item_id?: number | null;
+  inventory_item_name?: string | null;
+  part_price?: number | null;
+  inventory_in_stock?: number;
+}
+
+interface ApiRepairPricingLookup {
+  labor_price?: number | null;
+  grades?: ApiRepairGrade[];
+}
+
+interface ApiConditionCheck {
+  id?: number;
+  label: string;
+}
+
+// EXTENDED-by-Fixer-A26 2026-04-25 (WEB-FB-003): narrow Customer/CustomerSearch/
+// recent-tickets payloads. CustomerStep + CustomerContextBar were the last
+// `any`-soup pockets in this file. A server rename of e.g. `first_device` →
+// `firstDevice` or `customer.phone` → `customer.phone_number` will now hard-fail
+// at build instead of silently erasing the recent-tickets sidebar.
+interface ApiCustomerSearchHit {
+  id: number;
+  first_name: string;
+  last_name: string;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  organization?: string | null;
+}
+
+interface ApiTicketDeviceLite {
+  device_name?: string | null;
+  device_model_id?: number | null;
+  device_type?: string | null;
+  service?: { name?: string | null } | null;
+}
+
+interface ApiTicketStatusLite {
+  name?: string | null;
+  color?: string | null;
+}
+
+interface ApiTicketRow {
+  id: number;
+  order_id: string | number;
+  created_at?: string | null;
+  total?: number | null;
+  status_name?: string | null;
+  status?: ApiTicketStatusLite | null;
+  customer?: ApiCustomerSearchHit | null;
+  first_device?: ApiTicketDeviceLite | null;
+  devices?: ApiTicketDeviceLite[] | null;
+}
+
 // ─── Constants ──────────────────────────────────────────────────────
 
 const CATEGORY_TILES = [
@@ -60,7 +145,7 @@ const ISSUE_MACROS: Record<string, string[]> = {
   quick: ['Quick diagnostic', 'Data transfer', 'Software issue'],
 };
 
-const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500';
 
 // Breadcrumb removed — using dot progress bar with back button instead
 
@@ -73,7 +158,7 @@ function CategoryStep({ onSelect }: { onSelect: (category: string) => void }) {
     queryFn: () => catalogApi.searchDevices({ limit: 1000 }),
     staleTime: 300_000,
   });
-  const models: any[] = (modelsData?.data as any)?.data ?? [];
+  const models: ApiDeviceModel[] = ((modelsData?.data as { data?: ApiDeviceModel[] } | undefined)?.data) ?? [];
   const countByCategory = models.reduce<Record<string, number>>((acc, m) => {
     const cat = m.category || 'other';
     acc[cat] = (acc[cat] || 0) + 1;
@@ -181,7 +266,7 @@ function DeviceStep({ category, onSelect }: {
     queryKey: ['popular-devices', category],
     queryFn: () => catalogApi.searchDevices({ popular: true, category, limit: 12 }),
   });
-  const popularDevices: any[] = popularData?.data?.data || [];
+  const popularDevices: ApiDeviceModel[] = popularData?.data?.data || [];
 
   // When manufacturer filter is active, search by manufacturer name (show all)
   const effectiveQuery = mfgFilter || debouncedQuery;
@@ -193,7 +278,7 @@ function DeviceStep({ category, onSelect }: {
     queryFn: () => catalogApi.searchDevices({ q: effectiveQuery, category, limit: isMfgFilter ? 100 : 20 }),
     enabled: searchEnabled,
   });
-  const searchResults: any[] = searchData?.data?.data || [];
+  const searchResults: ApiDeviceModel[] = searchData?.data?.data || [];
 
   const showSearch = searchEnabled;
   const shortcuts = MANUFACTURER_SHORTCUTS[category] || [];
@@ -248,7 +333,7 @@ function DeviceStep({ category, onSelect }: {
           {searchResults.length === 0 && !searching ? (
             <p className="p-3 text-sm text-surface-400">No devices found</p>
           ) : (
-            searchResults.map((d: any) => {
+            searchResults.map((d) => {
               const displayName = mfgFilter && d.name.startsWith(mfgFilter)
                 ? d.name.slice(mfgFilter.length).trim()
                 : d.name;
@@ -278,7 +363,7 @@ function DeviceStep({ category, onSelect }: {
         <>
           <p className="text-xs font-semibold uppercase tracking-wide text-surface-400">Popular</p>
           <div className="flex flex-wrap gap-1.5">
-            {popularDevices.map((d: any) => {
+            {popularDevices.map((d) => {
               const displayName = mfgFilter && d.name.startsWith(mfgFilter)
                 ? d.name.slice(mfgFilter.length).trim()
                 : d.name;
@@ -320,7 +405,7 @@ function DeviceStep({ category, onSelect }: {
               setOtherName('');
             }}
             disabled={!otherName.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50"
           >
             Add
           </button>
@@ -346,7 +431,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     queryKey: ['repair-services', category],
     queryFn: () => repairPricingApi.getServices({ category }),
   });
-  const services: any[] = servicesData?.data?.data || [];
+  const services: ApiRepairService[] = servicesData?.data?.data || [];
 
   // Price map for quick preview
   const { data: allPricesData } = useQuery({
@@ -356,7 +441,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
   });
   const priceMap = new Map<number, number>();
   if (allPricesData?.data?.data) {
-    for (const p of allPricesData.data.data as any[]) {
+    for (const p of allPricesData.data.data as ApiRepairPriceRow[]) {
       priceMap.set(p.repair_service_id, p.labor_price);
     }
   }
@@ -370,21 +455,21 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     }),
     enabled: !!deviceModelId && !!selectedServiceId,
   });
-  const pricingData = lookupData?.data?.data;
-  const grades: any[] = pricingData?.grades || [];
+  const pricingData = lookupData?.data?.data as ApiRepairPricingLookup | undefined;
+  const grades: ApiRepairGrade[] = pricingData?.grades || [];
 
   // Auto-select default grade
   useEffect(() => {
     if (!pricingData || selectedGradeId) return;
     if (grades.length > 0) {
-      const defaultGrade = grades.find((g: any) => g.is_default) || grades[0];
+      const defaultGrade = grades.find((g) => g.is_default) || grades[0];
       setSelectedGradeId(defaultGrade.id);
     }
   }, [pricingData]); // intentional: auto-select default grade only when pricing data arrives
 
   const handleAdd = () => {
     if (!selectedServiceId) return;
-    const service = services.find((s: any) => s.id === selectedServiceId);
+    const service = services.find((s) => s.id === selectedServiceId);
     if (!service) return;
 
     let laborPrice = 0;
@@ -392,7 +477,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     const gradeParts: PartEntry[] = [];
 
     if (pricingData && grades.length > 0 && selectedGradeId) {
-      const grade = grades.find((g: any) => g.id === selectedGradeId);
+      const grade = grades.find((g) => g.id === selectedGradeId);
       if (grade) {
         gradeId = grade.id;
         laborPrice = grade.effective_labor_price ?? pricingData.labor_price ?? 0;
@@ -405,14 +490,23 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
             quantity: 1,
             price: grade.part_price ?? 0,
             taxable: true,
-            status: grade.inventory_in_stock > 0 ? 'available' : 'missing',
+            status: (grade.inventory_in_stock ?? 0) > 0 ? 'available' : 'missing',
           });
         }
       }
     } else if (pricingData) {
       laborPrice = pricingData.labor_price ?? 0;
     } else {
-      laborPrice = parseFloat(manualPrice) || 0;
+      // WEB-FB-024: parseFloat coercing typos like "12o.50" silently to 0
+      // means the cashier walks out the door charging $0 for labor with no
+      // visual feedback. Reject obviously-non-numeric input and abort the
+      // add so the cashier sees a toast instead.
+      const parsed = parseFloat(manualPrice);
+      if (manualPrice.trim() !== '' && (Number.isNaN(parsed) || !/^\d*\.?\d+$/.test(manualPrice.trim()))) {
+        toast.error('Invalid manual price — enter a number like 75.00');
+        return;
+      }
+      laborPrice = Number.isFinite(parsed) ? parsed : 0;
     }
 
     onSelect(selectedServiceId, service.name, laborPrice, gradeId, gradeParts);
@@ -428,7 +522,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
     );
   }
 
-  const selectedGrade = grades.find((g: any) => g.id === selectedGradeId);
+  const selectedGrade = grades.find((g) => g.id === selectedGradeId);
   const hasPricing = !!pricingData;
   const showManualPrice = selectedServiceId && !loadingLookup && !hasPricing && deviceModelId > 0;
 
@@ -441,7 +535,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
           <span className="text-sm font-semibold text-surface-700 dark:text-surface-300">Select Service</span>
         </div>
         <div className="flex flex-wrap gap-2">
-          {services.filter((s: any) => s.is_active).map((service: any) => {
+          {services.filter((s) => s.is_active).map((service) => {
             const isSelected = selectedServiceId === service.id;
             const previewPrice = priceMap.get(service.id);
             const hasPriceForDevice = previewPrice !== undefined;
@@ -489,7 +583,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
         <div>
           <p className="mb-2 text-xs font-semibold uppercase text-surface-400">Select Grade</p>
           <div className="space-y-1.5">
-            {grades.map((grade: any) => {
+            {grades.map((grade) => {
               const isGradeSelected = selectedGradeId === grade.id;
               const effectiveLabor = grade.effective_labor_price ?? pricingData?.labor_price ?? 0;
               return (
@@ -518,7 +612,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   <span className="text-sm font-semibold text-surface-700 dark:text-surface-200">
                     {formatCurrency(effectiveLabor)}
                   </span>
-                  {grade.part_price > 0 && (
+                  {grade.part_price != null && grade.part_price > 0 && (
                     <span className="text-xs text-surface-400">
                       +Part: {formatCurrency(grade.part_price)}
                     </span>
@@ -526,11 +620,11 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
                   {grade.part_inventory_item_id && (
                     <span className={cn(
                       'rounded-full px-2 py-0.5 text-xs font-medium',
-                      grade.inventory_in_stock > 0
+                      (grade.inventory_in_stock ?? 0) > 0
                         ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
                         : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
                     )}>
-                      {grade.inventory_in_stock > 0 ? 'In Stock' : 'Out of Stock'}
+                      {(grade.inventory_in_stock ?? 0) > 0 ? 'In Stock' : 'Out of Stock'}
                     </span>
                   )}
                 </button>
@@ -587,7 +681,7 @@ function ServiceStep({ category, deviceModelId, deviceName, onSelect }: {
         <button
           onClick={handleAdd}
           disabled={!hasPricing && !manualPrice && deviceModelId > 0}
-          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Continue to Details
         </button>
@@ -636,7 +730,7 @@ function DetailsStep({ drillState, onDone }: {
     queryKey: ['condition-checks', drillState.category],
     queryFn: () => settingsApi.getConditionChecks(drillState.category),
   });
-  const conditionChecks: any[] = checksData?.data?.data || [];
+  const conditionChecks: ApiConditionCheck[] = checksData?.data?.data || [];
 
   // Fallback conditions if no templates configured
   const fallbackConditions = [
@@ -645,7 +739,7 @@ function DetailsStep({ drillState, onDone }: {
     'Buttons not working', 'Overheating', "Won't turn on",
   ];
   const conditions = conditionChecks.length > 0
-    ? conditionChecks.map((c: any) => c.label)
+    ? conditionChecks.map((c) => c.label)
     : fallbackConditions;
 
   // CK19: Auto-populate notes with issue macro matching the selected service
@@ -913,8 +1007,8 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
     queryFn: () => customerApi.getTickets(customerId, { page: 1 }),
     staleTime: 60000,
   });
-  const tickets = (data?.data?.data?.tickets || []).slice(0, 3);
-  const lastTicket = tickets[0] as any | undefined;
+  const tickets: ApiTicketRow[] = (data?.data?.data?.tickets || []).slice(0, 3);
+  const lastTicket: ApiTicketRow | undefined = tickets[0];
   const lastDevice = lastTicket?.first_device || lastTicket?.devices?.[0];
   const lastDate = lastTicket?.created_at
     ? new Date(lastTicket.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -929,7 +1023,7 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
         </div>
         {tickets.length > 0 && (
           <span className="text-[10px] text-surface-400">
-            Recent: {tickets.map((t: any) => `${t.first_device?.device_name || t.order_id}`).join(', ')}
+            Recent: {tickets.map((t) => `${t.first_device?.device_name || t.order_id}`).join(', ')}
           </span>
         )}
       </div>
@@ -938,7 +1032,7 @@ function CustomerContextBar({ customerId, customerName, onSameDevice }: {
           <span>Last visit: {lastDate} - {lastDevice.device_name || 'Unknown'} - {lastDevice.service?.name || lastTicket.status_name || 'Repair'}</span>
           {lastDevice.device_model_id && onSameDevice && (
             <button
-              onClick={() => onSameDevice(lastDevice.device_model_id, lastDevice.device_name, lastDevice.device_type?.toLowerCase() || 'phone')}
+              onClick={() => onSameDevice(lastDevice.device_model_id as number, lastDevice.device_name || 'Unknown', lastDevice.device_type?.toLowerCase() || 'phone')}
               className="ml-auto shrink-0 rounded bg-primary-100 dark:bg-primary-900/30 px-2 py-0.5 text-[10px] font-medium text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/50 transition-colors"
             >
               Same device?
@@ -954,8 +1048,9 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate();
   const { setCustomer } = useUnifiedPosStore();
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<ApiCustomerSearchHit[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [newForm, setNewForm] = useState({ first_name: '', last_name: '', phone: '', email: '', referred_by: '' });
   const [creating, setCreating] = useState(false);
@@ -977,11 +1072,11 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     queryFn: () => ticketApi.list({ page: 1, pagesize: 10, sort_by: 'created_at', sort_order: 'desc' }),
     staleTime: 60000,
   });
-  const recentCustomers = useMemo(() => {
-    const tickets = recentTicketsData?.data?.data?.tickets || recentTicketsData?.data?.data || [];
+  const recentCustomers = useMemo<ApiCustomerSearchHit[]>(() => {
+    const tickets: ApiTicketRow[] = recentTicketsData?.data?.data?.tickets || recentTicketsData?.data?.data || [];
     const seen = new Set<number>();
-    const result: any[] = [];
-    for (const t of tickets as any[]) {
+    const result: ApiCustomerSearchHit[] = [];
+    for (const t of tickets) {
       const c = t.customer;
       if (!c || seen.has(c.id)) continue;
       seen.add(c.id);
@@ -992,10 +1087,11 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   }, [recentTicketsData]);
 
   useEffect(() => {
-    if (query.length < 2) { setResults([]); setLoading(false); return; }
+    if (query.length < 2) { setResults([]); setLoading(false); setSearchError(false); return; }
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
+      setSearchError(false);
       try {
         const res = await customerApi.search(query);
         const data = res.data?.data;
@@ -1004,6 +1100,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         // Surface the error so users know an empty list means "search failed"
         // rather than "no matches" — silent failure used to lie to the cashier.
         setResults([]);
+        setSearchError(true);
         console.warn('[POS customer search]', err);
         toast.error('Customer search failed. Please try again.');
       }
@@ -1012,8 +1109,18 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
     return () => clearTimeout(debounceRef.current);
   }, [query]);
 
-  const selectCustomer = (c: any) => {
-    setCustomer(c);
+  const selectCustomer = (c: ApiCustomerSearchHit) => {
+    // setCustomer expects CustomerResult which has stricter null-vs-undefined
+    // contracts than the API search payload — coerce missing fields to null.
+    setCustomer({
+      id: c.id,
+      first_name: c.first_name,
+      last_name: c.last_name,
+      phone: c.phone ?? null,
+      mobile: c.mobile ?? null,
+      email: c.email ?? null,
+      organization: c.organization ?? null,
+    });
     onDone();
   };
 
@@ -1028,7 +1135,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         phone: stripPhone(newForm.phone) || undefined,
         email: newForm.email.trim() || undefined,
         referred_by: newForm.referred_by || undefined,
-      } as any);
+      });
       const created = res.data?.data;
       if (created) {
         setCustomer(created);
@@ -1061,10 +1168,10 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
   // Fetch open tickets for the inline list
   const { data: ticketsData } = useQuery({
     queryKey: ['pos-open-tickets'],
-    queryFn: () => ticketApi.list({ pagesize: 30, sort_by: 'created_at', sort_order: 'desc', status_id: 'active' as any }),
+    queryFn: () => ticketApi.list({ pagesize: 30, sort_by: 'created_at', sort_order: 'desc', status_group: 'active' }),
     staleTime: 30000,
   });
-  const openTicketsList: any[] = ticketsData?.data?.data?.tickets || ticketsData?.data?.tickets || [];
+  const openTicketsList: ApiTicketRow[] = ticketsData?.data?.data?.tickets || ticketsData?.data?.tickets || [];
 
   const formatTicketId = (oid: string | number) => {
     const s = String(oid);
@@ -1097,7 +1204,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
       {/* Results */}
       {query.length >= 2 && results.length > 0 && (
         <div className="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
-          {results.map((c: any) => (
+          {results.map((c) => (
             <button
               key={c.id}
               onClick={() => selectCustomer(c)}
@@ -1123,7 +1230,12 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
       )}
 
       {query.length >= 2 && results.length === 0 && !loading && (
-        <p className="text-center text-sm text-surface-400 py-2">No customers found</p>
+        <p
+          className={`text-center text-sm py-2 ${searchError ? 'text-red-500 dark:text-red-400' : 'text-surface-400'}`}
+          role={searchError ? 'alert' : undefined}
+        >
+          {searchError ? 'Search failed — check your connection and try again.' : 'No customers found'}
+        </p>
       )}
 
       {/* Divider */}
@@ -1138,9 +1250,9 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
         <>
           <button
             onClick={() => setShowNew(true)}
-            className="w-full rounded-lg border-2 border-dashed border-surface-300 py-4 text-sm font-medium text-surface-500 transition-colors hover:border-primary-400 hover:text-primary-600 dark:border-surface-600 dark:hover:border-primary-500 dark:hover:text-primary-400"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 active:bg-primary-800"
           >
-            <Plus className="mr-2 inline h-4 w-4" />
+            <Plus className="h-4 w-4" />
             New Customer
           </button>
           {/* CROSS4: walk-in ghost button. No border/fill — signals "allowed but
@@ -1192,7 +1304,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
             <button
               onClick={handleCreateCustomer}
               disabled={creating}
-              className="flex-1 rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+              className="flex-1 rounded-lg bg-primary-600 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
             >
               {creating ? 'Creating...' : 'Create & Continue'}
             </button>
@@ -1217,7 +1329,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
           </div>
           <div className="rounded-lg border border-surface-200 dark:border-surface-700 overflow-hidden">
             <div className="max-h-64 overflow-y-auto divide-y divide-surface-100 dark:divide-surface-800">
-              {openTicketsList.map((t: any) => {
+              {openTicketsList.map((t) => {
                 const device = t.first_device;
                 const custName = t.customer
                   ? `${t.customer.first_name || ''} ${t.customer.last_name || ''}`.trim()
@@ -1235,7 +1347,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
                           <span
                             className="inline-block h-2 w-2 rounded-full flex-shrink-0"
                             style={{ backgroundColor: t.status.color || '#6b7280' }}
-                            title={t.status.name}
+                            title={t.status.name ?? undefined}
                           />
                         )}
                         <span className="text-xs text-surface-500 truncate">{device?.device_name || 'No device'}</span>
@@ -1250,7 +1362,7 @@ function CustomerStep({ onDone }: { onDone: () => void }) {
                     </span>
                     <button
                       onClick={() => navigate(`/pos?ticket=${t.id}`)}
-                      className="flex-shrink-0 rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-700"
+                      className="flex-shrink-0 rounded-md bg-primary-600 px-2.5 py-1 text-[11px] font-medium text-primary-950 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-primary-700"
                     >
                       Checkout
                     </button>

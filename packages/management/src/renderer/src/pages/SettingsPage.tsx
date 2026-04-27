@@ -11,6 +11,7 @@ import type {
 import { formatBytes } from '@/utils/format';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 // @audit-fixed: removed unused `theme` / `setTheme` zustand selectors and the
 // `Sun` icon import — the dashboard is dark-mode only and the toggle was never
@@ -92,6 +93,9 @@ export function SettingsPage() {
     setEnvLoading(true);
     try {
       const res = await getAPI().admin.getEnvSettings();
+      // DASH-ELEC-279: detect 401 → global auto-logout instead of silently
+      // leaving envFields empty when the JWT has expired.
+      if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         setEnvFields(res.data.fields);
         setPending({});
@@ -113,6 +117,10 @@ export function SettingsPage() {
         getAPI().superAdmin.getConfigSchema(),
         getAPI().superAdmin.getConfig(),
       ]);
+      // DASH-ELEC-279: detect 401 on either response — short-circuit before
+      // the !success branches silently leave pcSchema/pcValues stale.
+      if (handleApiResponse(schemaRes)) return;
+      if (handleApiResponse(valuesRes)) return;
       if (schemaRes.success && schemaRes.data) {
         setPcSchema(schemaRes.data.fields);
       }
@@ -266,10 +274,15 @@ export function SettingsPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* DASH-ELEC-172: cap input length so MB-large pastes don't sail through to
+              the IPC layer (which fails with a generic error). 512 covers the longest
+              real-world secret (e.g. Cloudflare API tokens ~40, Stripe keys ~100); 2048
+              for plain text fields like CORS_ORIGINS that may list multiple URLs. */}
           <input
             id={`env-${f.key}`}
             type={f.kind === 'secret' && !isRevealed ? 'password' : 'text'}
             value={value}
+            maxLength={f.kind === 'secret' ? 512 : 2048}
             placeholder={f.placeholder ?? (f.kind === 'secret' && f.hasValue ? '(leave blank to keep current)' : '')}
             onChange={(e) => setPendingValue(f.key, e.target.value)}
             className="flex-1 px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 placeholder:text-surface-400 focus:border-accent-600 focus:outline-none font-mono"
@@ -411,8 +424,11 @@ export function SettingsPage() {
       </div>
 
       {/* Sticky save / restart bar */}
+      {/* DASH-ELEC-202: z-10 was insufficient — toasts/portals + later popovers
+          can render above and bury the save bar. z-30 keeps it under modals
+          (z-50) but always above page content. */}
       {(isDirty || restartPending) && (
-        <div className="sticky bottom-2 z-10 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-amber-900/60 bg-amber-950/40 backdrop-blur">
+        <div className="sticky bottom-2 z-30 flex items-center justify-between gap-3 px-4 py-3 rounded-lg border border-amber-900/60 bg-amber-950/40 backdrop-blur">
           <div className="flex items-center gap-2 text-xs text-amber-200">
             {isDirty ? (
               <>
@@ -446,14 +462,30 @@ export function SettingsPage() {
                 {saving ? 'Saving…' : 'Save to .env'}
               </button>
             ) : (
-              <button
-                onClick={handleRestartServer}
-                disabled={restarting}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-100 bg-amber-900/60 border border-amber-700 rounded hover:bg-amber-900/80 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${restarting ? 'animate-spin' : ''}`} />
-                {restarting ? 'Restarting…' : 'Restart Server'}
-              </button>
+              <>
+                <button
+                  onClick={handleRestartServer}
+                  disabled={restarting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-100 bg-amber-900/60 border border-amber-700 rounded hover:bg-amber-900/80 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${restarting ? 'animate-spin' : ''}`} />
+                  {restarting ? 'Restarting…' : 'Restart Server'}
+                </button>
+                {/* DASH-ELEC-203: when the operator restarts the server out-of-band
+                    (Server Control page, OS-level service restart), the in-app
+                    `restartPending` flag has no auto-clear path and the banner
+                    sticks forever. A manual Dismiss covers that case until a
+                    boot-token poll lands. */}
+                <button
+                  onClick={() => setRestartPending(false)}
+                  disabled={restarting}
+                  aria-label="Dismiss restart-pending banner"
+                  title="Dismiss (server already restarted out-of-band)"
+                  className="px-3 py-1.5 text-xs font-medium text-surface-400 bg-surface-900 border border-surface-700 rounded hover:bg-surface-800 hover:text-surface-200 disabled:opacity-50"
+                >
+                  Dismiss
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -468,6 +500,12 @@ export function SettingsPage() {
           </h2>
           <p className="text-xs text-surface-500 mb-3 leading-relaxed">
             Database-backed toggles applied immediately, no server restart required.
+          </p>
+          {/* DASH-ELEC-171 — explicit warning that text/number fields commit on blur (Tab/click-away)
+              with no undo button. Env-settings section above uses pending/discard, but platform-config
+              is direct-write; surface that asymmetry to operators so a stray Tab doesn't permanent-write. */}
+          <p className="text-[11px] text-amber-400/80 mb-3 leading-relaxed pl-1" role="note">
+            Heads-up: text and number fields save on blur (Tab or click away). Press Esc before leaving the field to revert.
           </p>
           <div className="space-y-4 pl-6">
             {pcSchema
@@ -516,6 +554,13 @@ export function SettingsPage() {
                       const next = e.target.value;
                       if (next !== current) handlePlatformConfigToggle(f, next);
                     }}
+                    onKeyDown={(e) => {
+                      // DASH-ELEC-171 — Esc reverts in-flight edit before the onBlur save fires.
+                      if (e.key === 'Escape') {
+                        e.currentTarget.value = current;
+                        e.currentTarget.blur();
+                      }
+                    }}
                     className="w-full px-3 py-1.5 text-sm bg-surface-950 border border-surface-700 rounded text-surface-200 focus:border-accent-600 focus:outline-none font-mono disabled:opacity-50"
                   />
                   <p className="text-xs text-surface-500 leading-relaxed">{f.description}</p>
@@ -533,38 +578,44 @@ export function SettingsPage() {
             <Info className="w-4 h-4" />
             System Information
           </h2>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-xs">
-            <div className="flex justify-between">
-              <span className="text-surface-500">Platform</span>
-              <span className="text-surface-300">{systemInfo.platform} ({systemInfo.arch})</span>
+          {/* DASH-ELEC-183: collapse to a single column on the narrowest panel
+              widths (compact density / sidebar-expanded settings) so long
+              hostnames + version strings don't overflow the 32px gap.
+              DASH-ELEC-179 (Fixer-B28 2026-04-25): tighter gap-x-4 + break-words
+              on values so a long hostname or pre-release version string wraps
+              instead of overflowing past the column edge into the neighbour. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Platform</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.platform} ({systemInfo.arch})</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Hostname</span>
-              <span className="text-surface-300">{systemInfo.hostname}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Hostname</span>
+              <span className="text-surface-300 text-right break-all min-w-0">{systemInfo.hostname}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Total Memory</span>
-              <span className="text-surface-300">{formatBytes(systemInfo.totalMemory)}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Total Memory</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{formatBytes(systemInfo.totalMemory)}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">CPUs</span>
-              <span className="text-surface-300">{systemInfo.cpus} cores</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">CPUs</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.cpus} cores</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Node.js</span>
-              <span className="text-surface-300 font-mono">{systemInfo.nodeVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Node.js</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">{systemInfo.nodeVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Electron</span>
-              <span className="text-surface-300 font-mono">{systemInfo.electronVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Electron</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">{systemInfo.electronVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Dashboard</span>
-              <span className="text-surface-300 font-mono">v{systemInfo.appVersion}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Dashboard</span>
+              <span className="text-surface-300 font-mono text-right break-all min-w-0">v{systemInfo.appVersion}</span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-surface-500">Packaged</span>
-              <span className="text-surface-300">{systemInfo.isPackaged ? 'Yes' : 'No (dev)'}</span>
+            <div className="flex justify-between gap-2">
+              <span className="text-surface-500 shrink-0">Packaged</span>
+              <span className="text-surface-300 text-right break-words min-w-0">{systemInfo.isPackaged ? 'Yes' : 'No (dev)'}</span>
             </div>
           </div>
 

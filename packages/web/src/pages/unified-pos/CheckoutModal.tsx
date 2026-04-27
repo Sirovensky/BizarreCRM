@@ -7,6 +7,8 @@ import { cn } from '@/utils/cn';
 import { SignatureCanvas } from '@/components/shared/SignatureCanvas';
 import { useUnifiedPosStore } from './store';
 import { useDefaultTaxRate } from '@/hooks/useDefaultTaxRate';
+import { computePosTotals } from './totals';
+import { formatCurrency } from '@/utils/format';
 import type { RepairCartItem, ProductCartItem, MiscCartItem } from './types';
 
 // ─── Types ──────────────────────────────────────────────────────────
@@ -24,54 +26,18 @@ const PAYMENT_METHODS: { key: PaymentMethod; label: string; icon: React.ElementT
   { key: 'Other', label: 'Other', icon: MoreHorizontal },
 ];
 
-// ─── Totals helper (same logic as LeftPanel) ────────────────────────
+// ─── Totals helper (shared cents-int helper) ────────────────────────
+// WEB-FH-005 (Fixer-O 2026-04-24): moved to `./totals.ts`. LeftPanel and
+// this modal now share one cents-pure implementation, eliminating the 1¢
+// drift between cart display, modal display, and the server recompute.
 
 function useCheckoutTotals() {
   const { cartItems, discount, customer, memberDiscountApplied } = useUnifiedPosStore();
   const taxRate = useDefaultTaxRate();
-
-  return useMemo(() => {
-    let subtotal = 0;
-    let taxableAmount = 0;
-
-    for (const item of cartItems) {
-      if (item.type === 'repair') {
-        const labor = item.laborPrice - item.lineDiscount;
-        subtotal += labor;
-        if (item.taxable) taxableAmount += labor;
-        for (const p of item.parts) {
-          const partTotal = p.quantity * p.price;
-          subtotal += partTotal;
-          if (p.taxable) taxableAmount += partTotal;
-        }
-      } else if (item.type === 'product') {
-        const lineTotal = item.quantity * item.unitPrice;
-        subtotal += lineTotal;
-        if (item.taxable && !item.taxInclusive) taxableAmount += lineTotal;
-      } else {
-        const lineTotal = item.quantity * item.unitPrice;
-        subtotal += lineTotal;
-        if (item.taxable) taxableAmount += lineTotal;
-      }
-    }
-
-    let memberDiscount = 0;
-    if (memberDiscountApplied && customer?.group_discount_pct && customer.group_discount_pct > 0) {
-      if (customer.group_discount_type === 'fixed') {
-        memberDiscount = customer.group_discount_pct;
-      } else {
-        memberDiscount = subtotal * (customer.group_discount_pct / 100);
-      }
-      memberDiscount = Math.round(memberDiscount * 100) / 100;
-    }
-
-    const discountAmount = discount + memberDiscount;
-    const tax = Math.round(taxableAmount * taxRate * 100) / 100;
-    const total = Math.max(0, Math.round((subtotal + tax - discountAmount) * 100) / 100);
-    const itemCount = cartItems.length;
-
-    return { itemCount, subtotal, discountAmount, tax, total };
-  }, [cartItems, discount, customer, memberDiscountApplied, taxRate]);
+  return useMemo(
+    () => computePosTotals({ cartItems, discount, customer, memberDiscountApplied, taxRate }),
+    [cartItems, discount, customer, memberDiscountApplied, taxRate],
+  );
 }
 
 // ─── Build checkout payload ─────────────────────────────────────────
@@ -177,13 +143,25 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
     { method: 'Card', amount: '' },
   ]);
 
-  const splitTotal = useMemo(
-    () => Math.round(
-      splitPayments.reduce((sum, sp) => sum + (Math.round((parseFloat(sp.amount) || 0) * 100)), 0)
-    ) / 100,
+  // WEB-FB-009 / WEB-FH-014 (Fixer-V 2026-04-25): keep the split-payment
+  // running tally in integer cents and only divide once for display. The
+  // previous code summed cents then divided by 100, which when compared to
+  // `totals.total` (also a float) could fail at the 1¢ boundary — e.g. three
+  // 33.33 splits looked like "99.99 < 100" and blocked a legitimate even-split
+  // checkout, or worse, passed a sale a cent short. The cents-int comparison
+  // matches the server's cents-pure recompute (POS-SALES-001).
+  const splitTotalCents = useMemo(
+    () =>
+      splitPayments.reduce(
+        (sum, sp) => sum + Math.round((parseFloat(sp.amount) || 0) * 100),
+        0,
+      ),
     [splitPayments],
   );
-  const splitRemaining = Math.max(0, Math.round((totals.total - splitTotal) * 100) / 100);
+  const splitTotal = splitTotalCents / 100;
+  const splitRemainingCents = Math.max(0, totals.totalCents - splitTotalCents);
+  const splitRemaining = splitRemainingCents / 100;
+  const splitCoversTotal = splitTotalCents >= totals.totalCents;
 
   const handleSignatureSave = useCallback((dataUrl: string) => {
     setSignature(dataUrl);
@@ -317,8 +295,12 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
 
   const handleCompleteCheckout = async () => {
     if (splitMode) {
-      if (splitTotal < totals.total) {
-        toast.error(`Split payments total ($${splitTotal.toFixed(2)}) must cover the total ($${totals.total.toFixed(2)})`);
+      // WEB-FB-009 / WEB-FH-014: cents-int compare. Float compare drifted by
+      // 1¢ on three-way even splits (33.33×3) and either blocked legit
+      // checkouts or let a one-cent underpayment through.
+      if (!splitCoversTotal) {
+        // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
+        toast.error(`Split payments total (${formatCurrency(splitTotal)}) must cover the total (${formatCurrency(totals.total)})`);
         return;
       }
       const validEntries = splitPayments.filter((sp) => parseFloat(sp.amount) > 0);
@@ -342,13 +324,23 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
         splitMode ? splitTotal : (method === 'Cash' ? cashAmount : totals.total),
         validSplits,
       );
-      const res = await posApi.checkoutWithTicket(payload);
+      // WEB-FH-001 / WEB-FH-002: stable idempotency key for this cart-session.
+      // Reused on every retry of the SAME submit so a double-click or flaky
+      // network can't double-charge — server idempotent middleware caches by
+      // (user, url, key) for 5 minutes.
+      const idempotencyKey = store.getState().ensureIdempotencyKey();
+      const res = await posApi.checkoutWithTicket(payload, idempotencyKey);
 
       // For Card payments, run the terminal charge against the newly-created
       // invoice. The checkout creates the invoice record first; BlockChyp then
-      // captures the card. On terminal failure we still show the success screen
-      // (invoice is created) and surface a warning so the cashier can retry
-      // the charge from the invoice detail page.
+      // captures the card. On terminal failure we still need the success
+      // screen (invoice is created and must be reachable for retry) but
+      // WEB-FH-008: track the decline so the screen renders a RED warning
+      // instead of the green "Payment Received!" — a toast under fluorescent
+      // POS lights is too easy to miss, and the cashier was handing receipts
+      // to customers whose card had actually declined.
+      let cardDeclined = false;
+      let cardDeclineMessage: string | null = null;
       if (!splitMode && method === 'Card' && blockchypConfigured) {
         const invoiceId: number | undefined = res.data?.data?.invoice?.id;
         if (invoiceId) {
@@ -356,19 +348,27 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
             const terminalRes = await blockchypApi.processPayment(invoiceId);
             const terminalResult = terminalRes.data?.data;
             if (!terminalResult?.success) {
+              cardDeclined = true;
+              cardDeclineMessage =
+                terminalResult?.error || terminalResult?.responseDescription || 'Payment declined';
               toast.error(
-                `Invoice created but terminal declined: ${terminalResult?.error || terminalResult?.responseDescription || 'Payment declined'}. Retry from the invoice page.`,
+                `Invoice created but terminal declined: ${cardDeclineMessage}. Retry from the invoice page.`,
                 { duration: 8000 },
               );
             }
           } catch (terminalErr: unknown) {
-            const msg = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
-            toast.error(`Invoice created but terminal charge failed: ${msg}. Retry from the invoice page.`, { duration: 8000 });
+            cardDeclined = true;
+            cardDeclineMessage = terminalErr instanceof Error ? terminalErr.message : 'Terminal error';
+            toast.error(`Invoice created but terminal charge failed: ${cardDeclineMessage}. Retry from the invoice page.`, { duration: 8000 });
           }
         }
       }
 
-      setShowSuccess({ ...res.data.data, mode: 'checkout' });
+      setShowSuccess({
+        ...res.data.data,
+        mode: 'checkout',
+        ...(cardDeclined ? { card_declined: true, card_decline_message: cardDeclineMessage } : {}),
+      });
       // Advance the checkout tutorial when payment is completed.
       window.dispatchEvent(new CustomEvent('pos:payment-completed'));
       onClose();
@@ -382,7 +382,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
   };
 
   const canComplete = !processing && (splitMode
-    ? splitTotal >= totals.total
+    ? splitCoversTotal
     : method === 'Cash' ? cashAmount >= totals.total : true);
 
   return (
@@ -466,7 +466,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
               onChange={(e) => setMeta({ internalNotes: e.target.value })}
               placeholder="e.g. Replaced digitizer, tested touch, full charge cycle done"
               rows={2}
-              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-teal-500 resize-none"
+              className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 resize-none"
             />
           </div>
 
@@ -550,7 +550,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                           setSplitPayments(updated);
                         }}
                         placeholder="0.00"
-                        className="w-full rounded-lg border border-surface-300 bg-white py-2 pl-6 pr-2 text-sm font-medium focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white py-2 pl-6 pr-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                       />
                     </div>
                     {splitPayments.length > 2 && (
@@ -564,13 +564,24 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   </div>
                 ))}
                 <div className="flex items-center justify-between">
+                  {/* WEB-FH-022 (Fixer-B4 2026-04-25): cap split-payment rows
+                      at 6. Modal layout (max-w-lg) overflows past 6 rows on
+                      desktop, and the Android server caps payments.length at
+                      20. Disabling the button at 6 prevents the modal-footer
+                      hidden-by-overflow bug + the silent server-side 400. */}
                   <button
-                    onClick={() => setSplitPayments([...splitPayments, { method: 'Cash', amount: '' }])}
-                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400"
+                    onClick={() => {
+                      if (splitPayments.length >= 6) return;
+                      setSplitPayments([...splitPayments, { method: 'Cash', amount: '' }]);
+                    }}
+                    disabled={splitPayments.length >= 6}
+                    title={splitPayments.length >= 6 ? 'Maximum of 6 split payments' : undefined}
+                    className="flex items-center gap-1 text-xs font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 disabled:cursor-not-allowed disabled:text-surface-400 disabled:hover:text-surface-400 dark:disabled:text-surface-500"
                   >
-                    <Plus className="h-3.5 w-3.5" /> Add Method
+                    <Plus className="h-3.5 w-3.5" />
+                    {splitPayments.length >= 6 ? 'Max 6 split payments' : 'Add Method'}
                   </button>
-                  {splitRemaining > 0 ? (
+                  {splitRemainingCents > 0 ? (
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">
                       Remaining: ${splitRemaining.toFixed(2)}
                     </span>
@@ -597,7 +608,7 @@ export function CheckoutModal({ onClose }: CheckoutModalProps) {
                   min="0"
                   value={cashGiven}
                   onChange={(e) => setCashGiven(e.target.value)}
-                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-lg font-semibold focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-lg font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                   placeholder="0.00"
                   autoFocus
                 />

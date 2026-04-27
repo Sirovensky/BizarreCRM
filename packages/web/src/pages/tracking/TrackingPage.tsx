@@ -7,6 +7,17 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { safeColor } from '../../utils/safeColor';
+// WEB-FM-008 (Fixer-B20 2026-04-25): replace the local `formatDate(iso)` (which
+// hardcoded `en-US` and was actually shaped as date+time) with the shared
+// `formatDateTime` helper from `utils/format`. Same shape, locale-aware.
+import { formatDateTime } from '@/utils/format';
+// WEB-FV-006 (Fixer-B21 2026-04-25): the embed-config fetch is best-effort
+// (fallback values render fine), but the previous `.catch(() => {})` lost
+// every signal that the public tracking surface was failing. Route through
+// `safeRunAsync` so a Sentry breadcrumb is attached when the customer-facing
+// endpoint goes down — ops still get the alert, the user still sees the
+// fallback header copy.
+import { safeRunAsync } from '@/utils/safeRun';
 
 // ---------- Types ----------
 interface TrackingTicket {
@@ -112,19 +123,22 @@ export function TrackingPage() {
 
   // Load store config on mount (public endpoint, no auth needed)
   useEffect(() => {
-    axios.get('/api/v1/portal/embed/config')
-      .then(res => {
-        const cfg = res.data?.data;
-        if (cfg) {
-          setStoreConfig({
-            store_name: cfg.name || '',
-            store_phone: cfg.phone || '',
-            store_address: cfg.address || '',
-            store_hours: cfg.hours || '',
-          });
-        }
-      })
-      .catch(() => { /* non-critical, fallback values will be used */ });
+    // WEB-FV-006 (Fixer-B21 2026-04-25): swap the silent `.catch(() => {})` for
+    // `safeRunAsync` so a breadcrumb fires when the public embed-config call
+    // is down. Tracking is the unauthenticated customer surface; previously
+    // a degraded `/portal/embed/config` was invisible to ops.
+    void safeRunAsync(async () => {
+      const res = await axios.get('/api/v1/portal/embed/config');
+      const cfg = res.data?.data;
+      if (cfg) {
+        setStoreConfig({
+          store_name: cfg.name || '',
+          store_phone: cfg.phone || '',
+          store_address: cfg.address || '',
+          store_hours: cfg.hours || '',
+        });
+      }
+    }, { tag: 'tracking:embedConfig', level: 'warning' });
   }, []);
 
   // Auto-search if URL has orderId+token or just token.
@@ -201,8 +215,20 @@ export function TrackingPage() {
       } else {
         setResults(tickets);
       }
-    } catch {
-      setError('Something went wrong. Please try again.');
+    } catch (err: any) {
+      // WEB-FC-024: surface server's Retry-After header on 429s
+      if (err?.response?.status === 429) {
+        const raw = err.response.headers?.['retry-after'] ?? err.response.headers?.['Retry-After'];
+        const secs = raw ? parseInt(String(raw), 10) : NaN;
+        if (Number.isFinite(secs) && secs > 0) {
+          const human = secs < 60 ? `${secs}s` : `${Math.ceil(secs / 60)} minute${Math.ceil(secs / 60) === 1 ? '' : 's'}`;
+          setError(`Too many attempts. Please try again in ${human}.`);
+        } else {
+          setError('Too many attempts. Please try again later.');
+        }
+      } else {
+        setError('Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -267,15 +293,6 @@ export function TrackingPage() {
     }
   }
 
-  function formatDate(iso: string): string {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    } catch {
-      return iso;
-    }
-  }
-
   const storeName = portalData?.store?.store_name || storeConfig?.store_name || 'Repair Shop';
   const storePhone = portalData?.store?.store_phone || storeConfig?.store_phone || '';
   const storeAddress = portalData?.store?.store_address || storeConfig?.store_address || '';
@@ -285,17 +302,32 @@ export function TrackingPage() {
   const storeHours = portalData?.store?.store_hours || storeConfig?.store_hours || '';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-primary-50 flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-primary-50 dark:from-surface-950 dark:to-surface-900 flex flex-col">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b border-slate-200">
+      <header className="bg-white dark:bg-surface-900 shadow-sm border-b border-slate-200 dark:border-surface-700">
         <div className="max-w-2xl mx-auto px-4 py-5 text-center">
-          <h1 className="text-2xl font-bold text-slate-800">{storeName}</h1>
-          <p className="text-sm text-slate-500 mt-1">Repair Status Portal</p>
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-surface-100">{storeName}</h1>
+          <p className="text-sm text-slate-500 dark:text-surface-400 mt-1">Repair Status Portal</p>
         </div>
       </header>
 
       {/* Main */}
       <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-8">
+
+        {/* WEB-FL-020: deprecation notice for the legacy /track/:orderId
+            deep-link without a token. Old SMS receipts hit this URL; we
+            need to nudge customers toward the tokenized link before the
+            server route can be retired. */}
+        {routeOrderId && !tokenParam && !portalData && (
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 text-amber-800 dark:text-amber-200 rounded-xl p-4 mb-6 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+            <p className="text-sm">
+              This older tracking link is being retired. Please look for a newer
+              tracking link in your most recent receipt or SMS, or use the
+              phone-number lookup below to find your repair.
+            </p>
+          </div>
+        )}
 
         {/* Portal view — when we have full portal data */}
         {portalData ? (
@@ -310,13 +342,13 @@ export function TrackingPage() {
             </button>
 
             {/* Status card */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-5 py-5 border-b border-slate-100">
+            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
+              <div className="px-5 py-5 border-b border-slate-100 dark:border-surface-800">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h2 className="text-xl font-bold font-mono text-slate-800">{portalData.order_id}</h2>
+                    <h2 className="text-xl font-bold font-mono text-slate-800 dark:text-surface-100">{portalData.order_id}</h2>
                     {portalData.customer_first_name && (
-                      <p className="text-sm text-slate-500 mt-0.5">Hello, {portalData.customer_first_name}</p>
+                      <p className="text-sm text-slate-500 dark:text-surface-400 mt-0.5">Hello, {portalData.customer_first_name}</p>
                     )}
                   </div>
                   <span
@@ -330,24 +362,24 @@ export function TrackingPage() {
 
               {/* Progress bar */}
               {portalData.status.name.toLowerCase() !== 'cancelled' && (
-                <div className="px-5 py-5 border-b border-slate-100 bg-slate-50/50">
+                <div className="px-5 py-5 border-b border-slate-100 dark:border-surface-800 bg-slate-50/50 dark:bg-surface-800/40">
                   <ProgressIndicator step={getProgress(portalData.status.name)} />
                 </div>
               )}
 
               {/* Estimated completion */}
               {portalData.due_on && !portalData.status.is_closed && (
-                <div className="px-5 py-3 border-b border-slate-100 bg-primary-50/50">
-                  <p className="text-sm text-primary-700 flex items-center gap-2">
+                <div className="px-5 py-3 border-b border-slate-100 dark:border-surface-800 bg-primary-50/50 dark:bg-primary-900/20">
+                  <p className="text-sm text-primary-700 dark:text-primary-300 flex items-center gap-2">
                     <Clock className="w-4 h-4" />
-                    Estimated completion: <strong>{formatDate(portalData.due_on)}</strong>
+                    Estimated completion: <strong>{formatDateTime(portalData.due_on)}</strong>
                   </p>
                 </div>
               )}
             </div>
 
             {/* Tab navigation */}
-            <div className="flex bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
               {[
                 { key: 'status' as const, label: 'Details', icon: Search },
                 { key: 'timeline' as const, label: 'Timeline', icon: Clock },
@@ -360,8 +392,8 @@ export function TrackingPage() {
                   onClick={() => { setActiveTab(tab.key); if (tab.key === 'invoice') loadFullInvoice(); }}
                   className={`flex-1 py-3 px-2 text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 transition-colors border-b-2 ${
                     activeTab === tab.key
-                      ? 'border-primary-600 text-primary-600 bg-primary-50/50'
-                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                      ? 'border-primary-600 text-primary-600 bg-primary-50/50 dark:text-primary-400 dark:bg-primary-900/20'
+                      : 'border-transparent text-slate-500 dark:text-surface-400 hover:text-slate-700 dark:hover:text-surface-200 hover:bg-slate-50 dark:hover:bg-surface-800/50'
                   }`}
                 >
                   <tab.icon className="w-4 h-4" />
@@ -371,7 +403,7 @@ export function TrackingPage() {
             </div>
 
             {/* Tab content */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
 
               {/* Details tab */}
               {activeTab === 'status' && (
@@ -390,7 +422,7 @@ export function TrackingPage() {
                               )}
                             </div>
                             {d.type && <p className="text-xs text-slate-500 mt-1">Type: {d.type}</p>}
-                            {d.due_on && <p className="text-xs text-slate-500 mt-1">Due: {formatDate(d.due_on)}</p>}
+                            {d.due_on && <p className="text-xs text-slate-500 mt-1">Due: {formatDateTime(d.due_on)}</p>}
                             {d.notes && <p className="text-sm text-slate-600 mt-2">{d.notes}</p>}
                           </div>
                         ))}
@@ -404,14 +436,14 @@ export function TrackingPage() {
                       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Checked In</h3>
                       <p className="text-sm text-slate-700 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(portalData.created_at)}
+                        {formatDateTime(portalData.created_at)}
                       </p>
                     </div>
                     <div>
                       <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Last Updated</h3>
                       <p className="text-sm text-slate-700 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {formatDate(portalData.updated_at)}
+                        {formatDateTime(portalData.updated_at)}
                       </p>
                     </div>
                   </div>
@@ -441,7 +473,7 @@ export function TrackingPage() {
                               <p className="text-sm text-slate-800 font-medium">
                                 {formatAction(h)}
                               </p>
-                              <p className="text-xs text-slate-400 mt-0.5">{formatDate(h.created_at)}</p>
+                              <p className="text-xs text-slate-400 mt-0.5">{formatDateTime(h.created_at)}</p>
                             </div>
                           </li>
                         ))}
@@ -549,7 +581,7 @@ export function TrackingPage() {
                       {portalData.messages.map(m => (
                         <div key={m.id} className="bg-primary-50 rounded-lg p-3">
                           <p className="text-sm text-slate-700">{m.content}</p>
-                          <p className="text-xs text-slate-400 mt-1">{formatDate(m.created_at)}</p>
+                          <p className="text-xs text-slate-400 mt-1">{formatDateTime(m.created_at)}</p>
                         </div>
                       ))}
                     </div>
@@ -569,7 +601,7 @@ export function TrackingPage() {
                         placeholder="Type your message here..."
                         maxLength={2000}
                         rows={4}
-                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                        className="w-full rounded-lg border border-slate-300 px-4 py-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent resize-none"
                       />
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-slate-400">{messageText.length}/2000</span>
@@ -577,7 +609,7 @@ export function TrackingPage() {
                           type="button"
                           onClick={sendMessage}
                           disabled={sendingMessage || !messageText.trim()}
-                          className="bg-primary-600 hover:bg-primary-700 text-white px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                          className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
                         >
                           {sendingMessage ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -621,20 +653,20 @@ export function TrackingPage() {
         ) : (
           <>
             {/* Search form */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 p-6 mb-6">
               <form onSubmit={handleSubmit} className="flex gap-3">
                 <input
                   type="tel"
                   placeholder="Phone number or last 4 digits"
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-3 text-base focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="flex-1 rounded-lg border border-slate-300 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100 dark:placeholder-surface-400 px-4 py-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-transparent"
                   autoFocus
                 />
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-primary-600 hover:bg-primary-700 text-white px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                   Track
@@ -644,7 +676,7 @@ export function TrackingPage() {
 
             {/* Error */}
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 mb-6 flex items-start gap-3">
+              <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-xl p-4 mb-6 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <p className="text-sm">{error}</p>
               </div>
@@ -652,23 +684,23 @@ export function TrackingPage() {
 
             {/* Multi-ticket list (phone lookup) */}
             {results.length > 1 && !portalData && (
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                <div className="px-5 py-3 border-b border-slate-100 bg-slate-50">
-                  <h2 className="text-sm font-semibold text-slate-600">
+              <div className="bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden mb-6">
+                <div className="px-5 py-3 border-b border-slate-100 dark:border-surface-800 bg-slate-50 dark:bg-surface-800/50">
+                  <h2 className="text-sm font-semibold text-slate-600 dark:text-surface-300">
                     Found {results.length} ticket{results.length > 1 ? 's' : ''}
                   </h2>
                 </div>
-                <ul className="divide-y divide-slate-100">
+                <ul className="divide-y divide-slate-100 dark:divide-surface-800">
                   {results.map((t) => (
                     <li key={t.order_id}>
                       <button
                         type="button"
                         onClick={() => selectTicketFromList(t)}
-                        className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors text-left"
+                        className="w-full px-5 py-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-surface-800/50 transition-colors text-left"
                       >
                         <div>
-                          <span className="font-mono font-semibold text-slate-800">{t.order_id}</span>
-                          <span className="ml-3 text-sm text-slate-500">
+                          <span className="font-mono font-semibold text-slate-800 dark:text-surface-100">{t.order_id}</span>
+                          <span className="ml-3 text-sm text-slate-500 dark:text-surface-400">
                             {t.devices.map(d => d.name).join(', ') || 'Device'}
                           </span>
                         </div>
@@ -679,7 +711,7 @@ export function TrackingPage() {
                           >
                             {t.status.name}
                           </span>
-                          <ChevronRight className="w-4 h-4 text-slate-400" />
+                          <ChevronRight className="w-4 h-4 text-slate-400 dark:text-surface-500" />
                         </div>
                       </button>
                     </li>
@@ -692,7 +724,7 @@ export function TrackingPage() {
             {loading && !results.length && (
               <div className="text-center py-12">
                 <Loader2 className="w-8 h-8 animate-spin text-primary-500 mx-auto" />
-                <p className="text-sm text-slate-500 mt-3">Looking up your repair...</p>
+                <p className="text-sm text-slate-500 dark:text-surface-400 mt-3">Looking up your repair...</p>
               </div>
             )}
           </>
@@ -700,11 +732,11 @@ export function TrackingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="bg-white border-t border-slate-200 py-6 mt-auto">
+      <footer className="bg-white dark:bg-surface-900 border-t border-slate-200 dark:border-surface-700 py-6 mt-auto">
         <div className="max-w-2xl mx-auto px-4 text-center space-y-2">
-          <p className="text-sm font-medium text-slate-700">{storeName}</p>
+          <p className="text-sm font-medium text-slate-700 dark:text-surface-200">{storeName}</p>
           {(storeAddress || storeCity || storeState) && (
-            <p className="text-xs text-slate-500 flex items-center justify-center gap-1.5">
+            <p className="text-xs text-slate-500 dark:text-surface-400 flex items-center justify-center gap-1.5">
               <MapPin className="w-3.5 h-3.5" />
               {[storeAddress, storeCity, storeState, storeZip].filter(Boolean).join(', ')}
             </p>
@@ -712,14 +744,14 @@ export function TrackingPage() {
           {storePhone && (
             <a
               href={`tel:${storePhone.replace(/\D/g, '')}`}
-              className="text-xs text-primary-600 hover:text-primary-800 flex items-center justify-center gap-1.5"
+              className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 flex items-center justify-center gap-1.5"
             >
               <PhoneCall className="w-3.5 h-3.5" />
               {storePhone}
             </a>
           )}
           {storeHours && (
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-slate-400 dark:text-surface-500 mt-2">
               Hours: {storeHours}
             </p>
           )}
@@ -755,14 +787,15 @@ function formatAction(h: HistoryEntry): string {
 
 // ---------- Invoice status badge ----------
 function InvoiceStatusBadge({ status }: { status: string }) {
+  // WEB-FC-025: ship dark-mode variants so chips stay legible on dark phone UAs
   const colors: Record<string, string> = {
-    paid: 'bg-green-100 text-green-700',
-    partial: 'bg-amber-100 text-amber-700',
-    unpaid: 'bg-red-100 text-red-700',
-    draft: 'bg-slate-100 text-slate-600',
-    voided: 'bg-slate-100 text-slate-400',
+    paid: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200',
+    partial: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200',
+    unpaid: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200',
+    draft: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+    voided: 'bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500',
   };
-  const cls = colors[status.toLowerCase()] || 'bg-slate-100 text-slate-600';
+  const cls = colors[status.toLowerCase()] || 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
   return (
     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cls}`}>
       {status.charAt(0).toUpperCase() + status.slice(1)}
@@ -790,9 +823,9 @@ function ProgressIndicator({ step }: { step: number }) {
             <div
               className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
                 isCurrent
-                  ? 'bg-primary-600 text-white ring-4 ring-primary-100'
+                  ? 'bg-primary-600 text-primary-950 ring-4 ring-primary-100'
                   : isActive
-                  ? 'bg-primary-500 text-white'
+                  ? 'bg-primary-500 text-primary-950'
                   : 'bg-slate-200 text-slate-400'
               }`}
             >

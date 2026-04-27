@@ -15,6 +15,7 @@ import {
   CornerDownLeft,
   ArrowUp,
   ArrowDown,
+  Compass,
 } from 'lucide-react';
 
 interface SearchResult {
@@ -22,6 +23,8 @@ interface SearchResult {
   display: string;
   type: string;
   subtitle?: string;
+  /** Static page-jump entries store their target route here (id 0). */
+  pagePath?: string;
 }
 
 interface GroupedResults {
@@ -29,12 +32,90 @@ interface GroupedResults {
   customers: SearchResult[];
   inventory: SearchResult[];
   invoices: SearchResult[];
+  pages: SearchResult[];
+}
+
+// WEB-FL-007 (Fixer-B12 2026-04-25): static page-jump targets so Cmd+K
+// can navigate to routes that don't have a backend search surface (and
+// to surfaces missing from Sidebar — see WEB-FL-006). Filtered locally
+// by case-insensitive substring match on `display` + alias keywords.
+interface PageJumpEntry {
+  display: string;
+  path: string;
+  subtitle?: string;
+  /** Extra match terms (route fragments, common synonyms). */
+  aliases?: string[];
+}
+
+const PAGE_JUMPS: PageJumpEntry[] = [
+  { display: 'Dashboard', path: '/dashboard' },
+  { display: 'POS', path: '/pos', aliases: ['point of sale', 'register', 'checkout'] },
+  { display: 'Tickets', path: '/tickets', aliases: ['repairs'] },
+  { display: 'Customers', path: '/customers', aliases: ['clients'] },
+  { display: 'Inventory', path: '/inventory', aliases: ['parts', 'stock'] },
+  { display: 'Invoices', path: '/invoices' },
+  { display: 'Estimates', path: '/estimates', aliases: ['quotes'] },
+  { display: 'Expenses', path: '/expenses' },
+  { display: 'Purchase Orders', path: '/purchase-orders', aliases: ['po'] },
+  { display: 'Communications', path: '/communications', aliases: ['sms', 'messages', 'chat'] },
+  { display: 'Leads', path: '/leads' },
+  { display: 'Pipeline', path: '/pipeline' },
+  { display: 'Calendar', path: '/calendar', aliases: ['appointments', 'schedule'] },
+  { display: 'Marketing', path: '/marketing' },
+  { display: 'Campaigns', path: '/campaigns' },
+  { display: 'Automations', path: '/automations', aliases: ['workflows'] },
+  { display: 'Reviews', path: '/reviews', aliases: ['nps', 'reputation'] },
+  { display: 'Voice Calls', path: '/voice', aliases: ['phone', 'recordings'] },
+  { display: 'Cash Register', path: '/cash-register', aliases: ['drawer', 'till'] },
+  { display: 'Catalog', path: '/catalog', aliases: ['products'] },
+  { display: 'Loaners', path: '/loaners', aliases: ['loaner devices'] },
+  { display: 'Subscriptions', path: '/subscriptions', aliases: ['memberships', 'recurring'] },
+  { display: 'Gift Cards', path: '/gift-cards' },
+  { display: 'Referrals', path: '/referrals' },
+  { display: 'Team', path: '/team' },
+  { display: 'Performance Reviews', path: '/team/reviews', aliases: ['employee reviews'] },
+  { display: 'Goals', path: '/team/goals' },
+  { display: 'Billing', path: '/billing', aliases: ['subscription', 'plan'] },
+  { display: 'Reports', path: '/reports', aliases: ['analytics'] },
+  { display: 'Settings', path: '/settings', aliases: ['preferences', 'configuration'] },
+];
+
+function matchPageJumps(query: string): SearchResult[] {
+  const q = query.trim().toLowerCase();
+  if (q.length < MIN_QUERY_LENGTH) return [];
+  const hits: SearchResult[] = [];
+  for (const p of PAGE_JUMPS) {
+    const hay = [p.display, p.path, ...(p.aliases ?? [])].join(' ').toLowerCase();
+    if (hay.includes(q)) {
+      hits.push({
+        id: 0,
+        display: p.display,
+        type: 'page',
+        subtitle: p.subtitle ?? p.path,
+        pagePath: p.path,
+      });
+    }
+    if (hits.length >= 6) break;
+  }
+  return hits;
 }
 
 const RECENT_SEARCHES_KEY = 'crm_recent_searches';
 const MAX_RECENT = 10;
 const MIN_QUERY_LENGTH = 2;
 const TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// @audit-fixed (WEB-FJ-016 / Fixer-B11 2026-04-25): wipe stored queries on
+// logout. Recent searches typically contain customer names, phone fragments,
+// and ticket numbers — leaving them in sessionStorage after logout means the
+// next staff member opening Cmd-K on the same tab session sees the previous
+// operator's investigation trail. The `bizarre-crm:auth-cleared` event is
+// dispatched by the auth store on logout / force-logout / switch-user.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    try { sessionStorage.removeItem(RECENT_SEARCHES_KEY); } catch { /* best-effort */ }
+  });
+}
 
 interface RecentSearchEntry {
   query: string;
@@ -81,8 +162,9 @@ function saveRecentSearch(query: string) {
       RECENT_SEARCHES_KEY,
       JSON.stringify(filtered.slice(0, MAX_RECENT)),
     );
-  } catch {
+  } catch (err) {
     // sessionStorage unavailable — skip silently
+    console.warn('[CommandPalette] persisting recent searches failed', err);
   }
 }
 
@@ -111,6 +193,15 @@ const typeConfig: Record<string, { icon: React.ReactNode; label: string; path: (
     path: (id) => `/invoices/${id}`,
     color: 'text-purple-500 bg-purple-50 dark:bg-purple-500/10',
   },
+  page: {
+    icon: <Compass className="h-4 w-4" />,
+    label: 'Pages',
+    // Static page-jump rows carry their route on the result via `pagePath`;
+    // navigateTo prefers that. This fallback is unreachable but keeps the
+    // typeConfig contract uniform.
+    path: () => '/',
+    color: 'text-rose-500 bg-rose-50 dark:bg-rose-500/10',
+  },
 };
 
 export function CommandPalette() {
@@ -128,12 +219,21 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [recentSearches] = useState(getRecentSearches);
+  // WEB-FD-008 fix: previously this was a one-shot lazy initializer
+  // (`useState(getRecentSearches)`) so a search saved during the same session
+  // never appeared under "Recent" until a full page reload. Re-read from
+  // sessionStorage every time the palette opens so the user sees their just-
+  // executed search the next time they hit Cmd-K.
+  const [recentSearches, setRecentSearches] = useState<string[]>(getRecentSearches);
+  useEffect(() => {
+    if (commandPaletteOpen) setRecentSearches(getRecentSearches());
+  }, [commandPaletteOpen]);
 
   // Flatten results into a single ordered list for keyboard navigation (memoized)
   const flatResults = useMemo<SearchResult[]>(() =>
     results
       ? [
+          ...results.pages,
           ...results.tickets,
           ...results.customers,
           ...results.inventory,
@@ -176,18 +276,21 @@ export function CommandPalette() {
       const myReqId = ++reqSeq.current;
       setLoading(true);
       setSearchError(false);
+      // WEB-FL-007 (Fixer-B12): page-jump matches are local + synchronous,
+      // so they appear even if the backend search fails or is unavailable.
+      const pages = matchPageJumps(query);
       try {
         const res = await searchApi.global(query.trim());
         if (myReqId !== reqSeq.current) return; // stale — a newer search is in flight
-        const data = res.data.data as GroupedResults;
-        setResults(data);
+        const data = res.data.data as Omit<GroupedResults, 'pages'>;
+        setResults({ ...data, pages });
         setSelectedIndex(0);
       } catch (err) {
         if (myReqId !== reqSeq.current) return;
         // Surface the failure as an explicit error state so the palette shows
         // "Search unavailable" instead of a misleading "No results found".
         console.error('[CommandPalette] search failed', err);
-        setResults({ tickets: [], customers: [], inventory: [], invoices: [] });
+        setResults({ tickets: [], customers: [], inventory: [], invoices: [], pages });
         setSearchError(true);
       } finally {
         if (myReqId === reqSeq.current) setLoading(false);
@@ -200,6 +303,14 @@ export function CommandPalette() {
   // Navigate to result
   const navigateTo = useCallback(
     (result: SearchResult) => {
+      // WEB-FL-007: page-jump rows carry their target as `pagePath`
+      // because their numeric id is a placeholder (0).
+      if (result.type === 'page' && result.pagePath) {
+        saveRecentSearch(query.trim());
+        navigate(result.pagePath);
+        close();
+        return;
+      }
       const config = typeConfig[result.type];
       if (config) {
         saveRecentSearch(query.trim());
@@ -266,7 +377,7 @@ export function CommandPalette() {
             const isSelected = globalIdx === selectedIndex;
             return (
               <button
-                key={`${type}-${item.id}`}
+                key={`${type}-${item.pagePath ?? item.id}`}
                 data-selected={isSelected}
                 onClick={() => navigateTo(item)}
                 onMouseEnter={() => setSelectedIndex(globalIdx)}
@@ -304,6 +415,7 @@ export function CommandPalette() {
   const groups: React.ReactNode[] = [];
   if (results) {
     for (const [type, items] of [
+      ['page', results.pages],
       ['ticket', results.tickets],
       ['customer', results.customers],
       ['inventory', results.inventory],
@@ -331,9 +443,13 @@ export function CommandPalette() {
       {/* Modal */}
       <div className="fixed inset-0 z-[101] flex items-start justify-center px-4 pt-[15vh]">
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="command-palette-title"
           className="w-full max-w-xl overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
           onClick={(e) => e.stopPropagation()}
         >
+          <h2 id="command-palette-title" className="sr-only">Command palette</h2>
           {/* Search Input */}
           <div className="flex items-center gap-3 border-b border-surface-100 px-4 dark:border-surface-800">
             {loading ? (
@@ -347,7 +463,7 @@ export function CommandPalette() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Search tickets, customers, inventory, invoices..."
+              placeholder="Search pages, tickets, customers, inventory, invoices..."
               className="h-14 flex-1 bg-transparent text-base text-surface-800 outline-none placeholder:text-surface-400 dark:text-surface-100 dark:placeholder:text-surface-500"
             />
             {query && (

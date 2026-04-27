@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
@@ -53,14 +53,24 @@ interface Commission {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────
+// @audit-fixed (WEB-FM-008 / Fixer-B22 2026-04-25): dropped the hardcoded
+// `'en-US'` locale on these three helpers. The shared `utils/format.ts`
+// helpers all derive the active locale from `initCurrencyFromSettings`
+// (defaults to navigator.language) so `formatShortDateTime` already
+// formats clock-in entries in the visitor's locale. Recent-commission
+// rows still need a *short* date (month+day, no year) which the shared
+// helper doesn't expose, so we keep tiny local helpers but read the
+// browser locale at format-time instead of pinning to en-US.
+const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language || 'en-US' : 'en-US';
+
 function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString('en-US', {
+  return new Date(iso).toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
   });
 }
 
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', {
+  return new Date(iso).toLocaleTimeString(_employeeLocale, {
     hour: 'numeric', minute: '2-digit',
   });
 }
@@ -113,11 +123,30 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
 }) {
   const [pin, setPin] = useState('');
 
+  // WEB-FG-012 fix: kiosk-cashiers were losing in-progress PINs when their hand
+  // grazed the dim outside the inner card — backdrop-click closed the modal
+  // mid-typing. Close on Escape only; the explicit Cancel/Close button and the
+  // header X icon already cover the dismiss path. Also adds a11y-correct
+  // role + aria-modal + aria-labelledby (modal previously had no semantic
+  // dialog role, screen readers announced it as plain-text content).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pin-modal-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+    >
+      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
-          <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h3 id="pin-modal-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             {action === 'clock-in' ? 'Clock In' : 'Clock Out'} - {employee.first_name}
           </h3>
           <button type="button" aria-label="Close" onClick={onClose} className="rounded-lg p-1 hover:bg-surface-100 dark:hover:bg-surface-700">
@@ -125,29 +154,44 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           </button>
         </div>
         <div className="p-6">
-          <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
-            Enter PIN
-          </label>
-          <div className="relative">
-            <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-            <input
-              type="password"
-              inputMode="numeric"
-              maxLength={6}
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
-              }}
-              placeholder="4-6 digit PIN"
-              autoFocus
-              className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
-            />
-          </div>
-          {!employee.has_pin && (
-            <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
-              No PIN set for this employee. Any value will be accepted.
-            </p>
+          {/* WEB-FG-004 fix: when the employee has no PIN configured, the
+              modal previously accepted ANY value — meaning a walk-up bystander
+              on an unattended kiosk could clock in/out a pin-less employee
+              and falsify timesheets/commissions. We now hard-block the form:
+              the input is disabled, Submit is disabled, and the operator is
+              told to set a PIN in Edit Employee first. The server is the
+              source of truth; this client gate just removes the trivial
+              walk-up attack. */}
+          {!employee.has_pin ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+              <p className="font-semibold">PIN required to clock in/out.</p>
+              <p className="mt-1">
+                {employee.first_name} {employee.last_name} has no PIN configured. Open Edit Employee
+                and set a 4–6 digit PIN before recording time.
+              </p>
+            </div>
+          ) : (
+            <>
+              <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                Enter PIN
+              </label>
+              <div className="relative">
+                <Hash className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && pin.length >= 4) onSubmit(pin);
+                  }}
+                  placeholder="4-6 digit PIN"
+                  autoFocus
+                  className="w-full rounded-lg border border-surface-300 py-3 pl-9 pr-4 text-center text-2xl tracking-[0.5em] dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                />
+              </div>
+            </>
           )}
         </div>
         <div className="flex justify-end gap-2 border-t border-surface-200 px-4 py-3 dark:border-surface-700">
@@ -155,17 +199,18 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
             onClick={onClose}
             className="rounded-lg px-4 py-2 text-sm font-medium text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700"
           >
-            Cancel
+            {employee.has_pin ? 'Cancel' : 'Close'}
           </button>
           <button type="button"
             onClick={() => onSubmit(pin)}
-            disabled={pin.length < 4 || isPending}
+            disabled={!employee.has_pin || pin.length < 4 || isPending}
             className={cn(
-              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50',
+              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed',
               action === 'clock-in'
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-red-600 hover:bg-red-700',
             )}
+            title={!employee.has_pin ? 'Set a PIN before clocking in/out' : undefined}
           >
             {isPending ? (
               <span className="flex items-center gap-2">
@@ -377,7 +422,7 @@ export function EmployeeListPage() {
         </div>
         <a
           href="/settings/users"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
         >
           <UserCog className="h-4 w-4" />
           Add Employee

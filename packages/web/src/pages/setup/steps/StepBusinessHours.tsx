@@ -142,7 +142,7 @@ export function SubStepFooter({
         type="button"
         onClick={onComplete}
         disabled={completeDisabled}
-        className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Check className="h-4 w-4" />
         {completeLabel}

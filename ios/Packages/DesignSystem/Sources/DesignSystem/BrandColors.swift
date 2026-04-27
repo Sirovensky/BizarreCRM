@@ -7,6 +7,11 @@ public extension Color {
     static let bizarreOutline            = Color("Outline",               bundle: .main)
     static let bizarreOnSurface          = Color("OnSurface",             bundle: .main)
     static let bizarreOnSurfaceMuted     = Color("OnSurfaceMuted",        bundle: .main)
+    /// Adaptive primary — cream `#fdeed0` in dark mode, deep-orange `#c2410c` in light.
+    /// Use this instead of `bizarreOrange` for all brand-primary interactive elements.
+    static let bizarrePrimary            = Color("BrandPrimary",          bundle: .main)
+    /// On-primary text — dark brown `#2b1400` (AAA on cream; white on deep-orange).
+    static let bizarreOnPrimary          = Color("OnBrandOrange",         bundle: .main)
     static let bizarreOrange             = Color("BrandOrange",           bundle: .main)
     static let bizarreOrangeContainer    = Color("BrandOrangeContainer",  bundle: .main)
     static let bizarreOnOrange           = Color("OnBrandOrange",         bundle: .main)
@@ -18,6 +23,14 @@ public extension Color {
     // §30 — Semantic badge additions
     static let bizarreDanger             = Color("DangerRed",             bundle: .main)
     static let bizarreInfo               = Color("InfoBlue",              bundle: .main)
+
+    // MARK: - POS primary / on-primary aliases
+    // Used by the repair-flow and tender CTAs to express colour intent without
+    // hard-coding dark/light hex values. Wired to the existing orange tokens.
+
+    /// Lighter/brighter variant of the brand orange used in gradient stops.
+    /// Alias of `bizarreOrangeContainer` which holds the container/bright swatch.
+    static let bizarreOrangeBright       = bizarreOrangeContainer
 }
 
 // Mirror the brand colors onto ShapeStyle so dot-syntax works at call
@@ -29,6 +42,8 @@ public extension ShapeStyle where Self == Color {
     static var bizarreOutline:         Color { .bizarreOutline }
     static var bizarreOnSurface:       Color { .bizarreOnSurface }
     static var bizarreOnSurfaceMuted:  Color { .bizarreOnSurfaceMuted }
+    static var bizarrePrimary:         Color { .bizarrePrimary }
+    static var bizarreOnPrimary:       Color { .bizarreOnPrimary }
     static var bizarreOrange:          Color { .bizarreOrange }
     static var bizarreOrangeContainer: Color { .bizarreOrangeContainer }
     static var bizarreOnOrange:        Color { .bizarreOnOrange }
@@ -40,4 +55,5 @@ public extension ShapeStyle where Self == Color {
     // §30 — Semantic badge additions
     static var bizarreDanger:          Color { .bizarreDanger }
     static var bizarreInfo:            Color { .bizarreInfo }
+    static var bizarreOrangeBright:    Color { .bizarreOrangeBright }
 }

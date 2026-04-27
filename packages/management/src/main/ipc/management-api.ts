@@ -44,17 +44,26 @@ const SchemaSetPassword = z.object({
 // DASH-ELEC-246, DASH-ELEC-254: Enforce min lengths at the IPC layer so devtools
 // cannot bypass the renderer's UI guards and set a trivially-weak password or
 // a one-character username during first-run setup.
+// DASH-ELEC-055 FIXED-by-Fixer-A24 2026-04-25: aligned setup password min to 10
+// chars to match SchemaSetPassword and the renderer-side LoginPage handleSetup
+// guard (also 10). Previously a devtools caller could create a sole super-admin
+// with an 8-char password while forced-change required 10 — inconsistent policy.
 const SchemaSetup = z.object({
   username: z.string().min(3).max(256),
-  password: z.string().min(8).max(1024),
+  password: z.string().min(10).max(1024),
 });
 
 const SchemaRange = z.object({
   range: z.enum(['1h', '6h', '24h', '7d', '30d']),
 });
 
+// DASH-ELEC-078 FIXED-by-Fixer-A24 2026-04-25: tightened slug pattern to match
+// SchemaCreateTenant (^[a-z0-9-]{3,64}$). Previously SchemaSlug accepted
+// uppercase letters, underscores, and lengths up to 256, allowing renderer
+// callers (delete/suspend/activate/repair/get-tenant) to target slugs that
+// could never have been created via the UI flow (e.g. `ADMIN_TENANT`).
 const SchemaSlug = z.object({
-  slug: z.string().min(1).max(256).regex(/^[a-zA-Z0-9_-]+$/),
+  slug: z.string().regex(/^[a-z0-9-]{3,64}$/, 'slug must be 3-64 lowercase alphanumeric/hyphen characters'),
 });
 
 const SchemaId = z.object({
@@ -148,6 +157,13 @@ const SchemaBackupSettings = z.object({
 // classified so the renderer knows how to render the field and whether
 // to mask the value when reading back.
 type EnvFieldKind = 'flag' | 'value' | 'secret';
+// DASH-ELEC-269 (Fixer-C26 2026-04-25): this union is intentionally duplicated
+// in packages/management/src/renderer/src/api/bridge.ts because Electron's
+// main and renderer processes cannot share a TS type at runtime via import
+// (they build to separate bundles, no `shared/` folder yet). When adding or
+// removing a category, update BOTH files in the same commit; future cleanup
+// path is a `packages/management/src/shared/types.ts` brought in by both
+// tsconfigs. Order must match the renderer side for diff readability.
 type EnvFieldCategory = 'killswitch' | 'captcha' | 'stripe' | 'cloudflare' | 'cors';
 
 interface EnvFieldDef {
@@ -620,13 +636,16 @@ function sanitizeErrorMessage(msg: string, root: string): string {
  * same drive would be accepted, letting a misplaced install silently run
  * from arbitrary locations with no integrity gate.
  *
- * This implementation uses deterministic, layout-specific candidates and
- * requires the resolved root to sit INSIDE the trusted anchor itself:
+ * This implementation uses deterministic, layout-specific candidates:
  *
- *   - Packaged (`app.isPackaged === true`): the only accepted root is
- *     `<process.resourcesPath>/crm-source`, populated by electron-builder
- *     `extraResources` (see electron-builder.yml). If resourcesPath is
- *     missing or crm-source doesn't exist, we fail loudly with an
+ *   - Packaged setup.bat layout: `<repo>/dashboard/<exe>` accepts exactly
+ *     `<repo>` when the full marker set and `.env` are present. This is the
+ *     live repo root that setup.bat prepares and the only place production
+ *     secrets are written.
+ *
+ *   - Packaged fallback: `<process.resourcesPath>/crm-source`, populated by
+ *     electron-builder `extraResources` (see electron-builder.yml). If
+ *     neither packaged candidate exists, we fail loudly with an
  *     installation-integrity error rather than walking the filesystem.
  *
  *   - Dev (`app.isPackaged === false`): the repo root is reached by
@@ -652,9 +671,27 @@ function hasProjectRootMarkers(dir: string): boolean {
   return auxMarker;
 }
 
+function resolveSetupProjectRootFromPackagedExe(): string | null {
+  if (!app.isPackaged) return null;
+  const execPath = typeof process.execPath === 'string' ? process.execPath : null;
+  if (!execPath) return null;
+
+  const exeDir = path.resolve(path.dirname(execPath));
+  if (path.basename(exeDir).toLowerCase() !== 'dashboard') return null;
+
+  const candidate = path.resolve(exeDir, '..');
+  if (!isPathUnder(exeDir, candidate)) return null;
+  if (!hasProjectRootMarkers(candidate)) return null;
+  if (!fs.existsSync(path.join(candidate, '.env'))) return null;
+  return candidate;
+}
+
 function resolveTrustedProjectRoot(): string | null {
-  // Packaged build: only the bundled crm-source directory is trusted.
+  // Packaged build from setup.bat: dashboard EXE lives in <repo>/dashboard.
   if (app.isPackaged) {
+    const setupRoot = resolveSetupProjectRootFromPackagedExe();
+    if (setupRoot) return setupRoot;
+
     const resourcesPath = typeof process.resourcesPath === 'string' ? process.resourcesPath : null;
     if (!resourcesPath || !fs.existsSync(resourcesPath)) {
       throw new Error(
@@ -894,6 +931,15 @@ function wrapHandler(fn: (...args: any[]) => Promise<any>) {
     try {
       return await fn(...args);
     } catch (err: unknown) {
+      // DASH-ELEC-205: Origin-rejection is a security boundary failure, not a
+      // recoverable handler error. Surfacing it as `{success:false}` lets a
+      // hostile renderer probe IPC handlers without anyone noticing the
+      // sandbox breach. Re-throw so Electron logs an uncaught handler error
+      // and the renderer's `ipcRenderer.invoke` rejects loudly.
+      const eMsg = (err as { message?: string } | null)?.message ?? '';
+      if (eMsg.startsWith('IPC_ORIGIN_REJECTED')) {
+        throw err;
+      }
       // MGT-021: Differentiate network errors from generic handler failures.
       // Callers can inspect `offline: true` to show a "server offline" state
       // rather than a generic error toast.

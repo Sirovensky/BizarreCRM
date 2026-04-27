@@ -22,6 +22,12 @@ import {
 } from 'lucide-react';
 import { api } from '@/api/client';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
+// WEB-FB-007 (Fixer-KKK 2026-04-25): swapped native window.confirm for the
+// themed async modal — matches the pattern already used on Estimates / POS /
+// Customers / Tickets / Invoices, picks up dark mode + brand fonts, and is
+// not blocked by Safari's third-party-iframe modal suppression.
+import { confirm } from '@/stores/confirmStore';
 
 interface StocktakeSession {
   id: number;
@@ -188,7 +194,7 @@ export function StocktakePage() {
         </div>
         <button
           onClick={() => setShowNew(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" /> New Stocktake
         </button>
@@ -215,7 +221,7 @@ export function StocktakePage() {
             <button
               onClick={() => createMut.mutate({ name: newName, location: newLocation })}
               disabled={!newName.trim() || createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Open
             </button>
@@ -261,7 +267,7 @@ export function StocktakePage() {
               </div>
               {s.location && <div className="text-xs text-surface-500">{s.location}</div>}
               <div className="text-xs text-surface-400 mt-1">
-                {new Date(s.opened_at).toLocaleString()}
+                {formatDateTime(s.opened_at)}
               </div>
             </button>
           ))}
@@ -276,7 +282,7 @@ export function StocktakePage() {
 
           {detailData && (
             <>
-              <div className="rounded-lg border border-surface-200 bg-white p-4">
+              <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                 <h3 className="font-semibold text-lg">{detailData.session.name}</h3>
                 <div className="mt-2 grid grid-cols-4 gap-3 text-sm">
                   <div>
@@ -299,7 +305,7 @@ export function StocktakePage() {
               </div>
 
               {detailData.session.status === 'open' && (
-                <div className="rounded-lg border border-surface-200 bg-white p-4">
+                <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
                   <h3 className="font-semibold mb-3 flex items-center gap-2">
                     <ScanBarcode className="h-4 w-4" /> Scan / enter SKU
                   </h3>
@@ -320,7 +326,7 @@ export function StocktakePage() {
                     />
                     <button
                       type="submit"
-                      className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-white"
+                      className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950"
                     >
                       Count
                     </button>
@@ -328,10 +334,12 @@ export function StocktakePage() {
 
                   <div className="mt-4 flex gap-2">
                     <button
-                      onClick={() => {
-                        if (confirm('Commit this stocktake? Inventory counts will be updated.')) {
-                          commitMut.mutate();
-                        }
+                      onClick={async () => {
+                        const ok = await confirm('Commit this stocktake? Inventory counts will be updated.', {
+                          title: 'Commit stocktake',
+                          confirmLabel: 'Commit',
+                        });
+                        if (ok) commitMut.mutate();
                       }}
                       disabled={detailData.counts.length === 0 || commitMut.isPending}
                       className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
@@ -339,10 +347,13 @@ export function StocktakePage() {
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('Cancel this stocktake? No stock changes will be applied.')) {
-                          cancelMut.mutate();
-                        }
+                      onClick={async () => {
+                        const ok = await confirm('Cancel this stocktake? No stock changes will be applied.', {
+                          title: 'Cancel stocktake',
+                          confirmLabel: 'Cancel stocktake',
+                          danger: true,
+                        });
+                        if (ok) cancelMut.mutate();
                       }}
                       className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-600"
                     >
@@ -352,9 +363,9 @@ export function StocktakePage() {
                 </div>
               )}
 
-              <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto">
+              <div className="rounded-lg border border-surface-200 bg-white overflow-x-auto dark:bg-surface-800 dark:border-surface-700">
                 <table className="w-full text-sm">
-                  <thead className="bg-surface-50 border-b border-surface-200">
+                  <thead className="bg-surface-50 border-b border-surface-200 dark:bg-surface-900 dark:border-surface-700">
                     <tr>
                       <th className="text-left px-3 py-2">Item</th>
                       <th className="text-right px-3 py-2">Expected</th>

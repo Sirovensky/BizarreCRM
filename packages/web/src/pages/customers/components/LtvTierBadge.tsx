@@ -73,11 +73,16 @@ export function LtvTierBadge({ customerId, className, showValue = true }: LtvTie
 
   if (isLoading || !data?.data) {
     return (
-      <div className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border bg-surface-100 text-surface-400 border-surface-200 dark:bg-surface-800 dark:border-surface-700',
-        className,
-      )}>
-        <Medal className="h-3 w-3 animate-pulse" />
+      <div
+        role="status"
+        aria-live="polite"
+        aria-busy="true"
+        aria-label="Loading lifetime value tier"
+        className={cn(
+          'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border bg-surface-100 text-surface-400 border-surface-200 dark:bg-surface-800 dark:border-surface-700',
+          className,
+        )}>
+        <Medal aria-hidden="true" className="h-3 w-3 animate-pulse" />
         <span>Loading...</span>
       </div>
     );

@@ -5,13 +5,13 @@ import {
   MapPin, User, Wrench, Calendar, X, Bell, Plus, Clock, Activity,
   AlertTriangle,
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import toast from 'react-hot-toast';
 import { leadApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
-import { formatCurrency, formatDate } from '@/utils/format';
+import { formatCurrency, formatDate, formatShortDateTime } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -84,13 +84,31 @@ function LostReasonModal({
 }) {
   const [reason, setReason] = useState('');
 
+  // WEB-FX-003: Esc closes the modal so keyboard users aren't trapped.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lead-lost-title"
+        className="w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
-          <h3 className="font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+          <h3 id="lead-lost-title" className="font-semibold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-500" />
             Mark as Lost
           </h3>
@@ -149,6 +167,17 @@ export function LeadDetailPage() {
   const [showAddReminder, setShowAddReminder] = useState(false);
   const [reminderDate, setReminderDate] = useState('');
   const [reminderNote, setReminderNote] = useState('');
+
+  // WEB-FF-023: Reminders' "Overdue" badge is computed inside a useMemo whose
+  // deps don't include the wall clock, so a reminder ticking past `now` while
+  // the page is open never flips from Pending → Overdue until the next refetch.
+  // Drive the memo with a 30s-cadence Date.now() snapshot so shift-handover
+  // edge cases stay accurate without spamming re-renders.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['lead', id],
@@ -238,6 +267,54 @@ export function LeadDetailPage() {
     onError: () => toast.error('Failed to create reminder'),
   });
 
+  // WEB-FK-016: ALL hooks must run before any conditional early-return so
+  // hook-call order stays stable across data → error transitions. Compute
+  // `appointments` from the (possibly undefined) lead before the guards;
+  // the useMemo below reads it via the lead?-guarded path.
+  const appointments: any[] = lead?.appointments || [];
+
+  // Activity timeline: merge appointments + reminders into a unified list.
+  // Declared before the early returns (FK-016) — depends on possibly-undefined
+  // `lead`, so every read is guarded.
+  const timeline = useMemo(() => {
+    const items: { type: string; date: string; title: string; detail?: string }[] = [];
+    if (!lead) return items;
+    for (const a of appointments) {
+      items.push({
+        type: 'appointment',
+        date: a.start_time,
+        title: a.title || 'Appointment',
+        detail: a.status === 'cancelled' ? 'Cancelled' : a.status,
+      });
+    }
+    for (const r of reminders) {
+      items.push({
+        type: 'reminder',
+        date: r.remind_at,
+        title: r.note || 'Follow-up reminder',
+        // WEB-FF-023: compare against the ticking `nowMs` so the badge flips
+        // from Pending → Overdue without needing a refetch.
+        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at).getTime() < nowMs ? 'Overdue' : 'Pending'),
+      });
+    }
+    if (lead.created_at) {
+      items.push({ type: 'created', date: lead.created_at, title: 'Lead created' });
+    }
+    if (lead.status === 'converted' && lead.updated_at) {
+      items.push({ type: 'converted', date: lead.updated_at, title: 'Converted to ticket' });
+    }
+    if (lead.status === 'lost' && lead.updated_at) {
+      items.push({
+        type: 'lost',
+        date: lead.updated_at,
+        title: 'Lead marked as lost',
+        detail: lead.lost_reason ? LOST_REASONS.find(r => r.value === lead.lost_reason)?.label ?? lead.lost_reason : undefined,
+      });
+    }
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return items;
+  }, [appointments, reminders, lead, nowMs]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -257,45 +334,7 @@ export function LeadDetailPage() {
 
   const color = STATUS_COLORS[lead.status] || '#6b7280';
   const devices: any[] = lead.devices || [];
-  const appointments: any[] = lead.appointments || [];
   const statuses = ['new', 'contacted', 'scheduled', 'qualified', 'proposal', 'converted', 'lost'];
-
-  // Activity timeline: merge appointments + reminders into a unified list
-  const timeline = useMemo(() => {
-    const items: { type: string; date: string; title: string; detail?: string }[] = [];
-    for (const a of appointments) {
-      items.push({
-        type: 'appointment',
-        date: a.start_time,
-        title: a.title || 'Appointment',
-        detail: a.status === 'cancelled' ? 'Cancelled' : a.status,
-      });
-    }
-    for (const r of reminders) {
-      items.push({
-        type: 'reminder',
-        date: r.remind_at,
-        title: r.note || 'Follow-up reminder',
-        detail: r.is_dismissed ? 'Dismissed' : (new Date(r.remind_at) < new Date() ? 'Overdue' : 'Pending'),
-      });
-    }
-    if (lead.created_at) {
-      items.push({ type: 'created', date: lead.created_at, title: 'Lead created' });
-    }
-    if (lead.status === 'converted' && lead.updated_at) {
-      items.push({ type: 'converted', date: lead.updated_at, title: 'Converted to ticket' });
-    }
-    if (lead.status === 'lost' && lead.updated_at) {
-      items.push({
-        type: 'lost',
-        date: lead.updated_at,
-        title: 'Lead marked as lost',
-        detail: lead.lost_reason ? LOST_REASONS.find(r => r.value === lead.lost_reason)?.label ?? lead.lost_reason : undefined,
-      });
-    }
-    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    return items;
-  }, [appointments, reminders, lead]);
 
   return (
     <div>
@@ -338,7 +377,7 @@ export function LeadDetailPage() {
                       {s}
                     </button>
                   ))}
-                  <button onClick={() => setEditingStatus(false)} className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => setEditingStatus(false)} aria-label="Cancel status edit" className="p-0.5 text-surface-400"><X className="h-3.5 w-3.5" /></button>
                 </div>
               ) : (
                 <button
@@ -357,7 +396,19 @@ export function LeadDetailPage() {
         <div className="flex items-center gap-2">
           {lead.status !== 'converted' && (
             <button
-              onClick={async () => { if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) convertMut.mutate(); }}
+              onClick={async () => {
+                // WEB-FM-020 (Fixer-C15 2026-04-25): wrap async click handler so a
+                // rejected promise from `confirm()` (modal teardown race, etc.) is
+                // surfaced via toast instead of silently bubbling to
+                // window.onunhandledrejection where ErrorBoundary cannot catch it.
+                try {
+                  if (await confirm('Convert this lead to a ticket? This will create a new ticket with the lead data.')) {
+                    convertMut.mutate();
+                  }
+                } catch {
+                  /* user cancelled or modal closed — no toast needed */
+                }
+              }}
               disabled={convertMut.isPending}
               className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
             >
@@ -441,10 +492,10 @@ export function LeadDetailPage() {
             {editingNotes ? (
               <div className="space-y-2">
                 <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
-                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/20" />
+                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2" />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50">
                     <Save className="h-3 w-3" /> Save
                   </button>
                   <button onClick={() => setEditingNotes(false)} className="text-xs text-surface-500">Cancel</button>
@@ -495,7 +546,7 @@ export function LeadDetailPage() {
                       });
                     }}
                     disabled={createReminderMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
                   >
                     {createReminderMut.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
                     Save Reminder
@@ -509,7 +560,9 @@ export function LeadDetailPage() {
             ) : (
               <div className="space-y-2">
                 {reminders.map((r: any) => {
-                  const isOverdue = !r.is_dismissed && new Date(r.remind_at) < new Date();
+                  // WEB-FF-023: drive isOverdue from the ticking nowMs so the
+                  // visual chip flips when the reminder passes, not on refetch.
+                  const isOverdue = !r.is_dismissed && new Date(r.remind_at).getTime() < nowMs;
                   return (
                     <div
                       key={r.id}
@@ -530,9 +583,7 @@ export function LeadDetailPage() {
                         )}
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5">
-                        {new Date(r.remind_at).toLocaleString('en-US', {
-                          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                        })}
+                        {formatShortDateTime(r.remind_at)}
                         {r.created_by_first_name && ` - by ${r.created_by_first_name}`}
                       </p>
                     </div>
@@ -579,9 +630,7 @@ export function LeadDetailPage() {
                         <p className="text-xs font-medium text-surface-900 dark:text-surface-100">{item.title}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] text-surface-400">
-                            {new Date(item.date).toLocaleString('en-US', {
-                              month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-                            })}
+                            {formatShortDateTime(item.date)}
                           </span>
                           {item.detail && (
                             <span className="text-[10px] text-surface-500 capitalize">{item.detail}</span>
@@ -680,8 +729,8 @@ export function LeadDetailPage() {
                         </span>
                       </div>
                       <p className="text-xs text-surface-500 mt-0.5">
-                        {new Date(a.start_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+                        {formatShortDateTime(a.start_time)}
+                        {a.end_time && ` - ${new Date(a.end_time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`}
                       </p>
                       {a.no_show === 1 && (
                         <span className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">

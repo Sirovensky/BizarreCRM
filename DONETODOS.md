@@ -1,4 +1,48 @@
 
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix L (asyncHandler codemod + S8 P2 cleanup)
+
+- [x] WEB-S8-018. **roles/permission-keys admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /permission-keys; previously any authenticated user could enumerate all permission key strings.
+- [x] WEB-S8-019. **roles/users/:userId/role admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /users/:userId/role; prevented cross-user role-assignment enumeration.
+- [x] WEB-S8-020. **settings/config inverted denylist** CLOSED 2026-04-25 — `7a5d4da8` — switched non-admin filtering from `SENSITIVE_CONFIG_KEYS` denylist to `PUBLIC_CONFIG_KEYS` allowlist; new DB keys can no longer silently leak.
+- [x] WEB-S8-021. **settings/preferences bare async** CLOSED 2026-04-25 — `7a5d4da8` — both GET and PUT /preferences wrapped with asyncHandler.
+- [x] WEB-S8-022. **settings read-only endpoints bare async (7 routes)** CLOSED 2026-04-25 — `7a5d4da8` — setup-status, store, statuses, tax-classes, payment-methods, referral-sources, customer-groups all wrapped.
+- [x] WEB-S8-023. **settings/module-visibility bare async** CLOSED 2026-04-25 — `7a5d4da8` — wrapped with asyncHandler.
+- [x] WEB-S8-024. **sms/templates no role gate** CLOSED 2026-04-25 — `e3321a6e` — `requireManagerOrAdmin(req)` added to GET /templates; matches write sibling handlers.
+- [x] WEB-S8-025. **sms/preview-template no role gate + unbounded vars** CLOSED 2026-04-25 — `e3321a6e` — `requireManagerOrAdmin(req)` + max 20 vars keys, each ≤ 200 chars.
+- [x] WEB-S8-029. **nuclear wipe confirm-before-role ordering** CLOSED 2026-04-25 — `f7781356` — role check moved to first line of handler; non-admins no longer receive 400 vs 403 probe signal.
+- [x] WEB-S8-038. **settings/audit-logs bare async** CLOSED 2026-04-25 — `7a5d4da8` — covered by full settings.routes.ts codemod.
+- [x] WEB-S8-041. **settings.routes.ts wide bare-async pattern (60 handlers)** CLOSED 2026-04-25 — `7a5d4da8` — all 60 bare `async (req, res)` handlers in settings.routes.ts wrapped with asyncHandler; asyncHandler type updated to `Promise<unknown>` to accommodate early-return res.json() patterns.
+
+### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix K (RBAC + crash vectors)
+
+- [x] WEB-S8-001. **account.routes.ts asyncHandler** CLOSED 2026-04-24 — `e3321a6e` — wrapped /usage with asyncHandler so DB rejections don't crash process.
+- [x] WEB-S8-004. **catalog/import/:catalogId no permission gate** CLOSED 2026-04-24 — `e3321a6e` — added adminOnly middleware; matches sibling /sync route.
+- [x] WEB-S8-005. **catalog management read endpoints ungated** CLOSED 2026-04-24 — `18a2d442` — added requireInventoryView to /jobs, /jobs/:id, /order-queue, /order-queue/summary, /stats, /template-count.
+- [x] WEB-S8-006. **catalog/live-search no rate limit** CLOSED 2026-04-24 — `e3321a6e` — consumeWindowRate(30/min per user) before scrape call.
+- [x] WEB-S8-007. **order-queue mutators ungated** CLOSED 2026-04-24 — `18a2d442` — requireInventoryView on /order-queue/add and PATCH /order-queue/:id.
+- [x] WEB-S8-009. **tickets feedback endpoints ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('tickets.view') on /feedback-summary and /:id/feedback GET.
+- [x] WEB-S8-010. **POST /:id/feedback staff impersonation** CLOSED 2026-04-24 — `e3321a6e` — requirePermission('tickets.edit') gates feedback write.
+- [x] WEB-S8-011. **/:id/history and /:id/repair-time ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('tickets.view') on both.
+- [x] WEB-S8-012. **/:id/appointments ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('tickets.view').
+- [x] WEB-S8-013. **saved-filters DELETE IDOR** CLOSED 2026-04-24 — already fixed (AND user_id = ? in SELECT + DELETE).
+- [x] WEB-S8-014. **reports/tickets no requireAdminOrManager** CLOSED 2026-04-24 — `18a2d442` — added requireAdminOrManager(req) as first line.
+- [x] WEB-S8-015. **reports/customer-acquisition no requireAdminOrManager** CLOSED 2026-04-24 — `18a2d442` — added requireAdminOrManager(req) inside handler.
+- [x] WEB-S8-017. **employees list/performance ungated** CLOSED 2026-04-24 — `18a2d442` — requireAdminOrManager on GET / and GET /performance/all.
+- [x] WEB-S8-026. **team/shifts cross-user enumeration** CLOSED 2026-04-24 — `18a2d442` — clamp to self for non-privileged; reject cross-user for non-admin/manager.
+- [x] WEB-S8-027. **team/goals cross-user enumeration** CLOSED 2026-04-24 — `18a2d442` — clamp to self; reject cross-user for non-admin/manager.
+- [x] WEB-S8-028. **catalog/order-queue PII leak** CLOSED 2026-04-24 — `18a2d442` — covered by WEB-S8-005 requireInventoryView gate.
+- [x] WEB-S8-031. **gift-cards list ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('gift_cards.issue') on GET /.
+- [x] WEB-S8-032. **gift-cards/:id ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('gift_cards.issue') on GET /:id.
+- [x] WEB-S8-033. **catalog/parts-search ungated** CLOSED 2026-04-24 — `18a2d442` — requireInventoryView.
+- [x] WEB-S8-034. **inventory read endpoints ungated (14 routes)** CLOSED 2026-04-24 — `18a2d442` — requirePermission('inventory.view') on manufacturers, low-stock, summary, categories, stock-alerts-summary, variance-report, barcode/:code, kits, kits/:id, /:id, /:id/barcode, suppliers/list, purchase-orders/list, purchase-orders/:id, stocktake/discrepancies.
+- [x] WEB-S8-035. **inventory GET / ungated** CLOSED 2026-04-24 — `18a2d442` — requirePermission('inventory.view') as middleware arg before asyncHandler.
+- [x] WEB-S8-036. **catalog/live-search no rate limit (duplicate of S8-006)** CLOSED 2026-04-24 — `e3321a6e`.
+- [x] WEB-S8-039. **import checkpoint tenantSlug fallback to 'default'** CLOSED 2026-04-24 — `6ea75e92` — resolveTenantSlug() helper throws 500 in multi-tenant mode when slug missing.
+- [x] WEB-S8-040. **employees/performance/all ungated** CLOSED 2026-04-24 — `18a2d442` — requireAdminOrManager inside handler.
+- [x] WEB-S8-042. **sms/send recordWindowFailure double-counts on success** CLOSED 2026-04-24 — `e3321a6e` — moved recordWindowFailure to catch block only.
+- [x] WEB-S8-043. **team/shifts list-all ungated** CLOSED 2026-04-24 — `18a2d442` — same fix as S8-026.
+- [x] WEB-S8-044. **inventory cost_price leaked to all roles** CLOSED 2026-04-24 — `18a2d442` — covered by S8-035 inventory.view gate.
+
 ### Web Audit Wave-WEB-2026-04-24 — Fix Wave 4 / Fix I (S7 P0 security + P1 correctness)
 
 - [x] WEB-S7-001. **TicketListPage: isError absent** CLOSED 2026-04-24 — `ee85b57e` — destructured isError; error state rendered in mobile card layout and desktop table body.

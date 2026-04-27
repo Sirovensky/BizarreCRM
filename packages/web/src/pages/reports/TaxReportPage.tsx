@@ -14,10 +14,23 @@ export function TaxReportPage() {
   const [jurisdiction, setJurisdiction] = useState('default');
 
   const [jurisdictionError, setJurisdictionError] = useState<string | null>(null);
+  // WEB-FC-014 (Fixer-B10 2026-04-25): validate the date range before opening
+  // the server-rendered report. Previously `from > to` (or empty inputs) still
+  // opened a blank report, which looked like the feature was broken.
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const JURISDICTION_PATTERN = /^[A-Za-z0-9 \-,]{0,64}$/;
 
   const openReport = () => {
+    if (!from || !to) {
+      setDateError('Pick both a From and a To date');
+      return;
+    }
+    if (from > to) {
+      setDateError('From date must be on or before To date');
+      return;
+    }
+    setDateError(null);
     if (!JURISDICTION_PATTERN.test(jurisdiction)) {
       setJurisdictionError('Jurisdiction may only contain letters, numbers, spaces, hyphens, and commas (64 chars max)');
       return;
@@ -46,7 +59,9 @@ export function TaxReportPage() {
           <input
             type="date"
             value={from}
-            onChange={e => setFrom(e.target.value)}
+            onChange={e => { setFrom(e.target.value); setDateError(null); }}
+            aria-invalid={dateError ? true : undefined}
+            aria-describedby={dateError ? 'tax-date-error' : undefined}
             className="mt-1 rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2"
           />
         </label>
@@ -55,7 +70,9 @@ export function TaxReportPage() {
           <input
             type="date"
             value={to}
-            onChange={e => setTo(e.target.value)}
+            onChange={e => { setTo(e.target.value); setDateError(null); }}
+            aria-invalid={dateError ? true : undefined}
+            aria-describedby={dateError ? 'tax-date-error' : undefined}
             className="mt-1 rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-3 py-2"
           />
         </label>
@@ -77,10 +94,16 @@ export function TaxReportPage() {
         </label>
       </div>
 
+      {dateError ? (
+        <p id="tax-date-error" role="alert" className="mb-3 text-sm text-red-600 dark:text-red-400">
+          {dateError}
+        </p>
+      ) : null}
+
       <button
         type="button"
         onClick={openReport}
-        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-white hover:bg-primary-700 transition-colors"
+        className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-primary-950 hover:bg-primary-700 transition-colors"
       >
         <Download size={16} /> Generate Tax Report
       </button>

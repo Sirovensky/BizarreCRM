@@ -72,6 +72,25 @@ function DeviceTemplateNudge() {
 import { genId } from './types';
 import type { RepairCartItem, PartEntry, ProductCartItem } from './types';
 
+// FIXED-by-Fixer-A27 2026-04-25 (WEB-FB-003): kill the last `(p: any)` in this
+// file. The hydrate-from-ticket effect previously coerced each part payload to
+// `any` and silently swallowed any server field rename (e.g.
+// `inventory_item_id` → `inventory_id`). This narrow shape mirrors what
+// /tickets/:id returns for `device.parts[*]` and matches the LeftPanel /
+// RepairsTab field set already typed by Fixer-A23/25/26. All optionality is
+// from the server's nullable columns; the `|| ...` defaults below remain the
+// runtime safety net.
+type ApiTicketDevicePart = {
+  inventory_item_id?: number | null;
+  name?: string | null;
+  item_name?: string | null;
+  item_sku?: string | null;
+  sku?: string | null;
+  quantity?: number | null;
+  price?: number | null;
+  status?: string | null;
+};
+
 // ─── UnifiedPosPage ─────────────────────────────────────────────────
 
 export function UnifiedPosPage() {
@@ -82,11 +101,25 @@ export function UnifiedPosPage() {
   // F-key quick tabs (audit §43.10). Handlers are memoized so the hook's
   // keydown listener isn't re-bound on every render (which would conflict
   // with the barcode detection listener below).
+  // WEB-FL-004 (Fixer-RRR 2026-04-25): wire F4 (customer search) so it
+  // focuses the unified search box instead of falling through to the
+  // global AppShell handler. F6 ("Returns hotkey") has no destination
+  // route yet — surface a toast so the cashier knows the key is
+  // recognized but the flow is pending, rather than letting it open the
+  // command palette via AppShell.
   const posShortcuts = useMemo(() => ({
     onRepairsTab: () => setActiveTab('repairs'),
     onProductsTab: () => setActiveTab('products'),
     onMiscTab: () => setActiveTab('misc'),
+    onCustomerSearch: () => {
+      const el = document.querySelector<HTMLInputElement>('[data-pos-customer-search="true"]');
+      if (el) {
+        el.focus();
+        el.select();
+      }
+    },
     onCompleteSale: () => setShowCheckout(true),
+    onReturnsHotkey: () => toast('Returns flow coming soon — scan the original invoice from the ticket page for now'),
   }), [setActiveTab, setShowCheckout]);
   usePosKeyboardShortcuts(posShortcuts);
 
@@ -245,7 +278,7 @@ export function UnifiedPosPage() {
 
     // Add devices as repair cart items
     for (const device of (ticket.devices || [])) {
-      const parts: PartEntry[] = (device.parts || []).map((p: any) => ({
+      const parts: PartEntry[] = (device.parts || []).map((p: ApiTicketDevicePart) => ({
         _key: genId(),
         inventory_item_id: p.inventory_item_id || 0,
         name: p.name || p.item_name || 'Part',
@@ -280,7 +313,12 @@ export function UnifiedPosPage() {
         laborPrice: device.price || 0,
         lineDiscount: device.line_discount || 0,
         parts,
-        taxable: false, // labor is non-taxable by default
+        // WEB-FB-025 (Fixer-C15 2026-04-25): default labor non-taxable. Cashiers in
+        // jurisdictions that DO tax labor must flip the per-line toggle in
+        // LeftPanel.tsx (the `$X.XX / No tax` button next to the labor price input)
+        // — that UI control is the per-line override and is the visible indicator.
+        // Long-term fix is a tenant-wide "default labor taxable" preference.
+        taxable: false,
         sourceTicketId: Number(ticketParam),
         sourceTicketOrderId: ticket.order_id || `T-${ticketParam}`,
       };
@@ -331,7 +369,7 @@ export function UnifiedPosPage() {
   }
 
   return (
-    <div className="flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
+    <div className="relative flex flex-col -m-6" style={{ height: 'calc(100vh - 4rem - var(--dev-banner-h, 0px))' }}>
       {/* Phase D2: device template nudge — dismissed per-session via localStorage */}
       <DeviceTemplateNudge />
       {/* Barcode scan flash indicator */}
@@ -356,7 +394,6 @@ export function UnifiedPosPage() {
           <LeftPanel
             collapsed={cartCollapsed}
             onToggle={toggleCart}
-            onNewCustomer={() => navigate('/customers/new')}
           />
         </div>
 

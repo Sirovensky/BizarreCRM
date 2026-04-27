@@ -6,7 +6,7 @@
  * - Import catalog item directly to local inventory
  * - Browse by device model
  */
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   RefreshCw, Search, Download, Package, Loader2, ExternalLink,
@@ -16,7 +16,8 @@ import toast from 'react-hot-toast';
 import { catalogApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
-import { formatCurrency, formatDate, formatDateTime } from '@/utils/format';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace bare `n.toLocaleString()` with shared formatNumber.
+import { formatCurrency, formatDate, formatDateTime, formatNumber } from '@/utils/format';
 
 const SOURCES = [
   { key: 'mobilesentrix',  label: 'Mobilesentrix',   url: 'https://www.mobilesentrix.com', color: 'blue'   },
@@ -103,6 +104,16 @@ export function CatalogPage() {
   const [importModal, setImportModal] = useState<any>(null);
   const [markupPct, setMarkupPct] = useState(30);
 
+  // WEB-FX-003: Esc dismisses the import-to-inventory modal.
+  useEffect(() => {
+    if (!importModal) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setImportModal(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [importModal]);
+
   // Debounce search
   const catSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleSearchChange = (val: string) => {
@@ -111,15 +122,12 @@ export function CatalogPage() {
     catSearchTimerRef.current = setTimeout(() => setDebouncedSearch(val), 350);
   };
 
-  // Queries
-  const { data: statsData, isLoading: statsLoading } = useQuery({
-    queryKey: ['catalog-stats'],
-    queryFn: catalogApi.getStats,
-    refetchInterval: 5000, // poll while syncing
-    staleTime: 4500, // just under the 5s interval — no redundant refetch on remount
-  });
-  const stats = (statsData?.data?.data as any) || {};
-
+  // WEB-FH-020 (Fixer-B5 2026-04-25): only poll catalog-stats while there is
+  // an active job. Previously the page burned a stats refetch every 5s for the
+  // entire session length even after sync finished — wasted server quota for
+  // multi-tenant deployments + drained iPad battery on POS-as-iPad. We still
+  // need jobs to poll (so we discover NEW jobs spawned externally) but the
+  // expensive stats roll-up sleeps when nothing is running/pending.
   const { data: jobsData } = useQuery({
     queryKey: ['catalog-jobs'],
     queryFn: catalogApi.getJobs,
@@ -127,6 +135,16 @@ export function CatalogPage() {
     staleTime: 2500, // just under the 3s interval
   });
   const jobs: CatalogJob[] = Array.isArray(jobsData?.data?.data) ? (jobsData?.data?.data as CatalogJob[]) : [];
+  const hasActiveJob = jobs.some((j) => j.status === 'running' || j.status === 'pending');
+
+  // Queries
+  const { data: statsData, isLoading: statsLoading } = useQuery({
+    queryKey: ['catalog-stats'],
+    queryFn: catalogApi.getStats,
+    refetchInterval: hasActiveJob ? 5000 : false, // sleep when no sync in flight
+    staleTime: 4500, // just under the 5s interval — no redundant refetch on remount
+  });
+  const stats = (statsData?.data?.data as any) || {};
 
   const { data: catalogData, isLoading: catalogLoading } = useQuery({
     queryKey: ['catalog-search', debouncedSearch, activeSource, deviceModelId],
@@ -298,6 +316,20 @@ export function CatalogPage() {
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to import'),
   });
 
+  // WEB-FH-016 fix: rapid double-click on "Add to Inventory" was creating
+  // duplicate SKU rows because React batches the `isPending` flip on the next
+  // tick, so a synchronous double-click landed two `mutate()` calls before the
+  // disabled prop applied. Guard at the click site with a per-id timestamp ref
+  // — second click within 1500 ms for the same catalog id is a no-op.
+  const lastImportClickRef = useRef<{ id: number | null; t: number }>({ id: null, t: 0 });
+  const handleImportClick = (id: number, markup: number) => {
+    const now = Date.now();
+    const last = lastImportClickRef.current;
+    if (last.id === id && now - last.t < 1500) return;
+    lastImportClickRef.current = { id, t: now };
+    importMutation.mutate({ id, markup });
+  };
+
   const runningJobs = jobs.filter((j) => j.status === 'running');
 
   return (
@@ -409,7 +441,7 @@ export function CatalogPage() {
                 <p className="font-semibold text-surface-800 dark:text-surface-200">{src.label}</p>
                 <p className="text-sm text-surface-500">
                   {/* @audit-fixed: use formatDate helper instead of browser locale */}
-                  {count.toLocaleString()} items cataloged
+                  {formatNumber(count)} items cataloged
                   {lastSync && <span className="ml-2 text-xs">· last sync {formatDate(lastSync)}</span>}
                 </p>
                 {count === 0 && <p className="text-xs text-surface-400 mt-0.5">Catalog syncs automatically daily</p>}
@@ -526,7 +558,7 @@ export function CatalogPage() {
       {/* Results count */}
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm text-surface-500">
-          {catalogLoading ? 'Loading…' : `${total.toLocaleString()} items${debouncedSearch ? ` matching "${debouncedSearch}"` : ''}${deviceModelId ? ` for ${deviceModelName}` : ''}`}
+          {catalogLoading ? 'Loading…' : `${formatNumber(total)} items${debouncedSearch ? ` matching "${debouncedSearch}"` : ''}${deviceModelId ? ` for ${deviceModelName}` : ''}`}
         </p>
         {total === 0 && !catalogLoading && stats.total_catalog === 0 && (
           <p className="text-sm text-amber-600 dark:text-amber-400">Sync a catalog above to populate items</p>
@@ -557,7 +589,7 @@ export function CatalogPage() {
                 {/* Image */}
                 <div className="h-28 rounded-lg bg-surface-50 dark:bg-surface-700 flex items-center justify-center overflow-hidden">
                   {item.image_url ? (
-                    <img src={item.image_url} alt={item.name} className="h-full w-full object-contain p-1" />
+                    <img src={item.image_url} alt={item.name} loading="lazy" decoding="async" className="h-full w-full object-contain p-1" />
                   ) : (
                     <Package className="h-10 w-10 text-surface-300" />
                   )}
@@ -607,7 +639,7 @@ export function CatalogPage() {
                     })()}
                     <button
                       onClick={() => { setImportModal(item); setMarkupPct(30); }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors">
+                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg transition-colors">
                       <Download className="h-3 w-3" /> Import
                     </button>
                   </div>
@@ -647,17 +679,28 @@ export function CatalogPage() {
 
       {/* Import modal */}
       {importModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-          <div className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-md p-6">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setImportModal(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="catalog-import-title"
+            className="bg-white dark:bg-surface-800 rounded-2xl shadow-xl w-full max-w-md p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Import to Inventory</h2>
+              <h2 id="catalog-import-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Import to Inventory</h2>
               <button onClick={() => setImportModal(null)} className="text-surface-400 hover:text-surface-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {importModal.image_url && (
-              <img src={importModal.image_url} alt={importModal.name} className="h-24 w-full object-contain rounded-lg bg-surface-50 dark:bg-surface-700 mb-3" />
+              <img src={importModal.image_url} alt={importModal.name} loading="lazy" decoding="async" className="h-24 w-full object-contain rounded-lg bg-surface-50 dark:bg-surface-700 mb-3" />
             )}
 
             <p className="text-sm font-medium text-surface-800 dark:text-surface-200 mb-1">{importModal.name}</p>
@@ -691,7 +734,7 @@ export function CatalogPage() {
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setImportModal(null)} className="btn-outline">Cancel</button>
               <button
-                onClick={() => importMutation.mutate({ id: importModal.id, markup: markupPct })}
+                onClick={() => handleImportClick(importModal.id, markupPct)}
                 disabled={importMutation.isPending}
                 className="btn-primary">
                 {importMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing…</> : <><Download className="h-4 w-4" /> Add to Inventory</>}

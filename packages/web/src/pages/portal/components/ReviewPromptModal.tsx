@@ -6,7 +6,7 @@
  * Ratings below threshold are stored locally so owners can respond
  * privately without the damage hitting public review sites.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { submitReview } from './enrichApi';
 import { usePortalI18n } from '../i18n';
 
@@ -28,6 +28,15 @@ export function ReviewPromptModal({
   const [phase, setPhase] = useState<'ask' | 'thanks' | 'google'>('ask');
   const [googleUrl, setGoogleUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
 
   if (!open) return null;
 
@@ -89,7 +98,7 @@ export function ReviewPromptModal({
                   onMouseEnter={() => setHover(n)}
                   onMouseLeave={() => setHover(0)}
                   onClick={() => setRating(n)}
-                  className="text-3xl transition-transform hover:scale-110 focus:outline-none focus:ring-2 focus:ring-primary-400 rounded"
+                  className="text-3xl transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400 focus-visible:ring-offset-2 rounded"
                 >
                   <span className={n <= displayRating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}>
                     {'\u2605'}
@@ -109,7 +118,7 @@ export function ReviewPromptModal({
               onChange={(e) => setComment(e.target.value)}
               rows={3}
               maxLength={2000}
-              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus:outline-none focus:ring-2 focus:ring-primary-400"
+              className="w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-900 dark:text-gray-100 p-2 mb-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
             <div className="flex gap-2">
               <button
@@ -123,7 +132,7 @@ export function ReviewPromptModal({
                 type="button"
                 onClick={handleSubmit}
                 disabled={rating < 1 || submitting}
-                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium disabled:opacity-50"
+                className="flex-1 rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {t('review.submit')}
               </button>
@@ -142,7 +151,7 @@ export function ReviewPromptModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 text-sm font-medium"
+              className="rounded bg-primary-600 hover:bg-primary-700 text-primary-950 px-4 py-2 text-sm font-medium"
             >
               Close
             </button>
@@ -162,7 +171,7 @@ export function ReviewPromptModal({
                 href={googleUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="rounded bg-primary-600 hover:bg-primary-700 text-white py-2 text-sm font-medium"
+                className="rounded bg-primary-600 hover:bg-primary-700 text-primary-950 py-2 text-sm font-medium"
                 onClick={onClose}
               >
                 {t('review.google_button')}

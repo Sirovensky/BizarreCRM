@@ -41,7 +41,7 @@ import type { ImportCustomerItem } from '@/api/types';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
-import { toCsvRow } from '@/utils/csv';
+import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
 import { formatCurrency, formatPhone, formatDate } from '@/utils/format';
 import type { Customer } from '@bizarre-crm/shared';
 
@@ -49,11 +49,6 @@ const DEVICE_NAME_REGEX = /\b(laptop|phone|iphone|ipad|samsung|dell|hp|macbook|l
 
 function looksLikeDeviceName(name: string): boolean {
   return DEVICE_NAME_REGEX.test(name);
-}
-
-function formatPhoneDisplay(phone: string): string {
-  if (!phone) return '';
-  return formatPhone(phone);
 }
 
 export function CustomerListPage() {
@@ -318,9 +313,11 @@ export function CustomerListPage() {
       } while (exportPage <= totalPages);
 
       // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
+      // WEB-FH-010: prepend UTF-8 BOM so accented / CJK customer names open
+      //   correctly in Excel on Windows (default code page = CP-1252).
       const rows = all.map((c: any) => headers.map(h => c[h] ?? ''));
       const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
+      const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -335,13 +332,16 @@ export function CustomerListPage() {
     }
   };
 
+  // WEB-FH-011: use shared RFC-4180 parser. Naive split(',') breaks any
+  //   row whose customer name was exported as `"Smith, John"` — which is
+  //   exactly what our own export produces, so round-tripping was busted.
   const parseImportCsv = (text: string) => {
     const lines = text.trim().split('\n');
     if (lines.length < 2) return;
-    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, '').toLowerCase());
+    const headers = parseCsvLine(lines[0]).map(h => h.toLowerCase());
     const rows: ImportCustomerItem[] = [];
     for (const line of lines.slice(1)) {
-      const vals = line.split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+      const vals = parseCsvLine(line);
       const obj: Record<string, string> = {};
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       // Server requires `first_name`; skip rows missing it rather than
@@ -432,8 +432,8 @@ export function CustomerListPage() {
         cell: ({ getValue }) => {
           const phone = getValue() as string;
           return phone ? (
-            <a href={`tel:${phone}`} onClick={(e) => e.stopPropagation()} className="text-surface-600 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400">
-              {formatPhoneDisplay(phone)}
+            <a href={`tel:${phone}`} rel="noreferrer noopener" onClick={(e) => e.stopPropagation()} className="text-surface-600 hover:text-primary-600 dark:text-surface-400 dark:hover:text-primary-400">
+              {formatPhone(phone)}
             </a>
           ) : <span className="text-surface-400">{'\u2014'}</span>;
         },
@@ -562,14 +562,14 @@ export function CustomerListPage() {
           <p className="text-surface-500 dark:text-surface-400">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50">
+          <button onClick={handleExport} disabled={exporting} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             {exporting ? 'Exporting...' : 'Export'}
           </button>
           <button onClick={() => setShowImportModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <Upload className="h-4 w-4" /> Import
           </button>
-          <Link to="/customers/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors shadow-sm">
+          <Link to="/customers/new" className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors shadow-sm">
             <Plus className="h-4 w-4" /> New Customer
           </Link>
         </div>
@@ -581,7 +581,7 @@ export function CustomerListPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
           <input type="text" placeholder="Search customers..." value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-colors" />
+            className="w-full pl-10 pr-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 transition-colors" />
         </div>
         <button onClick={() => setShowFilters(!showFilters)}
           className={cn(
@@ -596,12 +596,15 @@ export function CustomerListPage() {
       </div>
 
       {/* Advanced Filters Panel */}
+      {/* WEB-FQ-008 (Fixer-B20 2026-04-25): unify radii — was `rounded-md` on
+          filter selects/buttons next to a `rounded-lg` panel + search bar.
+          Snapped everything to `rounded-lg` to match the page baseline. */}
       {showFilters && (
         <div className="mb-3 p-4 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Customer Group</label>
             <select value={groupId} onChange={e => setGroupId(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All Groups</option>
               {groups.map((g: any) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
@@ -609,25 +612,25 @@ export function CustomerListPage() {
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created From</label>
             <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Created To</label>
             <input type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5" />
           </div>
           <div>
             <label className="block text-xs font-medium text-surface-500 dark:text-surface-400 mb-1">Open Tickets</label>
             <select value={hasOpenTickets} onChange={e => setHasOpenTickets(e.target.value)}
-              className="w-full text-sm rounded-md border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
+              className="w-full text-sm rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 px-2 py-1.5">
               <option value="">All</option>
               <option value="1">Has Open Tickets</option>
               <option value="0">No Open Tickets</option>
             </select>
           </div>
           <div className="col-span-full flex gap-2 mt-1">
-            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary-600 text-white hover:bg-primary-700 transition-colors">Apply</button>
-            <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Clear</button>
+            <button onClick={applyFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 transition-colors">Apply</button>
+            <button onClick={clearFilters} className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors">Clear</button>
           </div>
         </div>
       )}
@@ -656,12 +659,12 @@ export function CustomerListPage() {
                       setTagValue('');
                     }
                   }}
-                  className="w-40 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
+                  className="w-40 rounded-lg border border-surface-200 bg-white px-3 py-1.5 text-sm text-surface-700 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-200"
                 />
                 <button
                   onClick={() => { if (tagValue.trim()) bulkTagMut.mutate({ tag: tagValue.trim() }); }}
                   disabled={!tagValue.trim() || bulkTagMut.isPending}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkTagMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Apply
@@ -762,7 +765,7 @@ export function CustomerListPage() {
                         p.set('page', '1');
                         setSearchParams(p, { replace: true });
                       }}
-                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                      className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                     >
                       {[10, 25, 50, 100, 250].map((n) => (
                         <option key={n} value={n}>{n}</option>
@@ -795,10 +798,21 @@ export function CustomerListPage() {
 
       {/* Import CSV Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
+          onKeyDown={(e) => { if (e.key === 'Escape') { setShowImportModal(false); setImportText(''); setImportPreview([]); } }}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-csv-title"
+            className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-2xl max-h-[80vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
+              <h3 id="import-csv-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Import Customers CSV</h3>
               <button aria-label="Close" onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }} className="text-surface-400 hover:text-surface-600"><X className="h-5 w-5" /></button>
             </div>
             <p className="text-sm text-surface-500 mb-2">
@@ -826,11 +840,19 @@ export function CustomerListPage() {
                     {Object.keys(importPreview[0]).slice(0, 6).map(h => <th key={h} className="px-2 py-1.5 text-left font-medium text-surface-500">{h}</th>)}
                   </tr></thead>
                   <tbody>
-                    {importPreview.slice(0, 10).map((row, i) => (
-                      <tr key={i} className="border-t border-surface-100 dark:border-surface-700/50">
-                        {Object.values(row).slice(0, 6).map((v, j) => <td key={j} className="px-2 py-1 text-surface-700 dark:text-surface-300 truncate max-w-[120px]">{String(v)}</td>)}
-                      </tr>
-                    ))}
+                    {importPreview.slice(0, 10).map((row, i) => {
+                      // WEB-FF-014: stable composite key from row content so
+                      // re-parses (after edit-then-re-paste) don't shift state
+                      // / focus / animations onto the wrong row. Falls back to
+                      // index suffix if every value is empty.
+                      const vals = Object.values(row).slice(0, 6).map(v => String(v ?? ''));
+                      const rowKey = vals.join('|') + `#${i}`;
+                      return (
+                        <tr key={rowKey} className="border-t border-surface-100 dark:border-surface-700/50">
+                          {vals.map((v, j) => <td key={`${rowKey}:${j}`} className="px-2 py-1 text-surface-700 dark:text-surface-300 truncate max-w-[120px]">{v}</td>)}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 {importPreview.length > 10 && <p className="text-xs text-surface-400 p-2">...and {importPreview.length - 10} more rows</p>}
@@ -840,7 +862,7 @@ export function CustomerListPage() {
               <button onClick={() => { setShowImportModal(false); setImportText(''); setImportPreview([]); }}
                 className="px-4 py-2 text-sm rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300">Cancel</button>
               <button onClick={() => importMutation.mutate(importPreview)} disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-1.5">
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} customers
               </button>
@@ -922,7 +944,7 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
             <div className="py-1">
               {phone && (
                 <>
-                  <a href={`tel:${phone}`}
+                  <a href={`tel:${phone}`} rel="noreferrer noopener"
                     className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
                     <Phone className="h-3.5 w-3.5 text-blue-500" /> Call
                   </a>
@@ -933,7 +955,7 @@ function CustomerActionsMenu({ customer, fullName, phone, onDelete }: {
                 </>
               )}
               {customer.email && (
-                <a href={`mailto:${customer.email}`}
+                <a href={`mailto:${customer.email}`} rel="noreferrer noopener"
                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-surface-700 hover:bg-surface-50 dark:text-surface-300 dark:hover:bg-surface-700">
                   <Mail className="h-3.5 w-3.5 text-amber-500" /> Email
                 </a>
@@ -994,7 +1016,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
       <div className="mt-4 flex items-center gap-3">
         <Link
           to="/customers/new"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium text-sm transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium text-sm transition-colors"
         >
           <Plus className="h-4 w-4" /> Add your first customer
         </Link>
@@ -1002,7 +1024,7 @@ function EmptyState({ keyword, activeFilterCount }: { keyword: string; activeFil
           type="button"
           onClick={() => sampleMutation.mutate()}
           disabled={sampleMutation.isPending}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 border border-surface-300 dark:border-surface-600 text-surface-700 dark:text-surface-300 rounded-lg font-medium text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Download className="h-4 w-4" />
           {sampleMutation.isPending ? 'Loading…' : 'Load 5 sample customers'}

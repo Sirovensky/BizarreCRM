@@ -17,6 +17,13 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   danger?: boolean;
   requireTyping?: string;
+  /**
+   * DASH-ELEC-174 (Fixer-B27 2026-04-25): force-disable the confirm button
+   * (and gate Confirm-via-keyboard) while a parent action is in flight, so
+   * a mid-restore re-click can't fire a second concurrent action even
+   * though `requireTyping` would otherwise allow it.
+   */
+  disabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -30,6 +37,7 @@ export function ConfirmDialog({
   confirmLabel = 'Confirm',
   danger = false,
   requireTyping,
+  disabled = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -46,7 +54,9 @@ export function ConfirmDialog({
 
   if (!open) return null;
 
-  const canConfirm = requireTyping ? typed === requireTyping : true;
+  // DASH-ELEC-174 (Fixer-B27): an in-flight parent action wins over the
+  // typing gate — both predicates must pass for the button to fire.
+  const canConfirm = (requireTyping ? typed === requireTyping : true) && !disabled;
 
   const handleConfirm = () => {
     if (!canConfirm) return;
@@ -183,7 +193,7 @@ function _ConfirmDialogInner({
           <button
             onClick={handleCancel}
             className="p-1 rounded hover:bg-surface-800 text-surface-500 hover:text-surface-300"
-            aria-label="Cancel"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -193,16 +203,22 @@ function _ConfirmDialogInner({
         <p id={msgId} className="text-sm text-surface-400 mb-4">{message}</p>
 
         {/* Type to confirm */}
+        {/* DASH-ELEC-169: explicit id + aria-describedby so screen readers
+            announce the instruction (which value the operator must type)
+            instead of just the placeholder. */}
         {requireTyping && (
           <div className="mb-4">
-            <p className="text-xs text-surface-500 mb-2">
+            <p id="confirm-typing-instruction" className="text-xs text-surface-500 mb-2">
               Type <span className="font-mono font-bold text-red-400">{requireTyping}</span> to confirm:
             </p>
             <input
+              id="confirm-typing-input"
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
               autoFocus
+              aria-label={`Type ${requireTyping} to confirm`}
+              aria-describedby="confirm-typing-instruction"
               className="w-full px-3 py-2 bg-surface-950 border border-surface-700 rounded-lg text-sm text-surface-100 placeholder:text-surface-400 focus:border-red-500 focus:outline-none"
               placeholder={requireTyping}
             />

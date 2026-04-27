@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Eye, EyeOff, RefreshCw, Loader2, AlertCircle, Gift } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { giftCardApi } from '@/api/endpoints';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): inline `$${n.toFixed(2)}` ignored tenant currency. Use shared formatCurrency.
+import { formatDate, formatCurrency as formatCurrencyShared } from '@/utils/format';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,12 +35,21 @@ interface GiftCardDetail {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number): string {
-  return `$${Math.abs(amount).toFixed(2)}`;
+// Mirror GiftCardsListPage.formatCurrency: server is mid-migration from
+// float-dollars to integer-cents. Treat large integer values as cents so a
+// silent server flip doesn't render every balance 100x wrong.
+function dollarsFromMaybeCents(amount: number): number {
+  if (!Number.isFinite(amount)) return 0;
+  return Number.isInteger(amount) && Math.abs(amount) >= 1000 ? amount / 100 : amount;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+function formatCurrency(amount: number): string {
+  // Magnitude only — sign is rendered separately by the caller (+/-).
+  return formatCurrencyShared(Math.abs(dollarsFromMaybeCents(amount)));
+}
+
+function formatBalance(amount: number): string {
+  return formatCurrencyShared(dollarsFromMaybeCents(amount));
 }
 
 function txLabel(type: TxType): string {
@@ -92,10 +103,25 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
     },
   });
 
+  // Esc-to-close
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-sm">
-        <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-4">Reload gift card</h2>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="gift-card-reload-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl p-6 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h2 id="gift-card-reload-title" className="text-base font-semibold text-surface-900 dark:text-surface-100 mb-4">Reload gift card</h2>
         <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount ($)</label>
         <input
           type="number"
@@ -105,7 +131,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           onChange={(e) => setAmount(e.target.value)}
           placeholder="25.00"
           autoFocus
-          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-5"
+          className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 mb-5"
         />
         <div className="flex justify-end gap-3">
           <button
@@ -117,7 +143,7 @@ function ReloadModal({ cardId, onClose }: ReloadModalProps) {
           <button
             onClick={() => reloadMutation.mutate()}
             disabled={reloadMutation.isPending || !amount}
-            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
           >
             {reloadMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Reload
@@ -223,8 +249,8 @@ export function GiftCardDetailPage() {
           </div>
 
           <div className="text-right">
-            <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{`$${card.current_balance.toFixed(2)}`}</p>
-            <p className="text-xs text-surface-500 dark:text-surface-400">of {`$${card.initial_balance.toFixed(2)}`} initial</p>
+            <p className="text-2xl font-bold text-surface-900 dark:text-surface-100">{formatBalance(card.current_balance)}</p>
+            <p className="text-xs text-surface-500 dark:text-surface-400">of {formatBalance(card.initial_balance)} initial</p>
           </div>
         </div>
 
@@ -291,7 +317,10 @@ export function GiftCardDetailPage() {
                   <td className="px-5 py-3 text-surface-700 dark:text-surface-300">{txLabel(tx.type)}</td>
                   <td className="px-5 py-3 text-surface-500 dark:text-surface-400">{tx.notes ?? '—'}</td>
                   <td className={`px-5 py-3 text-right font-medium ${txColor(tx.type)}`}>
-                    {tx.amount >= 0 ? '+' : '-'}{formatCurrency(tx.amount)}
+                    {/* Fixer-WW: sign driven by tx.type so redemptions always
+                        render `-$X` (matches POS convention) and -0 amounts
+                        no longer flash as `+$0.00` (Math.abs trips -0). */}
+                    {tx.type === 'redemption' ? '-' : tx.amount > 0 ? '+' : tx.amount < 0 ? '-' : ''}{formatCurrency(tx.amount)}
                   </td>
                 </tr>
               ))}

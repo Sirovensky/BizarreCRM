@@ -8,7 +8,7 @@
  * notification is fired (server side).
  */
 
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { AlertTriangle, X, Loader2, Camera } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -83,6 +83,14 @@ export function DefectReporterButton({
     setPhotoPreview(URL.createObjectURL(file));
   };
 
+  // WEB-FX-003: Esc-to-close.
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
   return (
     <>
       <button
@@ -104,11 +112,14 @@ export function DefectReporterButton({
           onClick={() => setOpen(false)}
         >
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="defect-report-title"
             className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl dark:bg-surface-800"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-base font-semibold text-surface-900 dark:text-surface-100">
+              <h3 id="defect-report-title" className="flex items-center gap-2 text-base font-semibold text-surface-900 dark:text-surface-100">
                 <AlertTriangle className="h-4 w-4 text-red-500" />
                 Report defect
               </h3>

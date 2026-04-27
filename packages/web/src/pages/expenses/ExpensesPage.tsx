@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Pencil, DollarSign, Search, Loader2, X, ChevronLeft, ChevronRight, Receipt } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -6,6 +6,19 @@ import { expenseApi } from '@/api/endpoints';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
+
+// FF-012: previously the form pre-filled `new Date().toISOString().slice(0,10)`
+// which returns the *UTC* day. After ~4-5pm local in any timezone west of UTC
+// the picker showed tomorrow's date — staff entering an expense at 7pm PST
+// would record it on the next day. Build a YYYY-MM-DD string in the user's
+// local timezone instead so the picker always matches the wall clock.
+function localToday(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 const EXPENSE_CATEGORIES = [
   'Rent', 'Utilities', 'Parts & Supplies', 'Tools & Equipment', 'Marketing',
@@ -43,11 +56,42 @@ export function ExpensesPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
 
-  const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) });
+  const [form, setForm] = useState({ category: 'Other', amount: '', description: '', date: localToday() });
+  // WEB-FF-007 (Fixer-A2 2026-04-25): track field-level errors so screen
+  // readers get aria-invalid + aria-describedby on bad inputs instead of a
+  // toast.error that's invisible to AT.
+  const [fieldErrors, setFieldErrors] = useState<{ amount?: string; category?: string; date?: string }>({});
   const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
 
   const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [searchInput, setSearchInput] = useState('');
+
+  // WEB-FC-018 (FIXED-by-Fixer-A23 2026-04-25): the form now renders as a
+  // dimmed-backdrop modal overlay instead of an inline panel above the
+  // table. Editing a row on page 3 no longer scrolls the user to the top
+  // and loses the row context; on mobile the dim overlay makes the form
+  // a clear focused affordance instead of full-viewport with no chrome.
+  // First field is autofocused on open for keyboard users + Esc closes.
+  const firstFieldRef = useRef<HTMLSelectElement | null>(null);
+  useEffect(() => {
+    if (!showAdd) return;
+    const t = setTimeout(() => {
+      firstFieldRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => clearTimeout(t);
+  }, [showAdd, editingId]);
+  // Esc closes the modal — matches CheckoutModal / ConfirmDialog pattern.
+  useEffect(() => {
+    if (!showAdd) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowAdd(false);
+        setEditingId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showAdd]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['expenses', page, keyword, catFilter],
@@ -69,7 +113,7 @@ export function ExpensesPage() {
       toast.success(editingId ? 'Expense updated' : 'Expense added');
       setShowAdd(false);
       setEditingId(null);
-      setForm({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) });
+      setForm({ category: 'Other', amount: '', description: '', date: localToday() });
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed'),
   });
@@ -81,8 +125,23 @@ export function ExpensesPage() {
   });
 
   const handleSubmit = () => {
-    if (!form.amount || parseFloat(form.amount) <= 0) return toast.error('Valid amount required');
-    if (!form.category) return toast.error('Category required');
+    const errs: { amount?: string; category?: string; date?: string } = {};
+    if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = 'Valid amount required';
+    if (!form.category) errs.category = 'Category required';
+    // WEB-FK-013: belt-and-suspenders date guard — `max=` HTML attr is only a
+    // browser hint; reject future-dated and pre-1900 expenses server-side too.
+    if (form.date) {
+      const today = localToday();
+      if (form.date > today) errs.date = 'Date cannot be in the future';
+      else if (form.date < '1900-01-01') errs.date = 'Date must be on or after 1900-01-01';
+    }
+    if (errs.amount || errs.category || errs.date) {
+      setFieldErrors(errs);
+      // Toast preserved for sighted users; AT users now also get the inline message.
+      toast.error(errs.amount || errs.category || errs.date || 'Validation failed');
+      return;
+    }
+    setFieldErrors({});
     createMut.mutate({ ...form, amount: parseFloat(form.amount) });
   };
 
@@ -100,8 +159,8 @@ export function ExpensesPage() {
           <p className="text-sm text-surface-500 dark:text-surface-400">Track business expenses</p>
         </div>
         <button
-          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: new Date().toISOString().slice(0, 10) }); setShowAdd(true); }}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white hover:bg-primary-700 transition-colors"
+          onClick={() => { setEditingId(null); setForm({ category: 'Other', amount: '', description: '', date: localToday() }); setShowAdd(true); }}
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 transition-colors"
         >
           <Plus className="h-4 w-4" /> Add Expense
         </button>
@@ -138,7 +197,7 @@ export function ExpensesPage() {
                 searchRef.current = setTimeout(() => { setKeyword(e.target.value); setPage(1); }, 400);
               }}
               placeholder="Search expenses..."
-              className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-9 pr-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
           </div>
           <select
@@ -152,33 +211,77 @@ export function ExpensesPage() {
         </div>
       </div>
 
-      {/* Add/Edit form */}
+      {/* Add/Edit form — modal overlay (WEB-FC-018) */}
       {showAdd && (
-        <div className="card mb-4 p-5">
-          <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
-            {editingId ? 'Edit Expense' : 'New Expense'}
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-            <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
-              {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
-              onChange={(e) => setForm({ ...form, amount: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
-            <input type="date" value={form.date} onChange={(e) => setForm({ ...form, date: e.target.value })}
-              className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingId ? 'Edit expense form' : 'New expense form'}
+          onMouseDown={(e) => {
+            // Click-outside (on backdrop only) closes — do not fire when
+            // dragging/clicking inside the form.
+            if (e.target === e.currentTarget) {
+              setShowAdd(false);
+              setEditingId(null);
+            }
+          }}
+        >
+          <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-900 border border-surface-200 dark:border-surface-700 shadow-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+              {editingId ? 'Edit Expense' : 'New Expense'}
+            </h3>
+            <button
+              type="button"
+              onClick={() => { setShowAdd(false); setEditingId(null); }}
+              aria-label="Close"
+              className="p-1 rounded-md text-surface-400 hover:text-surface-700 hover:bg-surface-100 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <select ref={firstFieldRef} value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value }); if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined })); }}
+                aria-invalid={fieldErrors.category ? true : undefined}
+                aria-describedby={fieldErrors.category ? 'expense-category-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.category ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`}>
+                {EXPENSE_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {fieldErrors.category && <p id="expense-category-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.category}</p>}
+            </div>
+            <div>
+              <input type="number" step="0.01" min="0" placeholder="Amount" value={form.amount}
+                onChange={(e) => { setForm({ ...form, amount: e.target.value }); if (fieldErrors.amount) setFieldErrors((p) => ({ ...p, amount: undefined })); }}
+                aria-invalid={fieldErrors.amount ? true : undefined}
+                aria-describedby={fieldErrors.amount ? 'expense-amount-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.amount ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
+              {fieldErrors.amount && <p id="expense-amount-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.amount}</p>}
+            </div>
+            {/* WEB-FK-013 (Fixer-B5 2026-04-25): clamp date input to [1900-01-01, today]
+                so a stray keystroke can't record an expense dated 2099 (polluting next-
+                year drill-downs forever) or 1700 (slipping past audit windows). */}
+            <div>
+              <input type="date" value={form.date} min="1900-01-01" max={localToday()}
+                onChange={(e) => { setForm({ ...form, date: e.target.value }); if (fieldErrors.date) setFieldErrors((p) => ({ ...p, date: undefined })); }}
+                aria-invalid={fieldErrors.date ? true : undefined}
+                aria-describedby={fieldErrors.date ? 'expense-date-error' : undefined}
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 ${fieldErrors.date ? 'border-red-400 dark:border-red-500' : 'border-surface-200 dark:border-surface-700'}`} />
+              {fieldErrors.date && <p id="expense-date-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.date}</p>}
+            </div>
             <input type="text" placeholder="Description" value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
           </div>
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2 mt-4 justify-end">
+            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
             <button type="button" onClick={handleSubmit} disabled={createMut.isPending}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700 disabled:opacity-50">
               {createMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
               {editingId ? 'Update' : 'Add Expense'}
             </button>
-            <button type="button" onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-4 py-2 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
+          </div>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Star, MessageSquare, CheckCircle, ChevronLeft, ChevronRight, Loader2, X,
@@ -68,14 +68,26 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
     onError: () => toast.error('Failed to save reply'),
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="review-reply-title"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+          <h2 id="review-reply-title" className="text-base font-semibold text-surface-900 dark:text-surface-100">
             {review.response ? 'Edit Reply' : 'Reply to Review'}
           </h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
@@ -105,9 +117,22 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
               onChange={(e) => setText(e.target.value)}
               maxLength={2000}
               placeholder="Thank the customer and address their feedback..."
-              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
             />
-            <p className="mt-0.5 text-right text-xs text-surface-400">{text.length}/2000</p>
+            {/* WEB-FK-018 (Fixer-TTT 2026-04-25): publishing platforms penalize
+                verbose replies. Soft-warn at 500 chars and switch the counter
+                to amber so the operator notices before submit. Hard limit
+                stays at 2000 (textarea maxLength). */}
+            <p className={
+              text.length >= 500
+                ? 'mt-0.5 text-right text-xs text-amber-600 dark:text-amber-400'
+                : 'mt-0.5 text-right text-xs text-surface-400'
+            }>
+              {text.length}/2000
+              {text.length >= 500 && (
+                <span className="ml-2">— consider being concise; long replies are penalized on Google/Yelp</span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -121,7 +146,7 @@ function ReplyModal({ review, onClose }: ReplyModalProps) {
           <button
             onClick={() => replyMut.mutate(text)}
             disabled={replyMut.isPending || text.trim().length === 0}
-            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
           >
             {replyMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
             Save Reply

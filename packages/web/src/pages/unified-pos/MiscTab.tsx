@@ -8,7 +8,7 @@ import type { MiscCartItem } from './types';
 
 // ─── Constants ──────────────────────────────────────────────────────
 
-const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500';
+const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 placeholder:text-surface-400 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:border-primary-500';
 
 // ─── MiscTab ────────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ export function MiscTab() {
         <button
           onClick={handleAdd}
           disabled={!name.trim() || !price}
-          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus className="mr-1.5 inline h-4 w-4" />
           Add to Cart

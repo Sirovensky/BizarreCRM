@@ -1,11 +1,51 @@
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Zap, Loader2, ShieldCheck, Smartphone, Copy, Check, KeyRound, Eye, EyeOff, WifiOff, AlertTriangle, ShieldAlert, ServerCrash, Mail } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { formatApiError } from '@/utils/apiError';
+import { formatApiError, redactEmails } from '@/utils/apiError';
 
 type ErrorKind = 'network' | 'credentials' | 'rate-limit' | 'server';
+
+// WEB-FA-014: Module-level (per-tab) cache of the most recent me() / setupStatus
+// resolution so a remount of LoginPage within `STALE_MS` does not re-hit the
+// server. Multi-tab dedup uses sessionStorage with the same TTL — the typical
+// "open 3 tabs of the dashboard while logged out" pattern previously fired N
+// /me + N /setup-status calls; with this guard the second/third tab read the
+// cached envelope synchronously and skip the network hop.
+const STALE_MS = 5_000;
+const MEM_CACHE_KEY = 'bizarre:loginpage:bootstrap';
+type LoginBootstrapCache = {
+  ts: number;
+  setupNeedsSetup: boolean | null;
+  setupIsMultiTenant: boolean | null;
+  meUser: unknown | null;
+};
+let memCache: LoginBootstrapCache | null = null;
+function readBootstrapCache(): LoginBootstrapCache | null {
+  const now = Date.now();
+  if (memCache && now - memCache.ts < STALE_MS) return memCache;
+  try {
+    const raw = sessionStorage.getItem(MEM_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as LoginBootstrapCache;
+    if (parsed && typeof parsed.ts === 'number' && now - parsed.ts < STALE_MS) {
+      memCache = parsed;
+      return parsed;
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+function writeBootstrapCache(entry: LoginBootstrapCache): void {
+  memCache = entry;
+  try {
+    sessionStorage.setItem(MEM_CACHE_KEY, JSON.stringify(entry));
+  } catch {
+    /* storage disabled — module-level mem cache still works */
+  }
+}
 
 function LoginError({ message, kind }: { message: string; kind: ErrorKind }) {
   const config: Record<ErrorKind, { icon: React.ReactNode; bg: string; text: string; border: string }> = {
@@ -47,6 +87,18 @@ type Step = 'password' | 'setPassword' | 'setup' | 'verify' | 'firstTimeSetup';
 
 export function LoginPage() {
   const navigate = useNavigate();
+  // WEB-FI-007 (Fixer-FFF 2026-04-25): ProtectedRoute now passes the originating
+  // `location` via router state. Pull the pathname (+search) so we can bounce the
+  // user back to their deep-link after successful auth instead of landing them
+  // on `/`. Sanity-checked to start with `/` (and not `//`) so a poisoned state
+  // value can't redirect off-origin.
+  const routerLocation = useLocation() as { state?: { from?: { pathname?: string; search?: string } } };
+  const fromPath = (() => {
+    const fp = routerLocation.state?.from?.pathname;
+    if (typeof fp !== 'string' || !fp.startsWith('/') || fp.startsWith('//')) return '/';
+    const fs = routerLocation.state?.from?.search;
+    return fp + (typeof fs === 'string' ? fs : '');
+  })();
   const { isAuthenticated, completeLogin } = useAuthStore();
 
   const [step, setStep] = useState<Step>('password');
@@ -89,10 +141,20 @@ export function LoginPage() {
   // check, the stale promise would call setStep / setAutoChecking on an
   // unmounted component. `cancelled` flips in the cleanup and every branch
   // checks before calling a setter.
+  // WEB-FA-001 fix: previously the catch silently dropped the error,
+  // potentially leaving the user staring at an empty login card with no
+  // way to recover. Now we surface a non-fatal banner with the parsed
+  // error and log to the console for debugging.
   useEffect(() => {
     const match = window.location.pathname.match(/^\/setup\/([a-f0-9]{64})$/);
     if (!match) return;
     setSetupToken(match[1]);
+    // WEB-FG-007: scrub the 64-char setup token out of `window.location` BEFORE
+    // any network request. Previously the strip happened after `setupStatus()`
+    // resolved, so the GET (and any preconnect/prefetch/image) on this page
+    // shipped the full `/setup/<token>` URL via the Referer header. By
+    // replaceState'ing first, subsequent requests see Referer=/login.
+    window.history.replaceState(null, '', '/login');
     let cancelled = false;
     authApi.setupStatus()
       .then(res => {
@@ -101,13 +163,22 @@ export function LoginPage() {
           setStep('firstTimeSetup');
           setAutoChecking(false);
         } else {
-          // Shop already set up — redirect to login
-          window.history.replaceState(null, '', '/login');
+          // Shop already set up — already on /login from the pre-flight strip
           setAutoChecking(false);
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.error('[LoginPage] setupStatus failed (token path):', err);
+        const e = err as { response?: { status?: number } } | undefined;
+        if (!e?.response) {
+          setErrorKind('network');
+          setError('Cannot reach server to verify setup link. Check your connection and try again.');
+        } else {
+          setErrorKind('server');
+          setError(redactEmails(formatApiError(err) || 'Failed to verify setup link.'));
+        }
         setAutoChecking(false);
       });
     return () => { cancelled = true; };
@@ -116,56 +187,110 @@ export function LoginPage() {
   // Combined auth check: if already authenticated redirect immediately,
   // otherwise try to restore session from a valid refresh token cookie.
   useEffect(() => {
-    if (isAuthenticated) { navigate('/'); return; }
+    if (isAuthenticated) { navigate(fromPath, { replace: true }); return; }
     if (step === 'firstTimeSetup') return; // Skip auth check during setup
+    // WEB-FG-022 (Fixer-TTT 2026-04-25): the setup-token effect above already
+    // owns the setupStatus() round-trip when we're on `/setup/:token`. Bail
+    // here so we don't double-fire setupStatus on every login mount that
+    // happens to hit a setup link. Token path resolves `step` after its
+    // promise; without this short-circuit both effects race and issue two
+    // `/api/v1/auth/setup-status` requests on the same render.
+    if (/^\/setup\/[a-f0-9]{64}$/.test(window.location.pathname)) return;
 
     let cancelled = false;
     (async () => {
-      try {
-        // Also check if shop needs first-time setup
-        const setupRes = await authApi.setupStatus();
-        if (cancelled) return;
-        const setupData = setupRes.data?.data;
-        if (setupData?.needsSetup) {
-          // Single-tenant mode: no token exists because there's no
-          // provisioning flow. Render the full first-run wizard.
-          if (setupData.isMultiTenant === false) {
-            setIsSingleTenantSetup(true);
-            setStep('firstTimeSetup');
-            setAutoChecking(false);
-            return;
+      // WEB-FA-014: Short-lived bootstrap cache (per-tab + sessionStorage)
+      // skips the network round-trip when LoginPage remounts or a sibling
+      // tab already resolved the same data within the STALE_MS window.
+      const cached = readBootstrapCache();
+      let setupData: { needsSetup?: boolean; isMultiTenant?: boolean } | null =
+        cached
+          ? { needsSetup: cached.setupNeedsSetup ?? undefined, isMultiTenant: cached.setupIsMultiTenant ?? undefined }
+          : null;
+      let cachedMeUser: unknown = cached?.meUser ?? null;
+
+      // WEB-FA-001 fix: setupStatus() failures used to fall into the same
+      // empty catch as me() failures. me() failing is the normal "no
+      // session" path (silent), but setupStatus() failing means we don't
+      // know whether to render the first-run wizard or the login form —
+      // surface that to the user instead of leaving them stuck.
+      if (!setupData) {
+        try {
+          // Also check if shop needs first-time setup
+          const setupRes = await authApi.setupStatus();
+          if (cancelled) return;
+          setupData = setupRes.data?.data ?? null;
+        } catch (err: unknown) {
+          if (cancelled) return;
+          // eslint-disable-next-line no-console
+          console.error('[LoginPage] setupStatus failed:', err);
+          const e = err as { response?: { status?: number } } | undefined;
+          if (!e?.response) {
+            setErrorKind('network');
+            setError('Cannot reach server. Check your connection and try again.');
+          } else {
+            setErrorKind('server');
+            setError(redactEmails(formatApiError(err) || 'Server error while checking setup status.'));
           }
-          // Multi-tenant mode, no token in URL — tell the user to ask an
-          // admin for a setup link (the token path handles the rest).
-          setNeedsSetupNoToken(true);
+          // Fall through to render the login form so the user is not stuck.
           setAutoChecking(false);
           return;
         }
-
-        const res = await authApi.me();
-        if (cancelled) return;
-        // @audit-fixed: server returns `{ success, data: req.user }` — the User
-        // sits at `res.data.data`, not `res.data.data.user`. The old read kept
-        // returning undefined and silently dropped every auto-login attempt.
-        const user = res.data?.data;
-        if (user) {
-          const token = localStorage.getItem('accessToken');
-          if (token) {
-            completeLogin(token, '', user);
-            navigate('/');
-            return;
-          }
-        }
-      } catch {
-        // No valid session -- stay on login page
-        // No valid session — proceed to login form
-      } finally {
-        if (!cancelled) setAutoChecking(false);
       }
+
+      if (setupData?.needsSetup) {
+        // Single-tenant mode: no token exists because there's no
+        // provisioning flow. Render the full first-run wizard.
+        if (setupData.isMultiTenant === false) {
+          setIsSingleTenantSetup(true);
+          setStep('firstTimeSetup');
+          setAutoChecking(false);
+          return;
+        }
+        // Multi-tenant mode, no token in URL — tell the user to ask an
+        // admin for a setup link (the token path handles the rest).
+        setNeedsSetupNoToken(true);
+        setAutoChecking(false);
+        return;
+      }
+
+      let meUser: unknown = cachedMeUser;
+      if (!meUser) {
+        try {
+          const res = await authApi.me();
+          if (cancelled) return;
+          // @audit-fixed: server returns `{ success, data: req.user }` — the User
+          // sits at `res.data.data`, not `res.data.data.user`. The old read kept
+          // returning undefined and silently dropped every auto-login attempt.
+          meUser = res.data?.data ?? null;
+        } catch {
+          // No valid session — proceed to login form (expected path, silent).
+          meUser = null;
+        }
+        if (cancelled) return;
+      }
+
+      // Persist whatever we resolved (success or null) for sibling tabs.
+      writeBootstrapCache({
+        ts: Date.now(),
+        setupNeedsSetup: setupData?.needsSetup ?? null,
+        setupIsMultiTenant: setupData?.isMultiTenant ?? null,
+        meUser: meUser ?? null,
+      });
+
+      if (meUser) {
+        const token = localStorage.getItem('accessToken');
+        if (token) {
+          completeLogin(token, '', meUser as Parameters<typeof completeLogin>[2]);
+          navigate(fromPath, { replace: true });
+          return;
+        }
+      }
+      if (!cancelled) setAutoChecking(false);
     })();
 
     return () => { cancelled = true; };
-  }, [isAuthenticated, navigate, completeLogin, step]);
+  }, [isAuthenticated, navigate, completeLogin, step, fromPath]);
 
   async function handlePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -219,7 +344,7 @@ export function LoginPage() {
         setError('Invalid username or password.');
       } else {
         setErrorKind('server');
-        setError(formatApiError(err));
+        setError(redactEmails(formatApiError(err)));
       }
     } finally {
       setLoading(false);
@@ -236,9 +361,9 @@ export function LoginPage() {
       const res = await authApi.verify2fa(challengeToken, totpCode, trustDevice);
       const data = res.data.data;
       completeLogin(data.accessToken, data.refreshToken, data.user);
-      navigate('/');
+      navigate(fromPath, { replace: true });
     } catch (err: unknown) {
-      const msg = formatApiError(err) || 'Invalid code';
+      const msg = redactEmails(formatApiError(err) || 'Invalid code');
       const e = err as { response?: { data?: { data?: { challengeToken?: string } } } } | undefined;
       const newToken = e?.response?.data?.data?.challengeToken;
       if (newToken) setChallengeToken(newToken);
@@ -268,7 +393,7 @@ export function LoginPage() {
       setManualSecret(setupData.secret);
       setStep('setup');
     } catch (err: unknown) {
-      setError(formatApiError(err) || 'Failed to set password');
+      setError(redactEmails(formatApiError(err) || 'Failed to set password'));
     } finally {
       setLoading(false);
     }
@@ -381,85 +506,105 @@ export function LoginPage() {
               {isSingleTenantSetup && (
                 <>
                   <div>
-                    <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Shop name</label>
+                    <label htmlFor="setup-store-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Shop name</label>
                     <input
+                      id="setup-store-name"
                       type="text"
                       value={setupStoreName}
                       onChange={(e) => setSetupStoreName(e.target.value)}
                       autoFocus
                       maxLength={200}
                       placeholder="Acme Phone Repair"
-                      className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                      className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     />
                     <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">Used on receipts and the dashboard header.</p>
                   </div>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First name</label>
+                      <label htmlFor="setup-first-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">First name</label>
                       <input
+                        id="setup-first-name"
                         type="text"
                         value={setupFirstName}
                         onChange={(e) => setSetupFirstName(e.target.value)}
                         maxLength={100}
                         placeholder="John"
-                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last name</label>
+                      <label htmlFor="setup-last-name" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Last name</label>
                       <input
+                        id="setup-last-name"
                         type="text"
                         value={setupLastName}
                         onChange={(e) => setSetupLastName(e.target.value)}
                         maxLength={100}
                         placeholder="Smith"
-                        className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                     </div>
                   </div>
                 </>
               )}
+              {/* WEB-FG-016 (Fixer-B17 2026-04-25): error block is a single
+                  `<p>` for the whole form — link inputs to it via
+                  `aria-describedby` whenever an error is set, mark them
+                  `aria-invalid`, and promote the error to `role="alert"` +
+                  `aria-live="polite"` so screen readers announce it on
+                  submit instead of going silent. Same a11y gap as FE-014
+                  but specific to the first surface every shop owner sees. */}
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
+                <label htmlFor="setup-username" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Username</label>
                 <input
+                  id="setup-username"
                   type="text"
                   value={setupUsername}
                   onChange={(e) => setSetupUsername(e.target.value)}
                   autoFocus={!isSingleTenantSetup}
                   autoComplete="username"
                   placeholder="Choose a username"
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
+                <label htmlFor="setup-email" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">
                   Email {isSingleTenantSetup ? '' : '(optional)'}
                 </label>
                 <input
+                  id="setup-email"
                   type="email"
                   value={setupEmail}
                   onChange={(e) => setSetupEmail(e.target.value)}
                   placeholder="admin@yourshop.com"
                   autoComplete="email"
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
+                <label htmlFor="setup-password" className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
                 <input
+                  id="setup-password"
                   type="password"
                   value={setupPassword}
                   onChange={(e) => setSetupPassword(e.target.value)}
                   autoComplete="new-password"
                   placeholder="Min 8 characters"
-                  className="w-full rounded-xl border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'setup-form-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-white px-4 py-3 text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
-              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+              {error && <p id="setup-form-error" role="alert" aria-live="polite" className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <button
                 type="submit"
                 disabled={loading}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50"
+                aria-busy={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-3 text-sm font-semibold text-primary-950 transition-colors hover:bg-primary-700 focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
                 {isSingleTenantSetup ? 'Create shop & continue' : 'Create Account & Continue'}
@@ -469,23 +614,27 @@ export function LoginPage() {
           {step === 'password' && (
             <form onSubmit={handlePassword} className="space-y-4" noValidate>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username or email</label>
-                <input type="text" value={username} onChange={(e) => { setUsername(e.target.value); setFieldErrors(prev => ({ ...prev, username: undefined })); }} autoFocus autoComplete="username"
+                <label htmlFor="login-username" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Username or email</label>
+                <input id="login-username" type="text" value={username} onChange={(e) => { setUsername(e.target.value); setFieldErrors(prev => ({ ...prev, username: undefined })); }} autoFocus autoComplete="username"
                   placeholder="admin or admin@yourshop.com"
-                  className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
-                {fieldErrors.username && <p className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
+                  aria-invalid={!!fieldErrors.username}
+                  aria-describedby={fieldErrors.username ? 'login-username-error' : undefined}
+                  className={`w-full rounded-lg border bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.username ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
+                {fieldErrors.username && <p id="login-username-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.username}</p>}
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
+                <label htmlFor="login-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Password</label>
                 <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }} autoComplete="current-password"
-                    className={`w-full rounded-lg border bg-surface-50 px-4 py-3 pr-11 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.password ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
+                  <input id="login-password" type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => { setPassword(e.target.value); setFieldErrors(prev => ({ ...prev, password: undefined })); }} autoComplete="current-password"
+                    aria-invalid={!!fieldErrors.password}
+                    aria-describedby={fieldErrors.password ? 'login-password-error' : undefined}
+                    className={`w-full rounded-lg border bg-surface-50 px-4 py-3 pr-11 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:bg-surface-700 dark:text-surface-100 ${fieldErrors.password ? 'border-red-400 dark:border-red-500' : 'border-surface-300 dark:border-surface-600'}`} />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} tabIndex={-1}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300">
                     {showPassword ? <EyeOff className="h-4.5 w-4.5" /> : <Eye className="h-4.5 w-4.5" />}
                   </button>
                 </div>
-                {fieldErrors.password && <p className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
+                {fieldErrors.password && <p id="login-password-error" role="alert" aria-live="polite" className="mt-1 text-xs text-red-500">{fieldErrors.password}</p>}
               </div>
               <div className="flex justify-end">
                 <button type="button" onClick={() => setShowForgot(!showForgot)} className="text-xs text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300">
@@ -507,12 +656,14 @@ export function LoginPage() {
                         Enter your email to receive a password reset link.
                       </p>
                       <div className="flex gap-2">
+                        <label htmlFor="forgot-email" className="sr-only">Email for password reset</label>
                         <input
+                          id="forgot-email"
                           type="email"
                           value={forgotEmail}
                           onChange={(e) => setForgotEmail(e.target.value)}
                           placeholder="your@email.com"
-                          className="flex-1 rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-xs text-surface-900 focus:border-primary-500 focus:outline-none dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+                          className="flex-1 rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-xs text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
                         />
                         <button
                           type="button"
@@ -528,7 +679,7 @@ export function LoginPage() {
                               setForgotLoading(false);
                             }
                           }}
-                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+                          className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
                         >
                           {forgotLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
                           Send
@@ -539,9 +690,10 @@ export function LoginPage() {
                 </div>
               )}
               {error && <LoginError message={error} kind={errorKind} />}
-              <button type="submit" disabled={loading}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+              <button type="submit" disabled={loading} aria-busy={loading}
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Sign In'}
+                <span className="sr-only" aria-live="polite">{loading ? 'Submitting' : ''}</span>
               </button>
             </form>
           )}
@@ -555,19 +707,19 @@ export function LoginPage() {
                 </p>
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
-                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={8}
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                <label htmlFor="new-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
+                <input id="new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} autoFocus required minLength={8} autoComplete="new-password"
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8}
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                <label htmlFor="confirm-password" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
+                <input id="confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required minLength={8} autoComplete="new-password"
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
               </div>
               <p className="text-xs text-surface-400">Minimum 8 characters</p>
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <button type="submit" disabled={loading || newPassword.length < 8}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+              {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
+              <button type="submit" disabled={loading || newPassword.length < 8} aria-busy={loading}
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Set Password & Continue'}
               </button>
             </form>
@@ -596,13 +748,14 @@ export function LoginPage() {
                 </div>
               </div>
               <form onSubmit={handleVerify} className="space-y-3">
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
-                <input ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+                <label htmlFor="2fa-setup-code" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Enter 6-digit code to verify</label>
+                <input id="2fa-setup-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
+                  aria-label="Verification code"
                   value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                   placeholder="000000" autoFocus
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
-                {error && <p className="text-sm text-red-500">{error}</p>}
-                <button type="submit" disabled={loading || totpCode.length !== 6}
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+                {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
+                <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
                   className="w-full rounded-lg bg-green-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-green-700 disabled:opacity-50">
                   {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify & Complete Setup'}
                 </button>
@@ -618,13 +771,16 @@ export function LoginPage() {
                   Open your authenticator app and enter the 6-digit code.
                 </p>
               </div>
-              <input ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6}
+              <label htmlFor="2fa-verify-code" className="sr-only">6-digit authenticator code</label>
+              <input id="2fa-verify-code" ref={codeRef} type="text" inputMode="numeric" pattern="[0-9]*" maxLength={6} autoComplete="one-time-code"
+                aria-label="6-digit authenticator code"
                 value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="000000" autoFocus
-                className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
-              {error && <p className="text-sm text-red-500">{error}</p>}
-              <label className="flex items-center gap-2 cursor-pointer">
+                className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100" />
+              {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
+              <label htmlFor="trust-device" className="flex items-center gap-2 cursor-pointer">
                 <input
+                  id="trust-device"
                   type="checkbox"
                   checked={trustDevice}
                   onChange={(e) => setTrustDevice(e.target.checked)}
@@ -632,8 +788,8 @@ export function LoginPage() {
                 />
                 <span className="text-xs text-surface-500 dark:text-surface-400">Trust this device for 90 days</span>
               </label>
-              <button type="submit" disabled={loading || totpCode.length !== 6}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
+              <button type="submit" disabled={loading || totpCode.length !== 6} aria-busy={loading}
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50">
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Verify'}
               </button>
               <button type="button" onClick={() => { setStep('password'); setError(''); }}

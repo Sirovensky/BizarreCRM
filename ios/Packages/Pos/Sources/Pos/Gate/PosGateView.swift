@@ -25,6 +25,7 @@ import Core
 public struct PosGateView: View {
     @State private var vm: PosGateViewModel
     @Environment(\.horizontalSizeClass) private var hSizeClass
+    @Environment(\.posTheme) private var theme
 
     // Haptic trigger counters — incremented on button tap to fire sensoryFeedback.
     @State private var createNewTapTrigger: Int = 0
@@ -56,11 +57,11 @@ public struct PosGateView: View {
                     fallbackOrLabel
                         .padding(.bottom, 10)
 
-                    fallbackButtons(minHeight: 64)
+                    fallbackButtons(minHeight: 64, horizontalPadding: 14)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 20)
 
-                    pickupStripSection
+                    pickupStripSection(isCompact: true)
                         .padding(.horizontal, 16)
                         .padding(.top, 24)
                         .padding(.bottom, 20)
@@ -137,11 +138,11 @@ public struct PosGateView: View {
                     fallbackOrLabel
                         .padding(.bottom, 10)
 
-                    fallbackButtons(minHeight: 72, cornerRadius: 18)
+                    fallbackButtons(minHeight: 72, cornerRadius: 18, horizontalPadding: 20)
                         .frame(maxWidth: 680)
                         .keyboardShortcut("n", modifiers: [.command, .shift])
 
-                    pickupStripSection
+                    pickupStripSection(isCompact: false)
                         .frame(maxWidth: 680)
                         .padding(.top, 36)
                         .padding(.bottom, 32)
@@ -189,7 +190,7 @@ public struct PosGateView: View {
                 .foregroundStyle(Color.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
             Text("Every sale starts with a customer.")
-                .font(.subheadline)
+                .font(.system(size: 13))
                 .foregroundStyle(Color.bizarreOnSurfaceMuted)
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }
@@ -199,7 +200,7 @@ public struct PosGateView: View {
     private var fallbackOrLabel: some View {
         Text("Search above, or:")
             .font(.caption)
-            .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            .foregroundStyle(theme.muted2)
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
@@ -207,7 +208,12 @@ public struct PosGateView: View {
     /// - Parameters:
     ///   - minHeight: Minimum row height (64 iPhone, 72 iPad per mockup).
     ///   - cornerRadius: Card corner radius (16 iPhone, 18 iPad per mockup).
-    private func fallbackButtons(minHeight: CGFloat, cornerRadius: CGFloat = 16) -> some View {
+    ///   - horizontalPadding: Inner horizontal padding (14 iPhone, 20 iPad per mockup).
+    private func fallbackButtons(
+        minHeight: CGFloat,
+        cornerRadius: CGFloat = 16,
+        horizontalPadding: CGFloat = 14
+    ) -> some View {
         HStack(spacing: 10) {
             // Create new customer
             Button {
@@ -219,7 +225,7 @@ public struct PosGateView: View {
                     .multilineTextAlignment(.center)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     .frame(maxWidth: .infinity, minHeight: minHeight)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, horizontalPadding)
                     .foregroundStyle(Color.bizarreOnSurface)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
@@ -248,7 +254,7 @@ public struct PosGateView: View {
                     .multilineTextAlignment(.center)
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                     .frame(maxWidth: .infinity, minHeight: minHeight)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, horizontalPadding)
                     .foregroundStyle(Color.bizarreOnSurfaceMuted)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
@@ -269,16 +275,22 @@ public struct PosGateView: View {
     }
 
     /// Ready-for-pickup strip: section header + 2 rows + "View all →" button.
+    ///
+    /// - Parameter isCompact: When true uses "Recent Ready for pickup" header copy
+    ///   (iPhone); when false uses the shorter "Ready for pickup" (iPad).
     @ViewBuilder
-    private var pickupStripSection: some View {
+    private func pickupStripSection(isCompact: Bool) -> some View {
         if !vm.pickupTickets.isEmpty {
+            let headerText = isCompact
+                ? "Recent Ready for pickup · \(vm.totalPickupCount)"
+                : "Ready for pickup · \(vm.totalPickupCount)"
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("Recent Ready for pickup · \(vm.totalPickupCount)")
+                    Text(headerText)
                         .font(.caption.weight(.semibold))
                         .textCase(.uppercase)
                         .tracking(1.4)
-                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .foregroundStyle(theme.muted2)
                         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
                         .accessibilityAddTraits(.isHeader)
 
@@ -300,8 +312,14 @@ public struct PosGateView: View {
                 .padding(.bottom, 10)
 
                 VStack(spacing: 8) {
-                    ForEach(vm.pickupTickets) { pickup in
-                        PickupRow(pickup: pickup) {
+                    ForEach(Array(vm.pickupTickets.enumerated()), id: \.element.id) { index, pickup in
+                        PickupRow(
+                            pickup: pickup,
+                            isFirst: index == 0,
+                            badgeSize: isCompact ? 32 : 36,
+                            badgeCornerRadius: isCompact ? 9 : 10,
+                            badgeFontSize: isCompact ? 15 : 18
+                        ) {
                             vm.openPickup(id: pickup.id)
                         }
                     }

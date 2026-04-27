@@ -11,7 +11,9 @@ import {
 import toast from 'react-hot-toast';
 import { smsApi, customerApi, ticketApi, voiceApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatPhone } from '@/utils/format';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): added formatCurrency import; ticket-total tooltip used hardcoded "$".
+import { formatPhone, formatCurrency } from '@/utils/format';
+import { obfuscatePhoneForStorageKey } from '@/utils/phoneFormat';
 import { useDraft } from '@/hooks/useDraft';
 // Team-inbox enrichment (audit §51) — all new components are additive.
 import { TeamInboxHeader } from './components/TeamInboxHeader';
@@ -92,7 +94,9 @@ interface CallLog {
   status: string;
   duration_secs?: number;
   recording_url?: string;
-  recording_local_path?: string;
+  // WEB-FN-013: `recording_local_path` removed from this interface — the
+  // server filesystem layout must not leak into the wire. Use
+  // `recording_url` for the audio src.
   transcription?: string;
   transcription_status: string;
   call_mode: string;
@@ -387,7 +391,7 @@ function TemplatePicker({
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="Search templates..."
                 autoFocus
-                className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus:outline-none focus:ring-1 focus:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
+                className="w-full rounded-lg border-0 bg-surface-50 py-1.5 pl-8 pr-3 text-xs text-surface-900 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
       </div>
@@ -425,6 +429,17 @@ function TemplatePicker({
 }
 
 // ─── Call Log Panel (ENR-V) ─────────────────────────────────────────
+// FM-015: hoisted out of CallLogPanel so React identity is stable across parent
+// re-renders (was being re-created every render, defeating reconciler).
+function DirectionIcon({ direction, status }: { direction: string; status: string }) {
+  if (status === 'failed' || status === 'no-answer' || status === 'busy') {
+    return <PhoneMissed className="h-4 w-4 text-red-500" />;
+  }
+  return direction === 'inbound'
+    ? <PhoneIncoming className="h-4 w-4 text-blue-500" />
+    : <PhoneOutgoing className="h-4 w-4 text-green-500" />;
+}
+
 function CallLogPanel() {
   const [page, setPage] = useState(1);
   const [expandedCall, setExpandedCall] = useState<number | null>(null);
@@ -453,15 +468,6 @@ function CallLogPanel() {
       case 'failed': case 'busy': case 'no-answer': return 'text-red-600 bg-red-50 dark:text-red-400 dark:bg-red-900/20';
       default: return 'text-surface-600 bg-surface-100 dark:text-surface-400 dark:bg-surface-700';
     }
-  }
-
-  function DirectionIcon({ direction, status }: { direction: string; status: string }) {
-    if (status === 'failed' || status === 'no-answer' || status === 'busy') {
-      return <PhoneMissed className="h-4 w-4 text-red-500" />;
-    }
-    return direction === 'inbound'
-      ? <PhoneIncoming className="h-4 w-4 text-blue-500" />
-      : <PhoneOutgoing className="h-4 w-4 text-green-500" />;
   }
 
   return (
@@ -522,7 +528,7 @@ function CallLogPanel() {
                     <span className="text-sm font-medium text-surface-700 dark:text-surface-300">
                       {formatDuration(call.duration_secs)}
                     </span>
-                    {(call.recording_url || call.recording_local_path) && (
+                    {call.recording_url && (
                       <div className="flex items-center gap-0.5 text-[10px] text-primary-500 mt-0.5 justify-end">
                         <Mic className="h-3 w-3" />
                         Recorded
@@ -560,14 +566,14 @@ function CallLogPanel() {
                     </div>
 
                     {/* Recording player */}
-                    {(call.recording_local_path || call.recording_url) && (
+                    {call.recording_url && (
                       <div className="mt-2 flex items-center gap-2">
                         <Play className="h-4 w-4 text-primary-500 shrink-0" />
                         <audio
                           controls
                           preload="none"
                           className="h-8 flex-1"
-                          src={call.recording_local_path || call.recording_url || ''}
+                          src={call.recording_url}
                         />
                       </div>
                     )}
@@ -710,7 +716,7 @@ function NewMessageModal({ onClose, onStart }: {
           <button
             onClick={() => phoneInput.trim() && onStart(phoneInput.replace(/\D/g, ''))}
             disabled={!phoneInput.trim()}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
           >
             Start Conversation
           </button>
@@ -786,7 +792,7 @@ function LinkCustomerPopover({
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by name..."
           autoFocus
-          className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus:outline-none focus:ring-1 focus:ring-primary-400"
+          className="w-full rounded-lg border border-surface-300 px-3 py-1.5 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
         />
       </div>
       <div className="max-h-40 overflow-y-auto">
@@ -947,7 +953,7 @@ function ThreadSearchBar({
           }
         }}
         placeholder="Search in conversation..."
-        className="flex-1 bg-transparent text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none"
+        className="flex-1 bg-transparent text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
       />
       {query && (
         <>
@@ -976,7 +982,16 @@ export function CommunicationPage() {
   const [selectedPhone, setSelectedPhone] = useState<string | null>(null);
   const [searchFilter, setSearchFilter] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'unread' | 'flagged' | 'pinned' | 'archived'>('all');
-  const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(selectedPhone ? `draft_sms_${selectedPhone}` : 'draft_sms_none');
+  // WEB-FJ-004 / FIXED-by-Fixer-A11 2026-04-25 — never embed the raw phone
+  // number in the draft localStorage key. A counter-staff snoop with a few
+  // seconds of access to a shared kiosk could otherwise dump localStorage
+  // and read `phone -> message body` pairs verbatim (sensitive contents
+  // include door codes, addresses, medical-device notes). The 8-hex
+  // fingerprint keeps the per-conversation namespace stable across
+  // refreshes without leaking the contact identifier.
+  const [composeText, setComposeText, clearSmsDraft, hasSmsDraft] = useDraft(
+    selectedPhone ? `draft_sms_${obfuscatePhoneForStorageKey(selectedPhone)}` : 'draft_sms_none',
+  );
   const [showNewMessage, setShowNewMessage] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const [attachedMedia, setAttachedMedia] = useState<{ url: string; contentType: string; preview: string } | null>(null);
@@ -1014,24 +1029,29 @@ export function CommunicationPage() {
 
   // Fetch conversations (include archived when that tab is active)
   const includeArchived = activeTab === 'archived';
+  // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 15s `refetchInterval`.
+  // WS handlers for `sms:received` + `sms:status_updated` already invalidate
+  // `['sms-conversations']` in `useWebSocket` (event-driven refresh), so the
+  // poll was duplicating the same work plus burning a steady request/min on
+  // every open Communications tab. WS reconnect on visibilitychange picks up
+  // any messages missed while hidden.
   const { data: convData, isLoading: convLoading } = useQuery({
     queryKey: ['sms-conversations', includeArchived],
     queryFn: () => smsApi.conversations(includeArchived ? { include_archived: '1' } as any : undefined),
-    refetchInterval: 15000,
-    // just under the 15s interval — a remount during the same polling cycle
-    // reuses cached data instead of firing a redundant network request.
-    staleTime: 14_000,
+    staleTime: 30_000,
   });
   // SCAN-1003b: typed unwrap.
   const conversations: Conversation[] = unwrap<ConversationsPayload>(convData as AxiosLike<ConversationsPayload>)?.conversations ?? [];
 
-  // Fetch messages for selected conversation
+  // WEB-FO-008 (Fixer-B18 2026-04-25): dropped the 10s `refetchInterval`.
+  // WS now invalidates `['sms-messages']` on `sms:received` +
+  // `sms:status_updated` (see useWebSocket invalidation map), so the open
+  // thread refreshes event-driven instead of every 10s poll-tick.
   const { data: msgData, isLoading: msgLoading } = useQuery({
     queryKey: ['sms-messages', selectedPhone],
     queryFn: () => smsApi.messages(selectedPhone!),
     enabled: !!selectedPhone,
-    refetchInterval: 10000,
-    staleTime: 9_000, // just under the 10s interval
+    staleTime: 30_000,
   });
 
   // Mark conversation as read when selected.
@@ -1090,10 +1110,39 @@ export function CommunicationPage() {
   ) ?? [];
 
   // Reminder helpers
+  // WEB-FO-005 (FIXED-by-Fixer-A3 2026-04-25): two tabs setting reminders
+  // concurrently used to lose one of them via read-modify-write race —
+  // tab A reads `[r1]`, tab B reads `[r1]`, A writes `[r1, r2]`, B writes
+  // `[r1, r3]`, r2 vanishes. Wrap the RMW in `navigator.locks.request`
+  // when available so cross-tab access is serialized; fall back to a
+  // best-effort retry-on-mismatch CAS that re-reads after writing and
+  // re-applies the append if storage shifted underneath us.
   const handleSetReminder = useCallback((phone: string, label: string, ms: number) => {
-    const reminders = JSON.parse(localStorage.getItem('sms_reminders') || '[]');
-    reminders.push({ phone, label, due: Date.now() + ms, created: Date.now() });
-    localStorage.setItem('sms_reminders', JSON.stringify(reminders));
+    const newEntry = { phone, label, due: Date.now() + ms, created: Date.now() };
+    const apply = () => {
+      const raw = localStorage.getItem('sms_reminders') || '[]';
+      let list: Array<typeof newEntry> = [];
+      try { list = JSON.parse(raw); } catch { list = []; }
+      if (!Array.isArray(list)) list = [];
+      list.push(newEntry);
+      localStorage.setItem('sms_reminders', JSON.stringify(list));
+    };
+    const locks = (navigator as Navigator & {
+      locks?: { request: (name: string, cb: () => void | Promise<void>) => Promise<void> };
+    }).locks;
+    if (locks?.request) {
+      void locks.request('sms_reminders', () => { apply(); });
+    } else {
+      // Fallback: CAS-style — write, then re-read; if we don't see our entry
+      // (another tab raced), re-apply once.
+      apply();
+      try {
+        const verify = JSON.parse(localStorage.getItem('sms_reminders') || '[]');
+        const seen = Array.isArray(verify)
+          && verify.some((e: typeof newEntry) => e?.created === newEntry.created && e?.phone === newEntry.phone);
+        if (!seen) apply();
+      } catch { /* ignore */ }
+    }
     toast.success(`Reminder set: ${label}`);
     setShowReminder(false);
   }, []);
@@ -1344,7 +1393,7 @@ export function CommunicationPage() {
               </button>
               <button
                 onClick={() => setShowNewMessage(true)}
-                className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-700"
+                className="flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700"
               >
                 <Plus className="h-4 w-4" />
                 New
@@ -1368,7 +1417,7 @@ export function CommunicationPage() {
               placeholder="Search conversations..."
               value={searchFilter}
               onChange={(e) => setSearchFilter(e.target.value)}
-              className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
         </div>
@@ -1460,7 +1509,7 @@ export function CommunicationPage() {
                           : <Phone className="h-4 w-4" />}
                       </div>
                       {hasUnread && (
-                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-white">
+                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold text-primary-950">
                           {conv.unread_count > 9 ? '9+' : conv.unread_count}
                         </span>
                       )}
@@ -1662,7 +1711,7 @@ export function CommunicationPage() {
                             to={`/tickets/${t.id}`}
                             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium hover:opacity-80 transition-opacity"
                             style={{ backgroundColor: `${t.status_color}18`, color: t.status_color }}
-                            title={`${t.order_id} — ${t.device_name || 'Unknown'} — ${t.status_name}${t.total ? ` — $${Number(t.total).toFixed(2)}` : ''}`}
+                            title={`${t.order_id} — ${t.device_name || 'Unknown'} — ${t.status_name}${t.total ? ` — ${formatCurrency(Number(t.total))}` : ''}`}
                           >
                             <Ticket className="h-2.5 w-2.5" />
                             {t.order_id}
@@ -1840,7 +1889,7 @@ export function CommunicationPage() {
                               className={cn(
                                 'max-w-[75%] rounded-2xl px-4 py-2',
                                 msg.direction === 'outbound'
-                                  ? 'bg-primary-600 text-white'
+                                  ? 'bg-primary-600 text-primary-950'
                                   : 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100',
                               )}
                             >
@@ -1930,7 +1979,7 @@ export function CommunicationPage() {
                 <div className="mb-2 flex items-center gap-2 rounded-lg bg-surface-100 dark:bg-surface-700 p-2">
                   <img src={attachedMedia.preview} alt="Attached" className="h-16 w-16 rounded-lg object-cover" />
                   <div className="flex-1 text-xs text-surface-500">Image attached (MMS)</div>
-                  <button onClick={() => setAttachedMedia(null)} className="text-surface-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                  <button onClick={() => setAttachedMedia(null)} aria-label="Remove attached media" className="text-surface-400 hover:text-red-500"><X className="h-4 w-4" /></button>
                 </div>
               )}
               <div className="flex items-end gap-2">
@@ -2006,7 +2055,12 @@ export function CommunicationPage() {
                     }}
                     placeholder="Type a message..."
                     rows={1}
-                    className="max-h-24 min-h-[2.5rem] w-full resize-none rounded-xl border border-surface-300 px-4 py-2.5 pr-16 text-sm text-surface-900 placeholder:text-surface-400 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                    /* WEB-FK-006 / FIXED-by-Fixer-EEE 2026-04-25 — hard-cap at
+                     * 1530 chars (10 GSM-7 segments) to prevent runaway-billing
+                     * fan-out and provider-side rejection. Per-segment count
+                     * displayed in the bottom-right counter. */
+                    maxLength={1530}
+                    className="max-h-24 min-h-[2.5rem] w-full resize-none rounded-xl border border-surface-300 px-4 py-2.5 pr-16 text-sm text-surface-900 placeholder:text-surface-400 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                     style={{ height: 'auto' }}
                     onInput={(e) => {
                       const el = e.target as HTMLTextAreaElement;
@@ -2054,7 +2108,7 @@ export function CommunicationPage() {
                         value={scheduledAt}
                         min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
                         onChange={(e) => setScheduledAt(e.target.value)}
-                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus:border-primary-400 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                       />
                       {scheduledAt && (
                         <div className="mt-2 flex items-center justify-between">
@@ -2178,7 +2232,7 @@ export function CommunicationPage() {
           <div className="border-t border-surface-200 px-4 py-3 dark:border-surface-700">
             <Link
               to={`/tickets/new?customer=${threadCustomer.id}`}
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-white hover:bg-primary-700 transition-colors"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-medium text-primary-950 hover:bg-primary-700 transition-colors"
             >
               <Plus className="h-3.5 w-3.5" />
               New Ticket

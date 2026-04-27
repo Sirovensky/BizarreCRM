@@ -72,16 +72,16 @@ export function PayNowButton({
   return (
     <section
       aria-label={t('pay.title')}
-      className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4"
+      className="rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4"
     >
-      <div className="text-sm text-gray-700 dark:text-gray-200 mb-2">
+      <div className="text-sm text-surface-700 dark:text-surface-200 mb-2">
         {t('pay.amount_due', { amount: amountDue.toFixed(2) })}
       </div>
       <button
         type="button"
         onClick={handlePay}
         disabled={loading}
-        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-white font-medium py-2.5 text-sm disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-primary-400"
+        className="w-full rounded-md bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium py-2.5 text-sm disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
       >
         {loading ? '...' : t('pay.button')}
       </button>

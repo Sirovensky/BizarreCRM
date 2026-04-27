@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * Track the dismissal state of a UI element (banner, alert, announcement, etc.)
@@ -11,8 +12,13 @@ import { useState, useCallback, useEffect } from 'react';
  *   return <Banner><CloseButton onClick={dismiss} /></Banner>;
  *
  * Storage layout:
- *   localStorage key: "bizarrecrm:dismiss:{key}"  (prefixed to avoid collisions)
+ *   localStorage key: "bizarrecrm:dismiss:u{userId}:{key}"  (per-user namespaced)
  *   value: "true"  (only written on dismissal; absence == not dismissed)
+ *
+ * WEB-FI-023: keys are now scoped by the current user id so a banner dismissed
+ * by user A on a shared browser does NOT stay dismissed for user B (different
+ * tenant or same-tenant teammate). Pre-login dismissals are namespaced under
+ * "anon" so they don't bleed into a logged-in user's slot.
  *
  * Keys may include variant info so different states of the same banner track
  * separately. Example: `trial-banner-info:${trialEndsAt}` — a new trial period
@@ -27,7 +33,11 @@ import { useState, useCallback, useEffect } from 'react';
  *              prefixed with "bizarrecrm:dismiss:" when stored.
  */
 export function useDismissible(key: string): readonly [boolean, () => void] {
-  const storageKey = `bizarrecrm:dismiss:${key}`;
+  // Subscribe to the user-id slot so dismissals re-key automatically on
+  // login / switchUser / logout. Selector keeps re-renders to id changes only.
+  const userId = useAuthStore((s) => s.user?.id ?? null);
+  const userScope = userId == null ? 'anon' : `u${userId}`;
+  const storageKey = `bizarrecrm:dismiss:${userScope}:${key}`;
 
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {

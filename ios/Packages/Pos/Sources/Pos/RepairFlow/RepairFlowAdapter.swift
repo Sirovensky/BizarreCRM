@@ -98,11 +98,13 @@ public enum PosRepairRouter {
     /// Creates a fully wired coordinator ready for presentation.
     public static func makeCoordinator(
         customerId: Int64,
+        customerDisplayName: String? = nil,
         api: any APIClient,
         onCancel: @escaping () -> Void,
         onComplete: @escaping (Int64) -> Void
     ) -> PosRepairFlowCoordinator {
         let coordinator = PosRepairFlowCoordinator(customerId: customerId, api: api)
+        coordinator.customerDisplayName = customerDisplayName
         coordinator.onCancel = onCancel
         coordinator.onComplete = onComplete
         return coordinator

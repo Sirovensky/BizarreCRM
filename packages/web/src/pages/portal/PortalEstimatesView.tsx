@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import * as api from './portalApi';
+import { formatDate } from '../../utils/format';
 
 interface PortalEstimatesViewProps {
   onBack: () => void;
@@ -20,12 +21,29 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
 
   async function handleApprove(id: number) {
     setApprovingId(id);
+    setError(null);
+    // Snapshot the current row so we can roll back on server failure — without
+    // the snapshot, an optimistic flip to "approved" lingers forever even when
+    // the server rejects, leaving the customer convinced they approved while
+    // the shop has no record. Capture-then-update inside a setter so we read
+    // the latest state without depending on stale closure.
+    let previous: api.EstimateSummary | undefined;
+    setEstimates(prev => {
+      previous = prev.find(e => e.id === id);
+      return prev.map(e =>
+        e.id === id ? { ...e, status: 'approved', approved_at: new Date().toISOString() } : e
+      );
+    });
     try {
       await api.approveEstimate(id);
-      setEstimates(prev => prev.map(e =>
-        e.id === id ? { ...e, status: 'approved', approved_at: new Date().toISOString() } : e
-      ));
+      // success — keep the optimistic state.
     } catch {
+      // Roll back to the captured snapshot so the row reverts to its prior
+      // (typically "sent") status and the Approve button reappears.
+      if (previous) {
+        const snapshot = previous;
+        setEstimates(prev => prev.map(e => (e.id === id ? snapshot : e)));
+      }
       setError('Failed to approve estimate. Please try again.');
     } finally {
       setApprovingId(null);
@@ -34,53 +52,53 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-900">
         <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+    <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
+      <div className="bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <button aria-label="Go back" onClick={onBack} className="text-gray-400 hover:text-gray-600">
+          <button aria-label="Go back" onClick={onBack} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
             </svg>
           </button>
-          <h1 className="text-lg font-bold text-gray-900">Your Estimates</h1>
+          <h1 className="text-lg font-bold text-surface-900 dark:text-surface-100">Your Estimates</h1>
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
         )}
         {estimates.length === 0 && !error ? (
-          <div className="rounded-xl bg-white border border-gray-200 p-8 text-center text-sm text-gray-400">
+          <div className="rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-8 text-center text-sm text-surface-400 dark:text-surface-500">
             No estimates found
           </div>
         ) : (
           estimates.map(est => (
-            <div key={est.id} className="rounded-xl bg-white border border-gray-200 overflow-hidden">
-              <div className="p-4 border-b border-gray-100">
+            <div key={est.id} className="rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 overflow-hidden">
+              <div className="p-4 border-b border-surface-100 dark:border-surface-700">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-semibold text-gray-900">{est.order_id}</span>
+                  <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{est.order_id}</span>
                   <EstimateStatusBadge status={est.status} />
                 </div>
-                <div className="text-xs text-gray-400">{formatDate(est.created_at)}</div>
+                <div className="text-xs text-surface-400 dark:text-surface-500">{formatDate(est.created_at)}</div>
               </div>
 
               {est.line_items.length > 0 && (
-                <div className="border-b border-gray-100 overflow-x-auto">
+                <div className="border-b border-surface-100 dark:border-surface-700 overflow-x-auto">
                   <table className="w-full text-sm">
                     <tbody>
                       {est.line_items.map((item, i) => (
-                        <tr key={i} className={i > 0 ? 'border-t border-gray-50' : ''}>
-                          <td className="px-4 py-2 text-gray-700">{item.description}</td>
-                          <td className="px-4 py-2 text-right text-gray-500">x{item.quantity}</td>
-                          <td className="px-4 py-2 text-right text-gray-700">${item.total.toFixed(2)}</td>
+                        <tr key={i} className={i > 0 ? 'border-t border-surface-50 dark:border-surface-700' : ''}>
+                          <td className="px-4 py-2 text-surface-700 dark:text-surface-300">{item.description}</td>
+                          <td className="px-4 py-2 text-right text-surface-500 dark:text-surface-400">x{item.quantity}</td>
+                          <td className="px-4 py-2 text-right text-surface-700 dark:text-surface-300">${item.total.toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -89,15 +107,15 @@ export function PortalEstimatesView({ onBack }: PortalEstimatesViewProps) {
               )}
 
               <div className="p-4">
-                <div className="flex justify-between text-sm font-semibold text-gray-900 mb-3">
+                <div className="flex justify-between text-sm font-semibold text-surface-900 dark:text-surface-100 mb-3">
                   <span>Total</span>
                   <span>${est.total.toFixed(2)}</span>
                 </div>
                 {est.notes && (
-                  <p className="text-xs text-gray-500 mb-3">{est.notes}</p>
+                  <p className="text-xs text-surface-500 dark:text-surface-400 mb-3">{est.notes}</p>
                 )}
                 {est.valid_until && (
-                  <p className="text-xs text-gray-400 mb-3">Valid until: {formatDate(est.valid_until)}</p>
+                  <p className="text-xs text-surface-400 dark:text-surface-500 mb-3">Valid until: {formatDate(est.valid_until)}</p>
                 )}
 
                 {est.status === 'sent' && (
@@ -130,7 +148,7 @@ function EstimateStatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     sent: 'bg-amber-100 text-amber-700',
     approved: 'bg-green-100 text-green-700',
-    draft: 'bg-gray-100 text-gray-600',
+    draft: 'bg-surface-100 text-surface-600',
     converted: 'bg-primary-100 text-primary-700',
   };
   return (
@@ -140,10 +158,3 @@ function EstimateStatusBadge({ status }: { status: string }) {
   );
 }
 
-function formatDate(date: string): string {
-  try {
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
-}

@@ -60,6 +60,8 @@ export function CommandPalette() {
         { id: 'nav-activity', group: 'Pages', label: 'Activity (alerts, audit, sessions)', icon: Activity, keywords: 'security alerts audit sessions tenant auth', onRun: () => navigate('/activity') },
         { id: 'nav-activity-alerts', group: 'Pages', label: 'Activity → Security Alerts', icon: Activity, keywords: 'unacknowledged', onRun: () => navigate('/activity?tab=alerts') },
         { id: 'nav-activity-audit', group: 'Pages', label: 'Activity → Audit Log', icon: Activity, onRun: () => navigate('/activity?tab=audit') },
+        // DASH-ELEC-051: Sessions deep-link parity with the alerts/audit deep-links above.
+        { id: 'nav-activity-sessions', group: 'Pages', label: 'Activity → Sessions', icon: Activity, keywords: 'session token revoke', onRun: () => navigate('/activity?tab=sessions') },
         { id: 'nav-diagnostics', group: 'Pages', label: 'Tenant Diagnostics', icon: Stethoscope, keywords: 'notifications webhooks automations', onRun: () => navigate('/diagnostics') },
         { id: 'nav-tools', group: 'Pages', label: 'Admin Tools', icon: Wrench, keywords: 'reset rate limit backfill dns', onRun: () => navigate('/tools') },
       );
@@ -85,7 +87,7 @@ export function CommandPalette() {
               message: 'Active tenant sessions will briefly disconnect while the CRM server restarts.',
               onConfirm: async () => {
                 const res = await getAPI().service.restart();
-                if (res.success) toast.success('Server restart requested');
+                if (res.success) toast.success('Server restart requested. May take up to a minute to come back online.');
                 else toast.error(res.message ?? 'Restart failed');
                 resolve();
               },
@@ -122,9 +124,22 @@ export function CommandPalette() {
         id: 'act-logout', group: 'Actions', label: 'Log out',
         icon: LogOut, keywords: 'sign out',
         onRun: async () => {
-          try { await getAPI().management.logout(); } catch { /* ignore — local logout still fires */ }
+          // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-053): clear renderer auth
+          // and navigate FIRST, then fire the IPC to drop the main-process
+          // token. Previously the IPC `await` blocked the redirect; if the
+          // main process was hung (e.g. health-check timeout, busy stats poll)
+          // the operator stayed on the authenticated UI after clicking logout.
+          // Doing local-first guarantees the user lands on /login immediately
+          // — the main-process token still gets cleared because the IPC fires
+          // unconditionally; we just no longer block on it.
           logout();
           navigate('/login', { replace: true });
+          // Fire-and-forget the main-process token drop. If it rejects (e.g.
+          // bridge gone during HMR teardown), the local logout already
+          // sanitised the renderer.
+          void (async () => {
+            try { await getAPI().management.logout(); } catch { /* ignore — local logout already fired */ }
+          })();
         },
       },
       {

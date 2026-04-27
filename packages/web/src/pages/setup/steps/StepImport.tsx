@@ -135,6 +135,15 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
       const pollSource = source;
       let consecutiveFailures = 0;
       const MAX_CONSECUTIVE_FAILURES = 5;
+      // WEB-FO-017: clear any stacked poller from a prior `startImport()`
+      // before re-arming. The button is disabled during `phase === 'running'`,
+      // but a rapid double-click can race the API call (the second `startImport`
+      // begins before the first one's `setPhase('running')` has rendered) and
+      // overwrite `pollRef.current` without stopping the previous interval.
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
       pollRef.current = setInterval(async () => {
         try {
           let statusRes: any;
@@ -234,7 +243,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
               value={apiKey}
               onChange={(e) => { setApiKey(e.target.value); setTestStatus('idle'); }}
               placeholder="Paste your API key"
-              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 font-mono text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 font-mono text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
             />
           </div>
 
@@ -249,7 +258,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
                   value={subdomain}
                   onChange={(e) => { setSubdomain(e.target.value.trim()); setTestStatus('idle'); }}
                   placeholder="yourshop"
-                  className="flex-1 rounded-l-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="flex-1 rounded-l-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
                 <span className="rounded-r-lg border border-l-0 border-surface-300 bg-surface-100 px-3 py-3 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-700">
                   .repairshopr.com
@@ -291,7 +300,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={() => setPhase('select-entities')}
             disabled={testStatus !== 'ok'}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
           >
             Next &rarr; What to import
           </button>
@@ -325,7 +334,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             );
           })}
         </div>
-        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" aria-live="polite" className="mt-3 text-sm text-red-500">{error}</p>}
         <div className="mt-6 flex items-center justify-between">
           <button type="button" onClick={() => setPhase('enter-creds')} className="text-sm font-medium text-surface-600 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100">
             &larr; Back
@@ -334,7 +343,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={startImport}
             disabled={selectedEntities.size === 0}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
           >
             Start import
           </button>

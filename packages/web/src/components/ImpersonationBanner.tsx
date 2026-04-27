@@ -62,11 +62,25 @@ export function ImpersonationBanner() {
     function onChanged() {
       setSession(getImpersonationSession());
     }
+    // WEB-FJ-012 (Fixer-B15 2026-04-25): hard-clear the impersonation
+    // marker whenever auth is cleared (logout, switchUser, refresh-fail).
+    // Previously the marker survived everything except the explicit
+    // "Exit" button click, so a stale `impersonation_session` blob in
+    // localStorage could mislead the next staff member on the device into
+    // thinking they were impersonating an arbitrary tenant_slug. The
+    // banner trusted the localStorage value without verifying an active
+    // SA session — the auth-cleared signal is the right tear-down hook.
+    function onAuthCleared() {
+      clearImpersonationSession();
+      setSession(null);
+    }
     window.addEventListener('storage', onStorage);
     window.addEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+    window.addEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     return () => {
       window.removeEventListener('storage', onStorage);
       window.removeEventListener(IMPERSONATION_CHANGED_EVENT, onChanged);
+      window.removeEventListener('bizarre-crm:auth-cleared', onAuthCleared);
     };
   }, []);
 
@@ -81,7 +95,7 @@ export function ImpersonationBanner() {
   return (
     <button
       type="button"
-      className="flex w-full items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500"
+      className="flex w-full items-center justify-center gap-2 bg-amber-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-amber-500"
       onClick={handleExit}
       title="Click to exit impersonation and return to super-admin"
       aria-label={`Exit impersonation of tenant ${session.tenant_slug}`}

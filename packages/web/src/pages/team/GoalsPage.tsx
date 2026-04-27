@@ -4,7 +4,7 @@
  * Lists every goal with a progress bar pulled from the server. Managers can
  * create + delete goals; everyone can view.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Target, Trash2, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -48,6 +48,13 @@ function plusDaysIso(days: number): string {
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// @audit-fixed (WEB-FG-010 / Fixer-B1 2026-04-25): clamp to a sane window so
+// managers can't save a goal for the year 9999 or 0001 via a stray keystroke
+// in a date input. Server validation is the source of truth, but failing fast
+// in the UI saves a roundtrip + a confusing 400 toast.
+const GOAL_DATE_MIN = '2020-01-01';
+const GOAL_DATE_MAX = '2100-12-31';
 
 export function GoalsPage() {
   const queryClient = useQueryClient();
@@ -110,10 +117,10 @@ export function GoalsPage() {
     <div className="p-6 max-w-5xl mx-auto">
       <header className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 inline-flex items-center">
+          <h1 className="text-2xl font-bold text-gray-800 dark:text-surface-100 inline-flex items-center">
             <Target className="w-6 h-6 mr-2 text-green-500" /> Goals
           </h1>
-          <p className="text-sm text-gray-500">Per-tech weekly targets with live progress.</p>
+          <p className="text-sm text-gray-500 dark:text-surface-400">Per-tech weekly targets with live progress.</p>
         </div>
         <button
           className="px-3 py-1.5 bg-green-600 text-white rounded text-sm hover:bg-green-700 inline-flex items-center"
@@ -124,7 +131,7 @@ export function GoalsPage() {
       </header>
 
       {goals.length === 0 && (
-        <div className="bg-white border rounded-lg p-12 text-center text-gray-500">
+        <div className="bg-white dark:bg-surface-900 border dark:border-surface-700 rounded-lg p-12 text-center text-gray-500 dark:text-surface-400">
           No goals yet. Add your first one with the button above.
         </div>
       )}
@@ -138,18 +145,20 @@ export function GoalsPage() {
 
       <div className="space-y-3">
         {goals.map((g) => {
-          const pct = g.target_value > 0
-            ? Math.min(100, (g.progress / g.target_value) * 100)
-            : 0;
+          const target = Number(g.target_value);
+          const progress = Number(g.progress);
+          const ratio = target > 0 ? (progress / target) * 100 : 0;
+          // Guard NaN/Infinity (string targets, missing fields, denominator==0) so width never renders as `NaN%`.
+          const pct = Number.isFinite(ratio) ? Math.max(0, Math.min(100, ratio)) : 0;
           const done = pct >= 100;
           return (
-            <div key={g.id} className="bg-white rounded-lg shadow border p-4">
+            <div key={g.id} className="bg-white dark:bg-surface-900 rounded-lg shadow border dark:border-surface-700 p-4">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-semibold text-gray-800">
+                  <div className="font-semibold text-gray-800 dark:text-surface-100">
                     {g.first_name} {g.last_name}
                   </div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-surface-400">
                     {METRIC_LABELS[g.metric] || g.metric} · {g.period_start} → {g.period_end}
                   </div>
                 </div>
@@ -180,9 +189,9 @@ export function GoalsPage() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New goal</h2>
+        <NewGoalModal onClose={() => setShowNew(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+            <h2 id="new-goal-title" className="text-lg font-bold mb-4">New goal</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-gray-600">Employee</span>
@@ -227,6 +236,8 @@ export function GoalsPage() {
                   <span className="text-xs font-semibold text-gray-600">Start</span>
                   <input
                     type="date"
+                    min={GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                     value={newStart}
                     onChange={(e) => setNewStart(e.target.value)}
@@ -236,12 +247,17 @@ export function GoalsPage() {
                   <span className="text-xs font-semibold text-gray-600">End</span>
                   <input
                     type="date"
+                    min={newStart || GOAL_DATE_MIN}
+                    max={GOAL_DATE_MAX}
                     className="mt-1 w-full border rounded px-2 py-1.5 text-sm"
                     value={newEnd}
                     onChange={(e) => setNewEnd(e.target.value)}
                   />
                 </label>
               </div>
+              {newStart && newEnd && newStart > newEnd && (
+                <p role="alert" aria-live="polite" className="text-xs text-red-600 mt-1">End date must be on or after start date.</p>
+              )}
             </div>
             <div className="flex gap-2 mt-5">
               <button
@@ -252,7 +268,14 @@ export function GoalsPage() {
               </button>
               <button
                 className="flex-1 px-3 py-2 bg-green-600 text-white rounded text-sm hover:bg-green-700 inline-flex items-center justify-center"
-                disabled={!newUserId || !newTarget || createMut.isPending}
+                disabled={
+                  !newUserId
+                  || !newTarget
+                  || !newStart
+                  || !newEnd
+                  || newStart > newEnd
+                  || createMut.isPending
+                }
                 onClick={() => createMut.mutate()}
               >
                 {createMut.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
@@ -260,8 +283,35 @@ export function GoalsPage() {
               </button>
             </div>
           </div>
-        </div>
+        </NewGoalModal>
       )}
+    </div>
+  );
+}
+
+// NewGoalModal — keyboard a11y wrapper around the new-goal form. Esc closes,
+// click on the dim backdrop closes, click inside the panel does not.
+function NewGoalModal({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-goal-title"
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      {children}
     </div>
   );
 }

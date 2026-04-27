@@ -1,14 +1,22 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthStore } from './stores/authStore';
+import { useAuthStore, REQUEST_LOGIN_NAV_EVENT } from './stores/authStore';
 import { authApi, settingsApi } from './api/endpoints';
-import { SUPER_ADMIN_TOKEN_KEY } from './api/client';
-import { extractApiError } from './utils/apiError';
+import { superAdminTokenStore, SUPER_ADMIN_LOGOUT_EVENT } from './api/client';
 import { AppShell } from './components/layout/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { PageErrorBoundary } from './components/shared/PageErrorBoundary';
 import { SpotlightCoach } from './components/onboarding/SpotlightCoach';
+// WEB-FE-021 (Fixer-C12 2026-04-25): boot/route-fallback screens hoisted out
+// of App.tsx into components/shared/LoadingScreen.tsx so the non-lazy router
+// root chunk shrinks and the screens evolve independently of routing logic.
+import {
+  LoadingScreen,
+  PageLoader,
+  NotFoundPage,
+  SetupFailedScreen,
+} from './components/shared/LoadingScreen';
 
 // Lazy-loaded page imports (code splitting)
 const LoginPage = lazy(() => import('./pages/auth/LoginPage').then(m => ({ default: m.LoginPage })));
@@ -17,7 +25,6 @@ const SetupPage = lazy(() => import('./pages/setup/SetupPage').then(m => ({ defa
 const DashboardPage = lazy(() => import('./pages/dashboard/DashboardPage').then(m => ({ default: m.DashboardPage })));
 const TicketListPage = lazy(() => import('./pages/tickets/TicketListPage').then(m => ({ default: m.TicketListPage })));
 const TicketDetailPage = lazy(() => import('./pages/tickets/TicketDetailPage').then(m => ({ default: m.TicketDetailPage })));
-// const TicketWizard = lazy(() => import('./pages/tickets/TicketWizard').then(m => ({ default: m.TicketWizard })));
 const CustomerListPage = lazy(() => import('./pages/customers/CustomerListPage').then(m => ({ default: m.CustomerListPage })));
 const CustomerDetailPage = lazy(() => import('./pages/customers/CustomerDetailPage').then(m => ({ default: m.CustomerDetailPage })));
 const CustomerCreatePage = lazy(() => import('./pages/customers/CustomerCreatePage').then(m => ({ default: m.CustomerCreatePage })));
@@ -45,6 +52,10 @@ const EstimateDetailPage = lazy(() => import('./pages/estimates/EstimateDetailPa
 // const PosPage = lazy(() => import('./pages/pos/PosPage').then(m => ({ default: m.PosPage })));
 const UnifiedPosPage = lazy(() => import('./pages/unified-pos/UnifiedPosPage').then(m => ({ default: m.UnifiedPosPage })));
 const ReportsPage = lazy(() => import('./pages/reports/ReportsPage').then(m => ({ default: m.ReportsPage })));
+// WEB-FL-002 (Fixer-UU 2026-04-25): wire previously unrouted partner + tax
+// reports so audit 47.13 / 47.15 deliverables are reachable from /reports.
+const PartnerReportPage = lazy(() => import('./pages/reports/PartnerReportPage').then(m => ({ default: m.PartnerReportPage })));
+const TaxReportPage = lazy(() => import('./pages/reports/TaxReportPage').then(m => ({ default: m.TaxReportPage })));
 const ExpensesPage = lazy(() => import('./pages/expenses/ExpensesPage').then(m => ({ default: m.ExpensesPage })));
 const PurchaseOrdersPage = lazy(() => import('./pages/inventory/PurchaseOrdersPage').then(m => ({ default: m.PurchaseOrdersPage })));
 const CashRegisterPage = lazy(() => import('./pages/pos/CashRegisterPage').then(m => ({ default: m.CashRegisterPage })));
@@ -81,8 +92,11 @@ const GiftCardDetailPage = lazy(() => import('./pages/gift-cards/GiftCardDetailP
 const SubscriptionsListPage = lazy(() => import('./pages/subscriptions/SubscriptionsListPage').then(m => ({ default: m.SubscriptionsListPage })));
 // Loaner devices
 const LoanersPage = lazy(() => import('./pages/loaners/LoanersPage').then(m => ({ default: m.LoanersPage })));
-// Automations standalone page
-const AutomationsListPage = lazy(() => import('./pages/automations/AutomationsListPage').then(m => ({ default: m.AutomationsListPage })));
+// Automations: Fixer-PPP (WEB-FC-023) collapsed the legacy standalone
+// `/automations` route — Settings → Automations is the canonical home now.
+// `/automations` is kept as a `<Navigate replace>` to preserve any
+// bookmarked links staff already have. The standalone wrapper page
+// (AutomationsListPage) was removed because it was a 28-LOC duplicate.
 // Super-admin tenant management
 const TenantsListPage = lazy(() => import('./pages/super-admin/TenantsListPage').then(m => ({ default: m.TenantsListPage })));
 // Voice calls list
@@ -90,28 +104,8 @@ const VoiceCallsListPage = lazy(() => import('./pages/voice/VoiceCallsListPage')
 // Customer review moderation
 const ReviewsPage = lazy(() => import('./pages/reviews/ReviewsPage').then(m => ({ default: m.ReviewsPage })));
 
-function NotFoundPage() {
-  return (
-    <div className="flex flex-col items-center justify-center h-[60vh] text-center">
-      <h1 className="text-4xl font-bold text-gray-800 mb-2">404</h1>
-      <p className="text-lg text-gray-600 mb-6">Page not found</p>
-      <Link
-        to="/"
-        className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
-      >
-        Back to Dashboard
-      </Link>
-    </div>
-  );
-}
-
-function PageLoader() {
-  return (
-    <div className="flex items-center justify-center h-[50vh]">
-      <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
-    </div>
-  );
-}
+// WEB-FE-021 (Fixer-C12): NotFoundPage + PageLoader hoisted to
+// components/shared/LoadingScreen.tsx — see import above.
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore();
@@ -138,7 +132,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (setupError && !setupData) {
     return <SetupFailedScreen error={setupErrorObj} onRetry={() => refetchSetup()} />;
   }
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  // WEB-FI-007 (Fixer-FFF 2026-04-25): pass the originating `location` via
+  // router state so LoginPage can deep-link the user back after re-auth.
+  // State is the safe channel here (NOT a `?from=` query string) — the value
+  // is never echoed into the DOM, dodging the open-redirect/XSS angle the
+  // audit guidelines warn about.
+  if (!isAuthenticated) return <Navigate to="/login" state={{ from: location }} replace />;
 
   const setupCompleted = setupData?.data?.data?.setup_completed;
   const wizardCompleted = setupData?.data?.data?.wizard_completed;
@@ -181,7 +180,27 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
  * page component is not even constructed inside the AppShell render tree.
  */
 function SuperAdminRoute({ children }: { children: React.ReactNode }) {
-  const hasSaToken = Boolean(localStorage.getItem(SUPER_ADMIN_TOKEN_KEY));
+  // WEB-FJ-001: SA token in sessionStorage. Reading via the helper also
+  // migrates any legacy localStorage value over to sessionStorage on first
+  // access so existing logged-in operators don't bounce.
+  // WEB-FI-008 (Fixer-B2 2026-04-25): the previous implementation only read
+  // the token at render time. If the response interceptor revoked the SA
+  // session (401/403 → superAdminTokenStore.remove() + dispatch
+  // SUPER_ADMIN_LOGOUT_EVENT), the rendered SA page stayed mounted until the
+  // next route navigation — so a revoked operator could keep editing the
+  // visible UI for an arbitrary amount of time. Subscribe to the logout
+  // event AND the cross-tab `storage` event to force a re-render the moment
+  // the token disappears from this tab or any other.
+  const [hasSaToken, setHasSaToken] = useState(() => Boolean(superAdminTokenStore.get()));
+  useEffect(() => {
+    const recheck = () => setHasSaToken(Boolean(superAdminTokenStore.get()));
+    window.addEventListener(SUPER_ADMIN_LOGOUT_EVENT, recheck);
+    window.addEventListener('storage', recheck);
+    return () => {
+      window.removeEventListener(SUPER_ADMIN_LOGOUT_EVENT, recheck);
+      window.removeEventListener('storage', recheck);
+    };
+  }, []);
   if (!hasSaToken) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center gap-4">
@@ -197,72 +216,32 @@ function SuperAdminRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-function LoadingScreen() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-white dark:bg-surface-950">
-      <div className="flex flex-col items-center gap-4">
-        <div className="h-10 w-10 animate-spin rounded-full border-4 border-primary-200 border-t-primary-600" />
-        <p className="text-sm text-surface-500">Loading...</p>
-      </div>
-    </div>
-  );
+/**
+ * WEB-FAE-002 (Fixer-A6 2026-04-25): client-side route role-gate.
+ *
+ * Previously every authenticated path was reachable by URL guess and we
+ * relied on the server's 403 to gate. A technician who typed `/employees`
+ * or `/team/roles` would mount the page component, fire GETs, and only see
+ * a generic toast on 403 — with the page already constructed inside the
+ * AppShell render tree (noisy 403s in Sentry, UI flash, briefly-visible
+ * admin-only data cells if the cache had a stale entry).
+ *
+ * `RequireRole` is the client-side counterpart to the server's
+ * `requirePermission` middleware. It does NOT replace the server check
+ * (defence-in-depth — the server still enforces); it just stops the
+ * forbidden page from mounting in the first place. On role mismatch we
+ * `<Navigate>` back to `/` and let the dashboard's normal toast surface
+ * a friendly "you don't have access to that page" message.
+ */
+function RequireRole({ roles, children }: { roles: string[]; children: React.ReactNode }) {
+  const user = useAuthStore((s) => s.user);
+  if (!user) return <Navigate to="/login" replace />;
+  if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  return <>{children}</>;
 }
 
-/**
- * Shown when the mount-time /settings/setup-status query fails. Replaces the
- * old silent `<Navigate to="/login">` which caused an infinite login↔loading
- * loop when the failure was persistent (origin guard, tenant-context, rate
- * limit, offline server). Surface the exact server code + request id so the
- * user can send a support ticket with a traceable reference instead of a
- * screenshot of a blank loading spinner.
- */
-function SetupFailedScreen({ error, onRetry }: { error: unknown; onRetry: () => void }) {
-  const { code, requestId, message, status } = extractApiError(error);
-  return (
-    <div className="flex h-screen items-center justify-center bg-white dark:bg-surface-950 px-4">
-      <div className="max-w-md w-full flex flex-col items-start gap-4 p-6 rounded-lg border border-surface-200 dark:border-surface-800 bg-surface-50 dark:bg-surface-900">
-        <div>
-          <h1 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Unable to load the app</h1>
-          <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">{message}</p>
-        </div>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs font-mono text-surface-500 dark:text-surface-400">
-          {status !== null && (
-            <>
-              <dt className="text-surface-400">status</dt>
-              <dd>{status}</dd>
-            </>
-          )}
-          {code && (
-            <>
-              <dt className="text-surface-400">code</dt>
-              <dd>{code}</dd>
-            </>
-          )}
-          {requestId && (
-            <>
-              <dt className="text-surface-400">ref</dt>
-              <dd className="break-all">{requestId}</dd>
-            </>
-          )}
-        </dl>
-        <div className="flex items-center gap-2 mt-2">
-          <button
-            onClick={onRetry}
-            className="px-3 py-1.5 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded"
-          >
-            Retry
-          </button>
-          <button
-            onClick={() => { window.location.href = '/login'; }}
-            className="px-3 py-1.5 text-sm text-surface-700 dark:text-surface-300 border border-surface-300 dark:border-surface-700 rounded hover:bg-surface-100 dark:hover:bg-surface-800"
-          >
-            Sign out
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// WEB-FE-021 (Fixer-C12): LoadingScreen + SetupFailedScreen hoisted to
+// components/shared/LoadingScreen.tsx — see import above.
 
 // Lazy-load landing + signup pages (code-split — never loaded on tenant subdomains)
 const LandingPage = lazy(() => import('./pages/landing/LandingPage'));
@@ -289,6 +268,30 @@ function isBareHostname(): boolean {
 export default function App() {
   const { checkAuth, isLoading } = useAuthStore();
   const bareHostname = useState(() => isBareHostname())[0];
+  const navigate = useNavigate();
+
+  // WEB-FI-005 / FIXED-by-Fixer-A11 2026-04-25 — bridge the authStore's
+  // `request-login-nav` event into a react-router SPA navigation. Doing the
+  // navigation through the router (instead of `window.location.href = '/login'`)
+  // keeps the React tree mounted long enough for `auth-cleared` listeners,
+  // useDraft's beforeunload flush, and WS teardown to run cleanly. The
+  // `__bizarreLoginNavReady` flag tells authStore the bridge is wired so the
+  // setTimeout fallback (which would still hard-nav if nothing was listening)
+  // can short-circuit.
+  useEffect(() => {
+    (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = true;
+    const handler = () => {
+      // Skip if we're already on the login page; avoids double-render and
+      // wiping the LoginForm's local state on every spurious re-fire.
+      if (window.location.pathname.startsWith('/login')) return;
+      navigate('/login', { replace: true });
+    };
+    window.addEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
+    return () => {
+      (window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady = false;
+      window.removeEventListener(REQUEST_LOGIN_NAV_EVENT, handler);
+    };
+  }, [navigate]);
   // Server-driven tenancy mode. `undefined` = not yet known; `true` = bare
   // hostname should render the SaaS landing + signup flow; `false` = single-
   // tenant local server, bare hostname routes straight to /login (which
@@ -325,10 +328,33 @@ export default function App() {
           useAuthStore.setState({ isLoading: false });
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
-        // If the status call fails, err on the side of "landing" so
-        // production SaaS traffic isn't routed into a broken CRM shell.
+        // WEB-FV-003 / FIXED-by-Fixer-ZZ 2026-04-25 — previously this catch
+        // silently flipped to landing with no diagnostic, so a customer hitting
+        // a transient network blip on cold-start saw the marketing page and
+        // assumed the app was gone. Now we leave a console breadcrumb (picked
+        // up by Sentry/Datadog/etc. via console capture) AND flash a non-
+        // blocking toast so the user knows it was a connectivity issue, not a
+        // missing tenant. We still default to landing for the same SaaS-safety
+        // reason as before.
+        try {
+          console.warn('[boot] setup/status fetch failed; defaulting to landing', err);
+        } catch {
+          /* ignore */
+        }
+        // Lazy dynamic import keeps App.tsx free of an extra static dep on
+        // react-hot-toast; it is already bundled in main via other call sites
+        // so this resolves immediately. .catch swallowed so a missing toast
+        // lib at runtime never replaces the connectivity error with a blank
+        // unhandled-promise rejection.
+        import('react-hot-toast')
+          .then(({ default: t }) => {
+            t.error("Couldn't reach server — showing landing page.", { id: 'boot-status' });
+          })
+          .catch(() => {
+            /* ignore */
+          });
         setShowLanding(true);
         useAuthStore.setState({ isLoading: false });
       });
@@ -365,19 +391,29 @@ export default function App() {
     <ErrorBoundary>
     <Suspense fallback={<PageLoader />}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
-        <Route path="/setup/:token" element={<LoginPage />} />
-        <Route path="/setup" element={<ProtectedRoute><SetupPage /></ProtectedRoute>} />
+        {/* WEB-FE-020 (Fixer-AAA 2026-04-25): wrap auth routes in
+            PageErrorBoundary so a stale-token render exception on
+            /reset-password/:token (opened from email) shows the
+            in-app error UI with a "Back to login" affordance instead
+            of the global ErrorBoundary's bare inline-styled fallback. */}
+        <Route path="/login" element={<PageErrorBoundary><LoginPage /></PageErrorBoundary>} />
+        <Route path="/reset-password/:token" element={<PageErrorBoundary><ResetPasswordPage /></PageErrorBoundary>} />
+        <Route path="/setup/:token" element={<PageErrorBoundary><LoginPage /></PageErrorBoundary>} />
+        <Route path="/setup" element={<ProtectedRoute><PageErrorBoundary><SetupPage /></PageErrorBoundary></ProtectedRoute>} />
         <Route path="/tv" element={<PageErrorBoundary><TvDisplayPage /></PageErrorBoundary>} />
         <Route path="/photo-capture/:ticketId/:deviceId" element={<PageErrorBoundary><PhotoCapturePage /></PageErrorBoundary>} />
-        <Route path="/print/ticket/:id" element={<PrintPage />} />
-        <Route path="/track" element={<TrackingPage />} />
-        <Route path="/track/:orderId" element={<TrackingPage />} />
-        <Route path="/customer-portal" element={<CustomerPortalPage />} />
-        <Route path="/customer-portal/*" element={<CustomerPortalPage />} />
+        {/* WEB-FE-019 (Fixer-AAA 2026-04-25): public/customer surfaces (print,
+            track, customer-portal, pay) were rendered naked — any render
+            error crashed the whole React tree. Wrap each in PageErrorBoundary
+            to match the auth'd shell and the kiosk routes above. */}
+        <Route path="/print/ticket/:id" element={<PageErrorBoundary><PrintPage /></PageErrorBoundary>} />
+        <Route path="/track" element={<PageErrorBoundary><TrackingPage /></PageErrorBoundary>} />
+        <Route path="/track/:orderId" element={<PageErrorBoundary><TrackingPage /></PageErrorBoundary>} />
+        {/* WEB-FL-009: wildcard alone matches `/customer-portal` exactly; flat
+            decl was redundant + a footgun if a nested route was inserted between. */}
+        <Route path="/customer-portal/*" element={<PageErrorBoundary><CustomerPortalPage /></PageErrorBoundary>} />
         {/* Public customer pay page — no auth, token validates server-side (§52). */}
-        <Route path="/pay/:token" element={<CustomerPayPage />} />
+        <Route path="/pay/:token" element={<PageErrorBoundary><CustomerPayPage /></PageErrorBoundary>} />
         <Route
           path="/*"
           element={
@@ -401,18 +437,20 @@ export default function App() {
                     <Route path="/inventory/new" element={<InventoryCreatePage />} />
                     {/* Enrichment pages — MUST be registered before /inventory/:id
                         so the detail-page catch-all doesn't shadow them. */}
-                    <Route path="/inventory/stocktake" element={<StocktakePage />} />
+                    <Route path="/inventory/stocktake" element={<RequireRole roles={['admin', 'manager']}><StocktakePage /></RequireRole>} />
                     <Route path="/inventory/bin-locations" element={<BinLocationsPage />} />
                     <Route path="/inventory/auto-reorder" element={<AutoReorderPage />} />
                     <Route path="/inventory/serials" element={<SerialNumbersPage />} />
-                    <Route path="/inventory/shrinkage" element={<ShrinkagePage />} />
+                    <Route path="/inventory/shrinkage" element={<RequireRole roles={['admin', 'manager']}><ShrinkagePage /></RequireRole>} />
                     <Route path="/inventory/abc-analysis" element={<AbcAnalysisPage />} />
                     <Route path="/inventory/age-report" element={<InventoryAgePage />} />
                     <Route path="/inventory/labels" element={<MassLabelPrintPage />} />
                     <Route path="/inventory/:id" element={<InventoryDetailPage />} />
                     <Route path="/invoices" element={<InvoiceListPage />} />
                     <Route path="/invoices/:id" element={<InvoiceDetailPage />} />
-                    <Route path="/checkin" element={<UnifiedPosPage />} />
+                    {/* WEB-FL-008 (Fixer-B7 2026-04-25): dead `/checkin` alias removed.
+                        No menu link, no <Link>, no navigate caller — `grep -rn "/checkin"`
+                        returned only the route declaration itself. `/pos` is the live entry. */}
                     <Route path="/leads" element={<LeadListPage />} />
                     <Route path="/leads/:id" element={<LeadDetailPage />} />
                     <Route path="/calendar" element={<CalendarPage />} />
@@ -421,22 +459,24 @@ export default function App() {
                     <Route path="/estimates/:id" element={<EstimateDetailPage />} />
                     <Route path="/pos" element={<UnifiedPosPage />} />
                     <Route path="/reports" element={<ReportsPage />} />
+                    <Route path="/reports/partner" element={<PartnerReportPage />} />
+                    <Route path="/reports/tax" element={<TaxReportPage />} />
                     <Route path="/expenses" element={<ExpensesPage />} />
                     <Route path="/purchase-orders" element={<PurchaseOrdersPage />} />
                     <Route path="/cash-register" element={<CashRegisterPage />} />
                     <Route path="/communications" element={<CommunicationPage />} />
-                    <Route path="/employees" element={<EmployeeListPage />} />
-                    <Route path="/settings/*" element={<SettingsPage />} />
+                    <Route path="/employees" element={<RequireRole roles={['admin', 'manager']}><EmployeeListPage /></RequireRole>} />
+                    <Route path="/settings/*" element={<RequireRole roles={['admin', 'manager']}><SettingsPage /></RequireRole>} />
                     <Route path="/catalog" element={<CatalogPage />} />
                     {/* Billing / Money Flow enrichment (§52). */}
                     <Route path="/billing/payment-links" element={<PaymentLinksPage />} />
-                    <Route path="/billing/dunning" element={<DunningPage />} />
-                    <Route path="/billing/aging" element={<AgingReportPage />} />
+                    <Route path="/billing/dunning" element={<RequireRole roles={['admin', 'manager']}><DunningPage /></RequireRole>} />
+                    <Route path="/billing/aging" element={<RequireRole roles={['admin', 'manager']}><AgingReportPage /></RequireRole>} />
                     {/* Team management (§53). */}
                     <Route path="/team/my-queue" element={<MyQueuePage />} />
                     <Route path="/team/shifts" element={<ShiftSchedulePage />} />
                     <Route path="/team/leaderboard" element={<TeamLeaderboardPage />} />
-                    <Route path="/team/roles" element={<RolesMatrixPage />} />
+                    <Route path="/team/roles" element={<RequireRole roles={['admin', 'manager']}><RolesMatrixPage /></RequireRole>} />
                     <Route path="/team/chat" element={<TeamChatPage />} />
                     <Route path="/team/reviews" element={<PerformanceReviewsPage />} />
                     <Route path="/team/goals" element={<GoalsPage />} />
@@ -447,8 +487,10 @@ export default function App() {
                     <Route path="/subscriptions" element={<SubscriptionsListPage />} />
                     {/* Loaner device management. */}
                     <Route path="/loaners" element={<LoanersPage />} />
-                    {/* Automations standalone page. */}
-                    <Route path="/automations" element={<AutomationsListPage />} />
+                    {/* Automations canonical home is Settings → Automations.
+                     *  Fixer-PPP (WEB-FC-023): legacy `/automations` redirects
+                     *  there so navigation memory has one URL per feature. */}
+                    <Route path="/automations" element={<Navigate to="/settings/automations" replace />} />
                     {/* Super-admin tenant management — requires SA session, not just tenant auth. */}
                     <Route path="/super-admin/tenants" element={<SuperAdminRoute><TenantsListPage /></SuperAdminRoute>} />
                     {/* Voice calls list. */}

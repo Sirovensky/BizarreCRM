@@ -16,8 +16,9 @@ const getInitialTheme = (): 'light' | 'dark' | 'system' => {
   try {
     const stored = localStorage.getItem('theme');
     if (stored === 'light' || stored === 'dark' || stored === 'system') return stored;
-  } catch {
+  } catch (err) {
     // localStorage may throw in private mode / sandboxed iframes — fall through to default.
+    console.warn('[uiStore] getInitialTheme: localStorage read failed', err);
   }
   return 'system';
 };
@@ -44,8 +45,9 @@ const readSidebarCollapsed = (): boolean => {
 const safeWrite = (key: string, value: string): void => {
   try {
     localStorage.setItem(key, value);
-  } catch {
+  } catch (err) {
     // ignore — private mode etc.
+    console.warn(`[uiStore] safeWrite("${key}") failed; setting will not persist`, err);
   }
 };
 
@@ -70,9 +72,20 @@ export const useUiStore = create<UiState>((set) => ({
   setMobileSidebarOpen: (open: boolean) => set({ mobileSidebarOpen: open }),
 
   setTheme: (theme: 'light' | 'dark' | 'system') => {
-    safeWrite('theme', theme);
-    applyTheme(theme);
+    // WEB-FI-018 (Fixer-SSS 2026-04-25): order matters here — the
+    // `handleSystemThemeChange` matchMedia listener below reads
+    // `useUiStore.getState().theme` to decide whether to re-apply
+    // 'system'. If safeWrite + applyTheme run before `set`, a
+    // matchMedia tick that fires in between sees the OLD theme value
+    // in the store and re-paints it on top of the new one. By moving
+    // `set({ theme })` first the store value is canonical before any
+    // listener can run; applyTheme then paints the new class, and
+    // safeWrite persists last (the localStorage write is the only
+    // step nobody else reads synchronously). Net: no observable race
+    // window where the store and the document class disagree.
     set({ theme });
+    applyTheme(theme);
+    safeWrite('theme', theme);
   },
 
   setCommandPaletteOpen: (open: boolean) => set({ commandPaletteOpen: open }),
@@ -111,7 +124,25 @@ if (typeof window !== 'undefined') {
       themeMqAttached = true;
       mql.__bizarreThemeAttached = true;
     }
-  } catch {
+    // WEB-S5-025 (FIXED-by-Fixer-A19 2026-04-25): under Vite HMR this module
+    // re-evaluates per edit. The hoisted `themeMqAttached` flag resets to
+    // false but the previous module's listener is still attached to the live
+    // MediaQueryList — `__bizarreThemeAttached` keeps the new instance from
+    // re-attaching, but the OLD instance's listener (and its closure over the
+    // OLD `useUiStore`) keeps firing forever. Dispose it explicitly so the
+    // matchMedia listener stays exactly one across HMR reloads.
+    if (import.meta.hot) {
+      import.meta.hot.dispose(() => {
+        try {
+          mql.removeEventListener('change', handleSystemThemeChange);
+          mql.__bizarreThemeAttached = false;
+        } catch (e) {
+          console.warn('[uiStore] HMR dispose: matchMedia detach failed', e);
+        }
+      });
+    }
+  } catch (err) {
     // No-op: legacy environments without addEventListener on MediaQueryList.
+    console.warn('[uiStore] system theme listener attach failed', err);
   }
 }

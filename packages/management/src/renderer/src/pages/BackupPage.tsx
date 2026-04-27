@@ -111,7 +111,13 @@ export function BackupPage() {
           { duration: 8000 },
         );
         setRestoreTarget(null);
-        refresh();
+        // DASH-ELEC-138: restore swaps the master DB file and bounces the
+        // server process; calling refresh() immediately races against the
+        // bounce and shows the previous (now stale) backup list. Defer the
+        // refresh by 2 s so the new server is up and the backup table has
+        // been reopened against the restored DB. Operators see the toast
+        // duration (8 s) cover the gap.
+        setTimeout(() => { refresh(); }, 2000);
       } else {
         toast.error(formatApiError(res));
       }
@@ -259,7 +265,7 @@ export function BackupPage() {
                   <button
                     onClick={() => setDeleteTarget(b.filename)}
                     className="p-1.5 rounded text-surface-500 hover:text-red-400 hover:bg-surface-700 transition-colors"
-                    title="Delete backup"
+                    title="Delete Backup"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
@@ -279,6 +285,22 @@ export function BackupPage() {
         onCancel={() => setDeleteTarget(null)}
       />
 
+      {/*
+        DASH-ELEC-130 (Fixer-B26 2026-04-25): suppress onCancel while a
+        restore is in flight so the operator can't dismiss the dialog
+        (Cancel/Escape/X) and re-trigger another concurrent DB swap from
+        the underlying list.
+
+        DASH-ELEC-174 (Fixer-B27 2026-04-25): pair the cancel-suppression
+        above with the new `disabled` prop on ConfirmDialog so the primary
+        Confirm button is also locked while `restoring` is true. Previously
+        the button only de-activated when typing-mismatched, so a mid-
+        restore re-click of "Restore" (the typing field still matches the
+        filename) would fire `handleRestore` a second time and stack
+        concurrent DB swaps. Now `disabled={restoring}` flips `canConfirm`
+        false, the button paints with `disabled:cursor-not-allowed`, and
+        the click is a no-op until the finally-block clears the flag.
+      */}
       <ConfirmDialog
         open={restoreTarget !== null}
         title="Restore backup"
@@ -291,8 +313,9 @@ export function BackupPage() {
         danger
         requireTyping={restoreTarget ?? undefined}
         confirmLabel={restoring ? 'Restoring…' : 'Restore'}
+        disabled={restoring}
         onConfirm={handleRestore}
-        onCancel={() => setRestoreTarget(null)}
+        onCancel={() => { if (!restoring) setRestoreTarget(null); }}
       />
     </div>
   );

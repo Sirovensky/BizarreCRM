@@ -905,6 +905,13 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
   const customer: PrintCustomer = ticket.customer || {};
   const devices: PrintDevice[] = ticket.devices || [];
   const storeName = config?.store_name || 'Repair Shop';
+  // WEB-FJ-005 (Fixer-A5 2026-04-25): honor a `receipt_cfg_redact_phone_label`
+  // store-config toggle so the 2-inch device label can drop the customer
+  // phone — it sticks to the device on the workshop bench and is visible
+  // to anyone who handles or finds the device after pickup. Default OFF
+  // (phone shown) to match prior behaviour; opt-in for CCPA/GDPR
+  // data-minimization or per-shop policy.
+  const redactPhoneOnLabel = (config?.['receipt_cfg_redact_phone_label'] ?? '0') === '1';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '2in', justifyContent: 'space-between', padding: '3mm', fontFamily: 'Arial, sans-serif', fontSize: 9 }}>
@@ -912,7 +919,7 @@ function LabelLayout({ ticket, config }: { ticket: PrintTicket; config: PrintCon
         <div>
           <div style={{ fontWeight: 'bold', fontSize: '1.3em' }}>{ticket.order_id}</div>
           <div style={{ fontWeight: 'bold' }}>{customer.first_name} {customer.last_name}</div>
-          <div>{formatPhone(customer.mobile || customer.phone)}</div>
+          {!redactPhoneOnLabel && <div>{formatPhone(customer.mobile || customer.phone)}</div>}
         </div>
         <div style={{ textAlign: 'right' }}>
           <div>{formatDate(ticket.created_at)}</div>
@@ -940,6 +947,15 @@ export function PrintPage() {
   const [params] = useSearchParams();
   const size = (params.get('size') || 'receipt80') as PaperSize;
   const isReceiptType = params.get('type') === 'receipt';
+
+  // WEB-FF-008 — opt this route out of the global app-shell print CSS so
+  // its bespoke `@page` + `@media print` rules below remain authoritative.
+  // The default print stylesheet in `globals.css` applies only when
+  // `body` does NOT carry the `print-route` class.
+  useEffect(() => {
+    document.body.classList.add('print-route');
+    return () => document.body.classList.remove('print-route');
+  }, []);
 
   // Guard against missing or non-numeric :id — `Number(undefined)` is NaN
   // and `ticketApi.get(NaN)` hits the backend with a bad id.
@@ -1006,6 +1022,12 @@ ${pageCss[size] || pageCss.receipt80}
 }
 @media print {
   .print-buttons { display: none !important; }
+  /* Fixer-WW (WEB-FH-025): keep table rows whole at page breaks and repeat
+     the header on each page so long letter-sized invoice prints don't split
+     a line item across pages or lose the column header on overflow. */
+  tr { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
 }
 `;
 

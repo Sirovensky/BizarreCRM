@@ -14,12 +14,43 @@ export function CopyButton({ text, className }: CopyButtonProps) {
     (e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
-      navigator.clipboard.writeText(text).then(() => {
+
+      // WEB-FV-007 (Fixer-B19 2026-04-25): fall back to execCommand on
+      // non-secure contexts (HTTP, iOS Safari without HTTPS, sandboxed
+      // iframes) where navigator.clipboard is undefined or rejects.
+      const fallbackCopy = (value: string): boolean => {
+        try {
+          const ta = document.createElement('textarea');
+          ta.value = value;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-9999px';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(ta);
+          return ok;
+        } catch {
+          return false;
+        }
+      };
+
+      const onSuccess = () => {
         setCopied(true);
         setTimeout(() => setCopied(false), 1500);
-      }).catch(() => {
-        toast.error('Failed to copy to clipboard');
-      });
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(onSuccess).catch(() => {
+          if (fallbackCopy(text)) onSuccess();
+          else toast.error("Couldn't copy — copy manually");
+        });
+      } else if (fallbackCopy(text)) {
+        onSuccess();
+      } else {
+        toast.error("Couldn't copy — copy manually");
+      }
     },
     [text],
   );

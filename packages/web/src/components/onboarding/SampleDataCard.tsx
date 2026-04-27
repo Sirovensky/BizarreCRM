@@ -140,7 +140,7 @@ export function SampleDataCard({ state, onChanged }: SampleDataCardProps) {
         type="button"
         onClick={handleLoad}
         disabled={loadMutation.isPending}
-        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-primary-700 disabled:opacity-50"
+        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-xs font-semibold text-primary-950 transition-colors hover:bg-primary-700 disabled:opacity-50"
       >
         {loadMutation.isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />

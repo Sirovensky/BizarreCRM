@@ -24,12 +24,14 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     }
 
     /// SF Symbol name for the tile icon.
+    /// Mockup screen 5a: 💳 card, 💵 cash, 🎁 gift card, 💸 store credit.
+    /// `.fill` variants match the mockup's solid emoji weight.
     public var systemImage: String {
         switch self {
-        case .card:        return "creditcard"
-        case .cash:        return "banknote"
-        case .giftCard:    return "giftcard"
-        case .storeCredit: return "person.badge.clock"
+        case .card:        return "creditcard.fill"
+        case .cash:        return "banknote.fill"
+        case .giftCard:    return "giftcard.fill"
+        case .storeCredit: return "dollarsign.circle.fill"
         }
     }
 
@@ -59,9 +61,11 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     }
 
     /// Short hint shown inside tiles for not-yet-ready methods.
+    /// Kept for accessibility hint only — the tile subtitle always shows
+    /// `tileSubtitle` to match the mockup layout exactly.
     public var notReadyHint: String? {
         switch self {
-        case .card: return "Tap to Pay (coming soon)"
+        case .card: return "Tap to Pay — coming soon"
         default:    return nil
         }
     }
@@ -74,5 +78,16 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
         case .giftCard:    return "Scan / enter"
         case .storeCredit: return "Avail. balance"
         }
+    }
+
+    /// Whether this method is gated on hardware / entitlements not yet active.
+    /// When true the tile still shows the default `tileSubtitle`, not the
+    /// "coming soon" hint — the tile is just dimmed and non-navigable.
+    ///
+    /// NOTE: card is listed as not-ready while ProximityReader entitlement is
+    /// pending, but the mockup shows the tile with its normal subtitle so we
+    /// preserve that display and only grey-out the tile slightly.
+    public var isReadySoon: Bool {
+        self == .card
     }
 }

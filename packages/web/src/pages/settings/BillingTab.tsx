@@ -6,19 +6,13 @@ import { usePlanStore } from '@/stores/planStore';
 import { api } from '@/api/client';
 import { PLAN_DEFINITIONS, FEATURE_NAMES } from '@bizarre-crm/shared';
 import { useState } from 'react';
+import { formatDate } from '@/utils/format';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
 export function BillingTab() {
@@ -128,7 +122,7 @@ export function BillingTab() {
               <button
                 onClick={handleUpgrade}
                 disabled={checkoutLoading}
-                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-white shadow transition-all hover:shadow-lg disabled:opacity-50"
+                className="rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-2 text-sm font-semibold text-primary-950 shadow transition-all hover:shadow-lg disabled:opacity-50"
               >
                 {checkoutLoading ? 'Loading…' : 'Upgrade to Pro'}
               </button>
@@ -186,7 +180,7 @@ export function BillingTab() {
             {Object.entries(FEATURE_NAMES).map(([key, label]) => (
               <li key={key} className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
                 <Check className="mt-0.5 h-4 w-4 flex-shrink-0 text-green-500" />
-                <span>{label}</span>
+                <span>{label as string}</span>
               </li>
             ))}
             <li className="flex items-start gap-2 text-sm text-surface-700 dark:text-surface-300">
@@ -201,7 +195,7 @@ export function BillingTab() {
           <button
             onClick={handleUpgrade}
             disabled={checkoutLoading}
-            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
+            className="mt-6 w-full rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:opacity-50"
           >
             {checkoutLoading ? 'Starting checkout…' : `Upgrade to Pro — $${(proDef.priceCents / 100).toFixed(0)}/mo`}
           </button>

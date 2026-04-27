@@ -10,6 +10,7 @@ import { cn } from '@/utils/cn';
 // keeps the relative-time output consistent across pages and respects the
 // shared UTC handling for server timestamps without trailing 'Z'.
 import { timeAgo } from '@/utils/format';
+import { notificationDeepLink } from '@/utils/notificationRoutes';
 import {
   Search,
   Bell,
@@ -27,8 +28,14 @@ import {
   X,
   Loader2,
   HelpCircle,
+  ScrollText,
 } from 'lucide-react';
 import { ShortcutReferenceCard } from '@/components/onboarding/ShortcutReferenceCard';
+// WEB-FAE-001 (partial): adopt the previously-orphan `PermissionBoundary`
+// component for the Settings dropdown entry so at least one ad-hoc role
+// literal is funneled through the shared gate. Other ad-hoc sites still
+// pending a follow-up sweep.
+import { PermissionBoundary } from '@/components/shared/PermissionBoundary';
 
 // Module-level constant — moved up from below the component definitions so
 // the file reads top-down without an inline surprise between two functions.
@@ -40,6 +47,27 @@ const notifEntityIcons: Record<string, React.ReactNode> = {
   inventory: <Package className="h-4 w-4" />,
   sms: <MessageSquare className="h-4 w-4" />,
 };
+
+// FD-016: lightweight role-label map. Server stores roles as English keys; the
+// UI used to render them raw, leaving non-English tenants reading "admin" /
+// "manager" / "technician" untranslated. This object is the single point of
+// presentation. Keep server-key-as-fallback so brand-new roles still render
+// (capitalised) instead of going blank.
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  technician: 'Technician',
+  cashier: 'Cashier',
+  owner: 'Owner',
+  staff: 'Staff',
+};
+
+function formatRoleLabel(role: string | undefined | null): string {
+  if (!role) return 'Unknown';
+  if (ROLE_LABELS[role]) return ROLE_LABELS[role];
+  // Capitalise unknown roles so we never emit raw lower-case slugs to users.
+  return role.charAt(0).toUpperCase() + role.slice(1);
+}
 
 interface Notification {
   id: number;
@@ -74,11 +102,31 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
 
   const userMenuRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  // WEB-FO-009 (Fixer-B14 2026-04-25): track mount state so an in-flight
+  // fetch resolved AFTER unmount (logout race, route change) does not call
+  // setState on a torn-down component. The `api.get` wrappers don't expose
+  // an axios `signal` — until they do, the alive-ref is the surgical guard.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
-  // Fetch unread count on mount + poll every 30s
+  // Fetch unread count on mount + on visibility-change resume.
+  // @audit-fixed (WEB-FO-006 / Fixer-B12 2026-04-25): dropped the 60s
+  // setInterval entirely. WS already pushes NOTIFICATION_NEW + SMS_RECEIVED
+  // through useWebSocket → invalidates ['notification-count']. The interval
+  // duplicated that work and doubled backend load on the bell counter (50
+  // sessions/tenant ≈ 100 wasted req/min). The visibility-resume fetch is
+  // kept as a recovery for missed WS events while the tab was hidden.
+  // Previous fixes: WEB-FAD-002 (30s→60s + visibility gate), Fixer-PPP
+  // WEB-FO-019 (park-on-hidden).
   const fetchUnreadCount = useCallback(async () => {
     try {
       const res = await notificationApi.unreadCount();
+      if (!isMountedRef.current) return;
       setUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
       // Silently handled — count stays at previous value
@@ -88,6 +136,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   const fetchSmsUnreadCount = useCallback(async () => {
     try {
       const res = await smsApi.unreadCount();
+      if (!isMountedRef.current) return;
       setSmsUnreadCount(res.data?.data?.count ?? 0);
     } catch (err: unknown) {
       // Silently handled — count stays at previous value
@@ -95,30 +144,43 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
   }, []);
 
   useEffect(() => {
-    fetchUnreadCount();
-    fetchSmsUnreadCount();
+    // WEB-FD-011 (Fixer-OOO 2026-04-25): short-circuit polling when the
+    // session is already cleared so logout doesn't fire a 401 storm against
+    // notification + sms unread-count endpoints (which then push another
+    // logout-required event through the response interceptor and re-trigger
+    // refresh). We additionally listen for `bizarre-crm:auth-cleared` so an
+    // in-flight tick that fires DURING logout (between authStore set and
+    // the next render) tears the interval down immediately rather than
+    // waiting for unmount.
+    let cancelled = false;
+    const isAuthed = () => useAuthStore.getState().isAuthenticated;
 
-    const pollIfVisible = () => {
+    if (isAuthed()) {
+      fetchUnreadCount();
+      fetchSmsUnreadCount();
+    }
+
+    // Resume fetch immediately when tab becomes visible again — recovery
+    // for any WS events missed while the tab was hidden. No background
+    // interval; WS handles the live-update path.
+    const handleVisibilityChange = () => {
+      if (cancelled) return;
+      if (!isAuthed()) return;
       if (document.visibilityState === 'visible') {
         fetchUnreadCount();
         fetchSmsUnreadCount();
       }
     };
-
-    const interval = setInterval(pollIfVisible, 30_000);
-
-    // Resume polling immediately when tab becomes visible again
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUnreadCount();
-        fetchSmsUnreadCount();
-      }
+    const handleAuthCleared = () => {
+      cancelled = true;
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
 
     return () => {
-      clearInterval(interval);
+      cancelled = true;
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('bizarre-crm:auth-cleared', handleAuthCleared);
     };
   }, [fetchUnreadCount, fetchSmsUnreadCount]);
 
@@ -127,11 +189,13 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     setNotifLoading(true);
     try {
       const res = await notificationApi.list({ pagesize: 10 });
+      if (!isMountedRef.current) return;
       setNotifications(res.data?.data?.notifications ?? []);
     } catch (err: unknown) {
       // Silently handled — notifications stay at previous state
     } finally {
-      setNotifLoading(false);
+      // Guard the loading flag too — same unmount race.
+      if (isMountedRef.current) setNotifLoading(false);
     }
   }, []);
 
@@ -173,18 +237,10 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
         toast.error('Could not mark notification read');
       }
     }
-    // Navigate to entity
-    if (notif.entity_type && notif.entity_id) {
-      const routes: Record<string, string> = {
-        ticket: '/tickets',
-        invoice: '/invoices',
-        customer: '/customers',
-        inventory: '/inventory',
-        lead: '/leads',
-      };
-      const base = routes[notif.entity_type];
-      if (base) navigate(`${base}/${notif.entity_id}`);
-    }
+    // Navigate to entity (WEB-FL-016: route map hoisted to utils/notificationRoutes
+    // so the server entity_type taxonomy stays alignable + unit-testable).
+    const deepLink = notificationDeepLink(notif.entity_type, notif.entity_id);
+    if (deepLink) navigate(deepLink);
     setNotifOpen(false);
   }, [navigate]);
 
@@ -253,7 +309,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
     : '?';
 
   return (
-    <header className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
+    <header data-app-chrome="true" className="relative z-40 flex h-16 shrink-0 items-center gap-4 border-b border-surface-200 bg-white/80 px-4 sm:px-6 backdrop-blur-sm dark:border-surface-800 dark:bg-surface-900/80" style={{ overflow: 'visible' }}>
       {/* Left: Hamburger (mobile) + Breadcrumb area (placeholder) */}
       <div className="flex flex-1 items-center gap-2">
         {hamburgerButton}
@@ -391,7 +447,7 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                 {user ? `${user.first_name} ${user.last_name}` : 'User'}
               </p>
               <p className="text-xs leading-tight text-surface-400 dark:text-surface-500">
-                {user?.role ?? 'Unknown'}
+                {formatRoleLabel(user?.role)}
               </p>
             </div>
             <ChevronDown
@@ -428,16 +484,32 @@ export function Header({ hamburgerButton }: { hamburgerButton?: React.ReactNode 
                   onClick={() => { setUserMenuOpen(false); navigate('/settings/users'); }}
                 />
                 {/* SCAN-1145: managers have settings.edit server-side — let
-                    them see the Settings link too. Kept as explicit role
-                    check rather than a perm derivation to keep the dropdown
-                    pure (no extra auth-store reads). */}
-                {(user?.role === 'admin' || user?.role === 'manager') && (
+                    them see the Settings link too. WEB-FAE-001: routed
+                    through the canonical `PermissionBoundary` so the role
+                    list is shared with the rest of the app and a future
+                    `useHasRole` migration only has to touch one component. */}
+                <PermissionBoundary roles={['admin', 'manager']}>
                   <DropdownItem
                     icon={<Settings className="h-4 w-4" />}
                     label="Settings"
                     onClick={() => { setUserMenuOpen(false); navigate('/settings/store'); }}
                   />
-                )}
+                </PermissionBoundary>
+                {/* WEB-FL-017 (Fixer-C7 2026-04-25): Audit Logs is a defined
+                    Settings tab but had no entry surface — admins reached it
+                    only by clicking through the Settings tab list, which is
+                    the worst path during a security incident. Add a direct
+                    deep-link from the user menu, gated to admin since the
+                    server settings.routes.ts permission check rejects
+                    non-admins anyway (a manager-visible link would dead-end
+                    on a 403 toast). */}
+                <PermissionBoundary roles={['admin']}>
+                  <DropdownItem
+                    icon={<ScrollText className="h-4 w-4" />}
+                    label="Audit Logs"
+                    onClick={() => { setUserMenuOpen(false); navigate('/settings/audit-logs'); }}
+                  />
+                </PermissionBoundary>
                 <DropdownItem
                   icon={<ArrowLeftRight className="h-4 w-4" />}
                   label="Switch User"
@@ -572,6 +644,15 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
+  // Esc closes the dialog. The page-wide Esc handler elsewhere in this file
+  // targets dropdown menus only; without this listener the modal would only
+  // close via the X / Cancel buttons.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pin.trim() || loading) return;
@@ -579,7 +660,10 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
     setError('');
     try {
       await onSuccess(pin);
-    } catch {
+    } catch (err) {
+      // Underlying error already mapped to a UI banner; log so the actual cause
+      // (network vs auth vs server) is visible in console / Sentry.
+      console.warn('[PinModal] PIN unlock failed', err);
       setError('Invalid PIN or switch failed');
       setPin('');
       inputRef.current?.focus();
@@ -589,12 +673,22 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={onCancel}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="switch-user-title"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
           <div className="flex items-center gap-2">
             <ArrowLeftRight className="h-4 w-4 text-surface-500" />
-            <h2 className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
+            <h2 id="switch-user-title" className="text-base font-semibold text-surface-900 dark:text-surface-50">Switch User</h2>
           </div>
           <button aria-label="Close" onClick={onCancel} className="inline-flex items-center justify-center rounded-lg text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 min-h-[44px] min-w-[44px] md:min-h-0 md:min-w-0 md:p-1">
             <X className="h-5 w-5" />
@@ -611,7 +705,7 @@ function SwitchUserModal({ onSuccess, onCancel }: { onSuccess: (pin: string) => 
             value={pin}
             onChange={(e) => { setPin(e.target.value.replace(/\D/g, '')); setError(''); }}
             placeholder="PIN"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus:border-teal-500 focus-visible:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
           {error && <p className="text-center text-sm text-red-500">{error}</p>}
           <div className="flex gap-3">

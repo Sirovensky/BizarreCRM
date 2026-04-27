@@ -11,6 +11,67 @@ import { confirm } from '@/stores/confirmStore';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import { cn } from '@/utils/cn';
 import { formatPhone, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
+
+// WEB-FK-004 / FIXED-by-Fixer-A12 2026-04-25 — normalize lead.source to a
+// canonical channel set so attribution roll-ups aren't fragmented by
+// free-text spelling ("Google Ads" / "google" / "GoogleAds"). Also auto-
+// capture UTMs from the current URL into sessionStorage on first visit so
+// a marketing landing → /leads/new flow can pre-fill source without any
+// server-side touchpoint table. Still single-touch (not multi-touch),
+// but it's the structural prerequisite for any future ROI rollup.
+const LEAD_SOURCES = [
+  { value: '', label: '— Select source —' },
+  { value: 'walk_in', label: 'Walk-in' },
+  { value: 'phone', label: 'Phone' },
+  { value: 'web_form', label: 'Web form' },
+  { value: 'google_ads', label: 'Google Ads' },
+  { value: 'google_organic', label: 'Google (organic)' },
+  { value: 'facebook', label: 'Facebook' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'referral', label: 'Referral' },
+  { value: 'repeat_customer', label: 'Repeat customer' },
+  { value: 'yelp', label: 'Yelp' },
+  { value: 'other', label: 'Other' },
+] as const;
+
+// Map known UTM source values to our canonical channel set. Anything
+// unrecognized falls back to 'other' so we always store a normalized value.
+function utmToChannel(utmSource: string | null, utmMedium: string | null): string {
+  if (!utmSource) return '';
+  const s = utmSource.toLowerCase();
+  const m = (utmMedium ?? '').toLowerCase();
+  if (s.includes('google') && (m === 'cpc' || m === 'paid' || m.includes('ads'))) return 'google_ads';
+  if (s.includes('google')) return 'google_organic';
+  if (s.includes('facebook') || s === 'fb') return 'facebook';
+  if (s.includes('instagram') || s === 'ig') return 'instagram';
+  if (s.includes('tiktok') || s === 'tt') return 'tiktok';
+  if (s.includes('yelp')) return 'yelp';
+  if (s.includes('referral') || m === 'referral') return 'referral';
+  return 'other';
+}
+
+// Read UTMs from the current URL if present and stash them in sessionStorage
+// (sticky-for-session) so a "first-touch" channel survives intra-app navigation
+// before the user gets to the new-lead form. Cleared on tab close. Returns the
+// captured channel value (canonical) or '' if no UTMs were on the URL.
+function captureUtmFromLocation(): string {
+  if (typeof window === 'undefined') return '';
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    const src = sp.get('utm_source');
+    const med = sp.get('utm_medium');
+    if (src) {
+      const channel = utmToChannel(src, med);
+      sessionStorage.setItem('lead_first_touch_source', channel);
+      return channel;
+    }
+    return sessionStorage.getItem('lead_first_touch_source') ?? '';
+  } catch {
+    return '';
+  }
+}
 
 // ─── Status config ───────────────────────────────────────────────
 const LEAD_STATUSES = [
@@ -46,11 +107,6 @@ function StatusBadge({ status }: { status: string }) {
       {cfg.label}
     </span>
   );
-}
-
-function formatPhoneDisplay(phone: string): string {
-  if (!phone) return '';
-  return formatPhone(phone);
 }
 
 function getScoreColor(score: number): string {
@@ -98,15 +154,17 @@ function CreateLeadModal({
   users: { id: number; first_name: string; last_name: string }[];
 }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState({
+  // WEB-FK-004 — pre-fill source from captured first-touch UTM on the very first
+  // form open per session, so marketing-driven landings don't lose attribution.
+  const [form, setForm] = useState(() => ({
     first_name: '',
     last_name: '',
     email: '',
     phone: '',
-    source: '',
+    source: captureUtmFromLocation(),
     notes: '',
     assigned_to: '',
-  });
+  }));
 
   const createMut = useMutation({
     mutationFn: (data: any) => leadApi.create(data),
@@ -114,18 +172,36 @@ function CreateLeadModal({
       toast.success('Lead created');
       queryClient.invalidateQueries({ queryKey: ['leads'] });
       onClose();
+      // After successful create the captured UTM has been "consumed"; clear it
+      // so a subsequent walk-in lead in the same session isn't mis-attributed.
+      try { sessionStorage.removeItem('lead_first_touch_source'); } catch { /* ignore */ }
       setForm({ first_name: '', last_name: '', email: '', phone: '', source: '', notes: '', assigned_to: '' });
     },
     onError: () => toast.error('Failed to create lead'),
   });
 
+  // Esc dismisses the new-lead dialog so keyboard-only users can recover from
+  // an accidental open without losing focus context.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-lead-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Lead</h2>
+          <h2 id="new-lead-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Lead</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -181,12 +257,15 @@ function CreateLeadModal({
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Source</label>
-              <input
+              <select
                 value={form.source}
                 onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))}
-                placeholder="Walk-in, Phone, Web..."
                 className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
-              />
+              >
+                {LEAD_SOURCES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-surface-700 dark:text-surface-300">Assigned To</label>
@@ -222,7 +301,7 @@ function CreateLeadModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Create Lead
@@ -368,7 +447,7 @@ export function LeadListPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" />
           New Lead
@@ -471,7 +550,7 @@ export function LeadListPage() {
                       {lead.phone ? (
                         <a href={`tel:${lead.phone}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:text-primary-600">
                           <Phone className="h-3.5 w-3.5" />
-                          {formatPhoneDisplay(lead.phone)}
+                          {formatPhone(lead.phone)}
                         </a>
                       ) : (
                         <span className="text-surface-300 dark:text-surface-600">--</span>
@@ -516,9 +595,14 @@ export function LeadListPage() {
                         {lead.status !== 'converted' && (
                           <button
                             onClick={async (e) => {
+                              // WEB-FM-020 — Fixer-C28: try/catch swallows confirm-modal teardown rejection
                               e.stopPropagation();
-                              if (await confirm('Convert this lead to a ticket?')) {
-                                convertMut.mutate(lead.id);
+                              try {
+                                if (await confirm('Convert this lead to a ticket?')) {
+                                  convertMut.mutate(lead.id);
+                                }
+                              } catch (err) {
+                                toast.error(formatApiError(err));
                               }
                             }}
                             disabled={convertMut.isPending}
@@ -530,9 +614,14 @@ export function LeadListPage() {
                         )}
                         <button
                           onClick={async (e) => {
+                            // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal promise
                             e.stopPropagation();
-                            if (await confirm('Delete this lead?', { danger: true })) {
-                              scheduleLeadDelete(lead.id, lead.name);
+                            try {
+                              if (await confirm('Delete this lead?', { danger: true })) {
+                                scheduleLeadDelete(lead.id, lead.name);
+                              }
+                            } catch (err) {
+                              toast.error(formatApiError(err));
                             }
                           }}
                           className="rounded-lg p-1.5 text-surface-400 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/30 dark:hover:text-red-400"
@@ -564,7 +653,7 @@ export function LeadListPage() {
                     p.set('page', '1');
                     setSearchParams(p, { replace: true });
                   }}
-                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  className="text-xs rounded border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-surface-700 dark:text-surface-300 px-2 py-1 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400"
                 >
                   {[10, 25, 50, 100, 250].map((n) => (
                     <option key={n} value={n}>{n}</option>
@@ -612,7 +701,7 @@ export function LeadListPage() {
                     className={cn(
                       'inline-flex items-center justify-center rounded-lg text-sm font-medium transition-colors min-h-[44px] min-w-[44px] md:h-8 md:w-8 md:min-h-0 md:min-w-0',
                       pageNum === page
-                        ? 'bg-primary-600 text-white'
+                        ? 'bg-primary-600 text-primary-950'
                         : 'text-surface-600 hover:bg-surface-100 dark:text-surface-400 dark:hover:bg-surface-700',
                     )}
                   >

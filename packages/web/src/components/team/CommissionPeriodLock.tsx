@@ -9,7 +9,7 @@
  * Drop-in for the payroll page or settings; also re-used by GoalsPage in a
  * follow-up if needed.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Lock, LockOpen, Plus, Loader2, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -42,6 +42,14 @@ export function CommissionPeriodLock() {
     },
   });
   const periods: PayrollPeriod[] = data || [];
+
+  // WEB-FX-003: Esc-to-close for new-period dialog.
+  useEffect(() => {
+    if (!showNew) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowNew(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [showNew]);
 
   const createMut = useMutation({
     mutationFn: async () => {
@@ -85,10 +93,33 @@ export function CommissionPeriodLock() {
     },
   });
 
-  function downloadCsv(periodId: number) {
-    // Open in a new tab — the server returns text/csv with Content-Disposition.
-    const url = `/api/v1/team/payroll/export.csv?period=${periodId}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+  async function downloadCsv(periodId: number) {
+    // WEB-FD-021 (Fixer-C5 2026-04-25): replaced `window.open(/api/v1/...)`
+    // with an axios blob fetch + anchor-trigger download so the request
+    // carries the bearer header that the rest of the app uses. The previous
+    // new-tab approach relied on cookie auth, which 401s in bearer-only
+    // tenants. Same pattern used by other CSV/PDF exports per WEB-FB-006.
+    try {
+      const res = await api.get(`/team/payroll/export.csv`, {
+        params: { period: periodId },
+        responseType: 'blob',
+      });
+      const blob = new Blob([res.data as BlobPart], { type: 'text/csv' });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `payroll-period-${periodId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // Revoke after the click so the navigation/download has a chance to
+      // start; 60s mirrors WEB-FJ-017 wallet-pass blob-revoke cadence.
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[CommissionPeriodLock] CSV export failed', err);
+      toast.error('CSV export failed');
+    }
   }
 
   return (
@@ -149,9 +180,15 @@ export function CommissionPeriodLock() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New payroll period</h2>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowNew(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-payroll-period-title"
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="new-payroll-period-title" className="text-lg font-bold mb-4">New payroll period</h2>
             <div className="space-y-3">
               <label className="block">
                 <span className="text-xs font-semibold text-gray-600">Name</span>
@@ -192,7 +229,7 @@ export function CommissionPeriodLock() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
+                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center justify-center"
                 disabled={!newName || !newStart || !newEnd || createMut.isPending}
                 onClick={() => createMut.mutate()}
               >

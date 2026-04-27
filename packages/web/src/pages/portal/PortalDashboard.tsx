@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as api from './portalApi';
 import { safeColor } from '../../utils/safeColor';
 import { usePortalI18n } from './i18n';
-import { formatCurrency } from '../../utils/formatCurrency';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 interface PortalDashboardProps {
   onViewTicket: (ticketId: number) => void;
@@ -31,7 +31,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gray-50">
+      <div className="flex items-center justify-center min-h-screen bg-surface-50 dark:bg-surface-900">
         <div className="h-8 w-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
       </div>
     );
@@ -41,17 +41,17 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
   const currency = store.store_currency || 'USD';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-4">
+      <div className="bg-white dark:bg-surface-800 border-b border-surface-200 dark:border-surface-700 px-4 py-4">
         <div className="max-w-2xl mx-auto flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900">
+            <h1 className="text-lg font-bold text-surface-900 dark:text-surface-100">
               Welcome back{customerName ? `, ${customerName}` : ''}
             </h1>
-            <p className="text-sm text-gray-500">{store.store_name || 'Repair Shop'}</p>
+            <p className="text-sm text-surface-500 dark:text-surface-400">{store.store_name || 'Repair Shop'}</p>
           </div>
-          <button onClick={onLogout} className="text-sm text-gray-400 hover:text-gray-600">
+          <button onClick={onLogout} className="text-sm text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300">
             Sign Out
           </button>
         </div>
@@ -59,7 +59,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
         {error && (
-          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">{error}</div>
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-4 py-3 text-sm text-red-700 dark:text-red-300">{error}</div>
         )}
         {/* Summary Cards */}
         <div className="grid grid-cols-2 gap-3">
@@ -83,9 +83,9 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 
         {/* Ticket List */}
         <div>
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Your Repairs</h2>
+          <h2 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-3">Your Repairs</h2>
           {tickets.length === 0 ? (
-            <div className="rounded-xl bg-white border border-gray-200 p-8 text-center text-sm text-gray-400">
+            <div className="rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-8 text-center text-sm text-surface-400 dark:text-surface-500">
               No repairs found
             </div>
           ) : (
@@ -94,23 +94,23 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
                 <button
                   key={ticket.id}
                   onClick={() => onViewTicket(ticket.id)}
-                  className="w-full text-left rounded-xl bg-white border border-gray-200 p-4 hover:border-primary-300 hover:shadow-sm transition-all"
+                  className="w-full text-left rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4 hover:border-primary-300 dark:hover:border-primary-500 hover:shadow-sm transition-all"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="text-sm font-semibold text-gray-900">{ticket.order_id}</span>
+                        <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{ticket.order_id}</span>
                         <StatusBadge name={ticket.status.name} color={ticket.status.color} />
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-surface-600 dark:text-surface-400">
                         {ticket.devices.map(d => d.name || d.type).join(', ') || 'Device'}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-surface-400 dark:text-surface-500 mt-1">
                         {formatDate(ticket.created_at, locale)}
                         {ticket.due_on && ` — Due: ${formatDate(ticket.due_on, locale)}`}
                       </div>
                     </div>
-                    <svg className="w-5 h-5 text-gray-300 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg className="w-5 h-5 text-surface-300 dark:text-surface-600 flex-shrink-0 mt-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
@@ -141,11 +141,11 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
         </div>
 
         {/* Store Info */}
-        <div className="rounded-xl bg-white border border-gray-200 p-4">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Contact Us</h3>
-          <div className="space-y-1 text-sm text-gray-600">
+        <div className="rounded-xl bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4">
+          <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300 mb-2">Contact Us</h3>
+          <div className="space-y-1 text-sm text-surface-600 dark:text-surface-400">
             {store.store_phone && (
-              <a href={`tel:${store.store_phone}`} className="flex items-center gap-2 hover:text-primary-600">
+              <a href={`tel:${store.store_phone}`} rel="noreferrer noopener" className="flex items-center gap-2 hover:text-primary-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
                 </svg>
@@ -153,7 +153,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
               </a>
             )}
             {store.store_email && (
-              <a href={`mailto:${store.store_email}`} className="flex items-center gap-2 hover:text-primary-600">
+              <a href={`mailto:${store.store_email}`} rel="noreferrer noopener" className="flex items-center gap-2 hover:text-primary-600">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
@@ -187,7 +187,7 @@ export function PortalDashboard({ onViewTicket, onViewEstimates, onViewInvoices,
 function SummaryCard({ label, value, color }: { label: string; value: number | string; color: string }) {
   const colorMap: Record<string, string> = {
     blue: 'bg-primary-50 border-primary-200 text-primary-700',
-    gray: 'bg-gray-50 border-gray-200 text-gray-700',
+    gray: 'bg-surface-50 border-surface-200 text-surface-700 dark:bg-surface-800 dark:border-surface-700 dark:text-surface-300',
     amber: 'bg-amber-50 border-amber-200 text-amber-700',
     red: 'bg-red-50 border-red-200 text-red-700',
     green: 'bg-green-50 border-green-200 text-green-700',
@@ -211,10 +211,3 @@ function StatusBadge({ name, color }: { name: string; color: string }) {
   );
 }
 
-function formatDate(date: string, locale = 'en-US'): string {
-  try {
-    return new Date(date).toLocaleDateString(locale, { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return date;
-  }
-}

@@ -35,6 +35,7 @@ import {
   ArrowRight,
   X,
   Sparkles,
+  FlaskConical,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { onboardingApi, type OnboardingState } from '@/api/endpoints';
@@ -43,7 +44,7 @@ import { cn } from '@/utils/cn';
 import type { AxiosResponse } from 'axios';
 
 interface ChecklistStep {
-  id: 'settings' | 'ticket' | 'checkout';
+  id: 'settings' | 'ticket' | 'checkout' | 'sandbox';
   title: string;
   description: string;
   icon: typeof Settings;
@@ -52,6 +53,7 @@ interface ChecklistStep {
     OnboardingState,
     'first_ticket_at' | 'first_invoice_at' | 'first_payment_at' | 'advanced_settings_unlocked'
   > | null;
+  comingSoon?: boolean;
 }
 
 // STEPS is built inside the component (see buildSteps()) so that firstStepKey()
@@ -111,6 +113,15 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
       icon: ShoppingCart,
       route: `/pos?tutorial=checkout&step=${firstStepKey('checkout')}`,
       doneKey: 'first_payment_at',
+    },
+    {
+      id: 'sandbox',
+      title: 'Try sandbox mode',
+      description: 'Run a fake sale end-to-end — no inventory impact, nothing recorded.',
+      icon: FlaskConical,
+      route: '',
+      doneKey: null,
+      comingSoon: true,
     },
   ], []);
 
@@ -179,16 +190,10 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
         piece.style.cssText =
           `position:absolute;top:-10px;left:${left}%;width:8px;height:14px;background:${bg};` +
           `transform:rotate(${rot}deg);border-radius:2px;` +
-          `animation:gsw-confetti ${dur}s linear ${delay}s forwards`;
+          `animation:onboarding-confetti-fall ${dur}s linear ${delay}s forwards`;
         host.appendChild(piece);
       }
-      const styleEl = document.createElement('style');
-      styleEl.textContent =
-        '@keyframes gsw-confetti {' +
-        '  0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }' +
-        '  100% { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }' +
-        '}';
-      host.appendChild(styleEl);
+      // WEB-FD-015: keyframes live in globals.css; no per-burst <style> node.
       document.body.appendChild(host);
       window.setTimeout(() => host.remove(), 4000);
     }
@@ -296,7 +301,7 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                   done
                     ? 'bg-green-500 text-white'
                     : isNext
-                    ? 'bg-primary-500 text-white'
+                    ? 'bg-primary-500 text-primary-950'
                     : 'bg-surface-100 text-surface-400 dark:bg-surface-700 dark:text-surface-500',
                 )}
               >
@@ -316,19 +321,25 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
                 <p className="text-xs text-surface-500 dark:text-surface-400">{step.description}</p>
               </div>
               {!done && (
-                <button
-                  type="button"
-                  onClick={() => navigate(step.route)}
-                  className={cn(
-                    'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
-                    isNext
-                      ? 'bg-primary-600 text-white hover:bg-primary-700'
-                      : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
-                  )}
-                >
-                  {isNext ? 'Start now' : 'Open'}
-                  <ArrowRight className="h-3 w-3" />
-                </button>
+                step.comingSoon ? (
+                  <span className="rounded-md px-3 py-1.5 text-xs font-medium text-surface-400 dark:text-surface-500">
+                    Coming soon
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => navigate(step.route)}
+                    className={cn(
+                      'flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                      isNext
+                        ? 'bg-primary-600 text-primary-950 hover:bg-primary-700'
+                        : 'text-primary-600 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-500/10',
+                    )}
+                  >
+                    {isNext ? 'Start now' : 'Open'}
+                    <ArrowRight className="h-3 w-3" />
+                  </button>
+                )
               )}
             </li>
           );

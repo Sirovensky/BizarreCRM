@@ -53,12 +53,34 @@ function TvStatusBadge({ status }: { status: { name: string; color: string } }) 
 }
 
 // ─── Main Component ─────────────────────────────────────────────────
+// WEB-FK-011 (Fixer-B5 2026-04-25): pause polling when the lobby TV cabinet is
+// asleep / the tab is hidden. Always-on lobby boards previously fired 2880
+// polls/day per tenant per location regardless of whether the screen was lit;
+// `document.visibilityState` listening cuts that to ~zero while hidden, then
+// resumes the 30s cadence on visibility-change. Saves server quota on the
+// multi-tenant deployment AND iPad battery for iPad-as-POS deployments.
+function useIsDocumentVisible(): boolean {
+  const [visible, setVisible] = useState(
+    typeof document === 'undefined' ? true : document.visibilityState !== 'hidden',
+  );
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const handler = () => setVisible(document.visibilityState !== 'hidden');
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
+  return visible;
+}
+
 export function TvDisplayPage() {
   const now = useLiveClock();
-  const { data, isLoading } = useQuery({
+  const isVisible = useIsDocumentVisible();
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['tv-display'],
     queryFn: () => ticketApi.tvDisplay(),
-    refetchInterval: 30000,
+    // Pass `false` while hidden so React Query halts the polling timer.
+    refetchInterval: isVisible ? 30000 : false,
+    refetchIntervalInBackground: false,
   });
   const { data: storeData } = useQuery({
     queryKey: ['store-info-tv'],
@@ -98,10 +120,23 @@ export function TvDisplayPage() {
 
       {/* Ticket grid */}
       <div className="flex-1 overflow-y-auto p-6">
-        {isLoading ? (
+        {isError ? (
+          <div className="flex flex-col items-center justify-center" style={{ height: 'calc(100vh - 10rem - var(--dev-banner-h, 0px))' }}>
+            <Monitor className="mb-6 h-24 w-24 text-red-500/70" />
+            <h2 className="mb-2 text-3xl font-bold text-red-300">Display Offline</h2>
+            <p className="mb-6 text-lg text-surface-400">Could not reach the server. Retrying automatically.</p>
+            <button
+              type="button"
+              onClick={() => refetch()}
+              className="rounded-lg bg-primary-600 px-6 py-2.5 text-base font-medium text-primary-950 hover:bg-primary-700"
+            >
+              Retry now
+            </button>
+          </div>
+        ) : isLoading ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="animate-pulse rounded-xl bg-surface-800/50 p-6">
+              <div key={`tv-skel-${i}`} className="animate-pulse rounded-xl bg-surface-800/50 p-6">
                 <div className="mb-3 h-8 w-24 rounded bg-surface-700" />
                 <div className="mb-2 h-5 w-32 rounded bg-surface-700" />
                 <div className="h-5 w-48 rounded bg-surface-700" />

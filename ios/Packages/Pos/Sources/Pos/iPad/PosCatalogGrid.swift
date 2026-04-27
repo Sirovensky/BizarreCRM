@@ -58,20 +58,22 @@ public struct PosCatalogGrid: View {
         GeometryReader { proxy in
             let columns = gridColumns(for: proxy.size.width)
             ScrollView {
-                LazyVGrid(columns: columns, spacing: BrandSpacing.sm) {
+                LazyVGrid(columns: columns, spacing: 12) {
                     ForEach(items) { item in
                         PosCatalogTile(
                             item: item,
-                            isInCart: cartItemInventoryIds.contains(item.id)
+                            isInCart: cartItemInventoryIds.contains(item.id),
+                            isPad: true
                         ) {
                             BrandHaptics.success()
                             onPick(item)
                         }
                     }
                 }
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.top, BrandSpacing.sm)
-                .padding(.bottom, BrandSpacing.xl)
+                // Mockup: padding 8px 20px 20px (top / sides / bottom)
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 20)
             }
             .frame(width: proxy.size.width)
         }

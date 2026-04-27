@@ -5,6 +5,8 @@ import toast from 'react-hot-toast';
 import { membershipApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
 import { confirm } from '@/stores/confirmStore';
+import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,13 +34,9 @@ interface Subscription {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatCurrency(amount: number): string {
-  return `$${amount.toFixed(2)}`;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
+// @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): dropped local `formatCurrency`
+// — was hardcoded `$` + `toFixed(2)`, ignoring tenant currency/locale. Now
+// delegates to canonical `@/utils/format` so EUR/GBP/CAD tenants render correctly.
 
 function statusBadge(status: SubStatus): string {
   switch (status) {
@@ -118,13 +116,18 @@ export function SubscriptionsListPage() {
   });
 
   async function handleCancel(sub: Subscription): Promise<void> {
-    const ok = await confirm(
-      `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership immediately?`,
-      { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
-    );
-    if (!ok) return;
-    setCancellingId(sub.id);
-    cancelMutation.mutate(sub.id);
+    // WEB-FM-020 — Fixer-C28: try/catch around confirm-modal teardown rejection
+    try {
+      const ok = await confirm(
+        `Cancel ${sub.first_name} ${sub.last_name}'s ${sub.tier_name} membership immediately?`,
+        { title: 'Cancel subscription?', confirmLabel: 'Cancel subscription', danger: true },
+      );
+      if (!ok) return;
+      setCancellingId(sub.id);
+      cancelMutation.mutate(sub.id);
+    } catch (err) {
+      toast.error(formatApiError(err));
+    }
   }
 
   const subs = data ?? [];

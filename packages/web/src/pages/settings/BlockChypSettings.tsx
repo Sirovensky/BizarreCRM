@@ -95,9 +95,26 @@ function Toggle({ checked, onChange, label, description }: { checked: boolean; o
 
 // ─── Main component ─────────────────────────────────────────────────
 
+// WEB-FG-005 fix: secret-typed fields ("blockchyp_api_key", "blockchyp_bearer_
+// token", "blockchyp_signing_key") arrive from the server already redacted to
+// `''` (PasswordInput default). Without dirty-tracking, a Save click that the
+// user fired only to flip `blockchyp_test_mode` previously over-posted these
+// empty strings on top of the live secrets — wiping credentials. We now (a)
+// only PUT the keys whose form value differs from the loaded baseline, and
+// (b) explicitly drop secret keys from the payload when their dirty value is
+// empty (treats blank-secret as "leave server value alone").
+const SECRET_KEYS: ReadonlyArray<keyof BlockChypFormState> = [
+  'blockchyp_api_key',
+  'blockchyp_bearer_token',
+  'blockchyp_signing_key',
+];
+
 export function BlockChypSettings() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BlockChypFormState>(DEFAULTS);
+  // Snapshot of the last server-loaded state. Compared against `form` to
+  // determine which keys are dirty on Save.
+  const [baseline, setBaseline] = useState<BlockChypFormState>(DEFAULTS);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
 
@@ -110,14 +127,39 @@ export function BlockChypSettings() {
   useEffect(() => {
     if (configData?.data?.data) {
       const cfg = configData.data.data as Record<string, string>;
-      setForm((prev) => ({
-        ...prev,
+      const next = {
+        ...DEFAULTS,
         ...Object.fromEntries(
-          Object.keys(DEFAULTS).map((key) => [key, cfg[key] ?? prev[key as keyof BlockChypFormState]])
+          Object.keys(DEFAULTS).map((key) => [key, cfg[key] ?? DEFAULTS[key as keyof BlockChypFormState]])
         ),
-      }));
+      } as BlockChypFormState;
+      setForm(next);
+      setBaseline(next);
     }
   }, [configData]);
+
+  // Compute dirty payload — only keys whose form value differs from the
+  // baseline. Secret keys with an empty dirty value are explicitly dropped so
+  // a "I didn't re-type the API key" save does NOT clobber the live secret.
+  const dirtyPayload = (): Record<string, string> => {
+    const out: Record<string, string> = {};
+    (Object.keys(DEFAULTS) as Array<keyof BlockChypFormState>).forEach((key) => {
+      if (form[key] !== baseline[key]) {
+        if (SECRET_KEYS.includes(key) && form[key] === '') {
+          // Dirty-but-empty secret: skip — server keeps existing value.
+          return;
+        }
+        out[key as string] = form[key];
+      }
+    });
+    return out;
+  };
+
+  const isDirty = (() => {
+    return (Object.keys(DEFAULTS) as Array<keyof BlockChypFormState>).some(
+      (key) => form[key] !== baseline[key],
+    );
+  })();
 
   // Save mutation
   const saveMutation = useMutation({
@@ -126,12 +168,20 @@ export function BlockChypSettings() {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.invalidateQueries({ queryKey: ['blockchyp'] });
       toast.success('BlockChyp settings saved');
+      // After a successful save, fold the just-PUT values into the baseline
+      // so Save remains disabled until the user makes another change.
+      setBaseline(form);
     },
     onError: () => toast.error('Failed to save settings'),
   });
 
   const handleSave = () => {
-    saveMutation.mutate({ ...form } as Record<string, string>);
+    const payload = dirtyPayload();
+    if (Object.keys(payload).length === 0) {
+      toast('No changes to save', { icon: 'ℹ️' });
+      return;
+    }
+    saveMutation.mutate(payload);
   };
 
   const handleTestConnection = async () => {
@@ -171,8 +221,9 @@ export function BlockChypSettings() {
         </div>
         <button
           onClick={handleSave}
-          disabled={saveMutation.isPending}
-          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+          disabled={saveMutation.isPending || !isDirty}
+          className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          title={!isDirty ? 'No changes to save' : 'Save dirty fields only'}
         >
           {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           Save Changes
@@ -194,15 +245,18 @@ export function BlockChypSettings() {
           <div className="space-y-4 mt-4 pl-2 border-l-2 border-green-500/30">
             <div>
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">API Key</label>
-              <PasswordInput value={form.blockchyp_api_key} onChange={(v) => update('blockchyp_api_key', v)} placeholder="Enter your BlockChyp API key" />
+              <PasswordInput value={form.blockchyp_api_key} onChange={(v) => update('blockchyp_api_key', v)} placeholder="Leave blank to keep existing key" />
+              <p className="mt-1 text-xs text-surface-500">Leave blank to keep the existing key — only re-enter to rotate.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Bearer Token</label>
-              <PasswordInput value={form.blockchyp_bearer_token} onChange={(v) => update('blockchyp_bearer_token', v)} placeholder="Enter your BlockChyp bearer token" />
+              <PasswordInput value={form.blockchyp_bearer_token} onChange={(v) => update('blockchyp_bearer_token', v)} placeholder="Leave blank to keep existing token" />
+              <p className="mt-1 text-xs text-surface-500">Leave blank to keep the existing token.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Signing Key</label>
-              <PasswordInput value={form.blockchyp_signing_key} onChange={(v) => update('blockchyp_signing_key', v)} placeholder="Enter your BlockChyp signing key" />
+              <PasswordInput value={form.blockchyp_signing_key} onChange={(v) => update('blockchyp_signing_key', v)} placeholder="Leave blank to keep existing key" />
+              <p className="mt-1 text-xs text-surface-500">Leave blank to keep the existing key.</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Terminal Name</label>

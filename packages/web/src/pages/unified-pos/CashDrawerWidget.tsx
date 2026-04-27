@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { DollarSign, Lock, Unlock, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
-import { formatCents } from '@/utils/format';
+// @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): drawer-cap toast used hardcoded "$" — switch to formatCurrency for tenant currency.
+import { formatCents, formatCurrency } from '@/utils/format';
 import { ZReportModal } from './ZReportModal';
 
 // Drawer safety ceilings (criticalaudit-rerun §3, bug 5):
@@ -53,7 +54,7 @@ function centsFromInput(value: string): { ok: boolean; cents: number; reason?: s
     return {
       ok: false,
       cents: 0,
-      reason: `Amount exceeds $${DRAWER_CAP_DOLLARS.toLocaleString()} drawer cap`,
+      reason: `Amount exceeds ${formatCurrency(DRAWER_CAP_DOLLARS)} drawer cap`,
     };
   }
   return { ok: true, cents: Math.round(n * 100) };
@@ -180,7 +181,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
               min="0"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="200.00"
               autoFocus
             />
@@ -191,7 +192,7 @@ function OpenShiftModal({ onClose, onOpened }: OpenShiftModalProps) {
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="Morning shift"
             />
           </label>
@@ -266,7 +267,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
               min="0"
               value={counted}
               onChange={(e) => setCounted(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="0.00"
               autoFocus
             />
@@ -277,7 +278,7 @@ function CloseShiftModal({ shift, onClose, onClosed }: CloseShiftModalProps) {
               type="text"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus:border-teal-500 focus:outline-none focus:ring-1 focus:ring-teal-500 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
+              className="w-full rounded-lg border border-surface-300 px-3 py-2 text-sm focus-visible:outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/20 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-100"
               placeholder="End of day"
             />
           </label>

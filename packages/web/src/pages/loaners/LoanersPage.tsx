@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Package, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -17,16 +17,36 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
   const queryClient = useQueryClient();
   const [conditionIn, setConditionIn] = useState('good');
   const [damageNotes, setDamageNotes] = useState('');
+  const [damageCost, setDamageCost] = useState('');
+
+  // Damage / missing-parts return → shop should collect a deposit / damage charge.
+  // Server has no deposit column yet (WEB-FK-003 follow-up tracked), so we surface
+  // the dollar amount inside the notes payload + display a hard staff prompt
+  // so the device never goes back into circulation without the cashier knowing
+  // a charge is owed.
+  const requiresCharge = conditionIn === 'damaged' || conditionIn === 'missing';
 
   const returnMutation = useMutation({
-    mutationFn: () =>
-      loanerApi.returnDevice(device.id, {
+    mutationFn: () => {
+      const parts: string[] = [];
+      if (damageNotes.trim()) parts.push(damageNotes.trim());
+      const cost = parseFloat(damageCost);
+      if (requiresCharge && Number.isFinite(cost) && cost > 0) {
+        parts.push(`Damage charge owed: $${cost.toFixed(2)}`);
+      }
+      return loanerApi.returnDevice(device.id, {
         condition_in: conditionIn,
-        notes: damageNotes.trim() || undefined,
-      }),
+        notes: parts.length ? parts.join(' — ') : undefined,
+      });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['loaners'] });
-      toast.success(`${device.name} marked as returned`);
+      const cost = parseFloat(damageCost);
+      if (requiresCharge && Number.isFinite(cost) && cost > 0) {
+        toast.success(`${device.name} returned. Collect $${cost.toFixed(2)} damage charge from customer.`, { duration: 8000 });
+      } else {
+        toast.success(`${device.name} marked as returned`);
+      }
       onClose();
     },
     onError: (e: unknown) => {
@@ -35,11 +55,23 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
     },
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="loaner-return-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Mark Returned</h2>
+          <h2 id="loaner-return-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Mark Returned</h2>
           <button aria-label="Close" onClick={onClose} className="rounded p-1 text-surface-400 hover:text-surface-600">
             <X className="h-4 w-4" />
           </button>
@@ -76,6 +108,32 @@ function ReturnDialog({ device, onClose }: ReturnDialogProps) {
               placeholder="Describe any damage or missing items..."
             />
           </div>
+          {requiresCharge && (
+            <div
+              role="alert"
+              aria-live="polite"
+              className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-xs text-amber-800 dark:text-amber-200 space-y-2"
+            >
+              <p className="font-semibold">Damage charge required</p>
+              <p>
+                Customer is liable for repair / replacement cost. Enter the amount to charge — it will be saved to the
+                return record and shown to the cashier.
+              </p>
+              <label className="block">
+                <span className="block text-[11px] font-medium mb-1">Charge amount (USD)</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  value={damageCost}
+                  onChange={(e) => setDamageCost(e.target.value)}
+                  placeholder="0.00"
+                  className="input w-full"
+                />
+              </label>
+            </div>
+          )}
         </div>
         <div className="flex gap-3 mt-6">
           <button

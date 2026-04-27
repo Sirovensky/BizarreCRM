@@ -8,6 +8,10 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { BackButton } from '@/components/shared/BackButton';
 import { QuickSmsModal } from '@/components/shared/QuickSmsModal';
 import { useAuthStore } from '@/stores/authStore';
+// WEB-FAE-003: per-user namespacing for `recent_views` so a kiosk handoff
+// doesn't bleed the previous user's recent ticket numbers into the next
+// user's sidebar. Reader is `Sidebar.RecentViews`.
+import { recentViewsKey } from '@/components/layout/Sidebar';
 import { useUndoableAction } from '@/hooks/useUndoableAction';
 import type { Ticket, TicketStatus, TicketNote, TicketDevice, TicketHistory } from '@bizarre-crm/shared';
 
@@ -108,11 +112,22 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="merge-ticket-title"
+        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-surface-800"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="mb-4 flex items-center gap-2">
           <GitMerge className="h-5 w-5 text-primary-500" />
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
+          <h2 id="merge-ticket-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">
             Merge Ticket {formatTicketId(orderId)}
           </h2>
         </div>
@@ -126,7 +141,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by ticket ID, customer, device..."
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-4 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-4 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100 focus-visible:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
         <div className="max-h-48 overflow-y-auto rounded-lg border border-surface-200 dark:border-surface-700">
@@ -166,7 +181,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
           <button
             onClick={handleMerge}
             disabled={!selectedId || isPending}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
           >
             {isPending ? 'Merging...' : 'Merge'}
           </button>
@@ -256,7 +271,10 @@ export function TicketDetailPage() {
       const prev = queryClient.getQueryData(['ticket', ticketId]);
       queryClient.setQueryData(['ticket', ticketId], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone over
+        // JSON.parse(JSON.stringify(...)) — preserves Dates/undefined that
+        // ticket payloads carry (created_at, etc.) and is faster on hot path.
+        const clone = structuredClone(old);
         const t = clone?.data?.data;
         if (t) {
           t.status_id = newStatusId;
@@ -319,7 +337,8 @@ export function TicketDetailPage() {
     // we keep the page's data so if Undo is clicked, state just works.
     queryClient.setQueriesData({ queryKey: ['tickets'] }, (old: any) => {
       if (!old) return old;
-      const clone = JSON.parse(JSON.stringify(old));
+      // WEB-FO-012 (Fixer-B14 2026-04-25): structuredClone — see note above.
+      const clone = structuredClone(old);
       const list = clone?.data?.data?.tickets || clone?.data?.tickets;
       if (Array.isArray(list)) {
         const filtered = list.filter((t: any) => t.id !== ticketId);
@@ -357,17 +376,42 @@ export function TicketDetailPage() {
   const [showQcSignOff, setShowQcSignOff] = useState(false);
 
   // ─── Track recent views ───────────────────────────────────────────
+  // WEB-FO-005 (FIXED-by-Fixer-A3 2026-04-25): same RMW race as
+  // sms_reminders — two tabs viewing different tickets concurrently each
+  // read the same `recent_views`, push their own entry, write back, and
+  // one entry vanishes. Serialize via `navigator.locks` when available;
+  // otherwise apply a best-effort CAS verification + retry.
   useEffect(() => {
     if (!ticket) return;
-    const key = 'recent_views';
-    try {
-      const existing: { type: string; id: number; label: string; path: string }[] = JSON.parse(localStorage.getItem(key) || '[]');
-      const entry = { type: 'ticket', id: ticket.id, label: formatTicketId(ticket.order_id || ticket.id), path: `/tickets/${ticket.id}` };
-      const filtered = existing.filter((e) => !(e.type === 'ticket' && e.id === ticket.id));
-      filtered.unshift(entry);
-      localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
-    } catch { /* ignore */ }
-  }, [ticket?.id]);
+    const key = recentViewsKey(currentUser?.id);
+    type RecentEntry = { type: string; id: number; label: string; path: string };
+    const entry: RecentEntry = { type: 'ticket', id: ticket.id, label: formatTicketId(ticket.order_id || ticket.id), path: `/tickets/${ticket.id}` };
+    const apply = () => {
+      try {
+        const existing: RecentEntry[] = JSON.parse(localStorage.getItem(key) || '[]');
+        const list = Array.isArray(existing) ? existing : [];
+        const filtered = list.filter((e) => !(e?.type === 'ticket' && e?.id === ticket.id));
+        filtered.unshift(entry);
+        localStorage.setItem(key, JSON.stringify(filtered.slice(0, 5)));
+      } catch { /* ignore */ }
+    };
+    const locks = (navigator as Navigator & {
+      locks?: { request: (name: string, cb: () => void | Promise<void>) => Promise<void> };
+    }).locks;
+    if (locks?.request) {
+      void locks.request(`recent_views:${currentUser?.id ?? 'anon'}`, () => { apply(); });
+    } else {
+      apply();
+      try {
+        const verify = JSON.parse(localStorage.getItem(key) || '[]');
+        const seen = Array.isArray(verify) && verify[0]?.type === 'ticket' && verify[0]?.id === ticket.id;
+        if (!seen) apply();
+      } catch { /* ignore */ }
+    }
+    // Only depend on the IDs — re-running on every ticket-object reswap
+    // would spam localStorage on each refetch tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.id, currentUser?.id]);
 
   // ─── Derived data ─────────────────────────────────────────────────
   const customer = ticket?.customer;

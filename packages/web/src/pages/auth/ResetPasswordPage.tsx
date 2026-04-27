@@ -123,8 +123,9 @@ export function ResetPasswordPage() {
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
+                <label htmlFor="reset-password-new" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">New Password</label>
                 <input
+                  id="reset-password-new"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -132,25 +133,30 @@ export function ResetPasswordPage() {
                   required
                   minLength={8}
                   placeholder="Min 8 characters"
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'reset-password-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
+                <label htmlFor="reset-password-confirm" className="mb-1.5 block text-sm font-medium text-surface-700 dark:text-surface-300">Confirm Password</label>
                 <input
+                  id="reset-password-confirm"
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   minLength={8}
                   placeholder="Confirm new password"
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  aria-invalid={!!error}
+                  aria-describedby={error ? 'reset-password-error' : undefined}
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
               {error && (
-                <div className="rounded-lg bg-red-50 p-3 dark:bg-red-950/30">
+                <div id="reset-password-error" role="alert" className="rounded-lg bg-red-50 p-3 dark:bg-red-950/30">
                   <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
                 </div>
               )}
@@ -158,7 +164,7 @@ export function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || password.length < 8}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Reset Password'}
               </button>

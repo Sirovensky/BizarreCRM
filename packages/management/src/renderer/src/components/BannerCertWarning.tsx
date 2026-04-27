@@ -54,7 +54,7 @@ export function BannerCertWarning() {
       <button
         onClick={() => setDismissed(true)}
         className="flex-shrink-0 text-amber-500 hover:text-amber-300 transition-colors"
-        aria-label="Dismiss warning"
+        aria-label="Dismiss"
       >
         <X className="w-4 h-4" />
       </button>

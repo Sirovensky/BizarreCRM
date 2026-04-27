@@ -146,7 +146,7 @@ public struct MembershipBenefitBanner: View {
     /// TODO: replace with `@Environment(\.posTheme).primary` once Agent A lands.
     private var primaryColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816)  // #fdeed0 cream
+            ? Color.bizarreOrange  // #fdeed0 cream
             : .bizarreOrange
     }
 
@@ -158,10 +158,10 @@ public struct MembershipBenefitBanner: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(
+                                Color.bizarreOrange.opacity(
                                     reduceTransparency ? 0.18 : 0.12
                                 ),
-                                Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.02)
+                                Color.bizarreOrange.opacity(0.02)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -192,13 +192,13 @@ public struct MembershipBenefitBanner: View {
 
     private var borderColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.38)
+            ? Color.bizarreOrange.opacity(0.38)
             : Color.bizarreOrange.opacity(0.28)
     }
 
     private var shadowColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.992, green: 0.933, blue: 0.816).opacity(0.06)
+            ? Color.bizarreOrange.opacity(0.06)
             : Color.bizarreOrange.opacity(0.10)
     }
 

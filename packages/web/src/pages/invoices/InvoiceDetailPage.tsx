@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, FileText, Plus, Loader2, DollarSign, Printer, Ban, MessageSquare, X, Smartphone, CreditCard, Mail, Receipt } from 'lucide-react';
@@ -51,6 +51,20 @@ export function InvoiceDetailPage() {
   // FA-L4: split-payment wizard lives behind a toggle so it doesn't crowd the
   // normal "record payment" flow. Opens only on demand, once per invoice.
   const [showInstallmentPlan, setShowInstallmentPlan] = useState(false);
+
+  // Esc-to-close for the inline payment + credit-note modals (Fixer-TT a11y).
+  // The other modals on this page either use ConfirmDialog (which already wires
+  // its own Esc) or are tiny prompts; these two are the long-lived dialogs.
+  useEffect(() => {
+    if (!showPayment && !showCreditNote) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (showCreditNote) setShowCreditNote(false);
+      else if (showPayment) setShowPayment(false);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPayment, showCreditNote]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['invoice', id],
@@ -209,6 +223,20 @@ export function InvoiceDetailPage() {
 
   const handlePay = () => {
     if (!paymentForm.amount || parseFloat(paymentForm.amount) <= 0) return toast.error('Enter a valid amount');
+    // WEB-FH-021 (Fixer-B4 2026-04-25): warn the cashier before recording an
+    // overpayment. The server happily accepts amounts that exceed amount_due
+    // (it just leaves amount_due negative), so a fat-fingered extra zero
+    // ($500 for a $50 balance) goes through silently. Tolerate small float
+    // drift (0.005) so the "Pay full balance" preset never mis-fires.
+    const enteredAmount = parseFloat(paymentForm.amount);
+    const balanceDue = Number(invoice.amount_due) || 0;
+    if (enteredAmount > balanceDue + 0.005) {
+      const overage = enteredAmount - balanceDue;
+      const proceed = window.confirm(
+        `Amount $${enteredAmount.toFixed(2)} exceeds the balance due of $${balanceDue.toFixed(2)} by $${overage.toFixed(2)}.\n\nRecord this overpayment anyway?`,
+      );
+      if (!proceed) return;
+    }
     payMutation.mutate(paymentForm);
   };
 
@@ -217,8 +245,30 @@ export function InvoiceDetailPage() {
     try {
       const res = await blockchypApi.processPayment(invoiceId);
       const result = res.data?.data;
+      // @audit-fixed (WEB-FN-004 / Fixer-K 2026-04-24): the server returns
+      // HTTP 202 with `{ success: false, data: { status: 'pending_reconciliation' } }`
+      // when the terminal charge outcome is unknown (SEC-M34). Previously the UI
+      // treated that as a generic decline and hid the transactionRef the operator
+      // needs to reconcile by hand. Branch explicitly so the operator sees a
+      // distinct, non-retryable state and the receipt prompt does NOT open.
+      if (res.status === 202 || result?.status === 'pending_reconciliation') {
+        toast.error(
+          `Terminal outcome unknown — pending reconciliation${result?.transactionRef ? ` (ref ${result.transactionRef})` : ''}. Verify with the terminal before retrying.`,
+          { duration: 8000 },
+        );
+        // Refresh invoice in case server already wrote a payment row before timeout.
+        queryClient.invalidateQueries({ queryKey: ['invoice', id] });
+        return;
+      }
       if (result?.success) {
-        toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
+        // @audit-fixed: surface idempotency replay so the operator knows the
+        // charge wasn't re-attempted. Avoids double-prompting for receipts on a
+        // refresh-after-success.
+        if (result.replayed) {
+          toast.success(`Payment already captured — using prior charge${result.cardType ? ` (${result.cardType} ending ${result.last4})` : ''}`);
+        } else {
+          toast.success(`Payment approved${result.cardType ? ` — ${result.cardType} ending ${result.last4}` : ''}`);
+        }
         queryClient.invalidateQueries({ queryKey: ['invoice', id] });
         queryClient.invalidateQueries({ queryKey: ['invoices'] });
         setShowPayment(false);
@@ -237,7 +287,20 @@ export function InvoiceDetailPage() {
   const handleCreditNote = () => {
     const amount = parseFloat(creditNoteForm.amount);
     if (!amount || amount <= 0) return toast.error('Enter a valid amount');
-    if (amount > Number(invoice.total)) return toast.error('Amount cannot exceed invoice total');
+    // WEB-FH-009 (Fixer-V 2026-04-25): cap the credit note at the cash that
+    // actually came in, not the invoice headline total. Prior code allowed
+    // $200 credit notes against a $200 invoice that had only collected a
+    // $50 deposit — the shop would refund $150 it never received. The
+    // server's refund route also enforces this, but the client used to
+    // promise the operator "max=$200" and submit invalid amounts that
+    // bounced on a race. Cap on `amount_paid` matches the server contract.
+    const maxRefundable = Number(invoice.amount_paid) || 0;
+    if (amount > maxRefundable) {
+      // @audit-fixed (WEB-FF-003 / Fixer-PP 2026-04-25): tenant-aware currency.
+      return toast.error(
+        `Amount cannot exceed amount paid (${formatCurrency(maxRefundable)})`,
+      );
+    }
     if (!creditNoteForm.reason) return toast.error('Select a reason');
     creditNoteMutation.mutate({
       amount,
@@ -278,7 +341,7 @@ export function InvoiceDetailPage() {
           <div className="flex items-center gap-2">
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
               <>
-                <button onClick={() => setShowPayment(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+                <button onClick={() => setShowPayment(true)} className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
                   <DollarSign className="h-4 w-4" /> Record Payment
                 </button>
                 {/* FA-L4 — offer the "split into installments" wizard for
@@ -515,7 +578,7 @@ export function InvoiceDetailPage() {
               </div>
             </div>
             {invoice.status !== 'void' && invoice.status !== 'paid' && (
-              <button onClick={() => setShowPayment(true)} className="w-full mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors">
+              <button onClick={() => setShowPayment(true)} className="w-full mt-4 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors">
                 <DollarSign className="h-4 w-4" /> Record Payment
               </button>
             )}
@@ -533,9 +596,15 @@ export function InvoiceDetailPage() {
 
       {/* Payment Modal */}
       {showPayment && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="record-payment-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowPayment(false); }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <h2 id="record-payment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 mb-4">Record Payment</h2>
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Amount</label>
@@ -564,7 +633,7 @@ export function InvoiceDetailPage() {
                       onClick={() => setPaymentForm({ ...paymentForm, method: pm.name.toLowerCase().replace(/\s+/g, '_') })}
                       className={cn('px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
                         paymentForm.method === pm.name.toLowerCase().replace(/\s+/g, '_')
-                          ? 'bg-primary-600 text-white border-primary-600'
+                          ? 'bg-primary-600 text-primary-950 border-primary-600'
                           : 'border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800'
                       )}
                     >
@@ -599,7 +668,7 @@ export function InvoiceDetailPage() {
             )}
             <div className="flex gap-3">
               <button onClick={() => setShowPayment(false)} className="flex-1 px-4 py-2.5 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-800 transition-colors">Cancel</button>
-              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
+              <button onClick={handlePay} disabled={payMutation.isPending || terminalProcessing} className="flex-1 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg text-sm font-medium transition-colors disabled:opacity-50">
                 {payMutation.isPending ? 'Recording...' : 'Record Payment'}
               </button>
             </div>
@@ -671,10 +740,16 @@ export function InvoiceDetailPage() {
 
       {/* Credit Note Modal */}
       {showCreditNote && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="credit-note-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowCreditNote(false); }}
+        >
+          <div className="bg-white dark:bg-surface-900 rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
+              <h2 id="credit-note-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">Create Credit Note</h2>
               <button aria-label="Close" onClick={() => setShowCreditNote(false)} className="rounded p-1 text-surface-400 hover:text-surface-600">
                 <X className="h-4 w-4" />
               </button>
@@ -688,16 +763,19 @@ export function InvoiceDetailPage() {
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400">$</span>
                   <input
-                    type="number" step="0.01" min="0.01" max={Number(invoice.total)}
+                    type="number" step="0.01" min="0.01" max={Number(invoice.amount_paid) || 0}
                     value={creditNoteForm.amount}
                     onChange={(e) => setCreditNoteForm({ ...creditNoteForm, amount: e.target.value })}
-                    placeholder={Number(invoice.amount_due).toFixed(2)}
+                    placeholder={(Number(invoice.amount_paid) || 0).toFixed(2)}
                     className="input w-full pl-6"
                     autoFocus
                   />
                 </div>
+                {/* WEB-FH-009 (Fixer-V): cap the visible max at amount actually
+                    paid, not the invoice total — a $200 invoice with only a
+                    $50 deposit can't yield more than $50 of credit. */}
                 <p className="text-xs text-surface-400 mt-1">
-                  Max: ${Number(invoice.total).toFixed(2)} (invoice total)
+                  Max: ${(Number(invoice.amount_paid) || 0).toFixed(2)} (amount paid)
                 </p>
               </div>
               {/* FA-L8 — structured reason picker replaces the free-text

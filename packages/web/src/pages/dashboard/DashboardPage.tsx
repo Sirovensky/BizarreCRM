@@ -1,8 +1,12 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import {
+  ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  LayoutDashboard, Ticket, DollarSign, CheckCircle2, Clock,
+  LayoutDashboard, Ticket, DollarSign, Clock,
   Activity, ShoppingCart, AlertTriangle, ExternalLink, Package,
   Plus, ArrowRight, Loader2, Info, Download, TrendingUp,
   Receipt, BadgeDollarSign, CreditCard, Wallet, FileText,
@@ -17,6 +21,7 @@ import { SuccessCelebration } from '@/components/onboarding/SuccessCelebration';
 import { DailyNudge } from '@/components/onboarding/DailyNudge';
 import { useMilestoneToasts } from '@/components/onboarding/useMilestoneToasts';
 import { useAuthStore } from '@/stores/authStore';
+import { useHasRole } from '@/hooks/useHasRole';
 import { cn } from '@/utils/cn';
 import { formatCurrency, formatDate } from '@/utils/format';
 // Business Intelligence layer (audit 47)
@@ -160,8 +165,11 @@ function KpiCard({ label, value, tooltip, loading, href }: {
       <div className="flex items-center gap-1.5">
         <span className="text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">{label}</span>
         {tooltip && (
+          // WEB-FQ-018 (Fixer-C4 2026-04-25): bumped to h-3.5 (14px) so the
+          // tooltip glyph is hit-target-legible next to a 12px caption without
+          // visually dwarfing the kpi label. h-3 was unreadable at retina/144dpi.
           <span title={tooltip} className="text-surface-400 cursor-help">
-            <Info className="h-3 w-3" />
+            <Info className="h-3.5 w-3.5" />
           </span>
         )}
       </div>
@@ -176,6 +184,17 @@ function KpiCard({ label, value, tooltip, loading, href }: {
 
 // ─── Missing Parts Card ───────────────────────────────────────────────────────
 
+/** WEB-FA-013 (Fixer-B14 2026-04-25): supplier base URLs centralised in a
+ *  single map so the keys can be reviewed in one place and a future Settings
+ *  → Suppliers page can pre-populate from this list. Still hard-coded — true
+ *  per-tenant configurability requires a server-side `store_config` key (out
+ *  of scope for this loop) — but adding a new supplier no longer requires
+ *  hunting through the dashboard render path. */
+const SUPPLIER_BASE_URLS: Record<string, string> = {
+  mobilesentrix: 'https://www.mobilesentrix.com',
+  phonelcdparts: 'https://www.phonelcdparts.com',
+};
+
 /** Build the best URL for ordering a part from its supplier.
  *  If we have a numeric Magento product ID (external_id), construct a direct add-to-cart URL.
  *  Otherwise fall back to the product page URL. */
@@ -186,10 +205,10 @@ function getSupplierOrderUrl(part: MissingPart): string | null {
 
   // If we have a numeric external_id, we can build an add-to-cart URL
   if (extId && /^\d+$/.test(extId) && source) {
-    const base = source === 'mobilesentrix'
-      ? 'https://www.mobilesentrix.com'
-      : 'https://www.phonelcdparts.com';
-    return `${base}/checkout/cart/add/product/${extId}/qty/${part.quantity}/`;
+    const base = SUPPLIER_BASE_URLS[source];
+    if (base) {
+      return `${base}/checkout/cart/add/product/${extId}/qty/${part.quantity}/`;
+    }
   }
 
   return pageUrl || null;
@@ -347,7 +366,7 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
           {parts.slice(0, 10).map((p) => (
             <div key={p.part_id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-50 dark:hover:bg-surface-800/50">
               {p.image_url ? (
-                <img src={p.image_url} alt="" className="h-9 w-9 rounded object-cover flex-shrink-0 bg-surface-100" />
+                <img src={p.image_url} alt="" loading="lazy" decoding="async" className="h-9 w-9 rounded object-cover flex-shrink-0 bg-surface-100" />
               ) : (
                 <div className="h-9 w-9 rounded bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
                   <Package className="h-4 w-4 text-amber-500" />
@@ -437,63 +456,193 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
   );
 }
 
-// ─── Quick Actions ────────────────────────────────────────────────────────────
+// ─── Metric Chart ─────────────────────────────────────────────────────────────
 
-function QuickActions() {
-  const navigate = useNavigate();
+type ChartMetric = 'sale' | 'net_profit' | 'cogs' | 'tax' | 'margin';
+type ChartMode = 'area' | 'bar';
 
-  // Fetch SMS unread count
-  const { data: smsData } = useQuery({
-    queryKey: ['sms-conversations-unread'],
-    queryFn: () => smsApi.conversations(),
-    refetchInterval: 60_000,
-  });
-  const smsUnread = useMemo(() => {
-    const raw = smsData?.data?.data;
-    const convos: any[] = Array.isArray(raw) ? raw : (raw?.conversations ?? []);
-    return convos.reduce((sum: number, c: any) => sum + (c.unread_count ?? 0), 0);
-  }, [smsData]);
+interface ChartMetricDef {
+  key: ChartMetric;
+  label: string;
+  currency: boolean;
+  color: string;
+  gradientId: string;
+}
 
-  // Fetch parts to order count
-  const { data: queueData } = useQuery({
-    queryKey: ['order-queue-summary'],
-    queryFn: () => catalogApi.getOrderQueueSummary(),
-    refetchInterval: 120_000,
-  });
-  const partsCount = queueData?.data?.data?.total_items ?? 0;
+const CHART_METRICS: ChartMetricDef[] = [
+  { key: 'sale',       label: 'Revenue',    currency: true,  color: '#d6a54b', gradientId: 'g-sale'   },
+  { key: 'net_profit', label: 'Net Profit', currency: true,  color: '#4ade80', gradientId: 'g-profit' },
+  { key: 'cogs',       label: 'COGS',       currency: true,  color: '#fb923c', gradientId: 'g-cogs'   },
+  { key: 'tax',        label: 'Tax',        currency: true,  color: '#60a5fa', gradientId: 'g-tax'    },
+  { key: 'margin',     label: 'Margin %',   currency: false, color: '#c084fc', gradientId: 'g-margin' },
+];
 
-  const actions: { label: string; path: string; icon: typeof Plus; bg: string; hover: string; count: number }[] = [
-    { label: 'New Check-in', path: '/pos', icon: Plus, bg: '#22c55e', hover: '#16a34a', count: 0 },
-    { label: 'New Customer', path: '/customers/new', icon: Activity, bg: '#3b82f6', hover: '#2563eb', count: 0 },
-    { label: 'Unread Messages', path: '/communications', icon: CheckCircle2, bg: '#a855f7', hover: '#9333ea', count: smsUnread },
-    { label: 'Parts to Order', path: '/catalog', icon: DollarSign, bg: '#f59e0b', hover: '#d97706', count: partsCount },
-  ];
+// Maps KPI card labels to chart metric keys (only the ones daily_sales tracks)
+const KPI_LABEL_TO_METRIC: Partial<Record<string, ChartMetric>> = {
+  'Total Sales': 'sale',
+  'Net Profit':  'net_profit',
+  'COGS':        'cogs',
+  'Tax':         'tax',
+};
+
+function DashboardMetricChart({
+  dailySales,
+  loading,
+  activeMetrics,
+  mode,
+  onModeChange,
+}: {
+  dailySales: DashboardKpis['daily_sales'];
+  loading: boolean;
+  activeMetrics: Set<ChartMetric>;
+  mode: ChartMode;
+  onModeChange: (m: ChartMode) => void;
+}) {
+  const isDark = document.documentElement.classList.contains('dark');
+  const gridColor = isDark ? '#27272a' : '#f4f4f5';
+  const tooltipStyle = {
+    borderRadius: 8,
+    border: `1px solid ${isDark ? '#3f3f46' : '#e4e4e7'}`,
+    backgroundColor: isDark ? '#18181b' : '#fff',
+    color: isDark ? '#f4f4f5' : '#18181b',
+    fontSize: 12,
+  };
+
+  const activeList = CHART_METRICS.filter((m) => activeMetrics.has(m.key));
+  const hasCurrency = activeList.some((m) => m.currency);
+  const hasMargin   = activeMetrics.has('margin');
+
+  const data = useMemo(
+    () =>
+      dailySales.map((d) => ({
+        label: new Date(d.date + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        sale:       d.sale,
+        net_profit: d.net_profit,
+        cogs:       d.cogs,
+        tax:        d.tax,
+        margin:     Math.round(d.margin * 10) / 10,
+      })),
+    [dailySales],
+  );
+
+  const isEmpty = !loading && data.length === 0;
+
+  const formatLeftTick  = (v: number) => v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`;
+  const formatRightTick = (v: number) => `${v}%`;
+
+  const tooltipFormatter = (value: number, name: string) => {
+    const meta = CHART_METRICS.find((m) => m.key === name);
+    if (!meta) return [value, name];
+    return [meta.currency ? formatCurrency(value) : `${value}%`, meta.label];
+  };
+
   return (
-    <div className="card p-4 mb-4">
-      <h2 className="text-sm font-semibold text-surface-500 dark:text-surface-400 uppercase tracking-wider mb-3">Quick Actions</h2>
-      <div className="grid grid-cols-2 gap-2">
-        {actions.map((a) => {
-          const Icon = a.icon;
-          return (
-            <button
-              key={a.label}
-              type="button"
-              onClick={() => navigate(a.path)}
-              style={{ backgroundColor: a.bg }}
-              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = a.hover; }}
-              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = a.bg; }}
-              className="text-white rounded-lg px-3 py-2.5 text-sm font-medium flex items-center gap-2 transition-colors cursor-pointer relative z-10"
-            >
-              <Icon className="h-4 w-4 pointer-events-none" />
-              <span className="pointer-events-none">{a.label}</span>
-              {a.count > 0 && (
-                <span className="ml-auto inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-white/25 text-white text-xs font-bold pointer-events-none">
-                  {a.count > 99 ? '99+' : a.count}
+    <div className="card mb-4 p-4">
+      {/* Mode toggle only — metrics are toggled via KPI chips above */}
+      <div className="mb-3 flex items-center justify-between">
+        <p className="text-xs text-surface-400 dark:text-surface-500">
+          {activeList.length === 0
+            ? 'Select metrics from the cards below'
+            : activeList.map((m) => (
+                <span key={m.key} className="inline-flex items-center gap-1 mr-2">
+                  <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: m.color }} />
+                  {m.label}
                 </span>
+              ))}
+        </p>
+        <div className="flex gap-1">
+          {(['area', 'bar'] as ChartMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => onModeChange(m)}
+              className={cn(
+                'rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors',
+                mode === m
+                  ? 'bg-primary-600 text-primary-950'
+                  : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700',
               )}
+            >
+              {m}
             </button>
-          );
-        })}
+          ))}
+        </div>
+      </div>
+
+      <div className="h-52">
+        {loading ? (
+          <div className="flex h-full items-center justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+          </div>
+        ) : isEmpty || activeList.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 text-surface-400 dark:text-surface-600">
+            <TrendingUp className="h-8 w-8" />
+            <p className="text-sm">{isEmpty ? 'No data for this period' : 'Toggle a metric below to display it'}</p>
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={data} margin={{ top: 4, right: hasMargin ? 40 : 8, left: 0, bottom: 0 }}>
+              <defs>
+                {CHART_METRICS.map((m) => (
+                  <linearGradient key={m.gradientId} id={m.gradientId} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%"  stopColor={m.color} stopOpacity={0.35} />
+                    <stop offset="95%" stopColor={m.color} stopOpacity={0.02} />
+                  </linearGradient>
+                ))}
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
+              <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#71717a' }} tickLine={false} axisLine={false} />
+              {hasCurrency && (
+                <YAxis
+                  yAxisId="left"
+                  tickFormatter={formatLeftTick}
+                  tick={{ fontSize: 11, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                />
+              )}
+              {hasMargin && (
+                <YAxis
+                  yAxisId="right"
+                  orientation="right"
+                  tickFormatter={formatRightTick}
+                  tick={{ fontSize: 11, fill: '#71717a' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={36}
+                  domain={[0, 100]}
+                />
+              )}
+              <RechartsTooltip formatter={tooltipFormatter} contentStyle={tooltipStyle} cursor={{ fill: 'rgba(214,165,75,0.06)' }} />
+              {activeList.map((m) =>
+                mode === 'bar' ? (
+                  <Bar
+                    key={m.key}
+                    yAxisId={m.currency ? 'left' : 'right'}
+                    dataKey={m.key}
+                    fill={m.color}
+                    radius={[3, 3, 0, 0]}
+                    maxBarSize={32}
+                    opacity={0.85}
+                  />
+                ) : (
+                  <Area
+                    key={m.key}
+                    yAxisId={m.currency ? 'left' : 'right'}
+                    type="monotone"
+                    dataKey={m.key}
+                    stroke={m.color}
+                    strokeWidth={2}
+                    fill={`url(#${m.gradientId})`}
+                    dot={data.length <= 14 ? { r: 3, fill: m.color, strokeWidth: 0 } : false}
+                    activeDot={{ r: 5, fill: m.color, strokeWidth: 0 }}
+                  />
+                ),
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -859,6 +1008,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['my-queue', userId],
     queryFn: () => ticketApi.myQueue(),
     refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
   });
   const queue = queueData?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
 
@@ -867,6 +1017,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['my-tickets', userId],
     queryFn: () => ticketApi.list({ assigned_to: userId, pagesize: 20 }),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const myTickets = ticketsData?.data?.data?.tickets ?? ticketsData?.data?.data ?? [];
 
@@ -875,6 +1026,7 @@ function TechDashboard({ userId }: { userId: number }) {
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
 
@@ -1026,10 +1178,6 @@ function TechDashboard({ userId }: { userId: number }) {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="mt-4">
-        <QuickActions />
-      </div>
     </div>
   );
 }
@@ -1050,8 +1198,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'team-workload', label: 'Team Workload', visible: true, order: 1 },
   { id: 'needs-attention', label: 'Needs Attention', visible: true, order: 2 },
   { id: 'kpi-cards', label: 'KPI Summary Cards', visible: true, order: 3 },
-  { id: 'quick-actions', label: 'Quick Actions', visible: true, order: 4 },
-  { id: 'sales-by-type', label: 'Sales By Item Type', visible: true, order: 5 },
+  { id: 'sales-by-type', label: 'Sales By Item Type', visible: true, order: 4 },
   { id: 'tickets-and-sales', label: 'Recent Tickets & Daily Sales', visible: true, order: 6 },
   { id: 'missing-parts', label: 'Missing Parts', visible: true, order: 7 },
   { id: 'appointments', label: "Today's Appointments", visible: true, order: 8 },
@@ -1103,11 +1250,26 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
 
   const reset = () => setDraft([...DEFAULT_WIDGETS]);
 
+  // WEB-FX-003: Esc dismisses the customize modal.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dashboard-customize-title"
+        className="bg-white dark:bg-surface-900 rounded-xl shadow-xl w-full max-w-md mx-4"
+        onClick={e => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between p-4 border-b border-surface-100 dark:border-surface-800">
-          <h3 className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
+          <h3 id="dashboard-customize-title" className="font-semibold text-surface-900 dark:text-surface-100">Customize Dashboard</h3>
           <button onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-800 text-surface-400">
             <X className="h-4 w-4" />
           </button>
@@ -1160,7 +1322,7 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
             </button>
             <button
               onClick={() => onSave(draft)}
-              className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 font-medium"
+              className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 font-medium"
             >
               Save
             </button>
@@ -1183,6 +1345,7 @@ function TodaysAppointments() {
     queryKey: ['todays-appointments', today],
     queryFn: () => leadApi.appointments({ from_date: today, to_date: tomorrow }),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const appointments: any[] = (apptData?.data as any)?.data?.appointments ?? (apptData?.data as any)?.data ?? [];
@@ -1508,6 +1671,7 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
     queryKey: ['dashboard-kpis-7day', last7Range.from, last7Range.to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: last7Range.from, to_date: last7Range.to, employee_id: employeeId }),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const dailySales = salesKpiData?.data?.data?.daily_sales ?? [];
 
@@ -1595,6 +1759,16 @@ function AdminOrManagerDashboard() {
   const [datePreset, setDatePreset] = useState<DatePreset>('thisMonth');
   const [employeeId, setEmployeeId] = useState<number | undefined>(undefined);
   const [showCustomize, setShowCustomize] = useState(false);
+  const [activeMetrics, setActiveMetrics] = useState<Set<ChartMetric>>(new Set(['sale']));
+  const [chartMode, setChartMode] = useState<ChartMode>('area');
+  const toggleMetric = useCallback((m: ChartMetric) => {
+    setActiveMetrics((prev) => {
+      const next = new Set(prev);
+      if (next.has(m)) { if (next.size > 1) next.delete(m); }
+      else next.add(m);
+      return next;
+    });
+  }, []);
   const queryClient = useQueryClient();
 
   // Widget config
@@ -1623,13 +1797,16 @@ function AdminOrManagerDashboard() {
   // admin and manager see the full dashboard (technician is routed away at
   // the DashboardPage level, so no early return here — keeps the hook list
   // stable across every render of this body).
-  const showFinancials = role === 'admin' || role === 'manager';
+  // FIXED-by-Fixer-A20 — WEB-FAE-001: routed through `useHasRole` so role-source
+  // authority lives in one hook (matches `<PermissionBoundary>` semantics).
+  const showFinancials = useHasRole(['admin', 'manager']);
 
   // Fetch KPIs
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['dashboard-kpis', from, to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: from, to_date: to, employee_id: employeeId }),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 
   const kpis: DashboardKpis | null = kpiData?.data?.data ?? null;
@@ -1647,18 +1824,21 @@ function AdminOrManagerDashboard() {
     queryKey: ['missing-parts'],
     queryFn: () => missingPartsApi.list(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: queueData } = useQuery({
     queryKey: ['order-queue-summary'],
     queryFn: () => catalogApi.getOrderQueueSummary(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const { data: queueItemsData } = useQuery({
     queryKey: ['order-queue-items'],
     queryFn: () => catalogApi.getOrderQueue('pending'),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   // Today's summary (basic dashboard KPIs)
@@ -1666,6 +1846,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
 
@@ -1674,6 +1855,7 @@ function AdminOrManagerDashboard() {
     queryKey: ['needs-attention'],
     queryFn: () => reportApi.needsAttention(),
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const needsAttention: NeedsAttentionData | null = attentionData?.data?.data ?? null;
 
@@ -1683,6 +1865,7 @@ function AdminOrManagerDashboard() {
     queryFn: () => reportApi.techWorkload(),
     enabled: role === 'manager',
     refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
   const techWorkload: any[] = workloadData?.data?.data ?? [];
 
@@ -1762,7 +1945,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/pos')}
             className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <ShoppingCart className="h-4 w-4" />
             </div>
             <div>
@@ -1776,7 +1959,7 @@ function AdminOrManagerDashboard() {
             onClick={() => navigate('/customers/new')}
             className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-left transition-colors hover:bg-primary-100 dark:border-primary-500/30 dark:bg-primary-500/10 dark:hover:bg-primary-500/20"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-600 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-600 text-primary-950">
               <Plus className="h-4 w-4" />
             </div>
             <div>
@@ -1820,7 +2003,7 @@ function AdminOrManagerDashboard() {
                 className={cn(
                   'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
                   datePreset === dp.key
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-primary-950'
                     : 'bg-surface-100 dark:bg-surface-800 text-surface-600 dark:text-surface-400 hover:bg-surface-200 dark:hover:bg-surface-700'
                 )}
               >
@@ -1842,6 +2025,17 @@ function AdminOrManagerDashboard() {
           </select>
         </div>
       </div>
+
+      {/* Metric chart — driven by KPI chip toggles below */}
+      {showFinancials && (
+        <DashboardMetricChart
+          dailySales={kpis?.daily_sales ?? []}
+          loading={kpiLoading}
+          activeMetrics={activeMetrics}
+          mode={chartMode}
+          onModeChange={setChartMode}
+        />
+      )}
 
       {/* Widgets rendered in user-configured order */}
       {widgetConfig.map((w) => {
@@ -1902,35 +2096,54 @@ function AdminOrManagerDashboard() {
               <div key={w.id} className="mb-4">
                 {nonZero.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {nonZero.map(c => (
-                      <KpiCard key={c.label} label={c.label} value={kpis ? formatCurrency(c.value) : '--'} tooltip={c.tooltip} loading={kpiLoading} href={c.href} />
-                    ))}
+                    {nonZero.map(c => {
+                      const metricKey = KPI_LABEL_TO_METRIC[c.label];
+                      const metricDef = metricKey ? CHART_METRICS.find(m => m.key === metricKey) : undefined;
+                      const isActive = metricKey ? activeMetrics.has(metricKey) : false;
+                      return (
+                        <div
+                          key={c.label}
+                          onClick={metricKey ? () => toggleMetric(metricKey) : undefined}
+                          style={isActive && metricDef ? { boxShadow: `0 0 0 2px ${metricDef.color}` } : undefined}
+                          className={cn(metricKey && 'cursor-pointer')}
+                        >
+                          <KpiCard label={c.label} value={kpis ? formatCurrency(c.value) : '--'} tooltip={c.tooltip} loading={kpiLoading} href={metricKey ? undefined : c.href} />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
                 {zeroCards.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
-                    {zeroCards.map(c => (
-                      <span
-                        key={c.label}
-                        onClick={c.href ? () => navigate(c.href!) : undefined}
-                        className={cn(
-                          'text-xs text-surface-400 dark:text-surface-500 bg-surface-50 dark:bg-surface-800/50 px-2 py-1 rounded',
-                          c.href && 'cursor-pointer hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 transition-colors'
-                        )}
-                        title={c.tooltip}
-                      >
-                        {c.label}: $0.00
-                      </span>
-                    ))}
+                    {zeroCards.map(c => {
+                      const metricKey = KPI_LABEL_TO_METRIC[c.label];
+                      const metricDef = metricKey ? CHART_METRICS.find(m => m.key === metricKey) : undefined;
+                      const isActive = metricKey ? activeMetrics.has(metricKey) : false;
+                      return (
+                        <button
+                          key={c.label}
+                          type="button"
+                          onClick={metricKey ? () => toggleMetric(metricKey) : (c.href ? () => navigate(c.href!) : undefined)}
+                          style={isActive && metricDef ? { boxShadow: `0 0 0 2px ${metricDef.color}`, color: metricDef.color } : undefined}
+                          className={cn(
+                            'text-xs bg-surface-50 dark:bg-surface-800/50 px-2 py-1 rounded transition-colors',
+                            isActive
+                              ? 'text-surface-700 dark:text-surface-200'
+                              : 'text-surface-400 dark:text-surface-500',
+                            (metricKey || c.href) && 'cursor-pointer hover:text-surface-600 dark:hover:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700',
+                          )}
+                          title={c.tooltip}
+                        >
+                          {c.label}: $0.00
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
                 <CogsInfoBanner kpis={kpis} />
               </div>
             );
           }
-
-          case 'quick-actions':
-            return <QuickActions key={w.id} />;
 
           case 'sales-by-type': {
             if (!showFinancials || !kpis) return null;

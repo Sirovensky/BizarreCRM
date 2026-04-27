@@ -173,10 +173,9 @@ struct PosCartPanel: View {
                 .background(Color.clear)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color.bizarreOnSurface.opacity(0.14), lineWidth: 1, antialiased: true)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10)
-                                .fill(Color.clear)
+                        .stroke(
+                            Color.bizarreOnSurface.opacity(0.14),
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 3])
                         )
                 )
         }
@@ -470,12 +469,15 @@ struct PosCartStrip: View {
 
             Spacer()
 
-            // Right side: total or item-count chip
+            // Right side: cream Capsule chip showing line count (mockup: .chip.primary)
             if cart.lineCount > 0 {
-                Text(CartMath.formatCents(cart.totalCents))
-                    .font(.system(.body, design: .rounded).weight(.bold))
-                    .foregroundStyle(.bizarreOnSurface)
-                    .monospacedDigit()
+                Text(cart.lineCount == 1 ? "1 line" : "\(cart.lineCount) lines")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.bizarreOnOrange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.bizarreOrange, in: Capsule())
+                    .accessibilityLabel("\(cart.lineCount) cart lines")
             }
 
             // Remove customer
@@ -744,8 +746,8 @@ struct PosChargeButton: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 15, weight: .semibold))
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .padding(.vertical, 18)
             .padding(.horizontal, 18)
             .foregroundStyle(Color(hex: 0x2B1400))
             .background(
@@ -754,13 +756,24 @@ struct PosChargeButton: View {
                     startPoint: .top,
                     endPoint: .bottom
                 ),
-                in: RoundedRectangle(cornerRadius: 14)
+                in: RoundedRectangle(cornerRadius: 18)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.5)
+                // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
+                RadialGradient(
+                    colors: [Color.white.opacity(0.42), Color.clear],
+                    center: UnitPoint(x: 0.5, y: 0),
+                    startRadius: 0,
+                    endRadius: 60
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 18))
             )
-            .shadow(color: Color(hex: 0xFDEED0).opacity(0.10), radius: 10, y: 5)
+            .overlay(
+                // Inset white-glow stroke (mockup: inset 0 1.5px 0 rgba(255,255,255,0.50) + border)
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+            )
+            .shadow(color: Color(hex: 0xFDEED0).opacity(0.12), radius: 20, y: 8)
         }
         .buttonStyle(.plain)
         .disabled(!isEnabled)

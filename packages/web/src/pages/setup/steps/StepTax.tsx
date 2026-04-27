@@ -56,7 +56,7 @@ export function StepTax({ onComplete, onCancel }: SubStepProps) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Sales Tax"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
         </div>
 
@@ -72,14 +72,14 @@ export function StepTax({ onComplete, onCancel }: SubStepProps) {
             value={rate}
             onChange={(e) => setRate(e.target.value)}
             placeholder="8.25"
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
           />
           <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
             You can add multiple tax classes later in Settings &rarr; Tax.
           </p>
         </div>
 
-        {error && <p className="text-sm text-red-500">{error}</p>}
+        {error && <p role="alert" aria-live="polite" className="text-sm text-red-500">{error}</p>}
       </div>
 
       <SubStepFooter

@@ -39,28 +39,35 @@ const RETENTION_FIELDS: RetentionField[] = [
 // ─── Number Input Row ─────────────────────────────────────────────────────────
 
 interface NumberRowProps {
+  id: string;
   label: string;
   description: string;
   value: string;
   onChange: (v: string) => void;
 }
 
-function NumberRow({ label, description, value, onChange }: NumberRowProps) {
+function NumberRow({ id, label, description, value, onChange }: NumberRowProps) {
+  // WEB-FX-002 (Fixer-A17 2026-04-25): pair the input with a real <label htmlFor>
+  // + aria-describedby so screen readers announce the field name and helper
+  // copy together instead of an unlabeled spinner.
+  const descId = `${id}-desc`;
   return (
     <div className="flex items-center justify-between py-4 border-b border-surface-100 dark:border-surface-800 gap-6">
       <div>
-        <p className="text-sm font-medium text-surface-900 dark:text-surface-100">{label}</p>
-        <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{description}</p>
+        <label htmlFor={id} className="text-sm font-medium text-surface-900 dark:text-surface-100 block cursor-pointer">{label}</label>
+        <p id={descId} className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">{description}</p>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <input
+          id={id}
           type="number"
           min="0"
           max="120"
           step="1"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          className="w-24 px-3 py-1.5 text-sm text-right border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          aria-describedby={descId}
+          className="w-24 px-3 py-1.5 text-sm text-right border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
         />
         <span className="text-sm text-surface-500 dark:text-surface-400 w-14">months</span>
       </div>
@@ -147,7 +154,7 @@ export function DataRetentionTab() {
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !dirty}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {saveMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -172,6 +179,7 @@ export function DataRetentionTab() {
         {RETENTION_FIELDS.map((field) => (
           <NumberRow
             key={field.key}
+            id={`retention-${field.key}`}
             label={field.label}
             description={field.description}
             value={val(field.key)}

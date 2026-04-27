@@ -348,30 +348,29 @@ struct PosSearchPanel: View {
 
 // MARK: - PosFilterChip
 
-/// Single category filter chip. Active state uses cream fill.
+/// Single category filter chip. Active state uses bizarreOrange fill
+/// (cream in dark mode, dark-amber in light mode via the adaptive token).
 struct PosFilterChip: View {
     let label: String
     let isActive: Bool
     let action: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(isActive ? Color(hex: 0x2B1400) : .bizarreOnSurface)
+                .foregroundStyle(isActive ? Color.bizarreOnOrange : .bizarreOnSurface)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
                 .background(
                     isActive
-                        ? Color(hex: 0xFDEED0)
+                        ? Color.bizarreOrange
                         : Color.bizarreSurface2.opacity(0.6),
                     in: Capsule()
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        isActive ? Color(hex: 0xFDEED0) : Color.bizarreOutline.opacity(0.9),
+                        isActive ? Color.bizarreOrange : Color.bizarreOutline.opacity(0.9),
                         lineWidth: 0.5
                     )
                 )
@@ -386,34 +385,52 @@ struct PosFilterChip: View {
 
 // MARK: - PosCatalogTile (iPhone 2-col + iPad grid)
 
-/// Single catalog tile — 110pt min height, 2-column grid.
-/// Shows: "In cart" badge (top-right) · icon · name · price (cream) · stock count.
-/// Matches mockup .tile class exactly.
+/// Single catalog tile — matches mockup `.tile` class exactly.
+///
+/// - iPhone: 12pt padding, 110pt min-height, 34×34 icon box, 20pt price, badge inset 8/8.
+/// - iPad:   14pt padding, 132pt min-height, bare 22pt icon (no box), 24pt price, badge inset 9/9.
+///
+/// Set `isPad = true` when rendering inside `PosCatalogGrid`.
 struct PosCatalogTile: View {
     let item: InventoryListItem
     var isInCart: Bool = false
+    /// Pass `true` from `PosCatalogGrid` to engage iPad sizing/layout.
+    var isPad: Bool = false
     let onTap: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+
+    // MARK: Layout constants (mockup-derived)
+    private var tilePadding:    CGFloat { isPad ? 14 : 12 }
+    private var tileMinHeight:  CGFloat { isPad ? 132 : 110 }
+    private var priceFontSize:  CGFloat { isPad ? 24 : 20 }
+    private var badgeInset:     CGFloat { isPad ? 9 : 8 }
 
     var body: some View {
         Button(action: onTap) {
             ZStack(alignment: .topTrailing) {
                 // Card body
                 VStack(alignment: .leading, spacing: 6) {
-                    // Icon
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.bizarreSurface2.opacity(0.6))
+                    // Icon — box on iPhone, bare emoji on iPad
+                    if isPad {
                         Image(systemName: "shippingbox.fill")
-                            .font(.system(size: 18))
+                            .font(.system(size: 22))
                             .foregroundStyle(.bizarreOnSurfaceMuted)
                             .accessibilityHidden(true)
+                    } else {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.bizarreSurface2.opacity(0.6))
+                            Image(systemName: "shippingbox.fill")
+                                .font(.system(size: 18))
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .accessibilityHidden(true)
+                        }
+                        .frame(width: 34, height: 34)
                     }
-                    .frame(width: 34, height: 34)
 
                     Text(item.displayName)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: isPad ? 13.5 : 13, weight: .semibold))
                         .foregroundStyle(.bizarreOnSurface)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
@@ -423,39 +440,41 @@ struct PosCatalogTile: View {
                     // Price + stock row (pinned to bottom)
                     HStack(alignment: .lastTextBaseline) {
                         if let cents = item.priceCents {
-                            // Cream/primary price — Barlow Condensed in mockup
+                            // Primary price — cream in dark mode, dark-amber in light mode.
                             Text(CartMath.formatCents(cents))
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(Color(hex: 0xFDEED0))
+                                .font(.system(size: priceFontSize, weight: .bold))
+                                .foregroundStyle(.bizarreOrange)
                                 .monospacedDigit()
                         }
                         Spacer()
                         stockBadge
                     }
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, minHeight: 110, alignment: .leading)
+                .padding(tilePadding)
+                .frame(maxWidth: .infinity, minHeight: tileMinHeight, alignment: .leading)
                 .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
                         .strokeBorder(
                             isInCart
-                                ? Color(hex: colorScheme == .dark ? 0xFDEED0 : 0xC2410C, alpha: colorScheme == .dark ? 0.35 : 0.30)
+                                ? Color.bizarreOrange.opacity(colorScheme == .dark ? 0.35 : 0.30)
                                 : Color.bizarreOutline.opacity(0.4),
                             lineWidth: isInCart ? 1 : 0.5
                         )
                 )
 
-                // "In cart" badge — top-right corner
+                // "In cart" badge — top-right corner.
+                // bg = bizarreOrange (cream dark / dark-amber light);
+                // text = bizarreOnOrange (#2B1400 dark / #fff light).
                 if isInCart {
                     Text("In cart")
                         .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(Color(hex: 0x2B1400))
+                        .foregroundStyle(Color.bizarreOnOrange)
                         .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(Color(hex: 0xFDEED0), in: Capsule())
-                        .padding(.top, 8)
-                        .padding(.trailing, 8)
+                        .padding(.vertical, isPad ? 3 : 2)
+                        .background(Color.bizarreOrange, in: Capsule())
+                        .padding(.top, badgeInset)
+                        .padding(.trailing, badgeInset)
                 }
             }
         }
@@ -477,17 +496,17 @@ struct PosCatalogTile: View {
             if isLow {
                 Text("\(qty) low")
                     .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(Color(hex: 0xE8A33D)) // warning
+                    .foregroundStyle(.bizarreWarning)
             } else {
                 Text("\(qty)")
                     .font(.system(size: 10.5, weight: .medium))
-                    .foregroundStyle(Color(hex: 0x34C47E)) // success
+                    .foregroundStyle(.bizarreSuccess)
             }
         } else {
             // No stock field = service item
             Text("Service")
                 .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(Color(hex: 0x34C47E))
+                .foregroundStyle(.bizarreSuccess)
         }
     }
 }
@@ -525,16 +544,4 @@ struct PosSearchRow: View {
     }
 }
 
-// MARK: - Color(hex:) helper
-
-private extension Color {
-    init(hex: Int, alpha: Double = 1) {
-        self.init(
-            red:   Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >>  8) & 0xFF) / 255,
-            blue:  Double((hex >>  0) & 0xFF) / 255,
-            opacity: alpha
-        )
-    }
-}
 #endif

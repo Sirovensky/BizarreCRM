@@ -11,6 +11,7 @@ import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { getIFixitUrl } from '@/utils/ifixit';
 import { formatCurrency, formatDate } from '@/utils/format';
+import { formatApiError } from '@/utils/apiError';
 import { safeColor } from '@/utils/safeColor';
 // FA-M9: DefectReporterButton lets techs report a bad part directly from the
 // ticket. Only rendered for parts that have an inventory_item_id (defect
@@ -184,7 +185,7 @@ function DeviceEditForm({
           <input
             value={form.device_name}
             onChange={(e) => setForm({ ...form, device_name: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
         <div>
@@ -193,7 +194,7 @@ function DeviceEditForm({
             type="number" step="0.01"
             value={form.price}
             onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           />
         </div>
       </div>
@@ -201,19 +202,19 @@ function DeviceEditForm({
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">IMEI</label>
           <input value={form.imei} onChange={(e) => setForm({ ...form, imei: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="IMEI number" />
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">Serial</label>
           <input value={form.serial} onChange={(e) => setForm({ ...form, serial: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Serial number" />
         </div>
         <div>
           <label className="block text-xs font-medium text-surface-500 mb-1">Passcode</label>
           <input value={form.security_code} onChange={(e) => setForm({ ...form, security_code: e.target.value })}
-            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+            className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
             placeholder="Device passcode" />
         </div>
       </div>
@@ -221,7 +222,7 @@ function DeviceEditForm({
         <label className="block text-xs font-medium text-surface-500 mb-1">Issue / Notes</label>
         <textarea value={form.additional_notes} onChange={(e) => setForm({ ...form, additional_notes: e.target.value })}
           rows={2}
-          className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus:border-primary-500 focus:outline-none"
+          className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-1.5 text-sm dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 focus-visible:outline-none focus-visible:border-primary-500 focus-visible:ring-2 focus-visible:ring-primary-500/20"
           placeholder="Describe the issue..." />
       </div>
       <div className="flex justify-end gap-2">
@@ -229,7 +230,7 @@ function DeviceEditForm({
           Cancel
         </button>
         <button onClick={() => onSave(form)} disabled={isPending}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50">
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50">
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
           Save
         </button>
@@ -339,6 +340,12 @@ function PartsSearchModal({
     return () => clearTimeout(timer);
   }, [query]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const { data: searchData, isLoading: searching } = useQuery({
     queryKey: ['parts-search', debouncedQuery, deviceModelId],
     queryFn: () => catalogApi.partsSearch({ q: debouncedQuery, device_model_id: deviceModelId }),
@@ -414,15 +421,22 @@ function PartsSearchModal({
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/40" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-800 shadow-2xl border border-surface-200 dark:border-surface-700 max-h-[70vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center pt-20 bg-black/40"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="parts-search-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="w-full max-w-2xl rounded-xl bg-white dark:bg-surface-800 shadow-2xl border border-surface-200 dark:border-surface-700 max-h-[70vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <h2 id="parts-search-title" className="sr-only">Search parts</h2>
         <div className="flex items-center gap-3 p-4 border-b border-surface-200 dark:border-surface-700">
           <Search className="h-5 w-5 text-surface-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search parts by name, SKU, or description..."
-            className="flex-1 bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none text-sm"
+            className="flex-1 bg-transparent text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary-400 text-sm"
             autoFocus
           />
           <button aria-label="Close" onClick={onClose} className="p-1 rounded hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-400">
@@ -532,7 +546,7 @@ function PartsSearchModal({
                         value={qaName}
                         onChange={(e) => setQaName(e.target.value)}
                         placeholder="Part name"
-                        className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                         autoFocus
                       />
                       <div className="flex gap-3">
@@ -545,7 +559,7 @@ function PartsSearchModal({
                             value={qaPrice}
                             onChange={(e) => setQaPrice(e.target.value)}
                             placeholder="0.00"
-                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                           />
                         </div>
                         <div className="w-20">
@@ -555,7 +569,7 @@ function PartsSearchModal({
                             min="1"
                             value={qaQty}
                             onChange={(e) => setQaQty(e.target.value)}
-                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            className="w-full rounded-lg border border-surface-200 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 placeholder:text-surface-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-surface-800"
                           />
                         </div>
                       </div>
@@ -573,7 +587,7 @@ function PartsSearchModal({
                             quickAddMut.mutate({ name: qaName.trim(), price: Number(qaPrice), quantity: Math.max(1, parseInt(qaQty) || 1) });
                           }}
                           disabled={quickAddMut.isPending}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-primary-700 transition-colors disabled:opacity-50"
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-4 py-1.5 text-sm font-medium text-primary-950 hover:bg-primary-700 transition-colors disabled:opacity-50"
                         >
                           {quickAddMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                           Add to Ticket
@@ -886,7 +900,7 @@ export function TicketDevices({
                             </div>
                           ) : null}
                           <button
-                            onClick={async () => { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); }}
+                            onClick={async () => { try { if (await confirm('Remove this part?', { danger: true })) removePartMut.mutate(p.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 rounded text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                             title="Remove part"
                           >
@@ -939,11 +953,17 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): referrerPolicy=no-referrer on the <a> + <img>
+                              so a customer's photo URL can never leak via the Referer header to a third
+                              party (chrome extension, embedded preview, mis-configured CDN). Pairs with
+                              `rel="noopener noreferrer"` on the anchor. Server-side signed-URL revocation
+                              is still required for full GDPR Art.17 compliance — tracked in WEB-FJ-002. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -958,11 +978,13 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer — see Pre-Repair block above. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-20 w-20 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -1034,11 +1056,13 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {prePhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Pre-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>
@@ -1053,11 +1077,13 @@ export function TicketDevices({
                     <div className="flex flex-wrap gap-2">
                       {postPhotos.map((photo: any) => (
                         <div key={photo.id} className="relative group">
-                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer">
+                          {/* WEB-FJ-002 (Fixer-A14 2026-04-25): no-referrer on photo links/imgs. */}
+                          <a href={`/uploads/${photo.file_path}`} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer">
                             <img src={`/uploads/${photo.file_path}`} alt={photo.caption || 'Post-repair'}
+                              referrerPolicy="no-referrer"
                               className="h-24 w-24 rounded-lg object-cover border border-surface-200 dark:border-surface-700 group-hover:opacity-80 transition-opacity" />
                           </a>
-                          <button onClick={async () => { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); }}
+                          <button onClick={async () => { try { if (await confirm('Delete this photo?', { danger: true })) deletePhotoMut.mutate(photo.id); } catch (err) { toast.error(formatApiError(err)); } }}
                             className="absolute -top-1 -right-1 hidden group-hover:flex items-center justify-center h-5 w-5 rounded-full bg-red-500 text-white shadow">
                             <X className="h-3 w-3" />
                           </button>

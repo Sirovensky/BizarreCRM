@@ -238,7 +238,7 @@ export function DateRangePicker({
                     'w-full rounded-lg border px-3 py-2 text-sm',
                     'border-surface-200 bg-white text-surface-900',
                     'dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100',
-                    'focus:outline-none focus:ring-2 focus:ring-primary-500/40',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:border-primary-500',
                   )}
                 />
               </div>
@@ -255,7 +255,7 @@ export function DateRangePicker({
                     'w-full rounded-lg border px-3 py-2 text-sm',
                     'border-surface-200 bg-white text-surface-900',
                     'dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100',
-                    'focus:outline-none focus:ring-2 focus:ring-primary-500/40',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 focus-visible:border-primary-500',
                   )}
                 />
               </div>

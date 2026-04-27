@@ -4,6 +4,7 @@ import { getAPI } from '@/api/bridge';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import toast from 'react-hot-toast';
 import { formatApiError } from '@/utils/apiError';
+import { handleApiResponse } from '@/utils/handleApiResponse';
 
 interface UpdateStatus {
   available: boolean;
@@ -16,6 +17,24 @@ interface UpdateStatus {
 interface RollbackInfo {
   available: boolean;
   sha?: string;
+}
+
+// DASH-ELEC-111 (Fixer-B28 2026-04-25): scrub absolute filesystem paths +
+// likely env-var leakage from raw subprocess output before it lands in the
+// renderer DevTools console. Main process IPC log is the canonical sink; this
+// is just enough redaction so a screenshare or user-shared screenshot doesn't
+// expose repo root / home dir / API tokens. Conservative — leaves repo-relative
+// paths and short tokens alone.
+function redactPaths(s: string): string {
+  return s
+    // POSIX absolute paths: /Users/foo, /home/foo, /opt/..., /var/..., /tmp/...
+    .replace(/\/(?:Users|home|opt|var|tmp|root|usr|etc|private)\/[^\s:'"]*/g, '<path>')
+    // Windows absolute paths: C:\Users\foo, D:\...
+    .replace(/[A-Za-z]:\\[^\s:'"]*/g, '<path>')
+    // file:// URIs
+    .replace(/file:\/\/[^\s:'"]*/g, '<path>')
+    // Common env-var leak shape: `FOO_TOKEN=...` / `FOO_KEY=...` / `FOO_SECRET=...`
+    .replace(/\b([A-Z][A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|PASS|PWD))=\S+/g, '$1=<redacted>');
 }
 
 export function UpdatesPage() {
@@ -33,6 +52,9 @@ export function UpdatesPage() {
     // DASH-ELEC-034: explicit loading + error states so the page never renders nothing.
     getAPI().management.getUpdateStatus()
       .then((res) => {
+        // DASH-ELEC-280: detect 401 → global auto-logout instead of silently
+        // leaving the page in a "Could not fetch" placeholder.
+        if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setStatus(res.data as UpdateStatus);
         } else {
@@ -52,6 +74,8 @@ export function UpdatesPage() {
     // getUpdateStatus (if the server responds, the new build is running).
     getAPI().management.getRollbackInfo()
       .then(async (res) => {
+        // DASH-ELEC-280: detect 401 before any audit/clear side-effects.
+        if (handleApiResponse(res)) return;
         if (res.success && res.data) {
           setRollback(res.data);
           // MGT-028: snapshot present → update was launched. Audit the result.
@@ -94,7 +118,7 @@ export function UpdatesPage() {
         toast.error(formatApiError(res));
       }
     } catch {
-      toast.error('Failed to check for updates');
+      toast.error('Update check failed');
     } finally {
       setChecking(false);
     }
@@ -115,10 +139,10 @@ export function UpdatesPage() {
       if (result?.success) {
         toast.success('Update started. Dashboard will reopen after rebuild.');
         setStatus((prev) => (prev ? { ...prev, available: false } : null));
-        if (result.output) console.log('[Update output]\n' + result.output);
+        if (result.output) console.log('[Update output]\n' + redactPaths(result.output));
       } else {
         toast.error('Update failed - check logs');
-        if (result?.output) console.error('[Update output]\n' + result.output);
+        if (result?.output) console.error('[Update output]\n' + redactPaths(result.output));
       }
     } catch (err) {
       toast.error('Update failed: ' + (err instanceof Error ? err.message : 'Unknown error'));

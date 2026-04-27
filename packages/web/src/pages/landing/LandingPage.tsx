@@ -75,11 +75,28 @@ const testimonials = [
   { quote: "The mobile app is a game-changer. I check ticket status from the bench without running to the computer.", name: 'James K.', shop: 'PhoneDoc, Miami' },
 ];
 
-// Build the tenant URL from a slug
-function getTenantUrl(slug: string, path = '/'): string {
+// WEB-FG-002 / FIXED-by-Fixer-U 2026-04-25 — trust only known base domains
+// when computing tenant URLs. The previous heuristic (`hostname.split('.').slice(-2).join('.')`)
+// blindly trusted whatever DNS the browser landed on, so a phishing host like
+// `bizarrecrm.evil-co.com` would redirect to `slug.evil-co.com/login` and harvest
+// credentials. Allow-list canonical brand domains and reject everything else.
+const TRUSTED_BASE_DOMAINS = ['bizarrecrm.com', 'localhost'] as const;
+
+function resolveBaseDomain(hostname: string): string | null {
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return 'localhost';
+  for (const allowed of TRUSTED_BASE_DOMAINS) {
+    if (hostname === allowed || hostname.endsWith(`.${allowed}`)) return allowed;
+  }
+  return null;
+}
+
+// Build the tenant URL from a slug. Returns null if the current origin is not
+// a trusted base domain — caller must abort the redirect in that case.
+function getTenantUrl(slug: string, path = '/'): string | null {
   const { protocol, port, hostname } = window.location;
+  const baseDomain = resolveBaseDomain(hostname);
+  if (!baseDomain) return null;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
@@ -94,7 +111,14 @@ function LoginModal({ onClose }: { onClose: () => void }) {
       setError('Enter your shop name (at least 3 characters)');
       return;
     }
-    window.location.href = getTenantUrl(cleaned, '/login');
+    const target = getTenantUrl(cleaned, '/login');
+    if (!target) {
+      setError(
+        'This page is not on a recognized BizarreCRM domain. Visit https://bizarrecrm.com to log in.',
+      );
+      return;
+    }
+    window.location.href = target;
   };
 
   return (
@@ -107,8 +131,15 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             type="text"
             value={slug}
             onChange={e => { setSlug(e.target.value); setError(''); }}
-            onKeyDown={e => e.key === 'Enter' && handleGo()}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                // preventDefault stops Enter from bubbling to any parent form / global listener (WCAG 3.3.2).
+                e.preventDefault();
+                handleGo();
+              }
+            }}
             placeholder="yourshop"
+            aria-label="Shop name"
             autoFocus
             style={{
               flex: 1, padding: '12px 14px', fontSize: 16, border: '2px solid #ddd', borderRight: 'none',
@@ -121,7 +152,7 @@ function LoginModal({ onClose }: { onClose: () => void }) {
             display: 'flex', alignItems: 'center', padding: '0 14px',
             background: '#f5f5f5', border: '2px solid #ddd', borderLeft: 'none',
             borderRadius: '0 8px 8px 0', color: '#999', fontSize: 14, whiteSpace: 'nowrap',
-          }}>.{window.location.hostname === 'localhost' || window.location.hostname.endsWith('.localhost') ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
+          }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
         </div>
         {error && <p style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{error}</p>}
         <div style={{ display: 'flex', gap: 12, marginTop: 20 }}>
@@ -161,9 +192,15 @@ export default function LandingPage() {
 
   return (
     <div className="landing-root">
+      {/* WEB-FG-017 (Fixer-C9 2026-04-25): dropped per-page <style>@import —
+          Bebas Neue + Jost (body fallback) are loaded once globally via
+          index.html <link rel="stylesheet"> (preload + onload-swap). The
+          inline @import duplicated the network round-trip on every landing
+          mount AND render-blocked first paint while it resolved. Also leaks
+          visitor IP to fonts.googleapis.com on every cookieless landing hit
+          (GDPR-relevant). League Spartan + Roboto refs in the rules below
+          fall back to Jost / system stack (project_brand_fonts canonical). */}
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=League+Spartan:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-
         .landing-root {
           font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           color: #333;
@@ -171,7 +208,7 @@ export default function LandingPage() {
           overflow-x: hidden;
           -webkit-font-smoothing: antialiased;
         }
-        .display { font-family: 'Bebas Neue', cursive; letter-spacing: 2px; }
+        .display { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; letter-spacing: -0.01em; font-weight: 800; }
         .heading { font-family: 'League Spartan', sans-serif; font-weight: 600; }
 
         /* Animations */
@@ -203,7 +240,7 @@ export default function LandingPage() {
           font-weight: 600; font-size: 16px; cursor: pointer; transition: all .2s;
           text-decoration: none;
         }
-        .btn-outline:hover { background: #0E7490; color: #fff; }
+        @media (hover: hover) { .btn-outline:hover { background: #0E7490; color: #fff; } }
 
         /* Grid paper subtle background */
         .grid-bg {
@@ -219,13 +256,29 @@ export default function LandingPage() {
           box-shadow: 0 8px 32px rgba(0,0,0,.12);
           transition: transform .3s ease;
         }
-        .photo-card:hover { transform: scale(1.02); }
         .photo-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
         /* Feature-grid card hover — replaces per-card inline onMouseEnter/Leave
            handlers that allocated new function refs on every render. */
         .feat-card { transition: box-shadow .25s, transform .25s; }
-        .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
+
+        /* FA-012: footer link/button hover — pure CSS replaces per-link
+           onMouseEnter/Leave that mutated .style.color (anti-pattern: forced
+           reflow + new function ref every render + no keyboard parity). */
+        .footer-link { color: #888; text-decoration: none; font-family: 'League Spartan', sans-serif; font-weight: 500; transition: color .15s ease; }
+        .footer-link:focus-visible { color: #bc398f; }
+        .footer-btn { background: none; border: none; color: #666; cursor: pointer; font-family: 'League Spartan', sans-serif; font-weight: 500; font-size: 14px; padding: 0; transition: color .15s ease; }
+        .footer-btn:focus-visible { color: #bc398f; }
+
+        /* WEB-FL-025 (Fixer-C11 2026-04-25): gate :hover behind (hover: hover)
+           so touchscreen kiosks running the landing page don't get spurious
+           mouse-emulated hover styles that snap-stick after the touch ends. */
+        @media (hover: hover) {
+          .photo-card:hover { transform: scale(1.02); }
+          .feat-card:hover { box-shadow: 0 8px 28px rgba(0,0,0,.08); transform: translateY(-3px); }
+          .footer-link:hover { color: #bc398f; }
+          .footer-btn:hover { color: #bc398f; }
+        }
 
         @keyframes wave-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
@@ -494,15 +547,11 @@ export default function LandingPage() {
           </div>
           <div style={{ display: 'flex', gap: 24, fontSize: 14 }}>
             {['Features', 'Pricing', 'Contact', 'Privacy'].map(l => (
-              <a key={l} href={`#${l.toLowerCase()}`} style={{ color: '#666', textDecoration: 'none', fontFamily: "'League Spartan', sans-serif", fontWeight: 500 }}
-                onMouseEnter={e => (e.target as HTMLElement).style.color = '#bc398f'}
-                onMouseLeave={e => (e.target as HTMLElement).style.color = '#888'}>
+              <a key={l} href={`#${l.toLowerCase()}`} className="footer-link">
                 {l}
               </a>
             ))}
-            <button onClick={() => setShowLogin(true)} style={{ background: 'none', border: 'none', color: '#666', cursor: 'pointer', fontFamily: "'League Spartan', sans-serif", fontWeight: 500, fontSize: 14, padding: 0 }}
-              onMouseEnter={e => (e.target as HTMLElement).style.color = '#bc398f'}
-              onMouseLeave={e => (e.target as HTMLElement).style.color = '#666'}>
+            <button onClick={() => setShowLogin(true)} className="footer-btn">
               Login
             </button>
           </div>

@@ -13,7 +13,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, MapPin, Plus, Flame, Loader2, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { formatApiError } from '@/utils/apiError';
 import { cn } from '@/utils/cn';
+// WEB-FB-007 (Fixer-KKK 2026-04-25): themed async confirm — matches the
+// pattern used on Estimates / POS / Customers / Tickets / Invoices.
+import { confirm } from '@/stores/confirmStore';
 
 interface BinLocation {
   id: number;
@@ -95,7 +99,9 @@ export function BinLocationsPage() {
       setNewShelf('');
       setNewBin('');
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create bin'),
+    // WEB-FL-024 (Fixer-C9 2026-04-25): consolidate onto shared formatApiError
+    // for ERR_* + ref id surfacing (replaces hand-rolled message chain).
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const deleteMut = useMutation({
@@ -109,12 +115,14 @@ export function BinLocationsPage() {
   });
 
   const heatColor = (heat: number) => {
+    // WEB-FB-020: dark-mode partners for the cool side of the ramp so heatmap
+    // tiles remain visible on dark theme (brand surface ramp alignment).
     if (heat > 0.8) return 'bg-red-500 text-white';
     if (heat > 0.6) return 'bg-orange-500 text-white';
-    if (heat > 0.4) return 'bg-amber-400';
-    if (heat > 0.2) return 'bg-yellow-200';
-    if (heat > 0) return 'bg-surface-100';
-    return 'bg-surface-50 text-surface-400';
+    if (heat > 0.4) return 'bg-amber-400 dark:bg-amber-500 dark:text-surface-900';
+    if (heat > 0.2) return 'bg-yellow-200 dark:bg-yellow-700/60 dark:text-yellow-50';
+    if (heat > 0) return 'bg-surface-100 dark:bg-surface-800 dark:text-surface-200';
+    return 'bg-surface-50 text-surface-400 dark:bg-surface-900 dark:text-surface-500';
   };
 
   return (
@@ -135,14 +143,14 @@ export function BinLocationsPage() {
             <h2 className="font-semibold">Bins ({bins.length})</h2>
             <button
               onClick={() => setShowNew(true)}
-              className="inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1 text-xs font-semibold text-white"
+              className="inline-flex items-center gap-1 rounded-md bg-primary-600 px-3 py-1 text-xs font-semibold text-primary-950"
             >
               <Plus className="h-3 w-3" /> Add
             </button>
           </div>
 
           {showNew && (
-            <div className="rounded-lg border border-surface-200 bg-white p-3 space-y-2">
+            <div className="rounded-lg border border-surface-200 bg-white p-3 space-y-2 dark:bg-surface-800 dark:border-surface-700">
               <input
                 value={newCode}
                 onChange={(e) => setNewCode(e.target.value.toUpperCase())}
@@ -179,7 +187,7 @@ export function BinLocationsPage() {
                 <button
                   onClick={() => createMut.mutate()}
                   disabled={!newCode.trim() || createMut.isPending}
-                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                  className="flex-1 rounded bg-primary-600 px-2 py-1 text-xs font-semibold text-primary-950 disabled:opacity-50"
                 >
                   {createMut.isPending && <Loader2 className="inline h-3 w-3 animate-spin mr-1" />}
                   Create
@@ -196,14 +204,19 @@ export function BinLocationsPage() {
 
           <div className="space-y-1 max-h-[60vh] overflow-y-auto">
             {bins.map((b) => (
-              <div key={b.id} className="flex items-center justify-between rounded border border-surface-200 bg-white px-3 py-2">
+              <div key={b.id} className="flex items-center justify-between rounded border border-surface-200 bg-white px-3 py-2 dark:bg-surface-800 dark:border-surface-700">
                 <div>
                   <div className="font-mono text-sm">{b.code}</div>
                   {b.description && <div className="text-xs text-surface-500">{b.description}</div>}
                 </div>
                 <button
-                  onClick={() => {
-                    if (confirm(`Deactivate bin ${b.code}?`)) deleteMut.mutate(b.id);
+                  onClick={async () => {
+                    const ok = await confirm(`Deactivate bin ${b.code}?`, {
+                      title: 'Deactivate bin',
+                      confirmLabel: 'Deactivate',
+                      danger: true,
+                    });
+                    if (ok) deleteMut.mutate(b.id);
                   }}
                   className="text-red-500 hover:text-red-700 disabled:opacity-40"
                   disabled={deleteMut.isPending && deleteMut.variables === b.id}
@@ -233,7 +246,7 @@ export function BinLocationsPage() {
             </select>
           </div>
 
-          <div className="rounded-lg border border-surface-200 bg-white p-4">
+          <div className="rounded-lg border border-surface-200 bg-white p-4 dark:bg-surface-800 dark:border-surface-700">
             {heatmapData && heatmapData.bins.length > 0 ? (
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                 {heatmapData.bins.map((b) => (

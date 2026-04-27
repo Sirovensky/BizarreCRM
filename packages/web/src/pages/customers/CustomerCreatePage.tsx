@@ -145,8 +145,16 @@ export function CustomerCreatePage() {
     if (!form.first_name.trim()) {
       newErrors.first_name = 'First name is required';
     }
-    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-      newErrors.email = 'Invalid email';
+    // WEB-FF-018 (Fixer-FFF 2026-04-25): RFC 5321 caps the entire address at
+     // 254 chars (local-part 64 + '@' + domain 253 — practical limit 254). Without
+     // this, a 5KB string passes the loose regex and bombs at the server.
+    if (form.email.trim()) {
+      const trimmed = form.email.trim();
+      if (trimmed.length > 254) {
+        newErrors.email = 'Email is too long (max 254 characters)';
+      } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+        newErrors.email = 'Invalid email';
+      }
     }
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -218,6 +226,9 @@ export function CustomerCreatePage() {
                     onBlur={() => handleFieldBlur('name')}
                     className={cn('input', errors.first_name && 'border-red-500 dark:border-red-500')}
                     placeholder="John"
+                    aria-invalid={errors.first_name ? true : undefined}
+                    aria-describedby={errors.first_name ? 'first_name-error' : undefined}
+                    aria-required={true}
                   />
                 </FormField>
                 <FormField label="Last Name" htmlFor="last_name">
@@ -269,8 +280,10 @@ export function CustomerCreatePage() {
                   value={form.email}
                   onChange={(e) => updateField('email', e.target.value)}
                   onBlur={() => handleFieldBlur('email')}
-                  className="input"
+                  className={cn('input', errors.email && 'border-red-500 dark:border-red-500')}
                   placeholder="john@example.com"
+                  aria-invalid={errors.email ? true : undefined}
+                  aria-describedby={errors.email ? 'email-error' : undefined}
                 />
               </FormField>
               <FormField label="Phone" htmlFor="phone">
@@ -318,7 +331,7 @@ export function CustomerCreatePage() {
                   </Link>
                 ))}
               </div>
-              <button onClick={() => setDuplicates([])} className="mt-2 text-xs text-amber-600 dark:text-amber-400 hover:underline">
+              <button type="button" onClick={() => setDuplicates([])} className="mt-2 text-xs text-amber-600 dark:text-amber-400 hover:underline">
                 Dismiss
               </button>
             </div>
@@ -465,7 +478,7 @@ export function CustomerCreatePage() {
           <button
             type="submit"
             disabled={createMutation.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-primary-950 bg-primary-600 hover:bg-primary-700 rounded-lg transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {createMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -493,15 +506,26 @@ function FormField({
   error?: string;
   children: React.ReactNode;
 }) {
+  // WEB-FF-007: error span gets stable id `<htmlFor>-error` and role=alert so
+  // SR users hear the announcement when the error appears, and the matching
+  // input's aria-describedby points back here.
+  const errorId = htmlFor ? `${htmlFor}-error` : undefined;
   return (
     <div>
       <label htmlFor={htmlFor} className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
         {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
+        {required && <span className="text-red-500 ml-0.5" aria-hidden="true">*</span>}
       </label>
       {children}
       {error && (
-        <p className="mt-1 text-xs text-red-500">{error}</p>
+        <p
+          id={errorId}
+          role="alert"
+          aria-live="polite"
+          className="mt-1 text-xs text-red-500"
+        >
+          {error}
+        </p>
       )}
     </div>
   );

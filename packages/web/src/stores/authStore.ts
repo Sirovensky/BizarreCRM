@@ -9,6 +9,34 @@ import { api, LOGOUT_REQUIRED_EVENT } from '../api/client';
 // data, and last-message WebSocket state.
 const AUTH_CLEAR_EVENT = 'bizarre-crm:auth-cleared';
 const AUTH_READY_EVENT = 'bizarre-crm:auth-ready';
+// WEB-FI-005 / FIXED-by-Fixer-A11 2026-04-25 — used to ask the App-level
+// router bridge to navigate to /login via react-router instead of a hard
+// `window.location.href = '/login'` reload. The hard reload was discarding
+// the React tree, killing in-flight uploads, and dropping any text that
+// the useDraft debounce hadn't flushed yet (up to 2 s of typed content).
+// SPA navigation keeps the tree alive so `auth-cleared` listeners can run
+// before the route changes and pending writes get flushed cleanly.
+const REQUEST_LOGIN_NAV_EVENT = 'bizarre-crm:request-login-nav';
+function requestLoginNav(): void {
+  if (typeof window === 'undefined') return;
+  // If nothing is listening yet (App not mounted, Suspense fallback), the
+  // listener that DOES eventually mount won't help — fall back to a hard
+  // nav after a microtask in that case so we never get stuck on a stale
+  // protected page. Bridge handler sets `window.__bizarreLoginNavReady`
+  // when it's wired up.
+  try {
+    window.dispatchEvent(new CustomEvent(REQUEST_LOGIN_NAV_EVENT));
+  } catch (err) {
+    console.warn('Failed to emit request-login-nav event', err);
+  }
+  setTimeout(() => {
+    if (window.location.pathname.startsWith('/login')) return;
+    if (!(window as unknown as { __bizarreLoginNavReady?: boolean }).__bizarreLoginNavReady) {
+      window.location.href = '/login';
+    }
+  }, 0);
+}
+export { REQUEST_LOGIN_NAV_EVENT };
 function emitAuthCleared(): void {
   if (typeof window === 'undefined') return;
   try {
@@ -70,7 +98,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    try { await api.post('/auth/logout'); } catch {}
+    try { await api.post('/auth/logout'); } catch (err) {
+      // Network/server error during logout — proceed with local cleanup regardless,
+      // but surface the failure so it's not invisible (server-side session may linger).
+      console.warn('[auth] /auth/logout failed; clearing local session anyway', err);
+    }
     localStorage.removeItem('accessToken');
     set({ user: null, isAuthenticated: false, isLoading: false });
     // @audit-fixed: notify listeners (queryClient, planStore, ws state) so the
@@ -97,6 +129,19 @@ export const useAuthStore = create<AuthState>((set) => ({
   checkAuth: async () => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
+      // WEB-FI-016: only attempt the cookie-based refresh when the
+      // non-httpOnly `csrf_token` cookie is present. That cookie is set
+      // alongside the httpOnly refresh cookie at login, so its absence is
+      // a reliable proxy for "this browser has never authenticated" — and
+      // skipping the POST avoids a guaranteed 401 on every fresh tenant
+      // landing visit (which polluted server logs and added latency to
+      // the unauthenticated render).
+      const hasRefreshSession = typeof document !== 'undefined'
+        && /(?:^|;\s*)csrf_token=/.test(document.cookie);
+      if (!hasRefreshSession) {
+        set({ isLoading: false, isAuthenticated: false });
+        return;
+      }
       // No access token — try refreshing via httpOnly cookie before giving up
       try {
         const refreshRes = await api.post('/auth/refresh');
@@ -133,6 +178,56 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 // ──────────────────────────────────────────────────────────────────
+// WEB-FO-002: cross-tab auth sync via the `storage` event.
+// localStorage writes in tab A fire a `storage` event in every other
+// tab on the same origin. We listen for changes to `accessToken` and
+// either force-logout (token removed in another tab) or re-hydrate
+// the user (token added/changed in another tab — typically a sign-in
+// or silent refresh). Without this, two tabs of the same user can
+// drift indefinitely: one logs out and the other keeps showing
+// protected pages until the next 401 round-trip.
+// ──────────────────────────────────────────────────────────────────
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e: StorageEvent) => {
+    if (e.key !== 'accessToken') return;
+    // Token removed in another tab → mirror the logout here. Don't
+    // call api/logout (the other tab already did) and don't navigate
+    // if we're already on /login.
+    if (e.newValue === null) {
+      const wasAuthed = useAuthStore.getState().isAuthenticated;
+      useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+      emitAuthCleared();
+      if (wasAuthed && !window.location.pathname.startsWith('/login')) {
+        // WEB-FI-005: prefer SPA nav so the React tree (and useDraft
+        // beforeunload flush) survives. Falls back to hard nav if no
+        // bridge is mounted.
+        requestLoginNav();
+      }
+      return;
+    }
+    // Token added/changed in another tab → silently re-hydrate the
+    // user via /auth/me so this tab picks up the new identity (login
+    // or switchUser elsewhere). checkAuth() also covers refresh-token
+    // rotation so this tab uses the freshest access token on next req.
+    if (e.newValue && e.newValue !== e.oldValue) {
+      // Wipe per-user caches in this tab before /auth/me lands so a
+      // tenant-switch doesn't bleed state across tabs.
+      // WEB-FAE-004: also pre-emptively flip auth state to "loading"
+      // so any in-flight TanStack queries keyed off the old tenant
+      // don't keep their hydrated payloads visible while /auth/me
+      // races to resolve. Defer checkAuth one microtask so the cache
+      // clear (sync listener in main.tsx) plus the React state flush
+      // both settle before the network request fires.
+      useAuthStore.setState({ isLoading: true });
+      emitAuthCleared();
+      queueMicrotask(() => {
+        useAuthStore.getState().checkAuth();
+      });
+    }
+  });
+}
+
+// ──────────────────────────────────────────────────────────────────
 // Listen for forced logouts from the API client (T9 fix)
 // ──────────────────────────────────────────────────────────────────
 // client.ts emits a `logout-required` event whenever the refresh pipeline
@@ -150,8 +245,10 @@ if (typeof window !== 'undefined') {
       toast.error('Your session has expired. Please sign in again.');
     }
     // AUDIT-WEB-024: clearing auth state without navigating leaves the user on
-    // a protected page that immediately re-checks auth and loops. Use a hard
-    // navigation so React Router picks up the cleared state cleanly.
-    window.location.href = '/login';
+    // a protected page that immediately re-checks auth and loops. Prefer the
+    // react-router bridge (WEB-FI-005) so the SPA tree stays mounted long
+    // enough for `useDraft`'s beforeunload flush + WS cleanup to run; falls
+    // back to a hard nav if the App-level listener isn't mounted yet.
+    requestLoginNav();
   });
 }

@@ -45,12 +45,12 @@ struct PosLineEditSheet: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Drag handle
+            // Drag handle — 40×5 pt, matches mockup rgba(255,255,255,0.22)
             Capsule()
-                .fill(Color.bizarreOnSurfaceMuted.opacity(0.35))
-                .frame(width: 36, height: 4)
-                .padding(.top, 8)
-                .padding(.bottom, 14)
+                .fill(Color.bizarreOnSurface.opacity(0.22))
+                .frame(width: 40, height: 5)
+                .padding(.top, 10)
+                .padding(.bottom, 6)
 
             // Title + SKU
             VStack(alignment: .leading, spacing: 3) {
@@ -80,24 +80,21 @@ struct PosLineEditSheet: View {
 
             Divider().background(.bizarreOutline)
 
-            // Qty stepper row
+            // Qty stepper row — mockup: circle buttons 36×36, val in Barlow 22/700, + fills orange
             lineRow(label: "Qty") {
-                PosQuantityStepper(
+                LineEditStepper(
                     quantity: qty,
                     onIncrement: { BrandHaptics.tap(); qty += 1 },
-                    onDecrement: {
-                        BrandHaptics.tap()
-                        if qty > 1 { qty -= 1 }
-                    }
+                    onDecrement: { BrandHaptics.tap(); if qty > 1 { qty -= 1 } }
                 )
             }
 
             Divider().background(.bizarreOutline)
 
-            // Unit price (display-only)
+            // Unit price (display-only) — mockup: var(--font-display) 18px/700
             lineRow(label: "Unit price") {
                 Text(CartMath.formatCents(CartMath.toCents(item.unitPrice)))
-                    .font(.system(size: 18, weight: .bold, design: .default))
+                    .font(.custom("BarlowCondensed-Bold", size: 18))
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
             }
@@ -209,7 +206,7 @@ struct PosLineEditSheet: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .fill(
                                     LinearGradient(
-                                        colors: [Color(hex: 0xFFF7E0, alpha: 1.0), Color.bizarreOrange],
+                                        colors: [Color.bizarreOrangeContainer, Color.bizarreOrange],
                                         startPoint: .top,
                                         endPoint: .bottom
                                     )
@@ -440,16 +437,57 @@ struct PosEditPriceSheet: View {
     }
 }
 
-// MARK: - Color(hex:) helper
+// MARK: - LineEditStepper (private, sheet-only)
+//
+// Inline stepper matching mockup screen 4:
+//  − button: 36×36 circle, muted surface bg + faint border
+//  value:    Barlow Condensed 22/700, tabular nums, min-width 26
+//  + button: 36×36 circle, orange fill, orange shadow
 
-private extension Color {
-    init(hex: Int, alpha: Double = 1) {
-        self.init(
-            red:   Double((hex >> 16) & 0xFF) / 255,
-            green: Double((hex >>  8) & 0xFF) / 255,
-            blue:  Double((hex >>  0) & 0xFF) / 255,
-            opacity: alpha
-        )
+private struct LineEditStepper: View {
+    let quantity: Int
+    let onIncrement: () -> Void
+    let onDecrement: () -> Void
+
+    var body: some View {
+        HStack(spacing: 14) {
+            // Minus — muted circle
+            Button(action: onDecrement) {
+                Text("−")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.bizarreOnSurface)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(Color.bizarreOnSurface.opacity(0.05))
+                            .overlay(Circle().strokeBorder(Color.bizarreOnSurface.opacity(0.12), lineWidth: 1))
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Decrease quantity")
+
+            // Value
+            Text("\(quantity)")
+                .font(.custom("BarlowCondensed-Bold", size: 22))
+                .foregroundStyle(.bizarreOnSurface)
+                .monospacedDigit()
+                .frame(minWidth: 26, alignment: .center)
+
+            // Plus — orange circle
+            Button(action: onIncrement) {
+                Text("+")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.bizarreOnOrange)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        Circle()
+                            .fill(Color.bizarreOrange)
+                            .shadow(color: Color.bizarreOrange.opacity(0.30), radius: 8, x: 0, y: 6)
+                    )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Increase quantity")
+        }
     }
 }
 #endif

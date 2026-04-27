@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, Fragment } from 'react';
+import { useState, useMemo, useCallback, useEffect, Fragment } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Calendar, ChevronLeft, ChevronRight, Plus, X, Clock,
@@ -48,21 +48,30 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
-// @audit-flag: these locale-formatters bypass the shared formatDate/formatDateTime
-// helpers in utils/format.ts, which means they ignore the shop's currency/locale
-// settings. The calendar grid is space-constrained so a compact format is needed,
-// but ideally the shared helpers should grow a "compact" mode rather than each
-// page rolling its own. Left as-is to avoid layout regressions in this audit pass.
+// WEB-FF-011 (Fixer-FFF 2026-04-25): drop hardcoded 'en-US' so non-US tenants
+// see locale-appropriate compact dates (e.g. "24 Apr" instead of "Apr 24") and
+// 24h time where the locale prefers it. `undefined` lets Intl pick the
+// browser's runtime locale — the same behaviour the shared formatDate helpers
+// in utils/format.ts use. The compact format-options stay so the calendar grid
+// keeps its tight layout.
 function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
 }
 
 function formatDateShort(date: Date) {
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function isSameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+// WEB-FF-025 (Fixer-TTT 2026-04-25): build a YYYY-MM-DD key once so the month
+// grid can do an O(1) Map lookup per cell instead of filtering every
+// appointment 42× per render. On a busy month with 500 appts this drops
+// 21k Date constructions per render to ~500 (one per appt).
+function dayKey(d: Date) {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
 function startOfWeek(date: Date) {
@@ -87,14 +96,26 @@ function AppointmentDetailModal({
   onClose: () => void;
 }) {
   const color = getStatusColor(appointment.status);
+  // Esc closes the appointment-detail dialog so keyboard users aren't trapped.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="appointment-detail-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      onClick={onClose}
+    >
       <div
         className="w-full max-w-md rounded-xl bg-white shadow-2xl dark:bg-surface-800"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">Appointment Details</h2>
+          <h2 id="appointment-detail-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">Appointment Details</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -197,13 +218,27 @@ function CreateAppointmentModal({
     onError: () => toast.error('Failed to create appointment'),
   });
 
+  // Esc cancels the create flow without losing the rest of the page state.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="appointment-create-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="w-full max-w-lg rounded-xl bg-white shadow-2xl dark:bg-surface-800">
         <div className="flex items-center justify-between border-b border-surface-200 px-6 py-4 dark:border-surface-700">
-          <h2 className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
+          <h2 id="appointment-create-title" className="text-lg font-semibold text-surface-900 dark:text-surface-100">New Appointment</h2>
           <button aria-label="Close" onClick={onClose} className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700">
             <X className="h-5 w-5" />
           </button>
@@ -253,9 +288,11 @@ function CreateAppointmentModal({
               <div className="flex gap-1">
                 <select value={form.start_hour} onChange={(e) => setForm((f) => ({ ...f, start_hour: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
-                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
+                    const n = Number(h);
+                    const label = `${((n % 12) || 12)} ${n < 12 ? 'AM' : 'PM'}`;
+                    return <option key={h} value={h}>{label}</option>;
+                  })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
                 <select value={form.start_min} onChange={(e) => setForm((f) => ({ ...f, start_min: e.target.value }))}
@@ -271,9 +308,11 @@ function CreateAppointmentModal({
               <div className="flex gap-1">
                 <select value={form.end_hour} onChange={(e) => setForm((f) => ({ ...f, end_hour: e.target.value }))}
                   className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-2 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100">
-                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => (
-                    <option key={h} value={h}>{h}</option>
-                  ))}
+                  {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((h) => {
+                    const n = Number(h);
+                    const label = `${((n % 12) || 12)} ${n < 12 ? 'AM' : 'PM'}`;
+                    return <option key={h} value={h}>{label}</option>;
+                  })}
                 </select>
                 <span className="flex items-center text-surface-400">:</span>
                 <select value={form.end_min} onChange={(e) => setForm((f) => ({ ...f, end_min: e.target.value }))}
@@ -333,7 +372,7 @@ function CreateAppointmentModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
               Create
@@ -368,6 +407,19 @@ function MonthView({
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
+  // WEB-FF-025: bucket appointments by day-key once so each of the 42 cells
+  // does an O(1) Map lookup instead of an O(N) filter.
+  const apptsByDay = useMemo(() => {
+    const map = new Map<string, Appointment[]>();
+    for (const a of appointments) {
+      const k = dayKey(new Date(a.start_time));
+      const list = map.get(k);
+      if (list) list.push(a);
+      else map.set(k, [a]);
+    }
+    return map;
+  }, [appointments]);
+
   return (
     <div className="grid grid-cols-7 border-l border-t border-surface-200 dark:border-surface-700">
       {WEEKDAYS.map((day) => (
@@ -378,7 +430,7 @@ function MonthView({
       {cells.map((day, i) => {
         const cellDate = day ? new Date(year, month, day) : null;
         const dayAppts = cellDate
-          ? appointments.filter((a) => isSameDay(new Date(a.start_time), cellDate))
+          ? (apptsByDay.get(dayKey(cellDate)) ?? [])
           : [];
         const isToday = cellDate && isSameDay(cellDate, today);
 
@@ -395,7 +447,7 @@ function MonthView({
                 <div className={cn(
                   'mb-1 text-right text-xs font-medium',
                   isToday
-                    ? 'inline-flex h-6 w-6 float-right items-center justify-center rounded-full bg-primary-600 text-white'
+                    ? 'inline-flex h-6 w-6 float-right items-center justify-center rounded-full bg-primary-600 text-primary-950'
                     : 'text-surface-600 dark:text-surface-400',
                 )}>
                   {day}
@@ -640,14 +692,14 @@ export function CalendarPage() {
   // Title
   const title = useMemo(() => {
     if (viewMode === 'month') {
-      return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      return currentDate.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
     }
     if (viewMode === 'week') {
       const ws = startOfWeek(currentDate);
       const we = addDays(ws, 6);
       return `${formatDateShort(ws)} - ${formatDateShort(we)}, ${we.getFullYear()}`;
     }
-    return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    return currentDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   }, [currentDate, viewMode]);
 
   return (
@@ -660,7 +712,7 @@ export function CalendarPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-700"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
         >
           <Plus className="h-4 w-4" />
           New Appointment
@@ -704,7 +756,7 @@ export function CalendarPage() {
                 className={cn(
                   'px-4 py-1.5 text-sm font-medium capitalize transition-colors',
                   mode === viewMode
-                    ? 'bg-primary-600 text-white'
+                    ? 'bg-primary-600 text-primary-950'
                     : 'text-surface-600 hover:bg-surface-50 dark:text-surface-400 dark:hover:bg-surface-700',
                   mode === 'month' && 'rounded-l-lg',
                   mode === 'day' && 'rounded-r-lg',

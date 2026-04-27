@@ -1,10 +1,9 @@
-import { useEffect, useCallback, useState } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { CommandPalette } from '../shared/CommandPalette';
-import { KeyboardShortcutsPanel } from '../shared/KeyboardShortcutsPanel';
 import { TrialBanner } from '../shared/TrialBanner';
 import { UpgradeModal } from '../shared/UpgradeModal';
 import { useUiStore } from '@/stores/uiStore';
@@ -17,6 +16,7 @@ import { useWebSocket } from '@/hooks/useWebSocket';
 import { useDismissible } from '@/hooks/useDismissible';
 import { GlobalConfirmDialog } from '@/components/shared/GlobalConfirmDialog';
 import { ImpersonationBanner } from '@/components/ImpersonationBanner';
+import { OfflineBanner } from '@/components/shared/OfflineBanner';
 
 // Shape of the augmented config payload returned by `settingsApi.getConfig()`.
 // Every field is optional because the server merges store config with env
@@ -29,7 +29,6 @@ interface ServerConfigPayload {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed, mobileSidebarOpen, setMobileSidebarOpen, setCommandPaletteOpen } = useUiStore();
-  const [shortcutsPanelOpen, setShortcutsPanelOpen] = useState(false);
   const [devBannerDismissed, dismissDevBanner] = useDismissible('dev-banner');
   const location = useLocation();
   const navigate = useNavigate();
@@ -92,6 +91,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
   }
 
+  // WEB-FD-013 (Fixer-B2 2026-04-25): when an `aria-modal="true"` dialog
+  // (ConfirmDialog, UpgradeModal, PinModal, etc.) is mounted on top of the
+  // shell, F2/F3/F4/F6 must NOT pull the user out of the modal — that's a
+  // focus-trap escape hatch that loses any in-progress entry (PIN, confirm
+  // text). The dialog gets to swallow keys; the global shortcut steps aside.
+  function isModalDialogOpen(): boolean {
+    return document.querySelector('[role="dialog"][aria-modal="true"]') !== null;
+  }
+
   // Global keyboard shortcuts
   // SCAN-1147: Header also registers a `?` listener that opens its own
   // shortcuts dialog — both firing caused two stacked modals and focus-trap
@@ -100,6 +108,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleGlobalKeys = useCallback((e: KeyboardEvent) => {
     // Don't trigger shortcuts when typing in inputs or contentEditable elements
     if (isTypingInField()) return;
+    // Don't yank the user out of an open modal mid-task.
+    if (isModalDialogOpen()) return;
+
+    // WEB-FL-005 (Fixer-UU 2026-04-25): on /pos, F2/F3/F4/F6 belong to
+    // usePosKeyboardShortcuts (POS tab switching + customer search + returns)
+    // and the command palette. Both listeners used to fire — F2 switched the
+    // POS tab AND triggered navigate('/pos') (idempotent but masking bugs);
+    // F4 mid-checkout yanked the cashier off /pos to /tickets. Skip global
+    // F-key handling entirely while POS is mounted.
+    if (location.pathname.startsWith('/pos')) return;
 
     switch (e.key) {
       case 'F2': e.preventDefault(); navigate('/pos'); break;
@@ -107,7 +125,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       case 'F4': e.preventDefault(); navigate('/tickets'); break;
       case 'F6': e.preventDefault(); setCommandPaletteOpen(true); break;
     }
-  }, [navigate, setCommandPaletteOpen]);
+  }, [navigate, setCommandPaletteOpen, location.pathname]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleGlobalKeys);
@@ -116,6 +134,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-50 dark:bg-surface-950">
+      {/*
+        WEB-FE-002: Skip-to-main-content link for keyboard users so they
+        don't have to tab through the ~30 sidebar items on every page nav.
+        Visually hidden until focused (sr-only + focus styles), then
+        appears as a high-contrast pill in the top-left. Lands focus on
+        `<main id="main-content">` below.
+      */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-primary-600 focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-primary-950 focus:shadow-lg focus-visible:outline-none focus:ring-2 focus:ring-primary-950 focus:ring-offset-2"
+      >
+        Skip to main content
+      </a>
+
       {/* Mobile backdrop overlay */}
       {mobileSidebarOpen && (
         <div
@@ -143,6 +175,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         style={{ '--dev-banner-h': (isDev && !devBannerDismissed) ? '28px' : '0px' } as React.CSSProperties}
       >
         <ImpersonationBanner />
+        {/* WEB-FO-004: global offline indicator. Renders nothing while
+            navigator.onLine is true; flips to a high-visibility amber bar
+            the moment the browser fires an `offline` event. */}
+        <OfflineBanner />
         <Header
           hamburgerButton={
             <button
@@ -162,14 +198,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={dismissDevBanner}
               aria-label="Dismiss development mode warning"
-              className="ml-1 rounded p-0.5 transition-colors hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/50"
+              className="ml-1 rounded p-0.5 transition-colors hover:bg-white/20 focus-visible:outline-none focus:ring-2 focus:ring-white/50"
             >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
         <TrialBanner />
-        <main className="flex-1 overflow-auto">
+        <main id="main-content" tabIndex={-1} className="flex-1 overflow-auto focus-visible:outline-none">
           <div className="p-6 h-full">
             {children}
           </div>
@@ -178,9 +214,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Global command palette */}
       <CommandPalette />
-
-      {/* Keyboard shortcuts panel */}
-      <KeyboardShortcutsPanel open={shortcutsPanelOpen} onClose={() => setShortcutsPanelOpen(false)} />
 
       {/* Global confirm dialog */}
       <GlobalConfirmDialog />

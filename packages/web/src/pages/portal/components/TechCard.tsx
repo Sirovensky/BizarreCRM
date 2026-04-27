@@ -8,6 +8,9 @@
 import React, { useEffect, useState } from 'react';
 import { getTech, type TechData } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+// WEB-FV-008 (Fixer-B21 2026-04-25): record a breadcrumb when the per-ticket
+// tech-card endpoint fails so ops aren't blind to portal enrichment outages.
+import { safeRun } from '@/utils/safeRun';
 
 interface TechCardProps {
   ticketId: number;
@@ -23,8 +26,10 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
       .then((data) => {
         if (!cancelled) setTech(data);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) setTech({ visible: false });
+        // WEB-FV-008: degrade silently for the customer, breadcrumb for ops.
+        safeRun(() => { throw err; }, { tag: 'portal:techCard', data: { ticketId } });
       });
     return () => {
       cancelled = true;
@@ -38,7 +43,7 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
   return (
     <section
       aria-label={t('tech.title')}
-      className="rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-3"
+      className="rounded-lg bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 p-4 flex items-center gap-3"
     >
       {tech.avatar_url ? (
         <img
@@ -55,10 +60,10 @@ export function TechCard({ ticketId }: TechCardProps): React.ReactElement | null
         </div>
       )}
       <div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+        <div className="text-xs text-surface-500 dark:text-surface-400 uppercase tracking-wide">
           {t('tech.title')}
         </div>
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+        <div className="text-sm font-medium text-surface-900 dark:text-surface-100">
           {t('tech.handling', { name: tech.first_name })}
         </div>
       </div>

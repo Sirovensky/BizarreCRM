@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { estimateApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 import { formatCurrency, formatDate } from '@/utils/format';
 import { Breadcrumb } from '@/components/shared/Breadcrumb';
 import { useState } from 'react';
@@ -19,6 +20,15 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: '#ef4444',
   converted: '#8b5cf6',
 };
+
+// ENR-LE6 estimate version row — minimal shared shape (id + version + timestamp).
+// Server returns more fields (snapshot blob, author, diff metadata) but the UI
+// only renders the version number + created_at, so keep this narrow.
+interface EstimateVersion {
+  id: number;
+  version_number: number;
+  created_at: string;
+}
 
 export function EstimateDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -45,8 +55,9 @@ export function EstimateDetailPage() {
     queryKey: ['estimate-versions', id],
     queryFn: () => estimateApi.versions(Number(id)),
     enabled: showVersions,
+    staleTime: 60_000, // versions of completed/sent estimates rarely change minute-to-minute
   });
-  const versions: any[] = versionsData?.data?.data || [];
+  const versions: EstimateVersion[] = versionsData?.data?.data || [];
 
   const sendMut = useMutation({
     mutationFn: () => estimateApi.send(Number(id)),
@@ -148,8 +159,10 @@ export function EstimateDetailPage() {
           {(estimate.status === 'draft' || estimate.status === 'sent') && (
             <button
               onClick={async () => {
-                const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
-                if (await confirm(msg)) sendMut.mutate();
+                try {
+                  const msg = estimate.status === 'sent' ? 'Resend this estimate to the customer?' : 'Send this estimate to the customer via SMS?';
+                  if (await confirm(msg)) sendMut.mutate();
+                } catch (err) { toast.error(formatApiError(err)); }
               }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-primary-300 px-4 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50 dark:border-primary-700 dark:text-primary-400 dark:hover:bg-primary-950/30 disabled:opacity-50"
@@ -160,7 +173,10 @@ export function EstimateDetailPage() {
           )}
           {(estimate.status === 'sent' || estimate.status === 'draft') && (
             <button
-              onClick={async () => { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }}
+              onClick={async () => {
+                try { if (await confirm('Mark this estimate as approved?')) approveMut.mutate(); }
+                catch (err) { toast.error(formatApiError(err)); }
+              }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-emerald-300 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/30 disabled:opacity-50"
             >
@@ -170,7 +186,10 @@ export function EstimateDetailPage() {
           )}
           {estimate.status !== 'converted' && estimate.status !== 'rejected' && (
             <button
-              onClick={async () => { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }}
+              onClick={async () => {
+                try { if (await confirm('Convert this estimate to a ticket?')) convertMut.mutate(); }
+                catch (err) { toast.error(formatApiError(err)); }
+              }}
               disabled={anyMutationPending}
               className="inline-flex items-center gap-2 rounded-lg border border-green-300 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30 disabled:opacity-50"
             >
@@ -267,11 +286,11 @@ export function EstimateDetailPage() {
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
                   rows={3}
-                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus:outline-none focus:ring-2 focus:ring-primary-500/20"
+                  className="w-full rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 px-3 py-2 text-sm text-surface-900 dark:text-surface-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
                 />
                 <div className="flex gap-2">
                   <button onClick={() => updateMut.mutate({ notes })} disabled={updateMut.isPending}
-                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-primary-700 disabled:opacity-50">
+                    className="inline-flex items-center gap-1 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50">
                     <Save className="h-3 w-3" /> Save
                   </button>
                   <button onClick={() => setEditing(false)} className="text-xs text-surface-500 hover:text-surface-700">Cancel</button>
@@ -383,7 +402,7 @@ export function EstimateDetailPage() {
                   <p className="text-xs text-surface-400 dark:text-surface-500 italic">No previous versions</p>
                 ) : (
                   <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {versions.map((v: any) => (
+                    {versions.map((v) => (
                       <div
                         key={v.id}
                         className="flex items-center justify-between rounded-lg bg-surface-50 dark:bg-surface-800/50 px-3 py-2"

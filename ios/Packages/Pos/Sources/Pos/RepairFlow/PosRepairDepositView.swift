@@ -51,12 +51,21 @@ public struct PosRepairDepositView: View {
     public var body: some View {
         VStack(spacing: 0) {
             // Step 4/4 progress bar — full width (100%)
-            ProgressView(value: 1.0)
-                .progressViewStyle(.linear)
-                .tint(Color.bizarreOrange)
-                .frame(height: 3)
-                .scaleEffect(x: 1, y: 0.5, anchor: .center) // thin bar
-                .accessibilityLabel("Step 4 of 4, 100% complete")
+            // Matches the 3pt custom strip used by steps 2 and 3 per mockup 1e.
+            ZStack(alignment: .leading) {
+                Rectangle()
+                    .fill(Color(white: 1, opacity: 0.06))
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.bizarreOrange, Color.bizarreOrangeBright],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+                // Full width (100%) — no geometry reader needed
+            }
+            .frame(height: 3)
+            .accessibilityLabel("Step 4 of 4, 100% complete")
 
             ScrollView {
                 VStack(spacing: 0) {
@@ -120,18 +129,28 @@ public struct PosRepairDepositView: View {
 
     private var methodStripCard: some View {
         HStack(spacing: 10) {
-            // Cash icon tile
+            // Cash icon tile — gradient top:primary-bright → bottom:primary,
+            // inner top-edge highlight matches mockup "inset 0 1px 0 rgba(255,255,255,0.6)".
             ZStack {
                 LinearGradient(
-                    colors: [Color.bizarreOrange.opacity(1.2), Color.bizarreOrange],
+                    colors: [Color.bizarreOrangeBright, Color.bizarreOrange],
                     startPoint: .top, endPoint: .bottom
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.6), Color.clear],
+                                startPoint: .top, endPoint: .center
+                            ),
+                            lineWidth: 1
+                        )
+                )
                 Text("💵")
                     .font(.system(size: 17))
             }
             .frame(width: 34, height: 34)
-            .shadow(color: Color.bizarreOrange.opacity(0.3), radius: 0, x: 0, y: -1)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
@@ -250,7 +269,7 @@ public struct PosRepairDepositView: View {
                                 isSelected ? Color.bizarreOrange : Color.bizarreSurface1,
                                 in: RoundedRectangle(cornerRadius: 10)
                             )
-                            .foregroundStyle(isSelected ? Color.white : Color.bizarreOnSurface)
+                            .foregroundStyle(isSelected ? Color.bizarreOnPrimary : Color.bizarreOnSurface)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 10)
                                     .stroke(
@@ -348,8 +367,6 @@ public struct PosRepairDepositView: View {
 
             Button {
                 // Record the received amount, then confirm deposit
-                let cents = receivedCents > 0 ? receivedCents : depositCoordinator.depositCents
-                depositCoordinator.depositCents = depositCoordinator.depositCents // keep deposit amount
                 depositCoordinator.onTendered = { tendered in
                     coordinator.setDepositCents(tendered)
                     coordinator.advance()
@@ -357,23 +374,29 @@ public struct PosRepairDepositView: View {
                 depositCoordinator.confirmDeposit()
                 BrandHaptics.tapMedium()
             } label: {
-                HStack {
+                HStack(spacing: 6) {
                     if coordinator.isLoading || depositCoordinator.isProcessing {
-                        ProgressView().tint(.white)
+                        ProgressView().tint(Color.bizarreOnPrimary)
                     } else {
                         Text("Confirm deposit")
                             .font(.subheadline.weight(.bold))
+                        // Amount badge per mockup "tb-amount" class
                         Text(RepairDepositCoordinator.formatCurrency(cents: depositCoordinator.depositCents))
-                            .font(.subheadline.weight(.bold))
-                            .opacity(0.8)
-                        Image(systemName: "chevron.right")
-                            .font(.subheadline.weight(.bold))
+                            .font(.system(size: 14, weight: .bold).monospacedDigit())
+                            .opacity(0.85)
+                        Text("›")
+                            .font(.system(size: 15, weight: .bold))
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(Color.bizarreOrange, in: RoundedRectangle(cornerRadius: 14))
-                .foregroundStyle(Color.white)
+                .background(
+                    (coordinator.isLoading || depositCoordinator.isProcessing || depositCoordinator.depositCents <= 0)
+                        ? Color.bizarreOrange.opacity(0.4)
+                        : Color.bizarreOrange,
+                    in: RoundedRectangle(cornerRadius: 14)
+                )
+                .foregroundStyle(Color.bizarreOnPrimary)
             }
             .buttonStyle(.plain)
             .disabled(coordinator.isLoading || depositCoordinator.isProcessing || depositCoordinator.depositCents <= 0)

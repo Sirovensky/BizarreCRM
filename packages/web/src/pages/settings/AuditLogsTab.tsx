@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { settingsApi } from '@/api/endpoints';
 import { Loader2, ChevronLeft, ChevronRight, Search, Filter, ShieldCheck } from 'lucide-react';
 import { cn } from '@/utils/cn';
+import { formatDateTime } from '@/utils/format';
 
 interface AuditLog {
   id: number;
@@ -20,14 +21,29 @@ export function AuditLogsTab() {
   const [eventFilter, setEventFilter] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  // WEB-FG-015 fix: typing into a <input type="date"> emits onChange on every
+  // numeric cycle (10 keystrokes for "2026-04-24"), and the audit endpoint is
+  // paginated + join-heavy. Debounce the date filters so we only refetch
+  // 250 ms after the user stops typing. Event-type select is single-change so
+  // it stays bound directly. The debounced values feed the queryKey.
+  const [debouncedFrom, setDebouncedFrom] = useState('');
+  const [debouncedTo, setDebouncedTo] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedFrom(fromDate), 250);
+    return () => clearTimeout(t);
+  }, [fromDate]);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedTo(toDate), 250);
+    return () => clearTimeout(t);
+  }, [toDate]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['audit-logs', page, eventFilter, fromDate, toDate],
+    queryKey: ['audit-logs', page, eventFilter, debouncedFrom, debouncedTo],
     queryFn: async () => {
       const params: Record<string, string | number> = { page, pagesize: 50 };
       if (eventFilter) params.event = eventFilter;
-      if (fromDate) params.from_date = fromDate;
-      if (toDate) params.to_date = toDate;
+      if (debouncedFrom) params.from_date = debouncedFrom;
+      if (debouncedTo) params.to_date = debouncedTo;
       const res = await settingsApi.getAuditLogs(params as any);
       return res.data.data as {
         logs: AuditLog[];
@@ -53,14 +69,6 @@ export function AuditLogsTab() {
     }
   }
 
-  function formatDate(iso: string): string {
-    try {
-      const d = new Date(iso.replace(' ', 'T'));
-      return d.toLocaleString();
-    } catch {
-      return iso;
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -101,7 +109,7 @@ export function AuditLogsTab() {
         </div>
         {(eventFilter || fromDate || toDate) && (
           <button
-            onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setPage(1); }}
+            onClick={() => { setEventFilter(''); setFromDate(''); setToDate(''); setDebouncedFrom(''); setDebouncedTo(''); setPage(1); }}
             className="text-xs text-orange-400 hover:text-orange-300 pb-1.5"
           >
             Clear filters
@@ -122,20 +130,24 @@ export function AuditLogsTab() {
       ) : (
         <>
           <div className="overflow-x-auto">
+            {/* WEB-FE-013 (Fixer-OOO 2026-04-25): added <caption> +
+                scope="col" so screen readers can associate cell values
+                with their column headers. WCAG 1.3.1. */}
             <table className="w-full text-sm">
+              <caption className="sr-only">Audit log entries — system events with timestamp, actor, IP address, and detail payload.</caption>
               <thead>
                 <tr className="border-b border-surface-700 text-left text-surface-400">
-                  <th className="py-2 px-3 font-medium">Time</th>
-                  <th className="py-2 px-3 font-medium">Event</th>
-                  <th className="py-2 px-3 font-medium">User</th>
-                  <th className="py-2 px-3 font-medium">IP</th>
-                  <th className="py-2 px-3 font-medium">Details</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Time</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Event</th>
+                  <th scope="col" className="py-2 px-3 font-medium">User</th>
+                  <th scope="col" className="py-2 px-3 font-medium">IP</th>
+                  <th scope="col" className="py-2 px-3 font-medium">Details</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
                   <tr key={log.id} className="border-b border-surface-800 hover:bg-surface-800/50">
-                    <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formatDate(log.created_at)}</td>
+                    <td className="py-2 px-3 whitespace-nowrap text-surface-300">{formatDateTime(log.created_at?.replace(' ', 'T'))}</td>
                     <td className="py-2 px-3">
                       <span className="inline-block bg-surface-700 text-surface-200 rounded px-2 py-0.5 text-xs font-mono">
                         {log.event}

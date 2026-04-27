@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Megaphone,
@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import { campaignsApi, crmApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { formatDateTime } from '@/utils/format';
 
 /**
  * CampaignsPage — marketing automation dashboard.
@@ -65,6 +66,25 @@ const TYPES: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'custom', label: 'Custom' },
 ];
 
+// WEB-FK-007 / FIXED-by-Fixer-A9 2026-04-25 — TCPA/CAN-SPAM client-side guard.
+// SMS bodies must contain a recognizable opt-out phrase; email bodies must
+// reference the {{unsubscribe_url}} merge token so the dispatcher can render
+// a real link. Mirrors what the server should also enforce (defense in depth)
+// but stops the most common operator mistake — a clean-looking promo with
+// zero opt-out path — at draft time, before a Run-now click sends thousands.
+function templateBodyIsCompliant(body: string, channel: 'sms' | 'email' | 'both'): boolean {
+  if (!body.trim()) return false;
+  const needsSms = channel === 'sms' || channel === 'both';
+  const needsEmail = channel === 'email' || channel === 'both';
+  if (needsSms && !/(reply\s+stop|text\s+stop|stop\s+to\s+(opt\s*out|unsubscribe))/i.test(body)) {
+    return false;
+  }
+  if (needsEmail && !body.includes('{{unsubscribe_url}}')) {
+    return false;
+  }
+  return true;
+}
+
 const STATUS_STYLES: Record<Campaign['status'], string> = {
   draft: 'bg-surface-100 text-surface-600 dark:bg-surface-800 dark:text-surface-300',
   active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
@@ -80,6 +100,13 @@ export function CampaignsPage() {
   // immediately to potentially thousands of recipients, and Delete is final.
   const [runConfirm, setRunConfirm] = useState<{ campaign: Campaign; total: number | null } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Campaign | null>(null);
+  // WEB-FK-017 (Fixer-TTT 2026-04-25): keep a handle on the in-flight Run-now
+  // recipient-count preview so cancelling the confirm dialog (or clicking
+  // Run-now on a different campaign) aborts the previous request instead of
+  // letting it finish and overwrite state. Server-side preview can spin up
+  // significant DB work on a 2000-customer segment; aborting prevents waste
+  // and the late-arriving-A-overwrites-B race.
+  const runPreviewAbortRef = useRef<AbortController | null>(null);
 
   const { data: campaignsRes, isLoading } = useQuery<{ data?: Campaign[] }>({
     queryKey: ['campaigns'],
@@ -133,6 +160,15 @@ export function CampaignsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     },
+    // WEB-FF-005 (Fixer-UU 2026-04-25): pause/resume failures used to be silent
+    // — operator saw a stale list with no feedback. Surface server rejection
+    // (rate-limit, segment deleted, validation error) via toast.
+    onError: (err: any) => {
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): server returns descriptive errors
+      // under .message (per shared httpError helper); .error was a legacy field
+      // that no longer ships, so toasts always fell back to the generic string.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to update campaign status');
+    },
   });
 
   const preview = useMutation({
@@ -167,7 +203,7 @@ export function CampaignsPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium shadow-sm"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium shadow-sm"
         >
           <Plus className="h-4 w-4" /> New campaign
         </button>
@@ -218,7 +254,7 @@ export function CampaignsPage() {
                       <span><strong>{campaign.replied_count}</strong> replied</span>
                       <span><strong>{campaign.converted_count}</strong> converted</span>
                       {campaign.last_run_at && (
-                        <span>last run {new Date(campaign.last_run_at).toLocaleString()}</span>
+                        <span>last run {formatDateTime(campaign.last_run_at)}</span>
                       )}
                     </div>
                   </div>
@@ -235,17 +271,23 @@ export function CampaignsPage() {
                         // Open confirm dialog with a recipient-count preview so the
                         // operator sees how many people will be messaged before firing.
                         setRunConfirm({ campaign, total: null });
+                        // WEB-FK-017: abort any prior in-flight preview before starting a new one.
+                        runPreviewAbortRef.current?.abort();
+                        const ac = new AbortController();
+                        runPreviewAbortRef.current = ac;
                         try {
-                          const res = await campaignsApi.preview(campaign.id);
+                          const res = await campaignsApi.preview(campaign.id, { signal: ac.signal });
+                          if (ac.signal.aborted) return;
                           const total = (res.data as any)?.data?.total_recipients ?? 0;
                           // Only update if user hasn't already cancelled.
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total } : curr));
-                        } catch {
+                        } catch (err: any) {
+                          if (ac.signal.aborted || err?.name === 'CanceledError' || err?.name === 'AbortError') return;
                           setRunConfirm((curr) => (curr && curr.campaign.id === campaign.id ? { campaign, total: 0 } : curr));
                         }
                       }}
                       disabled={runNow.isPending || campaign.status === 'archived'}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-40"
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 disabled:opacity-40"
                     >
                       <Play className="h-3 w-3" /> Run now
                     </button>
@@ -322,9 +364,15 @@ export function CampaignsPage() {
         danger
         onConfirm={() => {
           if (runConfirm) runNow.mutate(runConfirm.campaign.id);
+          runPreviewAbortRef.current?.abort();
           setRunConfirm(null);
         }}
-        onCancel={() => setRunConfirm(null)}
+        onCancel={() => {
+          // WEB-FK-017: abort the preview round-trip on cancel so we don't
+          // pay for a potentially-expensive recipient-count the user no longer needs.
+          runPreviewAbortRef.current?.abort();
+          setRunConfirm(null);
+        }}
       />
 
       <ConfirmDialog
@@ -364,6 +412,12 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
     template_body: '',
   });
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const create = useMutation({
     mutationFn: async () => {
       const payload: any = {
@@ -382,14 +436,21 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
       onCreated();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to create campaign');
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): prefer .message; .error kept as fallback.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to create campaign');
     },
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4">
-        <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">New campaign</h2>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-campaign-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <h2 id="new-campaign-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">New campaign</h2>
 
         <div>
           <label className="block text-xs font-medium text-surface-600 dark:text-surface-400 mb-1">Name</label>
@@ -463,9 +524,41 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
             value={form.template_body}
             onChange={(e) => setForm({ ...form, template_body: e.target.value })}
             rows={4}
-            placeholder="Hi {{first_name}}, we miss you! Come visit for 15% off."
+            placeholder={
+              form.channel === 'email'
+                ? 'Hi {{first_name}}, we miss you! Come visit for 15% off.\n\nUnsubscribe: {{unsubscribe_url}}'
+                : 'Hi {{first_name}}, 15% off this week. Reply STOP to opt out.'
+            }
             className="w-full px-3 py-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-800 text-sm font-mono"
           />
+          {/* WEB-FK-007 / FIXED-by-Fixer-A9 2026-04-25 — block save when the
+              template lacks the channel-specific opt-out path. Server still
+              validates, but a missing footer should never even *attempt* a
+              send: TCPA fines run $500–$1500/text and CAN-SPAM is $51,744/email,
+              so we fail fast in-modal with explicit helper text rather than
+              hoping operators read the placeholder. */}
+          {(() => {
+            const body = form.template_body;
+            if (!body.trim()) return null;
+            const errors: string[] = [];
+            const needsSms = form.channel === 'sms' || form.channel === 'both';
+            const needsEmail = form.channel === 'email' || form.channel === 'both';
+            if (needsSms && !/(reply\s+stop|text\s+stop|stop\s+to\s+(opt\s*out|unsubscribe))/i.test(body)) {
+              errors.push('SMS templates must include "Reply STOP" (TCPA opt-out instructions).');
+            }
+            if (needsEmail && !body.includes('{{unsubscribe_url}}')) {
+              errors.push('Email templates must include the {{unsubscribe_url}} merge token (CAN-SPAM).');
+            }
+            if (errors.length === 0) return null;
+            return (
+              <ul className="mt-2 text-xs text-amber-700 dark:text-amber-300 list-disc pl-5 space-y-0.5">
+                {errors.map((err) => <li key={err}>{err}</li>)}
+              </ul>
+            );
+          })()}
+          <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
+            Required tokens: {form.channel === 'sms' ? '"Reply STOP"' : form.channel === 'email' ? '{{unsubscribe_url}}' : '"Reply STOP" (SMS) and {{unsubscribe_url}} (email)'}.
+          </p>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
@@ -477,8 +570,8 @@ function CreateCampaignModal({ segments, onClose, onCreated }: CreateProps) {
           </button>
           <button
             onClick={() => create.mutate()}
-            disabled={create.isPending || !form.name.trim() || !form.template_body.trim()}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
+            disabled={create.isPending || !form.name.trim() || !templateBodyIsCompliant(form.template_body, form.channel)}
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-primary-950 font-medium disabled:opacity-50"
           >
             Create
           </button>
@@ -494,11 +587,23 @@ interface PreviewProps {
 }
 
 function PreviewModal({ data, onClose }: PreviewProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="campaign-preview-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-lg w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
         <div>
-          <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
+          <h2 id="campaign-preview-title" className="text-lg font-bold text-surface-900 dark:text-surface-100 flex items-center gap-2">
             <BarChart3 className="h-5 w-5" /> Preview: {data.campaign.name}
           </h2>
           <p className="text-xs text-surface-500 mt-1">
@@ -522,7 +627,7 @@ function PreviewModal({ data, onClose }: PreviewProps) {
         <div className="flex justify-end pt-2">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950"
           >
             Close
           </button>

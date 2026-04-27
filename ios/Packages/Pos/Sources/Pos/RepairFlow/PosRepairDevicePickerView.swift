@@ -95,11 +95,17 @@ public struct PosRepairDevicePickerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                // Customer name chip — sourced from parent on appear via environment
-                // when available; rendered as plain label for now.
-                // PosView orchestrator should inject customer.displayName via
-                // a navigation title supplement or environment value.
-                EmptyView()
+                // Customer name chip — matches mockup 1b "Sarah M." pill in nav bar.
+                if let name = coordinator.customerDisplayName {
+                    Text(name)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color.bizarreSurface1, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 1))
+                        .accessibilityLabel("Customer: \(name)")
+                }
             }
         }
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
@@ -282,16 +288,16 @@ public struct PosRepairDevicePickerView: View {
             BrandHaptics.tap()
         } label: {
             HStack(spacing: 12) {
-                // Gradient "+" circle 40×40
+                // Gradient "+" tile 40×40 — top: primary-bright, bottom: primary (mockup 1b)
                 ZStack {
                     LinearGradient(
-                        colors: [Color.bizarreOrange.opacity(1.3), Color.bizarreOrange],
+                        colors: [Color.bizarreOrangeBright, Color.bizarreOrange],
                         startPoint: .top, endPoint: .bottom
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                     Text("+")
                         .font(.system(size: 22, weight: .black))
-                        .foregroundStyle(Color.black.opacity(0.7))
+                        .foregroundStyle(Color.bizarreOnPrimary)
                 }
                 .frame(width: 40, height: 40)
                 .shadow(color: Color.bizarreOrange.opacity(0.22), radius: 12, y: 4)
@@ -412,13 +418,13 @@ public struct PosRepairDevicePickerView: View {
                 HStack(spacing: 12) {
                     ZStack {
                         LinearGradient(
-                            colors: [Color.bizarreOrange.opacity(1.2), Color.bizarreOrange],
+                            colors: [Color.bizarreOrangeBright, Color.bizarreOrange],
                             startPoint: .top, endPoint: .bottom
                         )
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                         Text("+")
                             .font(.system(size: 22, weight: .black))
-                            .foregroundStyle(Color.black.opacity(0.6))
+                            .foregroundStyle(Color.bizarreOnPrimary)
                     }
                     .frame(width: 36, height: 36)
                     .accessibilityHidden(true)
@@ -510,11 +516,11 @@ public struct PosRepairDevicePickerView: View {
             coordinator.advance()
             BrandHaptics.tapMedium()
         } label: {
-            HStack {
+            HStack(spacing: 6) {
                 Text("Continue → describe issue")
                     .font(.subheadline.weight(.bold))
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.bold))
+                Text("›")
+                    .font(.system(size: 15, weight: .bold))
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -524,7 +530,7 @@ public struct PosRepairDevicePickerView: View {
                     : Color.bizarreOrange,
                 in: RoundedRectangle(cornerRadius: 14)
             )
-            .foregroundStyle(Color.white)
+            .foregroundStyle(Color.bizarreOnPrimary)
         }
         .buttonStyle(.plain)
         .disabled(coordinator.draft.selectedDeviceOption == nil || coordinator.isLoading)

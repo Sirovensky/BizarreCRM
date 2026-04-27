@@ -21,6 +21,19 @@ export const useWsStore = create<WsState>((set) => ({
   setLastMessage: (msg) => set({ lastMessage: msg }),
 }));
 
+// WEB-FO-016 (Fixer-B15 2026-04-25): wipe the module-scoped `lastMessage`
+// snapshot whenever auth is cleared (logout, switchUser). The Zustand
+// store persists across the auth lifecycle, so any future subscriber
+// would briefly read the prior user's last WS payload — a cross-tenant
+// leak shape even if no current consumer reads it. Belt-and-suspenders
+// against future regressions; mirrors the queryClient.clear() that
+// main.tsx already runs on the same event.
+if (typeof window !== 'undefined') {
+  window.addEventListener('bizarre-crm:auth-cleared', () => {
+    useWsStore.setState({ lastMessage: null, isConnected: false });
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Resolve the WebSocket URL
 // ---------------------------------------------------------------------------
@@ -75,16 +88,17 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
       queryKeys: [['tickets'], ['dashboard']],
       toast: undefined,
     },
-    'sms_received': {
-      // SMS routes currently broadcast with literal 'sms_received'
-      queryKeys: [['sms-conversations']],
-      toast: (data: unknown) => {
-        const d = data as { from?: string; customer?: { first_name?: string } } | null;
-        return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
-      },
-    },
+    // WEB-FN-007 (Fixer-B12 2026-04-25): dropped legacy `'sms_received'`
+    // literal subscription. Server only ever broadcasts the colon-form
+    // `WS_EVENTS.SMS_RECEIVED` (`sms:received`); the snake_case literal
+    // never fired. Keep the canonical handler below as the single source.
+    // WEB-FO-008 (Fixer-B18 2026-04-25): also invalidate `['sms-messages']`
+    // (any phone) so the open thread refreshes on inbound + status updates
+    // without needing a 10s `refetchInterval` poll. Generic key invalidation
+    // covers every cached phone — the only one currently rendered is the
+    // selected conversation, which is exactly what we want to refresh.
     [WS_EVENTS.SMS_RECEIVED]: {
-      queryKeys: [['sms-conversations']],
+      queryKeys: [['sms-conversations'], ['sms-messages']],
       toast: (data: unknown) => {
         const d = data as { from?: string; customer?: { first_name?: string } } | null;
         return `New SMS from ${d?.from || d?.customer?.first_name || 'unknown'}`;
@@ -92,7 +106,7 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
     },
     // sms:status_updated — server emits when an outbound SMS delivery status changes
     'sms:status_updated': {
-      queryKeys: [['sms-conversations']],
+      queryKeys: [['sms-conversations'], ['sms-messages']],
       toast: undefined,
     },
     [WS_EVENTS.NOTIFICATION_NEW]: {
@@ -184,6 +198,12 @@ function buildInvalidationMap(): Record<string, InvalidationEntry> {
 // ---------------------------------------------------------------------------
 const MAX_BACKOFF = 30_000;
 const INITIAL_BACKOFF = 1_000;
+// WEB-FO-003: NAT idle timeouts (60-300s on cellular / corp NAT) silently
+// half-close WebSockets without firing onclose. Send a {type:'ping'} every
+// 30s and force-close the socket if no message of any kind has arrived
+// within the watchdog window. The browser's onclose then fires reconnect.
+const PING_INTERVAL_MS = 30_000;
+const PONG_TIMEOUT_MS = 60_000;
 
 export function useWebSocket() {
   const queryClient = useQueryClient();
@@ -200,6 +220,16 @@ export function useWebSocket() {
   const unmountedRef = useRef(false);
   const authRejectedRef = useRef(false);
   const invalidationMap = useRef(buildInvalidationMap());
+  // WEB-FO-003 heartbeat plumbing.
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastMessageAtRef = useRef<number>(0);
+
+  const stopHeartbeat = useCallback(() => {
+    if (pingTimerRef.current) {
+      clearInterval(pingTimerRef.current);
+      pingTimerRef.current = null;
+    }
+  }, []);
   // Stable ref so connect() can call scheduleReconnect() without a circular
   // useCallback dependency or capturing a stale closure value.
   const scheduleReconnectRef = useRef<() => void>(() => { /* populated below */ });
@@ -213,18 +243,43 @@ export function useWebSocket() {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
+    stopHeartbeat();
     if (wsRef.current) {
       wsRef.current.onclose = null; // Prevent reconnect on intentional close
       wsRef.current.close();
       wsRef.current = null;
     }
     setConnected(false);
-  }, [setConnected]);
+  }, [setConnected, stopHeartbeat]);
 
   const connect = useCallback(() => {
     if (unmountedRef.current) return;
-    const token = getToken();
+    // WEB-FJ-003 (Fixer-A15 2026-04-25): hold the bootstrap token in a
+    // mutable local so we can null it out after onopen. Previously the
+    // `const token` was captured inside the onopen closure and the closure
+    // (kept alive by the WebSocket instance) retained the JWT for the full
+    // socket lifetime — so a refresh that rotated the access token still
+    // left the original (now-stale) JWT reachable from the closure heap
+    // until the socket finally closed.
+    let token: string | null = getToken();
     if (!token) return; // Not authenticated
+
+    // WEB-FD-003 (Fixer-A5 2026-04-25): refuse to ship the access-token as
+    // a plaintext frame over `ws:`. In production builds we hard-fail any
+    // non-https origin so the JWT is never put on an unencrypted socket
+    // (was: token in `JSON.stringify({type:'auth',token})` valid for the
+    // full refresh window if intercepted by a corporate-MITM/proxy).
+    // `localhost` and `127.0.0.1` stay permitted so dev/Vite still works.
+    if (
+      import.meta.env.PROD &&
+      window.location.protocol === 'http:' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1'
+    ) {
+      // eslint-disable-next-line no-console
+      console.error('[ws] refusing to connect over plaintext ws: in production');
+      return;
+    }
 
     // Clean up any existing connection
     if (wsRef.current) {
@@ -244,11 +299,41 @@ export function useWebSocket() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      // Authenticate immediately
-      ws.send(JSON.stringify({ type: 'auth', token }));
+      // WEB-FI-011 (Fixer-SSS 2026-04-25): re-read the access token at
+      // onopen-time so a refresh that completed between the WebSocket
+      // constructor call and the open handshake is picked up. Previously
+      // the token captured in `connect()` (line ~243) was sent verbatim
+      // in onopen — during a 401 burst recovery the freshly-rotated
+      // refresh would land first, but this socket would still send the
+      // expired token, get rejected with 4001, and bounce through
+      // scheduleReconnect needlessly. If localStorage is now empty
+      // (logout fired between connect and onopen), close the socket
+      // cleanly so reconnect logic doesn't keep looping with no token.
+      const freshToken = getToken() ?? token;
+      if (!freshToken) {
+        try { ws.close(); } catch { /* ignore */ }
+        return;
+      }
+      // WEB-FO-015 (Fixer-B15 2026-04-25): reset reconnect backoff at TCP
+      // open rather than waiting for `auth.success`. A server that closes
+      // the socket immediately after handshake WITHOUT sending a 4001/4003
+      // (e.g. an upstream proxy that drops the conn mid-auth) would
+      // otherwise keep escalating backoff to the 30s ceiling on every
+      // connect even though TCP itself succeeds. `isConnected` still
+      // requires auth.success — only the backoff anchor moves earlier.
+      backoffRef.current = INITIAL_BACKOFF;
+      ws.send(JSON.stringify({ type: 'auth', token: freshToken }));
+      // WEB-FJ-003 (Fixer-A15 2026-04-25): release the captured bootstrap
+      // token so it isn't pinned in this closure for the lifetime of the
+      // socket. Re-auth after a 401-bounce will re-read localStorage via
+      // getToken(), so we don't need the stale value here anymore.
+      token = null;
     };
 
     ws.onmessage = (event) => {
+      // WEB-FO-003: any message proves the socket is still alive end-to-end.
+      // Track receipt so the watchdog interval can detect a half-open NAT.
+      lastMessageAtRef.current = Date.now();
       try {
         const msg = JSON.parse(event.data);
         const { type, data, success } = msg;
@@ -259,6 +344,31 @@ export function useWebSocket() {
             setConnected(true);
             authRejectedRef.current = false;
             backoffRef.current = INITIAL_BACKOFF; // Reset backoff on successful auth
+            // Start heartbeat now that we are authed. Server replies with
+            // {type:'pong'} which is treated as any other message above.
+            stopHeartbeat();
+            lastMessageAtRef.current = Date.now();
+            pingTimerRef.current = setInterval(() => {
+              const sock = wsRef.current;
+              if (!sock || sock.readyState !== WebSocket.OPEN) return;
+              // WEB-FAD-009 (Fixer-C3 2026-04-25): skip heartbeat while tab
+              // is hidden — incoming events are throttled by the browser
+              // anyway and the outgoing ping wastes battery on phones.
+              // Reset lastMessageAtRef so the watchdog doesn't trip the
+              // moment the tab becomes visible again.
+              if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+                lastMessageAtRef.current = Date.now();
+                return;
+              }
+              // Watchdog: if the socket has been silent past PONG_TIMEOUT_MS
+              // the connection is half-open. Force-close so onclose fires
+              // and scheduleReconnect kicks in.
+              if (Date.now() - lastMessageAtRef.current > PONG_TIMEOUT_MS) {
+                try { sock.close(4000, 'heartbeat-timeout'); } catch { /* ignore */ }
+                return;
+              }
+              try { sock.send(JSON.stringify({ type: 'ping', t: Date.now() })); } catch { /* ignore */ }
+            }, PING_INTERVAL_MS);
           } else {
             // Auth explicitly rejected — stop reconnecting with this token
             authRejectedRef.current = true;
@@ -267,6 +377,10 @@ export function useWebSocket() {
           return;
         }
 
+        // Server pong (or implicit pong) — already counted via
+        // lastMessageAtRef above. Don't fan out to invalidation map.
+        if (type === 'pong') return;
+
         // Store last message
         setLastMessage({ type, data });
 
@@ -274,7 +388,20 @@ export function useWebSocket() {
         const entry = invalidationMap.current[type];
         if (entry) {
           for (const qk of entry.queryKeys) {
-            queryClientRef.current.invalidateQueries({ queryKey: qk.filter((k) => k !== undefined) });
+            // WEB-FI-010 (Fixer-SSS 2026-04-25): the previous code did
+            // `qk.filter((k) => k !== undefined)` which silently demoted
+            // `['ticket', undefined]` to `['ticket']` — under tanstack v5
+            // that prefix-key invalidates EVERY query starting with
+            // `['ticket']`, so a single `ticket:status_changed` event
+            // missing `data.id` re-fetched the entire ticket subtree
+            // across every page. Skip the entry entirely when ANY slot
+            // is undefined so partial keys never get demoted into a
+            // catch-all prefix invalidation. The dedicated
+            // entity-id invalidation below (lines ~325-336) still
+            // handles the targeted `['ticket', id]` refresh when the
+            // server DOES send a usable id.
+            if (qk.some((k) => k === undefined)) continue;
+            queryClientRef.current.invalidateQueries({ queryKey: qk });
           }
 
           // Also invalidate specific entity if data.id is present
@@ -311,6 +438,7 @@ export function useWebSocket() {
     ws.onclose = (event) => {
       setConnected(false);
       wsRef.current = null;
+      stopHeartbeat();
       // Don't reconnect on auth failure close codes (4001 = auth rejected, 4003 = forbidden)
       if (event.code === 4001 || event.code === 4003) {
         authRejectedRef.current = true;
@@ -322,7 +450,7 @@ export function useWebSocket() {
     ws.onerror = () => {
       // onerror is always followed by onclose, so reconnect happens there
     };
-  }, [getToken, setConnected, setLastMessage]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
+  }, [getToken, setConnected, setLastMessage, stopHeartbeat]); // queryClient via queryClientRef (stable); scheduleReconnect via ref
 
   const scheduleReconnect = useCallback(() => {
     if (unmountedRef.current) return;

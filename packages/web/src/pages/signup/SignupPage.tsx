@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { signupApi } from '../../api/endpoints';
+import { redactEmails } from '../../utils/apiError';
 
 const HCAPTCHA_SCRIPT_SRC = 'https://js.hcaptcha.com/1/api.js?render=explicit';
 
@@ -27,12 +28,26 @@ declare global {
    the admin to verify the email before provisioning the tenant.
    ═══════════════════════════════════════════════════════════════ */
 
+// WEB-FG-002 / FIXED-by-Fixer-U 2026-04-25 — allow-list trusted base domains.
+// Previously this helper trusted whatever hostname the browser landed on, so
+// a phishing landing on `bizarrecrm.evil-co.com` could redirect customers to
+// `slug.evil-co.com/login`. Anything off the allow-list falls back to the
+// canonical apex so we never craft a link to an attacker-controlled subdomain.
+const TRUSTED_BASE_DOMAINS = ['bizarrecrm.com', 'localhost'] as const;
+
+function resolveBaseDomain(hostname: string): string | null {
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return 'localhost';
+  for (const allowed of TRUSTED_BASE_DOMAINS) {
+    if (hostname === allowed || hostname.endsWith(`.${allowed}`)) return allowed;
+  }
+  return null;
+}
+
 // Build the tenant URL from a slug
 function getTenantUrl(slug: string, path = '/'): string {
   const { protocol, port, hostname } = window.location;
   const portSuffix = port && port !== '443' && port !== '80' ? `:${port}` : '';
-  // Use actual hostname domain - works in both dev (localhost) and production.
-  const baseDomain = hostname === 'localhost' || hostname.endsWith('.localhost') ? 'localhost' : hostname.split('.').slice(-2).join('.');
+  const baseDomain = resolveBaseDomain(hostname) ?? 'bizarrecrm.com';
   return `${protocol}//${slug}.${baseDomain}${portSuffix}${path}`;
 }
 
@@ -77,9 +92,17 @@ export function SignupPage() {
     }
   };
 
+  // WEB-FA-016 (Fixer-KKK 2026-04-25): track the most-recently-requested slug
+  // so out-of-order responses (server slow on "abc", fast on "abcd") don't
+  // overwrite the visible status with a stale "available"/"taken" verdict
+  // for an old value. Public checkSlug endpoint has no abort surface yet,
+  // so we ignore stale resolves at the consumer side.
+  const latestSlugRef = useRef<string>('');
+
   // Debounced slug availability check
   const checkSlug = useCallback((value: string) => {
     if (slugTimerRef.current) clearTimeout(slugTimerRef.current);
+    latestSlugRef.current = value;
 
     if (!value || value.length < 3) {
       setSlugStatus(value ? 'invalid' : 'idle');
@@ -98,10 +121,13 @@ export function SignupPage() {
     slugTimerRef.current = setTimeout(async () => {
       try {
         const res = await signupApi.checkSlug(value);
+        // Drop stale results: user has typed further since this fired.
+        if (latestSlugRef.current !== value) return;
         const { available, reason } = res.data.data;
         setSlugStatus(available ? 'available' : 'taken');
         setSlugMessage(available ? 'Available!' : (reason || 'Already taken'));
       } catch {
+        if (latestSlugRef.current !== value) return;
         setSlugStatus('idle');
         setSlugMessage('Could not check availability');
       }
@@ -170,6 +196,15 @@ export function SignupPage() {
       script.src = HCAPTCHA_SCRIPT_SRC;
       script.async = true;
       script.defer = true;
+      // WEB-FA-010: forward the page's CSP nonce (set by the server in a
+      // <meta name="csp-nonce" content="..."> tag, mirroring the React 19
+      // pattern) so this dynamically appended <script> survives a strict
+      // `script-src 'nonce-…'` policy. Falls through silently when no
+      // nonce meta is present (dev / non-CSP deployments).
+      const nonce = document
+        .querySelector<HTMLMetaElement>('meta[name="csp-nonce"]')
+        ?.content;
+      if (nonce) script.setAttribute('nonce', nonce);
       document.head.appendChild(script);
     }
 
@@ -227,7 +262,11 @@ export function SignupPage() {
         || apiErr?.response?.data?.error
         || (err instanceof Error ? err.message : '')
         || 'Something went wrong. Please try again.';
-      setApiError(msg);
+      // WEB-FJ-019: signup is an unauthenticated public surface; redact any
+      // email-shaped substring the server echoed back (e.g. "An account
+      // already exists for x@y.com") so a screenshot or shoulder-surf can't
+      // exfiltrate it.
+      setApiError(redactEmails(msg));
       if (captchaWidgetIdRef.current !== null) {
         window.hcaptcha?.reset(captchaWidgetIdRef.current);
         setCaptchaToken('');
@@ -243,7 +282,7 @@ export function SignupPage() {
       <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Roboto', sans-serif" }}>
         <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2709;&#xFE0F;</div>
-          <h2 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
+          <h2 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
           <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
             {success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`}
           </p>
@@ -258,91 +297,114 @@ export function SignupPage() {
   const submitDisabled = submitting || slugStatus === 'checking' || (Boolean(captchaSiteKey) && !captchaReady);
 
   return (
-    <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Roboto', sans-serif" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=League+Spartan:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap');
-      `}</style>
+    <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 16px', fontFamily: "'Jost', 'Roboto', sans-serif" }}>
+      {/* WEB-FA-024: dropped per-page <style>@import — Bebas Neue is loaded
+          once globally via index.html <link rel="stylesheet">. The inline
+          @import duplicated the network round-trip on every signup mount
+          AND blocked first paint while the @import resolved. League Spartan
+          + Roboto refs further down fall back to Jost / system stack which
+          aligns with the project_brand_fonts (Jost) canonical body face. */}
       <div style={{ width: '100%', maxWidth: 460 }}>
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <Link to="/" style={{ textDecoration: 'none', display: 'inline-block' }}>
-            <span style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 32, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
+            <span style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 32, color: '#bc398f', letterSpacing: 3, cursor: 'pointer' }}>BIZARRECRM</span>
           </Link>
-          <h1 style={{ fontFamily: "'Bebas Neue', cursive", fontSize: 40, color: '#0891B2', letterSpacing: 2, marginTop: 8, marginBottom: 4 }}>
+          <h1 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 40, color: '#0891B2', letterSpacing: 2, marginTop: 8, marginBottom: 4 }}>
             Create Your Shop
           </h1>
           <p style={{ color: '#666', fontSize: 15 }}>Free to start. No credit card required.</p>
         </div>
 
         {/* Form card */}
-        <form onSubmit={handleSubmit} style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
+        <form onSubmit={handleSubmit} noValidate style={{ background: '#fff', borderRadius: 12, padding: 32, boxShadow: '0 4px 24px rgba(0,0,0,.08)' }}>
           {apiError && (
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
+            <div role="alert" aria-live="assertive" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: '#dc2626', fontSize: 14 }}>
               {apiError}
             </div>
           )}
 
           {/* Shop Name */}
-          <FieldGroup label="Shop Name" error={fieldErrors.shop_name}>
+          <FieldGroup htmlFor="signup-shop-name" label="Shop Name" error={fieldErrors.shop_name} errorId="signup-shop-name-error">
             <input
+              id="signup-shop-name"
               type="text"
               value={shopName}
               onChange={e => handleShopNameChange(e.target.value)}
               placeholder="My Repair Shop"
               maxLength={100}
               autoFocus
+              aria-invalid={!!fieldErrors.shop_name}
+              aria-describedby={fieldErrors.shop_name ? 'signup-shop-name-error' : undefined}
               style={inputStyle(!!fieldErrors.shop_name)}
             />
           </FieldGroup>
 
           {/* Slug */}
-          <FieldGroup label="Shop URL" error={fieldErrors.slug}>
+          <FieldGroup htmlFor="signup-slug" label="Shop URL" error={fieldErrors.slug} errorId="signup-slug-error">
             <div style={{ display: 'flex' }}>
               <input
+                id="signup-slug"
                 type="text"
                 value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                 placeholder="your-shop"
                 maxLength={30}
+                aria-invalid={!!fieldErrors.slug}
+                aria-describedby={
+                  fieldErrors.slug
+                    ? 'signup-slug-error'
+                    : slugStatus !== 'idle'
+                      ? 'signup-slug-status'
+                      : undefined
+                }
                 style={{ ...inputStyle(!!fieldErrors.slug), borderRadius: '8px 0 0 8px', borderRight: 'none' }}
               />
               <span style={{
                 display: 'flex', alignItems: 'center', padding: '0 12px',
                 background: '#f5f5f5', border: `2px solid ${fieldErrors.slug ? '#fca5a5' : '#ddd'}`,
                 borderLeft: 'none', borderRadius: '0 8px 8px 0', color: '#999', fontSize: 13, whiteSpace: 'nowrap',
-              }}>.{window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname.split('.').slice(-2).join('.')}</span>
+              }}>.{resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}</span>
             </div>
             {slugStatus !== 'idle' && (
-              <div style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
+              <div id="signup-slug-status" style={{ marginTop: 4, fontSize: 13, color: slugStatus === 'available' ? '#16a34a' : slugStatus === 'checking' ? '#999' : '#dc2626' }}>
                 {slugStatus === 'checking' ? 'Checking...' : slugMessage}
               </div>
             )}
           </FieldGroup>
 
           {/* Email */}
-          <FieldGroup label="Email" error={fieldErrors.admin_email}>
+          <FieldGroup htmlFor="signup-email" label="Email" error={fieldErrors.admin_email} errorId="signup-email-error">
             <input
+              id="signup-email"
               type="email"
               value={email}
               onChange={e => { setEmail(e.target.value); setFieldErrors(p => ({ ...p, admin_email: undefined })); }}
               placeholder="you@example.com"
               maxLength={254}
+              aria-invalid={!!fieldErrors.admin_email}
+              aria-describedby={fieldErrors.admin_email ? 'signup-email-error' : undefined}
               style={inputStyle(!!fieldErrors.admin_email)}
             />
           </FieldGroup>
 
           {/* Password */}
-          <FieldGroup label="Password" error={fieldErrors.admin_password}>
+          <FieldGroup htmlFor="signup-password" label="Password" error={fieldErrors.admin_password} errorId="signup-password-error">
             <div style={{ position: 'relative' }}>
               <input
+                id="signup-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => { setPassword(e.target.value); setFieldErrors(p => ({ ...p, admin_password: undefined })); }}
                 placeholder="Min 8 characters"
                 maxLength={128}
+                aria-invalid={!!fieldErrors.admin_password}
+                aria-describedby={fieldErrors.admin_password ? 'signup-password-error' : undefined}
                 style={{ ...inputStyle(!!fieldErrors.admin_password), paddingRight: 44 }}
               />
               <button type="button" onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
                 style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#999', cursor: 'pointer', fontSize: 13, fontFamily: "'Roboto', sans-serif" }}>
                 {showPassword ? 'Hide' : 'Show'}
               </button>
@@ -350,20 +412,23 @@ export function SignupPage() {
           </FieldGroup>
 
           {/* Confirm Password */}
-          <FieldGroup label="Confirm Password" error={fieldErrors.confirm_password}>
+          <FieldGroup htmlFor="signup-confirm-password" label="Confirm Password" error={fieldErrors.confirm_password} errorId="signup-confirm-password-error">
             <input
+              id="signup-confirm-password"
               type={showPassword ? 'text' : 'password'}
               value={confirmPassword}
               onChange={e => { setConfirmPassword(e.target.value); setFieldErrors(p => ({ ...p, confirm_password: undefined })); }}
               placeholder="Repeat password"
               maxLength={128}
+              aria-invalid={!!fieldErrors.confirm_password}
+              aria-describedby={fieldErrors.confirm_password ? 'signup-confirm-password-error' : undefined}
               style={inputStyle(!!fieldErrors.confirm_password)}
             />
           </FieldGroup>
 
 
           {captchaSiteKey && (
-            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError}>
+            <FieldGroup label="Verification" error={fieldErrors.captcha || captchaError} errorId="signup-captcha-error">
               <div ref={captchaContainerRef} style={{ minHeight: 78 }} />
               {!captchaReady && !captchaError && (
                 <div style={{ marginTop: 4, fontSize: 13, color: '#666' }}>Loading verification...</div>
@@ -411,14 +476,14 @@ function inputStyle(hasError: boolean): React.CSSProperties {
   };
 }
 
-function FieldGroup({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function FieldGroup({ label, error, errorId, htmlFor, children }: { label: string; error?: string; errorId?: string; htmlFor?: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 18 }}>
-      <label style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, fontFamily: "'League Spartan', sans-serif", color: '#333' }}>
+      <label htmlFor={htmlFor} style={{ display: 'block', marginBottom: 6, fontSize: 14, fontWeight: 600, fontFamily: "'League Spartan', sans-serif", color: '#333' }}>
         {label}
       </label>
       {children}
-      {error && <div style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
+      {error && <div id={errorId} role="alert" aria-live="polite" style={{ marginTop: 4, fontSize: 13, color: '#dc2626' }}>{error}</div>}
     </div>
   );
 }

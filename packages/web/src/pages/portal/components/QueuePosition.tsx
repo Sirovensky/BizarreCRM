@@ -9,6 +9,11 @@
 import React, { useEffect, useState } from 'react';
 import { getQueuePosition, type QueueData } from './enrichApi';
 import { usePortalI18n } from '../i18n';
+// WEB-FV-008 (Fixer-B21 2026-04-25): three customer-portal widgets used to
+// `.catch(() => {})` on their micro-API calls, hiding ops awareness when
+// portal enrichment endpoints went down. Route the swallow through safeRun
+// so Sentry gets a breadcrumb while the UI still degrades gracefully.
+import { safeRun } from '@/utils/safeRun';
 
 interface QueuePositionProps {
   ticketId: number;
@@ -30,8 +35,10 @@ export function QueuePosition({ ticketId }: QueuePositionProps): React.ReactElem
       .then((data) => {
         if (!cancelled) setQueue(data);
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (!cancelled) setQueue({ enabled: false });
+        // WEB-FV-008: still degrade gracefully, but record a breadcrumb.
+        safeRun(() => { throw err; }, { tag: 'portal:queuePosition', data: { ticketId } });
       });
     return () => {
       cancelled = true;

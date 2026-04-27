@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useMemo } from 'react';
+import { Fragment, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AlertTriangle, RefreshCw, Trash2, RotateCw, TrendingUp, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import { getAPI } from '@/api/bridge';
 import type { CrashEntry, CrashStats, DisabledRoute } from '@/api/bridge';
@@ -19,6 +19,11 @@ export function CrashMonitorPage() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // DASH-ELEC-014: track mount state so the 30 s poll's pending Promise.all
+  // never setState after unmount (route change mid-poll). IPC bridge has no
+  // AbortController hook of its own, so the pattern guards setState only.
+  const mountedRef = useRef(true);
+
   const refresh = useCallback(async () => {
     try {
       const api = getAPI();
@@ -27,6 +32,7 @@ export function CrashMonitorPage() {
         api.management.getCrashStats(),
         api.management.getDisabledRoutes(),
       ]);
+      if (!mountedRef.current) return;
       // MGT-023: pipe each authenticated response through handleApiResponse
       // so a 401 (token expired) triggers auto-logout across all pages.
       if (handleApiResponse(crashRes)) return;
@@ -36,16 +42,20 @@ export function CrashMonitorPage() {
       if (statsRes.success && statsRes.data) setCrashStats(statsRes.data as CrashStats);
       if (routesRes.success && routesRes.data) setDisabledRoutes(routesRes.data as DisabledRoute[]);
     } catch {
-      toast.error('Failed to load crash data');
+      if (mountedRef.current) toast.error('Failed to load crash data');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     refresh();
     const interval = setInterval(refresh, 30_000);
-    return () => clearInterval(interval);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [refresh]);
 
   const handleReenableRoute = async (route: string) => {

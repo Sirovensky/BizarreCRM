@@ -6,6 +6,17 @@ import type { SecurityAlert } from '@/api/bridge';
 import { handleApiResponse } from '@/utils/handleApiResponse';
 import { formatDateTime } from '@/utils/format';
 import { useServerStore } from '@/stores/serverStore';
+import { cn } from '@/utils/cn';
+
+// DASH-ELEC-151 (Fixer-C25 2026-04-25): Tailwind-purge-safe explicit color
+// map. Keys matched to SecurityAlert.severity union; unknown values fall
+// back to the warning amber tone. Static class-name strings live here so
+// the JIT scanner picks them all up at build time.
+const SEVERITY_COLOR: Record<string, string> = {
+  critical: 'text-red-400',
+  warning: 'text-amber-400',
+  info: 'text-sky-400',
+};
 
 interface AuditEntry {
   id: number;
@@ -36,13 +47,19 @@ export function RecentActivityWidget() {
 
   useEffect(() => {
     if (!isMultiTenant) { setLoading(false); return; }
-    let cancelled = false;
+    // DASH-ELEC-011 (Fixer-B26 2026-04-25): swap ad-hoc `cancelled` boolean
+    // for an AbortController. The IPC bridge doesn't accept a signal yet,
+    // but `signal.aborted` is the same gating semantics as the boolean and
+    // promotes us to the standard primitive — when the bridge gains signal
+    // support, we just thread `controller.signal` through getAPI() calls.
+    const controller = new AbortController();
+    const { signal } = controller;
     Promise.all([
       getAPI().superAdmin.getAuditLog({ limit: 5 }),
       getAPI().superAdmin.listSecurityAlerts({ acknowledged: 0, limit: 3 }),
     ])
       .then(([auditRes, alertsRes]) => {
-        if (cancelled) return;
+        if (signal.aborted) return;
         if (handleApiResponse(auditRes) || handleApiResponse(alertsRes)) return;
         if (auditRes.success && auditRes.data) {
           const list = Array.isArray(auditRes.data)
@@ -54,9 +71,9 @@ export function RecentActivityWidget() {
           setAlerts(alertsRes.data.alerts.slice(0, 3));
         }
       })
-      .catch((err) => console.warn('[RecentActivity] fetch failed', err))
-      .finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
+      .catch((err) => { if (!signal.aborted) console.warn('[RecentActivity] fetch failed', err); })
+      .finally(() => { if (!signal.aborted) setLoading(false); });
+    return () => { controller.abort(); };
   }, [isMultiTenant]);
 
   if (!isMultiTenant) return null;
@@ -126,7 +143,7 @@ export function RecentActivityWidget() {
                 {alerts.map((a) => (
                   <li key={a.id} className="text-[11px] leading-tight">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <AlertTriangle className={`w-3 h-3 ${a.severity === 'critical' ? 'text-red-400' : a.severity === 'warning' ? 'text-amber-400' : 'text-sky-400'}`} />
+                      <AlertTriangle className={cn('w-3 h-3', SEVERITY_COLOR[a.severity] ?? SEVERITY_COLOR.warning)} />
                       <span className="font-mono text-surface-200">{a.type}</span>
                       {a.tenant_slug && <span className="text-surface-500">· {a.tenant_slug}</span>}
                     </div>

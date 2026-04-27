@@ -4,44 +4,67 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, settingsApi } from '@/api/endpoints';
+import { formatApiError } from '@/utils/apiError';
+
+// WEB-FL-023 (Fixer-C9 2026-04-25): replace `any[]` / `any` soup on tax-class
+// API result, mutation arg, mutation success res, and onError handler. Tax
+// classes only need {id, name, rate} for the <option>; mutation arg accepts
+// the form shape after coerce-to-numbers; success returns the created item id.
+type TaxClassOption = { id: number; name: string; rate: number };
+type InventoryCreatePayload = Omit<typeof initialForm, 'cost_price' | 'retail_price' | 'in_stock' | 'reorder_level' | 'stock_warning' | 'tax_class_id' | 'tax_inclusive' | 'is_serialized' | 'item_type'> & {
+  item_type: 'product' | 'part' | 'service';
+  cost_price: number;
+  retail_price: number;
+  in_stock: number;
+  reorder_level: number;
+  stock_warning: number;
+  tax_class_id: number | undefined;
+  tax_inclusive: boolean;
+  is_serialized: boolean;
+};
+type InventoryCreateResponse = { data: { data: { id: number } } };
+
+const initialForm = {
+  name: '',
+  item_type: 'product',
+  sku: '',
+  upc: '',
+  category: '',
+  manufacturer: '',
+  device_type: '',
+  description: '',
+  cost_price: '',
+  retail_price: '',
+  in_stock: '0',
+  reorder_level: '0',
+  stock_warning: '5',
+  tax_class_id: '',
+  tax_inclusive: false,
+  is_serialized: false,
+};
 
 export function InventoryCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [form, setForm] = useState({
-    name: '',
-    item_type: 'product',
-    sku: '',
-    upc: '',
-    category: '',
-    manufacturer: '',
-    device_type: '',
-    description: '',
-    cost_price: '',
-    retail_price: '',
-    in_stock: '0',
-    reorder_level: '0',
-    stock_warning: '5',
-    tax_class_id: '',
-    tax_inclusive: false,
-    is_serialized: false,
-  });
+  const [form, setForm] = useState<typeof initialForm>(initialForm);
 
   const { data: taxData } = useQuery({
     queryKey: ['tax-classes'],
     queryFn: () => settingsApi.getTaxClasses(),
   });
-  const taxClasses: any[] = taxData?.data?.data || [];
+  const taxClasses: TaxClassOption[] =
+    ((taxData?.data?.data ?? []) as TaxClassOption[]);
 
   const mutation = useMutation({
-    mutationFn: (data: any) => inventoryApi.create(data),
-    onSuccess: (res: any) => {
+    mutationFn: (data: InventoryCreatePayload) => inventoryApi.create(data),
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       toast.success('Item created');
-      navigate(`/inventory/${res.data.data.id}`);
+      const id = (res as unknown as InventoryCreateResponse).data.data.id;
+      navigate(`/inventory/${id}`);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Failed to create item'),
+    onError: (e: unknown) => toast.error(formatApiError(e)),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -50,18 +73,22 @@ export function InventoryCreatePage() {
     if (!form.retail_price) return toast.error('Retail price is required');
     mutation.mutate({
       ...form,
+      item_type: form.item_type as 'product' | 'part' | 'service',
       cost_price: parseFloat(form.cost_price) || 0,
       retail_price: parseFloat(form.retail_price) || 0,
       in_stock: parseInt(form.in_stock) || 0,
       reorder_level: parseInt(form.reorder_level) || 0,
       stock_warning: parseInt(form.stock_warning) || 5,
-      tax_class_id: form.tax_class_id ? parseInt(form.tax_class_id) : null,
-      tax_inclusive: form.tax_inclusive ? 1 : 0,
-      is_serialized: form.is_serialized ? 1 : 0,
+      tax_class_id: form.tax_class_id ? parseInt(form.tax_class_id) : undefined,
+      tax_inclusive: form.tax_inclusive,
+      is_serialized: form.is_serialized,
     });
   };
 
-  const set = (field: string, value: any) => setForm((f) => ({ ...f, [field]: value }));
+  // WEB-FL-023: typed setter — `K extends keyof typeof initialForm` keeps the
+  // value compatible with each individual field rather than `any`.
+  const set = <K extends keyof typeof initialForm>(field: K, value: typeof initialForm[K]) =>
+    setForm((f) => ({ ...f, [field]: value }));
 
   return (
     <div>
@@ -147,7 +174,7 @@ export function InventoryCreatePage() {
                   <label className="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">Tax Class</label>
                   <select value={form.tax_class_id} onChange={(e) => set('tax_class_id', e.target.value)} className="input w-full">
                     <option value="">No Tax</option>
-                    {taxClasses.map((tc: any) => <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>)}
+                    {taxClasses.map((tc) => <option key={tc.id} value={tc.id}>{tc.name} ({tc.rate}%)</option>)}
                   </select>
                 </div>
               </div>
@@ -186,7 +213,7 @@ export function InventoryCreatePage() {
           {/* Sidebar */}
           <div>
             <div className="card p-6 sticky top-6">
-              <button type="submit" disabled={mutation.isPending} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 mb-3">
+              <button type="submit" disabled={mutation.isPending} className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors disabled:opacity-50 mb-3">
                 {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 Create Item
               </button>

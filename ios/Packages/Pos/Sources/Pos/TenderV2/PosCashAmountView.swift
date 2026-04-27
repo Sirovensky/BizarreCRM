@@ -5,11 +5,19 @@ import DesignSystem
 
 /// §D — Cash amount entry view.
 ///
-/// - Numpad built with `Grid` + `GridRow` (not `LazyVGrid`) for uniform
-///   column alignment. Min key height: 56pt iPhone / 72pt iPad.
-/// - Quick-amount chip strip above the numpad: Exact / +$5 / +$10 / +$20 / custom.
-/// - Received/change glass panel at the top showing live arithmetic.
-/// - Barlow Condensed digits throughout.
+/// Renders the full mockup 5b (iPhone) / 4b (iPad) cash numpad screen:
+///   1. Selected-method confirmation strip (gradient icon + "Cash payment" +
+///      due subtitle + "Active" success chip).
+///   2. "Cash received" section label.
+///   3. Two-column glass panel: Received | Change.
+///   4. "Quick amount" section label.
+///   5. Horizontally-scrolling quick-amount chip row.
+///   6. 3×4 numpad (`.` decimal, `0`, `⌫` error-coloured).
+///   7. Sticky footer: "Split tender" + "Add tip" aux buttons + "Confirm cash"
+///      gradient CTA.
+///
+/// Numpad built with `Grid` + `GridRow` (not `LazyVGrid`) for uniform column
+/// alignment. Min key height: 56 pt iPhone / 72 pt iPad.
 public struct PosCashAmountView: View {
 
     /// Amount due for this leg (cents).
@@ -64,21 +72,107 @@ public struct PosCashAmountView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            glassPanel
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.top, BrandSpacing.lg)
+            ScrollView {
+                VStack(spacing: 0) {
+                    methodStrip
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.top, BrandSpacing.sm)
 
-            quickChipStrip
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.top, BrandSpacing.md)
+                    sectionLabel("Cash received")
 
-            Spacer(minLength: BrandSpacing.md)
+                    glassPanel
+                        .padding(.horizontal, BrandSpacing.base)
 
-            numpad
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.bottom, BrandSpacing.md)
+                    sectionLabel("Quick amount")
+
+                    quickChipStrip
+                        .padding(.bottom, BrandSpacing.xxs)
+
+                    numpad
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.bottom, BrandSpacing.sm)
+                }
+            }
+
+            confirmFooter
         }
         .background(theme.bg.ignoresSafeArea())
+    }
+
+    // MARK: - Method confirmation strip
+
+    /// Selected-method strip: gradient 34×34 icon tile, title + subtitle, Active chip.
+    private var methodStrip: some View {
+        HStack(spacing: 10) {
+            // Gradient icon tile
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(
+                        LinearGradient(
+                            colors: [theme.primaryBright, theme.primary],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .frame(width: 34, height: 34)
+                    .shadow(color: theme.primary.opacity(0.22), radius: 5, x: 0, y: 4)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .strokeBorder(Color.white.opacity(0.6), lineWidth: 0.5)
+                            .blendMode(.overlay)
+                    )
+                Text("💵")
+                    .font(.system(size: 17))
+            }
+            .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Cash payment")
+                    .font(.brandLabelLarge())
+                    .fontWeight(.bold)
+                    .foregroundStyle(theme.primary)
+                Text("Due: \(CartMath.formatCents(dueCents)) · enter amount received below")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(theme.muted)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Active chip
+            Text("Active")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(theme.onPrimary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(theme.success, in: Capsule())
+                .accessibilityLabel("Status: Active")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(theme.primary.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .strokeBorder(theme.primary.opacity(0.25), lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Cash payment selected. Due: \(CartMath.formatCents(dueCents)). Active.")
+        .accessibilityIdentifier("pos.cashAmountV2.methodStrip")
+    }
+
+    // MARK: - Section label
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10.5, weight: .semibold))
+            .tracking(1.4)
+            .textCase(.uppercase)
+            .foregroundStyle(theme.muted2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
     }
 
     // MARK: - Glass panel
@@ -89,47 +183,44 @@ public struct PosCashAmountView: View {
             // Received column
             VStack(spacing: BrandSpacing.xxs) {
                 Text("Received")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(theme.muted)
+                    .font(.system(size: 11, weight: .semibold))
                     .tracking(0.6)
                     .textCase(.uppercase)
-                Text(receivedCents == 0 ? "—" : CartMath.formatCents(receivedCents))
-                    .font(.brandDisplayMedium())
-                    .foregroundStyle(receivedCents == 0 ? theme.muted : theme.on)
-                    .monospacedDigit()
+                    .foregroundStyle(theme.muted)
+
+                receivedAmountText()
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .monospacedDigit()
                     .contentTransition(.numericText(countsDown: false))
                     .animation(reduceMotion ? .none : .spring(duration: 0.2), value: receivedCents)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.65)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Amount received: \(receivedCents == 0 ? "none" : CartMath.formatCents(receivedCents))")
 
-            Divider()
-                .frame(height: 48)
-                .background(theme.outline)
+            Rectangle()
+                .fill(theme.outline)
+                .frame(width: 1, height: 48)
 
             // Change column
             VStack(spacing: BrandSpacing.xxs) {
                 Text("Change")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(theme.muted)
+                    .font(.system(size: 11, weight: .semibold))
                     .tracking(0.6)
                     .textCase(.uppercase)
+                    .foregroundStyle(theme.muted)
                 Text(receivedCents >= dueCents ? CartMath.formatCents(changeCents) : "—")
-                    .font(.brandDisplayMedium())
+                    .font(.custom("BarlowCondensed-Bold", size: 30, relativeTo: .title))
                     .foregroundStyle(
-                        receivedCents >= dueCents && changeCents > 0
-                            ? theme.primary
-                            : theme.muted
+                        receivedCents >= dueCents ? theme.success : theme.muted
                     )
-                    .monospacedDigit()
                     .dynamicTypeSize(...DynamicTypeSize.accessibility2)
+                    .monospacedDigit()
                     .contentTransition(.numericText(countsDown: false))
                     .animation(reduceMotion ? .none : .spring(duration: 0.2), value: changeCents)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.65)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
@@ -139,26 +230,48 @@ public struct PosCashAmountView: View {
         }
         .padding(.vertical, BrandSpacing.md)
         .padding(.horizontal, BrandSpacing.base)
-        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 16))
+        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 18))
         .accessibilityIdentifier("pos.cashAmountV2.glassPanel")
+    }
+
+    /// Received amount styled with muted cents portion (e.g. "$300" + muted ".00").
+    /// Uses SwiftUI Text-concatenation (+) so both branches return `Text` — no @ViewBuilder.
+    private func receivedAmountText() -> Text {
+        if receivedCents == 0 {
+            return Text("—")
+                .font(.custom("BarlowCondensed-Bold", size: 40, relativeTo: .largeTitle))
+                .foregroundColor(theme.muted)
+        }
+        let formatted = CartMath.formatCents(receivedCents)
+        if let dotRange = formatted.range(of: ".") {
+            let whole = String(formatted[formatted.startIndex ..< dotRange.lowerBound])
+            let cents = String(formatted[dotRange.lowerBound...])
+            return Text(whole)
+                .font(.custom("BarlowCondensed-Bold", size: 40, relativeTo: .largeTitle))
+                .foregroundColor(theme.on)
+            + Text(cents)
+                .font(.custom("BarlowCondensed-Medium", size: 40, relativeTo: .largeTitle))
+                .foregroundColor(theme.muted)
+        }
+        return Text(formatted)
+            .font(.custom("BarlowCondensed-Bold", size: 40, relativeTo: .largeTitle))
+            .foregroundColor(theme.on)
     }
 
     // MARK: - Quick chip strip
 
     /// Round-up presets above the due amount.
-    /// Matches mockup 5b/4b: "Exact · $N · $N+5 · $N+10 · $N+20"
-    /// where N values are the next whole-dollar round-up thresholds.
+    /// Matches mockup 5b/4b: "Exact · $275 · $280 · $300 · $320"
+    /// (next whole-dollar + $5 round-up increments around the due amount).
     private var quickAmountPresets: [(label: String, cents: Int)] {
         let exact = dueCents
-        // Round up to the next dollar, then add $5 increments
-        let nextDollar = ((dueCents + 99) / 100) * 100  // ceiling to whole dollars
+        let nextDollar = ((dueCents + 99) / 100) * 100
         let presets: [Int] = [
             nextDollar,
-            roundUpTo(dueCents, multiple: 500),   // next $5
-            roundUpTo(dueCents, multiple: 1000),  // next $10
-            roundUpTo(dueCents, multiple: 2000),  // next $20
+            roundUpTo(dueCents, multiple: 500),
+            roundUpTo(dueCents, multiple: 1000),
+            roundUpTo(dueCents, multiple: 2000),
         ]
-        // Deduplicate & sort, skip values equal to exact
         var seen = Set<Int>()
         var result: [(String, Int)] = [("Exact", exact)]
         for cents in presets.sorted() {
@@ -175,15 +288,15 @@ public struct PosCashAmountView: View {
 
     private var quickChipStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.sm) {
+            HStack(spacing: 6) {
                 ForEach(quickAmountPresets, id: \.cents) { preset in
                     quickChip(label: preset.label, selected: receivedCents == preset.cents) {
-                        // Store as dollars string (e.g. "300" → interpreted as $300.00)
                         digits = "\(preset.cents / 100)"
                     }
                 }
             }
-            .padding(.horizontal, 1)
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, 2)
         }
         .accessibilityLabel("Quick amount presets")
     }
@@ -191,19 +304,29 @@ public struct PosCashAmountView: View {
     private func quickChip(label: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
-                .font(.brandLabelLarge())
-                .foregroundStyle(selected ? theme.onPrimary : theme.on)
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.sm)
+                .font(.custom("BarlowCondensed-Bold", size: 17, relativeTo: .body))
+                .tracking(-0.1)
+                .foregroundStyle(selected ? theme.primary : theme.on)
+                .frame(minWidth: 68)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 11)
                 .background(
-                    selected ? theme.primary : theme.surfaceElev,
-                    in: Capsule()
+                    Capsule()
+                        .fill(
+                            selected
+                            ? AnyShapeStyle(theme.primary.opacity(0.06))
+                            : AnyShapeStyle(Color.white.opacity(0.04))
+                        )
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        selected ? theme.primary : theme.outline,
-                        lineWidth: selected ? 0 : 0.5
+                        selected ? theme.primary.opacity(0.40) : Color.white.opacity(0.11),
+                        lineWidth: 1
                     )
+                )
+                .shadow(
+                    color: selected ? theme.primary.opacity(0.06) : .clear,
+                    radius: 6, x: 0, y: 4
                 )
         }
         .buttonStyle(.plain)
@@ -218,7 +341,7 @@ public struct PosCashAmountView: View {
     private var numpad: some View {
         let minKeyHeight: CGFloat = (sizeClass == .regular) ? 72 : 56
 
-        return Grid(horizontalSpacing: BrandSpacing.sm, verticalSpacing: BrandSpacing.sm) {
+        return Grid(horizontalSpacing: 8, verticalSpacing: 8) {
             GridRow {
                 numpadKey("1", minHeight: minKeyHeight)
                 numpadKey("2", minHeight: minKeyHeight)
@@ -249,15 +372,13 @@ public struct PosCashAmountView: View {
             appendDigits(label)
         } label: {
             Text(label)
-                .font(.custom("BarlowCondensed-SemiBold", size: 28, relativeTo: .title))
+                .font(.custom("BarlowCondensed-Bold", size: 26, relativeTo: .title))
+                .tracking(-0.1)
                 .foregroundStyle(theme.on)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: minHeight)
-                .background(theme.surfaceElev, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(theme.outline, lineWidth: 0.5)
-                )
+                .background(numKeyBackground)
+                .overlay(numKeyBorder)
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
@@ -270,15 +391,12 @@ public struct PosCashAmountView: View {
             appendDecimal()
         } label: {
             Text(".")
-                .font(.custom("BarlowCondensed-SemiBold", size: 28, relativeTo: .title))
-                .foregroundStyle(theme.on)
+                .font(.custom("BarlowCondensed-Bold", size: 26, relativeTo: .title))
+                .foregroundStyle(theme.muted)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: minHeight)
-                .background(theme.surfaceElev, in: RoundedRectangle(cornerRadius: 12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(theme.outline, lineWidth: 0.5)
-                )
+                .background(numKeyBackground)
+                .overlay(numKeyBorder)
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
@@ -290,11 +408,96 @@ public struct PosCashAmountView: View {
         Button {
             deleteDigit()
         } label: {
-            Image(systemName: "delete.backward")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundStyle(theme.muted)
+            Text("⌫")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(theme.error)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: minHeight)
+                .background(numKeyBackground)
+                .overlay(numKeyBorder)
+        }
+        .buttonStyle(.plain)
+        .hoverEffect(.highlight)
+        .accessibilityLabel("Delete")
+        .accessibilityIdentifier("pos.cashAmountV2.key.delete")
+    }
+
+    private var numKeyBackground: some View {
+        RoundedRectangle(cornerRadius: 14)
+            .fill(Color.white.opacity(0.055))
+            .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 4)
+    }
+
+    private var numKeyBorder: some View {
+        RoundedRectangle(cornerRadius: 14)
+            .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+    }
+
+    // MARK: - Confirm footer
+
+    /// Sticky footer: aux buttons row + gradient CTA — matches mockup `tender-safearea`.
+    private var confirmFooter: some View {
+        VStack(spacing: 0) {
+            Divider()
+                .background(theme.outline)
+
+            VStack(spacing: 8) {
+                // Aux row
+                HStack(spacing: 10) {
+                    auxButton("+ Split tender") {
+                        onCancel()
+                    }
+                    auxButton("Add tip") {
+                        // Tip is handled globally by PosTenderAmountBar when present.
+                        // Here a no-op matches the mockup presence of the button.
+                    }
+                }
+
+                // Primary CTA
+                Button {
+                    guard canConfirm else { return }
+                    onConfirm(receivedCents)
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("Confirm cash")
+                            .font(.system(size: 17, weight: .heavy))
+                            .tracking(-0.01 * 17)
+
+                        Text(CartMath.formatCents(dueCents))
+                            .font(.custom("BarlowCondensed-Bold", size: 22, relativeTo: .title))
+                            .monospacedDigit()
+
+                        Text("›")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(theme.onPrimary)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 56)
+                    .background(confirmBackground)
+                    .overlay(confirmBorder)
+                    .opacity(canConfirm ? 1.0 : 0.45)
+                }
+                .buttonStyle(.plain)
+                .hoverEffect(.highlight)
+                .disabled(!canConfirm)
+                .accessibilityLabel("Confirm cash payment of \(CartMath.formatCents(dueCents))")
+                .accessibilityHint(canConfirm ? "Finalise cash tender" : "Enter an amount equal to or greater than the due amount")
+                .accessibilityIdentifier("pos.cashAmountV2.confirm")
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, BrandSpacing.sm)
+            .padding(.bottom, BrandSpacing.lg)
+            .background(.ultraThinMaterial)
+        }
+    }
+
+    private func auxButton(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(theme.on)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
                 .background(theme.surfaceElev, in: RoundedRectangle(cornerRadius: 12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
@@ -303,19 +506,31 @@ public struct PosCashAmountView: View {
         }
         .buttonStyle(.plain)
         .hoverEffect(.highlight)
-        .accessibilityLabel("Delete")
-        .accessibilityIdentifier("pos.cashAmountV2.key.delete")
+    }
+
+    private var confirmBackground: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .fill(
+                LinearGradient(
+                    colors: [theme.primaryBright, theme.primary],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .shadow(color: theme.primary.opacity(0.12), radius: 10, x: 0, y: 8)
+    }
+
+    private var confirmBorder: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
     }
 
     // MARK: - Digit management
 
     private func appendDigits(_ s: String) {
-        // Cap total length (e.g. "9999999.99" = 10 chars max)
         let maxLen = 10
         guard digits.count + s.count <= maxLen else { return }
-        // Don't allow multiple decimal points
         if s == "." && digits.contains(".") { return }
-        // Don't allow more than 2 decimal places
         if let dotIdx = digits.firstIndex(of: ".") {
             let decimals = digits.distance(from: digits.index(after: dotIdx), to: digits.endIndex)
             if decimals >= 2 { return }
@@ -338,7 +553,6 @@ public struct PosCashAmountView: View {
     private func deleteDigit() {
         guard !digits.isEmpty else { return }
         digits.removeLast()
-        // Clean up trailing "0." → ""
         if digits == "0" { digits = "" }
     }
 }

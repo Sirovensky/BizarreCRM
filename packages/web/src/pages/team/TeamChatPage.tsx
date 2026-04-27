@@ -4,14 +4,37 @@
  * Polling-based MVP. Channels list on the left, messages on the right. New
  * message input at the bottom uses the MentionPicker to insert @username.
  *
- * Polling interval: 5 seconds, only while the page is visible. The endpoint
+ * Polling interval: 15 seconds, only while the page is visible. The endpoint
  * supports `?after=<lastId>` so each tick is incremental, not a full reload.
+ *
+ * @audit-fixed (WEB-FAD-003): the original 5s tick had no visibility gate,
+ * so background tabs hammered `/team-chat/channels/:id/messages?limit=200`
+ * at 720 reqs/hr. Now: 15s tick + `refetchIntervalInBackground: false` +
+ * a visibilitychange listener that triggers an immediate refetch when the
+ * tab comes forward (so chat doesn't look frozen on tab switch).
  */
 import { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { MessageSquare, Send, Plus, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import axios from 'axios';
 import { api } from '@/api/client';
+
+// @audit-fixed (WEB-FA-007 / Fixer-B1 2026-04-25): typed error narrowing for
+// mutation onError handlers. Previous `e: any` lost contract guards on the
+// API response shape; this helper gives us a stable string regardless of
+// whether the error is an axios response (`{error}` body), a thrown Error
+// (timeout / aborted / network), or something else.
+function describeError(e: unknown, fallback: string): string {
+  if (axios.isAxiosError(e)) {
+    const data = e.response?.data as { error?: unknown; message?: unknown } | undefined;
+    if (typeof data?.error === 'string') return data.error;
+    if (typeof data?.message === 'string') return data.message;
+    if (e.message) return e.message;
+  }
+  if (e instanceof Error && e.message) return e.message;
+  return fallback;
+}
 import { MentionPicker } from '@/components/team/MentionPicker';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -60,10 +83,19 @@ export function TeamChatPage() {
   });
   const channels: Channel[] = channelsData || [];
 
-  const { data: messagesData } = useQuery({
+  const { data: messagesData, refetch: refetchMessages } = useQuery({
     queryKey: ['team-chat', 'messages', selectedChannelId],
     enabled: !!selectedChannelId,
-    refetchInterval: 5_000,
+    // 15s tick + skip-when-hidden. TanStack respects
+    // refetchIntervalInBackground:false by suspending the timer on
+    // visibilitychange, but we still gate refetchInterval below as a
+    // belt-and-braces guard for browsers that fire the timer anyway.
+    refetchInterval: () =>
+      typeof document !== 'undefined' && document.visibilityState !== 'visible'
+        ? false
+        : 15_000,
+    refetchIntervalInBackground: false,
+    staleTime: 4_000,
     queryFn: async () => {
       const res = await api.get<{ success: boolean; data: Message[] }>(
         `/team-chat/channels/${selectedChannelId}/messages?limit=200`,
@@ -73,9 +105,32 @@ export function TeamChatPage() {
   });
   const messages: Message[] = messagesData || [];
 
+  // Resume immediately when the tab comes back to the foreground so users
+  // don't stare at a stale chat for up to 15s after switching tabs.
+  useEffect(() => {
+    if (!selectedChannelId) return;
+    const onVis = () => {
+      if (document.visibilityState === 'visible') {
+        refetchMessages();
+      }
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [selectedChannelId, refetchMessages]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
+  // WEB-FX-003: Esc dismisses the New-channel modal.
+  useEffect(() => {
+    if (!showNew) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowNew(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [showNew]);
 
   const sendMut = useMutation({
     mutationFn: async () => {
@@ -88,7 +143,7 @@ export function TeamChatPage() {
       setDraft('');
       queryClient.invalidateQueries({ queryKey: ['team-chat', 'messages', selectedChannelId] });
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to send'),
+    onError: (e: unknown) => toast.error(describeError(e, 'Failed to send')),
   });
 
   const createChannelMut = useMutation({
@@ -107,18 +162,25 @@ export function TeamChatPage() {
       setNewChannelName('');
       if (created?.id) setSelectedChannelId(created.id);
     },
-    onError: (e: any) => toast.error(e?.response?.data?.error || e?.message || 'Failed to create channel'),
+    onError: (e: unknown) => toast.error(describeError(e, 'Failed to create channel')),
   });
 
+  // WEB-FA-020 (Fixer-C7 2026-04-25): bound the mention regex to 0-32 chars
+  // and the same character class (`[a-zA-Z0-9_.\-]`) the server uses in
+  // `parseMentionUsernames` (teamChat.routes.ts:86). Without the upper bound,
+  // typing `@` then a 100-char run of dots would still open the picker even
+  // though the server would discard the token (>32 char cap). The picker
+  // popup is also dismissed once the typed run exceeds 32 chars so the user
+  // gets a visible signal that the candidate is now invalid.
+  const MENTION_TAIL_RE = /@[a-zA-Z0-9_.\-]{0,32}$/;
   function handleDraftChange(value: string) {
     setDraft(value);
-    // Open the mention picker when the user types '@' followed by 0+ chars at the end.
     const tail = value.slice(0, inputRef.current?.selectionStart ?? value.length);
-    setShowMentions(/@[a-zA-Z0-9_.-]*$/.test(tail));
+    setShowMentions(MENTION_TAIL_RE.test(tail));
   }
 
   function insertMention(username: string) {
-    setDraft((prev) => prev.replace(/@[a-zA-Z0-9_.-]*$/, `@${username} `));
+    setDraft((prev) => prev.replace(MENTION_TAIL_RE, `@${username} `));
     setShowMentions(false);
     inputRef.current?.focus();
   }
@@ -131,7 +193,7 @@ export function TeamChatPage() {
         </h1>
         {canCreateGeneralChannel ? (
           <button
-            className="px-3 py-1.5 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center"
+            className="px-3 py-1.5 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center"
             onClick={() => setShowNew(true)}
           >
             <Plus className="w-4 h-4 mr-1" /> Channel
@@ -211,7 +273,7 @@ export function TeamChatPage() {
                 }}
               />
               <button
-                className="px-4 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700 inline-flex items-center"
+                className="px-4 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700 inline-flex items-center"
                 disabled={!draft.trim() || sendMut.isPending}
                 onClick={() => sendMut.mutate()}
               >
@@ -230,9 +292,20 @@ export function TeamChatPage() {
       </div>
 
       {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-5">
-            <h2 className="text-lg font-bold mb-4">New channel</h2>
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowNew(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-channel-title"
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="new-channel-title" className="text-lg font-bold mb-4">New channel</h2>
             <label className="block mb-3">
               <span className="text-xs font-semibold text-gray-600">Channel name</span>
               <input
@@ -251,7 +324,7 @@ export function TeamChatPage() {
                 Cancel
               </button>
               <button
-                className="flex-1 px-3 py-2 bg-primary-600 text-white rounded text-sm hover:bg-primary-700"
+                className="flex-1 px-3 py-2 bg-primary-600 text-primary-950 rounded text-sm hover:bg-primary-700"
                 disabled={!newChannelName || createChannelMut.isPending}
                 onClick={() => createChannelMut.mutate()}
               >

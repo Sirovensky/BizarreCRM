@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Plus, RefreshCw, Trash2, Eye } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { crmApi } from '@/api/endpoints';
+import { confirm } from '@/stores/confirmStore';
 import { formatCents } from '@/utils/format';
 
 /**
@@ -106,7 +107,7 @@ export function SegmentsPage() {
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-lg font-medium"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium"
         >
           <Plus className="h-4 w-4" /> New segment
         </button>
@@ -168,7 +169,16 @@ export function SegmentsPage() {
                       </button>
                       {s.is_auto === 0 && (
                         <button
-                          onClick={() => remove.mutate(s.id)}
+                          onClick={async () => {
+                            // FC-007: themed confirm prevents single-click destruction of a hand-built
+                            // segment that may be referenced by running campaigns. Auto segments are
+                            // protected by the is_auto guard above.
+                            const ok = await confirm(
+                              `Delete segment "${s.name}"? Campaigns referencing it will fail to send to its members.`,
+                              { title: 'Delete segment', confirmLabel: 'Delete', danger: true },
+                            );
+                            if (ok) remove.mutate(s.id);
+                          }}
                           disabled={remove.isPending && remove.variables === s.id}
                           className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 disabled:opacity-40"
                           title="Delete"
@@ -215,6 +225,12 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
   const [op, setOp] = useState<typeof RULE_OPS[number]['value']>('>');
   const [value, setValue] = useState('');
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const create = useMutation({
     mutationFn: async () => {
       const ruleValue = isNaN(Number(value)) ? value : Number(value);
@@ -227,14 +243,21 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
       onCreated();
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error ?? 'Failed to create segment');
+      // WEB-FC-019 (Fixer-KKK 2026-04-25): prefer .message (canonical); .error kept as fallback.
+      toast.error(err?.response?.data?.message ?? err?.response?.data?.error ?? 'Failed to create segment');
     },
   });
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-md w-full p-6 space-y-4">
-        <h2 className="text-lg font-bold text-surface-900 dark:text-surface-100">New segment</h2>
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-segment-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-md w-full p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <h2 id="new-segment-title" className="text-lg font-bold text-surface-900 dark:text-surface-100">New segment</h2>
 
         <div>
           <label className="block text-xs font-medium text-surface-600 mb-1">Name</label>
@@ -304,7 +327,7 @@ function CreateSegmentModal({ onClose, onCreated }: CreateProps) {
           <button
             onClick={() => create.mutate()}
             disabled={create.isPending || !name.trim() || !value.trim()}
-            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white font-medium disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 font-medium disabled:opacity-50"
           >
             Create
           </button>
@@ -326,11 +349,23 @@ function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => v
 
   const members: Member[] = (data as any)?.data?.members ?? [];
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="segment-members-title"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white dark:bg-surface-900 rounded-xl max-w-2xl w-full max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <header className="p-4 border-b border-surface-200 dark:border-surface-700">
-          <h2 className="font-bold text-surface-900 dark:text-surface-100">{segment.name}</h2>
+          <h2 id="segment-members-title" className="font-bold text-surface-900 dark:text-surface-100">{segment.name}</h2>
           <p className="text-xs text-surface-500">{segment.member_count} members</p>
         </header>
         <div className="flex-1 overflow-auto p-4">
@@ -353,7 +388,7 @@ function MembersModal({ segment, onClose }: { segment: Segment; onClose: () => v
           )}
         </div>
         <footer className="p-4 border-t border-surface-200 dark:border-surface-700 flex justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-white">Close</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950">Close</button>
         </footer>
       </div>
     </div>

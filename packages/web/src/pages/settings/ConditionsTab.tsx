@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import { settingsApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
+import { formatApiError } from '@/utils/apiError';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -462,8 +463,10 @@ function ChecklistTemplatesSection() {
         <div className="card p-4 mb-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
+              aria-label="Template name"
               placeholder="Template name (e.g. Screen Replacement)" className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100" />
             <select value={form.device_type} onChange={(e) => setForm({ ...form, device_type: e.target.value })}
+              aria-label="Device type"
               className="px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100">
               <option value="">All Device Types</option>
               <option value="Phone">Phone</option>
@@ -475,10 +478,11 @@ function ChecklistTemplatesSection() {
             </select>
           </div>
           <textarea value={form.items} onChange={(e) => setForm({ ...form, items: e.target.value })}
+            aria-label="Checklist items"
             rows={5} placeholder="One checklist item per line:&#10;1. Open device&#10;2. Remove battery&#10;3. Replace screen&#10;4. Test display&#10;5. Reassemble"
             className="w-full px-3 py-2 text-sm border border-surface-200 dark:border-surface-700 rounded-lg bg-white dark:bg-surface-800 text-surface-900 dark:text-surface-100 font-mono resize-none" />
           <div className="flex gap-2 mt-2">
-            <button onClick={handleSubmit} className="px-3 py-1.5 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            <button onClick={handleSubmit} className="px-3 py-1.5 text-sm bg-primary-600 text-primary-950 rounded-lg hover:bg-primary-700">
               {editingId ? 'Update' : 'Create'}
             </button>
             <button onClick={() => { setShowAdd(false); setEditingId(null); }} className="px-3 py-1.5 text-sm text-surface-500 hover:text-surface-700">Cancel</button>
@@ -509,7 +513,10 @@ function ChecklistTemplatesSection() {
                 </div>
                 <div className="flex gap-1 shrink-0">
                   <button aria-label="Edit" onClick={() => handleEdit(t)} className="p-1 text-surface-400 hover:text-amber-600"><Pencil className="h-3.5 w-3.5" /></button>
-                  <button aria-label="Delete" onClick={async () => { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                  <button aria-label="Delete" onClick={async () => {
+                    try { if (await confirm('Delete this template?', { danger: true })) deleteMut.mutate(t.id); }
+                    catch (err) { toast.error(formatApiError(err)); }
+                  }} className="p-1 text-surface-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
                 </div>
               </div>
             );

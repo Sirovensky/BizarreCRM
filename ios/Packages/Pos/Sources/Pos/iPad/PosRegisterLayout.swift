@@ -449,6 +449,7 @@ public struct PosIPadInspectorPane: View {
                         Text(sku)
                             .font(.brandMono(size: 12))
                             .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .textSelection(.enabled)
                     }
                 }
             }
@@ -520,10 +521,10 @@ public struct PosIPadInspectorPane: View {
                     .font(.brandTitleSmall())
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
-                    .foregroundStyle(Color(hex: 0x2B1400))
+                    .foregroundStyle(Color.bizarreOnPrimary)
                     .background(
                         LinearGradient(
-                            colors: [Color(hex: 0xFFF7E0), Color(hex: 0xFDEED0)],
+                            colors: [Color.bizarreOrange.opacity(0.92), Color.bizarreOrange],
                             startPoint: .top,
                             endPoint: .bottom
                         ),
