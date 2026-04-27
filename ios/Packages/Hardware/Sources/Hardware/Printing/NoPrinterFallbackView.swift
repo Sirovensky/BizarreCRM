@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import Core
+import DesignSystem
 
 // MARK: - NoPrinterFallbackView
 //
@@ -105,7 +106,7 @@ public struct NoPrinterFallbackView: View {
                 if let err = pdfError {
                     Text(err)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(.bizarreError)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                         .accessibilityLabel("Error: \(err)")

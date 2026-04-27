@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import SwiftUI
 import Core
+import DesignSystem
 
 // MARK: - CashDrawerFallbackView
 //
@@ -59,7 +60,7 @@ public struct CashDrawerFallbackView: View {
             if didLog {
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(.bizarreSuccess)
                         .accessibilityHidden(true)
                     Text("Manual open logged")
                         .font(.caption)
