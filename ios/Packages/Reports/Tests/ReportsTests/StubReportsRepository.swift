@@ -47,6 +47,14 @@ actor StubReportsRepository: ReportsRepository {
     var emailReportError: Error? = nil
     var technicianResult: Result<[TechnicianPerfRow], Error> = .success([])
     var taxReportResult: Result<TaxReportResponse, Error> = .success(TaxReportResponse())
+    // §15.2
+    var topCustomersResult: Result<[TopCustomerRow], Error> = .success([])
+    // §15.3
+    var ticketsTrendResult: Result<[TicketDayPoint], Error> = .success([])
+    var busyHoursResult: Result<[BusyHourCell], Error> = .success([])
+    var slaSummaryResult: Result<SLABreachSummary, Error> = .failure(
+        ReportsRepositoryError.endpointNotImplemented("/reports/sla")
+    )
 
     // MARK: - Call tracking
 
@@ -138,6 +146,24 @@ actor StubReportsRepository: ReportsRepository {
 
     func getTaxReport(from: String, to: String) async throws -> TaxReportResponse {
         try taxReportResult.get()
+    }
+
+    // §15.2
+    func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow] {
+        try topCustomersResult.get()
+    }
+
+    // §15.3
+    func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint] {
+        try ticketsTrendResult.get()
+    }
+
+    func getBusyHours(from: String, to: String) async throws -> [BusyHourCell] {
+        try busyHoursResult.get()
+    }
+
+    func getSLASummary(from: String, to: String) async throws -> SLABreachSummary {
+        try slaSummaryResult.get()
     }
 }
 

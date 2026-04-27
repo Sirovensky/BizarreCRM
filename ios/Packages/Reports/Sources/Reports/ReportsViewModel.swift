@@ -49,6 +49,24 @@ public final class ReportsViewModel {
     public var taxReport: TaxReportResponse?
     public var taxReportLoading: Bool = false
 
+    // MARK: - §15.2 YoY growth + top customers
+    public var yoyPoints: [YoYDataPoint] = []
+    public var topCustomers: [TopCustomerRow] = []
+
+    // MARK: - §15.3 Tickets trend (opened/closed per day)
+    public var ticketsTrend: [TicketDayPoint] = []
+    /// §15.3 Tickets by tech (derived from employeePerf)
+    public var ticketsByTech: [TicketsByTechPoint] {
+        employeePerf.map { TicketsByTechPoint(from: $0) }
+    }
+    /// §15.3 Busy-hours heatmap
+    public var busyHours: [BusyHourCell] = []
+    /// §15.3 SLA breach summary
+    public var slaSummary: SLABreachSummary?
+
+    // MARK: - §15.4 Selected tech for drill-through sheet
+    public var selectedTech: TechnicianPerfRow?
+
     // MARK: - Loading / error
 
     public var isLoading = false
@@ -96,6 +114,13 @@ public final class ReportsViewModel {
             group.addTask { await self.loadNPS() }
             group.addTask { await self.loadTechnicianPerf() }
             group.addTask { await self.loadTaxReport() }
+            // §15.2
+            group.addTask { await self.loadTopCustomers() }
+            group.addTask { await self.loadYoYGrowth() }
+            // §15.3
+            group.addTask { await self.loadTicketsTrend() }
+            group.addTask { await self.loadBusyHours() }
+            group.addTask { await self.loadSLASummary() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -232,6 +257,85 @@ public final class ReportsViewModel {
         } catch {
             // Tax endpoint may not yet be live — leave nil
             taxReport = nil
+        }
+    }
+
+    // MARK: - §15.2 Top customers → GET /api/v1/reports/top-customers
+
+    private func loadTopCustomers() async {
+        do {
+            topCustomers = try await repository.getTopCustomers(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            // Endpoint may not exist yet — suppress
+            topCustomers = []
+        }
+    }
+
+    // MARK: - §15.2 YoY growth (derived from two sales report fetches)
+    //
+    // Fetch current period + prior-year equivalent period. Build YoYDataPoint per row.
+
+    private func loadYoYGrowth() async {
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withFullDate]
+        guard let currentFrom = fmt.date(from: fromDateString),
+              let currentTo = fmt.date(from: toDateString) else { return }
+        // Prior year: shift both dates back by 365 days
+        let priorFrom = fmt.string(from: currentFrom.addingTimeInterval(-365 * 86400))
+        let priorTo   = fmt.string(from: currentTo.addingTimeInterval(-365 * 86400))
+        do {
+            async let current = repository.getSalesReport(from: fromDateString, to: toDateString, groupBy: granularity.rawValue)
+            async let prior   = repository.getSalesReport(from: priorFrom, to: priorTo, groupBy: granularity.rawValue)
+            let (cur, pri) = try await (current, prior)
+            // Zip rows by position (same bucket count expected)
+            let n = min(cur.rows.count, pri.rows.count)
+            yoyPoints = (0..<n).map { idx in
+                YoYDataPoint(
+                    period: cur.rows[idx].date,
+                    currentRevenue: cur.rows[idx].amountDollars,
+                    priorRevenue: pri.rows[idx].amountDollars
+                )
+            }
+        } catch {
+            yoyPoints = []
+        }
+    }
+
+    // MARK: - §15.3 Tickets trend → GET /api/v1/reports/tickets-trend
+
+    private func loadTicketsTrend() async {
+        do {
+            ticketsTrend = try await repository.getTicketsTrend(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            ticketsTrend = []
+        }
+    }
+
+    // MARK: - §15.3 Busy hours → GET /api/v1/reports/tickets-heatmap
+
+    private func loadBusyHours() async {
+        do {
+            busyHours = try await repository.getBusyHours(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            busyHours = []
+        }
+    }
+
+    // MARK: - §15.3 SLA summary → GET /api/v1/reports/sla
+
+    private func loadSLASummary() async {
+        do {
+            slaSummary = try await repository.getSLASummary(
+                from: fromDateString, to: toDateString
+            )
+        } catch {
+            slaSummary = nil
         }
     }
 }

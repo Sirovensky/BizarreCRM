@@ -26,6 +26,8 @@ public struct ReportsView: View {
     @State private var exportError: String?
     @State private var emailRecipient = ""
     @State private var showEmailSheet  = false
+    // §15.4 Per-tech detail drill
+    @State private var selectedTechForDrill: TechnicianPerfRow?
 
     private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
@@ -74,6 +76,10 @@ public struct ReportsView: View {
             if let url = exportURL {
                 ShareLink(item: url)
             }
+        }
+        // §15.4 Per-tech detail drill-through
+        .sheet(item: $selectedTechForDrill) { tech in
+            TechDetailSheet(row: tech)
         }
         .alert("Email Report", isPresented: $showEmailSheet) {
             TextField("Recipient email", text: $emailRecipient)
@@ -357,20 +363,58 @@ public struct ReportsView: View {
             RevenueByMethodPieCard(points: vm.revenueByMethod)
             // §15.9 Expenses chart
             ExpensesChartCard(report: vm.expensesReport)
+            // §15.2 YoY growth
+            if !vm.yoyPoints.isEmpty {
+                YoYGrowthCard(
+                    points: vm.yoyPoints,
+                    overallGrowthPct: {
+                        let totalCurrent = vm.yoyPoints.reduce(0) { $0 + $1.currentRevenue }
+                        let totalPrior   = vm.yoyPoints.reduce(0) { $0 + $1.priorRevenue }
+                        guard totalPrior > 0 else { return nil }
+                        return (totalCurrent - totalPrior) / totalPrior * 100.0
+                    }()
+                )
+            }
+            // §15.2 Top 10 customers
+            if !vm.topCustomers.isEmpty {
+                TopCustomersCard(rows: vm.topCustomers)
+            }
 
         case .tickets:
             // §15.3 Tickets by status
             TicketsByStatusCard(points: vm.ticketsByStatus)
             // §15.2 Avg ticket value
             AvgTicketValueCard(value: vm.avgTicketValue)
+            // §15.3 Opened vs closed per day + close rate + avg turnaround
+            if !vm.ticketsTrend.isEmpty {
+                TicketsTrendCard(points: vm.ticketsTrend)
+            }
+            // §15.3 Tickets by tech bar
+            if !vm.ticketsByTech.isEmpty {
+                TicketsByTechCard(points: vm.ticketsByTech) { techId in
+                    if let row = vm.technicianPerf.first(where: { $0.id == techId }) {
+                        selectedTechForDrill = row
+                    }
+                }
+            }
+            // §15.3 Busy-hours heatmap
+            if !vm.busyHours.isEmpty {
+                BusyHoursHeatmapCard(cells: vm.busyHours)
+            }
+            // §15.3 SLA breach count
+            SLABreachCard(summary: vm.slaSummary)
 
         case .employees:
             // §15.4 Top employees (revenue-ranked)
             TopEmployeesCard(employees: vm.employeePerf)
-            // §15.4 Technician performance table
+            // §15.4 Technician performance table + per-tech detail drill
             TechnicianPerformanceCard(rows: vm.technicianPerf)
 
         case .inventory:
+            // §15.5 Low stock / out-of-stock + inventory value (cost + retail)
+            if let report = vm.inventoryReport {
+                InventoryStockCard(report: report)
+            }
             // §15.5 Inventory movement
             InventoryMovementCard(report: vm.inventoryReport)
             // §15.5 Inventory turnover

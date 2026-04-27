@@ -34,6 +34,14 @@ public protocol ReportsRepository: Sendable {
     func getTechnicianPerformance(from: String, to: String) async throws -> [TechnicianPerfRow]
     // §15.6 Tax report — GET /api/v1/reports/tax
     func getTaxReport(from: String, to: String) async throws -> TaxReportResponse
+    // §15.2 Top customers — GET /api/v1/reports/top-customers
+    func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow]
+    // §15.3 Tickets trend — GET /api/v1/reports/tickets-trend
+    func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint]
+    // §15.3 Busy hours heatmap — GET /api/v1/reports/tickets-heatmap
+    func getBusyHours(from: String, to: String) async throws -> [BusyHourCell]
+    // §15.3 SLA summary — GET /api/v1/reports/sla
+    func getSLASummary(from: String, to: String) async throws -> SLABreachSummary
 }
 
 // MARK: - LiveReportsRepository
@@ -269,6 +277,74 @@ public actor LiveReportsRepository: ReportsRepository {
             URLQueryItem(name: "to_date", value: to)
         ]
         return try await api.get("/api/v1/reports/tax", query: query, as: TaxReportResponse.self)
+    }
+
+    // MARK: - Top Customers → GET /api/v1/reports/top-customers
+
+    public func getTopCustomers(from: String, to: String) async throws -> [TopCustomerRow] {
+        struct Response: Decodable, Sendable {
+            let customers: [TopCustomerRow]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                customers = (try? c.decode([TopCustomerRow].self, forKey: .customers)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case customers }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to),
+            URLQueryItem(name: "limit",     value: "10")
+        ]
+        let response = try await api.get("/api/v1/reports/top-customers", query: query, as: Response.self)
+        return response.customers
+    }
+
+    // MARK: - Tickets Trend → GET /api/v1/reports/tickets-trend
+
+    public func getTicketsTrend(from: String, to: String) async throws -> [TicketDayPoint] {
+        struct Response: Decodable, Sendable {
+            let rows: [TicketDayPoint]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                rows = (try? c.decode([TicketDayPoint].self, forKey: .rows)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case rows }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        let response = try await api.get("/api/v1/reports/tickets-trend", query: query, as: Response.self)
+        return response.rows
+    }
+
+    // MARK: - Busy Hours Heatmap → GET /api/v1/reports/tickets-heatmap
+
+    public func getBusyHours(from: String, to: String) async throws -> [BusyHourCell] {
+        struct Response: Decodable, Sendable {
+            let busyHours: [BusyHourCell]
+            init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                busyHours = (try? c.decode([BusyHourCell].self, forKey: .busyHours)) ?? []
+            }
+            enum CodingKeys: String, CodingKey { case busyHours = "busy_hours" }
+        }
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        let response = try await api.get("/api/v1/reports/tickets-heatmap", query: query, as: Response.self)
+        return response.busyHours
+    }
+
+    // MARK: - SLA Summary → GET /api/v1/reports/sla
+
+    public func getSLASummary(from: String, to: String) async throws -> SLABreachSummary {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from_date", value: from),
+            URLQueryItem(name: "to_date",   value: to)
+        ]
+        return try await api.get("/api/v1/reports/sla", query: query, as: SLABreachSummary.self)
     }
 
     // MARK: - Private helpers
