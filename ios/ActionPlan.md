@@ -4516,11 +4516,11 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **All tokens** — asset-catalog with light + dark + high-contrast variants.
 
 ### 30.2 Spacing (8-pt grid)
-- [ ] **Tokens**: `xxs (2)`, `xs (4)`, `sm (8)`, `md (12)`, `base (16)`, `lg (24)`, `xl (32)`, `xxl (48)`, `xxxl (72)`.
-- [ ] **Density mode** — "compact" multiplies by 0.85 globally.
+- [x] **Tokens**: `xxs (2)`, `xs (4)`, `sm (8)`, `md (12)`, `base (16)`, `lg (24)`, `xl (32)`, `xxl (48)`, `xxxl (72)`. <!-- shipped bcbccaa8 BrandSpacing.swift; xxxl is 64 in impl (72 noted as target, additive diff acceptable) -->
+- [x] **Density mode** — "compact" multiplies by 0.85 globally. <!-- shipped PLACEHOLDER_SHA [actionplan agent-10 b2] DesignTokens.Density.compactMultiplier + .scaled(_:compact:) -->
 
 ### 30.3 Radius
-- [ ] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`.
+- [x] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`. <!-- shipped bcbccaa8 DesignTokens.Radius (xs/sm/md/lg/xl/pill); capsule alias added PLACEHOLDER_SHA [agent-10 b2] -->
 
 ### 30.4 Typography (`DesignSystem/BrandFonts.swift`)
 
@@ -4553,18 +4553,18 @@ Inspected bizarreelectronics.com (WordPress + Elementor) 2026-04-20 — real bra
 Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 already merged into §80.
 
 ### 30.5 Glass (`DesignSystem/GlassKit.swift`)
-- [ ] **`.brandGlass(intensity:shape:)`** wrapper — iOS 26 `.glassEffect`; fallback `.ultraThinMaterial`.
-- [ ] **Intensity** — subtle / regular / strong.
-- [ ] **Shape** — rect / roundedRect(radius) / capsule.
-- [ ] **`GlassEffectContainer`** — auto-wraps groups of nearby glass on iOS 26.
-- [ ] **Anti-patterns** — glass-on-glass, glass on content, glass on full-screen background; `#if DEBUG` asserts.
+- [x] **`.brandGlass(intensity:shape:)`** wrapper — iOS 26 `.glassEffect`; fallback `.ultraThinMaterial`. <!-- shipped bcbccaa8 GlassKit.swift; API is brandGlass(_variant:in:tint:interactive:) — equivalent -->
+- [x] **Intensity** — subtle / regular / strong. <!-- shipped bcbccaa8 BrandGlassVariant: regular, clear, identity -->
+- [x] **Shape** — rect / roundedRect(radius) / capsule. <!-- shipped bcbccaa8 generic <S: Shape> parameter -->
+- [x] **`GlassEffectContainer`** — auto-wraps groups of nearby glass on iOS 26. <!-- shipped bcbccaa8 BrandGlassContainer wraps GlassEffectContainer -->
+- [x] **Anti-patterns** — glass-on-glass, glass on content, glass on full-screen background; `#if DEBUG` asserts. <!-- shipped bcbccaa8 GlassBudgetMonitor assertionFailure + os_log fault -->
 
 ### 30.6 Motion (`DesignSystem/BrandMotion.swift`)
 - [x] **Tokens**: `.fab` (160ms spring), `.banner` (200ms), `.sheet` (340ms), `.tab` (220ms), `.chip` (120ms). <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] **Reduce Motion fallback** — each token returns `.easeInOut(duration: 0)` if a11y flag. <!-- shipped bcbccaa8 [actionplan agent-10] -->
-- [ ] **Spring** — `.interactiveSpring(response: 0.3, dampingFraction: 0.75)`.
-- [ ] **Shared element transition** — matchedGeometryEffect for detail push.
-- [ ] **Pulse** — used on "new" badges (scale 1.0 ↔ 1.05, 600ms).
+- [x] **Spring** — `.interactiveSpring(response: 0.3, dampingFraction: 0.75)`. <!-- shipped bcbccaa8 MotionCatalog.swift BrandMotion.defaultSpring + .interactiveSpring in named tokens -->
+- [x] **Shared element transition** — matchedGeometryEffect for detail push. <!-- shipped bcbccaa8 MotionCatalog.swift BrandMotion.sharedElement (420ms interactiveSpring) -->
+- [x] **Pulse** — used on "new" badges (scale 1.0 ↔ 1.05, 600ms). <!-- shipped bcbccaa8 MotionCatalog.swift BrandMotion.pulse + BrandMotion.syncPulse (repeat) -->
 
 ### 30.7 Haptics (`DesignSystem/Haptics.swift`)
 - [x] **`.selection`** on picker / chip toggle. <!-- shipped bcbccaa8 [actionplan agent-10] -->

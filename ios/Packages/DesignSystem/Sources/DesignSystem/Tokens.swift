@@ -24,7 +24,7 @@ public enum DesignTokens {
         public static let huge: CGFloat = 48
     }
 
-    // MARK: - Radius (§80.2)
+    // MARK: - Radius (§80.2 / §30.3)
     public enum Radius {
         public static let xs: CGFloat = 4       // small chip
         public static let sm: CGFloat = 8       // button
@@ -32,6 +32,19 @@ public enum DesignTokens {
         public static let lg: CGFloat = 16      // card
         public static let xl: CGFloat = 24      // sheet
         public static let pill: CGFloat = 999   // fully rounded
+        /// Alias for `pill` — use `.clipShape(Capsule())` in SwiftUI; this value
+        /// is for contexts that require a numeric CGFloat (e.g. UIKit, CGPath).
+        public static let capsule: CGFloat = 999
+    }
+
+    // MARK: - Density mode (§30.2)
+    public enum Density {
+        /// Compact multiplier — multiply all spacing tokens by this in compact mode.
+        public static let compactMultiplier: CGFloat = 0.85
+        /// Returns `value × compactMultiplier` when `isCompact` is true, else `value`.
+        public static func scaled(_ value: CGFloat, compact isCompact: Bool) -> CGFloat {
+            isCompact ? value * compactMultiplier : value
+        }
     }
 
     // MARK: - Shadow (§80.3)
