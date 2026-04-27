@@ -136,6 +136,3 @@ private struct HandoffBody: Encodable, Sendable {
 private struct TicketNoteResponse: Decodable, Sendable {
     let id: Int64?
 }
-able {
-    let id: Int64?
-}
