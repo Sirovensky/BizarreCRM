@@ -7,6 +7,13 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Wizard dev-skip cleanup (must remove before SaaS launch)
+
+- [ ] WIZARD-EMAIL-1. **Remove the temporary dev-skip email-verify path before SaaS launch.** Currently `POST /api/v1/auth/verify-email/dev-skip` (in `packages/server/src/routes/auth.verifyEmail.routes.ts`) is gated behind `NODE_ENV !== 'production'` + `WIZARD_DEV_SKIP_EMAIL=1`. The matching UI is the "Skip email check (dev only)" button in `packages/web/src/pages/setup/steps/StepVerifyEmail.tsx`, shown only when `import.meta.env.DEV`.
+  - **Why temp:** outbound email isn't wired yet; this unblocks SaaS-mode wizard dogfooding.
+  - **Removal action:** delete the route, delete the env-var check, delete the button, delete the `verifyEmailApi.devSkip` call. Then verify the wizard cannot proceed past Step 2 SaaS without a real verified code.
+  - **Risk:** stray prod env var could expose this. Belt-and-suspenders is to delete the code path entirely.
+
 ## Signup flow consolidation (SSW-CANON-SIGNUP)
 
 - [ ] SSW-SIGNUP-1. **Deprecate landing-page signup modal/quick-menu — canonical entry is `/signup` route.** Today the marketing landing page may have a "Sign up" button that pops a modal duplicating the fields collected on `/signup` (name/email/password/slug). Two paths to the same outcome doubles maintenance + risks drift (modal validates differently than page). After SSW1-5 ships the wizard, the canonical entry should be the page-based form at `/signup` (existing `SignupPage.tsx`).

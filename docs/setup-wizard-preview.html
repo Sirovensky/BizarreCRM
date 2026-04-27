@@ -36,7 +36,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
 .url-bar { flex: 1; background: white; border: 1px solid #E7E5E4; border-radius: 8px; padding: 4px 12px; font-size: 12px; color: #57534E; font-family: ui-monospace, monospace; }
 .dark .url-bar { background: #292524; color: #A8A29E; border-color: #44403C; }
-.screen { background: #FAFAF9; min-height: 600px; }
+.screen { background: #FAFAF9; min-height: 600px; position: relative; padding-top: 64px !important; }
 .dark .screen { background: #1C1917; }
 .toc { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
 .toc a { display: block; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #57534E; }
@@ -88,7 +88,8 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 .phase-pill.done { background: #DCFCE7; color: #166534; }
 .phase-pill.pending { background: #F5F5F4; color: #78716C; }
 .dark .phase-pill.pending { background: #44403C; color: #A8A29E; }
-.bc { display: flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 14px; border-radius: 9999px; background: white; border: 1px solid #E7E5E4; margin-bottom: 16px; font-size: 13px; flex-wrap: wrap; }
+.bc-wrap { position: absolute; top: 14px; left: 16px; right: 16px; display: flex; justify-content: center; pointer-events: auto; z-index: 5; }
+.bc { display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 18px; border-radius: 9999px; background: white; border: 1px solid #E7E5E4; font-size: 13px; flex-wrap: wrap; box-shadow: 0 2px 8px -4px rgba(0,0,0,0.08); }
 .dark .bc { background: #292524; border-color: #44403C; }
 .bc-prev, .bc-next { color: #78716C; font-weight: 500; }
 .dark .bc-prev, .dark .bc-next { color: #A8A29E; }
@@ -208,7 +209,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login</div></div>
-            <div class="screen p-12 flex items-center justify-center"><div class="bc"><span class="bc-current">Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Set password →</span></div><div class="card max-w-md w-full">
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Set password →</span></div></div><div class="card max-w-md w-full">
               <div class="step-icon-bg mx-auto mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
               <h2 class="font-display text-2xl font-bold text-center">Welcome to BizarreCRM</h2>
               <p class="text-center text-sm text-surface-500 mt-1 mb-6">Sign in to your shop</p>
@@ -228,7 +229,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/signup</div></div>
-            <div class="screen p-12"><div class="bc"><span class="bc-current">Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Verify email →</span></div>
+<div class="screen p-12"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Verify email →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-3xl font-bold">Start your free trial</h2>
               <p class="text-surface-600 dark:text-surface-400 mt-1 mb-6">14 days of Pro. No credit card.</p>
@@ -249,7 +250,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/verify-email</div></div>
-            <div class="screen p-12 flex items-center justify-center"><div class="bc"><span class="bc-prev">← Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Verify email</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div><div class="card max-w-md text-center">
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Verify email</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div></div><div class="card max-w-md text-center">
               <div class="step-icon-bg mx-auto mb-4 bg-green-100"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
               <h2 class="font-display text-2xl font-bold">Check your email</h2>
               <p class="text-surface-600 mt-2">Confirmation link sent to <strong>joe@joesphonerepair.com</strong></p>
@@ -266,7 +267,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login (set-password)</div></div>
-            <div class="screen p-12 flex items-center justify-center"><div class="bc"><span class="bc-prev">← Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Set password</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div><div class="card max-w-md w-full">
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Set password</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div></div><div class="card max-w-md w-full">
               <h2 class="font-display text-2xl font-bold">Pick a new password</h2>
               <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Default credentials are insecure.</p>
               <div class="field"><label class="field-label required">New password</label><input type="password" class="field-input" value="••••••••••" /><div class="mt-2 flex gap-1"><span class="h-1 flex-1 bg-green-500 rounded-full"></span><span class="h-1 flex-1 bg-green-500 rounded-full"></span><span class="h-1 flex-1 bg-green-500 rounded-full"></span></div><p class="text-xs text-green-700 mt-1 font-medium">Strong</p></div>
@@ -284,7 +285,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/login (2fa)</span><span class="saas-only">https://acme.bizarrecrm.com/login (2fa)</span></div></div>
-            <div class="screen p-10"><div class="bc"><span class="bc-current">Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-next">Step 4 · Welcome →</span></div>
+<div class="screen p-10"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-next">Step 4 · Welcome →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold">Set up two-factor</h2>
               <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Scan with Google Authenticator, Authy, or 1Password.</p>
@@ -318,7 +319,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/setup</span><span class="saas-only">https://acme.bizarrecrm.com/setup</span></div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-current">Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-next">Step 5 · Shop type →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-current">Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-next">Step 5 · Shop type →</span></div></div>
         <div class="flex gap-2 mb-6 overflow-x-auto"><span class="phase-pill active">Welcome</span><span class="phase-pill pending">Shop type</span><span class="phase-pill pending">Store info</span><span class="phase-pill pending">…20 more</span></div>
               <div class="hero-card max-w-2xl mx-auto">
                 <div class="step-icon-bg mx-auto mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21V8l9-5 9 5v13M3 21h18M9 21V13h6v8"/></svg></div>
@@ -344,7 +345,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-current">Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-next">Step 6 · Store info →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-current">Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-next">Step 6 · Store info →</span></div></div>
         <div class="max-w-3xl mx-auto">
               <h2 class="font-display text-3xl font-bold">What kind of shop?</h2>
               <p class="text-base text-surface-600 dark:text-surface-400 mt-2 mb-8">We'll seed device categories + repair services so you can take a ticket day one.</p>
@@ -383,7 +384,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-current">Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-next">Step 7 · Import →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-current">Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-next">Step 7 · Import →</span></div></div>
         <div class="card max-w-2xl mx-auto">
               <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2h-4a2 2 0 01-2-2v-4H10v4a2 2 0 01-2 2H4a2 2 0 01-2-2V9z"/></svg></div>
               <h2 class="font-display text-2xl font-bold">Where's your shop?</h2>
@@ -409,7 +410,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-current">Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-next">Step 8 · Repair pricing →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-current">Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-next">Step 8 · Repair pricing →</span></div></div>
         <div class="max-w-3xl mx-auto">
               <h2 class="font-display text-3xl font-bold">Existing data?</h2>
               <p class="text-base text-surface-600 dark:text-surface-400 mt-2 mb-8">Bring customers, tickets, and inventory from your old system.</p>
@@ -432,7 +433,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-current">Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-next">Step 9 · Default statuses →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-current">Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-next">Step 9 · Default statuses →</span></div></div>
         <div class="card max-w-3xl mx-auto">
               <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
               <h2 class="font-display text-2xl font-bold">Repair pricing</h2>
@@ -539,7 +540,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-current">Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-next">Step 10 · Business hours →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-current">Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-next">Step 10 · Business hours →</span></div></div>
         <div class="card max-w-3xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Ticket statuses</h2>
               <p class="text-surface-600 text-sm mt-1 mb-4 text-center">Pick which statuses show in your kanban + sidebar.</p>
@@ -563,7 +564,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-current">Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-next">Step 11 · Tax →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-current">Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-next">Step 11 · Tax →</span></div></div>
         <div class="card max-w-2xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Business hours</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For off-hours auto-replies + portal "currently open" indicator.</p>
@@ -590,7 +591,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-current">Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-next">Step 12 · Receipts →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-current">Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-next">Step 12 · Receipts →</span></div></div>
         <div class="card max-w-md mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Sales tax</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Default tax class. Add more in Settings later.</p>
@@ -612,7 +613,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-current">Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-next">Step 13 · Logo →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-current">Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-next">Step 13 · Logo →</span></div></div>
         <div class="card max-w-3xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Receipt header & footer</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Optional. Live preview on right.</p>
@@ -648,7 +649,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-current">Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-next">Step 14 · Payment terminal →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-current">Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-next">Step 14 · Payment terminal →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Logo & branding</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Upload + accent color.</p>
@@ -671,7 +672,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-current">Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-next">Step 15 · First employees →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-current">Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-next">Step 15 · First employees →</span></div></div>
         <div class="card max-w-2xl mx-auto">
               <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
               <h2 class="font-display text-2xl font-bold">BlockChyp payment terminal</h2>
@@ -697,7 +698,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-current">Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-next">Step 16 · SMS provider →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-current">Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-next">Step 16 · SMS provider →</span></div></div>
         <div class="card max-w-2xl mx-auto">
               <h2 class="font-display text-2xl font-bold">Add your team</h2>
               <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6"><span class="self-only">Self-host: creates local accounts. Set their password + 4-digit PIN now.</span><span class="saas-only">SaaS: invites sent via email. They set their own password + 2FA on first login.</span></p>
@@ -722,7 +723,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-current">Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-next">Step 17 · Email SMTP →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-current">Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-next">Step 17 · Email SMTP →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">SMS provider</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For appointment reminders, ticket updates, marketing.</p>
@@ -749,7 +750,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-current">Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-next">Step 18 · Notification templates →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-current">Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-next">Step 18 · Notification templates →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Email (SMTP)</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For invoices, receipts, password resets.</p>
@@ -774,7 +775,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-current">Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-next">Step 19 · Receipt printer →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-current">Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-next">Step 19 · Receipt printer →</span></div></div>
         <div class="card max-w-3xl mx-auto">
               <h2 class="font-display text-2xl font-bold">Customer notifications</h2>
               <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">3 templates active by default. Edit copy below — variables in <span class="kbd">{curly_braces}</span> auto-fill.</p>
@@ -808,7 +809,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-current">Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-next">Step 20 · Cash drawer →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-current">Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-next">Step 20 · Cash drawer →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></div>
               <h2 class="font-display text-2xl font-bold">Receipt printer</h2>
@@ -832,7 +833,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-current">Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-next">Step 21 · Booking policy →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-current">Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-next">Step 21 · Booking policy →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Cash drawer</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For cash payments + nightly Z-report.</p>
@@ -857,7 +858,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-current">Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-next">Step 22 · Warranty →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-current">Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-next">Step 22 · Warranty →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Booking policy</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">How customers schedule.</p>
@@ -882,7 +883,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-current">Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-next">Step 23 · Backups →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-current">Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-next">Step 23 · Backups →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Warranty defaults</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Standard warranty clause printed on receipt + ticket.</p>
@@ -904,7 +905,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-current">Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-next">Step 24 · Mobile app →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-current">Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-next">Step 24 · Mobile app →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Backups</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Daily snapshot, encrypted, 30-day rolling.</p>
@@ -931,7 +932,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-current">Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-next">Step 25 · Review →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-current">Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-next">Step 25 · Review →</span></div></div>
         <div class="card max-w-xl mx-auto">
               <h2 class="font-display text-2xl font-bold text-center">Get the Android app</h2>
               <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Techs scan to install. Auto-configures the server URL for your shop.</p>
@@ -953,7 +954,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-current">Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-next">Step 26 · Done →</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-current">Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-next">Step 26 · Done →</span></div></div>
         <div class="card max-w-2xl mx-auto">
               <div class="step-icon-bg mx-auto mb-3 bg-green-100"><svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9 9 4 9 9z"/></svg></div>
               <h2 class="font-display text-2xl font-bold text-center">Ready to go!</h2>
@@ -983,7 +984,7 @@ body { font-family: 'Inter', system-ui, sans-serif; }
         <div class="grid grid-cols-[1fr_320px] gap-6">
           <div class="browser-frame">
             <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/dashboard</span><span class="saas-only">https://acme.bizarrecrm.com/dashboard</span></div></div>
-            <div class="screen p-8"><div class="bc"><span class="bc-prev">← Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-current">Step 26 · Done</span></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-current">Step 26 · Done</span></div></div>
         <div class="card max-w-2xl mx-auto text-center">
                 <div class="text-6xl mb-3">🎉</div>
                 <h2 class="font-display text-3xl font-bold">You're all set, Joe!</h2>
