@@ -3092,18 +3092,40 @@ DASH-ELEC: 002 (unhandledRejection pre-existing), 004 (execSync doc), 006 (env-s
 WEB-S5 (mostly pre-existing verified): 008/009/010/016/020/023/026/033/034/035/036/037/038/042/043.
 
 All items grep-verified in code before move.
+## todofixes426 — Cleanup pass 5 (2026-04-26) — setup wizard + portal + misc
+LoginPage:
+- [x] WEB-S4-002. **2FA setup back button.** CLOSED 2026-04-26 — todofixes426: prevStep state tracks origin step; Back button in setup section.
+- [x] WEB-S4-004. **First-run setup confirm-password.** CLOSED 2026-04-26 — todofixes426: setupConfirmPassword state + mismatch validation + disabled submit.
+- [x] WEB-S4-005. **Password strength indicator.** CLOSED 2026-04-26 — todofixes426: getPasswordStrength + 3-segment PasswordStrengthBar (Weak/OK/Strong).
 
-## todofixes426 — Cleanup pass 7 (2026-04-26) — S8 security + FL wiring
+Setup wizard:
+- [x] WEB-S4-009. **StepEmailSmtp test-connection.** CLOSED 2026-04-26 — todofixes426: POST /settings/email/test-smtp via nodemailer.verify(); UI button + result.
+- [x] WEB-S4-010. **StepSmsProvider test-SMS.** CLOSED 2026-04-26 — todofixes426: POST /settings/sms/test-send; UI section with phone input + result.
+- [x] WEB-S4-011. **StepReceipts Save persists values.** CLOSED 2026-04-26 — todofixes426: pre-existing — flushAndExit writes pending keys via PUT /settings/config.
+- [x] WEB-S4-012. **StepLogo accent-color hex validation.** CLOSED 2026-04-26 — todofixes426: regex `/^#[0-9A-Fa-f]{6}$/`; red border + error message.
+- [x] WEB-S4-013. **StepBusinessHours `to <= from` validation.** CLOSED 2026-04-26 — todofixes426: per-day validation with red borders + inline error; blocks Save.
+- [x] WEB-S4-014. **StepStoreInfo phone double-format.** CLOSED 2026-04-26 — todofixes426: store raw digits onChange, format onBlur via formatStorePhoneAsYouType.
+- [x] WEB-S4-015. **Wizard isLoading flicker.** CLOSED 2026-04-26 — todofixes426: fixed inset-0 overlay with Loader2 + backdrop-blur.
+- [x] WEB-S4-016. **StepTax dup Sales Tax.** CLOSED 2026-04-26 — todofixes426: GET /settings/tax-classes first; PUT existing or POST new.
+- [x] WEB-S4-017. **StepDefaultStatuses serial PATCHes no rollback.** CLOSED 2026-04-26 — todofixes426: Promise.all with per-request try/catch; surfaces failures inline.
+- [x] WEB-S4-018. **Skip welcome step empty store_name.** CLOSED 2026-04-26 — todofixes426: flushAndExit guard rejects empty/whitespace store_name on skip.
 
-WEB-S8 security role gates:
-- [x] WEB-S8-002. **Import status routes admin-only.** CLOSED — added 403 admin gate to GET /repairdesk/status + GET /history.
-- [x] WEB-S8-003. **repairshopr+myrepairapp status admin gate.** CLOSED — same admin gate added.
-- [x] WEB-S8-008. **tv-display PII admin/manager-only.** CLOSED — restricted to admin/manager role.
-- [x] WEB-S8-016. **reports/presets admin/manager-only.** CLOSED — requireAdminOrManager added to all 4 preset handlers.
-- [x] WEB-S8-030. **catalog OAuth status admin-only.** CLOSED — requireAdmin added.
-- [x] WEB-S8-037. **catalog sync rate-limit.** CLOSED — consumeWindowRate 3/hour per admin + 429 Retry-After.
+Portal:
+- [x] WEB-S4-019. **PortalRegister verify before advance.** CLOSED 2026-04-26 — todofixes426: new POST /register/check-code endpoint; verifyRegistrationCode API; only advance on success.
+- [x] WEB-S4-021. **PortalTicketDetail fetch errors.** CLOSED 2026-04-26 — todofixes426: useCallback fetchTicket + toast.error + Try Again retry button.
+- [x] WEB-S4-022. **Portal widget postMessage origin.** CLOSED 2026-04-26 — todofixes426: bizarre-portal-init handshake records parentOrigin; all postMessage calls use it instead of hardcoded origin.
+- [x] WEB-S4-023. **loginWithToken preserves has_account.** CLOSED 2026-04-26 — todofixes426: optional 5th param hasAccount; CustomerPortalPage passes verifySession result.has_account.
+- [x] WEB-S4-024. **Portal pages skeletons.** CLOSED 2026-04-26 — todofixes426: PortalDashboard/Estimates/Invoices replace spinner with animate-pulse skeleton grids.
+- [x] WEB-S4-025. **PayNowButton BlockChyp domain whitelist.** CLOSED 2026-04-26 — todofixes426: isAllowedPaymentUrl helper allows same-origin + *.blockchyp.com.
+- [x] WEB-S4-027. **PortalRegister Resend code + back-link preserves phone.** CLOSED 2026-04-26 — todofixes426: handleResendCode + 60s cooldown countdown; back button keeps phone state.
+- [x] WEB-S4-028. **PhotoCapturePage token-expiry detection.** CLOSED 2026-04-26 — todofixes426: 401/403 sets tokenExpired → "Link Expired — ask staff for new QR" screen.
 
-WEB-FL wiring:
-- [x] WEB-FL-011. **CommissionPeriodLock orphan.** CLOSED — new PayrollPage.tsx + /team/payroll route + Sidebar Payroll link.
-- [x] WEB-FL-013. **TrackingPage no i18n.** CLOSED — usePortalI18n hook wired; timeline.* dictionary keys used.
-- [x] WEB-FL-014. **TrackingPage + PhotoCapturePage raw axios.** CLOSED — replaced 7 raw axios.* with shared `api` client.
+Misc:
+- [x] WEB-FC-008. **Loaners Add CTA.** CLOSED 2026-04-26 — todofixes426: loanerApi.create + AddLoanerDialog component + button in page header.
+- [x] WEB-FC-016. **PhotoCapturePage token in query string.** CLOSED 2026-04-26 — todofixes426: lazy initializer reads ?t= once; useEffect immediately strips from URL via setSearchParams replace; token lives in component state only.
+- [x] WEB-FB-006. **InvoiceDetailPage print bypass auth.** CLOSED 2026-04-26 — todofixes426: replaced window.open with PrintPreviewModal (iframe + auth cookies).
+- [x] WEB-FB-008. **EstimateList auto-compute tax.** CLOSED 2026-04-26 — todofixes426: per-line tax_class_id select via settingsApi.getTaxClasses; submit computes tax_amount from rate.
+- [x] WEB-FB-013. **Manager-PIN lockout 60s.** CLOSED 2026-04-26 — todofixes426: LOCKOUT_SECONDS bumped 30→60 in PinModal.
+- [x] WEB-FE-014. **aria-invalid on high-traffic forms.** CLOSED 2026-04-26 — todofixes426: added aria-invalid + aria-describedby across InvoiceDetail, EstimateList, Loaners forms; Login/Customer/Signup pre-existing.
+- [x] WEB-W2-006. **Bulk Assign UI.** CLOSED 2026-04-26 — todofixes426: bulkAssignOpen state + Assign dropdown in TicketListPage bulk action bar; calls bulkMut with action: 'assign'.
+- [x] WEB-FF-016. **CustomerListPage importMutation invalidate timing.** CLOSED 2026-04-26 — todofixes426: pre-existing — invalidateQueries already in onSuccess.
