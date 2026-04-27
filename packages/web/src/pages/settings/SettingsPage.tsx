@@ -36,7 +36,7 @@ import { DeviceTemplatesPage } from './DeviceTemplatesPage';
 // PROD59: tenant self-service termination (Settings > Danger Zone).
 import { DangerZoneTab } from './DangerZoneTab';
 import { SkeletonCard } from '@/components/shared/Skeleton';
-import { DataRetentionTab } from './DataRetentionTab';
+import { DataTab } from './DataTab';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -58,7 +58,7 @@ import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data-import' | 'audit-logs' | 'billing' | 'danger-zone' | 'data-retention';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -155,11 +155,10 @@ const TABS: TabConfig[] = [
   { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
   { key: 'automations', label: 'Automations', icon: Zap, proFeature: 'automations' },
   { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
-  { key: 'data-import', label: 'Data & Import', icon: Database },
+  { key: 'data', label: 'Data', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
   // PROD59: Danger Zone — multi-step self-service account termination.
   { key: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
-  { key: 'data-retention', label: 'Data Retention', icon: Database },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
   // Shops access the catalog via the /catalog page (read-only search).
   // Sync runs automatically via daily cron — no manual trigger needed in settings.
@@ -2102,10 +2101,9 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'sms-voice': ['sms', 'mms', 'voice', 'call', 'phone', 'twilio', 'telnyx', 'bandwidth', 'plivo', 'vonage', 'provider', 'recording', 'transcription', '10dlc'],
   'automations': ['automation', 'rule', 'trigger', 'action', 'workflow', 'auto', 'event', 'when', 'then'],
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
-  'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
+  'data': ['import', 'export', 'data', 'repairdesk', 'repairshopr', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'maintenance', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
   'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'account', 'cancel', 'shutdown'],
-  'data-retention': ['data', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
 };
 
 export function SettingsPage() {
@@ -2356,10 +2354,9 @@ function SettingsPageInner() {
       {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
       {activeTab === 'automations' && <AutomationsTab />}
       {activeTab === 'membership' && <MembershipSettings />}
-      {activeTab === 'data-import' && <DataImportTab />}
+      {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
       {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
       {activeTab === 'danger-zone' && <DangerZoneTab />}
-      {activeTab === 'data-retention' && <DataRetentionTab />}
     </div>
   );
 }
