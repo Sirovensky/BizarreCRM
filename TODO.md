@@ -11,8 +11,6 @@ type: project
 
 ### P2 (cosmetic / missing UI)
 - [x] WEB-W3-029. **Unified POS F-key shortcuts have no legend.** `pages/unified-pos/`. FIXED-by-Fixer-A23 2026-04-25 — added FKeyLegend popover button (bottom-right of UnifiedPosPage) listing F1/F2/F3 tabs, F4 customer search, Shift+F5 complete sale, F6 returns hotkey. `<kbd>`-styled rows, dialog role + aria-expanded button.
-- [ ] WEB-W3-033. **Marketing NPS trend errors swallowed, empty chart shown.** `pages/marketing/`. Fix: surface error toast / empty state.
-- [ ] WEB-W3-034. **Marketing campaigns preview shows count only, not rendered message.** `pages/marketing/`. Fix: render template with sample variable substitution.
 
 ## Web Audit Wave-WEB-2026-04-24 — settings tabs + setup wizard (search agent A1)
 
@@ -21,9 +19,6 @@ type: project
   - Fix: enforce server-side. POS routes should require a PIN-validation header on tendering / ticket actions when these flags are true. Add middleware `requirePosPin` reading store_config + `pos_pin_hash`.
 
 ### P1 (silent no-op)
-- [ ] WEB-W1-004. **`ticket_default_view` client-only, `kanban` option unimplemented but marked live.** — flip to `coming_soon` until kanban default works, or add server-side default-view persistence.
-- [ ] WEB-W1-006. **`ticket_default_pagination` key-name drift between save and read.** — verify save key matches consumed key in `tickets.routes.ts`.
-- [ ] WEB-W1-007. **`ticket_auto_status_on_reply` no badge + backend never reads.** — wire: when customer replies via portal/SMS, ticket status flips to configured value.
 
 ## Web Audit Wave-WEB-2026-04-24 — core entity workflows (search agent A2)
 
@@ -32,8 +27,6 @@ type: project
 ### P1 (silent no-op / broken feature)
   - File: `packages/web/src/pages/tickets/TicketListPage.tsx`
   - Fix: map group label → status_id before query param.
-- [ ] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.**
-  - Fix: add `POST /tickets/:id/duplicate` server route + button in TicketActions.
 - [ ] WEB-W2-011. **Activity filter tabs are client-side only — incomplete if backend paginates.**
   - File: `packages/web/src/pages/tickets/TicketNotes.tsx`
   - Fix: pass filter as query param to activity endpoint; rebuild filtering server-side.
@@ -41,13 +34,6 @@ type: project
   - Fix: include these fields in PUT payload; verify route accepts them.
   - File: `packages/web/src/pages/tickets/TicketPayments.tsx`
   - Fix: replace `prompt()` with inline modal/input.
-- [ ] WEB-W2-014. **`repairPricingApi` import — backend route unverified.**
-  - File: `packages/web/src/pages/tickets/TicketWizard.tsx`
-  - Fix: confirm `repairPricing.routes.ts` shape matches client; align if not.
-  - File: `packages/web/src/pages/customers/CustomerDetailPage.tsx`
-  - Fix: trigger anchor download with `download` attr instead of `window.open`.
-  - File: `packages/web/src/pages/leads/`
-  - Fix: same normalization to `notes`.
 
 ## Web Audit Wave-WEB-2026-04-24 Search S6 — entity create + employee + comms + reports
 
@@ -1631,39 +1617,26 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 ## Web Audit Wave-WEB-2026-04-24 Search S8 — RBAC + backend route gaps
 
-- [ ] WEB-S8-001. **`GET /api/v1/account/usage` requires `authMiddleware` at mount but has no `asyncHandler` wrapper — a thrown promise (e.g. DB unavailable) crashes the process.** `packages/server/src/routes/account.routes.ts` line 9. Fix: wrap the handler with `asyncHandler(async (req, res) => { … })`.
 
 - [ ] WEB-S8-002. **`GET /api/v1/import/repairdesk/status` and `GET /api/v1/import/history` have no role check — any authenticated user (technician, cashier) can read all import run history, including error logs that may contain sensitive API-response fragments.** `packages/server/src/routes/import.routes.ts` lines 346, 436. Fix: add `if (req.user?.role !== 'admin') throw new AppError(…, 403)` at the top of both handlers, identical to the guard on `/start` (line 230).
 
 - [ ] WEB-S8-003. **`GET /api/v1/import/repairshopr/status` and `GET /api/v1/import/myrepairapp/status` same gap as WEB-S8-002.** `packages/server/src/routes/import.routes.ts` lines 722, 1052. Fix: add admin role gate matching `/repairdesk/status`.
 
-- [ ] WEB-S8-004. **`POST /api/v1/catalog/import/:catalogId` (import catalog item to inventory) has no permission gate — any authenticated user can insert inventory rows.** `packages/server/src/routes/catalog.routes.ts` line 162. The sibling `/sync` (line 230) uses `adminOnly`; this mutating endpoint does not. Fix: add `adminOnly` middleware or `requirePermission('inventory.create')`.
 
-- [ ] WEB-S8-005. **`GET /api/v1/catalog/jobs`, `GET /api/v1/catalog/jobs/:id`, `GET /api/v1/catalog/order-queue`, `GET /api/v1/catalog/order-queue/summary`, `GET /api/v1/catalog/stats`, `GET /api/v1/catalog/template-count` — all read-only catalog management endpoints have no role gate; any staff user can enumerate scrape jobs and parts-order queues.** `packages/server/src/routes/catalog.routes.ts` lines 277, 285, 607, 713, 775, 768. Fix: add `requirePermission('inventory.view')` or `adminOnly` for the management-surface endpoints.
 
-- [ ] WEB-S8-006. **`POST /api/v1/catalog/live-search` — triggers an outbound scrape against a supplier website on behalf of the caller; no role check, no per-user rate limit.** `packages/server/src/routes/catalog.routes.ts` line 587. Any technician with a JWT can cause unlimited scrape traffic. Fix: add `requirePermission('inventory.view')` and a per-user `consumeWindowRate` guard (e.g. 10 req/min).
 
-- [ ] WEB-S8-007. **`POST /api/v1/catalog/order-queue/add` and `PATCH /api/v1/catalog/order-queue/:id` — mutate the parts-order queue with no role check.** `packages/server/src/routes/catalog.routes.ts` lines 650, 727. Fix: add `requirePermission('inventory.edit')`.
 
 - [ ] WEB-S8-008. **`GET /api/v1/tickets/tv-display` (inside `tickets.routes.ts`, served under `authMiddleware`) returns `customer_first_name` and `assigned_tech` full name — the data that `tv.routes.ts` deliberately redacted for the unauthenticated TV endpoint is re-exposed here to any authenticated role.** `packages/server/src/routes/tickets.routes.ts` lines 1632–1664. Fix: either restrict to `requireAdminOrManager` or redact PII to match the public TV board shape.
 
-- [ ] WEB-S8-009. **`GET /api/v1/tickets/feedback-summary` and `GET /api/v1/tickets/:id/feedback` have no role gate — technicians and cashiers can read all customer feedback, including `comment` text which may contain PII.** `packages/server/src/routes/tickets.routes.ts` lines 1670, 3821. Fix: add `requirePermission('tickets.view')`.
 
-- [ ] WEB-S8-010. **`POST /api/v1/tickets/:id/feedback` (unauthenticated feedback submission) is mounted under `authMiddleware` globally but has no internal auth check — staff can submit feedback on any ticket under any customer's identity.** `packages/server/src/routes/tickets.routes.ts` line 3833. The endpoint is intended for portal/kiosk use but lives on the authenticated API. Fix: move to a public route (`/public/api/v1/tickets/:id/feedback`) with a rate limit, or confirm this is staff-only and gate with `requirePermission('tickets.edit')`.
 
-- [ ] WEB-S8-011. **`GET /api/v1/tickets/:id/history` and `GET /api/v1/tickets/:id/repair-time` have no permission gate, so a cashier-role user can read full audit history of any ticket (field-by-field change log including user names, old/new values).** `packages/server/src/routes/tickets.routes.ts` lines 2864, 2891. Fix: add `requirePermission('tickets.view')`.
 
-- [ ] WEB-S8-012. **`GET /api/v1/tickets/:id/appointments` has no permission gate.** `packages/server/src/routes/tickets.routes.ts` line 3917. Fix: add `requirePermission('tickets.view')`.
 
-- [ ] WEB-S8-013. **`GET /api/v1/tickets/saved-filters`, `POST /api/v1/tickets/saved-filters`, `DELETE /api/v1/tickets/saved-filters/:id` — saved filters have no ownership isolation beyond `user_id`. `DELETE /saved-filters/:id` queries `WHERE id = ?` without `AND user_id = req.user.id`, allowing one user to delete another user's filter by guessing the numeric ID (IDOR).** `packages/server/src/routes/tickets.routes.ts` lines 1864, 1884, 1917. Fix: add `AND user_id = ?` to the DELETE (and verify fetch on PUT).
 
-- [ ] WEB-S8-014. **`GET /api/v1/reports/tickets` (ticket volume/tech/revenue report) has no `requireAdminOrManager` call — any authenticated technician can read the full revenue-by-tech breakdown.** `packages/server/src/routes/reports.routes.ts` line 709. All other financial report endpoints call `requireAdminOrManager(req)` at the top; this one does not. Fix: add `requireAdminOrManager(req)` as the first line.
 
-- [ ] WEB-S8-015. **`GET /api/v1/reports/customer-acquisition` — the `requireFeature` gate is present but `requireAdminOrManager` is absent; this report returns customer acquisition sources aggregated by month, which is marketing/PII data that technicians should not see.** `packages/server/src/routes/reports.routes.ts` line 1351. Fix: add `requireAdminOrManager(req)`.
 
 - [ ] WEB-S8-016. **`GET /api/v1/reports/presets`, `POST /api/v1/reports/presets`, `PUT /api/v1/reports/presets/:presetId`, `DELETE /api/v1/reports/presets/:presetId` — no role check beyond `authMiddleware`. Any user can create/read/update/delete report presets. The PUT and DELETE check `user_id = req.user.id` ownership correctly, but GET lists all presets for the current user regardless of role — a cashier saving presets for financial reports they cannot see is a UX inconsistency.** `packages/server/src/routes/reports.routes.ts` lines 1471–1600. P2: no data leak, minor inconsistency. Fix: accept current behavior or add `requireAdminOrManager` to constrain preset creation to report-eligible roles.
 
-- [ ] WEB-S8-017. **`GET /api/v1/employees/` (list) and `GET /api/v1/employees/performance/all` have no role check — any staff member can enumerate all employee usernames, emails, roles, and performance metrics (ticket count, revenue).** `packages/server/src/routes/employees.routes.ts` lines 174, 195. Fix: add `requirePermission('employees.view')` or at minimum `requireAdminOrManager`.
 
 - [x] WEB-S8-018. CLOSED 2026-04-25 — f7781356. **`GET /api/v1/roles/permission-keys` has no auth check beyond the global `authMiddleware` — any authenticated user can retrieve the full list of permission key strings.** `packages/server/src/routes/roles.routes.ts` line 116. Low sensitivity (no values, just names) but unnecessarily exposed. Fix: add `requireAdmin(req)` to match all sibling routes.
 
@@ -1681,9 +1654,7 @@ Key patterns: (1) `isError` absent from 4 high-traffic list/detail pages — sil
 
 - [x] WEB-S8-025. CLOSED 2026-04-25 — e3321a6e. **`POST /api/v1/sms/preview-template` — substitutes template variables with caller-supplied `vars` object and returns the rendered message; no input size limit on `vars` keys/values; no role check.** `packages/server/src/routes/sms.routes.ts` line 892. Fix: add role gate and bound `vars` object (max 20 keys, each key/value ≤ 200 chars).
 
-- [ ] WEB-S8-026. **`GET /api/v1/team/shifts` reads all team schedules for any `user_id` supplied in the query without a role check — any authenticated user can see any other user's shift schedule.** `packages/server/src/routes/team.routes.ts` line 83 (no role guard; unlike `shiftsSchedule.routes.ts` which silently clamps to self for non-managers). Fix: add the same self-clamp guard as `shiftsSchedule.routes.ts` (lines 87–96) or add `requireAdminOrManager`.
 
-- [ ] WEB-S8-027. **`GET /api/v1/team/goals` reads team goals for any `user_id` without a role check — any staff member can read another employee's performance goals and revenue targets.** `packages/server/src/routes/team.routes.ts` line 480. Fix: if `user_id` is for a different user, require `requireAdminOrManager`.
 
 - [x] WEB-S8-028. CLOSED 2026-04-24 — 18a2d442. **`GET /api/v1/catalog/order-queue` leaks `customer` first+last name and `order_id` of the associated ticket via the `tickets_json` JOIN — any technician with auth can enumerate which customers have parts on order.** `packages/server/src/routes/catalog.routes.ts` lines 607–649. Fix: restrict with `requirePermission('inventory.view')` (already flagged in WEB-S8-005; noting the PII dimension separately).
 
