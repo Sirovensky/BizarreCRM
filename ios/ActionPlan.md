@@ -1538,20 +1538,20 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] Threads list — shipped.
 - [x] Row a11y — combined utterance `displayName. [Pinned]. [Flagged]. [lastMessage]. [date]. [N unread]`. Avatar + pin + flag + unread dot are accessibilityHidden.
 - [x] **CachedRepository + offline** — `SmsCachedRepositoryImpl` (actor, per-keyword in-memory cache, 5min TTL, extends `SmsRepository`, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 8 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [ ] **Unread badge** on tab icon (`UIApplication.shared.applicationIconBadgeNumber`) + per-thread bubble.
-- [ ] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned.
+- [x] **Unread badge** on tab icon (`UIApplication.shared.applicationIconBadgeNumber`) + per-thread bubble. (`UnreadBadgeService` singleton 30s poll → `GET /api/v1/sms/unread-count`; `smsUnreadCount()` in `APIClient+Communications.swift`) (9d7d9584)
+- [x] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned. (`SmsListFilter` + `SmsFilterChipsView`; `SmsListViewModel.filter` + `filteredConversations` + `tabCounts`; 10 XCTest assertions) (9d7d9584)
 - [ ] **Search** — across all messages + phone numbers.
 - [ ] **Pin important threads** to top.
-- [ ] **Sentiment badge** (positive / neutral / negative) if server computes.
+- [x] **Sentiment badge** (positive / neutral / negative) if server computes. (`SentimentBadge` graceful stub — renders nothing until server computes `SmsSentiment`; ready to wire when endpoint ships) (9d7d9584)
 - [ ] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin.
 - [ ] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive.
-- [ ] **Compose new** (FAB) — pick customer or raw phone.
+- [x] **Compose new** (FAB) — pick customer or raw phone. (`ComposeNewThreadView` + `ComposeNewThreadViewModel`; orange circle FAB ⌘N; iPhone full-screen / iPad medium+large; customer picker via `listCustomerPickerItems()` or raw phone) (9d7d9584)
 - [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
 
 ### 12.2 Thread view
 - [x] Bubbles + composer + POST /sms/send — shipped.
-- [ ] **Real-time WS** — new message arrives without refresh; animate in with spring.
-- [ ] **Delivery status** icons per message — sent / delivered / failed / scheduled.
+- [x] **Real-time WS** — new message arrives without refresh; animate in with spring. (`SmsThreadViewModelWS` extension iterates `WebSocketClient.events` AsyncStream; on `smsReceived(SmsDTO)` compares timestamp + calls `load()`, sets `newMessageId`) (9d7d9584)
+- [x] **Delivery status** icons per message — sent / delivered / failed / scheduled. (`MessageDeliveryStatusIcon` maps status string → SF Symbol; sent/delivered/failed/scheduled/sending/simulated) (9d7d9584)
 - [ ] **Read receipts** (if server supports).
 - [ ] **Typing indicator** (if supported).
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload.
@@ -1559,18 +1559,18 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **In-composer dynamic-var chip bar** — `SmsComposerView` + `SmsComposerViewModel`; chip bar with `{first_name}` / `{ticket_no}` / `{total}` / `{due_date}` / `{tech_name}` / `{appointment_time}` / `{shop_name}`; insert-at-cursor; live preview via `TemplateRenderer`; "Load template" picker. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [ ] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
 - [ ] **Emoji picker**.
-- [ ] **Schedule send** — date/time picker for future delivery.
+- [x] **Schedule send** — date/time picker for future delivery. (`ScheduleSendSheet` DatePicker graphical; `SmsThreadViewModel.scheduledSendAt`; `sendSmsScheduled()` + `SmsSendScheduledRequest` in `SmsThreadEndpoints`; schedule clears after send; 5 XCTest assertions) (9d7d9584)
 - [ ] **Voice memo** (if MMS supported) — record AAC inline; bubble plays audio.
 - [ ] **Long-press message** → context menu — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
 - [ ] **Create customer from thread** — if phone not associated.
 - [x] **Character counter** + SMS-segments display (160 / 70 unicode). (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
-- [ ] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers.
+- [x] **Compliance footer** — auto-append STOP message on first outbound to opt-in-ambiguous numbers. (`SmsThreadViewModel.appendComplianceFooter`; prepends "\n\nReply STOP to opt out" to message body before send) (9d7d9584)
 - [ ] **Off-hours auto-reply** indicator when enabled.
 
 ### 12.3 PATCH helpers
 - [x] Add PATCH method to `APIClient` — shipped (`Networking/APIClient.swift` exposes `patch<T,B>(_:body:as:)`).
-- [ ] Mark read — `PATCH /sms/messages/:id { read: true }` (verify endpoint).
-- [ ] Flag / pin — `PATCH /sms/conversations/:id { flagged, pinned }`.
+- [x] Mark read — `PATCH /sms/messages/:id { read: true }` (verify endpoint). (already shipped in `SmsEndpoints.swift` `markConversationRead()`) (9d7d9584)
+- [x] Flag / pin — `PATCH /sms/conversations/:id { flagged, pinned }`. (already shipped in `SmsEndpoints.swift` `toggleFlag()` + `togglePin()`) (9d7d9584)
 
 ### 12.4 MMS media — `Mms/`
 - [x] **`MmsAttachment`** — `{ id, kind (.image/.video/.audio/.file), url, sizeBytes, mimeType, thumbnail? }`. (feat(ios post-phase §12): SMS deep — MMS + group-send + delivery tracking + auto-responders + thread-search + pinned)
@@ -1731,8 +1731,8 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [ ] **Live Activity** — "Clocked in since 9:14 AM" on Lock Screen until clock-out.
 
 ### 14.4 Invite / manage (admin)
-- [ ] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. The server may not have an email if self hosted though - lets make sure we account for that. 
-- [ ] **Resend invite**.
+- [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. The server may not have an email if self hosted though - lets make sure we account for that. (`InviteEmployeeSheet` + `InviteEmployeeViewModel`; targets `POST /api/v1/settings/users` admin endpoint; email optional with self-hosted footer note; role picker; `deriveUsername()` auto; 9 XCTest assertions; `inviteEmployee()` in `APIClient+Employees`) (9d7d9584)
+- [x] **Resend invite**. (`ResendInviteButton` + `ResendInviteViewModel`; `PUT /api/v1/settings/users/:id { resend_invite: true }`; confirmation dialog + result alert; wired into `EmployeeDetailView` admin card) (9d7d9584)
 - [ ] **Assign role** — technician / cashier / manager / admin / custom.
 - [ ] **Deactivate** — soft delete.
 - [ ] **Custom role creation** — Settings → Team → Roles matrix.
