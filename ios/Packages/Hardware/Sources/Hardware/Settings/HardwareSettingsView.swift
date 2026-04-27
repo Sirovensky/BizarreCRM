@@ -126,7 +126,7 @@ public struct HardwareSettingsView: View {
 
         Section("CASH DRAWER") {
             NavigationLink {
-                DrawerSettingsView()
+                DrawerSettingsPlaceholder()
             } label: {
                 HardwareRow(icon: "tray.full", title: "Cash Drawer",
                             subtitle: "Printer-connected or networked drawer")
@@ -161,7 +161,7 @@ public struct HardwareSettingsView: View {
         case .scales:
             ScaleSettingsView()
         case .drawer:
-            DrawerSettingsView()
+            DrawerSettingsPlaceholder()
         case .terminal:
             BlockChypPlaceholderDestination()
         }
@@ -256,8 +256,9 @@ private struct ScaleSettingsView: View {
     }
 }
 
-/// Drawer settings: shows printer binding + "Open Drawer" test button.
-private struct DrawerSettingsView: View {
+// DrawerSettingsView is defined in Drawer/DrawerSettingsView.swift.
+// Placeholder shown when no CashDrawerManager is injected (demo / previews only).
+private struct DrawerSettingsPlaceholder: View {
     var body: some View {
         ContentUnavailableView(
             "Cash Drawer",
