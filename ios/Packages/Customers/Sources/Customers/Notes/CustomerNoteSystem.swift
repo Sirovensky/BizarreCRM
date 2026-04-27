@@ -9,6 +9,7 @@ import Networking
 // Tasks implemented:
 //   L940 — Note types: Quick, Detail, Call summary, Meeting, Internal-only
 //   L941 — Internal-only notes hidden from customer-facing docs (is_internal_only param)
+//   L943 — @mention teammate → push notification + link (MentionSuggestionBar + mentioned_user_ids in POST)
 //   L945 — Internal-only flag hides note from SMS/email auto-include (UI toggle + server param)
 //   L946 — Role-gate sensitive notes (manager only visible notes)
 //   L947 — Quick-insert templates ("Called, left voicemail", "Reviewed estimate", etc.)
@@ -154,7 +155,51 @@ public struct CustomerNoteV2: Decodable, Identifiable, Sendable {
     }
 }
 
-// MARK: - Add Note Sheet (enhanced) — §5 L940/L941/L944/L945/L946/L947
+// MARK: - §5 L943 — @mention autocomplete bar
+
+/// Shown above the keyboard when the user types `@` in a note body.
+/// Displays filtered teammate suggestions; tapping one inserts `@DisplayName ` at the cursor.
+struct MentionSuggestionBar: View {
+    let suggestions: [Employee]
+    let onSelect: (Employee) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                ForEach(suggestions) { employee in
+                    Button {
+                        onSelect(employee)
+                    } label: {
+                        HStack(spacing: 4) {
+                            // Avatar initials circle
+                            Text(employee.initials)
+                                .font(.brandLabelSmall().weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 22, height: 22)
+                                .background(Color.bizarreOrange, in: Circle())
+                                .accessibilityHidden(true)
+                            Text(employee.displayName)
+                                .font(.brandLabelSmall().weight(.semibold))
+                                .foregroundStyle(.bizarreOnSurface)
+                        }
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, 6)
+                        .background(Color.bizarreSurface2, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Mention \(employee.displayName)")
+                    .accessibilityHint("Inserts @\(employee.displayName) in your note")
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.xs)
+        }
+        .background(Color.bizarreSurfaceBase.opacity(0.95))
+    }
+}
+
+// MARK: - Add Note Sheet (enhanced) — §5 L940/L941/L943/L944/L945/L946/L947
 
 public struct CustomerAddNoteSheet: View {
     let customerId: Int64
@@ -174,6 +219,11 @@ public struct CustomerAddNoteSheet: View {
     @State private var errorMessage: String?
     /// §5 L944 — @ticket backlink
     @State private var linkedTicketIdInput: String = ""
+
+    // §5 L943 — @mention state
+    @State private var allEmployees: [Employee] = []
+    @State private var mentionQuery: String? = nil        // non-nil when composing a mention
+    @State private var mentionedUserIds: Set<Int64> = []  // IDs to pass to server for push
 
     public init(
         customerId: Int64,
@@ -201,113 +251,164 @@ public struct CustomerAddNoteSheet: View {
         return Int64(linkedTicketIdInput.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
+    /// §5 L943 — Teammates matching the current @mention query.
+    private var mentionSuggestions: [Employee] {
+        guard let q = mentionQuery else { return [] }
+        let lower = q.lowercased()
+        if lower.isEmpty { return allEmployees.filter(\.active).prefix(8).map { $0 } }
+        return allEmployees.filter { emp in
+            emp.active && (
+                emp.displayName.lowercased().contains(lower) ||
+                (emp.username?.lowercased().contains(lower) ?? false)
+            )
+        }.prefix(8).map { $0 }
+    }
+
     public var body: some View {
         NavigationStack {
-            Form {
-                // Note type picker (§5 L940)
-                Section("Type") {
-                    Picker("Note type", selection: $noteType) {
-                        ForEach(CustomerNoteType.allCases, id: \.rawValue) { type in
-                            Label(type.label, systemImage: type.icon).tag(type)
-                        }
+            VStack(spacing: 0) {
+                // §5 L943 — @mention suggestion bar (shown when mentionQuery is active)
+                if !mentionSuggestions.isEmpty {
+                    MentionSuggestionBar(suggestions: mentionSuggestions) { employee in
+                        insertMention(employee)
                     }
-                    .pickerStyle(.menu)
-                    .onChange(of: noteType) { _, new in
-                        // Switching to internalOnly auto-sets body prefix
-                        if new == .internalOnly && body.isEmpty {
-                            body = "Staff note (internal): "
-                        }
-                    }
+                    Divider()
                 }
 
-                // Body (§5 L949 — accessible via VoiceOver)
-                Section {
-                    TextEditor(text: $body)
-                        .font(.brandBodyMedium())
-                        .frame(minHeight: noteType == .detail || noteType == .meeting ? 160 : 80)
-                        .accessibilityLabel("Note body")
-                        .accessibilityHint("Type the note content here")
-                } header: {
-                    HStack {
-                        Text("Note")
-                        Spacer()
-                        // Quick-insert templates (§5 L947)
-                        Button {
-                            showingTemplates = true
-                        } label: {
-                            Label("Templates", systemImage: "text.badge.plus")
-                                .font(.brandLabelSmall())
-                        }
-                        .buttonStyle(.plain)
-                        .tint(.bizarreTeal)
-                        .accessibilityLabel("Insert template")
-                    }
-                }
-
-                // §5 L944 — @ticket backlink
-                Section {
-                    if let pre = preLinkedTicketRef {
-                        // Pre-linked from ticket context — display only
-                        LabeledContent("Linked ticket") {
-                            HStack(spacing: BrandSpacing.xs) {
-                                Image(systemName: "ticket")
-                                    .foregroundStyle(.bizarreOrange)
-                                    .accessibilityHidden(true)
-                                Text(pre)
-                                    .font(.brandBodyMedium())
-                                    .foregroundStyle(.bizarreOrange)
+                Form {
+                    // Note type picker (§5 L940)
+                    Section("Type") {
+                        Picker("Note type", selection: $noteType) {
+                            ForEach(CustomerNoteType.allCases, id: \.rawValue) { type in
+                                Label(type.label, systemImage: type.icon).tag(type)
                             }
                         }
-                        .accessibilityLabel("Linked to ticket \(pre)")
-                    } else {
-                        LabeledContent("Link to ticket (optional)") {
-                            TextField("Ticket ID", text: $linkedTicketIdInput)
-                                .multilineTextAlignment(.trailing)
-                                .font(.brandMono(size: 14))
-                                .accessibilityLabel("Ticket ID to link this note to")
-                                .accessibilityHint("Enter a ticket ID number to create a backlink")
+                        .pickerStyle(.menu)
+                        .onChange(of: noteType) { _, new in
+                            // Switching to internalOnly auto-sets body prefix
+                            if new == .internalOnly && body.isEmpty {
+                                body = "Staff note (internal): "
+                            }
                         }
                     }
-                } header: {
-                    Text("Ticket Backlink")
-                } footer: {
-                    Text("Link this note to a ticket so it appears in the ticket history.")
-                        .font(.brandLabelSmall())
-                }
 
-                // Visibility flags (§5 L941/L945/L946)
-                Section("Visibility") {
-                    if !isInternal {
-                        Toggle(isOn: .init(
-                            get: { isManagerOnly },
-                            set: { isManagerOnly = $0 }
-                        )) {
-                            Label("Manager only", systemImage: "person.badge.shield.checkmark")
-                        }
-                        .toggleStyle(.switch)
-                        .accessibilityLabel("Manager only note")
-                        .accessibilityHint("When on, only managers can see this note")
-                    }
-
-                    if isInternal {
-                        HStack(spacing: BrandSpacing.xs) {
-                            Image(systemName: "lock.fill")
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .font(.caption)
-                            Text("Hidden from customer-facing docs, SMS, and email auto-include.")
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                        }
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Internal only — hidden from customers")
-                    }
-                }
-
-                if let err = errorMessage {
+                    // Body (§5 L949 — accessible via VoiceOver, §5 L943 — @mention detection)
                     Section {
-                        Text(err)
+                        TextEditor(text: $body)
+                            .font(.brandBodyMedium())
+                            .frame(minHeight: noteType == .detail || noteType == .meeting ? 160 : 80)
+                            .accessibilityLabel("Note body")
+                            .accessibilityHint("Type the note content here. Use @name to mention a teammate.")
+                            .onChange(of: body) { _, newValue in
+                                updateMentionQuery(text: newValue)
+                            }
+                    } header: {
+                        HStack {
+                            Text("Note")
+                            Spacer()
+                            // Quick-insert templates (§5 L947)
+                            Button {
+                                showingTemplates = true
+                            } label: {
+                                Label("Templates", systemImage: "text.badge.plus")
+                                    .font(.brandLabelSmall())
+                            }
+                            .buttonStyle(.plain)
+                            .tint(.bizarreTeal)
+                            .accessibilityLabel("Insert template")
+                        }
+                    } footer: {
+                        // §5 L943 — hint for @mention affordance
+                        Text("Use @name to mention a teammate — they'll get a notification.")
                             .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreError)
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+
+                    // §5 L943 — mentioned teammates chips (confirmed mentions)
+                    if !mentionedUserIds.isEmpty {
+                        Section("Notifying") {
+                            let mentioned = allEmployees.filter { mentionedUserIds.contains($0.id) }
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    ForEach(mentioned) { emp in
+                                        Label(emp.displayName, systemImage: "bell.fill")
+                                            .font(.brandLabelSmall())
+                                            .foregroundStyle(.bizarreOrange)
+                                            .padding(.horizontal, BrandSpacing.sm)
+                                            .padding(.vertical, 4)
+                                            .background(Color.bizarreOrange.opacity(0.1), in: Capsule())
+                                            .accessibilityLabel("\(emp.displayName) will be notified")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // §5 L944 — @ticket backlink
+                    Section {
+                        if let pre = preLinkedTicketRef {
+                            // Pre-linked from ticket context — display only
+                            LabeledContent("Linked ticket") {
+                                HStack(spacing: BrandSpacing.xs) {
+                                    Image(systemName: "ticket")
+                                        .foregroundStyle(.bizarreOrange)
+                                        .accessibilityHidden(true)
+                                    Text(pre)
+                                        .font(.brandBodyMedium())
+                                        .foregroundStyle(.bizarreOrange)
+                                }
+                            }
+                            .accessibilityLabel("Linked to ticket \(pre)")
+                        } else {
+                            LabeledContent("Link to ticket (optional)") {
+                                TextField("Ticket ID", text: $linkedTicketIdInput)
+                                    .multilineTextAlignment(.trailing)
+                                    .font(.brandMono(size: 14))
+                                    .accessibilityLabel("Ticket ID to link this note to")
+                                    .accessibilityHint("Enter a ticket ID number to create a backlink")
+                            }
+                        }
+                    } header: {
+                        Text("Ticket Backlink")
+                    } footer: {
+                        Text("Link this note to a ticket so it appears in the ticket history.")
+                            .font(.brandLabelSmall())
+                    }
+
+                    // Visibility flags (§5 L941/L945/L946)
+                    Section("Visibility") {
+                        if !isInternal {
+                            Toggle(isOn: .init(
+                                get: { isManagerOnly },
+                                set: { isManagerOnly = $0 }
+                            )) {
+                                Label("Manager only", systemImage: "person.badge.shield.checkmark")
+                            }
+                            .toggleStyle(.switch)
+                            .accessibilityLabel("Manager only note")
+                            .accessibilityHint("When on, only managers can see this note")
+                        }
+
+                        if isInternal {
+                            HStack(spacing: BrandSpacing.xs) {
+                                Image(systemName: "lock.fill")
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                                    .font(.caption)
+                                Text("Hidden from customer-facing docs, SMS, and email auto-include.")
+                                    .font(.brandLabelSmall())
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("Internal only — hidden from customers")
+                        }
+                    }
+
+                    if let err = errorMessage {
+                        Section {
+                            Text(err)
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreError)
+                        }
                     }
                 }
             }
@@ -331,8 +432,59 @@ public struct CustomerAddNoteSheet: View {
                     showingTemplates = false
                 }
             }
+            .task { await loadEmployees() }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    // MARK: - §5 L943 — mention helpers
+
+    /// Loads the teammate list once (for autocomplete suggestions).
+    private func loadEmployees() async {
+        guard allEmployees.isEmpty else { return }
+        allEmployees = (try? await api.listEmployees()) ?? []
+    }
+
+    /// Detects whether the cursor is inside an `@word` token and sets `mentionQuery`.
+    private func updateMentionQuery(text: String) {
+        // Find the last `@` that hasn't been followed by whitespace yet
+        // (i.e. cursor is still composing the mention).
+        let words = text.components(separatedBy: CharacterSet.whitespacesAndNewlines)
+        if let last = words.last, last.hasPrefix("@") {
+            let q = String(last.dropFirst()) // text after `@`
+            mentionQuery = q
+        } else {
+            mentionQuery = nil
+        }
+        // Resync confirmed mention IDs whenever body changes
+        syncMentionedIds(from: text)
+    }
+
+    /// Replaces the trailing `@query` token with `@DisplayName ` and records the user ID.
+    private func insertMention(_ employee: Employee) {
+        // Remove the trailing partial `@query` and append the resolved mention.
+        var words = body.components(separatedBy: " ")
+        if words.last?.hasPrefix("@") == true {
+            words.removeLast()
+        }
+        words.append("@\(employee.displayName)")
+        body = words.joined(separator: " ") + " "
+        mentionedUserIds.insert(employee.id)
+        mentionQuery = nil
+    }
+
+    /// Re-derives `mentionedUserIds` by scanning the current body for `@DisplayName` tokens
+    /// so removing a mention by hand also removes the notification intent.
+    private func syncMentionedIds(from text: String) {
+        let tokens = text.components(separatedBy: CharacterSet.whitespacesAndNewlines)
+            .filter { $0.hasPrefix("@") }
+            .map { String($0.dropFirst()) }
+        let tokenSet = Set(tokens)
+        mentionedUserIds = Set(
+            allEmployees
+                .filter { tokenSet.contains($0.displayName) }
+                .map(\.id)
+        )
     }
 
     private func save() async {
@@ -347,7 +499,8 @@ public struct CustomerAddNoteSheet: View {
                 body: trimmed,
                 noteType: noteType,
                 isManagerOnly: isManagerOnly,
-                linkedTicketId: resolvedLinkedTicketId
+                linkedTicketId: resolvedLinkedTicketId,
+                mentionedUserIds: Array(mentionedUserIds)
             )
             onSaved?()
             dismiss()
@@ -468,18 +621,26 @@ public struct NoteEditHistorySheet: View {
 extension APIClient {
     /// `POST /api/v1/customers/:id/notes` — create note with type + visibility flags.
     /// §5 L944: `linked_ticket_id` wires the @ticket backlink (optional).
+    /// §5 L943: `mentioned_user_ids` tells the server which teammates to push-notify.
+    ///
+    /// Server push dispatch for mentions: server parses `mentioned_user_ids`, looks up
+    /// each user's push token, and sends a notification with a deep link to the customer
+    /// detail view (`bizarrecrm://customers/:customerId`). Notification payload kind is
+    /// `note.mention` so §70 notification matrix can route it.
     public func createCustomerNoteV2(
         customerId: Int64,
         body: String,
         noteType: CustomerNoteType,
         isManagerOnly: Bool,
-        linkedTicketId: Int64? = nil
+        linkedTicketId: Int64? = nil,
+        mentionedUserIds: [Int64] = []
     ) async throws {
         struct Body: Encodable {
             let body: String
             let note_type: String
             let is_manager_only: Bool
             let linked_ticket_id: Int64?
+            let mentioned_user_ids: [Int64]
             // is_internal_only is derived server-side from note_type == "internal_only"
         }
         try await post(
@@ -488,7 +649,8 @@ extension APIClient {
                 body: body,
                 note_type: noteType.rawValue,
                 is_manager_only: isManagerOnly,
-                linked_ticket_id: linkedTicketId
+                linked_ticket_id: linkedTicketId,
+                mentioned_user_ids: mentionedUserIds
             ),
             as: EmptyResponse.self
         )

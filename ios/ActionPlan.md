@@ -940,7 +940,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only — `CustomerNoteType` enum + `CustomerAddNoteSheet` type picker; each type maps to `note_type` field on `POST /customers/:id/notes`. (b7e6b70e)
 - [x] Internal-only notes hidden from customer-facing docs — `CustomerNoteType.internalOnly.isAlwaysInternal` flag; server receives `note_type=internal_only` and excludes from customer-facing PDF/SMS/email. (b7e6b70e)
 - [x] Pin critical notes to customer header (max 3) — `CustomerPinnedNotesBanner` + `CustomerPinnedNotesListView`; star-pin button disabled when count ≥ 3. (f026f0d6)
-- [ ] @mention teammate → push notification + link
+- [x] @mention teammate → push notification + link — `MentionSuggestionBar` autocomplete (shows when `@` typed), `syncMentionedIds` tracks confirmed mentions, `mentioned_user_ids` array passed to `POST /customers/:id/notes`; server dispatches push `kind:note.mention` + deep-link `bizarrecrm://customers/:id`. (PLACEHOLDER_SHA)
 - [x] @ticket backlinks — `CustomerNoteV2.linkedTicketId/linkedTicketRef`; `CustomerAddNoteSheet` ticket-ID field; `createCustomerNoteV2` passes `linked_ticket_id`. (f026f0d6)
 - [x] Internal-only flag hides note from SMS/email auto-include — same as L941: `note_type=internal_only` sent in `createCustomerNoteV2`; server enforces exclusion from auto-include. (b7e6b70e)
 - [x] Role-gate sensitive notes (manager only) — `CustomerAddNoteSheet.isManagerOnly` toggle → `is_manager_only: true` in `createCustomerNoteV2` body; server enforces visibility gate. (b7e6b70e)
