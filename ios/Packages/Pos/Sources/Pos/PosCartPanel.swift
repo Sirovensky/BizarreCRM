@@ -28,6 +28,10 @@ struct PosCartPanel: View {
     var onShowFees: (() -> Void)?
     /// §16.4: show/hide coupon input
     var onShowCoupon: (() -> Void)?
+    /// §16.4: customer context banners (group discount, tax-exempt, loyalty).
+    var customerContext: PosCustomerContext = .empty
+    /// §16.4: pre-computed loyalty earn preview points; nil when inactive.
+    var loyaltyEarnedPoints: Int? = nil
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -46,6 +50,18 @@ struct PosCartPanel: View {
                         onChange: onChangeCustomer,
                         onRemove: onRemoveCustomer
                     )
+                    // §16.4 — Customer context banners (tax-exempt, group discount, loyalty).
+                    if customerContext != .empty {
+                        PosCustomerContextBanners(
+                            context: customerContext,
+                            cartTotalCents: cart.totalCents,
+                            earnedPoints: loyaltyEarnedPoints
+                        )
+                        .padding(.horizontal, BrandSpacing.base)
+                        .padding(.bottom, BrandSpacing.xs)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .animation(BrandMotion.snappy, value: customerContext)
+                    }
                 }
                 cartContent
                 totalsFooter

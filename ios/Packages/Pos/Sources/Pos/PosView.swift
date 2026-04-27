@@ -104,6 +104,17 @@ public struct PosView: View {
     // GET /api/v1/store-credit/:customerId endpoint (§16.6).
     @State private var storeCreditCents: Int? = nil
 
+    /// §16.1 / §16.2 / §16.4 — PosViewModel: permission gate, catalog filter,
+    /// favorites, recently-sold, repair services, customer context.
+    @State private var posVM = PosViewModel()
+
+    /// §16.4 — Device-for-repair picker state. Presented when a service item
+    /// is added to the cart and the customer has saved assets.
+    @State private var showingDevicePicker: Bool = false
+    /// The cart line that triggered the device picker; used to attach the
+    /// selected device option via `PosDeviceAttachment`.
+    @State private var devicePickerCartLineId: UUID? = nil
+
     /// §16.7 / §16.9 — the POS toolbar "Process return" entry and the
     /// post-sale receipt-send flow both need the live `APIClient`. Kept
     /// optional so preview / Mac-designed-for-iPad builds without auth
@@ -120,6 +131,7 @@ public struct PosView: View {
         repo: InventoryRepository? = nil,
         api: APIClient? = nil,
         customerRepo: CustomerRepository? = nil,
+        userRole: PosUserRole = .preview,
         cashDrawerOpen: @escaping @Sendable () async throws -> Void = { throw CashDrawerError.notConnected }
     ) {
         if let repo {
@@ -130,11 +142,15 @@ public struct PosView: View {
         self.api = api
         self.customerRepo = customerRepo
         self.cashDrawerOpen = cashDrawerOpen
+        _posVM = State(wrappedValue: PosViewModel(api: api, userRole: userRole))
     }
 
     public var body: some View {
         Group {
-            if !registerLoaded {
+            // §16.1 Permission gate — checked before any POS surface renders.
+            if !posVM.userRole.canAccessPos {
+                PosAccessDeniedView(role: posVM.userRole)
+            } else if !registerLoaded {
                 // First-tick loading — avoid flashing the open-register
                 // sheet before the store has answered.
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,6 +163,42 @@ public struct PosView: View {
         .task { await search.load() }
         .task { await loadRegisterSession() }
         .task { await cartVM.restoreSnapshotIfAvailable(into: cart) }
+        // §16.4 — Load customer context whenever the attached customer changes.
+        .onChange(of: cart.customer?.id) { _, newId in
+            Task { await posVM.loadCustomerContext(customerId: newId) }
+        }
+        // §16.4 — Apply tax exemption when context loads.
+        .onChange(of: posVM.customerContext) { _, ctx in
+            if ctx.isTaxExempt { posVM.applyTaxExemptionIfNeeded(to: cart) }
+            if ctx.groupDiscountPercent != nil { posVM.applyGroupDiscountIfNeeded(to: cart) }
+        }
+        // §16.4 — Device picker for repair service items.
+        .sheet(isPresented: $showingDevicePicker) {
+            if let api, let customerId = cart.customer?.id, customerId > 0 {
+                PosDevicePickerSheet(
+                    customerId: customerId,
+                    repository: PosDevicePickerRepositoryImpl(api: api),
+                    onConfirm: { option in
+                        if let lineId = devicePickerCartLineId {
+                            let attachment = PosDeviceAttachment(
+                                cartLineId: lineId,
+                                deviceOptionId: {
+                                    if case .asset(let id, _, _) = option { return id }
+                                    return nil
+                                }()
+                            )
+                            AppLog.pos.info("PosVM: device attached — \(attachment.deviceOptionId.map { String($0) } ?? "none", privacy: .public)")
+                        }
+                        devicePickerCartLineId = nil
+                    },
+                    onAddNew: {
+                        devicePickerCartLineId = nil
+                        // Deferred: navigate to device creation within Customers package.
+                        tenderErrorMessage = "Device creation is available in the Customer profile."
+                    }
+                )
+            }
+        }
         .sheet(isPresented: $showingOfflineQueue) {
             OfflineSaleQueueView()
         }
@@ -326,7 +378,9 @@ public struct PosView: View {
                     editPriceFor: $editPriceFor,
                     onShowDiscount: { showingDiscountSheet = true },
                     onShowTip: { showingTipSheet = true },
-                    onShowFees: { showingFeesSheet = true }
+                    onShowFees: { showingFeesSheet = true },
+                    customerContext: posVM.customerContext,
+                    loyaltyEarnedPoints: posVM.loyaltyPointsPreview(cartTotalCents: cart.totalCents)
                 )
                 .navigationTitle("Cart")
                 .navigationBarTitleDisplayMode(.inline)
@@ -723,7 +777,8 @@ public struct PosView: View {
                 showsCustomerCTAs: !cart.hasCustomer,
                 onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
                 onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                posVM: posVM
             )
             .navigationTitle("POS")
             .navigationBarTitleDisplayMode(.inline)
@@ -769,7 +824,8 @@ public struct PosView: View {
                     showsCustomerCTAs: !cart.hasCustomer,
                     onWalkIn: { cart.attach(customer: .walkIn); BrandHaptics.success() },
                     onCreateCustomer: api == nil ? nil : { showingCreateCustomer = true },
-                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true }
+                    onFindCustomer: customerRepo == nil ? nil : { showingCustomerPicker = true },
+                    posVM: posVM
                 )
             } cart: {
                 // ── Cart slot (condensed iPad panel) ──────────────────
@@ -1402,6 +1458,14 @@ public struct PosView: View {
         let line = PosCartMapper.cartItem(from: item)
         cart.add(line)
         BrandHaptics.success()
+        posVM.recordSale(itemIds: [item.id])
+
+        // §16.4 — Device picker for repair service items when a customer is attached.
+        // Only prompt when the item is a service and the customer has a real ID.
+        if item.isService, let customerId = cart.customer?.id, customerId > 0, api != nil {
+            devicePickerCartLineId = line.id
+            showingDevicePicker = true
+        }
     }
 
     private func startCharge() {
