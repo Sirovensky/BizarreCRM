@@ -46,6 +46,7 @@ import javax.inject.Inject
 class LoyaltyCardHceService : HostApduService() {
 
     @Inject
+    @dagger.hilt.android.qualifiers.ApplicationContext
     lateinit var appContext: Context
 
     companion object {
