@@ -14,6 +14,7 @@ public struct InvoiceListView: View {
     @State private var searchText: String = ""
     @State private var path: [Int64] = []
     @State private var showSortMenu: Bool = false
+    @State private var showFilterSheet: Bool = false
     @State private var csvExportItem: ExportableCSV?
     @State private var showPaySheet: Int64?
     @State private var showRefundSheet: Int64?
@@ -49,6 +50,13 @@ public struct InvoiceListView: View {
             contentType: .commaSeparatedText,
             defaultFilename: "invoices.csv"
         ) { _ in csvExportItem = nil }
+        // §7.1 Advanced filter sheet
+        .sheet(isPresented: $showFilterSheet) {
+            InvoiceFilterSheet(filter: Binding(
+                get: { vm.advancedFilter },
+                set: { newFilter in Task { await vm.applyAdvancedFilter(newFilter) } }
+            ))
+        }
         // Quick-pay sheet from context menu / swipe
         .sheet(
             isPresented: Binding(
@@ -351,6 +359,27 @@ public struct InvoiceListView: View {
         // Staleness indicator
         ToolbarItem(placement: .status) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+
+        // §7.1 Advanced filter button (with active-filter badge)
+        ToolbarItem(placement: .topBarTrailing) {
+            BrandGlassContainer {
+                Button {
+                    showFilterSheet = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "line.3.horizontal.decrease.circle")
+                        if vm.hasActiveFilter {
+                            Circle()
+                                .fill(Color.bizarreOrange)
+                                .frame(width: 8, height: 8)
+                                .offset(x: 4, y: -4)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityLabel(vm.hasActiveFilter ? "Invoice filters active. Tap to edit." : "Filter invoices")
+            }
         }
 
         // Sort

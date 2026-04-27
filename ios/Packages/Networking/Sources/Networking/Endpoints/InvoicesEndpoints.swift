@@ -173,7 +173,8 @@ public extension APIClient {
         pageSize: Int = 50,
         cursor: String? = nil,
         sort: String? = nil,
-        statusOverride: String? = nil
+        statusOverride: String? = nil,
+        extraQueryItems: [URLQueryItem] = []
     ) async throws -> InvoicesListResponse {
         var items = filter.queryItems
         items.append(URLQueryItem(name: "pagesize", value: String(pageSize)))
@@ -192,6 +193,8 @@ public extension APIClient {
             items.removeAll { $0.name == "status" }
             items.append(URLQueryItem(name: "status", value: statusOverride))
         }
+        // §7.1 Advanced filter axes (date range / customer / amount / payment method / created-by)
+        items.append(contentsOf: extraQueryItems)
         return try await get("/api/v1/invoices", query: items, as: InvoicesListResponse.self)
     }
 
