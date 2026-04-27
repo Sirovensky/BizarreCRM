@@ -80,11 +80,46 @@ public final class KeychainStore: @unchecked Sendable {
     }
 
     /// Generates a new random 256-bit passphrase if missing; returns existing otherwise.
+    ///
+    /// - Note: Prefer ``tenantPassphrase(for:)`` for per-tenant DB isolation (§28.12).
+    ///   This method is retained for backwards-compatibility with the single-tenant
+    ///   bootstrap path and for the global fallback before a tenant is selected.
     public func dbPassphrase() throws -> String {
         if let existing = get(.dbPassphrase) { return existing }
         let key = SymmetricKey(size: .bits256)
         let raw = key.withUnsafeBytes { Data($0) }.base64EncodedString()
         try set(raw, for: .dbPassphrase)
         return raw
+    }
+
+    // MARK: — §28.12 Per-tenant DB passphrase
+
+    /// Returns a per-tenant 256-bit DB passphrase stored under the
+    /// key `"db.passphrase.<tenantSlug>"`. Generates one on first access.
+    ///
+    /// Each tenant gets its own independently-generated passphrase so
+    /// switching tenants never accidentally decrypts another tenant's DB.
+    ///
+    /// - Parameter tenantSlug: The stable server-issued tenant identifier
+    ///   (e.g. `"acme-repair"`). Must be non-empty; assert in debug builds.
+    public func tenantPassphrase(for tenantSlug: String) throws -> String {
+        precondition(!tenantSlug.isEmpty, "tenantSlug must be non-empty")
+        let keychainKey = "db.passphrase.\(tenantSlug)"
+        if let existing = try? keychain.get(keychainKey) { return existing }
+        let key = SymmetricKey(size: .bits256)
+        let raw = key.withUnsafeBytes { Data($0) }.base64EncodedString()
+        try keychain.set(raw, key: keychainKey)
+        return raw
+    }
+
+    /// Removes the per-tenant DB passphrase for `tenantSlug` from the Keychain.
+    ///
+    /// **Destructive:** after this call, the encrypted DB for this tenant is
+    /// permanently unreadable (the key is gone). Only call from
+    /// Settings → Danger Zone → Reset, never from routine logout.
+    public func removeTenantPassphrase(for tenantSlug: String) throws {
+        precondition(!tenantSlug.isEmpty, "tenantSlug must be non-empty")
+        let keychainKey = "db.passphrase.\(tenantSlug)"
+        try keychain.remove(keychainKey)
     }
 }
