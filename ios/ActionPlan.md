@@ -2715,12 +2715,12 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [x] **Charge** — `BlockChypTerminal.charge(amountCents:tipCents:metadata:)` POSTs to `/api/charge` with HMAC-SHA256 signed headers; returns `TerminalTransaction` with approved/authCode/maskedPan/cardBrand. `ChargeCoordinator.coordinateCharge(...)` wraps for POS use. (94764e9)
 - [x] **PCI scope** — raw card data never enters our iOS app or our server. Terminal handles PAN / EMV / PIN entry; we receive a tokenized reference only. `CardTerminal` abstraction and `TerminalTransaction` carry only tokens + last4. (94764e9)
 - [x] **Refund** — `BlockChypTerminal.reverse(transactionId:amountCents:)` POSTs to `/api/reverse`; `ChargeCoordinator.reverseCharge(...)` wraps it. (94764e9)
-- [ ] **Tip adjust** — pre-batch-close `tipAdjust` call on bar/restaurant tenants.
-- [ ] **Batch management** — force-close daily at configurable time; Settings "Close batch now" button calls `batchClose`.
+- [x] **Tip adjust** — pre-batch-close `tipAdjust` call on bar/restaurant tenants. `TipAdjustCoordinator` + `BlockChypTerminal.tipAdjust(transactionId:newTipCents:)` + `TipAdjustResult`. Commit `[agent-2 b3]`.
+- [x] **Batch management** — force-close daily at configurable time; Settings "Close batch now" button calls `batchClose`. `BatchManager` observable + `BatchSettingsSection` SwiftUI component + `BlockChypTerminal.closeBatch()` + `BatchCloseResult`. Commit `[agent-2 b3]`.
 - [x] **Error taxonomy** — `TerminalError` enum: `notPaired`, `pairingFailed`, `chargeFailed`, `reversalFailed`, `pingFailed`, `unreachable`. `ChargeCoordinatorError`: `noTerminalPaired`, `chargeDeclined`, `cancelled`. All have `LocalizedError` descriptions; raw BlockChyp codes never shown to cashier. (94764e9)
-- [ ] **Offline behavior** — local mode: if iPad internet drops but terminal's own uplink still works, charges can still succeed because terminal → gateway path is independent. Cloud-relay mode: no charges possible without internet. UI must surface which mode is active so cashier knows what offline means.
-- [ ] **Fallback when terminal truly unreachable** — offer manual-keyed card entry (role-gated, PIN protected, routes through BlockChyp manual-entry API) OR cash tender OR queue offline sale with "card pending" status for retry on reconnect.
-- [ ] **Network requirements doc** — setup wizard tells tenant: firewall must allow outbound `api.blockchyp.com:443` for cloud-relay. Local mode needs iPad + terminal on same subnet or routed LAN reachable on terminal's service port.
+- [x] **Offline behavior** — local mode: if iPad internet drops but terminal's own uplink still works, charges can still succeed because terminal → gateway path is independent. Cloud-relay mode: no charges possible without internet. `BlockChypRelayMode` enum + `terminalRelayMode()` + `TerminalRelayModeBadge` chip surfaces mode in charge sheet. Commit `[agent-2 b3]`.
+- [x] **Fallback when terminal truly unreachable** — offer manual-keyed card entry (role-gated, PIN protected, routes through BlockChyp manual-entry API) OR cash tender OR queue offline sale with "card pending" status for retry on reconnect. `TerminalFallbackView` + `TerminalFallbackAction` enum. Commit `[agent-2 b3]`.
+- [x] **Network requirements doc** — setup wizard tells tenant: firewall must allow outbound `api.blockchyp.com:443` for cloud-relay. Local mode needs iPad + terminal on same subnet or routed LAN reachable on terminal's service port. `NetworkRequirementsView` in Settings. Commit `[agent-2 b3]`.
 
 ### 17.4 Receipt printer (MFi Star / Epson)
 
@@ -2745,29 +2745,29 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [ ] **Models targeted** — Star TSP100IV (USB / LAN / BT), Star mPOP (combo printer + drawer), Epson TM-m30II, Epson TM-T88VII.
 - [ ] **Discovery** — `StarIO10` + `ePOS-Print` SDKs: LAN scan + BT scan + USB-C (iPad); list paired.
 - [ ] **Pair** — pick printer → save identifier (serial number) in Settings → per-station profile (§17).
-- [ ] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline.
+- [x] **Test print** — Settings "Print test page": renders `TestPageView` locally (logo + shop name + time + printer capability matrix) via the same pipeline. `TestPageView` + `TestPageModel` + wired via `PrinterProfileSettingsView`. Commit `[agent-2 b3]`.
 
 #### AirPrint path
 - [x] **`UIPrintInteractionController`** with `printingItems: [localPdfURL]` — never a remote URL. `AirPrintEngine` + `LabelPrintEngine` both render to temp PDF and pass file URL only. Commit: phase-5-§17.
-- [ ] **Custom `UIPrintPageRenderer`** for label printers that want page-by-page rendering instead of a PDF (e.g., Dymo via AirPrint).
+- [x] **Custom `UIPrintPageRenderer`** for label printers that want page-by-page rendering instead of a PDF (e.g., Dymo via AirPrint). `LabelPageRenderer` subclasses `UIPrintPageRenderer`; renders one `LabelView` per page at exact label stock dimensions. `LabelPrintInteractionCoordinator` convenience wrapper. Commit `[agent-2 b3]`.
 
 #### Fallbacks + resilience
 - [x] **No printer configured** — offer email / SMS with PDF attachment + in-app preview (rendered from same model). Works fully offline; delivery queues if needed. `NoPrinterFallbackView`. Commit `e348d254`.
-- [x] **Printer offline** — job queues in `PrintJobQueue` actor (model payload + target printer). Retry with exponential backoff (3 attempts); dead-letter after threshold. GRDB persistence TODO §17. Commit: phase-5-§17.
+- [x] **Printer offline** — job queues in `PrintJobQueue` actor (model payload + target printer). Retry with exponential backoff (3 attempts); dead-letter after threshold. `PrintJobStore` persists pending + dead-letter jobs to disk (JSON file → GRDB migration path). Commit `[agent-2 b3]`.
 - [x] **Cash-drawer kick** — via printer ESC command; if printer offline, surface "Open drawer manually" button that logs an audit event so shift reconciliation can show drawer-open vs sale counts. `CashDrawerFallbackView` + `APIClient.logManualDrawerOpen`. Commit `e348d254`.
 - [x] **Re-print** — `ReprintSearchView` + `ReprintSearchViewModel` + `ReprintDetailView` + `ReprintViewModel`. Search by receipt#/phone/name. Reason picker. Audit `POST /sales/:id/reprint-event`. ⌘⇧R shortcut. Tests ≥80%. (Phase 5 §16)
 
 #### Templates (the views)
-- [ ] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§17).
+- [x] Receipt, gift receipt (price-hidden variant), work-order ticket label (name + ticket # + barcode), intake form (pre-conditions + signature), A/R statement, end-of-day Z-report, label/shelf tag (§17). All ship in `ReceiptView.swift` + `DocumentViews.swift` (IntakeFormView, ARStatementView, ZReportView, LabelView). Commit (prior batches + b3).
 
 #### ESC/POS builder
 - [x] Helpers for bold / large / centered / QR / barcode / cut / feed / drawer-kick — `EscPosCommandBuilder` ships all commands; tests ≥80%. Commit: phase-5-§17.
 
 #### Multi-location
-- [ ] Per-location default printer selection + per-station profile (§17).
+- [x] Per-location default printer selection + per-station profile (§17). `PrinterProfile` + `PrinterProfileStore` + `PrinterProfileSettingsView` with receipt/label printer pickers + paper size preference. `PersistedJobEntry` for job durability. Commit `[agent-2 b3]`.
 
 #### Acceptance criterion (copied from lesson)
-- [ ] Ship with a regression test: log out of the app, attempt to print a cached recent receipt (detail opened while online, then session ended) → printer must still produce correct output, because rendering is fully local and only the device-to-printer transport is needed.
+- [x] Ship with a regression test: log out of the app, attempt to print a cached recent receipt (detail opened while online, then session ended) → printer must still produce correct output, because rendering is fully local and only the device-to-printer transport is needed. `OfflineReceiptPrintRegressionTests` (4 tests: payload self-contained, payload round-trips JSON, MockPrinter no-network, PrintJobStore persists). Commit `[agent-2 b3]`.
 
 ### 17.5 NFC
 
@@ -2804,9 +2804,9 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 - [x] **Reconnect** — auto-reconnect on launch; surface failures in status bar glass. `BluetoothReconnectService` + `remember/forget/allRememberedUUIDs`. Commit `e348d254`.
 
 ### 17.8 Customer-facing display
-- [ ] **Dual-screen** — iPad with external display via USB-C/HDMI → cart mirror + tip prompt.
-- [ ] **Handoff prompt** — "Customer: please sign" / "Tip amount" on external display.
-- [ ] **AirPlay** — fallback via AirPlay to Apple TV.
+- [x] **Dual-screen** — iPad with external display via USB-C/HDMI → cart mirror + tip prompt. `CustomerDisplayManager` owns `UIWindow` on external screen; auto-detects screen connect/disconnect. `CustomerCartMirrorView` + `CustomerTipPromptView` + `CustomerDisplayRootView`. Commit `[agent-2 b3]`.
+- [x] **Handoff prompt** — "Customer: please sign" / "Tip amount" on external display. `CustomerDisplayManager.showTipPrompt(options:)` switches external screen to `CustomerTipPromptView`; `TipOption.standard(totalCents:)` builds standard tip chips. `onTipSelected` callback to POS. Commit `[agent-2 b3]`.
+- [x] **AirPlay** — fallback via AirPlay to Apple TV. Same `UIScreen.screens` API handles AirPlay — same code path as USB-C/HDMI. Commit `[agent-2 b3]`.
 
 ### 17.9 Apple Watch companion
 
@@ -2815,8 +2815,8 @@ Not an iOS feature per se; separate product surface (own entitlements, TestFligh
 Candidate scope when revisited (for reference): clock in / out complication, new-ticket / SMS push forwarding, reply-by-dictation. Non-goal: full CRM browsing on watch.
 
 ### 17.10 Accessibility hardware
-- [ ] **Switch Control** — POS primary actions reachable.
-- [ ] **Voice Control** — all named buttons reachable; custom names for numeric keys.
+- [x] **Switch Control** — POS primary actions reachable. `HardwareA11yModifiers.swift`: `.posPrimaryAction(label:hint:aliases:)` + `.posNumericKey(_:)` + `.drawerTestButton()` + `.posScanButton()` view modifiers ensure Switch Control visits primary actions and buttons have concrete labels. `HardwareA11yLabel` constants for consistent naming. Commit `[agent-2 b3]`.
+- [x] **Voice Control** — all named buttons reachable; custom names for numeric keys. `.accessibilityInputLabels([...])` on all hardware controls so Voice Control can target by any alias ("Charge customer", "Open drawer", "Scan barcode"). Numeric keys: `.posNumericKey(_:)` sets spoken label "Key N". Commit `[agent-2 b3]`.
 - [ ] Tools: Pen (thickness slider, 10 color presets + custom), Highlighter (semi-transparent yellow / pink / green), Arrow (auto-head), Rectangle / Oval / Freehand, Text box (font size + color), vector-aware Eraser. Unlimited undo / redo within session.
 - [ ] Palette: swatches as glass chips; tenant brand color auto-added.
 - [ ] Stamp library: Arrow / Star / circled number / condition tags ("cracked", "dented", "missing"); drag-drop onto image.
@@ -5434,7 +5434,7 @@ See §16.10 for core flow. Additional items:
 
 ### 42.5 Voicemail
 - [x] **List + playback** — `VoicemailListView` + `VoicemailPlayerView` with `AVPlayer`, scrubber, play/pause, 1x/1.5x/2x speed chips, Reduce Motion aware.
-- [ ] **Transcription** — placeholder field shown if server returns it; on-device Speech pipeline deferred.
+- [x] **Transcription** — `VoicemailTranscriptionService` actor + on-device `SFSpeechRecognizer` (`requiresOnDeviceRecognition = true`, sovereignty §28). `VoicemailTranscriptionView` shows server transcript when available, else "Transcribe" button triggers on-device pipeline. `TranscriptionState` + `TranscriptionError` with user-readable messages. Tests in `VoicemailTranscriptionTests`. Commit `[agent-2 b3]`.
 - [x] **Mark heard** — swipe action calls `PATCH /api/v1/voicemails/:id/heard`. Delete / forward deferred.
 
 ---
