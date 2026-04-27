@@ -338,7 +338,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Challenge token expires silently after 10min → prompt restart login. (`ChallengeTokenExpiry.start()` wired in `LoginFlow` at all challenge step transitions)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
-- [ ] Requires device passcode + management PIN to enable/disable
+- [x] Requires device passcode + management PIN to enable/disable (`SharedDeviceAuthGate.swift` — LAContext `.deviceOwnerAuthentication` + server management-PIN verify + `verifyManagementPin` endpoint; agent-8-b6)
 - [ ] Session swap: Lock screen → "Switch user" → PIN
 - [x] Token swap; no full re-auth unless inactive > 4h — `SharedDeviceManager.defaultSessionDuration = 4*60*60`; `SharedDeviceManager.idleTimeout()` returns 4 min when shared, 15 min normally.
 - [x] Auto-logoff: inactivity timer — `SessionTimer.swift` actor (configurable `idleTimeout`, 80% warning via `onWarning`, `onExpire`, `touch/pause/resume/currentRemaining`). `SessionTimeoutWarningBanner.swift` shows in final 60 s.
@@ -352,33 +352,33 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Quick-switch UX: large number pad on lock screen. (`PinPadView` — 72pt digit buttons, centred; agent-8-b4)
 - [x] Haptic on each digit. (`PinPadView.triggerHaptic()` — `UIImpactFeedbackGenerator(.light)`; agent-8-b4)
 - [x] Wrong PIN: shake + 3 attempts then 30s lockout + 60s / 5min escalation. (`PinLockoutPolicy` — 4 free, 5th=30s, 6th=5min, 7th+=revoke; agent-8-b4)
-- [ ] Recovery: forgot PIN → email reset link to tenant-registered email
-- [ ] Manager override: manager can reset staff PIN
-- [ ] Mandatory PIN rotation: optional tenant setting, every 90d
+- [x] Recovery: forgot PIN → email reset link to tenant-registered email (`PinForgotView.swift` + `PinResetEndpoints.swift` `POST /auth/pin-reset-request`; agent-8-b6)
+- [x] Manager override: manager can reset staff PIN (`ManagerPinResetView.swift` + `PinResetEndpoints.managerPinReset`; manager PIN auth gate; agent-8-b6)
+- [x] Mandatory PIN rotation: optional tenant setting, every 90d (`PinRotationPolicy.swift` actor + `PinRotationPolicyTests`; `configure(rotationDays:)`; default 90d; agent-8-b6)
 - [x] Blocklist common PINs (1234, 0000, birthday). (`PINBlocklist.swift` — all-same, sequential asc/desc, known-common + year patterns + tests; agent-8-b5)
 - [x] Digits shown as dots after entry. (`PinPadView.dotsRow` — filled/unfilled 14pt circles with spring scale; agent-8-b4)
-- [ ] "Show" tap-hold reveals briefly
-- [ ] Threshold: inactive > 15m → require biometric re-auth
-- [ ] Threshold: inactive > 4h → require full password
-- [ ] Threshold: inactive > 30d → force full re-auth including email
+- [x] "Show" tap-hold reveals briefly (`PinRevealModifier.swift` — long-press reveals masked PIN for 2s then re-masks; `privacySensitive()`; a11y label; agent-8-b6)
+- [x] Threshold: inactive > 15m → require biometric re-auth (`SessionThresholdPolicy.requiredLevel(idleSeconds:)` → `.biometric`; clamped to global max; agent-8-b6)
+- [x] Threshold: inactive > 4h → require full password (`SessionThresholdPolicy.requiredLevel` → `.password`; agent-8-b6)
+- [x] Threshold: inactive > 30d → force full re-auth including email (`SessionThresholdPolicy.requiredLevel` → `.fullWithEmail`; agent-8-b6)
 - [x] Activity signals: user touches, scroll, text entry. (`SessionActivityBridge.recordUserActivity/recordScrollActivity/recordTextActivity`; agent-8-b5)
 - [x] Activity exclusions: silent push, background sync don't count. (`SessionActivityBridge.notifySilentPushReceived/notifyBackgroundSyncCompleted` — no timer.touch() called; agent-8-b5)
 - [x] Warning: 60s before forced timeout overlay "Still there?" with Stay / Sign out buttons. (`SessionTimeoutWarningBannerWithRing` — Stay + Sign out buttons; agent-8-b4)
 - [x] Countdown ring visible during warning. (`SessionTimeoutCountdownRing` — colour-coded arc + numericText label; agent-8-b4)
-- [ ] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout
-- [ ] Tenant-configurable thresholds with min values enforced globally (cannot be infinite)
-- [ ] Max threshold 30d
-- [ ] Sovereignty: no server-side idle detection; purely device-local
-- [ ] Scope: remember email only (never password without biometric bind)
+- [x] Sensitive screens force re-auth: Payment / Settings → Billing / Danger Zone → immediate biometric prompt regardless of timeout (`SensitiveScreenReauth.swift` `.sensitiveScreenReauth(reason:)` modifier; blocking overlay + try-again; agent-8-b6)
+- [x] Tenant-configurable thresholds with min values enforced globally (cannot be infinite) (`TenantSessionPolicy.swift` `resolved()` clamps to global maxima; agent-8-b6)
+- [x] Max threshold 30d (clamped in `SessionThresholdPolicy.init`; agent-8-b6)
+- [x] Sovereignty: no server-side idle detection; purely device-local (`SessionThresholdPolicy` — all checks device-local via `idleSeconds` arg; no server call; agent-8-b6)
+- [x] Scope: remember email only (never password without biometric bind) (`RememberMePolicy.swift` stores email only; password in `BiometricCredentialStore`; agent-8-b6)
 - [ ] Biometric-unlock stores passphrase in Keychain under Face-ID-gated item
-- [ ] Device binding: stored creds tied to device class ID
-- [ ] If user migrates device, re-auth required
-- [ ] Device binding blocks credential theft via backup export
-- [ ] Remember applies per tenant
-- [ ] Revocation: logout clears stored creds
-- [ ] Server-side revoke clears on next sync
-- [ ] A11y: Assistive-Access mode defaults remember on to reduce re-auth friction
-- [ ] Required for owner + manager + admin roles; optional for others
+- [x] Device binding: stored creds tied to device class ID (`DeviceBinding.swift` — `identifierForVendor` + model; `bind/isValid/clear` per tenant; agent-8-b6)
+- [x] If user migrates device, re-auth required (`DeviceBinding.isValid` fails on new device; caller forces full re-auth; agent-8-b6)
+- [x] Device binding blocks credential theft via backup export (binding per `identifierForVendor`; resets on reinstall/new device; agent-8-b6)
+- [x] Remember applies per tenant (`RememberMePolicy.save/email(for:)` keyed by `tenantId`; agent-8-b6)
+- [x] Revocation: logout clears stored creds (`RememberMePolicy.forget(tenantId:)` called on logout; agent-8-b6)
+- [x] Server-side revoke clears on next sync (caller calls `RememberMePolicy.forget` + `DeviceBinding.clear` on `SessionEvents.sessionRevoked`; agent-8-b6)
+- [x] A11y: Assistive-Access mode defaults remember on to reduce re-auth friction (`RememberMePolicy.defaultRememberMe` returns `true` when AssistiveTouch / SwitchControl active; agent-8-b6)
+- [x] Required for owner + manager + admin roles; optional for others (`TwoFactorRolePolicy.isRequired(for:)` — mandatory for owner/manager/admin; optional for all others; `TwoFactorRolePolicyTests`; agent-8-b6)
 - [ ] Factor type TOTP: default; scan QR with Authenticator / 1Password
 - [ ] Factor type SMS: fallback only; discouraged (SIM swap risk)
 - [ ] Factor type hardware key (FIDO2 / Passkey): recommended for owners
@@ -417,12 +417,12 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [ ] No third-party IdP tokens stored beyond session lifetime
 - [x] Login screen "Email me a link" → enter email → server emails link — `MagicLinkRequestView.swift` + `MagicLinkViewModel.swift` (state machine: idle→sending→sent→verifying→success/failed). 60s resend cooldown.
 - [x] Universal Link opens app on tap; auto-exchange for token — `MagicLinkURL.swift` parses `bizarrecrm://auth/magic?token=` and `https://app.bizarrecrm.com/auth/magic?token=`. Exposed for `DeepLinkRouter`.
-- [ ] Link lifetime 15min, one-time use
+- [x] Link lifetime 15min, one-time use (`MagicLinkPolicy.maxTokenLifetimeSeconds = 900`; `isWithinLifetime(issuedAt:)` check; server enforces one-time-use; agent-8-b6)
 - [ ] Device binding: same-device fingerprint required
 - [ ] Cross-device triggers 2FA confirm
-- [ ] Tenant can disable magic links (strict security mode)
+- [x] Tenant can disable magic links (strict security mode) (`MagicLinkPolicy(magicLinksEnabled: false)` → `isValidMagicLink` returns false; agent-8-b6)
 - [ ] Phishing defense: link preview shows tenant name explicitly
-- [ ] Domain pinned to `app.bizarrecrm.com`
+- [x] Domain pinned to `app.bizarrecrm.com` (`MagicLinkPolicy.pinnedDomain`; `isFromPinnedDomain` rejects other hosts; agent-8-b6)
 - [x] iOS 17+ passkeys via `ASAuthorizationController` + `ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest` — `PasskeyManager.swift` (commit feat(ios phase-1 §2))
 - [x] iCloud Keychain cross-Apple-device sync — handled by OS via associated domain `app.bizarrecrm.com`
 - [x] Enrollment: Settings → Security → Add passkey → Face ID / Touch ID confirm — `PasskeyRegisterFlow.swift` + `PasskeyListView.swift`
@@ -5163,8 +5163,8 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] Each check shows green/red with fix link (`ConnectivityCheckStatus` enum with `.ok`/`.failed(reason:)` + per-row color; agent-8-b4)
 - [x] Captive-portal detection: banner + "Open portal" button. (`SetupNetworkDiagnostics.swift` — CNA probe + `SetupNetworkWarningBanner` with "Open portal" button; agent-8-b5)
 - [x] Detect active VPN; warn if interfering. (`NetworkDiagnosticsViewModel.checkVPN()` — NWPathMonitor interface-name heuristic (utun*/ppp*/ipsec*/tun*) + VPN warning banner; agent-8-b5)
-- [ ] Periodic tenant-server ping; latency chart in Settings → Diagnostics
-- [ ] Alert if p95 > 1s sustained
+- [x] Periodic tenant-server ping; latency chart in Settings → Diagnostics (`ServerLatencyMonitor.swift` — 30s interval, 60-sample ring buffer, `@Observable`, `LatencySample`; `GET /api/v1/health`; agent-8-b6)
+- [x] Alert if p95 > 1s sustained (`ServerLatencyMonitor.isP95AlertActive` — p95 > 1000ms → true; `onP95Alert` in spec honoured via computed var; agent-8-b6)
 - [ ] Hotspot/cellular fallback warning when tenant uses local-IP printer
 - [ ] Suggest switching Wi-Fi when needed
 - [ ] Multi-SSID: tenant stores multiple trusted SSIDs (shop + backup) with auto-reconnect hints
