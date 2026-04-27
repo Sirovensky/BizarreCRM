@@ -3336,3 +3336,9 @@ DONE-PREEXISTING: WEB-FM-016 (SubscriptionsListPage local formatCurrency already
 DONE: WEB-FX-010 (Sidebar aria-label, redundant role removed), WEB-FAC-007 (Toaster gutter + per-severity duration), WEB-FAE-009 (cross-tenant JWT slug guard in authStore + main.tsx).
 
 DONE-PREEXISTING: WEB-W1-015 (LeftPanel discount reason flag wired), WEB-FQ-013 (focus ring already amber), WEB-FL-019 (DataExport API renamed/wired), WEB-FV-004 (PhotoGallery delete error handled).
+
+## todofixes426 — Cleanup pass 16 (2026-04-26) — WEB-FAC animations
+
+DONE: WEB-FAC-004 (modal animations — 4 modals + tailwindcss-animate dep + plugin), WEB-FAC-008 (transition-colors → transition-[colors,box-shadow,transform] in 5 shared component files).
+
+SKIPPED: WEB-FAC-005 (needs Tooltip primitive dep), WEB-FAC-006 (needs framer-motion).

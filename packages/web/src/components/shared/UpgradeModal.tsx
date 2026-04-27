@@ -76,14 +76,16 @@ export function UpgradeModal() {
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4"
+      data-state="open"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 animate-in fade-in-0 duration-200 motion-reduce:animate-none"
       onClick={closeUpgradeModal}
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="upgrade-modal-title"
-        className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900"
+        data-state="open"
+        className="relative w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -138,7 +140,7 @@ export function UpgradeModal() {
             <button
               onClick={handleUpgrade}
               disabled={loading || plan === 'pro'}
-              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-all hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="flex-1 rounded-lg bg-gradient-to-r from-primary-500 to-primary-700 px-4 py-3 text-sm font-semibold text-primary-950 shadow-lg transition-[colors,box-shadow,transform] hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Starting checkout…' : plan === 'pro' ? 'Already on Pro' : 'Upgrade to Pro'}
             </button>

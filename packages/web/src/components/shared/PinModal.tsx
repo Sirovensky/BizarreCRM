@@ -170,13 +170,14 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div data-state="open" className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 animate-in fade-in-0 duration-200 motion-reduce:animate-none">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="pin-modal-title"
-        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900"
+        data-state="open"
+        className="relative w-full max-w-sm rounded-xl bg-white shadow-2xl dark:bg-surface-900 animate-in fade-in-0 zoom-in-95 duration-200 motion-reduce:animate-none"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-200 px-5 py-3 dark:border-surface-700">
@@ -218,7 +219,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
               if (!isLocked) setError('');
             }}
             placeholder={isLocked ? `Wait ${lockCountdown}s` : 'PIN'}
-            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
+            className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-center text-2xl tracking-[0.5em] focus-visible:border-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-600 dark:bg-surface-800 dark:text-surface-50"
           />
 
           {error && (
@@ -236,7 +237,7 @@ export function PinModal({ title = 'Enter PIN to continue', onSuccess, onCancel 
             <button
               type="submit"
               disabled={!pin.trim() || verifying || isLocked}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 py-2.5 text-sm font-medium text-primary-950 hover:bg-primary-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600 focus-visible:ring-offset-2 disabled:opacity-50"
             >
               {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
             </button>
