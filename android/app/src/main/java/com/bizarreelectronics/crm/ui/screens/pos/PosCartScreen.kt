@@ -2,6 +2,8 @@ package com.bizarreelectronics.crm.ui.screens.pos
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -151,10 +153,16 @@ fun PosCartScreen(
                 },
                 title = {
                     state.customer?.let { c ->
+                        // 2026-04-26 — chips moved to sub-bar below topbar so
+                        // the title slot has room for the customer name + a
+                        // single-line subtitle. Previously chips ate so much
+                        // width that the name wrapped one letter per row.
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
                         ) {
                             Box(
                                 modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
@@ -167,74 +175,35 @@ fun PosCartScreen(
                                     color = MaterialTheme.colorScheme.onSecondary,
                                 )
                             }
-                            Column {
-                                Text(c.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                                // Mockup phone 3 subtitle pattern: show the linked-ticket-draft
-                                // state when set; otherwise fall back to an items count.
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    c.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
                                 val subtitle = when {
                                     state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
                                     state.lines.isEmpty() -> "Empty cart"
                                     else -> "${state.lines.size} items"
                                 }
-                                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    subtitle,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                )
                             }
                         }
                     } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
                 },
                 actions = {
-                    // ── Location chip ────────────────────────────────────────
-                    AssistChip(
-                        onClick = { /* TODO: location picker */ },
-                        label = {
-                            Text(state.locationName, style = MaterialTheme.typography.labelSmall)
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Outlined.Place,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                            )
-                        },
-                        modifier = Modifier.height(28.dp),
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    // ── Shift status chip ────────────────────────────────────
-                    // session 2026-04-26 — a11y: color-blind safe: contentDescription
-                    // conveys shift state text so color dot is not sole indicator
-                    AssistChip(
-                        onClick = { /* TODO: clock-in/out */ },
-                        label = {
-                            Text(
-                                if (state.shiftActive) "On shift" else "Off shift",
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                Icons.Filled.Circle,
-                                contentDescription = if (state.shiftActive) "Active" else "Inactive",
-                                modifier = Modifier.size(8.dp),
-                                tint = if (state.shiftActive) LocalExtendedColors.current.success
-                                       else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        },
-                        modifier = Modifier.height(28.dp),
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    // ── Parked carts chip (only when count > 0) ──────────────
-                    if (state.parkedCartCount > 0) {
-                        AssistChip(
-                            onClick = { showParkedCarts = true },
-                            label = {
-                                Text(
-                                    "${state.parkedCartCount} parked",
-                                    style = MaterialTheme.typography.labelSmall,
-                                )
-                            },
-                            modifier = Modifier.height(28.dp),
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                    }
+                    // 2026-04-26 — location/shift/parked chips moved out of
+                    // actions slot into a sub-bar below the topbar. Keeping
+                    // them here was eating the title's width budget on phone
+                    // and forcing the customer name to wrap one letter per row.
                     IconButton(onClick = onScanBarcode) {
                         Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
                     }
@@ -299,6 +268,58 @@ fun PosCartScreen(
                 isOnline = state.isOnline,
                 pendingSaleCount = state.pendingSaleCount,
             )
+            // 2026-04-26 — chip sub-bar (Location · Shift · Parked carts).
+            // Lives below TopAppBar so it doesn't squeeze the customer-name
+            // title slot. Horizontally scrollable so additional chips don't
+            // wrap.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AssistChip(
+                    onClick = { /* TODO: location picker */ },
+                    label = { Text(state.locationName, style = MaterialTheme.typography.labelSmall) },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Place, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                    modifier = Modifier.height(28.dp),
+                )
+                AssistChip(
+                    onClick = { /* TODO: clock-in/out */ },
+                    label = {
+                        Text(
+                            if (state.shiftActive) "On shift" else "Off shift",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(
+                            Icons.Filled.Circle,
+                            contentDescription = if (state.shiftActive) "Active" else "Inactive",
+                            modifier = Modifier.size(8.dp),
+                            tint = if (state.shiftActive) LocalExtendedColors.current.success
+                                   else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.height(28.dp),
+                )
+                if (state.parkedCartCount > 0) {
+                    AssistChip(
+                        onClick = { showParkedCarts = true },
+                        label = {
+                            Text(
+                                "${state.parkedCartCount} parked",
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        },
+                        modifier = Modifier.height(28.dp),
+                    )
+                }
+            }
             // Mockup PHONE 3 path tabs: 'Catalog' + 'Cart · N · $X' active.
             CartPathTabs(
                 selectedIndex = selectedTab,
