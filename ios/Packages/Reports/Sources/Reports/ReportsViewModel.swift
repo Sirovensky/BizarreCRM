@@ -67,6 +67,21 @@ public final class ReportsViewModel {
     // MARK: - §15.4 Selected tech for drill-through sheet
     public var selectedTech: TechnicianPerfRow?
 
+    // MARK: - §15.7 Insights data
+    public var warrantyClaims: [WarrantyClaimsPoint] = []
+    public var deviceModelsRepaired: [DeviceModelRepaired] = []
+    public var partsUsage: [PartUsageRow] = []
+    public var techHours: [TechHoursRow] = []
+    public var stalledTickets: StalledTicketsSummary?
+    public var customerAcquisitionChurn: CustomerAcquisitionChurn?
+
+    // MARK: - §15.9 BI built-in data
+    public var revenueByCategory: [RevenueByCategoryRow] = []
+    public var repeatCustomerStats: RepeatCustomerStats?
+    public var avgTicketValueTrend: [AvgTicketValueTrendPoint] = []
+    public var conversionFunnel: ConversionFunnelStats?
+    public var laborUtilization: [LaborUtilizationRow] = []
+
     // MARK: - Loading / error
 
     public var isLoading = false
@@ -121,6 +136,19 @@ public final class ReportsViewModel {
             group.addTask { await self.loadTicketsTrend() }
             group.addTask { await self.loadBusyHours() }
             group.addTask { await self.loadSLASummary() }
+            // §15.7 Insights
+            group.addTask { await self.loadWarrantyClaims() }
+            group.addTask { await self.loadDeviceModelsRepaired() }
+            group.addTask { await self.loadPartsUsage() }
+            group.addTask { await self.loadTechHours() }
+            group.addTask { await self.loadStalledTickets() }
+            group.addTask { await self.loadCustomerAcquisitionChurn() }
+            // §15.9 BI built-in
+            group.addTask { await self.loadRevenueByCategory() }
+            group.addTask { await self.loadRepeatCustomerStats() }
+            group.addTask { await self.loadAvgTicketValueTrend() }
+            group.addTask { await self.loadConversionFunnel() }
+            group.addTask { await self.loadLaborUtilization() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -337,5 +365,115 @@ public final class ReportsViewModel {
         } catch {
             slaSummary = nil
         }
+    }
+
+    // MARK: - §15.7 Warranty claims → GET /api/v1/reports/warranty-claims
+
+    private func loadWarrantyClaims() async {
+        do {
+            warrantyClaims = try await repository.getWarrantyClaims(
+                from: fromDateString, to: toDateString
+            )
+        } catch { warrantyClaims = [] }
+    }
+
+    // MARK: - §15.7 Device models repaired → GET /api/v1/reports/device-models
+
+    private func loadDeviceModelsRepaired() async {
+        do {
+            deviceModelsRepaired = try await repository.getDeviceModelsRepaired(
+                from: fromDateString, to: toDateString
+            )
+        } catch { deviceModelsRepaired = [] }
+    }
+
+    // MARK: - §15.7 Parts usage → GET /api/v1/reports/parts-usage
+
+    private func loadPartsUsage() async {
+        do {
+            partsUsage = try await repository.getPartsUsage(
+                from: fromDateString, to: toDateString
+            )
+        } catch { partsUsage = [] }
+    }
+
+    // MARK: - §15.7 Tech hours → GET /api/v1/reports/tech-hours
+
+    private func loadTechHours() async {
+        do {
+            techHours = try await repository.getTechHours(
+                from: fromDateString, to: toDateString
+            )
+        } catch { techHours = [] }
+    }
+
+    // MARK: - §15.7 Stalled tickets → GET /api/v1/reports/stalled-tickets
+
+    private func loadStalledTickets() async {
+        do {
+            stalledTickets = try await repository.getStalledTickets(
+                from: fromDateString, to: toDateString
+            )
+        } catch { stalledTickets = nil }
+    }
+
+    // MARK: - §15.7 Customer acquisition & churn → GET /api/v1/reports/customer-acquisition
+
+    private func loadCustomerAcquisitionChurn() async {
+        do {
+            customerAcquisitionChurn = try await repository.getCustomerAcquisitionChurn(
+                from: fromDateString, to: toDateString
+            )
+        } catch { customerAcquisitionChurn = nil }
+    }
+
+    // MARK: - §15.9 Revenue by category → GET /api/v1/reports/revenue-by-category
+
+    private func loadRevenueByCategory() async {
+        do {
+            revenueByCategory = try await repository.getRevenueByCategory(
+                from: fromDateString, to: toDateString
+            )
+        } catch { revenueByCategory = [] }
+    }
+
+    // MARK: - §15.9 Repeat customer stats → GET /api/v1/reports/repeat-customers
+
+    private func loadRepeatCustomerStats() async {
+        do {
+            repeatCustomerStats = try await repository.getRepeatCustomerStats(
+                from: fromDateString, to: toDateString
+            )
+        } catch { repeatCustomerStats = nil }
+    }
+
+    // MARK: - §15.9 Avg ticket value trend → derived from multiple periods
+
+    private func loadAvgTicketValueTrend() async {
+        do {
+            avgTicketValueTrend = try await repository.getAvgTicketValueTrend(
+                from: fromDateString, to: toDateString
+            )
+        } catch { avgTicketValueTrend = [] }
+    }
+
+    // MARK: - §15.9 Conversion funnel → GET /api/v1/reports/conversion-funnel
+
+    private func loadConversionFunnel() async {
+        do {
+            conversionFunnel = try await repository.getConversionFunnel(
+                from: fromDateString, to: toDateString
+            )
+        } catch { conversionFunnel = nil }
+    }
+
+    // MARK: - §15.9 Labor utilization → GET /api/v1/reports/labor-utilization
+
+    private func loadLaborUtilization() async {
+        do {
+            laborUtilization = try await repository.getLaborUtilization(
+                from: fromDateString, to: toDateString
+            )
+        } catch { laborUtilization = [] }
     }
 }

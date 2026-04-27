@@ -428,6 +428,28 @@ public struct ReportsView: View {
             // §15.7 CSAT + NPS
             CSATScoreCard(score: vm.csatScore) { showCSATDetail = true }
             NPSScoreCard(score: vm.npsScore)   { showNPSDetail  = true }
+            // §15.7 Warranty claims trend
+            WarrantyClaimsTrendCard(points: vm.warrantyClaims)
+            // §15.7 Device models repaired distribution
+            DeviceModelsRepairedCard(rows: vm.deviceModelsRepaired)
+            // §15.7 Parts usage analysis
+            PartsUsageCard(rows: vm.partsUsage)
+            // §15.7 Technician hours worked
+            TechHoursCard(rows: vm.techHours)
+            // §15.7 Stalled / overdue tickets
+            StalledTicketsCard(summary: vm.stalledTickets)
+            // §15.7 Customer acquisition + churn
+            CustomerAcquisitionChurnCard(data: vm.customerAcquisitionChurn)
+            // §15.9 Revenue / margin by category
+            RevenueByCategoryCard(rows: vm.revenueByCategory)
+            // §15.9 Repeat customer rate + time-to-repeat
+            RepeatCustomerRateCard(stats: vm.repeatCustomerStats)
+            // §15.9 Avg ticket value trend
+            AvgTicketValueTrendCard(points: vm.avgTicketValueTrend)
+            // §15.9 Conversion funnel (lead → estimate → ticket → invoice → paid)
+            ConversionFunnelCard(stats: vm.conversionFunnel)
+            // §15.9 Labor utilization by tech
+            LaborUtilizationCard(rows: vm.laborUtilization)
         }
     }
 

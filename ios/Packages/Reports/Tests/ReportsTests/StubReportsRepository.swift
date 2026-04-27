@@ -165,6 +165,29 @@ actor StubReportsRepository: ReportsRepository {
     func getSLASummary(from: String, to: String) async throws -> SLABreachSummary {
         try slaSummaryResult.get()
     }
+
+    // §15.7 Insights stubs — return empty/nil gracefully for existing tests
+    func getWarrantyClaims(from: String, to: String) async throws -> [WarrantyClaimsPoint] { [] }
+    func getDeviceModelsRepaired(from: String, to: String) async throws -> [DeviceModelRepaired] { [] }
+    func getPartsUsage(from: String, to: String) async throws -> [PartUsageRow] { [] }
+    func getTechHours(from: String, to: String) async throws -> [TechHoursRow] { [] }
+    func getStalledTickets(from: String, to: String) async throws -> StalledTicketsSummary {
+        StalledTicketsSummary(stalledCount: 0, overdueCount: 0, avgDaysStalled: 0)
+    }
+    func getCustomerAcquisitionChurn(from: String, to: String) async throws -> CustomerAcquisitionChurn {
+        CustomerAcquisitionChurn(newCustomers: 0, churnedCustomers: 0, returningCustomers: 0)
+    }
+
+    // §15.9 BI built-in stubs
+    func getRevenueByCategory(from: String, to: String) async throws -> [RevenueByCategoryRow] { [] }
+    func getRepeatCustomerStats(from: String, to: String) async throws -> RepeatCustomerStats {
+        RepeatCustomerStats(repeatRatePct: 0, avgDaysToRepeat: 0, oneTimeCount: 0, repeatCount: 0)
+    }
+    func getAvgTicketValueTrend(from: String, to: String) async throws -> [AvgTicketValueTrendPoint] { [] }
+    func getConversionFunnel(from: String, to: String) async throws -> ConversionFunnelStats {
+        ConversionFunnelStats(leadsCount: 0, estimatesCount: 0, ticketsCount: 0, invoicesCount: 0, paidCount: 0)
+    }
+    func getLaborUtilization(from: String, to: String) async throws -> [LaborUtilizationRow] { [] }
 }
 
 // MARK: - Actor mutators for tests
