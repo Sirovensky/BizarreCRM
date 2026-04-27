@@ -11,6 +11,14 @@ public final class ImportHistoryViewModel {
     public private(set) var jobs: [ImportJob] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
+    // §48.4 rollback
+    public private(set) var isRollingBack = false
+    public private(set) var rollbackResult: RollbackResult?
+
+    public enum RollbackResult: Sendable {
+        case success(String)
+        case failure(String)
+    }
 
     @ObservationIgnored private let repository: ImportRepository
 
@@ -29,6 +37,27 @@ public final class ImportHistoryViewModel {
             AppLog.ui.error("Import history load failed: \(error.localizedDescription, privacy: .public)")
         }
     }
+
+    // MARK: — §48.4 Rollback
+
+    /// Rolls back an import within 24h window. Shows success/failure result.
+    public func rollback(job: ImportJob) async {
+        guard job.canRollback, !isRollingBack else { return }
+        isRollingBack = true
+        rollbackResult = nil
+        defer { isRollingBack = false }
+        do {
+            let resp = try await repository.rollbackJob(id: job.id)
+            let msg = resp.message ?? "Import rolled back successfully."
+            rollbackResult = .success(msg)
+            await load()
+        } catch {
+            AppLog.ui.error("Import rollback failed: \(error.localizedDescription, privacy: .public)")
+            rollbackResult = .failure(error.localizedDescription)
+        }
+    }
+
+    public func clearRollbackResult() { rollbackResult = nil }
 }
 
 // MARK: - ImportHistoryView
@@ -136,10 +165,12 @@ public struct ImportHistoryView: View {
 
     private var jobList: some View {
         List(vm.jobs) { job in
-            JobRow(job: job)
-                .listRowBackground(Color.bizarreSurface1)
+            JobRow(job: job, isRollingBack: vm.isRollingBack) {
+                Task { await vm.rollback(job: job) }
+            }
+            .listRowBackground(Color.bizarreSurface1)
             #if canImport(UIKit)
-                .hoverEffect(.highlight)
+            .hoverEffect(.highlight)
             #endif
         }
         #if canImport(UIKit)
@@ -148,6 +179,19 @@ public struct ImportHistoryView: View {
         .listStyle(.inset)
         #endif
         .scrollContentBackground(.hidden)
+        // §48.4 Rollback result alerts
+        .alert("Undo Import", isPresented: Binding(
+            get: { vm.rollbackResult != nil },
+            set: { if !$0 { vm.clearRollbackResult() } }
+        )) {
+            Button("OK") { vm.clearRollbackResult() }
+        } message: {
+            switch vm.rollbackResult {
+            case .success(let msg): Text(msg)
+            case .failure(let msg): Text("Rollback failed: \(msg)")
+            case nil: EmptyView()
+            }
+        }
     }
 }
 
@@ -155,6 +199,8 @@ public struct ImportHistoryView: View {
 
 private struct JobRow: View {
     let job: ImportJob
+    let isRollingBack: Bool
+    let onRollback: () -> Void
 
     private static let dateFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -179,6 +225,17 @@ private struct JobRow: View {
                     Text("\(job.processedRows) / \(total) rows · \(job.errorCount) errors")
                         .font(.brandBodyMedium())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                // §48.4 Rollback CTA — only shown within 24h window
+                if job.canRollback {
+                    Button(action: onRollback) {
+                        Label(isRollingBack ? "Undoing…" : "Undo import", systemImage: "arrow.uturn.backward.circle")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreWarning)
+                    }
+                    .disabled(isRollingBack)
+                    .padding(.top, DesignTokens.Spacing.xxs)
+                    .accessibilityLabel("Undo this import — available within 24 hours")
                 }
             }
             Spacer()

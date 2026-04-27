@@ -5743,7 +5743,7 @@ See §19.14 for settings entry. Deep features:
 - [x] **Pause / resume / cancel**. `ImportWizardViewModel.pauseImport/resumeImport/cancelImport`; `ImportProgressView.pauseResumeControls`; 7 XCTest assertions. (feat(ios §48))
 
 ### 48.4 Import history + rollback
-- [ ] **Undo** — within 24h; restores pre-import state.
+- [x] **Undo** — within 24h; restores pre-import state.
 - [x] **Log** — per-batch audit. `ImportHistoryView` — list of past imports with status badge + date; accessible from Settings. Commit `feat(ios §48)`.
 
 ### 48.5 Recurring import (auto-sync)
