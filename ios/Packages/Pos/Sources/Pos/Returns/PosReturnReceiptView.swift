@@ -144,8 +144,8 @@ public struct PosReturnReceiptView: View {
         }
         .padding(BrandSpacing.xl)
         .background(
-            RoundedRectangle(cornerRadius: DesignTokens.Radius.card, style: .continuous)
-                .fill(Color.bizarreSurface)
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg, style: .continuous)
+                .fill(Color.bizarreSurface1)
         )
     }
 

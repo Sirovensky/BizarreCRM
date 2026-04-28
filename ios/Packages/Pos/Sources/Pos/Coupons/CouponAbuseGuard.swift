@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import Persistence
 
 // MARK: - CouponAbuseGuard (§16 — Abuse prevention)
 //
@@ -84,18 +85,18 @@ public actor CouponAbuseGuard {
             try? await PosAuditLogStore.shared.record(
                 event: "coupon_invalid_attempt",
                 cashierId: 0,
-                managerId: nil,
-                amountCents: nil,
+                managerId: nil as Int64?,
+                amountCents: nil as Int?,
                 context: [
                     "code":        code,
-                    "attemptCount": attemptCount
+                    "attemptCount": "\(attemptCount)"
                 ]
             )
         }
 
         if failedAttempts.count >= maxAttemptsPerWindow {
             blockedUntil = now.addingTimeInterval(cooldownSeconds)
-            AppLog.pos.warning("CouponAbuseGuard: rate-limit imposed after \(failedAttempts.count) failures on device")
+            AppLog.pos.warning("CouponAbuseGuard: rate-limit imposed after \(self.failedAttempts.count) failures on device")
         }
     }
 

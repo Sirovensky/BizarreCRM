@@ -218,9 +218,6 @@ public struct AppointmentSuggestView: View {
 
 extension APIClient {
     func suggestAppointmentSlots(_ request: AppointmentSuggestRequest) async throws -> [SuggestedSlot] {
-        let resp: APIResponse<[SuggestedSlot]> = try await post(
-            "/api/v1/appointments/suggest", body: request
-        )
-        return resp.data ?? []
+        try await post("/api/v1/appointments/suggest", body: request, as: [SuggestedSlot].self)
     }
 }

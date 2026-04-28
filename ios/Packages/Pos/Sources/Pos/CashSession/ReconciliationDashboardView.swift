@@ -160,11 +160,15 @@ public struct ReconciliationDashboardView: View {
 
     private var padLayout: some View {
         NavigationSplitView {
-            List(selection: $vm.selectedTab) {
+            List {
                 ForEach(ReconciliationDashboardViewModel.Tab.allCases, id: \.self) { tab in
-                    Label(tab.rawValue, systemImage: tab.icon)
-                        .tag(tab)
-                        .accessibilityIdentifier("reconciliation.sidebar.\(tab.rawValue)")
+                    Button {
+                        vm.selectedTab = tab
+                    } label: {
+                        Label(tab.rawValue, systemImage: tab.icon)
+                            .foregroundStyle(vm.selectedTab == tab ? Color.bizarreOrange : Color.bizarreOnSurface)
+                    }
+                    .accessibilityIdentifier("reconciliation.sidebar.\(tab.rawValue)")
                 }
             }
             .navigationTitle("Reconciliation")

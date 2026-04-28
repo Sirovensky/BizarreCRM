@@ -408,7 +408,7 @@ final class PosReturnDetailViewModel {
         do {
             let resp = try await api.posReturn(request)
             let refunded = resp.refundedCents ?? totalRefundCents
-            AppLog.pos.info("POS return: invoice=\(invoice.id) refunded=\(refunded)c tender=\(tender.wireValue)")
+            AppLog.pos.info("POS return: invoice=\(self.invoice.id) refunded=\(refunded)c tender=\(self.tender.wireValue)")
             BrandHaptics.success()
             status = .sent("Refunded \(CartMath.formatCents(refunded)).")
         } catch let APITransportError.httpStatus(code, _) where code == 404 || code == 501 {

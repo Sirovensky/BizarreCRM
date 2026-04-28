@@ -279,7 +279,7 @@ public struct InvoiceLineItem: Decodable, Sendable, Identifiable {
         description = try c.decodeIfPresent(String.self, forKey: .description)
         qty = max(1, (try c.decodeIfPresent(Int.self, forKey: .qty)) ?? 1)
         let dollars = try c.decodeIfPresent(Decimal.self, forKey: .unitPrice) ?? 0
-        unitPriceCents = Int((dollars * 100 as Decimal).doubleValue.rounded())
+        unitPriceCents = Int(NSDecimalNumber(decimal: dollars * 100).doubleValue.rounded())
     }
 }
 

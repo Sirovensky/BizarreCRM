@@ -210,7 +210,7 @@ public final class PosReceiptViewModel {
                 destination: dest
             )
             sendStatus = .sent("Receipt sent to \(dest).")
-            AppLog.pos.info("PosReceiptViewModel: receipt sent via \(channel, privacy: .public) invoice=\(payload.invoiceId, privacy: .public)")
+            AppLog.pos.info("PosReceiptViewModel: receipt sent via \(channel, privacy: .public) invoice=\(self.payload.invoiceId, privacy: .public)")
         } catch {
             AppLog.pos.error("PosReceiptViewModel: \(channel) send failed — \(error.localizedDescription)")
             sendStatus = .failed(error.localizedDescription)

@@ -57,14 +57,16 @@ public struct PosApplePencilModifier: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        content
-            // Single tap: Pencil tap is indistinguishable from a finger tap at
-            // the SwiftUI level — the regular `.onTapGesture` on the tile handles it.
-            // We add `.onPencilDoubleTap` for the double-tap (iOS 17.5+).
-            .onPencilDoubleTap { _ in
-                BrandHaptics.tapMedium()
-                onAction(.doubleTap)
+        Group {
+            if #available(iOS 17.5, *) {
+                content.onPencilDoubleTap { _ in
+                    BrandHaptics.tapMedium()
+                    onAction(.doubleTap)
+                }
+            } else {
+                content
             }
+        }
             // Hover: show a faint border ring while Pencil hovers over the tile.
             .onHover { hovering in
                 withAnimation(.easeInOut(duration: 0.18)) { isHovered = hovering }

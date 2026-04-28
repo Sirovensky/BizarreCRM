@@ -309,7 +309,7 @@ public struct CustomerLTVExplainerSheet: View {
                         .font(.brandBodyMedium())
                         .foregroundStyle(t == tier ? t.color : .bizarreOnSurface)
                     Spacer()
-                    Text(formatted(t.minLifetimeSpendCents) + "+")
+                    Text("\(formatted(t.minLifetimeSpendCents))+")
                         .font(.brandMono(size: 13))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .monospacedDigit()

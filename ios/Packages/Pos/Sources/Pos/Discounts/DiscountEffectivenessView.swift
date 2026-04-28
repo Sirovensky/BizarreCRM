@@ -140,7 +140,7 @@ public struct DiscountEffectivenessView: View {
                 value: "\(vm.summary.totalEvents)",
                 subtitle: "discount redemptions",
                 icon: "tag.fill",
-                color: BrandPalette.primary
+                color: Color.bizarrePrimary
             )
             kpiRow(
                 title: "Revenue impact",
@@ -201,7 +201,7 @@ public struct DiscountEffectivenessView: View {
                         x: .value("Date", point.date, unit: .day),
                         y: .value("Discounted ($)", Double(point.discountedCents) / 100.0)
                     )
-                    .foregroundStyle(BrandPalette.primary.gradient)
+                    .foregroundStyle(Color.bizarrePrimary.gradient)
                     .cornerRadius(3)
                 }
                 .chartXAxis {

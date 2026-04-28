@@ -218,3 +218,50 @@ public struct TicketWarrantyRecord: Decodable, Sendable {
         case notes
     }
 }
+
+public extension APIClient {
+    /// POST /api/v1/checkins/:id/deposit — server route absent in spec yet.
+    @discardableResult
+    func recordCheckinDeposit(
+        invoiceId: Int64,
+        depositCents: Int,
+        method: String,
+        notes: String?,
+        idempotencyKey: String
+    ) async throws -> EmptyResponse {
+        try await post(
+            "/api/v1/invoices/\(invoiceId)/payments",
+            body: CheckinDepositBody(
+                depositCents: depositCents,
+                method: method,
+                notes: notes,
+                idempotencyKey: idempotencyKey
+            ),
+            as: EmptyResponse.self
+        )
+    }
+
+    /// POST /api/v1/tickets/:id/finalize — transitions checkin draft to open.
+    @discardableResult
+    func finalizeCheckinTicket(id: Int64) async throws -> EmptyResponse {
+        try await post(
+            "/api/v1/tickets/\(id)/finalize",
+            body: CheckinFinalizeEmptyBody(),
+            as: EmptyResponse.self
+        )
+    }
+}
+
+private struct CheckinDepositBody: Encodable, Sendable {
+    let depositCents: Int
+    let method: String
+    let notes: String?
+    let idempotencyKey: String
+    enum CodingKeys: String, CodingKey {
+        case depositCents = "deposit_cents"
+        case method, notes
+        case idempotencyKey = "idempotency_key"
+    }
+}
+
+private struct CheckinFinalizeEmptyBody: Encodable, Sendable {}

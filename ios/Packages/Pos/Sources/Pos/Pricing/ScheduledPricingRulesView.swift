@@ -184,7 +184,7 @@ public struct ScheduledPricingRulesView: View {
             } label: {
                 Image(systemName: "chevron.left.circle.fill")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
             .accessibilityLabel("Previous month")
 
@@ -201,7 +201,7 @@ public struct ScheduledPricingRulesView: View {
             } label: {
                 Image(systemName: "chevron.right.circle.fill")
                     .font(.system(size: 22, weight: .medium))
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
             .accessibilityLabel("Next month")
         }
@@ -249,18 +249,18 @@ public struct ScheduledPricingRulesView: View {
                 if let from = entry.rule.validFrom {
                     Label(from.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar.badge.clock")
                         .font(.brandBodySmall())
-                        .foregroundStyle(.bizarreMutedForeground)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
                 if let to = entry.rule.validTo {
                     Label(to.formatted(date: .abbreviated, time: .omitted), systemImage: "calendar.badge.exclamationmark")
                         .font(.brandBodySmall())
-                        .foregroundStyle(.bizarreMutedForeground)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
             }
 
             Text(entry.rule.type.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .padding(BrandSpacing.md)
         .background(.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))

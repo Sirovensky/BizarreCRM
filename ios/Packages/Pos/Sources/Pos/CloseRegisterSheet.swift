@@ -90,7 +90,7 @@ public struct CloseRegisterSheet: View {
                 if blindCountMode && !blindCountRevealed {
                     Section {
                         Button {
-                            guard amountCents > 0 else { return }
+                            guard countedCents > 0 else { return }
                             blindCountRevealed = true
                         } label: {
                             HStack {

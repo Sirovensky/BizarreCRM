@@ -120,7 +120,7 @@ public struct CartServerValidationBannerView: View {
                 BrandHaptics.tap()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .font(.system(size: 18))
             }
             .accessibilityLabel("Dismiss server validation warning")
@@ -180,7 +180,7 @@ public struct CartServerValidationDetailSheet: View {
             if let msg = mismatch.serverMessage {
                 Text(msg)
                     .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center)
             }
 
@@ -202,7 +202,7 @@ public struct CartServerValidationDetailSheet: View {
 
             Text("The cart total has been updated to match the server. Please confirm with the customer before proceeding.")
                 .font(.brandBodySmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
 
             Spacer()

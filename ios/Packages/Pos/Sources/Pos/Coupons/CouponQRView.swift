@@ -58,7 +58,7 @@ public struct CouponQRView: View {
             VStack(spacing: BrandSpacing.xxs) {
                 Text("COUPON CODE")
                     .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .kerning(0.8)
                 Text(coupon.code)
                     .font(.brandDisplaySmall())
@@ -88,7 +88,7 @@ public struct CouponQRView: View {
                     systemImage: "calendar.badge.exclamationmark"
                 )
                 .font(.brandBodySmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
             }
 
             // Uses remaining
@@ -98,13 +98,13 @@ public struct CouponQRView: View {
                     systemImage: "number.circle"
                 )
                 .font(.brandBodySmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
             }
 
             // Instruction
             Text("Scan at checkout or enter code manually")
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
         }
         .padding(BrandSpacing.xl)

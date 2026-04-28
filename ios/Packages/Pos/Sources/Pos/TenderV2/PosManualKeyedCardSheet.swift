@@ -103,7 +103,7 @@ public struct PosManualKeyedCardSheet: View {
                 }
             } icon: {
                 Image(systemName: "lock.shield.fill")
-                    .foregroundStyle(BrandPalette.primary)
+                    .foregroundStyle(Color.bizarrePrimary)
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("pos.manualCard.pciWarning")
@@ -164,11 +164,11 @@ public struct PosManualKeyedCardSheet: View {
         HStack(alignment: .top, spacing: BrandSpacing.md) {
             ZStack {
                 Circle()
-                    .fill(BrandPalette.primary.opacity(0.15))
+                    .fill(Color.bizarrePrimary.opacity(0.15))
                     .frame(width: 32, height: 32)
                 Text(number)
                     .font(.brandTitleSmall())
-                    .foregroundStyle(BrandPalette.primary)
+                    .foregroundStyle(Color.bizarrePrimary)
             }
             VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                 Label(title, systemImage: icon)

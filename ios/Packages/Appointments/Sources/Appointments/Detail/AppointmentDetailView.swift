@@ -82,7 +82,7 @@ public final class AppointmentDetailViewModel {
             let req = UpdateAppointmentRequest(status: AppointmentStatus.confirmed.rawValue)
             appointment = try await api.updateAppointment(id: appointment.id, req)
             reminderSent = true
-            AppLog.ui.info("Reminder sent for appointment \(appointment.id, privacy: .public)")
+            AppLog.ui.info("Reminder sent for appointment \(self.appointment.id, privacy: .public)")
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? "Failed to send reminder."
             AppLog.ui.error("Reminder send failed: \(error.localizedDescription, privacy: .public)")

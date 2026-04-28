@@ -61,7 +61,7 @@ public struct GiftReceiptScopedQRView: View {
 
             Text("Scan to return — no price revealed")
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .accessibilityHidden(true)
         }

@@ -214,7 +214,7 @@ public final class AppointmentCreateFullViewModel {
         } catch let urlErr as URLError
             where urlErr.code == .notConnectedToInternet || urlErr.code == .networkConnectionLost {
             // §10.3 offline temp-id — assign sentinel -1 and mark for later sync
-            AppLog.ui.notice("Appointment create queued offline (idempotencyKey=\(idempotencyKey))")
+            AppLog.ui.notice("Appointment create queued offline (idempotencyKey=\(self.idempotencyKey))")
             createdId = -1
             queuedOffline = true
         } catch {

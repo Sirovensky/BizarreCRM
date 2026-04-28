@@ -167,7 +167,7 @@ public struct PricingRulePreviewView: View {
                     .foregroundStyle(.bizarreOnSurface)
                 Text("Add items below to see how rules fire")
                     .font(.brandBodySmall())
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
             }
             Spacer()
             if vm.isComputing {
@@ -183,13 +183,13 @@ public struct PricingRulePreviewView: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("SAMPLE CART")
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .kerning(0.8)
 
             if vm.sampleLines.isEmpty {
                 Text("Add at least one item to preview rules")
                     .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(BrandSpacing.md)
             } else {
@@ -212,13 +212,13 @@ public struct PricingRulePreviewView: View {
                 if !line.sku.isEmpty {
                     Text("SKU: \(line.sku)")
                         .font(.brandBodySmall())
-                        .foregroundStyle(.bizarreMutedForeground)
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
                 }
             }
             Spacer()
             Text("×\(line.quantity)")
                 .font(.brandBodySmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
             Text(CartMath.formatCents(line.lineTotalCents))
                 .font(.brandBodyMedium().monospacedDigit())
                 .foregroundStyle(.bizarreOnSurface)
@@ -275,7 +275,7 @@ public struct PricingRulePreviewView: View {
         VStack(spacing: BrandSpacing.sm) {
             Text("TOTALS")
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .kerning(0.8)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -310,14 +310,14 @@ public struct PricingRulePreviewView: View {
 
     @ViewBuilder
     private var adjustmentsSection: some View {
-        if !result.adjustments.isEmpty {
+        if !vm.result.adjustments.isEmpty {
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                 Text("RULE FIRINGS")
                     .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreMutedForeground)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                     .kerning(0.8)
 
-                ForEach(Array(result.adjustments.values.flatMap { $0 }.enumerated()), id: \.offset) { _, adj in
+                ForEach(Array(vm.result.adjustments.values.flatMap { $0 }.enumerated()), id: \.offset) { _, adj in
                     HStack {
                         Image(systemName: "bolt.fill")
                             .foregroundStyle(.bizarreOrange)
@@ -328,7 +328,7 @@ public struct PricingRulePreviewView: View {
                                 .foregroundStyle(.bizarreOnSurface)
                             Text(adj.type.rawValue.replacingOccurrences(of: "_", with: " ").capitalized)
                                 .font(.brandBodySmall())
-                                .foregroundStyle(.bizarreMutedForeground)
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
                         }
                         Spacer()
                         Text("− \(CartMath.formatCents(adj.savingCents))")
@@ -342,7 +342,7 @@ public struct PricingRulePreviewView: View {
         } else if !vm.sampleLines.isEmpty && !vm.isComputing {
             Text("No pricing rules fired on this cart. Try adjusting quantities or adding items that match a rule.")
                 .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreMutedForeground)
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
                 .padding(BrandSpacing.lg)
         }

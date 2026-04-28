@@ -111,7 +111,7 @@ public struct PosCartTotalsView: View {
         HStack {
             Label("Discount", systemImage: "tag.fill")
                 .font(.brandBodyMedium())
-                .foregroundStyle(discountFlashing ? BrandPalette.primary : .bizarreOnSurfaceMuted)
+                .foregroundStyle(discountFlashing ? Color.bizarrePrimary : .bizarreOnSurfaceMuted)
                 .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: discountFlashing)
 
             Spacer()
@@ -127,7 +127,7 @@ public struct PosCartTotalsView: View {
                 }
                 Text("-\(CartMath.formatCents(discountCents))")
                     .font(.brandBodyMedium())
-                    .foregroundStyle(discountFlashing ? BrandPalette.primary : .bizarreSuccess)
+                    .foregroundStyle(discountFlashing ? Color.bizarrePrimary : .bizarreSuccess)
                     .fontWeight(discountFlashing ? .semibold : .regular)
                     .monospacedDigit()
                     .contentTransition(.numericText(value: Double(discountCents)))
@@ -138,7 +138,7 @@ public struct PosCartTotalsView: View {
         .background(
             discountFlashing
                 ? RoundedRectangle(cornerRadius: DesignTokens.Radius.badge)
-                    .fill(BrandPalette.primary.opacity(0.10))
+                    .fill(Color.bizarrePrimary.opacity(0.10))
                     .transition(.opacity)
                 : nil
         )
@@ -179,7 +179,7 @@ public struct PosCartTotalsView: View {
                 } else {
                     Text(CartMath.formatCents(totalCents))
                         .font(.brandDisplaySmall())
-                        .foregroundStyle(BrandPalette.primary)
+                        .foregroundStyle(Color.bizarrePrimary)
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(totalCents)))
                         .animation(reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.75), value: totalCents)
@@ -197,7 +197,7 @@ public struct PosCartTotalsView: View {
     private var pendingTotalShimmer: some View {
         Text(CartMath.formatCents(totalCents))
             .font(.brandDisplaySmall())
-            .foregroundStyle(BrandPalette.primary.opacity(0.4))
+            .foregroundStyle(Color.bizarrePrimary.opacity(0.4))
             .monospacedDigit()
             .redacted(reason: .placeholder)
             .shimmering()

@@ -84,6 +84,12 @@ public final class TicketListViewModel {
     public var searchQuery: String = ""
     /// §4.1 Sort order dropdown selection.
     public var sortOrder: TicketSortOrder = .newest
+
+    /// Alias for legacy callers expecting `sort`.
+    public var sort: TicketSortOrder {
+        get { sortOrder }
+        set { sortOrder = newValue }
+    }
     /// Exposed for `StalenessIndicator` in the toolbar.
     public var lastSyncedAt: Date?
 

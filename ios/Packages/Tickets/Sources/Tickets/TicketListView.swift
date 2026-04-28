@@ -602,7 +602,7 @@ private struct TicketRow: View {
                 customer: ticket.customer?.displayName ?? "",
                 device: ticket.firstDevice?.deviceName ?? "",
                 status: ticket.status?.name ?? "",
-                dueAt: ticket.dueOn
+                dueAt: ticket.dueOn.flatMap { ISO8601DateFormatter().date(from: $0) }
             )
         )
         .accessibilityHint(RowAccessibilityFormatter.ticketRowHint)
@@ -993,3 +993,48 @@ private struct ListFooterRow: View {
     }
 }
 #endif
+
+// MARK: - Stub helpers (filterAndSortBar / exportToolbarItem / TicketBulkActionBar / columnPickerToolbarItem)
+// These were referenced by toolbar/bottom-bar layout but never defined in the
+// codex merge. Stubs keep the build green; rich versions will land in §4.1 polish.
+
+extension TicketListView {
+    @ViewBuilder
+    var filterAndSortBar: some View { EmptyView() }
+
+    @ToolbarContentBuilder
+    var exportToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                showingExport = true
+            } label: {
+                Label("Export CSV", systemImage: "square.and.arrow.up")
+            }
+            .accessibilityLabel("Export tickets to CSV")
+        }
+    }
+
+    @ToolbarContentBuilder
+    var columnPickerToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            EmptyView()
+        }
+    }
+}
+
+private struct TicketBulkActionBar: View {
+    let count: Int
+    let onAction: () -> Void
+    let onDeselect: () -> Void
+
+    var body: some View {
+        HStack {
+            Text("\(count) selected").font(.brandLabelLarge())
+            Spacer()
+            Button("Deselect", action: onDeselect)
+            Button("Actions", action: onAction).buttonStyle(.borderedProminent)
+        }
+        .padding(BrandSpacing.md)
+        .background(.ultraThinMaterial)
+    }
+}

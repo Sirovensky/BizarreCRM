@@ -172,7 +172,7 @@ public final class DocumentScanViewModel {
         ocrState = .idle
         suggestedTag = nil
         classificationConfidence = nil
-        AppLog.app.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(pages.count)")
+        AppLog.app.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(self.pages.count)")
     }
 
     /// Accept the suggested tag (caller stores it in their model).

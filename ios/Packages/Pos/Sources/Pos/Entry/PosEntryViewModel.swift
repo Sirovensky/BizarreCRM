@@ -13,6 +13,7 @@ import Foundation
 import Observation
 import Networking
 import Core
+import DesignSystem
 
 // MARK: - Supporting types
 

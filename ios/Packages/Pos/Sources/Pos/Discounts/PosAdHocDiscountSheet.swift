@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Persistence
 
 // MARK: - PosAdHocDiscountSheet (§16 — Manual override)
 //
@@ -332,12 +333,16 @@ public struct PosAdHocDiscountSheet: View {
         }
         .background(theme.bg.ignoresSafeArea())
         .sheet(isPresented: $showManagerPin) {
-            ManagerPinSheet { approved in
-                showManagerPin = false
-                if approved {
+            ManagerPinSheet(
+                reason: "Approve ad-hoc discount",
+                onApproved: { _ in
+                    showManagerPin = false
                     applyDiscount(managerPinUsed: true)
+                },
+                onCancelled: {
+                    showManagerPin = false
                 }
-            }
+            )
         }
     }
 
