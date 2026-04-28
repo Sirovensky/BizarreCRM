@@ -339,7 +339,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
 - [x] Requires device passcode + management PIN to enable/disable (`SharedDeviceAuthGate.swift` — LAContext `.deviceOwnerAuthentication` + server management-PIN verify + `verifyManagementPin` endpoint; agent-8-b6)
-- [ ] Session swap: Lock screen → "Switch user" → PIN
+- [x] Session swap: Lock screen → "Switch user" → PIN (`SharedDeviceStaffPickerView.swift` avatar grid → `PinPadView` + `PinSwitchService`; agent-8-b8)
 - [x] Token swap; no full re-auth unless inactive > 4h — `SharedDeviceManager.defaultSessionDuration = 4*60*60`; `SharedDeviceManager.idleTimeout()` returns 4 min when shared, 15 min normally.
 - [x] Auto-logoff: inactivity timer — `SessionTimer.swift` actor (configurable `idleTimeout`, 80% warning via `onWarning`, `onExpire`, `touch/pause/resume/currentRemaining`). `SessionTimeoutWarningBanner.swift` shows in final 60 s.
 - [ ] Per-user drafts isolated
@@ -370,7 +370,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Max threshold 30d (clamped in `SessionThresholdPolicy.init`; agent-8-b6)
 - [x] Sovereignty: no server-side idle detection; purely device-local (`SessionThresholdPolicy` — all checks device-local via `idleSeconds` arg; no server call; agent-8-b6)
 - [x] Scope: remember email only (never password without biometric bind) (`RememberMePolicy.swift` stores email only; password in `BiometricCredentialStore`; agent-8-b6)
-- [ ] Biometric-unlock stores passphrase in Keychain under Face-ID-gated item
+- [x] Biometric-unlock stores passphrase in Keychain under Face-ID-gated item (`BiometricCredentialStore.swift` — `kSecAttrAccessControl` + `[.biometryCurrentSet]`; agent-8-b8)
 - [x] Device binding: stored creds tied to device class ID (`DeviceBinding.swift` — `identifierForVendor` + model; `bind/isValid/clear` per tenant; agent-8-b6)
 - [x] If user migrates device, re-auth required (`DeviceBinding.isValid` fails on new device; caller forces full re-auth; agent-8-b6)
 - [x] Device binding blocks credential theft via backup export (binding per `identifierForVendor`; resets on reinstall/new device; agent-8-b6)
@@ -379,10 +379,10 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] Server-side revoke clears on next sync (caller calls `RememberMePolicy.forget` + `DeviceBinding.clear` on `SessionEvents.sessionRevoked`; agent-8-b6)
 - [x] A11y: Assistive-Access mode defaults remember on to reduce re-auth friction (`RememberMePolicy.defaultRememberMe` returns `true` when AssistiveTouch / SwitchControl active; agent-8-b6)
 - [x] Required for owner + manager + admin roles; optional for others (`TwoFactorRolePolicy.isRequired(for:)` — mandatory for owner/manager/admin; optional for all others; `TwoFactorRolePolicyTests`; agent-8-b6)
-- [ ] Factor type TOTP: default; scan QR with Authenticator / 1Password
+- [x] Factor type TOTP: default; scan QR with Authenticator / 1Password (`TwoFactorQRGenerator.swift` CoreImage QR + `TwoFactorEnrollView.swift` otpauth:// URI; agent-8-b8)
 - [ ] Factor type SMS: fallback only; discouraged (SIM swap risk)
 - [ ] Factor type hardware key (FIDO2 / Passkey): recommended for owners
-- [ ] Factor type biometric-backed passkey: iOS 17+ via iCloud Keychain
+- [x] Factor type biometric-backed passkey: iOS 17+ via iCloud Keychain (`PasskeyManager.swift` — `ASAuthorizationController` + `ASAuthorizationPlatformPublicKeyCredentialRegistrationRequest` + iCloud Keychain; agent-8-b8)
 - [x] Enrollment flow: Settings → Security → Enable 2FA (TwoFactorSettingsView + TwoFactorEnrollView, commit feat(ios phase-1 §2))
 - [x] Generates secret → displays QR + manual code (TwoFactorQRGenerator, TwoFactorEnrollView step 2)
 - [x] User scans with Authenticator (QR display + manual entry fallback)
