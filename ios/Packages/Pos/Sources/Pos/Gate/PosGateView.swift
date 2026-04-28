@@ -125,31 +125,16 @@ public struct PosGateView: View {
     // MARK: - iPad layout
 
     private var iPadLayout: some View {
-        // The iPad shell (ShellLayout) already supplies the outer rail/detail
-        // split. Wrapping the gate in another NavigationSplitView produced two
-        // empty toggleable sidebar columns over the customer-picker. Use a
-        // plain NavigationStack so the gate just owns its detail surface.
+        // Mockup spec (`pos-ipad-mockups.html` Frame 1): items column on the
+        // left, persistent ~420pt cart placeholder column on the right. The
+        // outer rail is supplied by `iPadShell`/`ShellLayout`; this view fills
+        // the remaining detail area with a 2-col HStack.
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 0) {
-                    heroHeader
-                        .padding(.bottom, 12)
-                        .padding(.top, 32)
-
-                    fallbackOrLabel
-                        .padding(.bottom, 10)
-
-                    fallbackButtons(minHeight: 72, cornerRadius: 18, horizontalPadding: 20)
-                        .frame(maxWidth: 680)
-                        .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                    pickupStripSection(isCompact: false)
-                        .frame(maxWidth: 680)
-                        .padding(.top, 36)
-                        .padding(.bottom, 32)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 32)
+            HStack(spacing: 0) {
+                itemsColumn
+                Divider().background(Color.bizarreOutline)
+                cartPlaceholderColumn
+                    .frame(width: 420)
             }
             .background(Color.bizarreSurfaceBase.ignoresSafeArea())
             .searchable(
@@ -172,10 +157,150 @@ public struct PosGateView: View {
                     onSelect: { vm.openPickup(id: $0) }
                 )
             }
+            .toolbar { gateTopbarPrincipal }
         }
         .task { await vm.loadPickups() }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: createNewTapTrigger)
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: walkInTapTrigger)
+    }
+
+    // MARK: - iPad gate · items column (hero + buttons + pickup strip)
+
+    private var itemsColumn: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                heroHeader
+                    .padding(.bottom, 12)
+                    .padding(.top, 32)
+
+                fallbackOrLabel
+                    .padding(.bottom, 10)
+
+                fallbackButtons(minHeight: 72, cornerRadius: 18, horizontalPadding: 20)
+                    .frame(maxWidth: 680)
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                pickupStripSection(isCompact: false)
+                    .frame(maxWidth: 680)
+                    .padding(.top, 36)
+                    .padding(.bottom, 32)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 32)
+        }
+    }
+
+    // MARK: - iPad gate · cart placeholder column ("No customer")
+
+    private var cartPlaceholderColumn: some View {
+        VStack(spacing: 0) {
+            // Cart head — matches mockup `cart-head` empty-customer state
+            HStack(spacing: BrandSpacing.sm) {
+                ZStack {
+                    Circle()
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
+                        .overlay(Circle().strokeBorder(Color.bizarreOnSurface.opacity(0.18),
+                                                       style: StrokeStyle(lineWidth: 1.5, dash: [4, 3])))
+                    Image(systemName: "plus")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                }
+                .frame(width: 44, height: 44)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No customer")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(Color.bizarreOnSurface)
+                    Text("Search or pick an option on the left →")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                Spacer()
+            }
+            .padding(BrandSpacing.md)
+
+            Divider().overlay(Color.bizarreOutline.opacity(0.2))
+
+            // Empty body — pointing emoji + caption per mockup
+            VStack(spacing: BrandSpacing.sm) {
+                Text("👈")
+                    .font(.system(size: 40))
+                    .opacity(0.3)
+                    .accessibilityHidden(true)
+                Text("Every sale needs a customer attached.")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, BrandSpacing.lg)
+            .padding(.vertical, BrandSpacing.xl)
+
+            Spacer(minLength: 0)
+
+            // Totals stub — all $0.00
+            VStack(spacing: BrandSpacing.xs) {
+                totalsRow(label: "Subtotal", value: "$0.00")
+                totalsRow(label: "Tax", value: "$0.00")
+                Divider().overlay(Color.bizarreOutline.opacity(0.2))
+                HStack {
+                    Text("Total")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(Color.bizarreOnSurface)
+                    Spacer()
+                    Text("$0.00")
+                        .font(.brandTitleLarge())
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .monospacedDigit()
+                }
+            }
+            .padding(BrandSpacing.md)
+
+            // Disabled "Attach customer first" CTA
+            Text("Attach customer first")
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                .frame(maxWidth: .infinity, minHeight: 52)
+                .background(Color.bizarreOnSurface.opacity(0.06),
+                            in: RoundedRectangle(cornerRadius: 14))
+                .padding(BrandSpacing.md)
+        }
+        .background(Color.bizarreSurface1)
+        .overlay(alignment: .leading) {
+            Divider().overlay(Color.bizarreOutline)
+        }
+    }
+
+    private func totalsRow(label: String, value: String) -> some View {
+        HStack {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            Spacer()
+            Text(value)
+                .font(.brandLabelLarge())
+                .foregroundStyle(Color.bizarreOnSurface)
+                .monospacedDigit()
+        }
+    }
+
+    // MARK: - iPad gate · topbar principal title
+
+    @ToolbarContentBuilder
+    private var gateTopbarPrincipal: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text("POS · new sale")
+                    .font(.headline)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                Text("Register open · Pavel I.")
+                    .font(.caption2)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     // MARK: - Shared sub-views

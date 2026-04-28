@@ -92,6 +92,8 @@ public struct PosView: View {
     @State private var showingNoSalePin: Bool = false
     /// §16.11 — Audit log viewer.
     @State private var showingAuditLog: Bool = false
+    /// Active-cart toolbar — `Scan` primary action sheet.
+    @State private var showingScanner: Bool = false
     /// §16.5 — v1 tender select + cash tender flow (retained, not deleted).
     @State private var showingTenderSelect: Bool = false
     @State private var cashTenderVM: CashTenderViewModel?
@@ -865,23 +867,50 @@ public struct PosView: View {
         let devicePickerVM = PosDevicePickerViewModel(
             repository: PosDevicePickerRepositoryImpl(api: api)
         )
-        PosRegisterLayout(
-            catalogFraction: 0.65,
-            inspectorActive: true
-        ) {
-            // Topbar — empty; nav bar hosts posToolbar.
-            Color.clear.frame(height: 0)
-        } catalog: {
-            iPadRepairCatalogPlaceholder(coordinator: coordinator)
-        } cart: {
-            iPadRepairCartPlaceholder(coordinator: coordinator)
-        } inspector: {
-            iPadRepairInspectorPane(
-                coordinator: coordinator,
-                devicePickerVM: devicePickerVM
-            )
+        VStack(spacing: 0) {
+            // Mockup spec — thin progress bar fills 25/50/75/100% per step.
+            ProgressView(value: coordinator.currentStep.progressPercent, total: 100)
+                .progressViewStyle(.linear)
+                .tint(Color.bizarrePrimary)
+                .frame(height: 2)
+                .accessibilityLabel(coordinator.currentStep.accessibilityDescription)
+            PosRegisterLayout(
+                catalogFraction: 0.65,
+                inspectorActive: true
+            ) {
+                Color.clear.frame(height: 0)
+            } catalog: {
+                iPadRepairCatalogPlaceholder(coordinator: coordinator)
+            } cart: {
+                iPadRepairCartPlaceholder(coordinator: coordinator)
+            } inspector: {
+                iPadRepairInspectorPane(
+                    coordinator: coordinator,
+                    devicePickerVM: devicePickerVM
+                )
+            }
         }
         .animation(BrandMotion.snappy, value: coordinator.currentStep)
+        .toolbar { repairTopbarPrincipal(coordinator: coordinator) }
+    }
+
+    /// Mockup principal title block — `New repair · <customer>` plus
+    /// `Step X of 4 — <step name> · <device>` per `pos-ipad-mockups.html`.
+    @ToolbarContentBuilder
+    private func repairTopbarPrincipal(coordinator: PosRepairFlowCoordinator) -> some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 0) {
+                Text("New repair · \(cart.customer?.displayName ?? "Walk-in")")
+                    .font(.headline)
+                    .foregroundStyle(Color.bizarreOnSurface)
+                    .lineLimit(1)
+                Text(coordinator.currentStep.accessibilityDescription)
+                    .font(.caption2)
+                    .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                    .lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+        }
     }
 
     /// Items column — dimmed centered "Creating ticket…" hint per mockup
@@ -1300,12 +1329,63 @@ public struct PosView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    /// Mockup principal title — `New sale · <customer>` when one is attached,
+    /// else falls back to `POS`.
+    private var activeCartTitle: String {
+        if let name = cart.customer?.displayName, !name.isEmpty {
+            return "New sale · \(name)"
+        }
+        return "POS · new sale"
+    }
+
+    /// Subline — line count + register status. Mockup uses
+    /// `iPhone 14 Pro · 3 lines · autocreating ticket #draft`. We render the
+    /// device summary when present, otherwise just the line count and
+    /// register-open hint.
+    private var activeCartSubtitle: String {
+        let lineCount = cart.items.count
+        let lineLabel = lineCount == 1 ? "1 line" : "\(lineCount) lines"
+        if registerSession != nil {
+            return "Register open · \(lineLabel)"
+        }
+        return lineLabel
+    }
+
     private var posToolbar: some ToolbarContent {
         Group {
+            // Mockup principal title block — `New sale · <customer>` + sub.
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(activeCartTitle)
+                        .font(.headline)
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .lineLimit(1)
+                    Text(activeCartSubtitle)
+                        .font(.caption2)
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            // Primary — 📷 Scan (mockup `tb-btn primary`).
             ToolbarItem(placement: .primaryAction) {
-                Button { showingCustomLine = true } label: { Image(systemName: "plus") }
-                    .keyboardShortcut("N", modifiers: .command)
-                    .accessibilityLabel("Add custom line")
+                Button {
+                    showingScanner = true
+                } label: {
+                    Label("Scan", systemImage: "barcode.viewfinder")
+                }
+                .accessibilityLabel("Scan barcode")
+            }
+            // Hold direct button (mockup `⏸ Hold (⌘H)`).
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    showingHoldSheet = true
+                } label: {
+                    Image(systemName: "pause.circle")
+                }
+                .keyboardShortcut("H", modifiers: .command)
+                .disabled(cart.isEmpty)
+                .accessibilityLabel("Hold cart")
             }
             // §16.3 — overflow "⋯" menu. Keeps the toolbar from crowding.
             // Uses `.topBarTrailing` (not `.secondaryAction`) because on iPad

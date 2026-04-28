@@ -172,6 +172,29 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         case latestSms = "latest_sms"
         case dueOn = "due_on"
     }
+
+    /// Defensive decode — older server rows occasionally omit `order_id`,
+    /// which would otherwise abort the entire ticket-list payload with
+    /// `keyNotFound("order_id")`. Fall back to `#<id>` when missing.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id            = try c.decode(Int64.self, forKey: .id)
+        self.orderId       = (try? c.decode(String.self, forKey: .orderId)) ?? "#\(self.id)"
+        self.customerId    = try? c.decode(Int64.self, forKey: .customerId)
+        self.total         = (try? c.decode(Int.self, forKey: .total)) ?? 0
+        self.isPinned      = (try? c.decode(Bool.self, forKey: .isPinned)) ?? false
+        self.createdAt     = (try? c.decode(String.self, forKey: .createdAt)) ?? ""
+        self.updatedAt     = (try? c.decode(String.self, forKey: .updatedAt)) ?? ""
+        self.customer      = try? c.decode(Customer.self, forKey: .customer)
+        self.status        = try? c.decode(Status.self, forKey: .status)
+        self.assignedUser  = try? c.decode(AssignedUser.self, forKey: .assignedUser)
+        self.firstDevice   = try? c.decode(FirstDevice.self, forKey: .firstDevice)
+        self.deviceCount   = try? c.decode(Int.self, forKey: .deviceCount)
+        self.slaStatus     = try? c.decode(String.self, forKey: .slaStatus)
+        self.urgency       = try? c.decode(String.self, forKey: .urgency)
+        self.latestSms     = try? c.decode(LatestSms.self, forKey: .latestSms)
+        self.dueOn         = try? c.decode(String.self, forKey: .dueOn)
+    }
 }
 
 /// Client-side filter chips. Mapped to server query params in the repository.

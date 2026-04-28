@@ -60,6 +60,15 @@ public final class ClockInOutViewModel {
     /// Fetch the current clock status from the server. Call from `.task { }`.
     public func refresh() async {
         let userId = await userIdProvider()
+        // Server requires `userId >= 1`. The placeholder `0` (used until
+        // `/auth/me` is plumbed into AppServices) makes the dashboard render a
+        // red error card on every cold start. Treat 0 as "not yet known" and
+        // present the tile in idle state without poking the server.
+        guard userId > 0 else {
+            state = .idle
+            runningElapsed = 0
+            return
+        }
         do {
             let status = try await api.getClockStatus(userId: userId)
             if let status {

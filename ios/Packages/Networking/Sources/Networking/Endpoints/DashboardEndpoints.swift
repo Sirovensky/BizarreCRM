@@ -19,13 +19,12 @@ public struct DashboardSummary: Decodable, Sendable {
     // §3.1 expanded web-parity tiles — returned by GET /reports/dashboard
     // (server added these fields; decode defensively with defaults)
     public let lowStockCount: Int?
-    public let revenueTrend: Double?          // MoM delta %
 
     public init(openTickets: Int = 0, revenueToday: Double = 0,
                 closedToday: Int = 0, ticketsCreatedToday: Int = 0,
                 appointmentsToday: Int = 0, avgRepairHours: Double? = nil,
                 inventoryValue: Double = 0,
-                lowStockCount: Int? = nil, revenueTrend: Double? = nil) {
+                lowStockCount: Int? = nil) {
         self.openTickets = openTickets
         self.revenueToday = revenueToday
         self.closedToday = closedToday
@@ -34,7 +33,35 @@ public struct DashboardSummary: Decodable, Sendable {
         self.avgRepairHours = avgRepairHours
         self.inventoryValue = inventoryValue
         self.lowStockCount = lowStockCount
-        self.revenueTrend = revenueTrend
+    }
+
+    /// Defensive decode — the server payload returns `revenue_trend` as an
+    /// array of `{month, revenue}` objects (not a Double MoM delta). The
+    /// 12-point sparkline uses `DashboardBIPayload.revenueTrend`. For this
+    /// summary we silently ignore the array shape and use `try?` on every
+    /// field so a single typeMismatch on one key doesn't blow up the whole
+    /// dashboard fetch.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.openTickets         = (try? c.decode(Int.self, forKey: .openTickets)) ?? 0
+        self.revenueToday        = (try? c.decode(Double.self, forKey: .revenueToday)) ?? 0
+        self.closedToday         = (try? c.decode(Int.self, forKey: .closedToday)) ?? 0
+        self.ticketsCreatedToday = (try? c.decode(Int.self, forKey: .ticketsCreatedToday)) ?? 0
+        self.appointmentsToday   = (try? c.decode(Int.self, forKey: .appointmentsToday)) ?? 0
+        self.avgRepairHours      = try? c.decode(Double.self, forKey: .avgRepairHours)
+        self.inventoryValue      = (try? c.decode(Double.self, forKey: .inventoryValue)) ?? 0
+        self.lowStockCount       = try? c.decode(Int.self, forKey: .lowStockCount)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case openTickets         = "open_tickets"
+        case revenueToday        = "revenue_today"
+        case closedToday         = "closed_today"
+        case ticketsCreatedToday = "tickets_created_today"
+        case appointmentsToday   = "appointments_today"
+        case avgRepairHours      = "avg_repair_hours"
+        case inventoryValue      = "inventory_value"
+        case lowStockCount       = "low_stock_count"
     }
 }
 

@@ -134,15 +134,20 @@ public struct SalesKPISummaryCard: View {
                 Text(label)
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             Text(value)
                 .font(.brandTitleLarge())
                 .foregroundStyle(.bizarreOnSurface)
                 .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
             if let pct = delta {
                 deltaBadge(pct: pct)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)\(delta.map { d in ", \(String(format: "%.1f", abs(d)))% \(d >= 0 ? "up" : "down")" } ?? "")")
     }

@@ -39,7 +39,10 @@ public struct CustomerSummary: Decodable, Sendable, Identifiable, Hashable {
         let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
         if !parts.isEmpty { return parts.joined(separator: " ") }
         if let org = organization, !org.isEmpty { return org }
-        return "Unknown"
+        if let p = mobile, !p.isEmpty { return p }
+        if let p = phone, !p.isEmpty { return p }
+        if let e = email, !e.isEmpty { return e }
+        return "Customer #\(id)"
     }
 
     public var initials: String {

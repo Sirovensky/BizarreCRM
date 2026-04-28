@@ -35,10 +35,6 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    // NavigationSplitView column visibility — keep detail-only so system
-    // sidebar stays suppressed; the rail owns primary navigation.
-    @State private var columnVisibility: NavigationSplitViewVisibility = .detailOnly
-
     public init(
         selection: Binding<RailDestination>,
         @ViewBuilder content: @escaping (RailDestination) -> Content,
@@ -61,6 +57,12 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
     @ViewBuilder
     private var regularLayout: some View {
+        // Plain HStack: custom 64pt rail on the left, feature content fills the
+        // rest. The feature views supply their own `NavigationSplitView` (when
+        // they need a list/detail split) — wrapping them in another NavSplit
+        // here only added an empty toggleable ghost column on iOS 17+ because
+        // `.detailOnly` is honoured loosely once the user taps the system
+        // sidebar-toggle.
         HStack(spacing: 0) {
             RailSidebarView(
                 items: RailCatalog.primary,
@@ -69,15 +71,7 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
             Divider()
 
-            // NavigationSplitView with .detailOnly suppresses the system
-            // sidebar column, giving the custom rail full nav ownership.
-            NavigationSplitView(columnVisibility: $columnVisibility) {
-                // Sidebar column is intentionally empty — the rail above
-                // handles primary navigation. Detail column carries content.
-                EmptyView()
-            } detail: {
-                content(selection)
-            }
+            content(selection)
         }
         .ignoresSafeArea(.container, edges: .top)
     }
