@@ -318,3 +318,45 @@ data class SupplierListItem(
     val phone: String?,
     @SerializedName("is_active") val isActive: Int?,
 )
+
+// ── §6.8 Bin Locations (GET/POST/PUT/DELETE /inventory-enrich/bin-locations) ─
+
+/**
+ * A single bin-location row returned by GET /inventory-enrich/bin-locations.
+ *
+ * The server stores a 4-part address: aisle → shelf → bin, plus a short
+ * human-readable [code] used in pick-lists and on item labels.
+ */
+data class BinLocationItem(
+    val id: Long,
+    /** Short code printed on labels, e.g. "A2-S3-B1". */
+    val code: String,
+    val description: String?,
+    val aisle: String?,
+    val shelf: String?,
+    val bin: String?,
+    @SerializedName("is_active")
+    val isActive: Int = 1,
+)
+
+/** Envelope for GET /inventory-enrich/bin-locations → `{ success, data: [...] }`. */
+data class BinLocationListData(
+    val data: List<BinLocationItem>,
+)
+
+/** POST body for creating a new bin location. */
+data class CreateBinLocationRequest(
+    val code: String,
+    val description: String? = null,
+    val aisle: String? = null,
+    val shelf: String? = null,
+    val bin: String? = null,
+)
+
+/** PUT body for updating an existing bin location. */
+data class UpdateBinLocationRequest(
+    val description: String? = null,
+    val aisle: String? = null,
+    val shelf: String? = null,
+    val bin: String? = null,
+)

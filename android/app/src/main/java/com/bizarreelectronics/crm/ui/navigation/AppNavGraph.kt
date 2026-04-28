@@ -750,6 +750,9 @@ sealed class Screen(val route: String) {
             if (ticketId != null) "marketing/review-solicitation?ticketId=$ticketId"
             else "marketing/review-solicitation"
     }
+
+    // §6.8 — Bin locations manager (Settings → Inventory → Bin Locations)
+    data object BinLocations : Screen("settings/inventory/bin-locations")
 }
 
 data class BottomNavItem(
@@ -2289,6 +2292,8 @@ fun AppNavGraph(
                     onTrainingMode = { navController.navigate(Screen.TrainingMode.route) },
                     // §72 — Help center (offline bundled articles + contact support).
                     onHelp = { navController.navigate(Screen.HelpCenter.route) },
+                    // §6.8 — Bin locations manager.
+                    onBinLocations = { navController.navigate(Screen.BinLocations.route) },
                 )
             }
             // §53 — Training Mode (sandbox) settings sub-screen.
@@ -2305,6 +2310,12 @@ fun AppNavGraph(
             // §72.3 — Report a problem.
             composable(Screen.ReportProblem.route) {
                 ReportProblemScreen(onBack = { navController.popBackStack() })
+            }
+            // §6.8 — Bin locations manager.
+            composable(Screen.BinLocations.route) {
+                com.bizarreelectronics.crm.ui.screens.settings.BinLocationsScreen(
+                    onBack = { navController.popBackStack() },
+                )
             }
             // §3.13 L565–L567 — Display settings sub-screen.
             composable(Screen.DisplaySettings.route) {

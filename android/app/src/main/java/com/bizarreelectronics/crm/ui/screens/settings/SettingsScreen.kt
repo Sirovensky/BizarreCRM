@@ -307,6 +307,8 @@ fun SettingsScreen(
     onTrainingMode: (() -> Unit)? = null,
     // §72 — opens in-app Help center (offline bundled articles + contact support).
     onHelp: (() -> Unit)? = null,
+    // §6.8 — opens the Bin Locations manager (Settings → Inventory → Bin Locations).
+    onBinLocations: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -436,6 +438,52 @@ fun SettingsScreen(
                     onClick = onGiftCards,
                 )
             }
+
+            // §19.7 — Ticket settings (defaults, visibility, requirements).
+            if (onTicketSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.ConfirmationNumber,
+                    title = "Tickets",
+                    onClick = onTicketSettings,
+                )
+            }
+
+            // §19.8 — POS / payment settings (methods, tax, tips, cash drawer).
+            if (onPosSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.PointOfSale,
+                    title = "POS & Payment",
+                    onClick = onPosSettings,
+                )
+            }
+
+            // §19.9 — SMS settings (provider, compliance footer, auto-reply).
+            if (onSmsSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Sms,
+                    title = "SMS",
+                    onClick = onSmsSettings,
+                )
+            }
+
+            // §19.19 — Business info (shop name, address, logo, receipt text).
+            if (onBusinessInfo != null) {
+                SettingsRow(
+                    icon = Icons.Default.Store,
+                    title = "Business Info",
+                    onClick = onBusinessInfo,
+                )
+            }
+
+            // §6.8 — Bin locations manager (warehouse aisle/shelf/bin CRUD).
+            if (onBinLocations != null) {
+                SettingsRow(
+                    icon = Icons.Default.LocationOn,
+                    title = "Bin Locations",
+                    onClick = onBinLocations,
+                )
+            }
+
 
             // §3.19 L613–L616 — Appearance / dashboard density sub-screen.
             // Placed immediately after Display so layout-related settings are grouped
