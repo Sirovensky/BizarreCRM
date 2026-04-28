@@ -553,7 +553,7 @@ private struct StatTileCard: View {
 // MARK: - Attention card (§3.3 — row-level chips, swipe, context menu, dismiss)
 
 /// Attention item kinds shown in the Needs Attention card.
-enum AttentionRowKind: Sendable {
+public enum AttentionRowKind: Sendable {
     case staleTicket(NeedsAttention.StaleTicket)
     case overdueInvoice(NeedsAttention.OverdueInvoice)
     case aggregateMissingParts(Int)
@@ -906,80 +906,6 @@ func attentionItems(from attention: NeedsAttention) -> [AttentionItemModel] {
 struct AttentionItemModel: Equatable {
     let label: String
     let count: Int
-}
-
-// MARK: - Skeleton loader (§3.1)
-
-/// Glass shimmer skeleton shown while dashboard data loads.
-/// Mirrors the real layout so there is no layout shift on reveal.
-/// Automatically respects Reduce Motion — static placeholder when on.
-struct DashboardSkeletonView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var shimmerPhase: CGFloat = -1.0
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
-                // Greeting placeholder
-                skeletonRect(width: 200, height: 28, cornerRadius: 8)
-
-                // Hero card placeholder
-                skeletonRect(width: nil, height: 110, cornerRadius: 20)
-
-                // Stat tile grid — same 2-col / 3-col rule as real grid
-                let columns: [GridItem] = Platform.isCompact
-                    ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
-                       GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
-                    : Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 3)
-                LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
-                    ForEach(0..<4, id: \.self) { _ in
-                        skeletonRect(width: nil, height: 92, cornerRadius: 14)
-                    }
-                }
-
-                // Attention card placeholder
-                skeletonRect(width: nil, height: 120, cornerRadius: 16)
-            }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.top, BrandSpacing.sm)
-            .padding(.bottom, BrandSpacing.lg)
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
-                shimmerPhase = 1.0
-            }
-        }
-        .accessibilityLabel("Loading dashboard")
-    }
-
-    @ViewBuilder
-    private func skeletonRect(width: CGFloat?, height: CGFloat, cornerRadius: CGFloat) -> some View {
-        let shape = RoundedRectangle(cornerRadius: cornerRadius)
-        if reduceMotion {
-            shape
-                .fill(Color.bizarreSurface1)
-                .frame(width: width, height: height)
-                .frame(maxWidth: width == nil ? .infinity : width)
-        } else {
-            shape
-                .fill(shimmerGradient)
-                .frame(width: width, height: height)
-                .frame(maxWidth: width == nil ? .infinity : width)
-        }
-    }
-
-    private var shimmerGradient: LinearGradient {
-        LinearGradient(
-            stops: [
-                .init(color: Color.bizarreSurface1.opacity(0.6), location: 0.0),
-                .init(color: Color.bizarreSurface1.opacity(1.0), location: 0.3 + shimmerPhase * 0.5),
-                .init(color: Color.bizarreSurface1.opacity(0.6), location: 1.0),
-            ],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-    }
 }
 
 /// Returns the time-of-day greeting string for the given date.

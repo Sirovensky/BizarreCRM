@@ -9,7 +9,7 @@ import Core
 
 // MARK: Models
 
-public enum AgingTier: String, CaseIterable, Sendable, Identifiable {
+public enum AgingTier: String, Codable, CaseIterable, Sendable, Identifiable {
     case fresh = "fresh"
     case slow = "slow"
     case dead = "dead"

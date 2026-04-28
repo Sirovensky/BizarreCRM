@@ -114,44 +114,40 @@ public actor TransferRepositoryImpl: TransferRepository {
     public func list(status: TransferStatus?) async throws -> [InventoryTransfer] {
         var path = "/api/v1/inventory/transfers"
         if let s = status { path += "?status=\(s.rawValue)" }
-        let resp: APIResponse<[InventoryTransfer]> = try await api.get(path)
-        return resp.data ?? []
+        return try await api.get(path, as: [InventoryTransfer].self)
     }
 
     public func create(_ request: CreateTransferRequest) async throws -> InventoryTransfer {
-        let resp: APIResponse<InventoryTransfer> = try await api.post(
-            "/api/v1/inventory/transfers", body: request
-        )
-        guard let t = resp.data else { throw AppError.serverError("No transfer returned") }
-        return t
+        return try await api.post("/api/v1/inventory/transfers", body: request, as: InventoryTransfer.self)
     }
 
     public func dispatch(id: Int64) async throws -> InventoryTransfer {
-        struct Empty: Encodable {}
-        let resp: APIResponse<InventoryTransfer> = try await api.post(
-            "/api/v1/inventory/transfers/\(id)/dispatch", body: Empty()
+        return try await api.post(
+            "/api/v1/inventory/transfers/\(id)/dispatch",
+            body: TransferEmptyBody(),
+            as: InventoryTransfer.self
         )
-        guard let t = resp.data else { throw AppError.serverError("No transfer returned") }
-        return t
     }
 
     public func receive(id: Int64, _ request: FinalizeTransferRequest) async throws -> InventoryTransfer {
-        let resp: APIResponse<InventoryTransfer> = try await api.post(
-            "/api/v1/inventory/transfers/\(id)/receive", body: request
+        return try await api.post(
+            "/api/v1/inventory/transfers/\(id)/receive",
+            body: request,
+            as: InventoryTransfer.self
         )
-        guard let t = resp.data else { throw AppError.serverError("No transfer returned") }
-        return t
     }
 
     public func cancel(id: Int64) async throws {
-        struct Empty: Encodable {}
-        let _: APIResponse<EmptyTransferBody> = try await api.post(
-            "/api/v1/inventory/transfers/\(id)/cancel", body: Empty()
+        _ = try await api.post(
+            "/api/v1/inventory/transfers/\(id)/cancel",
+            body: TransferEmptyBody(),
+            as: TransferEmptyResp.self
         )
     }
 }
 
-private struct EmptyTransferBody: Decodable {}
+private struct TransferEmptyBody: Encodable, Sendable {}
+private struct TransferEmptyResp: Decodable, Sendable {}
 
 // MARK: ViewModel
 

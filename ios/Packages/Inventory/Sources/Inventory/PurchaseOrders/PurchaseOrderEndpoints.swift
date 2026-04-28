@@ -62,10 +62,11 @@ public extension APIClient {
     /// §6.7 / §58 — Sends the PO to the supplier via email.
     /// Server: POST /api/v1/inventory/purchase-orders/:id/send
     func sendPurchaseOrder(id: Int64) async throws -> PurchaseOrder {
-        struct EmptyBody: Encodable {}
-        return try await post("/api/v1/inventory/purchase-orders/\(id)/send", body: EmptyBody(), as: PurchaseOrder.self)
+        return try await post("/api/v1/inventory/purchase-orders/\(id)/send", body: PurchaseOrderSendEmptyBody(), as: PurchaseOrder.self)
     }
 }
+
+private struct PurchaseOrderSendEmptyBody: Encodable, Sendable {}
 
 // MARK: - Request bodies
 

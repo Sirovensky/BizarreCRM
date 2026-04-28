@@ -100,8 +100,8 @@ public final class PushDeepLinkDispatcher: @unchecked Sendable {
 
     /// Dispatch from cold-launch options dictionary.
     /// Call from `application(_:didFinishLaunchingWithOptions:)`.
-    public func dispatchFromLaunchOptions(_ options: [UIApplicationLaunchOptionsKey: Any]?, isAuthenticated: Bool) {
-        guard let userInfo = options?[UIApplicationLaunchOptionsKey.remoteNotification] as? [AnyHashable: Any] else {
+    public func dispatchFromLaunchOptions(_ options: [UIApplication.LaunchOptionsKey: Any]?, isAuthenticated: Bool) {
+        guard let userInfo = options?[UIApplication.LaunchOptionsKey.remoteNotification] as? [AnyHashable: Any] else {
             return
         }
         dispatch(userInfo: userInfo, isAuthenticated: isAuthenticated)

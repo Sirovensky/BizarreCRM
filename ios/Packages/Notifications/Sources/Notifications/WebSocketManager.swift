@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import Combine
+import SwiftUI
 import Core
 import Networking  // WebSocketConnection lives here (§28.3 URLSession containment)
 

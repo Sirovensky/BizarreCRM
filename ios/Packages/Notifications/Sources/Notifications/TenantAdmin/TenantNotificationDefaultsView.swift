@@ -299,43 +299,7 @@ private struct NotificationEventGroup {
     ]
 }
 
-// MARK: - NotificationEvent display name
-
-public extension NotificationEvent {
-    var displayName: String {
-        switch self {
-        case .ticketAssigned:             return "Ticket assigned to me"
-        case .ticketStatusChangeMine:     return "Ticket status change (mine)"
-        case .ticketStatusChangeAny:      return "Ticket status change (anyone)"
-        case .smsInbound:                 return "New SMS from customer"
-        case .smsDeliveryFailed:          return "SMS delivery failed"
-        case .newCustomerCreated:         return "New customer created"
-        case .invoiceOverdue:             return "Invoice overdue"
-        case .invoicePaid:                return "Invoice paid"
-        case .estimateApproved:           return "Estimate approved"
-        case .estimateDeclined:           return "Estimate declined"
-        case .appointmentReminder24h:     return "Appointment reminder 24 h"
-        case .appointmentReminder1h:      return "Appointment reminder 1 h"
-        case .appointmentCanceled:        return "Appointment canceled"
-        case .mentionInNote:              return "@Mention in note / chat"
-        case .lowStock:                   return "Low stock"
-        case .outOfStock:                 return "Out of stock"
-        case .paymentDeclined:            return "Payment declined"
-        case .refundProcessed:            return "Refund processed"
-        case .cashRegisterShort:          return "Cash register short"
-        case .shiftStartedEnded:          return "Shift started / ended"
-        case .goalAchieved:               return "Goal achieved"
-        case .ptoApprovedDenied:          return "PTO approved / denied"
-        case .campaignSent:               return "Campaign sent"
-        case .npsDetractor:               return "NPS detractor"
-        case .setupWizardIncomplete:      return "Setup wizard incomplete (24 h)"
-        case .subscriptionRenewal:        return "Subscription renewal"
-        case .integrationDisconnected:    return "Integration disconnected"
-        case .backupFailed:               return "Backup failed (critical)"
-        case .securityEvent:              return "Security event"
-        }
-    }
-}
+// (NotificationEvent.displayName lives in NotificationEvent.swift.)
 
 // MARK: - API client extension
 

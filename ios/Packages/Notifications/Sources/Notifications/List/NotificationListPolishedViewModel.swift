@@ -143,7 +143,7 @@ public final class NotificationListPolishedViewModel {
     }
 
     /// Swipe-to-dismiss: removes from list optimistically; calls server persist.
-    public func dismiss(id: Int64) async {
+    public func dismissSwiped(id: Int64) async {
         guard let idx = allItems.firstIndex(where: { $0.id == id }) else { return }
         let previous = allItems[idx]
         allItems.remove(at: idx)

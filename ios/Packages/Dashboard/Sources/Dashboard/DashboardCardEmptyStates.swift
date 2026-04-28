@@ -17,7 +17,7 @@ import DesignSystem
 private struct EmptyStateCard<Icon: View>: View {
     let icon: Icon
     let headline: String
-    let body: String
+    let bodyText: String
     let ctaLabel: String?
     let onCTA: (() -> Void)?
 
@@ -30,7 +30,7 @@ private struct EmptyStateCard<Icon: View>: View {
     ) {
         self.icon = icon()
         self.headline = headline
-        self.body = body
+        self.bodyText = body
         self.ctaLabel = ctaLabel
         self.onCTA = onCTA
     }
@@ -46,7 +46,7 @@ private struct EmptyStateCard<Icon: View>: View {
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
 
-            Text(body)
+            Text(bodyText)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
@@ -66,7 +66,7 @@ private struct EmptyStateCard<Icon: View>: View {
         }
         .padding(BrandSpacing.lg)
         .frame(maxWidth: .infinity)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.lg))
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
     }
 }
 

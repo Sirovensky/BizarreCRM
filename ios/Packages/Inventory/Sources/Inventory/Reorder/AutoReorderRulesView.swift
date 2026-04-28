@@ -328,19 +328,21 @@ public struct ReorderRunResponse: Decodable, Sendable {
 
 extension APIClient {
     func listReorderRules() async throws -> [ReorderRule] {
-        let resp: APIResponse<[ReorderRule]> = try await get(
-            "/api/v1/inventory/reorder-rules"
-        )
-        return resp.data ?? []
+        try await get("/api/v1/inventory/reorder-rules", as: [ReorderRule].self)
     }
 
     func runAutoReorder(itemIds: [Int64]) async throws -> Int {
-        struct RunRequest: Encodable { let itemIds: [Int64]; enum CodingKeys: String, CodingKey { case itemIds = "item_ids" } }
-        let resp: APIResponse<ReorderRunResponse> = try await post(
+        let resp = try await post(
             "/api/v1/inventory/reorder-rules/run-now",
-            body: RunRequest(itemIds: itemIds)
+            body: AutoReorderRunRequest(itemIds: itemIds),
+            as: ReorderRunResponse.self
         )
-        return resp.data?.draftPOsCreated ?? 0
+        return resp.draftPOsCreated
     }
+}
+
+private struct AutoReorderRunRequest: Encodable, Sendable {
+    let itemIds: [Int64]
+    enum CodingKeys: String, CodingKey { case itemIds = "item_ids" }
 }
 #endif

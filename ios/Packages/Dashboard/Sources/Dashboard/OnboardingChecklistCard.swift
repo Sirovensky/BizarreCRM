@@ -135,12 +135,13 @@ public final class OnboardingChecklistViewModel {
 public extension APIClient {
     /// PATCH /api/v1/onboarding/state — marks checklist as dismissed.
     func patchOnboardingDismissed() async throws -> OnboardingState {
-        struct DismissBody: Encodable {
-            let checklistDismissed: Bool
-            enum CodingKeys: String, CodingKey { case checklistDismissed = "checklist_dismissed" }
-        }
-        return try await patch("onboarding/state", body: DismissBody(checklistDismissed: true), as: OnboardingState.self)
+        return try await patch("onboarding/state", body: OnboardingDismissBody(checklistDismissed: true), as: OnboardingState.self)
     }
+}
+
+private struct OnboardingDismissBody: Encodable, Sendable {
+    let checklistDismissed: Bool
+    enum CodingKeys: String, CodingKey { case checklistDismissed = "checklist_dismissed" }
 }
 
 // MARK: - Card View

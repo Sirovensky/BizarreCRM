@@ -35,20 +35,11 @@ public enum NotificationFilterChip: Hashable, Sendable, Identifiable {
         .map { .byType($0) }
 }
 
-// MARK: - NotificationTypeFilter
+// MARK: - NotificationTypeFilter helpers
+// (Canonical enum lives in NotificationFilterView.swift.)
 
-/// Maps coarsely to the `type` field on `NotificationItem`. One case covers
-/// several server-side type strings so the chip set stays compact.
-public enum NotificationTypeFilter: String, CaseIterable, Sendable {
-    case ticket     = "ticket"
-    case sms        = "sms"
-    case invoice    = "invoice"
-    case payment    = "payment"
-    case appointment = "appointment"
-    case mention    = "mention"
-    case system     = "system"
-
-    public var displayName: String {
+public extension NotificationTypeFilter {
+    var displayName: String {
         switch self {
         case .ticket:      return "Tickets"
         case .sms:         return "SMS"
@@ -61,7 +52,7 @@ public enum NotificationTypeFilter: String, CaseIterable, Sendable {
     }
 
     /// Returns `true` if `typeString` from the server belongs to this filter bucket.
-    public func matches(_ typeString: String?) -> Bool {
+    func matches(_ typeString: String?) -> Bool {
         guard let t = typeString?.lowercased() else { return self == .system }
         switch self {
         case .ticket:      return t.contains("ticket")

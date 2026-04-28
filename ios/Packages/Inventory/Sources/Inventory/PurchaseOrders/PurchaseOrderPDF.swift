@@ -34,22 +34,22 @@ public enum PurchaseOrderPDFRenderer {
     private static let pageHeight: CGFloat = 842
     private static let margin: CGFloat     = 40
 
-    private static let titleAttrs: [NSAttributedString.Key: Any] = [
-        .font: UIFont.systemFont(ofSize: 22, weight: .bold),
-        .foregroundColor: UIColor.label
-    ]
-    private static let headingAttrs: [NSAttributedString.Key: Any] = [
-        .font: UIFont.systemFont(ofSize: 13, weight: .semibold),
-        .foregroundColor: UIColor.label
-    ]
-    private static let bodyAttrs: [NSAttributedString.Key: Any] = [
-        .font: UIFont.systemFont(ofSize: 11, weight: .regular),
-        .foregroundColor: UIColor.secondaryLabel
-    ]
-    private static let monoAttrs: [NSAttributedString.Key: Any] = [
-        .font: UIFont.monospacedSystemFont(ofSize: 11, weight: .regular),
-        .foregroundColor: UIColor.label
-    ]
+    private static var titleAttrs: [NSAttributedString.Key: Any] {
+        [.font: UIFont.systemFont(ofSize: 22, weight: .bold),
+         .foregroundColor: UIColor.label]
+    }
+    private static var headingAttrs: [NSAttributedString.Key: Any] {
+        [.font: UIFont.systemFont(ofSize: 13, weight: .semibold),
+         .foregroundColor: UIColor.label]
+    }
+    private static var bodyAttrs: [NSAttributedString.Key: Any] {
+        [.font: UIFont.systemFont(ofSize: 11, weight: .regular),
+         .foregroundColor: UIColor.secondaryLabel]
+    }
+    private static var monoAttrs: [NSAttributedString.Key: Any] {
+        [.font: UIFont.monospacedSystemFont(ofSize: 11, weight: .regular),
+         .foregroundColor: UIColor.label]
+    }
 
     public static func render(po: PurchaseOrder, supplier: Supplier?) -> Data {
         let pageRect = CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight)
