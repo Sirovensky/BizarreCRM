@@ -2481,6 +2481,11 @@ private fun LoginTabBar(
         }
 
         // ── Wavy progress indicator (M3 Expressive) ────────────────────────
+        // The "Step N of 3" caption is intentionally omitted: caption labels
+        // above already convey the same info, and the extra row was pushing
+        // the form card off the top of the screen on shorter phones. The
+        // contentDescription on the progress bar still announces step N/3 to
+        // TalkBack, so a11y is preserved.
         androidx.compose.material3.LinearWavyProgressIndicator(
             progress = { animatedProgress },
             modifier = Modifier
@@ -2493,15 +2498,6 @@ private fun LoginTabBar(
             color = activeColor,
             trackColor = trackColor,
             waveSpeed = 5.dp,
-        )
-
-        // ── "Step N of 3" caption ──────────────────────────────────────────
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = "Step ${selectedIndex + 1} of ${tabLabels.size}",
-            style = MaterialTheme.typography.labelSmall,
-            color = inactiveColor,
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
         )
     }
 }
