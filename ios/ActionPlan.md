@@ -454,8 +454,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
 - [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
-- [ ] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present.
-- [ ] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column.
+- [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (feat(§3): DashboardSkeletonView glass shimmer, Reduce Motion safe; 4ecb468d)
+- [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (feat(§3): kpiGridColumnCount + fourColumnIfWide + adaptive columns; 4ecb468d)
 - [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
 - [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
@@ -471,7 +471,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.3 Needs-attention surface
 - [x] Base card — shipped.
-- [ ] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week".
+- [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (feat(§3): NeedsAttentionCard + StaleTicketRow + OverdueInvoiceRow + ActionChip; 9cd0b5b8)
 - [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
 - [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
 - [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
@@ -1661,7 +1661,7 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `PAYMENT_RECEIVED` → View receipt / Thank customer.
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
-- [ ] **Entity allowlist** on deep-link parse (security — prevent injected types).
+- [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (feat(§13): kEntityTypeAllowlist in NotificationDeepLinkCoordinator + deepLinkPath allowlist in NotificationListPolishedView — verified b14; 4ecb468d)
 - [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
 - [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
 
@@ -3075,12 +3075,12 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.0 Shell
 - [ ] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`).
 - [ ] **iPhone** — `List` of categories → push to individual tab views.
-- [ ] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`.
+- [x] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`. (feat(§19): SettingsView isAdmin gating on Organization/Payments/SMS; iPadSections filtered by role; 4ecb468d)
 - [ ] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field.
-- [ ] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty.
+- [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (feat(§19): UnsavedChangesBanner + .unsavedChangesBanner() modifier; 4ecb468d)
 
 ### 19.1 Profile
-- [ ] **Avatar** — circular tap → action sheet (Camera / Library / Remove).
+- [x] **Avatar** — circular tap → action sheet (Camera / Library / Remove). (feat(§19): ProfileSettingsPage avatar circle + showAvatarPicker → AvatarPickerSheet; 4ecb468d)
 - [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
 - [ ] **Change email** — server emits verify-email link; banner until verified.
 - [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
@@ -3579,26 +3579,26 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Coalescing** — debounce multi-events in a window; single sync.
 
 ### 21.4 Background tasks
-- [ ] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch.
-- [ ] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune.
+- [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (feat(§21): AppBackgroundTaskScheduler — syncRefreshID + runSyncRefresh() with cancellation handler; 4ecb468d)
+- [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (feat(§21): AppBackgroundTaskScheduler — maintenanceNightlyID + runMaintenance(); 4ecb468d)
 - [ ] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync.
 - [ ] **Task budgets** — complete within 30s; defer remainder.
 
 ### 21.5 WebSocket (Starscream)
-- [ ] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`.
+- [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (feat(§21): WebSocketManager multi-endpoint enum + connect/disconnect; 4ecb468d)
 - [ ] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates.
-- [ ] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%.
-- [ ] **Heartbeat** — ping every 25s; timeout 30s → force reconnect.
-- [ ] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side.
+- [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (feat(§21): WebSocketClient.scheduleReconnect() via min(pow(2,n),30); 4ecb468d)
+- [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (feat(§21): WebSocketManager.startHeartbeat() 25s poll + state mirror; 4ecb468d)
+- [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (feat(§21): WebSocketManager.subscribe/unsubscribe with subscriberCount lifecycle; 4ecb468d)
 - [ ] **Event envelope** — `{ type, entity, id, payload, version }`.
 - [ ] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side.
 - [ ] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data.
 - [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.
 
 ### 21.6 Foreground lifecycle
-- [ ] **`didBecomeActive`** — lightweight sync + WS re-subscribe.
-- [ ] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on.
-- [ ] **Memory warning** — flush image cache, reduce GRDB page cache.
+- [x] **`didBecomeActive`** — lightweight sync + WS re-subscribe. (feat(§21): ForegroundLifecycleObserver.onDidBecomeActive callback via UIApplication.didBecomeActiveNotification; 9cd0b5b8)
+- [x] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on. (feat(§21): ForegroundLifecycleObserver.onWillResignActive callback; 9cd0b5b8)
+- [x] **Memory warning** — flush image cache, reduce GRDB page cache. (feat(§21): ForegroundLifecycleObserver.onMemoryWarning callback; 9cd0b5b8)
 
 ### 21.7 Real-time UX
 - [ ] **Pulse animation** on list row when item updates via WS.
@@ -3877,8 +3877,8 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **`eligibleForPrediction`** — Siri suggests continue-ticket on other devices. (feat(ios phase-6 §24+§25))
 
 ### 25.3 Universal Clipboard
-- [ ] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU.
-- [ ] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive.
+- [x] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU. (feat(§25): CopyableText modifier + .copyable() view extension in Settings package; 9cd0b5b8)
+- [x] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive. (feat(§25): CopyableText.conditionalContextMenuCopy + UIPasteboard.general; 9cd0b5b8)
 - [ ] **iCloud Keychain paste** for SMS codes (`UITextContentType.oneTimeCode`).
 
 ### 25.4 Share Sheet (`UIActivityViewController` / `ShareLink`)
@@ -6374,7 +6374,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 
 ### 70.1 User override (Settings § 19.3)
 - [x] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent. (`NotificationPreferencesMatrixView`, `NotificationPreferencesMatrixViewModel`)
-- [ ] Defaults shown greyed with "(default)" label until user flips.
+- [x] Defaults shown greyed with "(default)" label until user flips. (feat(§70): MatrixRow.isAtDefault(for:) + isFullyAtDefault; channelToggleButton shows greyed "default" label; 9cd0b5b8)
 - [x] "Reset all to default" button. (`resetAllToDefault()`)
 - [x] Explicit warning when enabling SMS on a high-volume event. (`StaffNotificationCategoryExclusions`)
 
@@ -6385,7 +6385,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 ### 70.3 Delivery rules
 - [x] Push respects iOS Focus — documented. (`FocusModeIntegrationView`)
 - [x] Quiet hours editor with critical-override toggle. (`QuietHoursEditorView`, `QuietHours`)
-- [ ] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading).
+- [x] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading). (feat(§70): ForegroundPushToastCoordinator.activeScreenPath + pathsMatch() suppression; 4ecb468d)
 - [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
 
 ### 70.4 Critical override
