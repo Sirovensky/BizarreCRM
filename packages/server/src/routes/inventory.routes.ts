@@ -2,6 +2,7 @@ import { Router, Request } from 'express';
 import crypto from 'crypto';
 import multer from 'multer';
 import { requirePermission } from '../middleware/auth.js';
+import { asyncHandler } from '../middleware/asyncHandler.js';
 import path from 'path';
 import fs from 'fs';
 import { createCanvas } from 'canvas';
