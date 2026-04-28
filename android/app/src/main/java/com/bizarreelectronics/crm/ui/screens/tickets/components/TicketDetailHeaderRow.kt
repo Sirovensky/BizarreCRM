@@ -1,5 +1,8 @@
 package com.bizarreelectronics.crm.ui.screens.tickets.components
 
+import androidx.compose.animation.AnimatedContentScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -26,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.local.db.entities.TicketEntity
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.ui.theme.SharedTicketElement
+import com.bizarreelectronics.crm.ui.theme.sharedTicketKey
 import java.time.LocalDate
 
 /**
@@ -48,12 +53,29 @@ import java.time.LocalDate
  * The row is fully client-side — every value is derived from [TicketEntity] which is
  * already hydrated from Room before the screen is shown.
  *
- * @param ticket      Room entity supplying status, statusColor, statusIsClosed, dueOn.
- * @param modifier    Optional modifier forwarded to the outer [Row].
+ * §70.3 — When [sharedTransitionScope] and [animatedContentScope] are non-null, the
+ * [TicketStatePill] participates in the list→detail shared-element transition via
+ * [SharedTicketElement.STATUS_CHIP]. The key matches the one emitted by [TicketListRow]
+ * so the framework can animate the chip seamlessly between screens.
+ *
+ * @param ticket                  Room entity supplying status, statusColor, statusIsClosed, dueOn.
+ * @param ticketId                DB id used to build the shared-element key. Defaults to
+ *                                [TicketEntity.id] — only override in edge-cases where
+ *                                the nav-arg id differs from the entity id.
+ * @param sharedTransitionScope   SharedTransitionScope provided by the host nav graph.
+ *                                Null disables the shared-element animation (safe default
+ *                                for previews, tests, and call-sites that haven't been updated).
+ * @param animatedContentScope    AnimatedContentScope from the NavHost composable lambda.
+ *                                Must be non-null when [sharedTransitionScope] is non-null.
+ * @param modifier                Optional modifier forwarded to the outer [Row].
  */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun TicketDetailHeaderRow(
     ticket: TicketEntity,
+    ticketId: Long = ticket.id,
+    sharedTransitionScope: SharedTransitionScope? = null,
+    animatedContentScope: AnimatedContentScope? = null,
     modifier: Modifier = Modifier,
 ) {
     val urgency = remember(ticket.statusName, ticket.statusIsClosed) {
@@ -77,11 +99,29 @@ fun TicketDetailHeaderRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // 1. Status pill (always shown when statusName is available)
+        // §70.3 — participates in list→detail shared-element transition when scopes are
+        // provided. The sharedElement modifier is applied to the TicketStatePill Surface
+        // so the entire colored pill (background + text) morphs as one unit.
         val statusName = ticket.statusName
         if (!statusName.isNullOrBlank()) {
+            val pillModifier: Modifier = if (
+                sharedTransitionScope != null && animatedContentScope != null
+            ) {
+                with(sharedTransitionScope) {
+                    Modifier.sharedElement(
+                        sharedContentState = rememberSharedContentState(
+                            key = sharedTicketKey(ticketId, SharedTicketElement.STATUS_CHIP),
+                        ),
+                        animatedVisibilityScope = animatedContentScope,
+                    )
+                }
+            } else {
+                Modifier
+            }
             TicketStatePill(
                 statusName = statusName,
                 colorHex = ticket.statusColor,
+                modifier = pillModifier,
             )
         }
 

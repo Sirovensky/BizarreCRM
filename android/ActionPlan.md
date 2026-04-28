@@ -5477,7 +5477,7 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 
 ### 70.3 Shared-element
 - [x] `SharedTransitionLayout` + `Modifier.sharedElement(...)` on tablet list→detail.
-- [ ] Preserves photo thumbs, status chip, title. <!-- NOTE-defer: title/customer-name sharedElement keys are wired in TicketListScreen + TicketDetailScreen; PHOTO_THUMB and STATUS_CHIP enum values exist in Motion.kt but are unused — no sharedElement applied to photo AsyncImage or status chip at list or detail call sites -->
+- [x] Preserves photo thumbs, status chip, title. <!-- STATUS_CHIP wired: BrandStatusBadge in TicketListRow + TicketStatePill in TicketDetailHeaderRow both carry sharedTicketKey(id, STATUS_CHIP); TicketDetailHeaderRow extended with ticketId/sharedTransitionScope/animatedContentScope params; PHOTO_THUMB deferred — no thumbnail in list row yet -->
 
 ### 70.4 Predictive back
 - [x] `PredictiveBackHandler` drives progress value 0..1 → custom scale + translate preview.

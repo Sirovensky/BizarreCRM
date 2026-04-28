@@ -2073,9 +2073,14 @@ private fun TicketDetailContent(
         }
 
         // §4.2 — Status / urgency / due-date chip row (completes [~] header item)
+        // §70.3 — pass shared-element scopes so the status pill morphs during
+        // the list→detail transition (STATUS_CHIP key matched by TicketListRow).
         item {
             TicketDetailHeaderRow(
                 ticket = ticket,
+                ticketId = ticketId,
+                sharedTransitionScope = sharedTransitionScope,
+                animatedContentScope = animatedContentScope,
                 modifier = Modifier.fillMaxWidth(),
             )
         }

@@ -66,6 +66,8 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgencyChi
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.ui.theme.SharedTicketElement
+import com.bizarreelectronics.crm.ui.theme.sharedTicketKey
 import com.bizarreelectronics.crm.util.NetworkMonitor
 import com.bizarreelectronics.crm.util.draggableItem
 import com.bizarreelectronics.crm.util.dropTarget
@@ -793,7 +795,22 @@ private fun TicketListRow(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TicketGroupPill(group = group)
                             Spacer(modifier = Modifier.width(6.dp))
-                            BrandStatusBadge(label = statusName, status = statusName)
+                            // §70.3 — STATUS_CHIP shared-element: the badge morphs
+                            // into the TicketStatePill in the detail header row during
+                            // the list→detail nav transition. Key is scoped to this
+                            // ticket id so multiple rows never collide.
+                            with(sharedTransitionScope) {
+                                BrandStatusBadge(
+                                    label = statusName,
+                                    status = statusName,
+                                    modifier = Modifier.sharedElement(
+                                        sharedContentState = rememberSharedContentState(
+                                            key = sharedTicketKey(ticket.id, SharedTicketElement.STATUS_CHIP),
+                                        ),
+                                        animatedVisibilityScope = animatedContentScope,
+                                    ),
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
