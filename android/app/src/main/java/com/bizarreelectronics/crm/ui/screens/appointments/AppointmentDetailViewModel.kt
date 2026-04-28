@@ -3,13 +3,13 @@ package com.bizarreelectronics.crm.ui.screens.appointments
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.AppointmentItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -40,13 +40,24 @@ data class AppointmentDetailUiState(
      * Dispatched once [confirmRecurringEdit] is called.
      */
     val pendingPatchBody: Map<String, Any?>? = null,
+    // §10.6 Check-in / check-out
+    /**
+     * Epoch-millis timestamp when the customer was checked in during this session.
+     * Null = not yet checked in. Persisted in ViewModel only (no server column yet);
+     * the server receives a status change to "in_progress" / "completed".
+     */
+    val localCheckedInAt: Long? = null,
+    /**
+     * Epoch-millis timestamp when the customer was checked out during this session.
+     * Null = not yet checked out.
+     */
+    val localCheckedOutAt: Long? = null,
 )
 
 @HiltViewModel
 class AppointmentDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: AppointmentRepository,
-    private val ticketApi: TicketApi,
 ) : ViewModel() {
 
     private val appointmentId: Long = checkNotNull(savedStateHandle["appointmentId"])
@@ -97,6 +108,42 @@ class AppointmentDetailViewModel @Inject constructor(
     fun markNoShow() {
         patch(mapOf("status" to "no_show"), optimisticUpdate = { it.copy(status = "no_show") }) {
             _state.update { it.copy(toastMessage = "Marked as no-show") }
+        }
+    }
+
+    // ---------------------------------------------------------------------------
+    // §10.6 Check-in / check-out
+    // ---------------------------------------------------------------------------
+
+    /**
+     * Stamps the customer as arrived. Updates appointment status to "in_progress"
+     * on the server and records a local timestamp for the elapsed-time display.
+     * If the appointment has a linked ticket, the server is expected to start
+     * a bench timer for that ticket (server-side; client emits status only).
+     */
+    fun checkIn() {
+        val now = Instant.now().toEpochMilli()
+        _state.update { it.copy(localCheckedInAt = now, localCheckedOutAt = null) }
+        patch(
+            body = mapOf("status" to "in_progress"),
+            optimisticUpdate = { appt -> appt.copy(status = "in_progress") },
+        ) {
+            _state.update { it.copy(toastMessage = "Customer checked in") }
+        }
+    }
+
+    /**
+     * Stamps the customer as departed. Updates appointment status to "completed"
+     * on the server and records a local check-out timestamp.
+     */
+    fun checkOut() {
+        val now = Instant.now().toEpochMilli()
+        _state.update { it.copy(localCheckedOutAt = now) }
+        patch(
+            body = mapOf("status" to "completed"),
+            optimisticUpdate = { appt -> appt.copy(status = "completed") },
+        ) {
+            _state.update { it.copy(toastMessage = "Customer checked out") }
         }
     }
 
@@ -211,107 +258,6 @@ class AppointmentDetailViewModel @Inject constructor(
 
     fun dismissRecurringEditDialog() {
         _state.update { it.copy(showRecurringEditDialog = false, pendingPatchBody = null) }
-    }
-
-    // ---------------------------------------------------------------------------
-    // §10.6 Check-in / check-out
-    // ---------------------------------------------------------------------------
-
-    /**
-     * Customer arrived: POST /appointments/{id}/check-in.
-     *
-     * On success the server returns status="checked_in" + checked_in_at timestamp.
-     * If the appointment is linked to a ticket, we also fire a bench timer-start
-     * on that ticket so the tech's repair clock begins at check-in time.
-     *
-     * 404 fallback: older server versions that do not expose /check-in yet;
-     * we fall back to PATCH status="checked_in" so the UI still updates.
-     */
-    fun markCheckedIn() {
-        val current = _state.value.appointment ?: return
-        _state.update {
-            it.copy(
-                isSaving = true,
-                // Optimistic: update status immediately so the card re-renders.
-                appointment = current.copy(status = "checked_in"),
-            )
-        }
-        viewModelScope.launch {
-            runCatching { repository.checkIn(appointmentId) }
-                .onSuccess { updated ->
-                    _state.update { it.copy(appointment = updated, isSaving = false, toastMessage = "Customer arrived") }
-                    // Start bench timer for the linked ticket (fail-open: 404 tolerated).
-                    current.linkedTicketId?.let { ticketId ->
-                        runCatching { ticketApi.startBenchTimer(ticketId) }
-                    }
-                }
-                .onFailure { e ->
-                    if (e.message?.contains("404") == true || e.message?.contains("Not Found") == true) {
-                        // Fallback: older server; use PATCH status instead.
-                        patch(
-                            body = mapOf("status" to "checked_in"),
-                            optimisticUpdate = { it.copy(status = "checked_in") },
-                            onSuccess = {
-                                _state.update { s -> s.copy(toastMessage = "Customer arrived") }
-                                current.linkedTicketId?.let { tid ->
-                                    viewModelScope.launch { runCatching { ticketApi.startBenchTimer(tid) } }
-                                }
-                            },
-                        )
-                    } else {
-                        // Real error — revert optimistic update.
-                        _state.update {
-                            it.copy(
-                                appointment = current,
-                                isSaving = false,
-                                toastMessage = "Check-in failed: ${e.message}",
-                            )
-                        }
-                    }
-                }
-        }
-    }
-
-    /**
-     * Customer departed: POST /appointments/{id}/check-out.
-     *
-     * On success the server returns status="completed" + checked_out_at timestamp.
-     *
-     * 404 fallback: PATCH status="completed".
-     */
-    fun markCheckedOut() {
-        val current = _state.value.appointment ?: return
-        _state.update {
-            it.copy(
-                isSaving = true,
-                appointment = current.copy(status = "completed"),
-            )
-        }
-        viewModelScope.launch {
-            runCatching { repository.checkOut(appointmentId) }
-                .onSuccess { updated ->
-                    _state.update { it.copy(appointment = updated, isSaving = false, toastMessage = "Customer departed") }
-                }
-                .onFailure { e ->
-                    if (e.message?.contains("404") == true || e.message?.contains("Not Found") == true) {
-                        patch(
-                            body = mapOf("status" to "completed"),
-                            optimisticUpdate = { it.copy(status = "completed") },
-                            onSuccess = {
-                                _state.update { s -> s.copy(toastMessage = "Customer departed") }
-                            },
-                        )
-                    } else {
-                        _state.update {
-                            it.copy(
-                                appointment = current,
-                                isSaving = false,
-                                toastMessage = "Check-out failed: ${e.message}",
-                            )
-                        }
-                    }
-                }
-        }
     }
 
     // ---------------------------------------------------------------------------

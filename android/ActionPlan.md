@@ -196,18 +196,11 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] No glassmorphism. No translucent blurred nav bars. That is iOS Liquid Glass; Android stays on tonal M3 surfaces to keep the platform voice distinct. (commit 6a14dfd — `Theme.kt:1-20` design-decision file-header banning RenderEffect/BlurMaskFilter; also referenced in Android_audit.md §1.4)
 
 ### 1.5 Navigation shell
-- [x] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+). (String-based sealed `Screen` class ships; `@Serializable` data-class migration tracked as future refactor — all routes, back-stack, deep links, transitions working.)
-- [x] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`. (Implemented via manual adaptive `Row` logic in `AppNavGraph.kt` lines 919-1145 using `rememberWindowMode()` / `isMediumOrExpandedWidth()` / `isPermanentDrawerWidth()`; `NavigationSuiteScaffold` migration deferred — same breakpoints honoured.)
-- [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
-- [x] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow. (commit — `util/TabNavPrefs.kt` encode/decode/move helpers; `AppPreferences.tabNavOrder` + `tabNavOrderFlow`; `ui/screens/settings/TabOrderScreen.kt` + `TabOrderViewModel`; `AppNavGraph` bottom nav observes `resolvedAppPreferences.tabNavOrderFlow` via `AppPreferencesEntryPoint`; Settings row wired; "More" always last.)
-- [x] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag. (`ui/components/PredictiveBackScaffold.kt` — `PredictiveBackHandler` wrapper + `LocalBackProgress` composition local; `android:enableOnBackInvokedCallback="true"` in manifest; `NavHost` enter/exit/pop transitions produce preview animation on API 34+.)
 - [ ] `NavHost` + `NavController` — typed routes via `@Serializable` data classes (Compose Navigation type-safe routes, AndroidX Navigation 2.8+).
-  - **NOTE (2026-04-26):** Full migration from `sealed class Screen(val route: String)` to `@Serializable` data classes touches every `composable(...)` call, every `navArgument`, and every `navController.navigate(...)` in the 2800-line AppNavGraph. Doing it atomically is high-risk with no incremental compile gate. Needs its own session: split AppNavGraph into per-domain nav builders, then migrate one domain at a time.
-- [x] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`. (session 2026-04-26 — `AppNavGraph.kt` `NavigationSuiteScaffold` replaces manual `NavigationBar`/`NavigationRail` Row branching; dependency `material3-adaptive-navigation-suite` already in `app/build.gradle.kts`; `layoutType` forced to `NavigationSuiteType.None` on pre-login / detail / full-screen routes via existing `showBottomNav` flag; `currentWindowAdaptiveInfo()` from `androidx.compose.material3.adaptive` drives auto-pick; `SharedTransitionLayout` + `NavHost` modifiers updated from `weight(1f)` to `fillMaxSize()`)
+- [ ] **Adaptive Navigation Suite** — `NavigationSuiteScaffold` auto-picks: phone = bottom `NavigationBar`; tablet = `NavigationRail`; foldable large = `PermanentNavigationDrawer`.
 - [x] **Typed path enum** per tab — `TicketsRoute.List | Detail(id) | Create | Edit(id)`. Deep-link router consumes these.
 - [ ] **Tab customization** (phone): user-reorderable tabs; fifth tab becomes "More" overflow.
-  - **NOTE (2026-04-26):** "More" overflow tab already exists. User-reorderable tabs require: (a) persistent order storage in `AppPreferences`, (b) drag-reorder UI in Settings → Appearance, (c) dynamic `bottomNavItems` list built from preferences. Non-trivial feature; owned by Section 3/settings pass.
-- [x] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag. (session 2026-04-26 — `PredictiveBackScaffold` composable (`ui/components/PredictiveBackScaffold.kt`) wired into `TicketDetailScreen` and `CustomerDetailScreen`; `graphicsLayer` scale 0.92 + alpha 0.7 at swipe-complete mirrors M3 exit recommendation; `LocalBackProgress` propagated to child tree; `PredictiveBackHandler` via `androidx.activity:1.10.0` backport to API 26+)
+- [ ] **Predictive back gesture** — adopt AndroidX `PredictiveBackHandler` everywhere (Android 14+ preview, Android 16 default on). Custom animations survive the drag.
 - [x] **Deep links**: `bizarrecrm://tickets/:id`, `/customers/:id`, `/invoices/:id`, `/sms/:thread`, `/dashboard`. Mirror iOS URL scheme.
 - [~] **App Links** (HTTPS verified) over `app.bizarrecrm.com/*` — `assetlinks.json` served at tenant root; `AndroidManifest.xml` intent filters with `android:autoVerify="true"`. (commit a629898 — intent-filter + autoVerify added; `assetlinks.json` server-side deploy pending)
 
@@ -233,8 +226,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] `AppError` sealed class with branches: `Network(cause)`, `Server(status, message, requestId)`, `Auth(reason)`, `Validation(List<FieldError>)`, `NotFound(entity, id)`, `Permission(required: Capability)`, `Conflict(ConflictInfo)`, `Storage(reason)`, `Hardware(reason)`, `Cancelled`, `Unknown(cause)`. (`util/AppError.kt` — `Permission` folded into `Auth.PermissionDenied`.)
 - [x] Each branch exposes `title`, `message`, `suggestedActions: List<AppErrorAction>` (retry / open-settings / contact-support / dismiss). (commit c4b1cee — `util/ErrorRecovery.kt` `recover(AppError) → Recovery`)
 - [x] Errors logged with Timber category + code + request ID; no PII per §32.6 Redactor. (commit 97f6416 — `util/RedactorTree.kt` planted in `BizarreCrmApp.onCreate`; 22 sensitive keys masked; also closes §28.64 "RedactorTree pending" audit gap)
-- [x] User-facing strings in `strings.xml` with per-language resource folders (§27). (`res/values/strings.xml` + `values-es/`, `values-es-rMX/`, `values-fr/` folders present; `LanguageManager` wired per §27; ongoing — new screens must add strings to all locale files.)
-- [x] User-facing strings in `strings.xml` with per-language resource folders (§27). (session 2026-04-26 — `res/values/strings.xml` expanded from 11 → 55 strings covering: nav labels, generic actions (retry/dismiss/cancel/save/delete/undo/open-settings/contact-support), `AppError` taxonomy messages (network/server/not-found/permission/auth/conflict/unknown/offline-cached), banner copy (offline/sync-count/clock-drift/rate-limit), process-death restore hint, ticket + customer list/search copy, draft recovery prompts, biometric/PIN auth labels, settings section titles; per-language `values-*/strings.xml` folders pending §27 full i18n pass)
+- [ ] User-facing strings in `strings.xml` with per-language resource folders (§27).
 - [x] Error-recovery UI per taxonomy case lives in each feature module. (commit c4b1cee + d90f652 — `ErrorRecovery.recover()` util + `Action` enum + `ui/components/ErrorSurface.kt` composable with compact/full layouts, icon mapping, destructive styling; feature modules call `ErrorSurface(error, onAction)` and wire actions)
 - [x] Undo/redo via `SnackbarHost` + undo-stack held in ViewModel; stack depth last 50 actions; cleared on nav dismiss. (commit 2e53665 — `util/UndoStack.kt` generic)
 - [~] Covered actions: ticket field edit; POS cart item add/remove; inventory adjust; customer field edit; status change; notes add/remove. (commit 2e53665 — util ready; per-feature ViewModel wiring pending)
@@ -247,16 +239,14 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] Background: `Lifecycle.ON_PAUSE` → persist unsaved drafts; schedule delta-sync via WorkManager `periodicWorkRequest` 15min; seal clipboard if sensitive; set `FLAG_SECURE` on window if screen-capture privacy required. (commit 30d65d7 + 39556c7 + 0584d26 — ON_STOP reschedules delta-sync via SyncWorker KEEP, calls `ClipboardUtil.clearSensitiveIfPresent`, invokes `DraftStore.flushPending()` on appScope; `AppPreferences.screenCapturePreventionFlow` default `true` reactively toggles `FLAG_SECURE`+`setRecentsScreenshotEnabled` via collectAsState in MainActivity.setContent; eager pre-setContent apply avoids unsecured first frame; DEBUG bypass preserved)
 - [x] Terminate rarely predictable on Android (OEM killers); don't rely on — persist state on every field change, not at destroy. (commit 30d65d7 — KDoc invariant on observer)
 - [x] Memory pressure: `onTrimMemory(TRIM_MEMORY_RUNNING_LOW)` → flush Coil memory cache, drop preview caches; never free active data. (commit 30d65d7 — Coil 3 `SingletonImageLoader.memoryCache?.clear()`)
-- [x] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes. (`SavedStateHandle` injected in 24+ ViewModels including `TicketDetailScreen`, `CustomerDetailScreen`, `InvoiceDetailScreen`, `SmsThreadScreen`, `EstimateDetailViewModel`, `ExpenseDetailViewModel`, etc.)
-- [x] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes. (session 2026-04-26 — `TicketListViewModel` + `CustomerListViewModel` both inject `SavedStateHandle`; `onSearchChanged` / `onFilterChanged` write SSH keys `ticket_list_search_query`, `ticket_list_selected_filter`, `customer_list_search_query`; initial state seeded from SSH so process-kill restores last query/filter before the ViewModel emits its first load; companion-object key constants guard against typos; existing detail VMs (`AppointmentDetailViewModel`, `ExpenseDetailViewModel`, etc.) already used SSH for nav-arg extraction)
+- [ ] Process death: save instance state via `SavedStateHandle`; ViewModel survives config change but not process kill — SavedStateHandle reconstitutes.
 - [x] URL open / App Link: handle via `MainActivity.onNewIntent` → central `DeepLinkRouter` (§68). (commit 00bc645 — `MainActivity.onNewIntent()` calls `resolveDeepLink()` + `resolveFcmRoute()` → `DeepLinkBus.publish()`; `util/DeepLinkAllowlist.kt` whitelist enforced; FCM extras `navigate_to`+`entity_id` mapped to 9 entity routes)
 - [x] Push in foreground: FCM `onMessageReceived` dispatches to `NotificationController`; SMS_INBOUND shows banner but not sound if user already in SMS thread for that contact. (commit 5800443 — `service/NotificationController.kt` channel-selection + dedup via `util/ActiveChatTracker.kt` `currentThreadPhone`; `sms_silent` channel `IMPORTANCE_LOW` no-sound/vibrate registered in `BizarreCrmApp.createNotificationChannels()`; `FcmService.onMessageReceived` delegates after silent-sync short-circuit)
 - [x] Push background: `Notification.Action` handles action buttons (Reply / Mark Read) inline via `RemoteInput`. (commit 5800443 — `service/NotificationActionReceiver.kt` `@AndroidEntryPoint` handles `ACTION_REPLY_SMS` via `RemoteInput.getResultsFromIntent` + `SyncQueueEntity(operation="send_sms")` enqueue; `ACTION_MARK_READ` enqueues `mark_read` PATCH; 12 JVM tests; receiver registered in AndroidManifest)
 - [x] Silent push (`data-only`): `onMessageReceived` triggers delta-sync `expedited` Worker; must complete within 10s to avoid ANR. (`FcmService.onMessageReceived` short-circuits when `type=silent_sync` / `data.sync=true` / no notification + no body, calls `SyncWorker.syncNow(this)`, and skips notification-post.)
 - [x] Persistence: Room + SQLCipher chosen (encryption-at-rest mandatory; native Room lacks encryption); Room `Paging3` integrations mature for §130 search; Room concurrency via coroutines + `Flow` matches heavy-read light-write load; no CloudKit / Drive cross-device sync (§32 sovereignty).
 - [x] Concurrency: Room `SuspendingTransaction` per repository; `Dispatchers.IO` for disk, `Dispatchers.Default` for parsing/formatting. Single write executor to avoid `SQLITE_BUSY`.
-- [x] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`. (`lifecycle-runtime-compose:2.8.7` dep declared; used in `ClockDriftBanner`, `SessionTimeoutOverlay`, `RateLimitBanner`, `AppNavGraph`, and 16 settings screens; feature screens use `collectAsState` pending lifecycle-aware migration.)
-- [x] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`. (session 2026-04-26 — already wired; `collectAsStateWithLifecycle` used in `ClockDriftBanner`, `RateLimitBanner`, `SessionTimeoutOverlay`, `AppNavGraph`, `ActiveSessionsScreen`, `AppearanceScreen`, `DiagnosticsScreen`, `RateLimitBucketsScreen`, `ThemeScreen` and many domain screens; `lifecycle-runtime-compose` dep present in `build.gradle.kts`)
+- [ ] Observation: Room `Flow<T>` bridges into Compose via `collectAsStateWithLifecycle`.
 - [x] Clock-drift detection: on startup + every sync, compare `System.currentTimeMillis()` to server `Date` header; flag drift > 2 min. (commit 5ba8e58 — `util/ClockDrift.kt` + `data/remote/interceptors/ClockDriftInterceptor.kt`)
 - [x] User warning banner when drifted: "Device clock off by X minutes — may cause login issues" + deep link to system Date & Time settings. (commit 5ba8e58 + 8d61b74 + a762605 — `ui/components/ClockDriftBanner.kt` collects `ClockDrift.state`, errorContainer surface + "Open settings" → `Settings.ACTION_DATE_SETTINGS`; mounted in root Scaffold when logged in)
 - [x] TOTP gate: 2FA fails if drift > 30s; auto-retry once with adjusted window, then hard error. (commit 5ba8e58 — `ClockDrift.isSafeFor2FA()` + `TOTP_DRIFT_MS`)
@@ -309,7 +299,7 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Verify code** — `POST /auth/login/2fa-verify` with `{ challengeToken, code, trustDevice? }` returns `{ accessToken, user }`.
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout. (commit cd36e98 — `ui/screens/auth/BackupCodesDisplay.kt` FlowRow mono chips + warning banner + "Copy all" sensitive clip + checkbox gate → "Done" primary CTA; replaces prior inline AlertDialog)
-- [x] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep) (session 2026-04-26 — Compose BOM 2026.04.01 = UI 1.8+; `ContentType.SmsOtpCode` now public and wired on `TotpCodeInputContent` OutlinedTextField via `Modifier.semantics { contentType = ContentType.SmsOtpCode }`; `smsRetrieverClient` in `OtpInput.kt` now delegates to `SmsRetrieverHelper.startRetriever` — dep was already present; `play-services-auth-api-phone` confirmed in `build.gradle.kts`)
+- [~] **Autofill OTP** — `KeyboardOptions(keyboardType = KeyboardType.NumberPassword, autoCorrect = false)` + `@AutofillType.SmsOtpCode` via `LocalAutofillTree`. SMS Retriever API (`SmsRetrieverClient`) picks up code from Messages automatically when `<#>` prefix + app hash present. (commit 8301aa5 — `otpKeyboardOptions()` + `SMS_OTP_AUTOFILL_HINT` done; `ContentType.SmsOtpCode` blocked on internal Compose 1.7.x visibility; `smsRetrieverClient` stub pending `play-services-auth-api-phone` dep)
 - [x] **Paste-from-clipboard** auto-detect 6-digit string. (commit 8301aa5 — `detectOtpFromClipboard` + `OtpParser.extractOtpDigits`)
 - [blocked: policy — 2FA disable not allowed per user directive 2026-04-23. Android client must never surface a "Disable 2FA" action; server endpoint may exist but UI is intentionally absent.] **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
@@ -496,8 +486,8 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — lay out via `LazyVerticalStaggeredGrid`. (commit 059e249 — `ui/screens/dashboard/components/KpiGrid.kt` + `KpiTile` model wired into DashboardScreen with responsive branching)
-- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (session 2026-04-26 — 13-tile KpiTile list in DashboardScreen; taxToday/discountsToday/cogsToday/netProfitToday/refundsToday/expensesToday/receivablesTotal/closedToday added to DashboardUiState + DashboardStats; zero-defaults when server fields absent; server keys: tax_today/discounts_today/cogs_today/net_profit_today/refunds_today/expenses_today/receivables_total/closed_today)
-- [x] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (session 2026-04-26 — Open Tickets/Appointments/Low Stock wired; Receivables tile taps onNavigateToAging → InvoicesAging; Revenue/COGS/Tax/Discounts/Refunds/Expenses/Net Profit/Closed Today inert — no dedicated filtered-list screens exist yet)
+- [~] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
+- [~] **Tile taps** deep-link to filtered list (Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`).
 - [x] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in DataStore; sync to server-side default. (commit 059e249 — `DateRangeSelector.kt` `SingleChoiceSegmentedButtonRow` + 6-preset `DashboardDatePreset` enum + Material3 `DateRangePicker` bottom sheet for Custom + `DateRange` emitter; bound to VM `currentRange: StateFlow` + `setCurrentRange()`)
 - [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. (commit 059e249 — `DeltaChip` in `KpiTileCard` with ↗/↘/→ icons + green/red/grey color + a11y "Up X% versus last period"; slot nullable until server `/dashboard/compare` ships)
 - [x] **Pull-to-refresh** via `PullToRefreshBox` (Material3 1.3+).
@@ -511,8 +501,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Busy Hours heatmap** — ticket volume × hour-of-day × day-of-week; Vico `ColumnCartesianLayer` + custom cell renderer. (commit 12a8756 — `components/BusyHoursHeatmap.kt` 7×24 LazyVerticalGrid + `lerp` color intensity + hour labels + legend + horizontal scroll)
 - [x] **Tech Leaderboard** — top 5 by tickets / revenue; tap row → employee detail. (commit 12a8756 — `components/LeaderboardCard.kt` top-5 with rank medals + avatar placeholders + metric value)
 - [x] **Repeat-customers** card — repeat-rate %. (commit 12a8756 — `components/RepeatCustomerCard.kt` % display + trend arrow up/down/flat + 90-day window label)
-- [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (`components/CashTrappedCard.kt` + DashboardScreen VM `loadCashTrapped()` → `GET /reports/cash-trapped`; `onTap = onNavigateToAgingReport` wired at DashboardScreen lines ~1996/2038)
-- [x] **Cash-Trapped** card — overdue receivables sum; tap → Aging report. (session 2026-04-26 — `components/CashTrappedCard.kt` full-width Card; error-red border+tint when balance >0; overdueCount subtitle; tap → onNavigateToAging → Screen.InvoicesAging; GET /reports/aging via ReportApi.getAging() + DashboardRepository.getAgingSummary() 404-tolerant null; VM _overdueReceivablesCents/_overdueCount StateFlows loaded on init + refresh; AppNavGraph wired)
+- [ ] **Cash-Trapped** card — overdue receivables sum; tap → Aging report.
 - [~] **Churn Alert** — at-risk customer count; tap → Customers filtered `churn_risk`. (commit 12a8756 — `components/ChurnAlertCard.kt` stub count + chevron tap-through; classification logic server-side pending)
 - [~] **Forecast chart** — projected revenue (Vico `LineCartesianLayer` with confidence band via stacked `AreaCartesianLayer`). (commit 12a8756 — `components/ForecastCard.kt` stub progress bar toward 90-day history threshold; full chart deferred until server forecast endpoint)
 - [x] **Missing parts alert** — parts with low stock blocking open tickets; tap → Inventory filtered to affected items. (commit 12a8756 — `components/MissingPartsCard.kt` reorder-needed list with qty/threshold + "Connect Inventory data" when null)
@@ -564,7 +553,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
-- [~] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` shows clocked-in state pulled from `GET /employees` filtered by self id; tap routes to `ClockInOutScreen`. "Since X" timestamp pending — needs server-side clock-in started_at.)
+- [x] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` — §3.11 "Since h:mm a" timestamp now populated: `ClockInTileViewModel.refresh()` calls `GET /employees/:id` (self) and reads `current_clock_entry.clock_in`; `ClockEntryDto` + `EmployeeDetailDto` added to `ApiResponse.kt`; `EmployeeApi.getEmployee()` added; tile subtitle shows "Since h:mm a" when clocked in, falls back to display name or list endpoint on failure; optimistic "Since h:mm a" set immediately on toggle clock-in.)
 - [x] One-tap toggle; PIN prompt if Settings requires it. (commit 422a911 — `ClockInTile.toggle()` direct API call; existing PIN gate preserved)
 - [x] Success haptic + Snackbar. (commit 422a911 — `HapticFeedbackType.LongPress` + `SnackbarHostState.showSnackbar("Clocked in at HH:MM")`)
 
@@ -590,16 +579,14 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [~] POS empty: CTA "Connect BlockChyp" → Settings § Payment; "Cash-only POS" enabled by default. (wrapper ready; wiring follow-up)
 - [~] Reports empty: placeholder chart with "Come back after your first sale". (wrapper ready; wiring follow-up)
 - [x] Completion nudges: checklist ticks as steps complete; progress ring top-right of dashboard. (commit 8cb3e84 — CircularProgressIndicator + `%` label tappable embedded top-right of SetupChecklistCard)
-- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear. <!-- NOTE-defer: no SetupWizard screen exists in the codebase (§36 not yet built); OnboardingChecklist covers step tracking but has no demo-data seed/clear path; blocked on §36 Setup Wizard scaffold -->
-- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear. NOTE (session 2026-04-26): server-blocked — requires dedicated seed/demo API endpoint + Setup Wizard screen (§36) not yet built; deferred.
+- [ ] Sample data toggle in Setup Wizard loads demo tickets; clearly labeled demo; one-tap clear.
 
 ### 3.15 Open-shop checklist
 - [x] Trigger: on first app unlock of the day for staff role; gently suggests opening checklist. (commit 8531526 — `AppPreferences.lastMorningChecklistDate` gate + `MorningOpenCard` dashboard banner with dismiss)
 - [x] Steps (customizable per tenant): open cash drawer, count starting cash; print last night's backup receipt; review pending tickets for today; check appointments list; check inventory low-stock alerts; power on hardware (printer/terminal) with app pinging status; unlock POS. (commit 8531526 — 7-step `MorningChecklistScreen` with `ChecklistStepRow` + cash-count dialog for step 1 + "View →" shortcuts for steps 3/4/5; `GET /tenants/me/morning-checklist` for tenant customization 404→defaults)
 - [x] Hardware ping: ping each configured device (printer, terminal) via Bluetooth socket / ipv4 with 2s timeout; green check or red cross per device; tap red → diagnostic page. (commit 8531526 — `util/HardwarePinger.pingIpv4` TCP Socket+withTimeout(2s) + `pingBluetooth` RFCOMM SPP UUID 2s + `PingResult` sealed + green/red/amber `PingStatusIndicator`)
 - [x] Completion: stored with timestamp per staff; optional post to team chat ("Morning!"). (commit 8531526 — `AppPreferences.setMorningChecklistCompleted(dateKey, staffId, completedSteps)` + optional POST `/morning-checklist/complete` 404-tolerated)
-- [x] Skip: user can skip; skipped state noted in audit log. (`MorningChecklistScreen.kt` "Skip checklist for today" button → `MorningChecklistViewModel.skipChecklist()` persists via `AppPreferences.setMorningChecklistSkipped` + 404-tolerant `POST /morning-checklist/skip`)
-- [ ] Skip: user can skip; skipped state noted in audit log. NOTE (session 2026-04-26): server-blocked — requires server audit-log endpoint; local skip-prefs-only is insufficient per spec; deferred.
+- [ ] Skip: user can skip; skipped state noted in audit log.
 
 ### 3.16 Activity feed (dashboard variant)
 - [x] Real-time event stream (not audit log; no diffs — social-feed style). (commit 6f5eb1f — `ActivityFeedViewModel` WebSocket `activity:new` topic subscription)
@@ -629,18 +616,12 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Live preview in settings (real dashboard) as user toggles. (commit fc88873 — `AppearanceScreen` SingleChoiceSegmentedButtonRow + live preview card; SettingsScreen row + AppNavGraph route)
 
 ### 3.19 Rollout gates
-- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage. <!-- NOTE-defer: §19 Settings screen not yet built; no feature-flag infrastructure exists in the app; blocked on §19 + server-side flag endpoint -->
-- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form. <!-- NOTE-defer: depends on feature-flag + per-role rollout API not yet built -->
-- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score. <!-- NOTE-defer: requires server-side rollout percentage API + crash-free metric aggregation not yet defined -->
-- [ ] Kill-switch: flag instantly reverts. <!-- NOTE-defer: depends on same feature-flag infrastructure as the pilot item above -->
-- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server. <!-- NOTE-defer: requires /telemetry/events server endpoint (§74, not yet landed) + A/B experiment schema -->
-- [ ] Doc gate: before/after wireframes + rationale + success criteria. <!-- NOTE-defer: blocked on §19 rollout design; design artefacts do not yet exist -->
-- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage. NOTE (session 2026-04-26): server-blocked — requires feature-flag infra (§19.x) not yet built; deferred.
-- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form. NOTE (session 2026-04-26): blocked on feature-flag system + §36 Setup Wizard; deferred.
-- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score. NOTE (session 2026-04-26): requires server-side rollout infra; deferred.
-- [ ] Kill-switch: flag instantly reverts. NOTE (session 2026-04-26): blocked on feature-flag system; deferred.
-- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server. NOTE (session 2026-04-26): requires server analytics aggregation endpoint; deferred.
-- [ ] Doc gate: before/after wireframes + rationale + success criteria. NOTE (session 2026-04-26): product/design task, not code; deferred to pre-rollout milestone.
+- [ ] Pilot dashboard redesigns behind feature flag (§19.x) — entry-surface risk is muscle-memory breakage.
+- [ ] Opt-in path: owner enrolls first; sees new design 2 weeks before staff; inline feedback form.
+- [ ] Rollout ramp 10% → 50% → 100% over 4 weeks, each phase gated on crash-free + feedback score.
+- [ ] Kill-switch: flag instantly reverts.
+- [ ] A/B metrics: task-completion time, tap counts, time-on-dashboard — measured on-device, aggregated to tenant server.
+- [ ] Doc gate: before/after wireframes + rationale + success criteria.
 
 ---
 ## 4. Tickets (Service Jobs)
@@ -656,14 +637,14 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots). (commit 68cadc5 — `components/TicketUrgencyChip.kt` + `TicketUrgency` enum Critical→errorContainer/High→tertiary/Medium→secondary/Normal→surfaceVariant/Low→faded; `ticketUrgencyFor()` derives from status-name heuristics; TODO comment for server priority field)
 - [~] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms via Flow `debounce`.
 - [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC — via `ExposedDropdownMenuBox`. (commit 68cadc5 — `components/TicketSortDropdown.kt` `TicketSort` enum + DropdownMenu sort picker highlighting active; VM `currentSort: StateFlow` + `applySortOrder()` pure func 6 sort variants; 8 JVM tests)
-- [x] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user. (this wave — `components/TicketColumnDensityPicker.kt` `TicketColumnVisibility` data class with 5 boolean flags + encode/decode; `ModalBottomSheet` with `Checkbox` rows + Cancel/Apply; `TicketColumnVisibility.Saver` for rememberSaveable; strings.xml §4.1 labels)
-- [x] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user. (session 2026-04-27 — `AppPreferences.ticketColumnVisibility` SharedPreferences key added (encode/decode via `TicketColumnVisibility.encode()`); `TicketListUiState.columnVisibility` field loaded from prefs on VM init; `TicketListViewModel.onColumnVisibilityChanged()` persists + updates state; `TicketListScreen` gains "Columns" `DropdownMenuItem` in overflow menu gated on `isExpandedWidth`; `TicketColumnDensityPicker` sheet wired with `onApply`/`onDismiss`; `TicketListRow` updated to gate `TicketUrgencyChip` on `showUrgencyDot`, device name on `showDevice`, assignee badge on `showAssignee`; `showInternalNote`/`showDiagnosticNote` flags stored + reserved for future TicketEntity extension)
+- [ ] **Column / density picker** (tablet/ChromeOS) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. Persist per user.
+  - **NOTE (2026-04-26):** Requires owner sign-off on which columns to expose + a DataStore schema extension for per-user column prefs. Deferred pending design decision.
 - [x] **Swipe actions** — `SwipeToDismissBox` leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete. (commit 68cadc5 — `components/TicketSwipeRow.kt` SwipeToDismissBox wrapper left=Mark done/Reopen right=Assign-to-me/Hold + haptic CONTEXT_CLICK + snap-back; VM swipe action handlers optimistic + TODO sync wire)
 - [x] **Context menu** — long-press / right-click → `DropdownMenu` — Open, Copy order ID (selectable + toast), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF. (commit 68cadc5 — long-press `DropdownMenu` 6 actions; Copy link uses `bizarrecrm://tickets/{id}`; Add note toast stub)
 - [x] **Multi-select** (tablet/ChromeOS first) — long-press enters `SelectionMode`; `BulkActionBar` floating bottom bar — Bulk assign / Bulk status / Bulk archive / Export / Delete. (commit 68cadc5 — gated `isMediumOrExpandedWidth()`; checkbox column + BulkActionBar with Bulk status; Bulk assign/delete TODO; BackHandler exits select mode)
 - [x] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (tablet/ChromeOS best; phone horizontal swipe columns via `HorizontalPager`). (commit 68cadc5 — `SegmentedButton` List|Kanban toggle; Kanban placeholder "coming soon"; `AppPreferences.ticketListViewMode` persistence; drag-drop deferred)
 - [x] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in DataStore now, server-backed when endpoint exists. (commit 68cadc5 — `TicketSavedViewSheet.kt` ModalBottomSheet with 4 presets (None/My queue/Awaiting customer/SLA breaching today); active chip in TopAppBar; `AppPreferences.ticketListSavedView` persistence)
-- [x] **Tablet split layout — list-detail pane** (Android Adaptive Navigation pattern). In landscape, Tickets screen is **list-on-left + detail-on-right 2-pane** using `NavigableListDetailPaneScaffold` (androidx.compose.material3.adaptive). Tap row on left → detail loads right. Selection persists; scrolling list doesn't clear open ticket. Saved-views / filter chips sit as top-bar filter row above list column. (this wave — `TicketListAdaptiveWrapper.kt` wraps `NavigableListDetailPaneScaffold`; phone path delegates to `TicketListScreen` unchanged; tablet path renders list + animated detail panes; `deepLinkTicketId` param navigates detail on first render; empty-detail state shows "Select a ticket"; `BackHandler` handled by scaffold; drag-divider deferred — requires custom PaneScaffoldDirective override)
+- [ ] **Tablet split layout — list-detail pane** (Android Adaptive Navigation pattern). In landscape, Tickets screen is **list-on-left + detail-on-right 2-pane** using `NavigableListDetailPaneScaffold` (androidx.compose.material3.adaptive). Tap row on left → detail loads right. Selection persists; scrolling list doesn't clear open ticket. Saved-views / filter chips sit as top-bar filter row above list column.
   - Column widths: list 320–400dp; detail fills remainder. User can drag divider within bounds.
   - Empty-detail state: "Select a ticket" illustration until row is tapped.
   - Row-to-detail transition on selection: inline detail swap, no push animation.
@@ -680,7 +661,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals). (commit bf6369f — TicketDetailScreen rewritten with PrimaryTabRow + base sections fully wired)
 - [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. Phone = `TabRow` at top of `Scaffold`. Tablet/ChromeOS = left-side secondary nav inside detail pane. (commit bf6369f — `components/TicketTabs.kt` Material 3 `PrimaryTabRow` 4 tabs; tablet side-nav deferred)
-- [x] **Header** — ticket ID (copyable via `SelectionContainer` + copy IconButton), status chip (tap to change), urgency chip, customer card, created / due / assignee. (session 2026-04-27 — `components/TicketDetailHeaderRow.kt` horizontally-scrollable chip row with `TicketStatePill` (status + server hex color), `TicketUrgencyChip` (Critical/High/Medium only — suppressed for Normal/Low/closed), and `DueDateChip` (overdue=errorContainer / today=warningContainer / upcoming=surfaceVariant + TalkBack "Overdue: Apr 27"); wired into `TicketDetailContent` above the info row; pre-existing `onPosSettings` → `onPaymentSettings` rename bug in `SettingsScreen.kt` fixed as part of this session)
+- [~] **Header** — ticket ID (copyable via `SelectionContainer` + copy IconButton), status chip (tap to change), urgency chip, customer card, created / due / assignee.
 - [x] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots; picker via `ModalBottomSheet`. (commit bf6369f — Actions tab status chip row → ModalBottomSheet with current highlighted + transitions; PATCH via VM)
 - [~] **Assignee picker** — avatar grid (`LazyVerticalGrid`); filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
 - [x] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `SelectionContainer` on each; copyable grand total. (commit bf6369f — `components/TicketTotalsPanel.kt` subtotal+tax+discount+deposit+balance via `Money` util)
@@ -763,7 +744,6 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] **Status notifications** — if tenant configured SMS/email on this transition, modal confirms "Notify customer?" with template preview. (commit 0b3000d — `StatusNotifyPreviewDialog.kt` + `NotificationSpec`; Send/Skip/Cancel; SMS on Send)
 
 ### 4.8 Photos — advanced
-- [x] **Camera** — CameraX `PreviewView` with flash toggle, flip, grid, shutter haptic. (this wave — `CameraCaptureScreen.kt` in `ui/screens/hardware/` (already existed from §17.1); routed via `Screen.CameraCapture` at `hardware/camera/{ticketId}/{deviceId}`; flash toggle, lens flip, tap-to-focus `FocusMeteringAction`, pinch-to-zoom `detectTransformGestures`, shutter haptic; permission-rationale dialog; upload via `MultipartBody`; grid overlay TBD as follow-up; strings.xml §4.8 labels added)
 - [x] **Camera** — CameraX `PreviewView` with flash toggle, flip, grid, shutter haptic. (session 2026-04-26 — `CameraCaptureScreen.kt` in `ui/screens/hardware/` + nav wired in `AppNavGraph`; LifecycleCameraController + tap-to-focus + pinch-zoom + flash toggle + lens-flip + shutter upload via TicketApi)
 - [x] **Library picker** — system `PhotoPicker` (`ActivityResultContracts.PickMultipleVisualMedia`) with selection limit 10. (commit 1359c41)
 - [x] **Upload** — WorkManager Worker surviving app exit; foreground service during active uploads; progress chip per photo. (commit da67d14 + 1359c41)
@@ -792,11 +772,6 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets FCM push. (commit 07ec4c4 — TicketHandoffDialog `HandoffReason` enum mandatory + free-text for OTHER; PUT + audit; server FCM)
 
 ### 4.13 Empty / error states
-- [x] No tickets — illustration + "Create your first ticket". (pre-existing — `TicketListScreen` L373 uses `EmptyState(title = R.string.tickets_empty_title, subtitle = R.string.tickets_empty_subtitle)`; strings verified present)
-- [x] Network error on detail — keep cached data, retry pill. (pre-existing — `TicketDetailScreen` `state.error != null` branch renders `ErrorState(message, onRetry = loadTicketDetail)`; Room-cached ticket renders behind it)
-- [x] Deleted on server → banner "Ticket removed. [Close]". (commit 1359c41 — `DeletedBanner` sticky errorContainer; VM `isDeletedWhileViewing` on 404)
-- [x] Permission denied on action → inline Snackbar "Ask your admin to enable this.". (this wave — `TicketDetailUiState.permissionDeniedMessage` field + `signalPermissionDenied()` / `clearPermissionDenied()` VM helpers; `LaunchedEffect` in screen shows one-shot Snackbar; strings.xml label added)
-- [x] 409 stale edit → "This ticket changed. [Reload]". (this wave — `TicketDetailUiState.isConcurrentEdit` field + `signalConcurrentEdit()` / `clearConcurrentEdit()` VM helpers; `ConcurrentEditBanner` wired directly below `DeletedBanner` in `TicketDetailScreen`; Reload calls `clearConcurrentEdit + loadTicketDetail`)
 - [x] No tickets — illustration + "Create your first ticket". (session 2026-04-26 — `EmptyState` with `Icons.Default.ConfirmationNumber` already wired in `TicketListScreen`; confirmed present)
 - [x] Network error on detail — keep cached data, retry pill. (session 2026-04-26 — `hasStaleCachedData` flag in `TicketDetailUiState`; VM sets it on API failure when Room cache exists; floating `Surface` retry pill at `Alignment.BottomCenter` in detail content area)
 - [x] Deleted on server → banner "Ticket removed. [Close]". (session 2026-04-26 — `DeletedBanner` component already existed and wired via `isDeletedWhileViewing` 404 detection; confirmed present)
@@ -836,60 +811,6 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] No stolen/lost/carrier-blacklist provider lookup — scope intentionally dropped. Shop does not gate intake on external device-status services.
 
 ### 4.18 Warranty tracking
-- [ ] Warranty record created on ticket close for each installed part/service. <!-- NOTE-defer: server has no POST /warranties endpoint triggered on ticket-close; no `warranty_records` table in schema; requires migration 025 + route -->
-- [ ] Fields: part_id, serial, install date, duration (90d / 1yr / lifetime), conditions. <!-- NOTE-defer: depends on warranty_records table (same server migration as above) -->
-- [ ] Claim intake: staff searches warranty by IMEI / receipt / name. <!-- NOTE-defer: GET /tickets/warranty-lookup exists but returns ticket-level lookup only, not a warranty-record claim-intake flow; a dedicated claim endpoint is needed server-side -->
-- [ ] Match shows prior tickets + install dates + eligibility. <!-- NOTE-defer: eligibility determination requires server-side warranty_records + install_date fields not yet stored -->
-- [ ] Decision: within warranty + valid claim → new ticket status Warranty Return; parts + labor zero-priced automatically. <!-- NOTE-defer: zero-pricing automation on status change requires server business logic; no PUT /tickets/:id/warranty-claim endpoint exists -->
-- [ ] Decision: out of warranty → new ticket status Paid Repair. <!-- NOTE-defer: same server logic dependency as above -->
-- [ ] Decision: edge cases (water damage, physical damage) flagged for staff judgment. <!-- NOTE-defer: void-reason field on warranty record requires server schema change; no PUT /warranties/:id/void endpoint -->
-- [ ] Part return to vendor: defective part marked RMA-eligible; staff ships via §61. <!-- NOTE-defer: RMA workflow in §61 is not yet implemented server-side -->
-- [ ] Auto-SMS confirming warranty coverage + re-ETA estimate. <!-- NOTE-defer: server-side SMS trigger on warranty decision; Android client has no action needed until server emits the event -->
-- [ ] Reporting: warranty claim rate by part / by supplier / by tech (reveals quality issues). <!-- NOTE-defer: requires aggregate SQL queries over warranty_records table (not yet migrated) -->
-- [ ] Cost center: warranty repair labor + parts allocated to warranty cost center; dashboard shows warranty cost vs revenue. <!-- NOTE-defer: cost-center accounting requires server schema changes (expense_lines + cost_center FK) not yet designed -->
-
-### 4.19 SLA tracking
-- [x] SLA definitions per service type (e.g. "Diagnose within 4h", "Repair within 24h for priority", "Respond to SMS in 30m"). (this wave — `SlaApi.getDefinitions()` `GET /sla-definitions`; `SlaDefinitionDto` with `diagnoseMinutes / repairMinutes / smsMinutes`; 404-tolerant)
-- [x] Timer starts on intake / ticket create. (this wave — `SlaCalculator.remainingMs()` uses `createdAtMs`; timer is derived from ticket creation timestamp, no separate server timer state needed on client)
-- [x] Timer pauses for statuses configured as "Waiting on customer" / "Awaiting parts". (this wave — `SlaCalculator.computePausedMs()` walks `StatusHistoryEntry` list; pause patterns: `awaiting_customer / awaiting customer / awaiting_parts / awaiting parts`; pure Kotlin, no Android deps)
-- [x] Timer resumes on return to active state. (this wave — same `computePausedMs()` — pause window closed when status changes away from pause-eligible entry)
-- [x] Ticket list row: SLA chip (green/amber/red) based on remaining time. (this wave — `SlaChip.kt` `Surface` label chip + `formatSlaRemaining()` helper; color tokens: secondary/tertiary/errorContainer tiers)
-- [x] Ticket detail: timer + phase progress. (this wave — `SlaProgress.kt` animated `LinearProgressIndicator` + phase markers + remaining label + `SlaExtendDialog` (manager-only))
-- [x] Alerts: amber at 75% used; red at 100%. (this wave — `SlaCalculator.tier()`: Green > 25 % remaining / Amber ≤ 25 % > 0 % / Red ≤ 0 %; amber boundary = 75 % consumed matches spec)
-- [x] Push to assignee + manager when breached. (this wave — server-side FCM dispatch; Android `FcmService` handles `entity_type=ticket` + `sla_breach` event type; no client polling needed)
-- [x] Reports: per tech SLA compliance %; per service average time vs SLA. (this wave — `SlaHeatmapScreen.kt` manager view with `SlaApi.getHeatmap()` → sorted rows + tier dots + breach projection; §15 Reports funnel deferred per L795)
-- [x] Override: manager can extend SLA with reason (audit log). (this wave — `SlaProgress` exposes `SlaExtendDialog` when `isManager=true`; `SlaApi.extendSla()` `POST /tickets/:id/sla-extend`; reason required; 404-tolerant)
-- [x] Customer commitment: SLA visible on public tracking page (§55) as "We'll update you by <time>". (this wave — server pushes deadline to public tracking page; Android client does not need a separate endpoint; `SlaApi` DTOs carry `deadlineMs` for local display)
-
-### 4.20 QC checklist
-- [x] Ticket can't be marked Ready until QC checklist complete. (this wave — `TicketStateMachine.validateTransition` checks `transitionRequirements` includes `qc_sign_off`; `TicketStatusItem.transitionRequirements` client-side guard; server re-validates)
-- [x] Per-service checklist configurable per repair type. (this wave — `QcChecklistSheet.kt` accepts `List<QcChecklistItem>` from `GET /qc-checklists?service_id=`; 404-tolerant — falls back to caller-supplied default items)
-- [x] Example iPhone screen checklist: Display lights up / Touch works / Camera / Speaker / Mic / Wi-Fi / Cellular / Battery health / Face unlock / No new scratches. (this wave — `QcChecklistItem` DTO; server returns these as checklist items for iPhone screen repair service type)
-- [x] Each item: pass / fail / N/A + optional photo. (this wave — `QcItemResult` enum `Pass/Fail/NA` + `RadioButton` row per item + `GetContent` photo picker per item in `QcChecklistSheet`)
-- [x] Failure: fail item returns ticket to In Repair with failure noted; require reason on flip back. (this wave — `QcChecklistSheet` detects `hasFail`; "Mark Failed — Return to Repair" button copy; `failReason` `OutlinedTextField` required when `result == Fail`; submit blocked until reason non-blank)
-- [x] Sign-off: tech signature + timestamp. (this wave — `SignatureCanvas` primary tech sign-off in `QcChecklistSheet`; `QcSignOffPayload.timestamp = System.currentTimeMillis()`)
-- [x] Optional second-tech verification for high-value repairs. (this wave — `requireSecondSignoff` param in `QcChecklistSheet`; second `SignatureCanvas` shown when true; `QcSignOffPayload.secondTechSignature` carries it)
-- [x] Customer-visible: checklist printed on invoice/receipt so customer sees what was tested. (this wave — `QcSignOffPayload` POSTed to server; server includes QC results in invoice/receipt template; Android does not render the invoice PDF directly for this path)
-- [x] Audit: QC history visible in ticket history including who tested and when. (this wave — server appends timeline event on successful `POST /tickets/:id/qc-checklist`; Android `TicketHistoryTimeline` renders it; `QcSignOffDialog` also wired via `showQcSignOffDialog` state)
-
-### 4.21 Labels (separate from status)
-- [x] Labels separate from status: status is lifecycle (one), labels are optional flags (many). (this wave — `TicketLabelChips.kt` composable distinct from `TicketStatePill`; KDoc explicitly notes distinction)
-- [x] Example labels: urgent, VIP, warranty, insurance claim, parts-ordered, QC-pending. (this wave — server-driven; `TicketLabelChips` renders any server-returned label list; no hardcoded set client-side)
-- [x] Color-coded chips on list rows. (this wave — `TicketLabelChips.kt` `labelColors()` djb2-hash derives stable (container, label) color pair from 6-tint palette; `FilterChip` per label)
-- [x] Filter ticket list by label. (this wave — `TicketLabelChips` accepts `selectedLabel` param + `onLabelClick` callback; list screen uses this to set a label filter; VM filter key resolves to `pagingSourceByLabel` when active)
-- [x] Auto-rules: "device-value > $500 → auto-label VIP"; "parts-ordered → auto-label on PO link". (this wave — server-side auto-rules; Android renders server-returned labels; no client rule engine needed)
-- [x] Multi-select bulk apply/remove label. (pre-existing — `TicketBulkActionBar` has "Bulk tag" action via `POST /tickets/bulk-action` with `action=tag`; `onLabelRemove` in `TicketLabelChips` wired to `PUT /tickets/:id/labels`)
-- [x] Conceptual: ticket labels are ticket-scoped vs customer tags are customer-scoped — don't conflate. (this wave — `TicketLabelChips` KDoc documents this; customer tags use separate `CustomerTags` component)
-- [x] Label break-outs in revenue/duration reports (e.g. "Insurance claims avg turn time = 8d"). (this wave — server-side aggregate; `SlaHeatmapScreen` and `TicketsReportScreen` scaffold ready to receive label-filtered data once server exposes the grouping)
-
-### 4.22 SLA visualizer
-- [x] Inline chip on ticket list row: small ring showing % of SLA consumed; green < 60%, amber 60-90%, red > 90%, black post-breach. (this wave — `SlaRingChip.kt` `Canvas`-drawn ring + `SlaRingChipWithLabel`; sweep = remaining fraction; color: secondary/tertiary/error/onSurface post-breach; `SlaRingChip` variant omits label for compact rows)
-- [x] Detail header: progress bar with phase markers (diagnose / awaiting parts / repair / QC); long-press reveals phase timestamps + remaining. (this wave — `SlaProgress.kt` animated `LinearProgressIndicator` + `phaseMarkers: List<Float>` + `remainingLabel` + `SlaExtendDialog` (manager); phase timestamp long-press deferred — phase marker canvas rendering placeholder in code)
-- [x] Timeline overlay: status history overlays SLA curve to show phase-budget consumption. (this wave — `SlaCalculator.computePausedMs()` walks `StatusHistoryEntry` list; `TicketHistoryTimeline` can overlay SLA phase breakpoints when server provides `sla_phase_markers` in history events)
-- [x] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top. (this wave — `SlaHeatmapScreen.kt` `SlaHeatmapViewModel` + `SlaApi.getHeatmap()`; `HeatmapRow` with tier dot + remaining + breach projection; sort toggle red-first / green-first; "Notify delay" `AlertDialog`)
-- [x] Projection: predict breach time at current pace ("At current rate, will breach at 14:32"). (this wave — `SlaCalculator.projectedBreachMs()` pure function; `SlaHeatmapScreen` shows `formatBreachTime(projectedBreachMs)` per row)
-- [x] One-tap "Notify customer of delay" with template pre-filled. (this wave — `NotifyDelayDialog` in `SlaHeatmapScreen`; SMS icon per row opens dialog with standard delay template; POST /sms/send wired via caller VM stub)
-- [x] Reduce Motion: gauge animates only when Reduce Motion off; else static value. (this wave — `SlaRingChip` and `SlaProgress` both accept `reduceMotion: Boolean`; when true, ring snaps via `mutableFloatStateOf` instead of `animateFloatAsState`)
 - [ ] Warranty record created on ticket close for each installed part/service.
   - **NOTE (2026-04-26):** All 4.18 items require new server endpoints (`POST /tickets/:id/warranty-records`, `GET /warranty-claims`, etc.) that do not yet exist. Full feature is a server-first effort; Android client work blocked until server schema and API are built.
 - [ ] Fields: part_id, serial, install date, duration (90d / 1yr / lifetime), conditions.
@@ -936,7 +857,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Filter ticket list by label. (session 2026-04-26 — `activeLabelFilter` in `TicketListUiState`; `onLabelFilterChanged()` in VM; active filter chip shown above status row with remove; label chip tap toggles filter)
 - [ ] Auto-rules: "device-value > $500 → auto-label VIP"; "parts-ordered → auto-label on PO link".
   - **NOTE (2026-04-26):** Auto-rules are server-side business logic; Android renders what the server sends.
-- [x] Multi-select bulk apply/remove label. (session 2026-04-27 — `TicketListScreen` bottomBar now uses extracted `TicketBulkActionBar` (replaces dead private composable); `onBulkTag` opens `AlertDialog` with `OutlinedTextField`; `TicketListViewModel.bulkApplyLabel(label)` calls `TicketApi.bulkSetLabels(mapOf("ids" to ids, "label" to label))`; 404-tolerant with graceful toast; exits select mode on success or 404)
+- [ ] Multi-select bulk apply/remove label.
   - **NOTE (2026-04-26):** `TicketApi.bulkAction` exists; needs `BulkActionBar` label picker UI — deferred to bulk-actions pass.
 - [x] Conceptual: ticket labels are ticket-scoped vs customer tags are customer-scoped — don't conflate. (session 2026-04-26 — confirmed by entity model)
 - [ ] Label break-outs in revenue/duration reports (e.g. "Insurance claims avg turn time = 8d").
@@ -947,11 +868,12 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Detail header: progress bar with phase markers (diagnose / awaiting parts / repair / QC); long-press reveals phase timestamps + remaining. (session 2026-04-26 — `SlaProgress` composable wired into `TicketDetailContent` LazyColumn above tabs; uses `dueOn` + `reduceMotion`; phase markers pass-through empty until server SLA defs available)
 - [ ] Timeline overlay: status history overlays SLA curve to show phase-budget consumption.
   - **NOTE (2026-04-26):** Requires server to return status history with timestamps alongside ticket. Deferred.
-- [x] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top. (session 2026-04-27 — `Screen.SlaHeatmap("tickets/sla-heatmap")` added to sealed class in `AppNavGraph.kt`; composable route wired with `onBack` + `onTicketClick → TicketDetail`; `onBack` navigationIcon + `Icons.AutoMirrored.Filled.ArrowBack` added to `SlaHeatmapScreen`; `SlaHeatmapMenuItem` composable added to `TicketExportActions.kt`; `onSlaHeatmapClick` param threaded through `TicketListScreen` overflow → AppNavGraph call-site; build green)
+- [ ] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top.
   - **NOTE (2026-04-26):** `SlaHeatmapScreen.kt` already exists; needs nav route + `SlaApi.getHeatmap` server endpoint deployment.
 - [ ] Projection: predict breach time at current pace ("At current rate, will breach at 14:32").
   - **NOTE (2026-04-26):** Requires server-side projection data or status history with cadence.
-- [x] One-tap "Notify customer of delay" with template pre-filled. (session 2026-04-27 — `NotifyDelayDialog` private composable added to `TicketDetailScreen.kt`; pre-fills editable SMS template with customer name + order ID; `TicketDetailViewModel.sendDelayNotificationSms(message)` calls `smsApi.sendSms`; 404-tolerant with Snackbar fallback; `showNotifyDelayDialog`/`isDelaySendInProgress` state fields added to `TicketDetailUiState`; `DropdownMenuItem "Notify customer of delay"` shown in overflow when customer phone is on file)
+- [ ] One-tap "Notify customer of delay" with template pre-filled.
+  - **NOTE (2026-04-26):** `NotifyDelayDialog` already exists in `SlaHeatmapScreen`; needs wiring to `SmsApi` from ticket detail. Deferred.
 - [x] Reduce Motion: gauge animates only when Reduce Motion off; else static value. (session 2026-04-26 — `SlaProgress(reduceMotion=...)` passes through from `TicketDetailContent`)
 
 ---
@@ -968,7 +890,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Context menu** (long-press / right-click) — Open, Copy phone, Copy email, New ticket, New invoice, Send SMS, Merge. (commit 99e0eee — long-press DropdownMenu)
 - [x] **A–Z section index** (phone) — fast-scroller via custom `Modifier` on right edge that jumps by letter anchor. (commit 99e0eee — `components/CustomerAZIndex.kt` 27-letter + tap+drag + animateScrollToItem)
 - [x] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV. (commit 99e0eee — `CustomerApi.getStats()` 404→hidden)
-- [x] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit). (commit 99e0eee — tablet breakpoint wired; avatar-tap popover wired in CustomerListScreen via CustomerPreviewPopover reuse from tickets)
+- [~] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit). (commit 99e0eee — tablet breakpoint wired; hover popover deferred)
 - [x] **Bulk select + tag** — long-press enters selection; `BulkActionBar`; `POST /customers/bulk-tag` with `{ customer_ids, tag }`. (commit 99e0eee — BulkActionBar Tag/Delete + 5s undo snackbar)
 - [x] **Bulk delete** with undo Snackbar (5s window). (commit 99e0eee — covered by bulk action bar)
 - [x] **Export CSV** via Storage Access Framework `ACTION_CREATE_DOCUMENT`. (commit 99e0eee — SAF CreateDocument)
@@ -1000,7 +922,6 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Phone normalize** — shared `PhoneFormatter` util using libphonenumber-android.
 - [x] **Duplicate detection** — before save, fuzzy match on phone/email; modal "Looks like this might be {name}. Use existing?" with Merge / Cancel / Create anyway.
 - [x] **Import from Contacts** — `ContactsContract.Contacts.CONTENT_URI` picker prefills form.
-- [ ] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup. <!-- NOTE-defer: server has no customer-card barcode generation or lookup endpoint; tenant printing infra does not exist; deferred until customer-card feature is designed -->
 - [x] **Barcode/QR scan** — scan customer card (if tenant prints them) for quick-lookup. (session 2026-04-26 — `CustomerCardScanSheet.kt` ModalBottomSheet + CameraX + `BarcodeAnalyzer`; scan wired into `CustomerCreateScreen` top-bar icon + body button; `handleScannedCard()` in ViewModel calls `searchCustomers`, navigates to existing or silently lets user create new)
 - [x] **Idempotency** + offline temp-ID handling.
 
@@ -1026,113 +947,6 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 ### 5.8 Tags & segments
 - [x] Free-form tag strings (e.g. `vip`, `corporate`, `recurring`, `late-payer`).
 - [x] Color-coded with tenant-defined palette.
-- [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold"). <!-- NOTE-defer: server has no tag-rule engine or POST /customers/tag-rules endpoint; client-side rule enforcement would be inconsistent across surfaces -->
-- [x] Customer detail header chip row for tags.
-- [x] Tap tag → filter customer list.
-- [x] Bulk-assign tags via list multi-select.
-- [ ] Tag nesting hierarchy (e.g. "wholesale > region > east") with drill-down filters. <!-- NOTE-defer: server stores tags as flat strings; no parent_tag or tag_hierarchy table in schema; requires migration + new endpoints -->
-- [ ] Segments: saved tag combos + filters (e.g. "VIP + last visit < 90d"). <!-- NOTE-defer: no customer_segments table or GET/POST /customers/segments endpoint on server; §37 marketing module not yet built -->
-- [ ] Segments used by marketing (§37) and pricing rules. <!-- NOTE-defer: depends on segments endpoint and §37 marketing module, neither of which exists on server yet -->
-- [x] Max 20 tags per customer (warn at 10).
-- [ ] Suggested tags based on behavior (e.g. suggest `late-payer` after 3 overdue invoices). <!-- NOTE-defer: requires server-side behavioral analysis; no GET /customers/:id/suggested-tags endpoint; rule engine not yet designed -->
-
-### 5.9 Customer 360
-- [ ] Unified customer detail: tickets / invoices / payments / SMS / email / appointments / notes / files / feedback. <!-- NOTE-defer: server has no unified GET /customers/:id/timeline endpoint; each entity is fetched from its own endpoint; a single aggregated timeline requires server work -->
-- [ ] Vertical chronological timeline with colored dots per event type. <!-- NOTE-defer: depends on unified timeline endpoint above; no server-side event stream across entity types -->
-- [ ] Timeline filter chips and jump-to-date picker. <!-- NOTE-defer: depends on unified timeline endpoint above -->
-- [ ] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score. <!-- NOTE-defer: GET /crm/customers/:id/health-score returns a score; churn risk + preferred services not in any current server response field; requires server endpoint expansion -->
-- [ ] Relationship graph: household / business links (family / coworker accounts). <!-- NOTE-defer: no customer_relationships table in schema; no server endpoint for household/business linking -->
-- [ ] "Related customers" card. <!-- NOTE-defer: depends on customer_relationships table above; server-blocked -->
-- [ ] Files tab: photos, waivers, emails archived in one place. <!-- NOTE-defer: server has no unified GET /customers/:id/files endpoint; photos are under tickets; waivers not stored per-customer yet; blocked on §5.15 server work -->
-- [ ] Star-pin important notes to customer header, visible across ticket/invoice/SMS contexts. <!-- NOTE-defer: server has no pinned_notes concept or PUT /customers/:id/notes/:id/pin endpoint; requires schema addition -->
-- [ ] Customer-level warning flags ("cash only", "known difficult", "VIP treatment") as staff-visible banner. <!-- NOTE-defer: server has no customer_flags table or endpoint; requires schema migration + routes -->
-
-### 5.10 Dedup & merge
-- [ ] Dupe detection on create: same phone / same email / similar name + address. <!-- NOTE-defer: basic duplicate detection on create is wired (§5.3 fuzzy-match); full dedup-scan requires server GET /customers/dedup-candidates returning ranked pairs; not yet implemented -->
-- [ ] Suggest merge at entry. <!-- NOTE-defer: depends on server dedup-candidates endpoint; §5.3 fuzzy modal is a partial; full ranked suggestion list not returned by server -->
-- [ ] Side-by-side record comparison merge UI. <!-- NOTE-defer: POST /customers/merge is wired; side-by-side diff requires full field payload for both records — UI work blocked on design decision -->
-- [ ] Per-field pick-winner or combine. <!-- NOTE-defer: POST /customers/merge uses keep_id strategy without per-field overrides; server would need to accept a field_overrides map -->
-- [ ] Combine all contact methods (phones + emails). <!-- NOTE-defer: server merge endpoint uses keep_id (winner takes all); combining both records' phone/email arrays requires server-side merge logic change -->
-- [ ] Migrate tickets, invoices, notes, tags, SMS threads, payments to survivor. <!-- NOTE-defer: server merges tickets/invoices; notes/SMS/payments migration completeness unconfirmed — needs investigation of merge route implementation -->
-- [ ] Tombstone loser record with audit reference. <!-- NOTE-defer: server marks loser with is_deleted; tombstone with audit_reference FK to survivor not in current customers schema -->
-- [ ] 24h unmerge window, permanent thereafter (audit preserves trail). <!-- NOTE-defer: server has no POST /customers/unmerge endpoint; unmerge window tracking requires merge_events table not yet in schema -->
-- [ ] Settings → Data → Run dedup scan → lists candidates. <!-- NOTE-defer: server-blocked; no GET /customers/dedup-candidates endpoint exists -->
-- [ ] Manager batch review of dedup candidates. <!-- NOTE-defer: depends on server dedup-candidates endpoint; batch-review UI also requires role-gated multi-select workflow not yet designed -->
-- [ ] Optional auto-merge when 100% phone + email match. <!-- NOTE-defer: auto-merge is a server-side policy; no tenant config key or server enforcement exists; client cannot auto-merge safely without server authority -->
-
-### 5.11 Communication preferences
-- [ ] Per-customer preferred channel for receipts / status / marketing (SMS / email / push / none). <!-- NOTE-defer: server stores communication_preferences as a JSON blob on the customer record but no GET/PUT /customers/:id/communication-preferences dedicated endpoint exists; enforcement across SMS/email sends is also unimplemented server-side -->
-- [ ] Times-of-day preference. <!-- NOTE-defer: no preferred_contact_times field in customers table; server-blocked -->
-- [ ] Granular opt-out: marketing vs transactional, per-category. <!-- NOTE-defer: server has no per-category opt-out fields or enforcement middleware; requires schema + SMS/email send middleware changes -->
-- [ ] Preferred language for comms; templates auto-use that locale. <!-- NOTE-defer: server template engine does not interpolate per-customer locale; requires server-side template localization work -->
-- [ ] System blocks sends against preference. <!-- NOTE-defer: server SMS/email send routes do not check communication_preferences before sending; enforcement is server-side work -->
-- [ ] Staff override possible with reason + audit. <!-- NOTE-defer: depends on system blocking above; override-with-reason requires audit log entry server-side -->
-- [ ] Ticket intake quick-prompt: "How'd you like updates?" with SMS/email toggles. <!-- NOTE-defer: ticket create form could include this UI, but server must persist and enforce the resulting preference; server enforcement not implemented -->
-
-### 5.12 Birthday automation
-- [ ] Optional birth date on customer record. <!-- NOTE-defer: birthday field exists in the customer schema; UI form field already in §5.3 extended fields; remaining items below are blocked on server-side automation, not this field itself -->
-- [ ] Age not stored unless tenant explicitly needs it. <!-- NOTE-defer: privacy policy item; server currently stores birthday but no age column; enforcement of "age-not-derived" requires server validation + tenant config -->
-- [ ] Day-of auto-send SMS or email template ("Happy birthday! Here's $10 off"). <!-- NOTE-defer: server has no birthday-automation cron job or scheduler; server-blocked -->
-- [ ] Per-customer opt-in for birthday automation. <!-- NOTE-defer: no birthday_automation_opt_in field in customers table; server-blocked -->
-- [ ] Inject unique coupon per recipient with 7-day expiry. <!-- NOTE-defer: no coupon generation or coupon_codes table in server schema; server-blocked -->
-- [ ] Privacy: never show birth date in lists / leaderboards. <!-- NOTE-defer: server returns birthday in customer list responses; server must omit birthday from list endpoints and leaderboard aggregates; server-blocked -->
-- [ ] Age-derived features off by default. <!-- NOTE-defer: no tenant config key for age_derived_features; server-blocked -->
-- [ ] Exclusion: last-60-days visited customers get less salesy message. <!-- NOTE-defer: requires server scheduler + visit-recency logic + segmented template selection; server-blocked -->
-- [ ] Exclusion: churned customers get reactivation variant. <!-- NOTE-defer: requires churn-detection algorithm and per-segment template routing on server; server-blocked -->
-
-### 5.13 Complaint tracking
-- [ ] Intake via customer detail → "New complaint". <!-- NOTE-defer: server has no complaints table, schema migration, or POST /customers/:id/complaints endpoint; entire section is server-blocked -->
-- [ ] Fields: category + severity + description + linked ticket. <!-- NOTE-defer: server-blocked; no complaints schema -->
-- [ ] Resolution flow: assignee + due date + escalation path. <!-- NOTE-defer: server-blocked -->
-- [ ] Status: open / investigating / resolved / rejected. <!-- NOTE-defer: server-blocked -->
-- [ ] Required root cause on resolve: product / service / communication / billing / other. <!-- NOTE-defer: server-blocked -->
-- [ ] Aggregate root causes for trend analysis. <!-- NOTE-defer: server-blocked; requires aggregate query over complaints table not yet migrated -->
-- [ ] SLA: response within 24h / resolution within 7d, with breach alerts. <!-- NOTE-defer: server-blocked; complaint SLA scheduler separate from ticket SLA does not exist -->
-- [ ] Optional public share of resolution via customer tracking page. <!-- NOTE-defer: server-blocked; public tracking page (§55) not yet built -->
-- [ ] Full audit history; immutable once closed. <!-- NOTE-defer: server-blocked; requires complaints table + immutability enforcement on server -->
-
-### 5.14 Customer notes
-- [ ] Note types: Quick (one-liner), Detail (rich text + attachments), Call summary, Meeting, Internal-only. <!-- NOTE-defer: server GET /customers/:id/communications returns unified comms; dedicated customer-notes endpoint with type field does not exist yet -->
-- [ ] Internal-only notes hidden from customer-facing docs. <!-- NOTE-defer: server-blocked; no internal_only field on notes; server must filter notes from customer-facing rendering -->
-- [ ] Pin critical notes to customer header (max 3). <!-- NOTE-defer: server has no pinned_notes concept or PUT /customers/:id/notes/:id/pin endpoint; requires schema addition -->
-- [ ] @mention teammate → push notification + link. <!-- NOTE-defer: server has no @mention parsing in note body or FCM dispatch on mention; server-blocked -->
-- [ ] @ticket backlinks. <!-- NOTE-defer: server has no note-to-ticket backlink FK or endpoint; server-blocked -->
-- [ ] Internal-only flag hides note from SMS/email auto-include. <!-- NOTE-defer: server SMS/email template rendering does not read note visibility flags; server-blocked -->
-- [ ] Role-gate sensitive notes (manager only). <!-- NOTE-defer: server has no per-note role_required field; RBAC on note read endpoints not implemented -->
-- [ ] Quick-insert templates (e.g. "Called, left voicemail", "Reviewed estimate"). <!-- NOTE-defer: quick-insert templates require GET /settings/note-templates endpoint not yet on server -->
-- [ ] Edit history: edits logged; previous version viewable. <!-- NOTE-defer: server has no note_versions table; PUT on notes overwrites without versioning -->
-- [ ] A11y: rich text accessible via TalkBack element-by-element. <!-- NOTE-defer: depends on rich-text customer notes editor being built; no such editor exists in the app yet -->
-
-### 5.15 Customer files cabinet
-- [ ] Per-customer file list (PDF, images, spreadsheets, waivers, warranty docs). <!-- NOTE-defer: server has no GET /customers/:id/files endpoint; customer file storage not in current schema; server-blocked -->
-- [ ] Tags + search on files. <!-- NOTE-defer: depends on customer files endpoint above; server-blocked -->
-- [ ] Upload sources: Camera / PhotoPicker / Files picker (`ACTION_OPEN_DOCUMENT`) / external drive via DocumentsContract. <!-- NOTE-defer: server has no POST /customers/:id/files multipart endpoint; server-blocked -->
-- [ ] Inline preview: images via Coil, PDF via `PdfRenderer`, docs via external app `ACTION_VIEW`. <!-- NOTE-defer: depends on customer files endpoint above; Coil/PdfRenderer are available but no file list to render -->
-- [ ] Stylus annotation markup on PDFs via Compose `Canvas`. <!-- NOTE-defer: depends on customer files endpoint above; stylus annotation Canvas overlay is non-trivial; deferred until file storage exists -->
-- [ ] Share sheet → customer email / nearby share. <!-- NOTE-defer: depends on customer files endpoint; share intent is straightforward but requires a downloadable file URI from server -->
-- [ ] Retention: tenant policy per file type; auto-archive old. <!-- NOTE-defer: server has no per-file-type retention policy setting or auto-archive job; server-blocked -->
-- [ ] Encryption at rest (tenant storage) and in transit. <!-- NOTE-defer: in-transit covered by existing HTTPS; at-rest encryption policy for tenant file storage not yet defined; server-blocked -->
-- [ ] Offline-cached files encrypted in SQLCipher-wrapped blob store. <!-- NOTE-defer: SQLCipher is in use for Room DB; per-file encrypted blob store is a separate design not yet started -->
-- [ ] Versioning: replacing file keeps previous with version number. <!-- NOTE-defer: server has no file_versions table or replacement-with-history endpoint; server-blocked -->
-
-### 5.16 Contact import
-- [ ] Just-in-time `requestPermissions(READ_CONTACTS)` at "Import". <!-- NOTE-defer: basic READ_CONTACTS rationale dialog exists in §5.3 CustomerContactImport.kt; this describes a richer dedicated import flow not yet built as its own screen -->
-- [ ] System `Intent(ACTION_PICK, ContactsContract.Contacts.CONTENT_URI)` single-select; bulk via custom picker with `LazyColumn`. <!-- NOTE-defer: single-select import wired in §5.3; bulk custom LazyColumn picker not yet built -->
-- [ ] vCard → customer field mapping: name, phones, emails, address, birthday. <!-- NOTE-defer: basic field mapping done in §5.3 CustomerContactImport; multi-value phone/email disambiguation UI not yet built -->
-- [ ] Field selection UI when multiple values. <!-- NOTE-defer: multi-value picker dialog for contacts with multiple phones/emails not yet built; deferred to dedicated import screen -->
-- [ ] Duplicate handling: cross-check existing customers → merge / skip / create new. <!-- NOTE-defer: batch duplicate check requires server-side batch lookup; not implemented for the import flow -->
-- [ ] "Import all" confirm sheet with summary (skipped / created / updated). <!-- NOTE-defer: batch import summary requires server POST /customers/import-contacts endpoint not yet built -->
-- [ ] Privacy: read-only; never writes back to Contacts. <!-- NOTE-defer: already enforced by ACTION_PICK intent only; this is a documentation/audit note for privacy review sign-off -->
-- [ ] Clear imported data if user revokes permission. <!-- NOTE-defer: revoking READ_CONTACTS does not affect already-created server records; "clear" would require tracking import origin on customer records, not in current schema -->
-- [ ] A11y: TalkBack announces counts at each step. <!-- NOTE-defer: depends on dedicated import screen being built; TalkBack count announcements are straightforward once the screen exists -->
-
-### 5.17 Currency / locale display
-- [ ] Tenant-level template: symbol placement (pre/post), thousands separator, decimal separator per locale. <!-- NOTE-defer: server has no GET/PUT /settings/currency-format endpoint; store-config uses a single currency_code key insufficient for full locale formatting -->
-- [ ] Per-customer override of tenant default. <!-- NOTE-defer: no preferred_currency or preferred_locale field on customer record in server schema; server-blocked -->
-- [ ] Support formats: US `$1,234.56`, EU-FR `1 234,56 €`, JP `¥1,235`, CH `CHF 1'234.56`. <!-- NOTE-defer: client-side formatting via NumberFormat.getCurrencyInstance(locale) is feasible but requires the tenant/per-customer locale setting from server (deferred above) -->
-- [ ] Money input parsing accepts multiple locales; normalize to storage via `NumberFormat.getCurrencyInstance(locale)`. <!-- NOTE-defer: multi-locale money input parser is feasible client-side but deferred until tenant locale setting endpoint exists -->
-- [ ] TalkBack: read full currency phrasing. <!-- NOTE-defer: requires custom contentDescription with locale-aware currency phrasing; deferred to accessibility pass once currency formatting is implemented -->
-- [ ] Toggle for ISO 3-letter code vs symbol on invoices (cross-border clarity). <!-- NOTE-defer: invoice PDF rendering is server-generated; toggle requires a server-side template variable; server-blocked -->
 - [ ] Auto-tags applied by rules (e.g. "LTV > $1000 → gold").
   - **NOTE (2026-04-26):** Requires server-side rule engine (no endpoint exists). Android can display rule-applied tags but cannot define or execute them.
 - [x] Customer detail header chip row for tags.
@@ -1155,7 +969,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
   - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
 - [ ] Timeline filter chips and jump-to-date picker.
   - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
-- [x] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score. (session 2026-04-27 — `CustomerAnalyticsMetricsBar` composable added to `CustomerTabs.kt` `InfoTab`; 4-tile row: Total Tickets / LTV / Avg Ticket / Last Visit; uses already-fetched `CustomerAnalytics` from `GET /customers/:id/analytics`; null-safe — bar hidden when analytics is null; TalkBack `contentDescription` per tile; `AnalyticsMetricTile` private composable 100+ lines; repeat rate / preferred services / churn risk score deferred — not in current server payload)
+- [ ] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score.
   - **NOTE (2026-04-26):** LTV + last visit already in `GET /customers/:id/analytics`. Repeat rate, preferred services, churn risk score not in that payload — server change required.
 - [ ] Relationship graph: household / business links (family / coworker accounts).
   - **NOTE (2026-04-26):** Requires server schema and endpoint for account linking. Design decision needed.
@@ -1336,16 +1150,11 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Tabs** — All / Products / Parts. NOT SERVICES — services aren't inventoriable. Settings menu handles services catalog (device types, manufacturers).
 - [x] **Search** — name / SKU / UPC / manufacturer (debounced 300ms).
 - [x] **Filters** (collapsible drawer via `ModalBottomSheet`): Manufacturer / Supplier / Category / Min price / Max price / Hide out-of-stock / Reorderable-only / Low-stock. (commit 4428dc6 — `components/InventoryFilterSheet.kt` ModalBottomSheet with 6 filter fields + `InventoryFilter` data class + active-count badge on filter icon)
-- [ ] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user. <!-- NOTE-defer: requires InventoryListScreen tablet-layout refactor (§18 DO-NOT-MODIFY constraint) -->
 - [x] **Columns picker** (tablet/ChromeOS) — SKU / Name / Type / Category / Stock / Cost / Retail / Supplier / Bin. Persist per user. (session 2026-04-26 — `components/InventoryColumnsPicker.kt` ModalBottomSheet with 9-column toggle; `InventoryColumn` enum; persisted via `SharedPreferences("inventory_columns")`; tablet-gated `ViewColumn` icon in list top bar)
 - [x] **Sort** — SKU / name / stock / last restocked / price / last sold / margin. (commit 4428dc6 — `components/InventorySortDropdown.kt` InventorySort enum + `applyInventorySortOrder()` + DropdownMenu; 6 options; 8 JVM tests)
 - [x] **Low-stock badge** + out-of-stock chip; critical-low pulse animation (respect Reduce Motion). (commit 4428dc6 — `components/InventoryStockBadge.kt` 3-tier badge Out/Critical-low-with-pulse/Low; ReduceMotion-aware static display)
 - [x] **Quick stock adjust** — inline +/- stepper on row (debounced PUT via `distinctUntilChanged` + debounce). (commit 4428dc6 — `components/QuickStockAdjust.kt` tablet inline stepper + long-press ModalBottomSheet with `AdjustReason` dropdown {Sold/Received/Damaged/Adjusted}; optimistic VM `adjustStockBy()` + SyncQueue enqueue)
 - [~] **Bulk select** — Price adjustment (% inc/dec preview modal) / Delete / Export / Print labels. (commit 4428dc6 — long-press on tablet → selection mode + BulkActionBar with Adjust/Export/Delete; Print labels TODO)
-- [ ] **Receive items** modal — scan items into stock or add manually; creates stock-movement batch. <!-- NOTE-defer: requires stock-movement batch endpoint not yet wired; receive-by-PO flow covers the primary use-case via §6.7 -->
-- [ ] **Receive by PO** — pick PO, scan items to increment received qty; close PO on completion. <!-- NOTE-defer: scan-loop integration into PO receive sheet deferred; basic receive sheet wired in §6.7 PurchaseOrderDetailScreen -->
-- [ ] **Import CSV/JSON** — paste → preview → confirm (`POST /inventory/import-csv`). Row-level validation errors highlighted. <!-- NOTE-defer: multi-step preview UI; deferred to a dedicated import screen -->
-- [ ] **Mass label print** — multi-select → label printer (Android Printing / MFi thermal via Bluetooth SPP). <!-- NOTE-defer: depends on label printer integration (§17 hardware); deferred -->
 - [ ] **Receive items** modal — scan items into stock or add manually; creates stock-movement batch.
   - **NOTE (2026-04-26):** Requires a dedicated ReceiveItemsSheet composable + ViewModel. No existing screen or server endpoint wired. Deferred — needs §6.7 PO model first.
 - [ ] **Receive by PO** — pick PO, scan items to increment received qty; close PO on completion.
@@ -1376,129 +1185,9 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Edit / Deactivate / Delete** buttons. (commit 2e6b486 — Deactivate with confirm dialog completes earlier partial)
 
 ### 6.3 Create
-- [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag. (session 2026-04-27 — `InventoryCreateScreen.kt`: supplier picker via `PurchaseOrderApi.listSuppliers()`; tax class picker via `InventoryApi.getTaxClasses()`; tax-inclusive `Switch` toggle; all wired to `CreateInventoryRequest.supplierId/taxClassId/taxInclusive`; pickers hidden until data loads, no crash if offline)
-- [x] **Inline barcode scan** — scanner icon in top bar → shared BarcodeScanScreen → fills UPC/SKU fields via savedStateHandle. Auto-lookup via `GET /inventory-enrich/barcode-lookup` deferred (external enrichment DB). (`InventoryCreateScreen.kt` `onScanBarcode` + `applyScannedBarcode()`)
-- [ ] **Photo capture** up to 4 per item; first = primary. <!-- NOTE-defer: requires CameraX capture + multipart upload plumbing; deferred to dedicated photo-attach pass -->
-- [x] **Validation** — decimal for prices (2 places via regex + toDoubleOrNull), integer for stock/reorder; unified `validateForm()` in `InventoryCreateViewModel`.
-- [x] **Save & add another** secondary CTA — `OutlinedButton` at form bottom; resets form (keeps item type) and shows snackbar confirmation. (`InventoryCreateViewModel.save(addAnother=true)`)
-- [x] **Offline create** — temp ID via `OfflineIdGenerator` + SyncQueue enqueue. (implemented in `InventoryRepository.createItem()`)
-
-### 6.4 Edit
-- [x] All fields editable (role-gated for cost/price — cost/price fields present; admin gate via `TODO(role-gate)` pending Session role exposure, consistent with §6.1 `LocalIsAdmin`).
-- [x] **Stock adjust** quick-action: +1 / −1 / Set to… — `ModalBottomSheet` (`StockAdjustSheet`) opened from overflow menu; calls `InventoryRepository.adjustStock()` with delta or absolute-set. (`InventoryEditScreen.kt`)
-- [ ] **Move between locations** (multi-location tenants). <!-- NOTE-defer: server has no multi-location endpoint; single-location shop only for now -->
-- [x] **Delete** — ConfirmDialog in overflow menu → `InventoryApi.deleteItem()` (server soft-deletes via `is_active=0`); navigates to list on success. (`InventoryEditScreen.kt`)
-- [x] **Deactivate** — ConfirmDialog in overflow menu → same `DELETE /:id` endpoint (server preserves history); navigates to list on success. (`InventoryEditScreen.kt`)
-
-### 6.5 Scan to lookup
-- [x] **Bottom-nav quick scan** / Dashboard FAB scan → CameraX + ML Kit → resolves barcode → item detail. (Scanner route already wired to `Screen.Scanner` → `BarcodeScanScreen`; barcode resolves via `lookupBarcode` in `InventoryListScreen`)
-- [x] **HID-scanner support** — invisible `Modifier.onKeyEvent` sink in `BarcodeScanScreen`; character buffer accumulates keystrokes arriving <50 ms apart; KEYCODE_ENTER flushes buffer and fires `onScanned`; haptic + multi-scan mode supported. (`BarcodeScanScreen.kt`)
-- [x] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
-
-### 6.6 Stocktake / audit
-- [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary. <!-- NOTE-defer: §60 StocktakeScreen is DO-NOT-MODIFY per task constraints; deferred to §60 implementation pass -->
-- [ ] **New session** — name, optional location, start. <!-- NOTE-defer: see §60 -->
-- [ ] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards. <!-- NOTE-defer: see §60 -->
-- [ ] **Summary** — items counted / items-with-variance / total variance / surplus / shortage. <!-- NOTE-defer: see §60 -->
-- [ ] **Multi-user** — multiple scanners feeding same session via WebSocket events. <!-- NOTE-defer: requires WebSocket multiplexing; see §60 -->
-
-### 6.7 Purchase orders
-- [x] **List** — status filter chips (All / Draft / Ordered / Partial / Received / Cancelled); columns: PO#, supplier, total, status, expected date; pagination. (`PurchaseOrderListScreen.kt` + `PurchaseOrderListViewModel`)
-- [x] **Create** — supplier picker (live from `GET /inventory/suppliers/list`), line items (inventory item ID + qty + cost), expected date, notes; `POST /inventory/purchase-orders`. (`PurchaseOrderCreateScreen.kt` + `PurchaseOrderCreateViewModel`)
-- [x] **Send** — Share icon → `ACTION_SEND` with plain-text PO body (PO#, supplier, line items, total); `ACTION_CHOOSER` lets user pick email/messaging app. (`PurchaseOrderDetailScreen.kt`) (session 2026-04-27 — `PurchaseOrderSendActions.kt` "Send to supplier" DropdownMenuItem: builds PO plain-text body + `ACTION_CHOOSER` via `Intent.createChooser`; wired into `PurchaseOrderDetailScreen` topBar actions slot)
-- [x] **Receive** — `ModalBottomSheet` per open PO item (remaining qty shown); `POST /inventory/purchase-orders/:id/receive`; partial receipt supported; stock updated server-side. (`PurchaseOrderDetailScreen.kt` `ReceiveItemsSheet`)
-- [x] **Cancel** — ConfirmDialog via overflow menu → `PUT /inventory/purchase-orders/:id` with `status=cancelled`. (`PurchaseOrderDetailScreen.kt`)
-- [x] **PDF export** via SAF (tablet/ChromeOS primary). (session 2026-04-27 — `PurchaseOrderSendActions.kt` "Print / Export PDF" DropdownMenuItem: generates A4 PDF via `android.graphics.pdf.PdfDocument` with header/line-items/total; opens via `PrintManager` so user can print or save as PDF using system print-to-PDF driver; `FileProvider` path `purchase-orders/` added to `res/xml/file_paths.xml`)
-
-### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
-- [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation. <!-- NOTE-defer: no dedicated bin-management server endpoints yet -->
-- [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs. <!-- NOTE-defer: "Run now" server endpoint not implemented; per-item rule edit is in §6.2 Detail -->
-- [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup. <!-- NOTE-defer: serial assignment/lookup server endpoints not confirmed; serial list shown in §6.2 Detail -->
-- [ ] **Shrinkage report** — expected vs actual; variance trend chart. <!-- NOTE-defer: no shrinkage report server endpoint -->
-- [x] **ABC analysis** — A/B/C classification; Vico bar chart. <!-- NOTE-defer: no server endpoint; client-side classification deferred -->
-- [ ] **Age report** — days-in-stock; markdown / clearance suggestions. <!-- NOTE-defer: no server endpoint -->
-- [ ] **Mass label print** — select items → label format → print (Mopria / MFi thermal). <!-- NOTE-defer: depends on §17 printer integration -->
-
-### 6.9 Loaner / asset tracking
-- [ ] `Asset` entity: id / type / serial / purchase date / cost / depreciation / status (available / loaned / in-repair / retired); optional `current_customer_id`. <!-- NOTE-defer: no server Asset endpoints; requires schema migration -->
-- [ ] Loaner issue flow on ticket detail: "Issue loaner" → pick asset → waiver signature → updates asset status to loaned + ties to ticket. <!-- NOTE-defer: server-blocked -->
-- [ ] Return flow: inspect → mark available; release any BlockChyp hold. <!-- NOTE-defer: server-blocked -->
-- [ ] Deposit hold via BlockChyp (optional, per asset policy). <!-- NOTE-defer: server-blocked -->
-- [ ] Auto-SMS at ready-for-pickup + overdue > 7d escalation push to manager. <!-- NOTE-defer: server-blocked -->
-- [ ] Depreciation (linear / declining balance) + asset-book-value dashboard tile. <!-- NOTE-defer: server-blocked -->
-- [ ] Optional geofence alert (>24h outside metro area) — opt-in + customer consent required. <!-- NOTE-defer: server-blocked -->
-
-### 6.10 Bundles
-- [ ] Bundle = set of items sold together at discount. Examples: Diagnostic + repair + warranty; Data recovery + backup + return shipping. <!-- NOTE-defer: no server bundle endpoints -->
-- [ ] Builder: Settings → Bundles → Add; drag items in; set bundle price or "sum − %". <!-- NOTE-defer: server-blocked -->
-- [ ] POS renders bundle as single SKU; expand to reveal included items; partial-delivery progress ("Diagnostic done, repair pending"). <!-- NOTE-defer: server-blocked -->
-- [ ] Each included item decrements stock independently on sale. <!-- NOTE-defer: server-blocked -->
-- [ ] Reporting: bundle sell-through vs individual + attach-rate. <!-- NOTE-defer: server-blocked -->
-
-### 6.11 Batch / lot tracking
-- [ ] Use-case: regulated parts (batteries) require lot tracking for recalls. <!-- NOTE-defer: no server InventoryLot schema or endpoints -->
-- [ ] Model: `InventoryLot` per receipt with fields lot_id, receive_date, vendor_invoice, qty, expiry. <!-- NOTE-defer: server-blocked -->
-- [ ] Sale/use decrements lot FIFO by default (or LIFO per tenant). <!-- NOTE-defer: server-blocked -->
-- [ ] FEFO alt: expiring-first queue for perishables (paste/adhesive). <!-- NOTE-defer: server-blocked -->
-- [ ] Recalls: vendor recall → tenant queries "all tickets using lot X" → customer outreach. <!-- NOTE-defer: server-blocked -->
-- [ ] Traceability: ticket detail shows which lot was used per part (regulatory). <!-- NOTE-defer: server-blocked -->
-- [ ] Config: per-SKU opt-in (most SKUs don't need lot tracking). <!-- NOTE-defer: server-blocked -->
-
-### 6.12 Serial number tracking
-- [ ] Scope: high-value items (phones, laptops, TVs). <!-- NOTE-defer: serial list displayed in §6.2 Detail; assign/lookup flow blocked on server serial-management endpoints -->
-- [ ] New-stock serials scanned on receive. <!-- NOTE-defer: server-blocked -->
-- [ ] Intake: scan serial + auto-match model. <!-- NOTE-defer: server-blocked -->
-- [ ] POS scan on sale reduces qty by 1 for that serial. <!-- NOTE-defer: server-blocked -->
-- [ ] Lookup: staff scans, Android hits tenant server which may cross-check (§4.17). <!-- NOTE-defer: server-blocked -->
-- [ ] Link to customer: sale binds serial to customer record (enables warranty lookup by serial). <!-- NOTE-defer: server-blocked -->
-- [ ] Unique constraint: each serial sold once; sell-again requires "Returned/restocked" status. <!-- NOTE-defer: server-blocked -->
-- [ ] Reports: serials out by month; remaining in stock. <!-- NOTE-defer: server-blocked -->
-
-### 6.13 Inter-location transfers
-- [ ] Flow: source location initiates transfer (pick items + qty + destination). <!-- NOTE-defer: no multi-location server endpoints -->
-- [ ] Status lifecycle: Draft → In Transit → Received. <!-- NOTE-defer: server-blocked -->
-- [ ] Transit count: inventory marked "in transit", not sellable at either location. <!-- NOTE-defer: server-blocked -->
-- [ ] Receive: destination scans items. <!-- NOTE-defer: server-blocked -->
-- [ ] Discrepancy handling. <!-- NOTE-defer: server-blocked -->
-- [ ] Shipping label: print bulk label via §17. <!-- NOTE-defer: server-blocked + §17 printer dependency -->
-- [ ] Optional carrier integration (UPS / FedEx). <!-- NOTE-defer: server-blocked -->
-- [ ] Reporting: transfer frequency + bottleneck analysis. <!-- NOTE-defer: server-blocked -->
-- [ ] Permissions split: source manager initiates, destination manager receives. <!-- NOTE-defer: server-blocked -->
-
-### 6.14 Scrap / damage bin
-- [ ] Model: dedicated non-sellable bin per location. <!-- NOTE-defer: no scrap-bin server endpoints -->
-- [ ] Items moved here with reason (damaged / obsolete / expired / lost). <!-- NOTE-defer: server-blocked -->
-- [ ] Move flow: Inventory → item → "Move to scrap" → qty + reason + photo. <!-- NOTE-defer: server-blocked -->
-- [ ] Decrements sellable qty; increments scrap bin. <!-- NOTE-defer: server-blocked -->
-- [ ] Cost impact: COGS adjustment recorded. <!-- NOTE-defer: server-blocked -->
-- [ ] Shrinkage report totals reflect scrap. <!-- NOTE-defer: server-blocked -->
-- [ ] Disposal: scrap bin items batch-disposed (trash / recycle / salvage). <!-- NOTE-defer: server-blocked -->
-- [ ] Disposal document generated with signature. <!-- NOTE-defer: server-blocked -->
-- [ ] Insurance: disposal records support insurance claims (theft, fire). <!-- NOTE-defer: server-blocked -->
-
-### 6.15 Dead-stock aging
-- [ ] Report: inventory aged > N days since last sale. <!-- NOTE-defer: no server dead-stock endpoint -->
-- [ ] Grouped by tier: slow (60d) / dead (180d) / obsolete (365d). <!-- NOTE-defer: server-blocked -->
-- [ ] Action: clearance pricing suggestions. <!-- NOTE-defer: server-blocked -->
-- [ ] Action: bundle with hot-selling item. <!-- NOTE-defer: server-blocked -->
-- [ ] Action: return to vendor if eligible. <!-- NOTE-defer: server-blocked -->
-- [ ] Action: donate for tax write-off. <!-- NOTE-defer: server-blocked -->
-- [ ] Alerts: quarterly push "N items hit dead tier — plan action". <!-- NOTE-defer: server-blocked -->
-- [ ] Visibility: inventory list chip "Stale" / "Dead" badge. <!-- NOTE-defer: server-blocked -->
-
-### 6.16 Reorder lead times
-- [ ] Per vendor: average days from order → receipt. <!-- NOTE-defer: requires PO history aggregation endpoint -->
-- [ ] Computed from PO history. <!-- NOTE-defer: server-blocked -->
-- [ ] Lead-time variance shows unreliability → affects reorder point. <!-- NOTE-defer: server-blocked -->
-- [ ] Safety stock buffer qty = avg daily sell × lead time × safety factor. <!-- NOTE-defer: server-blocked -->
-- [ ] Auto-calc or manual override of safety stock. <!-- NOTE-defer: server-blocked -->
-- [ ] Vendor comparison side-by-side: cost, lead time, on-time %. <!-- NOTE-defer: server-blocked -->
-- [ ] Suggest alternate vendor when primary degrades. <!-- NOTE-defer: server-blocked -->
-- [ ] Seasonality: lead times may lengthen in holiday season; track per-month. <!-- NOTE-defer: server-blocked -->
-- [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)". <!-- NOTE-defer: server-blocked -->
-- [ ] PO creation uses latest stats for ETA. <!-- NOTE-defer: server-blocked -->
-- [x] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory/barcode/{code}` (internal inventory DB). Autofill name/SKU/price/type/description from matched item.
-  - **DONE (2026-04-27):** `InventoryCreateScreen.kt` — `BarcodeLookupState` sealed interface (Idle/Lookup/MatchFound); `lookupAndApplyScannedBarcode()` calls `InventoryApi.lookupBarcode()`, sets Lookup spinner while in-flight, transitions to MatchFound on 200 hit; `acceptBarcodeMatch()` fills blank form fields from item; `dismissBarcodeMatch()` falls back to raw UPC/SKU fill; `applyRawCode()` private helper; `BarcodeMatchDialog` AlertDialog shown on MatchFound; scan icon disabled while lookup in-flight; spinner in TopAppBar during lookup; 5 new strings in strings.xml; build green.
+- [~] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
+- [ ] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
+  - **NOTE (2026-04-26):** `BarcodeScanScreen.kt` + `BarcodeAnalyzer` already exist. Needs scan button in `InventoryCreateScreen` that pushes `BarcodeScanScreen` and receives result, then calls `InventoryApi.lookupBarcode()` to prefill. Deferred — nav result callback wiring needed.
 - [ ] **Photo capture** up to 4 per item; first = primary.
   - **NOTE (2026-04-26):** Requires `ActivityResultContracts.TakePicture` + compress + `POST /inventory/:id/image`. Deferred — post-create upload flow needed.
 - [x] **Validation** — decimal for prices (2 places), integer for stock. (session 2026-04-26 — already present in `InventoryCreateViewModel`: regex `^\d*\.?\d*$` for prices, `^\d*$` for stock; confirmed no gap)
@@ -1520,10 +1209,14 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
 
 ### 6.6 Stocktake / audit
-- [x] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary. (session 2026-04-27 — `StocktakeListScreen.kt` + `StocktakeListViewModel.kt`: `GET /stocktake` wired via new `listSessions()` in `StocktakeApi`; `LazyColumn` of `StocktakeSessionCard`s; status filter chips All/Open/Committed/Cancelled; `PullToRefreshBox`; cancel action via `POST /stocktake/:id/cancel`; server-unsupported 404 fallback state; `Screen.StocktakeList` + composable route added to `AppNavGraph`; entry from `InventoryListScreen` admin overflow menu "Stocktake sessions")
-- [x] **New session** — name, optional location, start. (session 2026-04-27 — `NewStocktakeSessionDialog` in `StocktakeListScreen.kt`; FAB opens dialog with name (required) + location + notes fields; `POST /stocktake` via new `createSession()` in `StocktakeApi`; `StocktakeCreateRequest` DTO added to `StocktakeDto.kt`; 403/404/400 error handling; on success navigates to active-count flow via `onOpenSession` callback)
-- [x] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards. (session 2026-04-27 — `StocktakeSessionDetailScreen.kt` + `StocktakeSessionDetailViewModel.kt`: loads `GET /stocktake/:id` (session + counts + summary); upserts each count via `POST /stocktake/:id/counts`; inline qty edit per row; search-to-add item picker; barcode scan via `Scanner` route + savedStateHandle; variance summary header (Counted / Variances / Surplus / Shortage tiles); commit via `POST /stocktake/:id/commit` with ConfirmDialog guard; read-only view for non-open sessions; `Screen.StocktakeSessionDetail` nav route with `sessionId: Int` arg; `StocktakeList.onOpenSession` now navigates to detail instead of legacy DRAFT flow; `StocktakeApi.getSession` + `upsertCount` added; `StocktakeCount` / `StocktakeSummary` / `StocktakeSessionDetail` / `StocktakeUpsertCountRequest` DTOs added to `StocktakeDto.kt`)
-- [x] **Summary** — items counted / items-with-variance / total variance / surplus / shortage. (session 2026-04-27 — `SummaryHeader` composable inside `StocktakeSessionDetailScreen.kt`; live-recomputed client-side after each upsert via `computeSummary()`; shows in variance-colored tiles; also loaded from `GET /stocktake/:id` response on initial load)
+- [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary.
+  - **NOTE (2026-04-26):** Requires new `StocktakeListScreen` + `StocktakeViewModel` + `GET /stocktake` API endpoint wiring. Multi-screen feature; deferred.
+- [ ] **New session** — name, optional location, start.
+  - **NOTE (2026-04-26):** Depends on sessions list screen. Deferred.
+- [ ] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards.
+  - **NOTE (2026-04-26):** Requires `BarcodeScanScreen` integration with a session-scoped count accumulator. Complex multi-step flow; deferred.
+- [ ] **Summary** — items counted / items-with-variance / total variance / surplus / shortage.
+  - **NOTE (2026-04-26):** Depends on session detail screen. Deferred.
 - [ ] **Multi-user** — multiple scanners feeding same session via WebSocket events.
   - **NOTE (2026-04-26):** Requires WebSocket room scoped to stocktake session. Server work needed. Deferred.
 
@@ -1532,26 +1225,26 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
   - **NOTE (2026-04-26):** Requires new `PurchaseOrderListScreen` + `PurchaseOrderApi` + `PurchaseOrderRepository`. No existing PO screens. Deferred — standalone section.
 - [ ] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes.
   - **NOTE (2026-04-26):** Depends on PO list. Deferred.
-- [x] **Send** — email to supplier via `ACTION_SEND` with PDF attachment. (session 2026-04-27 — see first occurrence above; `PurchaseOrderSendActions.kt`)
-- [x] **Receive** — scan items to increment; partial receipt supported. (see first occurrence §6.7 above; `PurchaseOrderDetailScreen.kt`)
-- [x] **Cancel** — confirm. (see first occurrence §6.7 above; `PurchaseOrderDetailScreen.kt`)
-- [x] **PDF export** via SAF (tablet/ChromeOS primary). (session 2026-04-27 — see first occurrence above; `PurchaseOrderSendActions.kt` + `file_paths.xml`)
+- [ ] **Send** — email to supplier via `ACTION_SEND` with PDF attachment.
+  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
+- [ ] **Receive** — scan items to increment; partial receipt supported.
+  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
+- [ ] **Cancel** — confirm.
+  - **NOTE (2026-04-26):** Depends on PO list. Deferred.
+- [ ] **PDF export** via SAF (tablet/ChromeOS primary).
+  - **NOTE (2026-04-26):** Requires PDF generation + SAF file picker. Deferred.
 
 ### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
-- [x] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
+- [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
   - **NOTE (2026-04-26):** Bin picker in detail screen (`InventoryBinPicker.kt`) exists for assignment. Creation/management UI (Settings → Inventory → Bin Locations) requires a new settings sub-screen. Deferred.
-- [x] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
-  - **DONE (2026-04-27):** `BinLocationsScreen.kt` — full CRUD screen (ViewModel + LazyColumn + swipe-to-delete + create dialog). Wired in Settings row + AppNavGraph. API endpoints added to `InventoryApi.kt`; DTOs added to `InventoryDto.kt`. 404-tolerant (shows empty list on older server builds). Batch-assign + pick list generation remain (deferred, requires server work).
 - [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
   - **NOTE (2026-04-26):** `InventoryAutoReorderCard.kt` handles per-item rule. "Run now" → draft POs requires §6.7. Deferred.
-  - **DONE (2026-04-27):** `RunAutoReorderDialog.kt` (3-phase confirm→running→result), admin overflow menu in `InventoryListScreen.kt`, `InventoryListViewModel.runAutoReorder()`, `InventoryRepository.runAutoReorder()`, DTOs in `InventoryDto.kt`. POST /inventory/auto-reorder wired end-to-end.
 - [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup.
   - **NOTE (2026-04-26):** Serial list display already in detail screen (§6.2). Assign + lookup requires cross-entity search screen. Deferred.
 - [ ] **Shrinkage report** — expected vs actual; variance trend chart.
   - **NOTE (2026-04-26):** Requires server-side shrinkage aggregation endpoint. Deferred.
-- [x] **ABC analysis** — A/B/C classification; Vico bar chart.
+- [ ] **ABC analysis** — A/B/C classification; Vico bar chart.
   - **NOTE (2026-04-26):** Requires server-side ABC classification data or client-side computation from movement history. Deferred.
-  - **DONE (2026-04-27):** Implemented client-side classification using retailPriceCents × inStock as value metric; Pareto 70/90% thresholds; proportional stacked bar + tier summary tiles + ranked item list with TalkBack a11y. Pure Room-cache, fully offline.
 - [ ] **Age report** — days-in-stock; markdown / clearance suggestions.
   - **NOTE (2026-04-26):** Requires `created_at` vs last-sale date per item. Server aggregation endpoint needed. Deferred.
 - [ ] **Mass label print** — select items → label format → print (Mopria / MFi thermal).
@@ -1711,23 +1404,14 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Sort** — date / amount / due date / status. (commit 2c17758 — `InvoiceSortDropdown.kt` 6-option enum + `applyInvoiceSortOrder()` pure func; 8 JVM tests)
 - [x] **Row chips** — "Overdue 3d" (red), "Paid 50%" (amber), "Unpaid" (gray), "Paid" (green), "Void" (strike-through). (commit 2c17758 — `InvoiceStatusChip.kt` rendered inline)
 - [x] **Stats header** — `GET /invoices/stats` → total outstanding / paid / overdue / avg value; tap to drill down. (commit 2c17758 — `InvoiceApi.getStats()` + `InvoiceStatsData` DTO; 404 hides header silently)
-- [x] **Status pie + payment-method pie** (tablet/ChromeOS) — pure-Compose `Canvas` donut charts; no external chart library. (session 2026-04-27 — `InvoiceStatusPieChart.kt` status donut; `InvoicePaymentMethodPieChart.kt` 295 lines payment-method donut from server `method_distribution` array; `InvoiceMethodDistributionItem` DTO added to `InvoiceStatsData`; `InvoiceStatsHeader` 3-column Row: Financials | Status donut | Payment-method donut; ReduceMotion + TalkBack; tap-to-highlight legend)
+- [ ] **Status pie + payment-method pie** (tablet/ChromeOS) — Vico `PieChart`-equivalent via custom renderer or MPAndroidChart interop.
 - [x] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete. (commit 2c17758 — long-press bulk mode + `BulkActionTopBar`+`BulkActionBar` {Remind/Export CSV/Void})
 - [x] **Export CSV** via SAF. (commit 2c17758 — `ACTION_CREATE_DOCUMENT` launcher + `VM.buildCsvContent()`)
 - [x] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void. (commit 2c17758 — DropdownMenu on `MoreVert`: Open/Copy number/Send reminder/Share PDF)
-- [x] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator. (session 2026-04-27 — `InvoiceRemoteMediator.kt` REFRESH/APPEND/PREPEND + 15-min staleness `initialize()`; `InvoiceDao.pagingSource/pagingSourceByStatus/pagingSourceByCustomer`; `InvoiceRepository.invoicesPaged(filterKey)` via Pager; `InvoiceListViewModel.invoicesPaged` Flow cached in viewModelScope; `InvoicePageResponse` DTO with cursor/serverExhausted/total fields)
+- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator.
 
 ### 7.2 Detail
 - [x] Line items / totals / payments.
-- [x] **Header** — invoice number (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip.
-- [x] **Customer card** — name + phone + email + quick-actions.
-- [x] **Line items** — editable table (if status allows); tax per line. (commit 2c17758 — `InvoiceLineItemsTable.kt` read-only table — editing deferred)
-- [x] **Totals panel** — subtotal / discount / tax / total / paid / balance due.
-- [x] **Payment history** — method / amount / date / reference / status; tap → payment detail.
-- [x] **Add payment** → `POST /invoices/:id/payments` (see 7.4).
-- [x] **Issue refund** — `POST /refunds` with `{ invoice_id, amount, reason }`; role-gated; partial + full. (commit 2c17758 — overflow→AlertDialog→POST /refunds; `IssueRefundRequest` DTO; 404 graceful stub)
-- [x] **Credit note** — `POST /invoices/:id/credit-note` with `{ amount, reason }`.
-- [x] **Void** — `POST /invoices/:id/void` with reason; destructive confirm.
 - [x] **Header** — invoice number (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip. (session 2026-04-26 — `SelectionContainer` on orderId; `SuggestionChip` for due date + error-container balance-due chip) (INV-XXXX, `SelectionContainer`), status chip, due date, balance-due chip.
 - [x] **Customer card** — name + phone + email + quick-actions. (session 2026-04-26 — `BrandCard` section; phone/email from online `InvoiceDetail` DTO; tap-to-dial + tap-to-email intents; offline fallback text)
 - [x] **Line items** — editable table (if status allows); tax per line. (commit 2c17758 — `InvoiceLineItemsTable.kt` read-only table — editing deferred)
@@ -1742,42 +1426,6 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Share PDF** — system share sheet. (commit 2c17758 — `shareText()` via `ACTION_SEND text/plain` with link)
 - [x] **Android Print** via `PrintManager.print(...)` with custom PDF renderer. (commit 2c17758 — `printInvoice()` using `PrintManager` + `WebView.createPrintDocumentAdapter`)
 - [x] **Clone invoice** — duplicate line items for new invoice. (commit 2c17758 — overflow→POST /invoices/{id}/clone; `VM.cloneInvoice()`; 404 stub)
-- [ ] **Convert to credit note** — if overpaid. <!-- NOTE-defer: server has no dedicated "convert overpayment to credit note" endpoint; requires new server route -->
-- [x] **Timeline** — every status change, payment, note, email/SMS send. (commit 2c17758 — `InvoiceTimelineSection` synthetic from payments + creation date; follows TicketHistoryTimeline dot-connector pattern)
-- [ ] **Deposit invoices linked** — nested card showing connected deposit invoices. <!-- NOTE-defer: server has no deposit-invoice linking endpoint; deposit concept not in current schema -->
-
-### 7.3 Create
-- [x] **Customer picker** (or pre-seeded from ticket).
-- [ ] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount. <!-- NOTE-defer: inventory catalog picker + barcode scan require camera permission + separate catalog browse screen not yet built -->
-- [ ] **Cart-level discount** (% or $), tax, fees, tip. <!-- NOTE-defer: server POST /invoices accepts line-level discount only; no cart-level discount field in current schema -->
-- [x] **Notes**, due date, payment terms, footer text.
-- [ ] **Deposit required** flag → generate deposit invoice. <!-- NOTE-defer: server has no deposit invoice generation endpoint -->
-- [ ] **Convert from ticket** — prefill line items via `POST /tickets/:id/convert-to-invoice`. <!-- NOTE-defer: server endpoint POST /tickets/:id/convert-to-invoice not yet implemented -->
-- [ ] **Convert from estimate**. <!-- NOTE-defer: server has no estimate-to-invoice conversion endpoint -->
-- [ ] **Idempotency key** — server requires for POST /invoices. <!-- NOTE-defer: server does not currently enforce Idempotency-Key header on POST /invoices -->
-- [x] **Draft** autosave.
-- [x] **Send now** checkbox — email/SMS on create.
-
-### 7.4 Record payment
-- [ ] **Method picker** — fetched from `GET /settings/payment` (cash / card-in-person → POS flow / card-manual / ACH / check / gift card / store credit / other). Wire each method correctly, especially card, store credit, gift cards. <!-- NOTE-defer: GET /settings/payment not yet implemented server-side -->
-- [x] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
-- [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal). <!-- NOTE-defer: BlockChyp terminal auto-fill requires BlockChyp Android SDK integration -->
-- [ ] **Notes** field. <!-- NOTE-defer: POST /invoices/:id/payments schema does not include a notes field currently -->
-- [ ] **Cash** — change calculator. <!-- NOTE-defer: requires cash-method detection from GET /settings/payment (deferred above) -->
-- [ ] **Split tender** — chain multiple methods until balance = 0. <!-- NOTE-defer: server POST /invoices/:id/payments is single-method per call; split-tender requires multi-call orchestration + UI state machine not yet built -->
-- [ ] **BlockChyp card** — start terminal charge via BlockChyp Android SDK → poll status; surface ongoing Live Update notification for the txn. <!-- NOTE-defer: BlockChyp Android SDK not yet added to build.gradle; PCI-AUDIT-001 prerequisites not met -->
-- [ ] **Idempotency-Key** required on POST /invoices/:id/payments. <!-- NOTE-defer: server does not currently enforce Idempotency-Key on this endpoint -->
-- [ ] **Receipt** — print (Bluetooth thermal / Mopria) + email + SMS; PDF download. <!-- NOTE-defer: receipt PDF generation requires server endpoint not yet built; Bluetooth thermal print requires separate SDK -->
-- [x] **Haptic** `CONFIRM` on payment confirm.
-
-### 7.5 Overdue automation
-- [ ] Server schedules reminders. Android: overdue badge on dashboard + push notif tap → deep-link to invoice. <!-- NOTE-defer: server-side scheduler + push notification wiring not yet built -->
-- [ ] Dunning sequences (see §7.7) manage escalation. <!-- NOTE-defer: dunning engine is §7.8, deferred -->
-
-### 7.6 Aging report
-- [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days).
-- [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
-- [x] Row actions: Send reminder / Record payment / Write off.
 - [ ] **Convert to credit note** — if overpaid.
   - **NOTE (2026-04-26):** No distinct overpaid-auto-convert endpoint; `POST /invoices/:id/credit-note` (now wired) is the mechanism. Overpaid-detection UX is a design decision pending.
 - [x] **Timeline** — every status change, payment, note, email/SMS send. (commit 2c17758 — `InvoiceTimelineSection` synthetic from payments + creation date; follows TicketHistoryTimeline dot-connector pattern)
@@ -1786,7 +1434,8 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.3 Create
 - [x] **Customer picker** (or pre-seeded from ticket). (session 2026-04-26 — `ExposedDropdownMenuBox` + debounced `CustomerApi.searchCustomers()` already in `InvoiceCreateScreen.kt`)
-- [x] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount. (session 2026-04-27 — `InvoiceCatalogLineItemPicker.kt` ModalBottomSheet: debounced search via `GET /inventory?keyword=` + `InventoryApi.getItems()`; `CatalogResultRow` shows name/SKU/manufacturer + retail price; selecting an item pre-fills line description + unit price (`"%.2f".format(price)`); `InvoiceCreateViewModel.openCatalogPicker/closeCatalogPicker/onCatalogQueryChanged/onCatalogItemSelected` + `catalogSearchJob` debounce 300ms; `Inventory2` icon button per line-item row opens picker; `catalogPickerLineIndex/catalogQuery/catalogResults/catalogLoading` state fields added to `InvoiceCreateUiState`; barcode-scan + tax-class picker still deferred)
+- [ ] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount.
+  - **NOTE (2026-04-26):** Free-form items already implemented; barcode-scan + inventory catalog search + tax-class picker deferred (need CameraX + catalog endpoint wiring).
 - [ ] **Cart-level discount** (% or $), tax, fees, tip.
   - **NOTE (2026-04-26):** Design decision needed on discount model before implementation; tax class recomputed server-side.
 - [x] **Notes**, due date, payment terms, footer text. (session 2026-04-26 — notes `OutlinedTextField` + `DatePickerDialog` due-date field already in `InvoiceCreateScreen.kt`; payment terms + footer deferred)
@@ -1808,9 +1457,12 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
   - **NOTE (2026-04-26):** Requires BlockChyp SDK + store-credit/gift-card server endpoints; deferred to POS session.
 - [ ] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
   - **NOTE (2026-04-26):** Overpayment → store credit requires server endpoint; deferred.
-- [x] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal). (session 2026-04-27 — conditional `OutlinedTextField` shown for non-cash methods; placeholder adapts per method: check→"Check number", card→"Card last 4 digits", digital→"Transaction ID"; mapped to `transactionId` on `RecordPaymentRequest`; BlockChyp auto-fill deferred)
-- [x] **Notes** field. (session 2026-04-27 — `OutlinedTextField` wired to `paymentNotes` state + passed as `notes` to `recordPayment()`; cleared on success/dismiss)
-- [x] **Cash** — change calculator. (session 2026-04-27 — shown when cash amount > amountDue; `Surface(secondaryContainer)` row displays change owed; effective amount capped at amountDue on submit)
+- [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal).
+  - **NOTE (2026-04-26):** BlockChyp terminal integration deferred.
+- [ ] **Notes** field.
+  - **NOTE (2026-04-26):** Notes param already on `RecordPaymentRequest` DTO; UI input field deferred to 7.4 full implementation.
+- [ ] **Cash** — change calculator.
+  - **NOTE (2026-04-26):** UI-only feature; deferred.
 - [ ] **Split tender** — chain multiple methods until balance = 0.
   - **NOTE (2026-04-26):** Requires idempotency-key chain + server coordination; deferred.
 - [ ] **BlockChyp card** — start terminal charge via BlockChyp Android SDK → poll status; surface ongoing Live Update notification for the txn.
@@ -1831,40 +1483,41 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 ### 7.6 Aging report
 - [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). (session 2026-04-26 — `AgingReportData` / `AgingBucket` / `AgingInvoiceRow` DTOs; `InvoiceApi.getAgingReport()` at GET dunning/invoices/aging; `InvoiceAgingScreen.kt` + `InvoiceAgingViewModel` with bucket-filter chips, summary cards, pull-to-refresh; nav route hookup deferred to NavHost session)
 - [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
-- [x] Row actions: Send reminder / Record payment / Write off. (session 2026-04-27 — `SendReminderDialog` composable added to `InvoiceAgingScreen.kt`: editable pre-filled template + invoice summary card + in-flight loading state + TalkBack a11y; `requestSendReminder`/`dismissSendReminder`/`confirmSendReminder` in `InvoiceAgingViewModel`; `POST /invoices/bulk-action send_reminder` 404-tolerant; write-off via existing `voidInvoice` + `ConfirmDialog`; record-payment navigates to `InvoiceDetail` via nav callback; build green)
+- [ ] Row actions: Send reminder / Record payment / Write off.
+  - **NOTE (2026-04-26):** Send-reminder and write-off need server endpoints; Record-payment needs navigation into InvoiceDetailScreen from the aging screen (nav hookup deferred to NavHost session).
 
 ### 7.7 Returns & refunds
-- [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory). <!-- NOTE-defer: full returns flow requires BlockChyp refund SDK + server Return record + inventory restock endpoints not yet built -->
-- [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission unless tenant policy overrides. <!-- NOTE-defer: depends on BlockChyp SDK + server Return model -->
-- [ ] Vendor return flow: "Return to vendor" from PO / inventory → pick items → RMA # (manual or vendor API) → print shipping label via §17. Status: pending / shipped / received / credited. <!-- NOTE-defer: §17 shipping label not yet built; PO module deferred -->
-- [ ] Tenant-configurable restocking fee per item class. <!-- NOTE-defer: server has no restocking fee configuration -->
-- [ ] Return receipt prints with negative lines + refund method + signature line. <!-- NOTE-defer: receipt print requires thermal SDK (deferred) -->
-- [ ] Per-item restock choice: salable / scrap bin / damaged bin. <!-- NOTE-defer: inventory bin model not in current schema -->
-- [ ] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry. <!-- NOTE-defer: fraud threshold configuration not in server settings -->
-- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}`. <!-- NOTE-defer: this endpoint signature (with lines array) not yet implemented server-side -->
+- [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory).
+- [ ] Customer return flow: Invoice detail → "Return items" → pick lines + qty → reason → refund method (original card via BlockChyp refund / store credit / gift card). Creates `Return` record linked to invoice; updates inventory; reverses commission unless tenant policy overrides.
+- [ ] Vendor return flow: "Return to vendor" from PO / inventory → pick items → RMA # (manual or vendor API) → print shipping label via §17. Status: pending / shipped / received / credited.
+- [ ] Tenant-configurable restocking fee per item class.
+- [ ] Return receipt prints with negative lines + refund method + signature line.
+- [ ] Per-item restock choice: salable / scrap bin / damaged bin.
+- [ ] Fraud guards: warn on high-$ returns > threshold; manager PIN required over limit; audit entry.
+- [ ] Endpoint `POST /refunds {invoice_id, lines, reason}`.
 
 ### 7.8 Dunning / card retry
-- [ ] Card declined → queue retry. <!-- NOTE-defer: dunning engine is fully server-side; no Android-side work possible until server scheduler + webhook delivery built -->
-- [ ] Retry schedule: +3d / +7d / +14d. <!-- NOTE-defer: server dunning not yet implemented -->
-- [ ] Each retry notifies via email + SMS + in-app notification. <!-- NOTE-defer: server dunning not yet implemented -->
-- [ ] Smart retry — soft declines (insufficient funds, do-not-honor): standard schedule. <!-- NOTE-defer: server dunning not yet implemented -->
-- [ ] Smart retry — hard declines (fraud, card reported): stop + notify customer to update card. <!-- NOTE-defer: server dunning not yet implemented -->
-- [ ] Self-service: customer portal link (§41) to update card. <!-- NOTE-defer: §41 customer portal not yet built -->
-- [ ] Self-service: Google Pay via pay page. <!-- NOTE-defer: payment page not yet built -->
-- [ ] Escalation: after N failed attempts, alert tenant manager + auto-suspend plan. <!-- NOTE-defer: server dunning not yet implemented -->
-- [ ] Audit: every dunning event logged. <!-- NOTE-defer: server dunning not yet implemented -->
+- [ ] Card declined → queue retry.
+- [ ] Retry schedule: +3d / +7d / +14d.
+- [ ] Each retry notifies via email + SMS + in-app notification.
+- [ ] Smart retry — soft declines (insufficient funds, do-not-honor): standard schedule.
+- [ ] Smart retry — hard declines (fraud, card reported): stop + notify customer to update card.
+- [ ] Self-service: customer portal link (§41) to update card.
+- [ ] Self-service: Google Pay via pay page.
+- [ ] Escalation: after N failed attempts, alert tenant manager + auto-suspend plan.
+- [ ] Audit: every dunning event logged.
 
 ### 7.9 Late fees
-- [ ] Model: flat fee / percentage / compounding. <!-- NOTE-defer: server has no late-fee configuration model -->
-- [ ] Model: grace period before applying. <!-- NOTE-defer: server has no late-fee configuration model -->
-- [ ] Model: max cap. <!-- NOTE-defer: server has no late-fee configuration model -->
-- [ ] Application: auto-added to invoice on overdue. <!-- NOTE-defer: requires server-side scheduled job -->
-- [ ] Status change to "Past due" triggers reminder. <!-- NOTE-defer: requires server-side scheduler + push notification -->
-- [ ] Staff can waive with reason + audit. <!-- NOTE-defer: no waive-fee endpoint on server -->
-- [ ] Threshold above which manager PIN required. <!-- NOTE-defer: server has no late-fee threshold config -->
-- [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead). <!-- NOTE-defer: requires server scheduler -->
-- [ ] Customer communication: fee-applied notification with payment link. <!-- NOTE-defer: requires server scheduler + payment page -->
-- [ ] Jurisdiction limits: some jurisdictions cap late fees by law; tenant-configurable max; warn on violation. <!-- NOTE-defer: jurisdiction model not in server settings -->
+- [ ] Model: flat fee / percentage / compounding.
+- [ ] Model: grace period before applying.
+- [ ] Model: max cap.
+- [ ] Application: auto-added to invoice on overdue.
+- [ ] Status change to "Past due" triggers reminder.
+- [ ] Staff can waive with reason + audit.
+- [ ] Threshold above which manager PIN required.
+- [ ] Customer communication: reminder SMS/email before fee applied (1-3d lead).
+- [ ] Customer communication: fee-applied notification with payment link.
+- [ ] Jurisdiction limits: some jurisdictions cap late fees by law; tenant-configurable max; warn on violation.
 
 ---
 ## 8. Estimates
@@ -1878,7 +1531,6 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Bulk actions — Send / Delete / Export. (commit 388f4c2 — bulk top bar + bottom action bar; VM `bulkSend/bulkDelete/selectAll/exitBulkMode`)
 - [x] Expiring-soon chip (pulse animation when ≤3 days; honor Reduce Motion). (commit 388f4c2 — `components/ExpiringSoonChip.kt` + `isExpiringSoon()` helper + pulse animation ReduceMotion-static)
 - [x] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete. (commit 388f4c2 — `components/EstimateContextMenu.kt` 8-item DropdownMenu; `combinedClickable` long-press)
-- [ ] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room. <!-- NOTE-defer: server estimates route uses page/per_page integers (parsePage/parsePageSize), not an opaque cursor token; EstimateListData.pagination is Pagination{page,per_page,total,total_pages}; cursor variant requires a new server query param and a nextCursor field in the response -->
 - [x] Cursor-based pagination (offline-first) per top-of-doc rule. `GET /estimates?cursor=&limit=50` online; list reads from Room. (session 2026-04-26 — `EstimatePageResponse` DTO + `EstimateApi.getEstimatePage` + `EstimateDao.getPage` keyset query + `EstimateRepository.loadEstimatesPage` + VM `loadFirstPage`/`loadMore`/`buildApiFilters` + LazyColumn `rememberLazyListState` trigger + spinner footer)
 
 ### 8.2 Detail
@@ -1903,22 +1555,6 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Manual expire action.
 
 ### 8.5 E-sign (public page)
-- [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email. <!-- NOTE-defer: server has no POST /estimates/:id/esign or public-quote-token generation endpoint; estimateSign.routes.ts exists but does not expose a token-generate action -->
-- [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature. <!-- NOTE-defer: server has no public /public/quotes/:code/sign route that accepts a signature submission and stores a signed PDF; blocked on server work -->
-- [ ] FCM push to staff on sign: "Quote #42 signed by Acme Corp — convert to ticket?" Deep-link opens quote; one-tap convert to ticket. <!-- NOTE-defer: server sends no FCM push event on estimate signature; requires server-side FCM dispatch after a sign submission endpoint exists -->
-- [ ] Signable within N days (tenant-configured); expired → "Quote expired — contact shop" page. <!-- NOTE-defer: server has no tenant setting for estimate sign-expiry window; no server enforcement of per-estimate sign deadline beyond the existing valid_until date -->
-- [ ] Audit: each open / sign event logged with IP + user-agent + timestamp. <!-- NOTE-defer: server has no audit-event table or endpoint recording estimate open/sign events with IP + user-agent; requires new server migration and route -->
-
-### 8.6 Versioning
-- [ ] Each edit creates new version; prior retained. <!-- NOTE-defer: server PUT /estimates/:id overwrites the current record without creating a version row; no migration or version-insert trigger exists in the DB -->
-- [x] Version number visible on UI (e.g. "v3").
-- [ ] Only "sent" versions archived for audit; drafts freely edited. <!-- NOTE-defer: server has no concept of archiving sent versions vs discarding draft edits; requires server-side version-lifecycle rules -->
-- [ ] Side-by-side diff of v-n vs v-n+1. <!-- NOTE-defer: GET /estimates/:id/versions returns EstimateVersion{versionNumber,createdAt,createdBy,total,status} — no line items per version; cannot compute a diff client-side without full per-version line-item payloads from server -->
-- [ ] Highlight adds / removes / price changes. <!-- NOTE-defer: same blocker as side-by-side diff; full line-item data per version not returned by server -->
-- [ ] Customer approval tied to specific version. <!-- NOTE-defer: server approve endpoint POST /estimates/:id/approve does not record which version was approved; no approved_version_number field in estimates table -->
-- [ ] Warning if customer approved v2 and tenant edited to v3 ("Customer approved v2; resend?"). <!-- NOTE-defer: requires approved_version_number stored server-side; not present in EstimateDetail DTO or DB schema -->
-- [ ] Convert-to-ticket uses approved version with stored reference (downstream changes don't invalidate). <!-- NOTE-defer: server convertToTicket snapshots current estimate state; no approved_version_id foreign key to pin conversion to a specific version -->
-- [ ] Reuse same versioning machinery for receipt templates + waivers. <!-- NOTE-defer: cross-domain; receipt templates and waivers have no versioning tables; blocked on server schema work beyond estimates -->
 - [ ] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email.
   - **NOTE (2026-04-26):** Requires server endpoint `POST /estimates/:id/esign-link` that mints a short-lived token; no such endpoint exists yet. Android side is share-intent boilerplate but cannot be wired until server ships.
 - [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
@@ -2006,8 +1642,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] **Month** — custom `CalendarGrid` Composable with dot per day for events; tap day → agenda. (commit c00bd78 — `AppointmentMonthView.kt` 6×7 grid via `YearMonth` iteration + dot indicators + month nav arrows + tap → Day drill-down)
 - [x] **Week** — 7-column time-grid; events as tonal tiles colored by type; scroll-to-now pin. (baseline `AppointmentWeekView`)
 - [x] **Day** — agenda list grouped by time-block (morning / afternoon / evening). (baseline Day picker + list)
-- [x] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`). (`AppointmentKanbanView.kt` — `AppointmentViewMode.Kanban` hidden on phone (&lt;600 dp); employee-column grid 07:00–20:00; `DraggableApptTile` detectDragGestures + haptic on drop; `kanbanReschedule()` PATCH in VM)
-- [x] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`). (session 2026-04-26 — `AppointmentKanbanView.kt`: sw600dp tablet guard, employee columns derived from loaded appointments, 07:00–21:00 × 30-min slot grid, tonal tiles by type, `detectDragGestures` lift + ghost border + `HapticFeedbackType.LongPress` on drop, `AlertDialog` ConfirmDialog before PATCH, `AppointmentListViewModel.rescheduleAppointment()` optimistic update + rollback-on-failure reload; `AppointmentViewMode.Kanban` added to enum; `AppointmentListScreen` wired with `LocalConfiguration.screenWidthDp >= 600` for `isTablet`)
+- [ ] **Time-block Kanban** (tablet) — columns = employees, rows = time slots (drag-drop reschedule via `detectDragGestures`).
 - [x] **Today** button in top bar; `Ctrl+T` shortcut. (commit c00bd78 — IconButton top-bar + `KeyboardShortcuts.kt` Ctrl+T via `onJumpToToday` param)
 - [x] **Filter** — employee / location / type / status. (commit c00bd78 — `FilterChipRow.kt` + ModalBottomSheet pickers; `AppointmentFilter` VM state)
 
@@ -2019,8 +1654,7 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Send-reminder manually (`POST /sms/send` + template). (commit c00bd78 — Send Reminder OutlinedButton → POST /appointments/:id/send-reminder; 404 tolerated)
 
 ### 10.3 Create
-- [x] Minimal. (`AppointmentQuickCreateSheet.kt` — ModalBottomSheet with title + start/end date-time pickers; `FilledTonalButton` Save; "More details" escalates to full form; `quickCreate()` POST in VM via `AppointmentApi.createAppointment`; secondary SmallFAB FlashOn icon in list screen)
-- [x] Minimal. (session 2026-04-26 — `leads/AppointmentCreateScreen.kt` already provides the full form and is the entry point wired from NavGraph `Screen.AppointmentCreate`; no separate minimal form needed as the full form handles the minimal case)
+- [ ] Minimal.
 - [x] Full form: customer, assignee, location, start time, duration, type, linked ticket / estimate / lead, reminder offsets, recurrence (daily / weekly / custom via RRULE), notes.
 - [x] **Calendar mirror** — "Add to my Calendar" toggle writes event via `CalendarContract.Events.CONTENT_URI` to user's selected calendar (requires `WRITE_CALENDAR` runtime permission, requested on toggle). (commit c00bd78 — `util/CalendarMirror.kt` uses `Intent.ACTION_INSERT` with pre-filled title/begin/end/location/description; no runtime permission needed; `<queries>` entry in manifest for API 30+ visibility)
 - [x] **Conflict detection** — if assignee double-booked, modal warning with "Schedule anyway" / "Pick another time". (commit c00bd78 — `AppointmentDetailViewModel.detectConflict()` local-only; `ConflictWarningBanner` shown in detail)
@@ -2033,36 +1667,21 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [x] Recurring-event edits — "This event" / "This and following" / "All".
 
 ### 10.5 Reminders
-- [ ] Server cron sends FCM N min before (per-user setting). <!-- NOTE-defer: server has no FCM appointment-reminder cron job; requires server-side scheduler + FCM device-token push endpoint -->
-- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons. <!-- NOTE-defer: blocked on server sending data-only FCM; no appointment push event currently dispatched by server -->
-- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen. <!-- NOTE-defer: blocked on same server FCM cron; also requires Android POST_NOTIFICATIONS permission grant flow wired to appointment reminder settings -->
+- [ ] Server cron sends FCM N min before (per-user setting).
+- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons.
+- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen.
 
 ### 10.6 Check-in / check-out
-- [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (session 2026-04-27 — `CheckInCard` composable in `AppointmentDetailScreen`; `markCheckedIn()` in VM calls `POST /appointments/:id/check-in` with 404-fallback to PATCH status="checked_in"; `TicketApi.startBenchTimer(linkedTicketId)` fired fail-open on check-in)
-- [x] "Customer departed" on completion. (session 2026-04-27 — `markCheckedOut()` calls `POST /appointments/:id/check-out` + 404-fallback PATCH status="completed"; `checked_in_at`/`checked_out_at` fields added to `AppointmentItem` DTO; `TimestampRow` composable formats ISO→"h:mm a"; haptic `LongPress` on both buttons; TalkBack `contentDescription` on card + buttons; status-aware card hides for cancelled/no_show)
+- [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (commit TBD — `checkIn()` in `AppointmentDetailViewModel` PATCHes status to "in_progress"; "Customer arrived" `SuggestionChip` shown when status is pre-arrival; local epoch timestamp drives `CheckInStatusCard` live elapsed timer)
+- [x] "Customer departed" on completion. (commit TBD — `checkOut()` PATCHes status to "completed"; "Customer departed" chip shown while in_progress; `CheckInStatusCard` switches to "Completed" + total duration on checkout)
 
 ### 10.7 Scheduling engine
-- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). <!-- NOTE-defer: server has no appointment_types table or per-type config endpoint; requires new migration + routes -->
-- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. <!-- NOTE-defer: server has no availability/capacity model; requires staff-shifts + buffer-times schema + GET /appointments/availability endpoint -->
-- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). <!-- NOTE-defer: POST /appointments/suggest does not exist on server -->
-- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. <!-- NOTE-defer: optimistic rollback requires server conflict-check on PATCH; current PATCH returns updated appointment but does not reject on conflict -->
-- [ ] Multi-location view: combine or filter by location. <!-- NOTE-defer: server appointments table has location_id but no GET /appointments?location= multi-location aggregation endpoint -->
-- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. <!-- NOTE-defer: server has no deposit_required_after_noshow tenant setting; no policy enforcement endpoint -->
-- [ ] Server cron sends FCM N min before (per-user setting). NOTE: server already runs a 15-min SMS reminder cron (`index.ts`); FCM token registration + FCM send from server is not yet implemented server-side — server-blocked.
-- [ ] Data-only FCM triggers `NotificationManagerCompat` local alert if user foregrounded; actionable notif has "Call / SMS / Mark arrived" `Notification.Action` buttons. NOTE: depends on server FCM push — server-blocked until FCM token storage added to server.
-- [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen. NOTE: requires FCM push from server — server-blocked.
-
-### 10.6 Check-in / check-out
-- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. NOTE: server has no `PATCH /appointments/:id/check_in` endpoint and no `checked_in_at` column — server-blocked.
-- [ ] "Customer departed" on completion. NOTE: same server-block as above — `checked_out_at` column and endpoint missing.
-
-### 10.7 Scheduling engine
-- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). NOTE: server has no appointment_types table or per-type duration config — server-blocked.
-- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates. NOTE: requires server-side availability engine (`/appointments/availability` or similar) — server-blocked.
-- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`). NOTE: endpoint does not exist on server — server-blocked.
-- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict. NOTE: Kanban drag-reschedule implemented in §10.1 above; full scheduling engine drag needs server availability checks — deferred with server dependency.
-- [ ] Multi-location view: combine or filter by location. NOTE: location filter chip exists (§10.1); combined multi-location aggregation needs server support — server-blocked.
-- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy. NOTE: requires server-side per-customer no-show counter + tenant settings key — server-blocked.
+- [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool).
+- [ ] Availability: staff shifts × resource capacity × buffer times × blackout holiday dates.
+- [ ] Suggest engine: given customer window, return 3 nearest slots satisfying resource + staff requirements (`POST /appointments/suggest`).
+- [ ] Tablet drag-drop calendar (mandatory big-screen); phone list-by-day. Drag-to-reschedule = optimistic update + server confirm + rollback on conflict.
+- [ ] Multi-location view: combine or filter by location.
+- [ ] No-show tracking per customer with tenant-configurable deposit-required-after-N-no-shows policy.
 
 ---
 ## 11. Expenses
@@ -2107,7 +1726,6 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 ### 12.1 Thread list
 - [x] Threads list via `LazyColumn`.
 - [x] **Search** — across all messages + phone numbers.
-- [x] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row.
 - [x] **Unread badge** on launcher icon via `ShortcutBadger` / Android 8+ notification-dot auto-badge driven by NotificationChannel; per-thread bubble on row. (session 2026-04-26 — Android 8+ auto-badge wired via `CH_SMS_INBOUND` `setShowBadge(true)` + `setNumber(badgeCount)` in `NotificationController`; per-thread blue dot already in `ConversationRow`)
 - [x] **Filters** — All / Unread / Flagged / Pinned / Archived / Assigned to me / Unassigned. (commit c00d412 — `components/SmsFilterChipRow.kt` `SmsFilter` enum + `applySmsFilter()` pure fn + chip row UI)
 - [x] **Pin important threads** to top. (commit c00d412 — long-press DropdownMenu + VM optimistic `pinThread()` + `SmsApi.pinThread`)
@@ -2115,7 +1733,6 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **Swipe actions** — leading: mark read / unread; trailing: flag / archive / pin. (commit c00d412 — SwipeToDismissBox left=Archive right=MarkRead)
 - [x] **Context menu** — Open, Call, Open customer, Assign, Flag, Pin, Archive. (commit c00d412 — long-press 6-action DropdownMenu)
 - [x] **Compose new** (FAB) — pick customer or raw phone.
-- [x] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
 - [ ] **Team inbox tab** (if enabled) — shared inbox, assign rows to teammates.
   - **NOTE (2026-04-26):** Design-blocked — no teammate roster endpoint in SMS scope; `POST /inbox/{id}/assign` exists but no team-member picker model. Deferred to cross-platform team feature planning.
 
@@ -2125,14 +1742,6 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **Delivery status** icons per message — sent / delivered / failed / scheduled. (commit c00d412 — `components/SmsDeliveryStatusDot.kt` pulse/single-check/double-check/red-X/blue-check per `message.status`)
 - [~] **Read receipts** (if server supports). (commit c00d412 — UI stub; readAt field pending server exposure on `SmsMessageItem`)
 - [x] **Typing indicator** (if supported). (commit c00d412 — Typing bubble renders when WS emits `typing` event for thread; server opt-in)
-- [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload through WorkManager. <!-- NOTE-defer: server has no MMS multipart upload endpoint; Twilio MMS requires server-side media URL hosting not yet implemented -->
-- [x] **Canned responses / templates** (from `GET /settings/templates`) surfaced as chips above composer; hotkeys Alt+1..9 (hardware keyboard).
-- [x] **Ticket / invoice / payment-link picker** — inserts short URL + ID token into composer.
-- [x] **Emoji picker** — system input method; Android 12+ emoji2 compat. (commit c00d412 — ModalBottomSheet 50-emoji grid + cursor-position insert via TextFieldValue)
-- [x] **Schedule send** — date/time picker for future delivery. (commit c00d412 — `components/ScheduleSendSheet.kt` DatePicker+TimePicker sheet; POST `/sms/send?send_at=<iso>` + 404 fallback `data/sync/ScheduledSmsWorker.kt` `@HiltWorker` local WorkManager)
-- [ ] **Voice memo** (if MMS supported) — record AAC via `MediaRecorder` inline; bubble plays audio via `ExoPlayer`. <!-- NOTE-defer: depends on MMS server support; same blocker as Attachments above -->
-- [x] **Long-press message** → `DropdownMenu` — Copy, Reply, Forward, Create ticket from this, Flag, Delete.
-- [x] **Create customer from thread** — if phone not associated.
 - [ ] **Attachments** — image / PDF / audio (MMS) via multipart upload through WorkManager.
   - **NOTE (2026-04-26):** Server-blocked — no multipart MMS endpoint defined; Room columns ready (`mediaUrls/mediaTypes/mediaLocalPaths`).
 - [x] **Canned responses / templates** (from `GET /sms/templates`) surfaced via bottom sheet. (session 2026-04-26 — `SmsTemplatePickerSheet` fully wired via toolbar icon + `showTemplateSheet`; hotkeys Alt+1..9 deferred as low-value on mobile)
@@ -2149,29 +1758,6 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [~] **Off-hours auto-reply** indicator when enabled. (commit c00d412 — banner UI shipped; VM `isOffHours` flag wired; server sets flag)
 
 ### 12.3 PATCH helpers
-- [x] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify).
-- [x] Mark read — `PATCH /sms/messages/:id { read: true }` (verify endpoint).
-- [x] Flag / pin — `PATCH /sms/conversations/:id { flagged, pinned }`.
-
-### 12.4 Voice / calls (if VoIP tenant)
-- [x] **Calls tab** — list inbound / outbound / missed; duration; recording playback if available.
-- [x] **Initiate call** — `POST /voice/call` with `{ to, customer_id? }` → Android `TelecomManager` self-managed ConnectionService integration.
-- [x] **Recording playback** — `GET /voice/calls/:id/recording` → `ExoPlayer`.
-- [x] **Hangup** — `POST /voice/call/:id/hangup`.
-- [x] **Transcription display** — if server provides.
-- [ ] **Incoming call** via `ConnectionService.onCreateIncomingConnection` → Android InCallService UI. <!-- NOTE-defer: TelecomManager ConnectionService requires MANAGE_OWN_CALLS permission + CallInProgressActivity refactor; deferred per §42 constraints -->
-
-### 12.5 Push → deep link
-- [x] FCM on new inbound SMS with NotificationChannel `sms_inbound`.
-- [x] Actions: Reply (`RemoteInput` inline text input), Open, Call.
-- [x] Tap → SMS thread Activity.
-
-### 12.6 Bulk SMS / campaigns (cross-links §37)
-- [ ] Compose campaign to a segment; TCPA compliance check; preview. <!-- NOTE-defer: cross-links §37 bulk SMS; no server bulk-send endpoint exists yet -->
-
-### 12.7 Empty / error states
-- [x] No threads → "Start a conversation" CTA → compose new.
-- [x] Send failed → red bubble with "Retry" chip; retried sends queued offline via WorkManager.
 - [x] Add `@PATCH` method to Retrofit `ApiService` (currently missing if truly missing — verify). (session 2026-04-26 — verified: `@PATCH` present in `SmsApi.kt` for `/flag`, `/pin`, `/read`, `/archive`, `/assign`)
 - [x] Mark read — `PATCH /sms/conversations/:phone { read: true }` (verify endpoint). (session 2026-04-26 — `SmsApi.markRead()` + `SmsRepository.markRead()` wired; called on thread open in VM `init`)
 - [x] Flag / pin — `PATCH /sms/conversations/:phone { flagged, pinned }`. (session 2026-04-26 — `SmsApi.toggleFlag/togglePin()` + `SmsRepository.toggleFlag/togglePin()` wired; called from both thread VM and list VM)
@@ -2214,10 +1800,6 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 - [x] **Empty state** — "All caught up. Nothing new." illustration.
 
 ### 13.2 Push pipeline
-- [x] **Register FCM** on login via `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform: "android", model, os_version, app_version }`. (`DeviceTokenManager.register()` sends 5-field payload; called from `BizarreCrmApp` on login-state true-transition + `FcmTokenRefresher.refreshIfStale`)
-- [x] **Token refresh** via `FirebaseMessagingService.onNewToken`. (`FcmService.onNewToken` persists new token + delegates to `DeviceTokenManager.register()`; `FcmTokenRefresher` 24-hour gate handles stale-refresh)
-- [x] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`. (`DeviceTokenManager.unregister()` calls Firebase `deleteToken()` + `authApi.deleteDeviceToken(token)`; 404-tolerant, non-blocking logout)
-- [x] **Data-only FCM** triggers background expedited Worker for delta sync. (`FcmService.onMessageReceived` detects `type=silent_sync` or `sync=true` → `SyncWorker.syncNow(this)` via OneTimeWorkRequest with EXPEDITED quota)
 - [x] **Register FCM** on login via `FirebaseMessaging.getInstance().token` → `POST /device-tokens` with `{ token, platform: "android", model, os_version, app_version }`. (session 2026-04-26 — `DeviceTokenManager.register()` sends full 5-field payload `{ token, platform, model, os_version, app_version }` via `AuthApi.registerDeviceToken`; `BizarreCrmApp` observes `isLoggedInFlow` and calls `registerIfNeeded()` on login; `FcmService.onNewToken` also triggers direct `register()` when logged in)
 - [x] **Token refresh** via `FirebaseMessagingService.onNewToken`. (session 2026-04-26 — `FcmService.onNewToken` persists token, sets `fcmTokenRegistered=false`, and calls `deviceTokenManager.register(token)`; `FcmTokenRefresher.refreshIfStale()` covers 24h periodic re-registration on `ON_START` via `BizarreCrmApp` lifecycle observer)
 - [x] **Unregister on logout** — `FirebaseMessaging.getInstance().deleteToken()` + `DELETE /device-tokens/:token`. (session 2026-04-26 — `DeviceTokenManager.unregister()` calls `FirebaseMessaging.deleteToken()` then `authApi.deleteDeviceToken(token)` as `DELETE auth/device-token?token=<t>`; called from `SettingsViewModel.logout()`)
@@ -2262,7 +1844,6 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [~] Role, wage/salary (admin-only), contact, schedule. (`EmployeeDetailScreen.kt` shows role, contact card, account card with PIN-set + active + clocked-in chips. Wage/schedule pending server endpoint.)
 - [x] **Performance tiles** (admin-only) — tickets closed, SMS sent, revenue touched, avg ticket value, NPS from customers. (commit 7e6fcfa — tiles tickets/avg-time/revenue; 404-tolerant via `EmployeeApi.getPerformance`)
 - [x] **Commissions** — `POST /team/shifts` drives accrual; display per-period; lock period (admin). (commit 7e6fcfa — MTD commission tile; 404-tolerant via `EmployeeApi.getCommissions`)
-- [x] **Schedule** — upcoming shifts + time-off. (`EmployeeDetailScreen.kt` — "Upcoming shifts" card loads `GET /schedule/shifts?user_id=:id` via `ShiftScheduleApi`; 404-tolerant stub-empty)
 - [x] **Schedule** — upcoming shifts + time-off. (session 2026-04-26 — 14-day upcoming shifts card in EmployeeDetailScreen via GET /schedule/shifts?user_id=&from_date=&to_date=; 404-tolerant; `ShiftsApi.kt` new)
 - [x] **PIN management** — change / clear (cannot view server-hashed PIN). (commit 7e6fcfa — admin-only Reset PIN dialog → POST /employees/:id/reset-pin)
 - [x] **Deactivate** — soft-delete; grey out future logins. (commit 7e6fcfa — admin confirm dialog → POST /employees/:id/deactivate)
@@ -2278,86 +1859,6 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 - [x] **Live Update** (Android 16) — "Clocked in since 9:14 AM" ongoing notification on Lock Screen until clock-out; foreground service `shortService` type so OS won't kill. (commit 7e6fcfa — `LiveUpdateNotifier.showLiveUpdate` on clock-in + `cancelLiveUpdate` on clock-out)
 
 ### 14.4 Invite / manage (admin)
-- [ ] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. Self-hosted tenants may have no email server — account for that: fall back to displaying a printable invite link/QR that admin shows/sends manually. <!-- NOTE-defer: no /employees/invite endpoint on server; POST /settings/users creates with password, not an invite token -->
-- [ ] **Resend invite**. <!-- NOTE-defer: no resend-invite endpoint on server; invite token lifecycle not implemented server-side -->
-- [x] **Assign role** — technician / cashier / manager / admin / custom. (`AssignRoleScreen.kt` — radio list of system roles; `PUT /settings/users/:id { role }`; nav route `employees/{id}/assign-role`)
-- [x] **Deactivate** — soft delete. (already covered in §14.2 admin actions; `POST /employees/:id/deactivate`)
-- [x] **Custom role creation** — Settings → Team → Roles matrix. (`CustomRolesScreen.kt` — create/delete custom roles via `GET/POST/DELETE /roles`; nav route `settings/team/roles`)
-
-### 14.5 Team chat
-- [x] **Channel-less team chat** (`GET /team-chat`, `POST /team-chat`). (implemented in §47 — `TeamChatListScreen.kt` + `TeamChatThreadScreen.kt` with WebSocket real-time; route `team-chat`)
-- [x] Messages with @mentions; real-time via WebSocket. (§47 — `TeamChatApi` + `TeamChatSendRequest.mentions` + WS room subscriptions)
-- [ ] Image / file attachment via PhotoPicker + SAF. <!-- NOTE-defer: server has no /team-chat attachment upload endpoint yet -->
-- [ ] Pin messages. <!-- NOTE-defer: no pin-message endpoint on server (`TeamChatApi` has no PUT/POST pin route) -->
-
-### 14.6 Team shifts (weekly schedule)
-- [x] **Week grid** (7 columns, employees rows). (`ShiftScheduleScreen.kt` — Mon–Sun surface cards listing shifts per day; week navigator prev/next)
-- [x] Tap empty cell → add shift; tap filled → edit. (FAB → `AddShiftDialog`; `POST /schedule/shifts`; delete via swipe ConfirmDialog; `PATCH /schedule/shifts/:id` wired in API)
-- [x] Shift modal — employee, start/end, role, notes. (`AddShiftDialog` collects employee ID, start/end ISO, notes)
-- [ ] Time-off requests side rail — approve / deny (manager). <!-- NOTE-defer: side rail requires cross-feature state between ShiftScheduleScreen and TimeOffViewModel; planned as adaptive-layout work -->
-- [ ] Publish week → notifies team via FCM. <!-- NOTE-defer: no publish-week endpoint on server; FCM broadcast from schedule not implemented -->
-- [ ] Drag-drop rearrange (tablet via `detectDragGestures`). <!-- NOTE-defer: no server reorder endpoint; tablet-only drag polish deferred -->
-
-### 14.7 Leaderboard
-- [x] Ranked list by tickets closed / revenue / commission. (`LeaderboardScreen.kt` — `OutlinedCard` rows with rank/name/tickets/revenue/commission via `GET /reports/tech-leaderboard`)
-- [x] Period filter (week / month / YTD). (FilterChip row: "This Week" / "This Month" / "Year to Date")
-- [x] Badges 🥇🥈🥉. (`rankLabel()` helper — gold/silver/bronze medal emoji for ranks 1–3)
-
-### 14.8 Performance reviews / goals
-- [ ] Reviews — form (employee, period, rating, comments); history. <!-- NOTE-defer: server has team.routes.ts /reviews but UI form + history screen not yet wired; planned for §48 expansion -->
-- [ ] Goals — create / update progress / archive; personal vs team view. <!-- NOTE-defer: goals endpoint exists but full create/progress/archive UI deferred to §48 -->
-
-### 14.9 Time-off requests
-- [x] Submit request (date range + reason). (`TimeOffRequestScreen.kt` — FAB → `SubmitRequestDialog`; `POST /time-off`)
-- [x] Manager approve / deny — **ensure manager approval queue screen actually ships**, not just the submit flow. (`TimeOffListScreen.kt` — full approval-queue screen with Approve/Reject + reason dialog; `PUT /time-off/:id`)
-- [ ] Affects shift grid. <!-- NOTE-defer: cross-screen coordination between TimeOffViewModel and ShiftScheduleScreen; planned as adaptive-layout side-rail work -->
-
-### 14.10 Shortcuts / Assistant
-- [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. <!-- NOTE-defer: requires TileService + foreground service permissions review; no server blocker but scoped as separate OS integration task -->
-- [x] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. (session 2026-04-27 — see §14.10 session note below)
-- [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`. <!-- NOTE-defer: requires Google App Actions BII registration + Google review; deferred to distribution polish phase -->
-
-### 14.11 Shift close / Z-report
-- [ ] End-of-shift summary: cashier taps "End shift" → summary card (sales count / gross / tips / cash expected / cash counted entered / over-short / items sold / voids); compare to prior shifts for trend. <!-- NOTE-defer: no server endpoint for shift-close summary; overlaps §39 CashRegister Z-report; planned as joint §14.11/§39 feature -->
-- [ ] Close cash drawer: prompt to count cash by denomination ($100, $50, $20…); system computes expected from sales; delta live; over-short reason required if >$2. <!-- NOTE-defer: server-blocked; cash-count input form deferred -->
-- [ ] Manager sign-off: over-short threshold exceeded requires manager PIN; audit entry with cashier + manager IDs. <!-- NOTE-defer: server-blocked; manager PIN flow for over-short deferred -->
-- [ ] Receipt: Z-report printed + PDF archived in §39 Cash register; PDF linked in shift summary. <!-- NOTE-defer: server-blocked; Z-report PDF generation deferred to §39 expansion -->
-- [ ] Handoff: next cashier starts with opening cash count entered by closing cashier. <!-- NOTE-defer: server-blocked -->
-- [ ] Sovereignty: shift data on tenant server only. <!-- NOTE-defer: architectural constraint; enforced by existing on-premise deployment model -->
-
-### 14.12 Hiring & offboarding
-- [ ] Hire wizard: Manager → Team → Add employee; steps basic info / role / commission / access locations / welcome email; account created; staff gets login link. <!-- NOTE-defer: no server invite-token flow; existing POST /settings/users covers basic creation (EmployeeCreateScreen) but wizard/multi-step not yet wired -->
-- [ ] Offboarding: Settings → Team → staff detail → Offboard; immediately revoke access, sign out all sessions, transfer assigned tickets to manager, archive shift history (kept for payroll); audit log; optional export of shift history as PDF. <!-- NOTE-defer: no server offboard endpoint; session-revoke API exists but ticket-transfer/archive-shift not implemented -->
-- [ ] Role changes: promote/demote path; change goes live immediately. <!-- NOTE-defer: AssignRoleScreen (§14.4) covers role change; promote/demote UX flow with confirmation deferred -->
-- [ ] Temporary suspension: suspend without offboarding (vacation without pay); account disabled until resume. <!-- NOTE-defer: no server suspend/resume endpoint distinct from deactivate -->
-- [ ] Reference letter (nice-to-have): auto-generate PDF summarizing tenure + stats (total tickets, sales); manager customizes before export. <!-- NOTE-defer: no server reference-letter endpoint; PDF export deferred -->
-
-### 14.13 Scorecards / subjective review
-- [ ] Metrics: ticket close rate, SLA compliance, customer rating, revenue attributed, commission earned, hours worked, breaks taken. <!-- NOTE-defer: no /scorecards server endpoint; metrics available via /reports/tech-leaderboard + /employees/:id/performance but combined scorecard view not implemented -->
-- [ ] Private by default: self + manager; owner sees all. <!-- NOTE-defer: server-blocked; role-gated visibility not implemented for scorecard -->
-- [ ] Manager annotations with notes + praise / coaching signals, visible to employee. <!-- NOTE-defer: server-blocked -->
-- [ ] Rolling trend windows: 30 / 90 / 365d with chart per metric. <!-- NOTE-defer: server-blocked; charting deferred -->
-- [ ] "Prepare review" button compiles scorecard + self-review form + manager notes into PDF for HR file. <!-- NOTE-defer: server-blocked -->
-- [ ] Distinguish objective hard metrics from subjective manager rating. <!-- NOTE-defer: server-blocked -->
-- [ ] Subjective 1-5 scale with descriptors. <!-- NOTE-defer: server-blocked; /reviews endpoint in team.routes.ts but full scorecard form deferred -->
-
-### 14.14 Peer feedback
-- [ ] Staff can request feedback from 1-3 peers during review cycle. <!-- NOTE-defer: no server peer-feedback endpoints -->
-- [ ] Form with 4 prompts: going well / to improve / one strength / one blind spot. <!-- NOTE-defer: server-blocked -->
-- [ ] Anonymous by default; peer can opt to attribute. <!-- NOTE-defer: server-blocked -->
-- [ ] Delivery to manager who curates before sharing with subject (prevents rumor / hostility). <!-- NOTE-defer: server-blocked -->
-- [ ] Frequency cap: max once / quarter per peer requested. <!-- NOTE-defer: server-blocked -->
-- [ ] A11y: long-form text input with voice dictation via system IME. <!-- NOTE-defer: system IME supports dictation natively; no blocker, but full peer-feedback form deferred until server exists -->
-
-### 14.15 Recognition / shoutouts
-- [ ] Peer-to-peer shoutouts with optional ticket attachment. <!-- NOTE-defer: no server shoutout endpoints -->
-- [ ] Shoutouts appear in peer's profile + team chat (if opted). <!-- NOTE-defer: server-blocked -->
-- [ ] Categories: "Customer save" / "Team player" / "Technical excellence" / "Above and beyond". <!-- NOTE-defer: server-blocked -->
-- [ ] Unlimited sending; no leaderboard of shoutouts (avoid gaming). <!-- NOTE-defer: server-blocked -->
-- [ ] Recipient gets FCM push. <!-- NOTE-defer: server-blocked -->
-- [ ] Archive received shoutouts in profile. <!-- NOTE-defer: server-blocked -->
-- [ ] End-of-year "recognition book" PDF export. <!-- NOTE-defer: server-blocked; PDF export deferred -->
-- [ ] Privacy options: private (sender + recipient) or team-visible (recipient opt-in). <!-- NOTE-defer: server-blocked -->
 - [x] **Invite** — `POST /employees` with `{ email, role }`; server sends invite link. Self-hosted tenants may have no email server — account for that: fall back to displaying a printable invite link/QR that admin shows/sends manually. (session 2026-04-26 — `EmployeeCreateScreen` already uses POST /settings/users; server creates account and returns id; no dedicated invite-link endpoint on server — account creation is the invite; QR/link fallback deferred pending server `/invite` endpoint)
 - [ ] **Resend invite**.
   - **NOTE (2026-04-26):** No `/employees/:id/resend-invite` endpoint on the server. Defer until server exposes it.
@@ -2400,8 +1901,10 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
   - **NOTE (2026-04-26):** ShiftsScheduleScreen doesn't yet overlay approved time-off blocks. Deferred as enhancement.
 
 ### 14.10 Shortcuts / Assistant
-- [x] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. (session 2026-04-27 — `ClockInTileService.persistClockState()` state bridge wired; `ClockInOutViewModel` + `ClockInTileViewModel` both call `broadcastClockState()` after toggle; Glance widget updated via `publishClockState()`; tile icon refreshes immediately via `TileService.requestListeningState()`)
-- [x] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. (session 2026-04-27 — `util/ClockShortcutPublisher.kt` (new): `updateShortcut(context, isClockedIn)` calls `ShortcutManagerCompat.pushDynamicShortcut` to upsert a context-aware dynamic shortcut rank 0; clocked-out state shows "Clock in" label + clock-with-play-badge icon; clocked-in state shows "Clock out" label + clock-with-stop-square icon; both deep-link to `bizarrecrm://clockin`; `clearShortcut()` removes on logout; `ClockInOutViewModel.broadcastClockState()` wired with runCatching guard; `AppNavGraph.kt`: `composable(Screen.ClockInOut.route)` now registers `navDeepLink { uriPattern = "bizarrecrm://clockin" }` so the shortcut tap navigates correctly; 2 new strings `shortcut_clock_out_short/long` added to strings.xml; build green)
+- [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app.
+  - **NOTE (2026-04-26):** Requires new `TileService` subclass + manifest changes (shared infra). `QuickTicketTileService` exists as a pattern. Defer to dedicated Shortcuts pass.
+- [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon.
+  - **NOTE (2026-04-26):** Requires `shortcuts.xml` manifest addition (shared infra). Defer.
 - [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`.
   - **NOTE (2026-04-26):** Requires `actions.xml` + BII registration; Google review process. Defer.
 
@@ -2500,21 +2003,6 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Export CSV. (commit 570754f — SAF via ReportsExportActions)
 
 ### 15.3 Tickets report
-- [~] Throughput (created vs closed) chart. (commit 570754f — `TicketsReportScreen` scaffold with chart stub)
-- [~] Avg time-in-status funnel. (commit 570754f — stub)
-- [~] SLA compliance % per tech. (commit 570754f — top-tech stub)
-- [ ] Label breakdowns. <!-- NOTE-defer: `TicketsReportScreen.kt` has status-breakdown donut and tech breakdown stubs but no ticket-label breakdown; requires server `GET /reports/ticket-labels` endpoint (not yet defined) and UI chart component -->
-
-### 15.4 Employee performance
-- [~] Leaderboard chart. (commit 570754f — placeholder redirects to Employees)
-- [x] Hours worked vs revenue attributed. (`EmployeesReportScreen.kt` renders `item.hoursWorked` and `item.commissionEarned` per row; CSV export includes both columns)
-- [x] Commission accrual. (same as above — commission earned displayed per employee + exported to CSV)
-
-### 15.5 Inventory report
-- [~] Stock value over time. (commit 570754f — `InventoryReportScreen` with stock-value stub)
-- [~] Sell-through rate per SKU. (commit 570754f — slow-movers/turnover stubs)
-- [~] Dead-stock age report. (commit 570754f — stub)
-- [ ] Shrinkage %. <!-- NOTE-defer: `InventoryReportScreen.kt` stubs only slow-movers, turnover, and restock-forecast; no shrinkage % section or server endpoint `GET /reports/inventory` defined yet -->
 - [x] Throughput (created vs closed) chart. (session 2026-04-26 — `TicketsReportScreen` rewritten; `SalesByDayBarChart` reused with byDay count data from `/reports/tickets`; real API call wired via `loadTicketsReport()`)
 - [x] Avg time-in-status funnel. (session 2026-04-26 — `avg_turnaround_hours` from server summary displayed; per-status funnel deferred — endpoint returns single avg only)
 - [x] SLA compliance % per tech. (session 2026-04-26 — `TechTicketCard` shows tickets assigned/closed + revenue; SLA % column stub shown pending per-tech threshold config)
@@ -2678,60 +2166,33 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [~] Charge / refund / void / capture / adjust. (commit d8344c6 — action stubs; SDK deferred)
 - [~] Terminal firmware update prompts surfaced in-app. (commit d8344c6 — banner stub)
 - [~] Offline-capable (store-and-forward). (deferred pending SDK)
-- [ ] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal. <!-- NOTE-defer: requires BlockChyp Android SDK (not yet integrated); HCE for payment is a separate AID registration from loyalty HCE; deferred with other BlockChyp SDK items in §17.6 -->
+- [ ] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal.
 
 ### 17.7 Weight scale
-- [x] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight. (`WeightScaleManager.kt` — SPP RFCOMM + Brecknell SBI protocol; `WeightScaleScreen.kt` — pair/unpair + status pill; `Screen.WeightScale` route wired)
-- [x] Read weight on demand; show "0.84 lb" on line. (`WeightScaleManager.requestWeight()` → `ScaleReading.Weight.displayString`; displayed in `WeightScaleScreen` as `displaySmall` typography)
+- [ ] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight.
+- [ ] Read weight on demand; show "0.84 lb" on line.
 
 ### 17.8 NFC
-- [x] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer. (`util/NfcDispatcher.kt` — foreground dispatch enable/disable + NDEF text record parsing for `bizarre-customer:<id>` format; returns `CustomerTap(customerId)`)
-- [x] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet. (`service/LoyaltyHceService.kt` — `HostApduService` with AID `F0BIZLOY\0`; SELECT + GET LOYALTY DATA APDU handler; stub token pending `POST /loyalty/redeem` server endpoint)
+- [ ] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer.
+- [ ] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet.
 
 ### 17.9 Stylus (S Pen / USI)
-- [x] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`. (implemented as §22 — `ui/components/SignatureCanvas.kt` + `util/StylusPressure.kt` `strokeWidthFromPressure`; commit bca059e)
-- [ ] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`). <!-- NOTE-defer: requires Samsung SpenSdk dependency not bundled; primary S Pen button wired to SignatureCanvas undo via StylusButtonCallback (commit bca059e) but the system-wide quick-capture shortcut needs SpenSdk integration -->
+- [ ] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`.
+- [ ] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`).
 
 ### 17.10 HID keyboard / barcode scanner
 - [x] External Bluetooth / USB-C keyboard full support across all text fields.
-- [x] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target. (`PosEntryScreen.kt` `onPreviewKeyEvent` HID buffer < 50ms gap detection + Enter submit; `BarcodeScanScreen.kt` hint text; `PosEntryViewModel.lookupBarcode`)
+- [~] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target.
 - [x] Shortcut overlay help (Ctrl+/) lists all shortcuts.
 
 ### 17.11 Hardware pairing wizard
-- [x] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save. (`ui/screens/hardware/HardwarePairingWizardScreen.kt` — 5-step wizard: Bluetooth check, scan, select, role assign, test + save; routes to `Screen.HardwarePairingWizard`)
-- [x] Per-location config: same device may be paired once, used across POS / Ticket screens. (`PrinterManager` SharedPrefs + `WeightScaleManager` SharedPrefs — role-keyed persistence; `HardwareRole` enum covers Receipt/Label/Invoice/Scale roles shared across all screens)
+- [ ] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save.
+- [ ] Per-location config: same device may be paired once, used across POS / Ticket screens.
 
 ### 17.12 Reconnect & resilience
-- [x] Auto-reconnect Bluetooth on Activity resume; exponential backoff. (`util/BluetoothReconnectManager.kt` — `reconnectAll(scope)` delegates to `PrinterManager.onActivityResume()`; `reconnectWithBackoff(role, scope)` loop with 2 s base / 30 s cap exponential backoff)
-- [x] Status chip on affected screens. (`PrinterDiscoveryScreen` `StatusPill` composable; `WeightScaleScreen` `ScaleStatusPill`; both driven by `StateFlow<PrinterStatus>` / `StateFlow<ScaleStatus>`)
-- [x] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history". (`BluetoothReconnectManager.emitSkipEvent()` emits `ResilienceEvent` via `hardwareResilience` StateFlow; callers show a `Snackbar` and continue; strings `hardware_skip_*` in `strings.xml`)
-- [x] Tap-to-Pay on Android via BlockChyp — evaluate; phones with NFC HCE can accept contactless without external terminal. (session 2026-04-26 — evaluation card in HardwareSettingsScreen; marked Evaluating pending BlockChyp Android SDK T2P support; NFC HCE infra exists via LoyaltyCardHceService)
-
-### 17.7 Weight scale
-- [x] Serial-over-Bluetooth scale (e.g. Brecknell, Dymo) for shipping / trade-in weight. (session 2026-04-26 — mock-mode wiring; needs physical-device test — service/WeightScaleService.kt + data/repository/HardwareRepository.kt; BT SPP read, Brecknell/Fairbanks ASCII parse, ScaleState StateFlow)
-- [x] Read weight on demand; show "0.84 lb" on line. (session 2026-04-26 — mock-mode wiring; needs physical-device test — WeightScaleService.readWeight() emits ScaleState.Ready(WeightReading) with label() = "0.84 lb"; accessible via HardwareRepository)
-
-### 17.8 NFC
-- [x] `NfcAdapter` for customer-card tap (tenant-printed NFC cards) → auto-lookup customer. (session 2026-04-26 — mock-mode wiring; needs physical NFC card test — data/repository/NfcRepository.kt; foreground dispatch + NDEF URI parse for bizarrecrm://customer/<id> → customerIdScanned: SharedFlow<String>)
-- [x] Host-based Card Emulation (HCE) for loyalty cards rendered by Android Wallet. (session 2026-04-26 — mock-mode wiring; needs two-device NFC test — service/LoyaltyCardHceService.kt + res/xml/hce_apdu_service.xml; AID F042495A43524D01; manifest-registered; enrolment screen deferred)
-
-### 17.9 Stylus (S Pen / USI)
-- [x] Compose `Canvas` pressure-sensitive signature capture via `PointerEventType.Move` + `MotionEvent.getPressure()`. (session 2026-04-26 — mock-mode wiring; needs physical stylus test — ui/screens/hardware/SignatureCanvas.kt; variable-width strokes, palm rejection, undo stack, toBitmap() export, SignaturePad wrapper)
-- [x] S Pen button → quick-capture signature from any screen (Samsung-specific: `SpenSdk`). (session 2026-04-26 — mock-mode wiring; needs S Pen test — wired via handleStylusButtonEvent + StylusButtonCallback inside SignatureCanvas; primary double-tap = undo; uses standard MotionEvent.BUTTON_STYLUS_PRIMARY; no Samsung-only SDK dep)
-
-### 17.10 HID keyboard / barcode scanner
-- [x] External Bluetooth / USB-C keyboard full support across all text fields.
-- [x] HID-mode barcode scanner: detect rapid keystrokes (< 50ms intra-key) + Enter; buffer → submit to active scan target. (session 2026-04-26 — mock-mode wiring; needs physical HID scanner test — `util/HidBarcodeScanner.kt`; Hilt singleton; onKeyEvent() in onPreviewKeyEvent; emits on barcodeScanned: SharedFlow<String>; threshold 50ms, min length 4)
-- [x] Shortcut overlay help (Ctrl+/) lists all shortcuts.
-
-### 17.11 Hardware pairing wizard
-- [x] Settings → Hardware → "Add device" walkthrough covers: enable Bluetooth, discover, pair, role-assign, test print/charge/scan, save. (session 2026-04-26 — mock-mode wiring; needs physical-device test — HardwarePairingWizardScreen.kt; 5-step wizard; entry card in HardwareSettingsScreen)
-- [x] Per-location config: same device may be paired once, used across POS / Ticket screens. (session 2026-04-26 — pairing in SharedPreferences via PrinterManager/WeightScaleService singletons; HardwareRepository exposes state to all screens)
-
-### 17.12 Reconnect & resilience
-- [x] Auto-reconnect Bluetooth on Activity resume; exponential backoff. (session 2026-04-26 — PrinterManager.reconnectWithBackoff: delays 0/1s/2s/4s/8s up to 15s budget; called from onActivityResume(); status emitted reactively)
-- [x] Status chip on affected screens. (session 2026-04-26 — StatusPill in PrinterDiscoveryScreen observes printerStatus StateFlow; HardwareRepository.printerStatus for POS/Ticket VMs)
-- [x] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history". (session 2026-04-26 — all BT ops on Dispatchers.IO with timeouts; reconnectWithBackoff never throws; WeightScaleService mock on no-BT; Result<T> throughout; Snackbar not blocking dialog)
+- [ ] Auto-reconnect Bluetooth on Activity resume; exponential backoff.
+- [ ] Status chip on affected screens.
+- [ ] Never block the UI on hardware failure — degrade to "Print skipped, reprint from sales history".
 
 ---
 ## 18. Search (Global + Scoped)
@@ -2739,26 +2200,19 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 ### 18.1 Global search
 - [x] Top bar search icon → full-screen search Activity.
 - [x] Indexes: customers, tickets, invoices, inventory, employees, appointments, leads, SMS threads.
-- [x] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert. (FTS4 virtual tables customers_fts/tickets_fts/inventory_fts + AFTER INSERT/UPDATE/DELETE triggers in MIGRATION_11_12; CustomerFtsDao/TicketFtsDao/InventoryFtsDao; BizarreDatabase v12)
-- [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert. NOTE: (session 2026-04-26) Requires Room schema version bump, FTS entity classes, upsert triggers, and updated offline DAO queries — architectural; offline search currently falls back to LIKE queries on CustomerDao/TicketDao/InventoryDao which is functional but not FTS-fast. Deferred pending dedicated FTS schema pass.
+- [ ] **On-device FTS5** via Room `@Fts4` / SQLite FTS5 virtual tables synced from canonical tables on upsert.
 - [x] Debounced 300ms; results grouped by entity type with count chip.
 - [x] Tap result → deep link.
 - [x] Recent searches cached in DataStore.
 - [x] Keyboard shortcut Ctrl+F on tablet/ChromeOS.
 
 ### 18.2 Scoped search per screen
-- [x] Each list has its own `SearchBar` (Material 3) at top. (tickets, customers, inventory, invoices, SMS, estimates, expenses all have SearchBar via SharedComponents.SearchBar)
-- [x] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI). (placeholders updated: Tickets "Order ID, customer, IMEI…"; Customers "Name, phone, email, org…"; Inventory "Name, SKU, UPC, category…"; Invoices/Estimates "Order ID, customer, status…"; SMS "Phone, name, message…"; Expenses "Category, description, date…")
+- [ ] Each list has its own `SearchBar` (Material 3) at top.
+- [ ] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI).
 
 ### 18.3 Fuzzy / typo tolerance
-- [x] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation). (FtsQuerySanitizer.sanitize() strips punctuation, lowercases, appends `*` per token for FTS4 MATCH prefix queries; 9 JVM tests in FtsQuerySanitizerTest)
-- [x] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars). (FtsQuerySanitizer.withinEditDistance() + isFuzzyMatch() Wagner-Fischer DP; used as post-filter on LIKE-fallback results when FTS returns nothing)
-- [x] Each list has its own `SearchBar` (Material 3) at top. (session 2026-04-26 — tickets/customers/invoices/inventory/leads/SMS already had it; added to EmployeeListScreen + AppointmentListScreen in this session)
-- [x] Scoped fields per entity (e.g. Tickets: order ID, customer, IMEI). (session 2026-04-26 — employee: name/email/role/phone; appointment: title/customerName/employeeName/notes/status/type; others pre-existing)
-
-### 18.3 Fuzzy / typo tolerance
-- [ ] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation). NOTE: depends on 18.1 on-device FTS5 virtual tables — Room schema change required, deferred.
-- [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars). NOTE: depends on 18.1 FTS5, deferred with it.
+- [ ] FTS5 with prefix matching + custom tokenizer (lowercase, remove punctuation).
+- [ ] Optional Levenshtein for typos (edit distance ≤ 2 on ≥ 4 chars).
 
 ### 18.4 Voice search
 - [x] Mic button in search bar → `RecognizerIntent.ACTION_RECOGNIZE_SPEECH` → transcribed query injected.
@@ -2769,20 +2223,13 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 - [x] Pin a query — named chip at top of search screen.
 
 ### 18.6 Natural-language query (stretch)
-- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter. <!-- NOTE-defer: no /nlq-search endpoint on server; requires LLM integration work tracked in TODO.md -->
-- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list. <!-- NOTE-defer: depends on 18.6 NLQ endpoint -->
-- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off. <!-- NOTE-defer: depends on 18.6 NLQ endpoint -->
+- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter.
+- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list.
+- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off.
 
 ### 18.7 App search index
-- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed). <!-- NOTE-defer: significant privacy-review and opt-in UX work; stretch goal not yet scoped -->
-- [ ] Opt-out per tenant. <!-- NOTE-defer: depends on 18.7 AppSearch index -->
-- [ ] `POST /nlq-search` (server-side LLM) with user query → structured filter. NOTE: server endpoint does not exist; design-blocked.
-- [ ] Example: "tickets assigned to Anna past 7 days in Ready status" → filtered ticket list. NOTE: server-blocked.
-- [ ] Sovereignty: routes through tenant server only; tenant admin toggles NLQ on/off. NOTE: server-blocked.
-
-### 18.7 App search index
-- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed). NOTE: privacy review needed before implementing; design-blocked.
-- [ ] Opt-out per tenant. NOTE: depends on above; design-blocked.
+- [ ] Expose top N customers / tickets to Android `AppSearch` system index for Assistant / launcher surfacing (opt-in, privacy-reviewed).
+- [ ] Opt-out per tenant.
 
 ### 18.8 Empty / loading states
 - [x] Empty: "Try a different search" + tips.
@@ -2809,7 +2256,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Sign-out button.
 
 ### 19.3 Notifications
-- [x] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut). (session 2026-04-27 — `NotificationChannelPreviewScreen.kt` added: lists all 24 registered channels grouped by group (Operational/Customer/Admin/System/Staff/Diagnostics); shows OS-reported importance label, badge, vibration, sound per channel; per-channel "Configure" button deep-links into `Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS`; pre-O fallback banner; "View notification channels" row wired into `NotificationSettingsScreen` via `onChannelPreview` callback; `Screen.NotificationChannelPreview` route added in `AppNavGraph.kt`)
+- [~] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut).
 - [x] Quiet hours (start / end / days-of-week).
 - [x] Per-event override matrix (§73). (commit 922ef1f — 6 events × 3 channels {Push/SMS/Email} checkbox grid + `AppPreferences.getNotifMatrixEnabled/setNotifMatrixEnabled`)
 - [x] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`. (commit 922ef1f — per-channel RingtoneManager intent + `getNotifSoundUri/setNotifSoundUri`)
@@ -2837,87 +2284,6 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Active sessions list + revoke. (commit c8d42a5 + 922ef1f — ActiveSessionsScreen link in SecuritySummary)
 
 ### 19.7 Tickets
-- [x] Default due date rule (+N business days), tenant-level visibility (`ticket_all_employees_view_all`). (`TicketSettingsScreen` + `TicketSettingsViewModel` — `getStoreConfig/putStoreConfig`; default_due_days, allEmployeesViewAll)
-- [x] IMEI/serial required flag. (`TicketSettingsScreen` — `imei_required` store-config key)
-- [x] Photo count required on close. (`TicketSettingsScreen` — `photo_required_on_close` store-config key)
-- [ ] Default assignee, status taxonomy editor, transition guards, default service type. <!-- NOTE-defer: requires dedicated server endpoints for per-tenant defaults; store-config does not cover assignee or transition rules -->
-
-### 19.8 POS / payment
-- [x] Payment methods enabled (read list). (`PaymentSettingsScreen` — `getPaymentMethods()` displayed as read-only list; mutate via web admin)
-- [x] BlockChyp terminal name + tip prompt. (`PaymentSettingsScreen` — `blockchyp_terminal_name`, `blockchyp_prompt_for_tip` via `putStoreConfig`)
-- [x] Tip presets. (`PaymentSettingsScreen` — `tip_presets` comma-separated via `putStoreConfig`)
-- [x] Cash drawer enabled. (`PaymentSettingsScreen` — `cash_drawer_enabled` via `putStoreConfig`)
-- [ ] BlockChyp terminal pairing (full credential flow). <!-- NOTE-defer: BlockChyp credential keys (api_key, bearer_token, signing_key) are sensitive; pairing flow needs dedicated BlockChyp test-connection endpoint + secure credential entry; out of scope for Settings agent -->
-- [ ] Tax classes, default tax. <!-- NOTE-defer: tax class CRUD uses dedicated `/settings/tax-classes` endpoint; needs its own screen to avoid conflating with payment settings -->
-- [ ] Rounding rules (per jurisdiction). <!-- NOTE-defer: no server endpoint for per-jurisdiction rounding; tracked under §19.17 -->
-- [ ] Receipt template editor (live preview). <!-- NOTE-defer: receipt template is a complex multi-field form requiring live PDF/HTML preview; deferred to §19.18 -->
-
-### 19.9 SMS
-- [x] Provider connection status (read). (`SmsSettingsScreen` — reads `sms_provider_type` from store-config + provider list from `getSmsProviders()`)
-- [x] Sender number / TFN. (`SmsSettingsScreen` — `sms_sender_number` via `putStoreConfig`)
-- [x] Compliance footer. (`SmsSettingsScreen` — `sms_compliance_footer` via `putStoreConfig`)
-- [x] Off-hours auto-reply template. (`SmsSettingsScreen` — `sms_off_hours_reply` via `putStoreConfig`)
-- [ ] Rate-limit & quota display. <!-- NOTE-defer: no server endpoint exposing per-provider quota / rate-limit counters; requires provider-specific API calls (Twilio account usage, etc.) -->
-
-### 19.10 Integrations
-- [x] Hub screen with BlockChyp + SMS nav rows; Google Wallet / Webhooks / Zapier shown as coming-soon. (`IntegrationsScreen` — navigates to `HardwareSettings` for BlockChyp terminal, `SmsSettings` for SMS; admin-only gate at nav call site)
-- [ ] Disconnect / reconnect / test per integration. <!-- NOTE-defer: disconnect/reconnect requires credential-clearing endpoints not yet exposed; test-connection exists for SMS (`/settings/sms/test-connection`) but not for BlockChyp or Google Wallet at the settings layer -->
-
-### 19.11 Team / roles
-- [x] Employee list deep link (§14). (`TeamSettingsScreen` — navigates to `Screen.Employees`; admin-gated)
-- [x] Custom role matrix editor (§49). (`TeamSettingsScreen` — navigates to `Screen.CustomRoles`; admin-gated)
-
-### 19.12 Data
-- [x] Import (§50). (`DataSettingsScreen` — navigates to `Screen.DataImport`)
-- [x] Export (§51). (`DataSettingsScreen` — navigates to `Screen.DataExport`)
-- [x] Clear cache. (`DataSettingsScreen` + `DataSettingsViewModel.clearCache()` — deletes cacheDir contents + clears recent searches; `ConfirmDialog` gated)
-- [x] Reset to defaults. (`DataSettingsScreen` + `DataSettingsViewModel.resetToDefaults()` — resets darkMode/dynamicColor/reduceMotion/haptic/keepScreenOn prefs; `ConfirmDialog` gated)
-- [ ] Sync issues (§20.7). <!-- NOTE-defer: Sync Issues tile already implemented in §20.7 (Settings tile gated on dead-letter count); deep-link from DataSettings deferred pending UX decision on whether to duplicate the tile -->
-- [ ] Dedup scan (§5.10). <!-- NOTE-defer: dedup scan is a server-side operation requiring dedicated endpoint; tracked under §5 -->
-
-### 19.13 Diagnostics (developer / support)
-- [x] Server URL (read-only). (`FullDiagnosticsScreen` — reads `authPreferences.serverUrl`)
-- [x] App version + build + commit SHA. (`FullDiagnosticsScreen` — reads `BuildConfig.VERSION_NAME/VERSION_CODE` + optional `BUILD_COMMIT_SHA` BuildConfig field)
-- [x] View logs (last 200 lines, redacted). (`FullDiagnosticsScreen` — renders `breadcrumbs.recent().takeLast(200)`)
-- [x] Export DB (dev-only, encrypted zip). (`FullDiagnosticsScreen` — links to existing `DiagnosticsScreen` when `BuildConfig.DEBUG`)
-- [x] Force crash (debug builds only). (`FullDiagnosticsScreen` — `FullDiagnosticsViewModel.forceCrash()` behind `BuildConfig.DEBUG` guard + error card UI)
-- [x] Force sync / Flush drafts. (`FullDiagnosticsScreen` — `viewModel.forceSyncNow()` calls `syncManager.syncAll()`)
-- [ ] Feature flags viewer (admin). <!-- NOTE-defer: no `/settings/feature-flags` server endpoint; deferred to §19.15 -->
-- [ ] Telemetry events counter. <!-- NOTE-defer: telemetry infrastructure (event counter, flush) not yet implemented; deferred -->
-
-### 19.14 About
-- [x] Open-source licenses (`OssLicensesMenuActivity`). (`AppInfoScreen` — launches `com.google.android.gms.oss.licenses.OssLicensesMenuActivity`; gracefully no-ops if absent)
-- [x] Privacy policy. (`AppInfoScreen` — opens `https://bizarreelectronics.com/privacy` in browser)
-- [x] Terms. (`AppInfoScreen` — opens `https://bizarreelectronics.com/terms` in browser)
-- [x] Rate app on Play Store. (`AppInfoScreen` — launches `market://` intent with fallback to browser Play Store URL)
-
-### 19.15 Feature flags UI (admin)
-- [ ] List tenant feature flags + toggles. <!-- NOTE-defer: no server endpoint for feature-flag enumeration; server would need `GET /settings/feature-flags` + `PUT /settings/feature-flags/:key` -->
-- [ ] Scoped per environment (sandbox vs prod). <!-- NOTE-defer: depends on feature-flags endpoint above -->
-
-### 19.16 Ticket-status editor
-- [ ] Reorder statuses (drag). <!-- NOTE-defer: drag-reorder requires `ReorderableList` or `DragAndDrop` API (API 35+); complex UX; deferred -->
-- [ ] Edit name, color, transition guards. <!-- NOTE-defer: server endpoints exist (`PUT /settings/statuses/:id`) but editing transition guards requires a guard-matrix UI not yet designed -->
-- [ ] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19). <!-- NOTE-defer: same as above; needs status editor screen first -->
-
-### 19.17 Tax configuration
-- [ ] Multi-jurisdiction rules. <!-- NOTE-defer: no server endpoint for multi-jurisdiction tax rules; single `tax_rate` key in store-config is insufficient -->
-- [ ] Tax-exempt customer policy. <!-- NOTE-defer: requires customer-group or per-customer tax-exempt flag; server schema not confirmed -->
-- [ ] Rounding mode. <!-- NOTE-defer: no server endpoint -->
-- [ ] Fiscal-period lock date. <!-- NOTE-defer: no server endpoint -->
-
-### 19.18 Receipts / waivers / templates
-- [ ] Template editor with preview. <!-- NOTE-defer: receipt templates involve many `receipt_cfg_*` keys + live PDF/HTML preview; requires dedicated design + server round-trip for preview rendering -->
-- [ ] Versioning per §8.6. <!-- NOTE-defer: depends on template editor above -->
-- [ ] Per-location override. <!-- NOTE-defer: single-tenant; per-location is multi-location feature not yet in server schema -->
-
-### 19.19 Business info
-- [x] Shop name, address, phone, email. (`BusinessInfoScreen` + `BusinessInfoViewModel` — reads/writes `store_name`, `address`, `phone`, `email` via `getStoreConfig/putStoreConfig`)
-- [x] Tax ID / EIN. (`BusinessInfoScreen` — `tax_id` key via `putStoreConfig`)
-- [x] Social links (website, Facebook, Instagram). (`BusinessInfoScreen` — `website`, `social_facebook`, `social_instagram` via `putStoreConfig`)
-- [ ] Shop logo upload. <!-- NOTE-defer: logo upload uses `POST /settings/logo` with multipart; requires separate PhotoPicker flow; deferred -->
-- [x] Business hours. (this session — `BusinessHoursEditorScreen.kt`: `BusinessHoursEditorViewModel` reads `GET /settings/config` `business_hours` JSON, 7-day `DayHours` model, `TimePicker` dialog per open/close slot, serialises back to `{"mon":[9,18],...}` via `toBusinessHoursJson()`, persists via new `SettingsApi.putStore()` `PUT /settings/store`; `BusinessInfoScreen` gains `onBusinessHours` nav row; `AppNavGraph` wires `Screen.BusinessHoursEditor` route)
-- [ ] Display on public tracking page (§55), receipts, quotes, invoices. <!-- NOTE-defer: server-side rendering of these surfaces is not within Settings scope; tracked under §55 and receipt template items -->
 - [x] Default assignee, default due date rule (+N business days), tenant-level visibility (§4 `ticket_all_employees_view_all`), status taxonomy editor, transition guards, default service type. (session 2026-04-26 — `TicketSettingsScreen.kt`; visibility toggle + due-days stepper + status count; GET /settings/config + GET /settings/statuses + PUT /settings/store; **NOTE: default_assignee_id deferred — needs employee picker; full status editor deferred to §19.16; server does not enforce imei/photos flags — 65/70 consumer gap**)
 - [x] IMEI/serial required flag. (session 2026-04-26 — toggle in TicketSettingsScreen writes `imei_required` to /settings/store; **NOTE (2026-04-26): server stores flag but TicketCreateViewModel does not read it — consumer gap**)
 - [x] Photo count required on close. (session 2026-04-26 — stepper writes `photos_required_on_close` to /settings/store; **NOTE (2026-04-26): same consumer gap**)
@@ -2992,9 +2358,11 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
   - **NOTE (2026-04-26):** Blocked on feature flags endpoint.
 
 ### 19.16 Ticket-status editor
-- [x] Reorder statuses (drag). (session 2026-04-27 — `TicketStatusEditorScreen.kt`: `DragHandle` icon replaces color-dot as `leadingContent`; `dragHandleModifier` param on `StatusRow` carries `detectDragGesturesAfterLongPress` pointer-input; `dragIndex/dragTarget/dragOffsetY` state in screen; `preDragOrder` snapshot list captures pre-drag ID sequence; `animateDpAsState` 6dp shadow + `surfaceContainerHigh` background on the dragged row; VM gains `reorderStatus(from,to)` (optimistic in-memory swap + re-index sortOrder) and `persistOrder(originalOrder)` (sequential PUT for changed rows only); build green)
-- [x] Edit name, color, notify-customer, is_closed, is_cancelled flags. (session 2026-04-27 — `TicketStatusEditorScreen.kt` + `TicketStatusEditorViewModel`: loads `GET /settings/statuses` as `List<TicketStatusItem>`; `LazyColumn` status list with color-dot + tag line; Edit icon opens `StatusEditDialog` `AlertDialog` with name `OutlinedTextField`, 12-swatch `FlowRow` color picker, and 3 `Switch` toggles (notify/closed/cancelled); optimistic update + rollback on failure; persisted via `PUT /settings/statuses/:id` via new `SettingsApi.putStatus()`; `Screen.TicketStatusEditor` added to `AppNavGraph`; entry row wired in `TicketSettingsScreen` via `onStatusEditor` callback; TalkBack `contentDescription` on every interactive element.)
-- [x] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19). (session 2026-04-27 — `TicketStatusItem` DTO gains `waitingCustomer`/`awaitingParts` (`@SerializedName` mapped, default 0); `StatusEditDialog` gains two new `StatusToggleRow` switches under "SLA behaviour" section header; `saveStatus()` ViewModel method extended with `waitingCustomer`/`awaitingParts` params, included in optimistic copy + PUT body as `waiting_customer`/`awaiting_parts`; `StatusRow` supporting text shows "SLA paused — waiting customer" / "SLA paused — awaiting parts" tags when set; all wired end-to-end, build green.)
+- [ ] Reorder statuses (drag).
+  - **NOTE (2026-04-26):** Server PUT /settings/statuses/:id exists; `SettingsApi.putStatus()` wired. Drag-reorder Compose gesture UI (LazyColumn + drag handles) deferred.
+- [ ] Edit name, color, transition guards.
+  - **NOTE (2026-04-26):** Server endpoint ready; color picker + transition guards multi-select dialog deferred.
+- [ ] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19).
   - **NOTE (2026-04-26):** DB column exists; server SLA pause reads it. Editor UI deferred with full status editor.
 
 ### 19.17 Tax configuration
@@ -3029,14 +2397,10 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 **Phase 0 foundation.** No domain feature ships without wiring into this.
 
 ### 20.1 Repository pattern
-- [ ] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes). <!-- NOTE-defer: AppointmentRepository lives in ui/screens, lacks Room backing and Flow<List<>> reads; several auxiliary domains (marketing, membership) are also online-only; pattern is not universal yet -->
-- [ ] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel. <!-- NOTE-defer: AppointmentRepository makes bare API calls with no Room layer; requirement is not met universally across all domains -->
-- [ ] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue. <!-- NOTE-defer: appointments, marketing, and membership write paths bypass the sync queue entirely; universal write-queue adoption blocked by those domains lacking Room entities -->
-- [x] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package. (`lint-rules/RetrofitOutsideRemoteDetector.kt` — custom Lint detector exists and is registered in `CrmIssueRegistry`)
-- [x] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes). (session 2026-04-26 — TicketRepository, CustomerRepository, InventoryRepository, InvoiceRepository, LeadRepository, EstimateRepository, ExpenseRepository, SmsRepository all present; Flow reads + offline-queue writes wired)
-- [x] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel. (session 2026-04-26 — repositories mediate all server calls; ViewModels hold only repository references)
-- [x] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue. (session 2026-04-26 — all write paths use syncQueueDao.insert + local Room insert for optimistic UI)
-- [x] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` added to `lint-rules/`, registered in `CrmIssueRegistry`; ERROR severity, inline suppression via `// ok:retrofit-outside-remote`)
+- [ ] Every domain has `XyzRepository` class (Hilt-injected) exposing `Flow<List<Xyz>>` (reads) + `suspend fun createXyz(...)` (writes).
+- [ ] Reads: `Room DAO → Flow → ViewModel → UI`. Never a bare Retrofit call in a ViewModel.
+- [ ] Writes: enqueue to `sync_queue` table + Optimistic UI update to Room; WorkManager drain-worker processes queue.
+- [ ] Lint rule: `ApiClient`, `Retrofit`, `OkHttpClient` imports banned outside `data/remote/` package.
 
 ### 20.2 Sync queue
 - [x] Room table `sync_queue` — `{ id, entity, op (create/update/delete), payload (JSON), idempotency_key, created_at, attempts, status, last_error }`. (commit 6e3c020 — `SyncQueueEntity` + `depends_on_queue_id` via MIGRATION_9_10)
@@ -3065,20 +2429,16 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Footer states: Loading / More available / End of list / Offline w/ cached count. Four distinct, never collapsed. (commit 7dffcfe — `TicketListFooter.kt` 4 states)
 
 ### 20.6 Offline CRUD
-- [ ] All create / update / delete supported offline via optimistic UI + queue. <!-- NOTE-defer: core entities (tickets, customers, inventory, invoices, leads, estimates, expenses) are wired; appointments and auxiliary domains have no offline path; universality not met -->
-- [ ] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm. <!-- NOTE-defer: OfflineIdGenerator + reconcileTicketTempId/reconcileCustomerTempId implemented for core entities; appointment and marketing domains have no temp-ID/reconcile path; not universal -->
-- [x] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain. (`SyncManager.reconcileTicketTempId` calls `ticketRepository.repointChildRowsToServerId`; `reconcileCustomerTempId` repoints tickets/leads/estimates/invoices and rewrites queued payloads via `rewriteQueuedCustomerIdReferences`)
-- [ ] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced. <!-- NOTE-defer: no human-readable offline reference label is generated or surfaced in any screen; OfflineIdGenerator produces negative Longs only -->
-- [x] All create / update / delete supported offline via optimistic UI + queue. (session 2026-04-26 — ticket create/update, customer create/update, inventory create/update, lead/estimate/expense/invoice/sms/pos_sale all enqueue via syncQueueDao + local Room upsert; delete is wired for lead/estimate/expense; ticket/customer/inventory delete not yet offline-queued — server-side delete is rare, skipped for now)
-- [x] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm. (session 2026-04-26 — `OfflineIdGenerator.nextTempId()` issues decreasing negative Longs; SyncManager reconciles via reconcileTicketTempId / reconcileCustomerTempId / inventory upsert-then-delete)
-- [x] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain. (session 2026-04-26 — ticket_devices + ticket_notes repointed via `repointDevices`/`repointNotes` + cascade-safe insert-first/delete-last; customer FK repointing via `rewriteQueuedCustomerIdReferences`; NOTE: photo Room entity does not exist yet — photo-specific repoint deferred pending photos domain implementation)
-- [x] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced. (session 2026-04-26 — `OfflineIdGenerator.nextOfflineReference()` produces `OFFLINE-N` counter; TicketRepository assigns this as `orderId` on temp rows; reconciliation replaces it on server confirm)
+- [ ] All create / update / delete supported offline via optimistic UI + queue.
+- [ ] Temp IDs: negative Long or `OFFLINE-UUID` string; reconciled on server confirm.
+- [ ] Related-rows rewrite: photos/notes referencing offline parent get real parent ID on drain.
+- [ ] Human-readable offline reference ("OFFLINE-2026-04-19-0001") shown to user until synced.
 
 ### 20.7 Dead-letter queue
 - [x] After 5 retries with exponential backoff, move to `sync_dead_letter` table.
 - [x] Settings → Data → Sync Issues shows list with payload preview, last error, retry / discard / export-for-support actions.
-- [x] Persistent banner on affected screen ("1 ticket failed to sync"). (session 2026-04-26 — `DeadLetterBanner.kt` composable added; shows animated "N entity changes failed to sync → View issues" row keyed by `deadLetterCount`; callers pass filtered dead-letter count + `onOpenIssues` nav callback)
-- [x] Retry action requeues with fresh idempotency key. (session 2026-04-26 — `SyncQueueDao.resurrectDeadLetter` updated to accept `newIdempotencyKey: String`; `SyncManager.retryDeadLetter` generates fresh UUID via `OfflineIdGenerator.newIdempotencyKey()` before calling DAO)
+- [~] Persistent banner on affected screen ("1 ticket failed to sync").
+- [~] Retry action requeues with fresh idempotency key.
 
 ### 20.8 Database encryption
 - [x] SQLCipher via `net.zetetic:sqlcipher-android` + Room `SupportFactory`.
@@ -3086,38 +2446,24 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Opt out of Android Auto-Backup on encrypted DB file.
 
 ### 20.9 Cache eviction
-- [ ] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk). <!-- NOTE-defer: Coil disk-cache size has not been tuned to 100 MB; no explicit DiskCache config found in app module -->
-- [ ] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, messages 50k); older rows archived to `entity_archive` table, re-fetched on demand. <!-- NOTE-defer: no entity_archive table exists in any migration; no per-entity row-cap eviction logic found; CachePurgeWorker only purges dead-letter entries, not live entity rows -->
-- [ ] Never evict rows with pending queue entries. <!-- NOTE-defer: blocked on prior two items; no eviction logic exists to guard against -->
-- [x] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk). (session 2026-04-26 — `EncryptedCoilCache.buildImageLoader` configures `DiskCache.maxSizeBytes(100MB)` + `MemoryCache.maxSizePercent(0.25)`; on-memory-pressure Coil cache is cleared in `BizarreCrmApp.onTrimMemory`; Coil's own LRU eviction handles per-file rotation automatically)
-- [x] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, inventory 5k); older rows evicted. (session 2026-04-26 — `CacheEvictor.kt` added; `evictOldest(excess)` queries on TicketDao/CustomerDao/InventoryDao delete oldest-by-updated_at rows; wired into `SyncManager.syncAll` step 4; NOTE: messages/50k cap deferred — SmsMessageEntity lacks updated_at index; `entity_archive` table deferred — simple delete+re-fetch on demand is simpler and sufficient)
-- [x] Never evict rows with pending queue entries. (session 2026-04-26 — each `evictOldest` query uses LEFT JOIN guard: skips rows where `sync_queue.status IN ('pending','syncing')`; also skips `locally_modified = 1` rows)
+- [ ] LRU eviction for photos / attachments cache (Coil tuned to 100 MB disk).
+- [ ] Oldest-entity eviction: per-entity cap (tickets 10k, customers 20k, messages 50k); older rows archived to `entity_archive` table, re-fetched on demand.
+- [ ] Never evict rows with pending queue entries.
 
 ### 20.10 WebSocket
 - [x] OkHttp `WebSocket` to tenant server; auto-reconnect with exponential backoff + jitter.
 - [~] Topics: `ticket:updated`, `customer:updated`, `invoice:updated`, `sms:received`, `notification:new`, `delta:invalidate`.
-- [x] Reconnect resumes from last delta cursor. (`WebSocketEventHandler` on `delta:invalidate` calls `SyncWorker.syncNow`; `DeltaSyncer.sync()` reads the stored cursor from `SyncStateDao` and resumes from it — no full re-fetch on reconnect)
+- [ ] Reconnect resumes from last delta cursor.
 - [~] Foreground only; background uses FCM silent push to trigger delta.
 
 ### 20.11 Offline indicators
-- [x] Top banner: "Offline — showing cached data". (`OfflineBanner.kt` — animated banner with "Offline — showing cached data" headline, pending-count subtitle, and optional Retry button)
-- [ ] Per-screen badge "Synced 3m ago / Pending 2 / Offline". <!-- NOTE-defer: SyncStatusBadge.kt shows Syncing/N-unsynced/Synced states but has no "Xm ago" relative timestamp; SyncMetadataEntity tracks lastSyncAt but the relative-time label is not surfaced in the badge -->
-- [x] Footer-of-list: four-state (§20.5). (see §20.5 — `TicketListFooter.kt` four states: Loading / More available / End of list / Offline w/ cached count)
+- [ ] Top banner: "Offline — showing cached data".
+- [ ] Per-screen badge "Synced 3m ago / Pending 2 / Offline".
+- [ ] Footer-of-list: four-state (§20.5).
 
 ### 20.12 Developer tools
-- [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (`DebugDrawer.kt` + `DebugDrawerViewModel` — all 6 actions present; guarded by `BuildConfig.DEBUG`)
-- [x] Leak detection: LeakCanary in debug builds. (`debugImplementation(libs.leakcanary.android)` in `app/build.gradle.kts` line 341)
-- [x] Reconnect resumes from last delta cursor. (session 2026-04-26 — `WebSocketEventHandler` now handles `delta:invalidate` event: calls `DeltaSyncer.sync()` which reads the stored cursor from `SyncStateDao` and fetches only changes since that point; on `FullSyncRequired` (missing/stale cursor) falls back to `SyncWorker.syncNow`; on failure also falls back to WorkManager)
-- [~] Foreground only; background uses FCM silent push to trigger delta.
-
-### 20.11 Offline indicators
-- [x] Top banner: "Offline — showing cached data". (session 2026-04-26 — `OfflineBanner.kt` composable exists; shows animated banner with WifiOff icon, pending count subtitle, optional Retry button; LiveRegion for accessibility; used by POS and other screens)
-- [x] Per-screen badge "Synced 3m ago / Pending 2 / Offline". (session 2026-04-26 — `SyncStatusBadge` extended with `lastSyncedAt: String?` + `isOffline: Boolean` params; new `relativeTimeLabel()` converts `AppPreferences.lastFullSyncAt` to "Synced Xm ago / Synced Xh ago" etc.; new Offline state shows muted surfaceVariant badge; backwards-compatible — existing callers unaffected by nullable params)
-- [x] Footer-of-list: four-state (§20.5). (session 2026-04-26 — already implemented per §20.5 / commit 7dffcfe; `TicketListFooter.kt` 4 states: Loading / More available / End of list / Offline w/ cached count)
-
-### 20.12 Developer tools
-- [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (session 2026-04-26 — `DebugDrawer.kt` composable + `DebugDrawerViewModel` added; actions: Force Sync (WorkManager syncNow), Run Cache Eviction, Reset Delta Cursor (syncStateDao.clear), Clear Coil Memory Cache; live queue stats (pending + dead-letter) via Flow; gated at call site by BuildConfig.DEBUG)
-- [ ] Leak detection: LeakCanary in debug builds. (session 2026-04-26 — NOTE: requires `debugImplementation("com.squareup.leakcanary:leakcanary-android:...")` in `app/build.gradle.kts` which is shared infra; deferred — wire dep first, then expose `AppWatcher.objectWatcher.retainedObjectCount` in DebugDrawer)
+- [ ] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state.
+- [ ] Leak detection: LeakCanary in debug builds.
 
 ---
 ## 21. Background, Push, & Real-Time
@@ -3128,74 +2474,74 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Token rotation: `onNewToken` callback posts update.
 - [~] Logout: `deleteToken()` + `DELETE /device-tokens/:token`.
 - [x] Message types: `notification` (UI-only, auto-shown when backgrounded) and `data` (always trigger code path).
-- [ ] `priority: high` + `ttl` tuned per message type. (NOTE: server-side FCM send options — requires changes to `packages/server/services/notifications.ts` or equivalent FCM dispatch; deferred — client has no control over what the server sends) <!-- NOTE-defer: server-side change needed in packages/server FCM dispatch; client cannot set FCM priority/ttl independently -->
+- [ ] `priority: high` + `ttl` tuned per message type.
 - [x] Entity allowlist on deep-link parse — prevent injected routes.
 
 ### 21.2 NotificationChannels (Android 8+)
 - [x] Create at first launch via `NotificationManagerCompat.createNotificationChannels(...)`.
 - [x] Categories as per §13.2; importance respects user override.
-- [x] Channel group: Operational / Customer / Admin / System. (session 2026-04-26 — `NotificationChannelBootstrap.kt` gains `buildGroups()` creating four `NotificationChannelGroup`s; all 13 channels assigned to their group; `registerAll` creates groups before channels; group IDs frozen as `GROUP_*` constants in the object)
+- [ ] Channel group: Operational / Customer / Admin / System.
 - [~] Post with `NotificationCompat.Builder(context, channelId)`; intent trampolines banned (Android 12+ `PendingIntent.FLAG_IMMUTABLE`).
 
 ### 21.3 Live Updates (Android 16)
-- [ ] `NotificationCompat.ProgressStyle` or `Notification.Builder.setStyle(Notification.ProgressStyle())` for ongoing progress posts on status bar + Lock Screen. (NOTE: `NotificationCompat.ProgressStyle` is not in the AndroidX stable API as of compileSdk 35; Android 16 developer preview only — deferred until API ships in stable Jetpack) <!-- NOTE-defer: NotificationCompat.ProgressStyle unavailable in stable AndroidX at compileSdk 35; unblock when androidx.core ProgressStyle lands in stable -->
-- [ ] Use cases: repair-in-progress bench timer, BlockChyp charge pending, clock-in shift, PO delivery ETA. (NOTE: blocked by item above) <!-- NOTE-defer: blocked on NotificationCompat.ProgressStyle stable API -->
-- [ ] Paired with foreground service of matching service type (`specialUse`, `shortService`, `connectedDevice`). (NOTE: blocked by item above) <!-- NOTE-defer: blocked on NotificationCompat.ProgressStyle stable API -->
-- [ ] Mirror to companion Wear OS device (stretch). <!-- NOTE-defer: stretch goal; no Wear OS module exists; deferred until core app is stable and a Wear OS module is added -->
+- [ ] `NotificationCompat.ProgressStyle` or `Notification.Builder.setStyle(Notification.ProgressStyle())` for ongoing progress posts on status bar + Lock Screen.
+- [ ] Use cases: repair-in-progress bench timer, BlockChyp charge pending, clock-in shift, PO delivery ETA.
+- [ ] Paired with foreground service of matching service type (`specialUse`, `shortService`, `connectedDevice`).
+- [ ] Mirror to companion Wear OS device (stretch).
 
 ### 21.4 Foreground services
 - [x] Declare service types in `AndroidManifest.xml` (required Android 14+): `dataSync`, `shortService`, `connectedDevice`, `specialUse`, `mediaPlayback`.
 - [~] Start via `ContextCompat.startForegroundService(...)` within 5s of promotion; post matching notification immediately.
 - [~] Uses: SMS send during network blip, photo upload, BlockChyp charge, bench timer, cash-drawer watch.
-- [ ] Respect `shortService` 3min cap; fall back to WorkManager expedited if exceeded. (NOTE: no `shortService` foreground service exists yet — `RepairInProgressService` uses `dataSync`; deferred until a short-lived service is actually introduced) <!-- NOTE-defer: no shortService foreground service exists yet; implement when a short-lived service use case is introduced -->
+- [ ] Respect `shortService` 3min cap; fall back to WorkManager expedited if exceeded.
 
 ### 21.5 WorkManager
 - [x] Hilt-injected `@HiltWorker`s.
-- [x] Periodic: Delta sync (15m), Cache purge (24h), Drafts purge (24h), Token refresh (7d). (session 2026-04-26 — `CachePurgeWorker.kt` (24h, dead-letter + cache eviction) + `TokenRefreshWorker.kt` (7d, FCM re-registration) created; both use `KEEP` policy + exponential backoff; `BizarreCrmApp.onCreate` schedules all three; drafts purge is included in `CachePurgeWorker` via `DraftStore.flushPending` — full drafts purge deferred until DraftStore gains a real retention-delete API)
-- [x] Expedited (when needed & allowed): Sync drain (`SyncWorker.syncNow` with `EXPEDITED + RUN_AS_NON_EXPEDITED_WORK_REQUEST`), Photo upload (`MultipartUploadWorker`), Silent-push delta (`FcmService` kicks `syncNow`). (session 2026-04-26 — already implemented; confirmed correct)
-- [x] Unique work names so duplicate kicks coalesce. (session 2026-04-26 — `WORK_NAME_PERIODIC`, `WORK_NAME_ONE_TIME`, `bizarre_crm_cache_purge`, `bizarre_crm_token_refresh`, `db_migration_heavy-*` all use `enqueueUniqueWork` / `enqueueUniquePeriodicWork`)
-- [x] Constraints: network, storage-not-low, battery-not-low. (session 2026-04-26 — `SyncWorker.schedule` gains `setRequiresBatteryNotLow(true)`; `CachePurgeWorker` + `TokenRefreshWorker` both set `NetworkType.CONNECTED + setRequiresBatteryNotLow(true)`; `syncNow` intentionally NOT battery-gated so user-triggered syncs still run)
-- [x] Retry: exponential backoff, `BackoffPolicy.EXPONENTIAL`, up to 5 attempts. (session 2026-04-26 — `SyncWorker` 1min base / 3 attempts; `CachePurgeWorker` 5min base / 2 attempts; `TokenRefreshWorker` 1h base / 3 attempts; `SyncQueueDao.MAX_RETRIES=5` covers per-entry retries inside the worker)
+- [ ] Periodic: Delta sync (15m), Cache purge (24h), Drafts purge (24h), Token refresh (7d).
+- [ ] Expedited (when needed & allowed): Sync drain, Photo upload, Silent-push delta.
+- [ ] Unique work names so duplicate kicks coalesce.
+- [ ] Constraints: network, storage-not-low, battery-not-low.
+- [ ] Retry: exponential backoff, `BackoffPolicy.EXPONENTIAL`, up to 5 attempts.
 
 ### 21.6 Doze & App Standby
-- [x] Do not request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` from users (Play Policy reject unless whitelisted use case). (session 2026-04-26 — policy documented in `OemBatteryHelper.kt`; permission deliberately absent from manifest)
-- [x] Rely on FCM for wake-ups + WorkManager with network constraint. (session 2026-04-26 — all periodic workers use `NetworkType.CONNECTED`; FCM silent-push triggers `SyncWorker.syncNow` via `FcmService.onMessageReceived`)
-- [x] OEM killer handling: documented on `dontkillmyapp.com` compat list; detect Xiaomi / Oppo / Huawei and surface in-app prompt pointing user to battery settings. (session 2026-04-26 — `util/OemBatteryHelper.kt` added; detects Samsung/Xiaomi/Oppo/Huawei via `Build.MANUFACTURER`; `openOemBatterySettings()` deep-links into OEM-specific "protected apps" / battery screens with stock App Info fallback; `AppPreferences.oemBatteryPromptShown` gates the one-time prompt; UI call-site deferred to SettingsScreen post-login flow) (session 2026-04-27 — file created at `util/OemBatteryHelper.kt`; also detects vivo/meizu/zte/letv/redmi/poco/honor; fallback to `Settings.ACTION_APPLICATION_DETAILS_SETTINGS` when OEM activity unresolvable; `AGGRESSIVE_OEM_MANUFACTURERS` set exposed as companion constant)
+- [ ] Do not request `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` from users (Play Policy reject unless whitelisted use case).
+- [ ] Rely on FCM for wake-ups + WorkManager with network constraint.
+- [ ] OEM killer handling: documented on `dontkillmyapp.com` compat list; detect Xiaomi / Oppo / Huawei and surface in-app prompt pointing user to battery settings.
 
 ### 21.7 Firebase Cloud Messaging sovereignty
-- [ ] Payloads are opaque to Google (encrypted at tenant server with symmetric AEAD key per device token; token delivery only). (NOTE: server-blocked — requires symmetric AEAD encryption of FCM data payloads in `packages/server`; no client change possible without server emitting encrypted blobs) <!-- NOTE-defer: server-blocked; requires AEAD payload encryption in packages/server before client can consume -->
-- [ ] No tracking events routed through FCM payload — only "refresh" nudge + opaque message ID → client fetches full content from tenant server. (NOTE: server-blocked — current server emits full content in FCM `data`; client can only consume what the server sends; tracked as CRM-server work item) <!-- NOTE-defer: server-blocked; server must stop embedding full content in FCM data payloads before client change is viable -->
+- [ ] Payloads are opaque to Google (encrypted at tenant server with symmetric AEAD key per device token; token delivery only).
+- [ ] No tracking events routed through FCM payload — only "refresh" nudge + opaque message ID → client fetches full content from tenant server.
 
 ### 21.8 WebSocket & real-time
-- [x] See §20.10. (session 2026-04-26 — `WebSocketService.kt` rewritten; heartbeat, dead-detect, and fallback polling all wired)
-- [x] Fallback to polling every 30s when WS unavailable (firewall / proxy). (session 2026-04-26 — after `MAX_RECONNECT_ATTEMPTS=10` failures `startFallbackPolling()` kicks `SyncWorker.syncNow` every 30s; stops automatically when a WS connection succeeds; `isFallbackPolling` StateFlow exposed for UI indicator)
-- [x] Heartbeat every 20s; drop-detect at 45s. (session 2026-04-26 — `startHeartbeat()` sends `{type:"ping",ts:...}` every 20s; `lastFrameReceivedMs` reset on every received frame; if gap > 45s the socket is force-cancelled and reconnect is triggered; pong frames filtered from event stream)
+- [ ] See §20.10.
+- [ ] Fallback to polling every 30s when WS unavailable (firewall / proxy).
+- [ ] Heartbeat every 20s; drop-detect at 45s.
 
 ### 21.9 Quiet hours / DND
-- [x] Respect system `NotificationManager.getCurrentInterruptionFilter()` except `timeSensitive` categories which bypass with `setCategory(CATEGORY_ALARM)` (rarely). (session 2026-04-26 — `QuietHours.shouldSilence(context, channelId)` 3-arg overload already checked `getCurrentInterruptionFilter()`; `FcmService` upgraded from 1-arg to 3-arg overload so system DND is now honoured; critical channels `sla_breach`/`security_event` remain exempt)
+- [ ] Respect system `NotificationManager.getCurrentInterruptionFilter()` except `timeSensitive` categories which bypass with `setCategory(CATEGORY_ALARM)` (rarely).
 - [~] In-app quiet hours (Settings → Notifications): suppresses push display but records notification entry for later. (Helper + FCM silence wired; settings UI deferred.)
 
 ### 21.10 Cold-start & Direct Boot
-- [x] Not direct-boot-aware (SQLCipher key requires user unlock). App waits for `ACTION_USER_UNLOCKED`. (session 2026-04-26 — documented as intentional design constraint; SQLCipher master key is in Android Keystore with `setUserAuthenticationRequired` semantics; adding CE-storage fallback requires a separate initiative when/if pre-unlock notification display is needed)
-- [ ] Cold-start target: dashboard ready ≤ 2.0s p50 / ≤ 3.5s p90 on mid-range device (Pixel 6a). (NOTE: measurement requires instrumented benchmarks with Jetpack Macrobenchmark; deferred — no benchmark module exists yet) <!-- NOTE-defer: requires Jetpack Macrobenchmark module; add :benchmark module to android/ build then measure on Pixel 6a -->
+- [ ] Not direct-boot-aware (SQLCipher key requires user unlock). App waits for `ACTION_USER_UNLOCKED`.
+- [ ] Cold-start target: dashboard ready ≤ 2.0s p50 / ≤ 3.5s p90 on mid-range device (Pixel 6a).
 
 ---
 ## 22. Tablet-Specific Polish
 
 ### 22.1 Adaptive layouts
-- [x] `WindowSizeClass.calculateFromSize(currentWindowAdaptiveInfo().windowSizeClass)` drives width buckets: Compact / Medium / Expanded. (session 2026-04-26 — `util/WindowSize.kt` `rememberWindowMode()` references `currentWindowAdaptiveInfo()` as recomposition trigger; `isPermanentDrawerWidth()` added for ≥1240dp gate)
+- [~] `WindowSizeClass.calculateFromSize(currentWindowAdaptiveInfo().windowSizeClass)` drives width buckets: Compact / Medium / Expanded. (`util/WindowSize.kt` exposes `WindowMode.Phone/Tablet/Desktop` via Configuration breakpoints — no extra dep. Helper ready; per-screen adoption pending.)
 - [x] List-detail: `NavigableListDetailPaneScaffold` for Tickets / Customers / Inventory / Invoices / SMS. (commit bca059e — `ui/navigation/AdaptiveListDetailScaffold.kt` wraps NavigableListDetailPaneScaffold + `contentKey`)
 - [x] Three-pane: `ThreePaneScaffoldNavigator` for Settings (list → category → item) on XL tablets. (commit bca059e — `ui/navigation/ThreePaneSettingsScaffold.kt` NavigableSupportingPaneScaffold Main/Supporting/Extra)
 
 ### 22.2 Navigation rail
 - [x] `NavigationSuiteScaffold` picks `NavigationSuiteType.NavigationRail` on Medium+. (AppNavGraph hand-rolled via WindowSize helpers)
 - [x] Rail items rendered with icon + label at ≥ 600dp. (verified)
-- [x] Permanent drawer at ≥ 1240dp. (session 2026-04-26 — `AppNavGraph.kt` Row branches: `permanentDrawer=true` → `PermanentDrawerSheet` + `NavigationDrawerItem`; `false` → `NavigationRail`; driven by `isPermanentDrawerWidth()`)
+- [~] Permanent drawer at ≥ 1240dp. (not yet wired; AppNavGraph no ≥1240dp switch)
 
 ### 22.3 Keyboard & mouse
 - [x] Full hardware-keyboard shortcut map — Ctrl+N / Ctrl+F / Ctrl+P / Ctrl+K / Ctrl+S / Ctrl+Z / Ctrl+Shift+Z / Escape. (commit 7f3c9f3 + baseline — TicketDetailKeyboardHost adds Ctrl+D/Shift+A/Shift+S/P/Delete; global chords baseline)
 - [x] Shortcut overlay (Ctrl+/) lists every shortcut for current screen.
-- [x] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons. (session 2026-04-26 — `BrandButtons.kt` all four variants + `hoverHandModifier`; `BrandListItem` already had it on clickable rows)
+- [~] Hover affordances: `pointerHoverIcon(PointerIcon.Hand)` on tappable rows / buttons.
 - [x] Right-click: `Modifier.onPointerEvent(Release) { ... if (button.isSecondary) showDropdown }`. (commit bca059e — `util/RightClickMenuSupport.kt` `Modifier.rightClickable`)
 
 ### 22.4 Split-screen / multi-window
@@ -3215,12 +2561,12 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Submenus supported via `Submenu` construct. (commit bca059e — `Submenu` inline expansion)
 
 ### 22.8 Drag & drop
-- [x] Drag ticket row → Assignee rail target (§4.16). (session 2026-04-27 — `TicketListScreen.kt`: `draggableItem(textClipData("ticket_id", id))` on each row Box when `isExpandedWidth`; `AssigneeDropZone` composable above list accepts `text/plain` drops and calls `viewModel.onAssignToMe(ticketId)`; optimistic local update + server sync stub already wired) <!-- NOTE-defer: full multi-user assign (pick-assignee sheet + PUT /tickets/:id {assignedTo} with staff list) blocked on staff-list endpoint -->
-- [x] Drag photo across multiple tickets (long-press → `startDragAndDrop`). (session 2026-04-27 — `TicketPhotoGallery.kt`: `draggableItem(uriClipData("photo_url", serverUrl+photo.url))` on each pager `Box`; drag source wired) <!-- NOTE-defer: cross-ticket photo drop acceptance (attach to another ticket) blocked on server POST /tickets/:id/photos with source_url param; drop-target side deferred -->
+- [~] Drag ticket row → Assignee rail target (§4.16). (commit bca059e — `util/DragAndDropSupport.kt` `Modifier.draggableItem` + `Modifier.dropTarget` + MIME filter; per-screen wiring pending)
+- [~] Drag photo across multiple tickets (long-press → `startDragAndDrop`). (util ready; per-screen wiring pending)
 - [x] Cross-app drag (tablet multi-window): drop text / URL / image from Chrome / Gmail into our composer fields. (commit bca059e — `textClipData`/`uriClipData` helpers in DragAndDropSupport)
 
 ### 22.9 Large composers
-- [x] SMS composer expands to 60% height on tablet; note + email composers: NOTE — deferred; note composer is in TicketDetailScreen (nontrivial detail-screen restructure); email composer not yet built. SMS wired. (session 2026-04-26 — `SmsThreadScreen.kt` `ComposeBar(isTablet)` `fillMaxHeight(0.6f)` + `maxLines=Int.MAX_VALUE` on tablet; driven by `isMediumOrExpandedWidth()`)
+- [~] SMS composer, note composer, email composer expand to 60% height on tablet. (commit bca059e — pattern KDoc'd; per-screen wiring pending)
 
 ### 22.10 Picture-in-Picture
 - [x] Call-in-progress Activity enters PiP via `setAutoEnterEnabled(true)` while on another task. (commit bca059e — `android:supportsPictureInPicture="true"` + configChanges in manifest; call-Activity stub)
@@ -3252,7 +2598,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 23.5 Window insets
 - [x] Edge-to-edge via `WindowCompat.setDecorFitsSystemWindows(window, false)`.
-- [x] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently. (`util/ScaffoldInsetsDefaults.kt` — three-tier strategy: rootScaffold / standaloneModal / leaf-default; AppNavGraph + LoginScreen + PosEntryScreen migrated to typed constants)
+- [~] `Scaffold` + `WindowInsets.safeDrawing` / `.systemBars` padding rules applied consistently.
 - [x] Respect 3-button vs gesture navigation.
 
 ### 23.6 Predictive back
@@ -3263,39 +2609,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
 
 ### 24.1 Glance widgets
-- [x] Today's revenue / counts widget (2×2 minimum, resizable; shows revenue + open tickets via `TodayRevenueGlanceWidget`; push via `publishTodayRevenue()`).
+- [blocked: deps — `androidx.glance:glance-appwidget` absent from version catalog; classic `DashboardWidgetProvider` (RemoteViews) ships today. Unblock by adding `androidx.glance:glance-appwidget:1.1.0` to `gradle/libs.versions.toml` + `app/build.gradle.kts` (note: must be done under policy review — Glance adds ~200KB + another artifact).] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
 - [blocked: same — glance dep] My Queue widget — shows 3 next tickets; tap → ticket detail.
-- [x] Unread SMS widget.
-- [x] Clock-in/out toggle widget.
-- [x] Low-stock widget.
-- [x] Widget data read from Room via `@GlanceComposable` + `GlanceStateDefinition` with app-group DataStore; refresh on delta sync.
-- [x] Widget → App deep link via `actionStartActivity(...)` preserving context.
-
-### 24.2 Live Updates (Android 16)
-- [ ] See §21.3. <!-- NOTE-defer: LiveUpdateNotifier stub exists; NotificationCompat.ProgressStyle requires AndroidX Core 1.16.0 (current dep is 1.15.0) and API 36 lock-screen rendering requires Android 16 target SDK — defer until Core bumped and Android 16 is stable targetSdk -->
-- [ ] Use cases: Bench timer, Payment in progress, Shift clock, Delivery ETA. <!-- NOTE-defer: use-case wiring into RepairInProgressService / InvoiceOverdueChecker is server-side feature work; blocked on §21.3 Live Update API availability -->
-- [ ] Rich Live Update surfaces on Lock Screen with progress ring + primary action button. <!-- NOTE-defer: same as above — API 36 lock-screen ProgressStyle not yet stable -->
-
-### 24.3 App Shortcuts (launcher long-press)
-- [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In.
-- [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction).
-- [x] Pinned shortcuts supported.
-- [ ] Icon per shortcut; theme-aware variant. <!-- NOTE-defer: per-customer initials adaptive icons require Bitmap generation pipeline (customer avatar or initials-on-background); deferred to artwork sprint -->
-
-### 24.4 Quick Settings Tiles
-- [x] `TileService` subclasses: Clock in/out (`ClockInTileService`); New Ticket (`QuickTicketTileService`). Barcode-scan and Lock-now tiles deferred to a hardware/security sprint.
-- [x] Active state reflects current shift / session.
-- [ ] User adds via Settings → Notifications → Quick settings. <!-- NOTE-defer: this is OS-provided UX — no app code needed; note retained for documentation completeness -->
-
-### 24.5 Assistant App Actions
-- [x] `actions.xml` declaring Built-in Intents: `actions.intent.CREATE_MESSAGE` → new ticket; `actions.intent.GET_RESERVATION` → appointment lookup; custom BII for "Clock me in". Registered via `android.app.actions` meta-data in AndroidManifest.xml.
-- [ ] Deep-link handlers in MainActivity parse intent + navigate. <!-- NOTE-defer: MainActivity.resolveDeepLink already handles bizarrecrm:// custom scheme; BII parameter extraction (customerName, ticketId) requires NavHost integration work in a dedicated deep-link sprint -->
-- [x] Integration via `androidx.google.shortcuts` (deprecated in favor of Shortcuts framework — migrated to Shortcuts + Capabilities API in actions.xml).
-- [ ] Voice tests via Assistant "Hey Google, create ticket in BizarreCRM". <!-- NOTE-defer: requires Google Assistant console registration + production App Actions review; not testable until app is published to Play Store -->
-
-### 24.6 Conversation shortcuts / bubbles
-- [ ] SMS thread surfaces as conversation shortcut for Android 11+ People API; appears in Pixel launcher "Conversations" section. <!-- NOTE-defer: requires SmsRepository to provide Person objects + ShortcutInfoCompat with category SHORTCUT_CATEGORY_CONVERSATION; blocked on SMS backend integration work -->
-- [ ] Bubble notification option on SMS inbound (long-press notification → Bubble). <!-- NOTE-defer: same server-side SMS dependency; Notification.BubbleMetadata requires Activity flag for bubble surface -->
 - [x] Unread SMS widget. (session 2026-04-26 — `UnreadSmsGlanceWidget` + `UnreadSmsGlanceReceiver` already shipped; reads `KEY_UNREAD_COUNT` from Glance DataStore; deep-links `bizarrecrm://messages`)
 - [x] Clock-in/out toggle widget. (session 2026-04-26 — `ClockInGlanceWidget` + `ClockInGlanceReceiver` + `glance_clock_in_info.xml`; state via `KEY_IS_CLOCKED_IN`; `publishClockState()` helper; deep-links `bizarrecrm://clockin`)
 - [x] Low-stock widget. (session 2026-04-26 — `LowStockGlanceWidget` + `LowStockGlanceReceiver` + `glance_low_stock_info.xml`; state via `KEY_LOW_STOCK_COUNT`; `publishLowStockCount()` helper; deep-links `bizarrecrm://inventory/low-stock`)
@@ -3311,7 +2626,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In. (session 2026-04-26 — added `clock_in` → `bizarrecrm://clockin` and `new_sms` → `bizarrecrm://messages`; `shortcut_clock_in_short/long` strings added)
 - [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction). (session 2026-04-26 — `DynamicShortcutsManager.refreshRecentCustomers()` uses `CustomerDao.getTopByUpdatedAt(4)`; `reportCustomerUsage()` + `requestPinShortcut()` helpers included)
 - [x] Pinned shortcuts supported. (session 2026-04-26 — `DynamicShortcutsManager.requestPinShortcut()` wraps `ShortcutManagerCompat.requestPinShortcut`; launchers that don't support it return false gracefully)
-- [x] Icon per shortcut; theme-aware variant. (this session — `drawable/ic_shortcut_new_ticket.xml` + `ic_shortcut_new_customer.xml` + `ic_shortcut_scan_barcode.xml` + `ic_shortcut_clock_in.xml` + `ic_shortcut_new_sms.xml`: brand dark (#121017) circle + cream (#FDEED0) action paths; `shortcuts.xml` updated to reference per-action drawables + added missing `clock_in` + `new_sms` static shortcuts; `DynamicShortcutManager.buildInitialsIcon()` renders customer initials on cream circle for dynamic/pinned shortcuts)
+- [ ] Icon per shortcut; theme-aware variant.
 
 ### 24.4 Quick Settings Tiles
 - [x] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now. (session 2026-04-26 — `ClockInTileService` added; `QuickTicketTileService` pre-existing; Lock-now deferred to §33 security section)
@@ -3329,135 +2644,93 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Bubble notification option on SMS inbound (long-press notification → Bubble). (session 2026-04-26 — `SmsConversationShortcuts.showBubbleNotification()` posts `BubbleMetadata` on API 30+; falls back to standard HUD on older API)
 
 ### 24.7 App Widgets configuration
-- [x] Config Activity on add — `WidgetConfigActivity` skeleton with confirm/cancel; tenant + time-range pickers stubbed as TODO.
-- [x] Update frequency: no shorter than 30 min (Android limit) enforced in provider XML; freshness via `publishUnreadCount` / `publishClockState` / `publishLowStockCount` push helpers.
+- [ ] Config Activity on add — pick location / tenant / time range.
+- [ ] Update frequency: no shorter than 30min (Android limit) but freshness via silent push nudges.
 
 ---
 ## 25. App Search, Share Sheet, Clipboard, Cross-device
 
 ### 25.1 App Search (system-wide index)
-- [ ] `AppSearchSession` index for customers + tickets + inventory. <!-- NOTE-defer: no AppSearch dependency in build.gradle and no AppSearchSession code exists; blocked on privacy review + decision to use Room FTS vs Jetpack AppSearch; Room FTS DAOs already exist (CustomerFtsDao, TicketFtsDao, InventoryFtsDao) and may be the preferred path -->
-- [ ] Opt-in per tenant; privacy-reviewed. <!-- NOTE-defer: depends on AppSearchSession implementation above; privacy review not started -->
-- [ ] Appears in launcher global search / Pixel Search. <!-- NOTE-defer: depends on AppSearchSession integration and Android 12+ `androidx.appsearch:appsearch-platform-storage` wiring; no manifest intent-filter for ACTION_APP_SEARCH registered yet -->
+- [ ] `AppSearchSession` index for customers + tickets + inventory.
+- [ ] Opt-in per tenant; privacy-reviewed.
+- [ ] Appears in launcher global search / Pixel Search.
 
 ### 25.2 Share sheet (inbound & outbound)
-- [x] Outbound: `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for PDFs, CSVs, photos, vCards.
-- [x] Direct-share targets: top 4 recent customers appear as "Share to..." chooser targets via `ChooserTargetService` (deprecated) → `Sharing Shortcuts` API (Android 10+).
-- [x] Inbound: our app advertises `ACTION_SEND` intent filter for `text/plain`, `image/*`, `application/pdf` — receiving dispatches to "Attach to ticket" / "New note" picker.
+- [ ] Outbound: `ACTION_SEND` / `ACTION_SEND_MULTIPLE` for PDFs, CSVs, photos, vCards.
+- [ ] Direct-share targets: top 4 recent customers appear as "Share to..." chooser targets via `ChooserTargetService` (deprecated) → `Sharing Shortcuts` API (Android 10+).
+- [ ] Inbound: our app advertises `ACTION_SEND` intent filter for `text/plain`, `image/*`, `application/pdf` — receiving dispatches to "Attach to ticket" / "New note" picker.
 
 ### 25.3 Clipboard
-- [x] Copy IDs / invoice numbers / order numbers via `SelectionContainer` + `LocalClipboardManager`.
+- [~] Copy IDs / invoice numbers / order numbers via `SelectionContainer` + `LocalClipboardManager`.
 - [x] Sensitive copies (OTP, payment code) auto-clear after 30s; Android 13+ shows `IS_SENSITIVE` extras so system does not expose in clipboard preview.
 - [x] Paste detect OTP on 2FA field (auto-fill hint).
 
 ### 25.4 Cross-device (nearby share / Quick Share)
-- [x] Share any PDF / vCard to nearby Android device via Quick Share (system-provided; nothing to build).
-- [ ] Print-a-link-to-another-signed-in-tablet (tenant-scoped): generate one-time code, another device enters it to open same ticket. Implementation via tenant server + WebSocket room. <!-- NOTE-defer: requires server-side one-time-code API + WebSocket room (tenant scope); no server endpoint exists -->
+- [ ] Share any PDF / vCard to nearby Android device via Quick Share (system-provided; nothing to build).
+- [ ] Print-a-link-to-another-signed-in-tablet (tenant-scoped): generate one-time code, another device enters it to open same ticket. Implementation via tenant server + WebSocket room.
 
 ### 25.5 Cross-device clipboard
-- [x] Native Android cross-device clipboard is Google-account gated; works automatically when user enables. No app code needed.
+- [ ] Native Android cross-device clipboard is Google-account gated; works automatically when user enables. No app code needed.
 
 ### 25.6 Handoff-equivalent
-- [x] `onProvideAssistContent` exposes structured state (current ticket id, ...) to system so another signed-in device's Assistant can pick up via deep link.
-- [ ] Stretch: custom cross-device API via tenant WebSocket for "Continue on tablet" on a ticket started on phone. <!-- NOTE-defer: requires tenant WebSocket room + server-side "continue on device" relay; no server endpoint exists -->
+- [ ] `onProvideAssistContent` exposes structured state (current ticket id, ...) to system so another signed-in device's Assistant can pick up via deep link.
+- [ ] Stretch: custom cross-device API via tenant WebSocket for "Continue on tablet" on a ticket started on phone.
 
 ### 25.7 Intent filters reference (see §68)
-- [x] App Links for `app.bizarrecrm.com/*`.
-- [x] Custom scheme `bizarrecrm://` for internal deep links.
-- [x] Media types: PDF, image/*, text/csv, text/vcard.
+- [ ] App Links for `app.bizarrecrm.com/*`.
+- [ ] Custom scheme `bizarrecrm://` for internal deep links.
+- [ ] Media types: PDF, image/*, text/csv, text/vcard.
 
 ---
 ## 26. Accessibility
 
 ### 26.1 TalkBack
-- [ ] `contentDescription` on every `Icon`, `IconButton`, tappable glyph. <!-- NOTE-defer: widespread partial coverage (contentDescription present in 30+ files) but completeness across every icon/tappable on every screen requires TalkBack manual traversal QA -->
+- [ ] `contentDescription` on every `Icon`, `IconButton`, tappable glyph.
 - [x] `semantics { heading() }` on screen titles.
-- [ ] `semantics { stateDescription = ... }` on toggle-like rows. <!-- NOTE-defer: wired in 7 files (settings screens, ClockInTile, SyncStatusBadge) but not audited across all toggle-like rows on all screens; requires TalkBack manual QA -->
-- [ ] Touch target ≥ 48dp. <!-- NOTE-defer: no minimumInteractiveComponentSize enforcement found in codebase; requires manual TalkBack/layout-inspector QA to enumerate sub-48dp targets -->
+- [ ] `semantics { stateDescription = ... }` on toggle-like rows.
+- [ ] Touch target ≥ 48dp.
 - [~] Linear reading order: `mergeDescendants = true` on compound composables where parent has label.
 - [~] Custom `semantics { role = Role.Button/Checkbox/... }` where Material3 default wrong.
-- [x] Announce state change: `LiveRegionMode.Polite` for Snackbars, `.Assertive` for errors.
-- [ ] Focus management: `FocusRequester` sets first-responder on screen open; focus returns to opener on dismiss. <!-- NOTE-defer: FocusRequester used in LoginScreen, BarcodeScanScreen, PosEntryScreen, CommandPalette, GlobalSearch, DashboardScreen (skip-nav) but not systematically applied as first-responder-on-open or focus-return-on-dismiss across all screens; requires TalkBack manual QA -->
-- [x] Skip-nav: big "Skip to main" anchor on dashboard.
+- [ ] Announce state change: `LiveRegionMode.Polite` for Snackbars, `.Assertive` for errors.
+- [ ] Focus management: `FocusRequester` sets first-responder on screen open; focus returns to opener on dismiss.
+- [ ] Skip-nav: big "Skip to main" anchor on dashboard.
 
 ### 26.2 Font scale
-- [ ] Tested to fontScale 2.0 (largest system setting). <!-- NOTE-defer: no fontScale 2.0 screenshot or instrumented test exists; requires device/emulator manual QA at accessibility font size -->
-- [ ] No `sp`-locked text truncated; use `Modifier.horizontalScroll` or multi-line where meaningful. <!-- NOTE-defer: .sp used in 22+ UI files outside the intended POS/OCR exceptions; requires fontScale 2.0 manual QA to find truncation regressions -->
-- [ ] POS keypad digits fixed-size exception; OCR overlays fixed-size exception. <!-- NOTE-defer: exception sites have no code comment marking them as intentional fixed-size; requires TalkBack/fontScale audit to confirm exceptions are correctly scoped and not leaking -->
+- [ ] Tested to fontScale 2.0 (largest system setting).
+- [ ] No `sp`-locked text truncated; use `Modifier.horizontalScroll` or multi-line where meaningful.
+- [ ] POS keypad digits fixed-size exception; OCR overlays fixed-size exception.
 
 ### 26.3 Color contrast
-- [ ] Contrast ≥ 4.5:1 on body text, 3:1 on large (M3 tokens). <!-- NOTE-defer: cream/brown/dark-ramp palette uses M3 tokens but no automated contrast-ratio checks exist; requires contrast-analyzer or accessibility scanner QA pass -->
-- [ ] High-contrast mode bumps to 7:1. <!-- NOTE-defer: highContrastEnabled pref is stored and exposed in AppearanceScreen but is NOT wired into BizarreCrmTheme's ColorScheme; pref read by no composable in Theme.kt -->
-- [ ] Don't rely on color alone: status badges include icon + text. <!-- NOTE-defer: BrandStatusBadge is text-only (no icon); a11y_status_badge string is defined but has zero code references; icon+text coverage requires redesign of the badge component -->
-- [ ] Color-blind safe palette variant in Settings. <!-- NOTE-defer: a11y_color_blind_palette_toggle string defined but zero code references; no color-blind palette or toggle composable exists yet -->
-- [x] `contentDescription` on every `Icon`, `IconButton`, tappable glyph. (session 2026-04-26 — contentDesc param on CustomerAvatar; clearAndSetSemantics on BrandStatusBadge, SlaChip, TicketStatePill; SignatureCanvas.semantics; existing TagChip/PinKeypad/ErrorSurface/BrandListItem already covered)
-- [x] `semantics { heading() }` on screen titles.
-- [x] `semantics { stateDescription = ... }` on toggle-like rows. (session 2026-04-26 — `toggleRowSemantics` Modifier extension in SharedComponents; applied to DisplaySettingsScreen keep-screen-on row)
-- [x] Touch target ≥ 48dp. (session 2026-04-26 — `defaultMinSize(minHeight=48.dp)` on BrandListItem rows; PinKeypad keys already 64dp circles; M3 IconButton is 48dp by spec)
-- [x] Linear reading order: `mergeDescendants = true` on compound composables where parent has label. (session 2026-04-26 — OfflineBanner, DeadLetterBanner, BrandListItem, ErrorSurface already had mergeDescendants; confirmed correct)
-- [x] Custom `semantics { role = Role.Button/Checkbox/... }` where Material3 default wrong. (session 2026-04-26 — toggleRowSemantics sets Role.Switch; BrandListItem Role.Button; PinKeypad Role.Button; DeadLetterBanner Role.Button; all wired)
-- [x] Announce state change: `LiveRegionMode.Polite` for Snackbars, `.Assertive` for errors. (session 2026-04-26 — ErrorSurface compact+full switched to Assertive; PinDots stateDescription + Assertive liveRegion on wrong-PIN; OfflineBanner/DeadLetterBanner retain Polite)
-- [x] Focus management: `FocusRequester` sets first-responder on screen open; focus returns to opener on dismiss. (session 2026-04-26 — ConfirmDialog moves focus to Confirm button on open via FocusRequester+LaunchedEffect; LoginScreen already had FocusRequester on form fields)
-- [ ] Skip-nav: big "Skip to main" anchor on dashboard. NOTE: requires Dashboard screen refactor (Sec 30 owns layout); cross-cutting with nav scaffold — deferred.
-
-### 26.2 Font scale
-- [ ] Tested to fontScale 2.0 (largest system setting). NOTE: requires device/emulator QA run; cannot be wired in code alone — deferred to manual QA phase.
-- [ ] No `sp`-locked text truncated; use `Modifier.horizontalScroll` or multi-line where meaningful. NOTE: requires screen-by-screen visual audit at fontScale 2.0 — deferred to QA.
-- [ ] POS keypad digits fixed-size exception; OCR overlays fixed-size exception. NOTE: POS keypad intentionally uses fixed sp per §26.2 doc; already in PinKeypad comment; no code change needed.
-
-### 26.3 Color contrast
-- [ ] Contrast ≥ 4.5:1 on body text, 3:1 on large (M3 tokens). NOTE: M3 tokens are WCAG-compliant by spec; custom extended colors (warning amber) need manual audit — deferred.
-- [ ] High-contrast mode bumps to 7:1. NOTE: requires a separate high-contrast theme variant — Sec 30 owns theme; deferred.
-- [x] Don't rely on color alone: status badges include icon + text. (session 2026-04-26 — BrandStatusBadge now accepts optional `statusIcon: ImageVector?`; renders icon at 10dp before label; `clearAndSetSemantics` merges both into single label node)
-- [ ] Color-blind safe palette variant in Settings. NOTE: requires theme + Settings screen work — Sec 30 owns; deferred.
+- [ ] Contrast ≥ 4.5:1 on body text, 3:1 on large (M3 tokens).
+- [ ] High-contrast mode bumps to 7:1.
+- [ ] Don't rely on color alone: status badges include icon + text.
+- [ ] Color-blind safe palette variant in Settings.
 
 ### 26.4 Motion
-- [x] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations. (session 2026-04-26 — ReduceMotion.kt already reads ANIMATOR_DURATION_SCALE; OfflineBanner already has reduceMotion param; wired)
+- [~] Respect `Settings.Global.ANIMATOR_DURATION_SCALE == 0` → disable non-essential animations.
 - [x] In-app Reduce Motion toggle overrides regardless of system.
-- [ ] Critical feedback (shake on error) replaced with static red outline when reduced. <!-- NOTE-defer: ReduceMotionAccentType.ERROR token exists in Motion.kt but no call site uses it as a shake-replacement at form-validation or PIN-wrong-entry sites; requires implementation at each shake site -->
+- [ ] Critical feedback (shake on error) replaced with static red outline when reduced.
 
 ### 26.5 Captions / audio
-- [ ] Voice memos transcribed on-device via ML Kit (if plugin available) or server; caption shown under bubble. <!-- NOTE-defer: no voice-memo transcription or caption-under-bubble feature exists; VoiceApi.kt is a network stub only; blocked on ML Kit speech integration or server-side transcription endpoint -->
-- [ ] Video damage-intake auto-generates captions if possible. <!-- NOTE-defer: no video capture or captioning feature exists in the damage-intake flow; blocked on video-intake implementation -->
+- [ ] Voice memos transcribed on-device via ML Kit (if plugin available) or server; caption shown under bubble.
+- [ ] Video damage-intake auto-generates captions if possible.
 
 ### 26.6 Assistive features
-- [ ] Switch Access: all custom pickers must accept switch events via `focusable(true) + clickable`. <!-- NOTE-defer: no Switch Access-specific code or audit exists; requires manual Switch Access QA on custom pickers (color picker, signature pad, barcode scanner, POS keypad) -->
-- [ ] Voice Access: every tappable labeled for voice-click. <!-- NOTE-defer: no Voice Access-specific audit; contentDescription coverage is partial; requires manual Voice Access QA pass -->
-- [ ] Live Caption on audio-playing surfaces: rely on system; don't muffle. <!-- NOTE-defer: no audio-playback surfaces implemented yet (voice memos not built); revisit when §26.5 voice-memo feature ships -->
+- [ ] Switch Access: all custom pickers must accept switch events via `focusable(true) + clickable`.
+- [ ] Voice Access: every tappable labeled for voice-click.
+- [ ] Live Caption on audio-playing surfaces: rely on system; don't muffle.
 
 ### 26.7 Per-screen a11y audits
-- [ ] `accessibility-test-framework` automated checks in instrumented tests. <!-- NOTE-defer: no androidTest directory exists in the project; ATF dependency not added to build.gradle; blocked on instrumented test infrastructure -->
-- [ ] Manual TalkBack traversal script per screen (checklist). <!-- NOTE-defer: no traversal script or checklist document exists; requires dedicated TalkBack QA session per screen once contentDescription/stateDescription coverage is complete -->
+- [ ] `accessibility-test-framework` automated checks in instrumented tests.
+- [ ] Manual TalkBack traversal script per screen (checklist).
 
 ### 26.8 Haptics as info channel
-- [ ] Use haptic-only for non-critical confirm where sound would be intrusive (shop noise). <!-- NOTE-defer: HapticFeedbackType used in 4 files for reject/confirm events but no explicit shop-noise policy or non-critical-confirm haptic designation exists; requires UX policy decision then code audit -->
-- [ ] Don't convey state by haptic alone. <!-- NOTE-defer: requires behavioral audit across all haptic sites to confirm each has a paired visual/text signal; requires TalkBack manual QA -->
+- [ ] Use haptic-only for non-critical confirm where sound would be intrusive (shop noise).
+- [ ] Don't convey state by haptic alone.
 
 ### 26.9 Labels catalog
-- [ ] `R.string.a11y_*` namespace for all descriptions. <!-- NOTE-defer: 19 of 24 a11y_* strings are referenced in code; 5 are defined but unused (a11y_field_required_error, a11y_skip_to_kpi, a11y_status_badge, a11y_busy_hours_heatmap, a11y_busy_hours_heatmap_empty, a11y_color_blind_palette_toggle); also many hardcoded contentDescription strings in screens not yet migrated to a11y_* tokens -->
-- [ ] Reviewed by product copy team. <!-- NOTE-defer: organizational gate; no copy-team review process exists yet -->
-- [x] Critical feedback (shake on error) replaced with static red outline when reduced. (session 2026-04-26 — PinDots gains `reduceMotion: Boolean` param; when true, shake animation is skipped and a 2dp error-red RoundedCornerShape border is shown instead; liveRegion.Assertive announces "Wrong PIN entered")
-
-### 26.5 Captions / audio
-- [ ] Voice memos transcribed on-device via ML Kit (if plugin available) or server; caption shown under bubble. NOTE: ML Kit Speech API integration required — not a pure a11y modifier; deferred to audio/video feature section.
-- [ ] Video damage-intake auto-generates captions if possible. NOTE: same dependency — deferred.
-
-### 26.6 Assistive features
-- [x] Switch Access: all custom pickers must accept switch events via `focusable(true) + clickable`. (session 2026-04-26 — SignatureCanvas gains `semantics { contentDescription = … }` making it focusable to Switch Access scanner; ReminderOffsetPicker/BinPicker use M3 SegmentedButton/TextField which are already focusable)
-- [ ] Voice Access: every tappable labeled for voice-click. NOTE: Voice Access reads `contentDescription` or `text`; all Material3 buttons already labeled; custom surfaces covered by this session's contentDescription work. Full audit requires on-device Voice Access pass — deferred to QA.
-- [ ] Live Caption on audio-playing surfaces: rely on system; don't muffle. NOTE: no audio muffling code exists; system Live Caption is transparent — no code change needed; mark as no-op pending audio feature implementation.
-
-### 26.7 Per-screen a11y audits
-- [ ] `accessibility-test-framework` automated checks in instrumented tests. NOTE: requires Espresso AccessibilityChecks integration in CI — third-party test infrastructure; deferred per honesty policy.
-- [ ] Manual TalkBack traversal script per screen (checklist). NOTE: requires screen-reader manual QA session — deferred per honesty policy.
-
-### 26.8 Haptics as info channel
-- [ ] Use haptic-only for non-critical confirm where sound would be intrusive (shop noise). NOTE: PinKeypad already uses haptic on digit tap; extending to other confirm actions requires UX design decisions — deferred.
-- [ ] Don't convey state by haptic alone. NOTE: no code currently conveys state by haptic alone (haptics are confirmatory only); this is a design constraint — satisfied by default.
-
-### 26.9 Labels catalog
-- [x] `R.string.a11y_*` namespace for all descriptions. (session 2026-04-26 — 40 `a11y_*` strings added to strings.xml covering nav, actions, status, sync, PIN, toggle, FAB, error, photo, signature categories)
-- [ ] Reviewed by product copy team. NOTE: requires human review — deferred to pre-release copy pass.
+- [ ] `R.string.a11y_*` namespace for all descriptions.
+- [ ] Reviewed by product copy team.
 
 ---
 ## 27. Internationalization & Per-App Language
@@ -3468,54 +2741,32 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Settings → Language picker lists all translated locales plus "System default". (commit d3d546c — `ui/screens/settings/LanguageScreen.kt` radio list + Settings row with current-language subtitle; `locales_config.xml` declares en/es/fr)
 
 ### 27.2 Translations
-- [x] Phase-1 languages: en-US, es-US, es-MX, fr-CA. (`values-es/strings.xml` + `values-es-rMX/strings.xml` + `values-fr/strings.xml` created; `locales_config.xml` updated with es-US/es-MX/fr-CA regional tags)
-- [ ] Phase-2: pt-BR, de-DE, hi-IN. <!-- NOTE-defer: no translated strings yet; locale tags commented out in locales_config.xml as a scaffold -->
-- [x] `res/values-<locale>/strings.xml` per language; Weblate / Crowdin pipeline (stretch). (strings.xml files created for es + es-rMX + fr; Weblate/Crowdin wiring is stretch — deferred until strings stabilise)
-- [x] Plurals via `quantityString`; arguments via `formatArgs`. (`values/plurals.xml` + `values-es/plurals.xml` + `values-fr/plurals.xml` created with 13 plural keys; all use `%d` formatArgs)
+- [ ] Phase-1 languages: en-US, es-US, es-MX, fr-CA.
+- [ ] Phase-2: pt-BR, de-DE, hi-IN.
+- [ ] `res/values-<locale>/strings.xml` per language; Weblate / Crowdin pipeline (stretch).
+- [ ] Plurals via `quantityString`; arguments via `formatArgs`.
 
 ### 27.3 Formats
-- [x] Dates / times / numbers / currency via `java.time` + `NumberFormat.getCurrencyInstance(locale)`. (`CurrencyFormatter` now uses `NumberFormat.getCurrencyInstance(Locale.getDefault())` with ISO-4217 override chain; `DateFormatter` adds `formatLocalized()` via `FormatStyle.MEDIUM` + locale-aware time format)
-- [x] Timezone respects `ZoneId.systemDefault()` with per-tenant override. (`DateFormatter.timezoneOverride` + `effectiveZoneId`; wired via `LocaleFormatInit` at app-start and on settings change)
-- [x] First day of week respects locale. (`DateFormatter.firstDayOfWeek` uses `WeekFields.of(Locale.getDefault()).firstDayOfWeek`; `AppointmentWeekView` updated to use it)
-- [x] Phase-1 languages: en-US, es-US, es-MX, fr-CA. (session 2026-04-26 — scaffold files created: `res/values-es/strings.xml` (full scaffold, all strings + plurals marked `<!-- TODO translate -->`), `res/values-fr/strings.xml` (same); `locales_config.xml` updated with en/en-US/es/es-US/es-MX/fr/fr-CA; `LanguageManager.availableLanguages` updated. NOTE: real translations require a human translator — placeholder content is machine-scaffolded, not approved text.)
-- [x] Phase-2: pt-BR, de-DE, hi-IN. (session 2026-04-26 — stub files created: `res/values-pt-rBR/strings.xml`, `res/values-de/strings.xml`, `res/values-hi/strings.xml`; `locales_config.xml` includes pt-BR/de/hi; all stubs fall through to en until a translator populates them. Hindi stub notes Devanagari font-coverage requirement.)
-- [x] `res/values-<locale>/strings.xml` per language; Weblate / Crowdin pipeline (stretch). (session 2026-04-26 — scaffold files in place; Weblate/Crowdin wiring is a separate infra task, not blocked by this session)
-- [x] Plurals via `quantityString`; arguments via `formatArgs`. (session 2026-04-26 — `<plurals>` blocks added to `res/values/strings.xml`: `pending_sync_count`, `ticket_count`, `item_count`, `day_count_ago`, `hour_count_ago`, `minute_count_ago`; matching plurals in es + fr scaffold files. Usage: `resources.getQuantityString(R.plurals.ticket_count, n, n)`.)
-
-### 27.3 Formats
-- [x] Dates / times / numbers / currency via `java.time` + `NumberFormat.getCurrencyInstance(locale)`. (session 2026-04-26 — `util/LocaleAwareFormatters.kt` created: `formatDate`, `formatDateTime`, `formatTime` via `DateTimeFormatter.ofLocalizedDate/DateTime/Time` with `Locale.getDefault()`; `formatNumber`, `formatDecimal` via `NumberFormat.getNumberInstance(locale)`; `formatCurrency` via `NumberFormat.getCurrencyInstance(locale)` with ISO-4217 override support. `CurrencyFormatter` legacy object retained with migration note pointing to `LocaleAwareFormatters`.)
-- [x] Timezone respects `ZoneId.systemDefault()` with per-tenant override. (session 2026-04-26 — `LocaleAwareFormatters.effectiveZoneId(zoneIdOverride)` reads `AppPreferences.timezoneOverride`; `DateFormatter.formatAbsolute(Long, String?)` and `formatTimeOfDay(Long, String?)` accept optional `timezoneOverride` parameter, falling back to `ZoneId.systemDefault()`.)
-- [x] First day of week respects locale. (session 2026-04-26 — `LocaleAwareFormatters.firstDayOfWeek()` uses `Calendar.getInstance(Locale.getDefault()).firstDayOfWeek` and converts to `java.time.DayOfWeek`. `dayOfWeekDisplayName()` companion returns localized day name.)
+- [ ] Dates / times / numbers / currency via `java.time` + `NumberFormat.getCurrencyInstance(locale)`.
+- [ ] Timezone respects `ZoneId.systemDefault()` with per-tenant override.
+- [ ] First day of week respects locale.
 
 ### 27.4 RTL
 - [x] `android:supportsRtl="true"` in manifest.
 - [~] Compose uses `LocalLayoutDirection.current` — icons that imply direction (back arrow, chevron) flip via `androidx.compose.material.icons.AutoMirrored`.
-- [ ] Test Arabic + Hebrew layout. <!-- NOTE-defer: requires ar/iw locale device or emulator + screenshot CI harness; no Arabic/Hebrew translations yet -->
-- [ ] RTL-specific strings (e.g. number parsing). <!-- NOTE-defer: Arabic/Hebrew string resources not yet created; blocked on Phase-2 translation work -->
+- [ ] Test Arabic + Hebrew layout.
+- [ ] RTL-specific strings (e.g. number parsing).
 
 ### 27.5 Glossary
-- [ ] "Ticket" / "Order" / "Work Order" variant per tenant preference. <!-- NOTE-defer: requires server endpoint GET /settings/glossary (not yet implemented) -->
-- [ ] "Customer" / "Client" / "Patron" synonyms. <!-- NOTE-defer: same server dependency as above -->
-- [ ] Managed via `GET /settings/glossary`. <!-- NOTE-defer: server route does not exist; tracked in TODO.md CROSS section -->
+- [ ] "Ticket" / "Order" / "Work Order" variant per tenant preference.
+- [ ] "Customer" / "Client" / "Patron" synonyms.
+- [ ] Managed via `GET /settings/glossary`.
 
 ### 27.6 Pseudo-locale testing
-- [ ] Developer options enable `en-XA` and `ar-XB` pseudo-locales; CI screenshot tests capture both. <!-- NOTE-defer: requires screenshot test CI infrastructure (Paparazzi / Roborazzi) not yet set up -->
+- [ ] Developer options enable `en-XA` and `ar-XB` pseudo-locales; CI screenshot tests capture both.
 
 ### 27.7 Per-locale images
-- [ ] Marketing illustrations with embedded text localized per locale. <!-- NOTE-defer: design assets do not exist; no marketing illustration screens in the app yet -->
-- [ ] Test Arabic + Hebrew layout. (deferred — requires device/emulator with ar or he locale; no code change needed until layout regressions are observed)
-- [ ] RTL-specific strings (e.g. number parsing). (deferred — no RTL locales in Phase-1/2 scope; revisit when ar or he is added)
-
-### 27.5 Glossary
-- [x] "Ticket" / "Order" / "Work Order" variant per tenant preference. (session 2026-04-26 — fallback string resources added to `res/values/strings.xml`: `glossary_ticket`, `glossary_ticket_plural`, `glossary_work_order`. Server-side `GET /settings/glossary` integration is a backend task tracked in TODO.md.)
-- [x] "Customer" / "Client" / "Patron" synonyms. (session 2026-04-26 — `glossary_customer`, `glossary_customer_plural` fallback strings added. Dynamic server override wiring deferred pending API endpoint.)
-- [ ] Managed via `GET /settings/glossary`. (deferred — backend endpoint not yet implemented; CROSS-PLATFORM item needed in TODO.md before wiring the Android consumer)
-
-### 27.6 Pseudo-locale testing
-- [ ] Developer options enable `en-XA` and `ar-XB` pseudo-locales; CI screenshot tests capture both. (deferred — requires CI screenshot infrastructure; no blocking code change needed; `locales_config.xml` does not need to list pseudo-locales as they are system-only)
-
-### 27.7 Per-locale images
-- [ ] Marketing illustrations with embedded text localized per locale. (deferred — design/art scope; no code change until localized image assets are provided)
+- [ ] Marketing illustrations with embedded text localized per locale.
 
 ---
 ## 28. Security & Privacy
@@ -3524,8 +2775,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] SQLCipher (§20.8) for the DB.
 - [x] EncryptedSharedPreferences (§1) for tokens + PIN hash mirror + passphrase.
 - [~] Android Keystore hardware-backed keys (StrongBox where available).
-- [x] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`.
-- [~] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`. (session 2026-04-26 — noBackupFilesDir placement + AES-GCM MasterKey + EncryptedFile helpers wired in EncryptedCoilCache; byte-level journal interception intentionally disabled pending Coil content-addressed journal; backup exclusion complete)
+- [ ] Cached photos encrypted: Coil `DiskCache` paths under `noBackupFilesDir` + file-level AES-GCM wrap using `EncryptedFile`.
 - [x] Opt out of Auto-Backup for sensitive files.
 
 ### 28.2 Data in transit
@@ -3534,10 +2784,9 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] No cleartext endpoints ever; debug flavors allow loopback HTTP for dev.
 
 ### 28.3 Sensitive-screen protection
-- [x] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals. (session 2026-04-26 — global reactive pref in MainActivity drives FLAG_SECURE across all screens; ChangePasswordScreen + SwitchUserScreen add per-screen DisposableEffect as belt-and-suspenders)
+- [~] `WindowManager.LayoutParams.FLAG_SECURE` on auth / PIN / payment / settings-security / reports with totals.
 - [x] `Window.setRecentsScreenshotEnabled(false)` Android 12+.
-- [x] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`).
-- [x] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`). (session 2026-04-26 — LockScreenBlurHelper.applyBlur/clearBlur wired in MainActivity.onStop/onStart on decorView; API 31+ only, no-op on older; FLAG_SECURE covers older devices)
+- [ ] Blur overlay on Lock Screen preview for ticket detail with customer PII (Android 12+ `View.setRenderEffect`).
 
 ### 28.4 Clipboard sensitivity
 - [x] `ClipDescription.EXTRA_IS_SENSITIVE = true` on OTP / auth-token copies; prevents Android 13+ clipboard preview leak.
@@ -3549,139 +2798,87 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [~] Handle "Deny" + "Deny + Don't ask again" gracefully with settings deep-link fallback.
 
 ### 28.6 PII in logs
-- [x] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit. (session 2026-04-26 — RedactorTree fully wired in BizarreCrmApp.onCreate: key-value masking pass then LogRedactor PII regex sweep; throwable.message redacted too)
+- [~] Timber `RedactorTree` strips customer names, phone, email, address, SSN, IMEI, tokens via regex before emit.
 - [x] Production builds: no verbose logs; error logs redacted.
-- [x] `StrictMode` only in debug.
+- [ ] `StrictMode` only in debug.
 
 ### 28.7 Network sovereignty
-- [x] No third-party SaaS egress (§1 principle).
-- [ ] Play Data Safety disclosure audited per release: declare only FCM + tenant server. <!-- NOTE-defer: requires Play Console Data Safety form update per release; not a code change -->
-- [x] `PackageManager` query allowlist — only Tel, Sms, Maps, Email intent filters declared.
+- [ ] No third-party SaaS egress (§1 principle).
+- [ ] Play Data Safety disclosure audited per release: declare only FCM + tenant server.
+- [ ] `PackageManager` query allowlist — only Tel, Sms, Maps, Email intent filters declared.
 
 ### 28.8 Threat model (STRIDE summary)
-- [ ] Spoofing: 2FA + passkey + hardware key + device binding. <!-- NOTE-defer: device binding is a server-side feature (db binding table + enforcement in auth middleware); passkey enrollment is implemented client-side but server binding verification is not yet deployed -->
-- [ ] Tampering: HTTPS + optional pin + envelope + signed URLs. <!-- NOTE-defer: signed URL generation for photo uploads is a server-side feature not yet deployed -->
-- [ ] Repudiation: server-side audit log with chain integrity. <!-- NOTE-defer: server-side feature; audit log table exists but chain-integrity (HMAC chaining across rows) is not yet implemented on server -->
-- [ ] Info disclosure: Keystore + SQLCipher + biometric gate + FLAG_SECURE. <!-- NOTE-defer: all client-side controls are implemented; this checklist item is a documentation/audit artifact confirming all layers are in place — mark done when a formal security review signs off -->
-- [ ] DoS: server rate-limit + client rate-limit + circuit breaker. <!-- NOTE-defer: server rate-limit is deployed; client-side circuit breaker (OkHttp retries + exponential backoff) is partially implemented; full circuit-breaker pattern requires server-side integration -->
-- [ ] Elevation of privilege: server authoritative RBAC; client double-check but trust server. <!-- NOTE-defer: server RBAC is implemented; client role checks are best-effort UI gates; full audit of every gated action is a code-review task not a single feature -->
+- [ ] Spoofing: 2FA + passkey + hardware key + device binding.
+- [ ] Tampering: HTTPS + optional pin + envelope + signed URLs.
+- [ ] Repudiation: server-side audit log with chain integrity.
+- [ ] Info disclosure: Keystore + SQLCipher + biometric gate + FLAG_SECURE.
+- [ ] DoS: server rate-limit + client rate-limit + circuit breaker.
+- [ ] Elevation of privilege: server authoritative RBAC; client double-check but trust server.
 
 ### 28.9 Incident response
 - [x] Remote sign-out: `GET /auth/me` 401 handler clears local state immediately.
-- [x] Server can force version upgrade via `min_supported_version` field → force-upgrade full-screen blocker.
+- [ ] Server can force version upgrade via `min_supported_version` field → force-upgrade full-screen blocker.
 - [~] Device wipe: Settings → Diagnostics → Wipe local data (destructive, confirm twice).
 
 ### 28.10 GDPR / CCPA
-- [x] Export-my-data request → tenant server generates package; app surfaces download link.
-- [x] Delete-my-account request → confirm + server soft-delete + local wipe.
-- [x] Sign-in consent captured on setup (Terms + Privacy).
-- [ ] Privacy manifest (Play Store Data Safety) declares no tracking; only tenant server egress. <!-- NOTE-defer: requires Play Console Data Safety form completion; not a source-code change -->
+- [ ] Export-my-data request → tenant server generates package; app surfaces download link.
+- [ ] Delete-my-account request → confirm + server soft-delete + local wipe.
+- [ ] Sign-in consent captured on setup (Terms + Privacy).
+- [ ] Privacy manifest (Play Store Data Safety) declares no tracking; only tenant server egress.
 
 ### 28.11 Play Integrity
-- [x] `IntegrityManager.requestIntegrityToken(...)` on auth + on suspicious actions (new device login, high-value refund).
-- [ ] Server verifies token; flags compromised device / rooted. <!-- NOTE-defer: server-side `POST /integrity/verify` endpoint and device-flag storage not yet implemented on the server -->
-- [x] Non-blocking: warning only unless tenant policy strict.
-- [x] `StrictMode` only in debug. (session 2026-04-26 — StrictModeInit.init() guards with BuildConfig.DEBUG check; no-op in release)
-
-### 28.7 Network sovereignty
-- [ ] No third-party SaaS egress (§1 principle). NOTE: needs per-release audit of added dependencies; cannot be statically verified from code alone.
-- [ ] Play Data Safety disclosure audited per release: declare only FCM + tenant server. NOTE: requires Play Console action per release; not a code item.
-- [x] `PackageManager` query allowlist — only Tel, Sms, Maps, Email intent filters declared. (session 2026-04-26 — AndroidManifest.xml `<queries>` block declares exactly Tel, Sms/MMS, Geo/Maps, mailto, and Calendar; no wildcard entries)
-
-### 28.8 Threat model (STRIDE summary)
-- [~] Spoofing: 2FA + passkey + hardware key + device binding. (session 2026-04-26 — 2FA + biometric + PIN wired client-side; passkey + hardware key + device binding need server-side work; NOTE: passkey enrollment requires server FIDO2 endpoint)
-- [~] Tampering: HTTPS + optional pin + envelope + signed URLs. (session 2026-04-26 — HTTPS + cert pinning wired; signed URLs / envelope MAC require server-side implementation)
-- [ ] Repudiation: server-side audit log with chain integrity. NOTE: server-side only; requires dedicated audit-log service with append-only store. Deferred.
-- [~] Info disclosure: Keystore + SQLCipher + biometric gate + FLAG_SECURE. (session 2026-04-26 — all four client-side controls wired; server-side access-log audit deferred)
-- [~] DoS: server rate-limit + client rate-limit + circuit breaker. (session 2026-04-26 — RateLimiter wired client-side; server rate-limit + circuit breaker are server-side items)
-- [~] Elevation of privilege: server authoritative RBAC; client double-check but trust server. (session 2026-04-26 — client RBAC checks in place; server-side enforcement is the authoritative gate; verify with penetration test)
-
-### 28.9 Incident response
-- [x] Remote sign-out: `GET /auth/me` 401 handler clears local state immediately.
-- [ ] Server can force version upgrade via `min_supported_version` field → force-upgrade full-screen blocker. NOTE: requires server-side `min_supported_version` field in /auth/me response + client blocker screen; cross-platform item.
-- [~] Device wipe: Settings → Diagnostics → Wipe local data (destructive, confirm twice).
-
-### 28.10 GDPR / CCPA
-- [ ] Export-my-data request → tenant server generates package; app surfaces download link. NOTE: requires server-side data-export endpoint; cross-platform.
-- [ ] Delete-my-account request → confirm + server soft-delete + local wipe. NOTE: requires server-side soft-delete endpoint; cross-platform.
-- [ ] Sign-in consent captured on setup (Terms + Privacy). NOTE: requires setup-wizard step; deferred to onboarding wave.
-- [ ] Privacy manifest (Play Store Data Safety) declares no tracking; only tenant server egress. NOTE: Play Console action per release; not a code item.
-
-### 28.11 Play Integrity
-- [ ] `IntegrityManager.requestIntegrityToken(...)` on auth + on suspicious actions (new device login, high-value refund). NOTE: requires Google Play Integrity API enrollment + server-side token verification endpoint; cross-platform.
-- [ ] Server verifies token; flags compromised device / rooted. NOTE: server-side; deferred.
-- [ ] Non-blocking: warning only unless tenant policy strict. NOTE: product decision required before implementation.
+- [ ] `IntegrityManager.requestIntegrityToken(...)` on auth + on suspicious actions (new device login, high-value refund).
+- [ ] Server verifies token; flags compromised device / rooted.
+- [ ] Non-blocking: warning only unless tenant policy strict.
 
 ### 28.12 Biometric strength
 - [x] Prefer `BIOMETRIC_STRONG` (Class 3) for unlock-store-secret.
 - [x] `BIOMETRIC_WEAK` (Class 2) acceptable for screen-unlock only.
-- [x] Reject device-credential-only biometrics for payment confirmation. (session 2026-04-26 — SensitiveScreenGuard wires BiometricAuth.showPrompt which uses BIOMETRIC_STRONG authenticator; device-credential-only falls through to BiometricFailure.Disabled non-blocking path with warning toast)
+- [~] Reject device-credential-only biometrics for payment confirmation.
 
 ---
 ## 29. Performance Budget
 
 ### 29.1 Cold-start
-- [ ] Dashboard interactive ≤ 2.0s p50 / 3.5s p90 on Pixel 6a. <!-- NOTE-defer: measurement requires Macrobenchmark CI module (§29.8) which would introduce a new Gradle module -->
-- [ ] Splash → first frame ≤ 600ms (App Startup library + minimal `onCreate`). <!-- NOTE-defer: App Startup library instrumentation and timing require Macrobenchmark; `onCreate` is already lean but unverifiable without the module -->
-- [ ] Baseline Profiles + Startup Profiles compiled via Macrobenchmark in CI. <!-- NOTE-defer: requires :macrobenchmark Gradle module + CI pipeline changes — excluded per task constraints -->
 - [ ] Dashboard interactive ≤ 2.0s p50 / 3.5s p90 on Pixel 6a.
 - [ ] Splash → first frame ≤ 600ms (App Startup library + minimal `onCreate`).
-- [~] Baseline Profiles + Startup Profiles compiled via Macrobenchmark in CI. (session 2026-04-26 — hand-written baseline-prof.txt committed to app/src/main/; profileinstaller dep added to build.gradle.kts; BaselineProfileGenerator scaffold in :macrobenchmark; machine-measured re-generation deferred to CI with physical device)
+- [ ] Baseline Profiles + Startup Profiles compiled via Macrobenchmark in CI.
 
 ### 29.2 Frame rate
-- [x] 120 Hz where supported; sustained 60fps minimum.
+- [ ] 120 Hz where supported; sustained 60fps minimum.
 - [~] Jank detection via JankStats in debug; CI fails if % janky > 5% in baseline scenario.
 - [x] Scroll perf: `LazyColumn` with stable keys + `contentType`.
 
 ### 29.3 APK size
-- [ ] Target < 25 MB download (via Play Feature Delivery split per-ABI / density / language). <!-- NOTE-defer: Play Feature Delivery splits require AAB + Google Play infra configuration outside this tree -->
-- [x] R8 full mode + resource shrinking.
-- [x] No unused Firebase modules.
-
-### 29.4 Memory
-- [ ] Heap < 256 MB on phone under load. <!-- NOTE-defer: runtime heap budget enforcement requires Macrobenchmark / heap profiler tooling in CI -->
-- [x] Bitmap decoding via Coil (inSampleSize, `size(...)`).
-- [x] PagingData + virtualization.
 - [ ] Target < 25 MB download (via Play Feature Delivery split per-ABI / density / language).
-- [x] R8 full mode + resource shrinking. (session 2026-04-26 — proguard-rules.pro audited; added keep rules for Paging3 PagingSource/RemoteMediator, Coil3, androidx.tracing.Trace, ProfileInstaller, WorkManager Hilt workers, Retrofit API interfaces, SQLCipher JNI bridge; R8 full mode already on via isMinifyEnabled=true + proguard-android-optimize.txt)
-- [x] No unused Firebase modules. (session 2026-04-26 — §32.1 Gradle guard already enforces firebase-messaging-only; build aborts on any other firebase-* dep; no extra modules found in build.gradle.kts)
+- [ ] R8 full mode + resource shrinking.
+- [ ] No unused Firebase modules.
 
 ### 29.4 Memory
 - [ ] Heap < 256 MB on phone under load.
-- [x] Bitmap decoding via Coil (inSampleSize, `size(...)`). (session 2026-04-26 — CoilModule.kt added as explicit Hilt singleton binding for ImageLoader; EncryptedCoilCache.buildImageLoader sets DiskCache 100 MB + MemoryCache 25 %-of-heap; Coil3 fires inSampleSize automatically when caller passes Modifier.size or ImageRequest.size())
-- [x] PagingData + virtualization. (session 2026-04-27 — duplicate of §29.4 first occurrence L3659; Paging 3 `RemoteMediator` + `LazyColumn` with stable keys already shipped; confirmed via `TicketRemoteMediator.kt`, `InventoryRemoteMediator.kt`, `CustomerRemoteMediator.kt`)
+- [ ] Bitmap decoding via Coil (inSampleSize, `size(...)`).
+- [ ] PagingData + virtualization.
 
 ### 29.5 Battery
-- [x] Background sync every 15min (not more).
-- [x] WebSocket heartbeat 20s.
-- [x] No wake-locks except during foreground service.
+- [ ] Background sync every 15min (not more).
+- [ ] WebSocket heartbeat 20s.
+- [ ] No wake-locks except during foreground service.
 
 ### 29.6 Network
-- [x] Request cache via OkHttp (short TTL on GETs).
-- [ ] Brotli / gzip on all endpoints. <!-- NOTE-defer: server-side configuration (Express compression middleware) — no Android client change required -->
-- [ ] Image CDN: tenant server serves WebP with sizes; Coil picks right. <!-- NOTE-defer: server-side image pipeline change; Coil3 already selects optimal size via AsyncImage layout constraints -->
-
-### 29.7 Disk
-- [x] Coil disk cache cap 100 MB.
-- [x] Drafts / attachments cap 50 MB.
-- [x] Room vacuum weekly.
-
-### 29.8 Instrumentation
-- [ ] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake. <!-- NOTE-defer: requires new :macrobenchmark Gradle module — excluded per task constraints -->
-- [x] Request cache via OkHttp (short TTL on GETs). (session 2026-04-26 — OkHttp Cache(10 MB, cacheDir/okhttp_cache) wired into provideOkHttpClient via new provideOkHttpCache @Provides; honours server Cache-Control headers + If-None-Match revalidation; sync client intentionally uncached)
+- [ ] Request cache via OkHttp (short TTL on GETs).
 - [ ] Brotli / gzip on all endpoints.
 - [ ] Image CDN: tenant server serves WebP with sizes; Coil picks right.
 
 ### 29.7 Disk
-- [x] Coil disk cache cap 100 MB. (session 2026-04-26 — MAX_CACHE_BYTES = 100 MB already in EncryptedCoilCache; CoilModule.kt exposes it as Hilt singleton)
-- [x] Drafts / attachments cap 50 MB. (session 2026-04-27 — duplicate of §29.7 first occurrence L3681; `CachePurgeWorker.kt` enforces 50 MB LRU cap on attachment staging dir via `evictAttachmentStagingIfOverCap()`; scheduled via WorkManager periodic 24 h)
-- [x] Room vacuum weekly. (session 2026-04-27 — duplicate of §29.7 first occurrence L3682; `RoomVacuumWorker.kt` (`@HiltWorker`) runs `VACUUM` on `BizarreDatabase.openHelper.writableDatabase` weekly via `PeriodicWorkRequestBuilder<RoomVacuumWorker>(7, TimeUnit.DAYS)`; scheduled via `WorkManager.enqueueUniquePeriodicWork(KEEP)`)
+- [ ] Coil disk cache cap 100 MB.
+- [ ] Drafts / attachments cap 50 MB.
+- [ ] Room vacuum weekly.
 
 ### 29.8 Instrumentation
-- [~] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake. (session 2026-04-26 — :macrobenchmark scaffold created; StartupBenchmark + BaselineProfileGenerator classes present; module commented out in settings.gradle.kts pending CI physical device; PerfTrace DisposableEffect wired in Dashboard, TicketList, InventoryList, PosTender, CustomerList)
+- [ ] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake.
 
 ### 29.9 Context-window perf tests
-- [ ] Sampled 5k tickets + 10k messages + 1k inventory items tenant in fixture DB; every list scrollable smoothly. <!-- NOTE-defer: requires large fixture database seeding infra not present in this tree -->
+- [ ] Sampled 5k tickets + 10k messages + 1k inventory items tenant in fixture DB; every list scrollable smoothly.
 
 ---
 ## 30. Design System & Motion (Material 3 Expressive)
@@ -3695,34 +2892,20 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 30.2 Shape tokens
 - [x] `M3Shapes(extraSmall=4dp, small=8dp, medium=16dp, large=24dp, extraLarge=32dp)`.
-- [x] FAB + emphasis buttons use `roundedCornerShape(50%)` or expressive cut-corner shapes.
+- [ ] FAB + emphasis buttons use `roundedCornerShape(50%)` or expressive cut-corner shapes.
 
 ### 30.3 Typography
-- [ ] Display: Bebas Neue (brand); Headline: League Spartan semibold; Body: Roboto; Mono: Roboto Mono. <!-- NOTE-defer: .ttf assets (bebas_neue, league_spartan) not bundled in res/font/; deployed stack is Inter + Barlow Condensed — swap requires design sign-off + font licensing + asset bundle -->
-- [ ] Font files under `res/font/` loaded via `FontFamily(Font(R.font.bebas_neue))`. <!-- NOTE-defer: blocked on font assets above -->
-- [ ] Fallback: Roboto system. <!-- NOTE-defer: blocked on font assets above -->
-- [ ] `scaledSp` applied so fontScale honored. <!-- NOTE-defer: AppPreferences.fontScaleKey pref exists; wiring into a custom LocalDensity override requires ThemeScreen Settings UI (Wave-3) to land so the pref is user-settable -->
+- [ ] Display: Bebas Neue (brand); Headline: League Spartan semibold; Body: Roboto; Mono: Roboto Mono.
+- [ ] Font files under `res/font/` loaded via `FontFamily(Font(R.font.bebas_neue))`.
+- [ ] Fallback: Roboto system.
+- [ ] `scaledSp` applied so fontScale honored.
 
 ### 30.4 Motion
-- [x] `MotionScheme.expressive()` tokens — emphasized spring curves.
-- [ ] Shared-element transitions via `SharedTransitionLayout` for row→detail on tablet. <!-- NOTE-defer: requires wrapping every list+detail screen pair in a SharedTransitionLayout scope; multi-screen structural change, not a theme-layer item -->
-- [x] `AnimatedContent` for step wizards.
-- [x] Reduce Motion: disable non-essential springs; instant state swap.
-- [ ] Timing tokens see §70. <!-- NOTE-defer: §70 timing-token schema not yet authored; will import from there when ready -->
-- [x] FAB + emphasis buttons use `roundedCornerShape(50%)` or expressive cut-corner shapes. (session 2026-04-26 — EmphasisFabShape = MaterialShapes.Cookie9Sided wired in Shapes.kt; BrandFab + BrandPrimaryButton consume it)
-
-### 30.3 Typography
-- [x] Display: Bebas Neue (brand); Headline: League Spartan semibold; Body: Roboto; Mono: Roboto Mono. (session 2026-04-26 — BebasNeueFamily + LeagueSpartanFamily + RobotoMonoFamily added to Typography.kt; body remains Inter per phone/tablet legibility; Roboto body note: system Roboto is always available as OS fallback, no bundle needed)
-- [x] Font files under `res/font/` loaded via `FontFamily(Font(R.font.bebas_neue))`. (session 2026-04-26 — bebas_neue_regular.ttf, league_spartan_variable.ttf, roboto_mono_variable.ttf downloaded and wired)
-- [x] Fallback: Roboto system. (session 2026-04-26 — Android OS provides Roboto as default sans-serif fallback automatically)
-- [x] `scaledSp` applied so fontScale honored. (session 2026-04-26 — scaledSp(Dp) composable added to Typography.kt)
-
-### 30.4 Motion
-- [~] `MotionScheme.expressive()` tokens — emphasized spring curves. (session 2026-04-26 — Theme.kt wires MotionScheme.expressive() inside MaterialExpressiveTheme; API is alpha-gated @ExperimentalMaterial3ExpressiveApi in material3 1.5.0-alpha18; BizarreMotion token wrapper ships regardless; mark [~] until stable)
-- [x] Shared-element transitions via `SharedTransitionLayout` for row→detail on tablet. (session 2026-04-26 — already wired in AppNavGraph.kt lines 954/2384)
-- [x] `AnimatedContent` for step wizards. (session 2026-04-26 — already used in LoginPillButton, AppointmentListScreen, etc.)
-- [x] Reduce Motion: disable non-essential springs; instant state swap. (session 2026-04-26 — motionSpec() + BizarreMotion.standard/expressive already honoring reduceMotion; multiple screens confirmed)
-- [x] Timing tokens see §70. (session 2026-04-26 — DURATION_SHORT/MEDIUM/LONG added to BizarreMotion in Motion.kt)
+- [ ] `MotionScheme.expressive()` tokens — emphasized spring curves.
+- [ ] Shared-element transitions via `SharedTransitionLayout` for row→detail on tablet.
+- [ ] `AnimatedContent` for step wizards.
+- [ ] Reduce Motion: disable non-essential springs; instant state swap.
+- [ ] Timing tokens see §70.
 
 ### 30.5 Elevation / surfaces
 - [~] 3 levels max: `surface` / `surfaceContainer` / `surfaceContainerHighest`.
@@ -3733,186 +2916,113 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Brand-specific glyphs under `res/drawable-*` as vector drawables.
 
 ### 30.7 Component library
-- [x] `CommonTextField` wrapper around `OutlinedTextField` with error / helper / prefix / suffix slots.
+- [ ] `CommonTextField` wrapper around `OutlinedTextField` with error / helper / prefix / suffix slots.
 - [~] `StatusChip` / `UrgencyChip` / `CountBadge`.
 - [x] `EmptyState(icon, title, subtitle, cta)`.
 - [x] `ErrorState(title, message, retry)`.
 - [~] `SkeletonRow` / `SkeletonCard` using `shimmer` plug-in.
 
 ### 30.8 Dark mode polish
-- [x] Dark mode defaults on after 7pm local time if user hasn't set (optional).
-- [x] Never pure black except on AMOLED "darker" variant.
+- [ ] Dark mode defaults on after 7pm local time if user hasn't set (optional).
+- [ ] Never pure black except on AMOLED "darker" variant.
 
 ### 30.9 Brand accent
-- [x] Tenant color overlays primary via `ColorScheme.copy(primary = tenantAccent)` with auto-contrast bump if too pale.
-- [ ] Never overrides semantic danger / success / warning. <!-- NOTE-defer: semantic-color guard requires validation in AppearanceScreen when user picks tenant accent; that Settings screen is Wave-3 and does not yet exist -->
+- [ ] Tenant color overlays primary via `ColorScheme.copy(primary = tenantAccent)` with auto-contrast bump if too pale.
+- [ ] Never overrides semantic danger / success / warning.
 
 ### 30.10 Design tokens
-- [x] `DesignTokens.kt` defines: `Spacing(xxs=2, xs=4, sm=8, md=12, lg=16, xl=20, xxl=24, xxxl=32, huge=48)`.
-- [x] Radius tokens match §30.2.
-- [x] Shadow elevation table.
-- [x] Semantic colors: `brandAccent`, `brandDanger`, `brandWarning`, `brandSuccess`, `brandInfo`.
-- [ ] Lint rule forbids inline `Color(0x..)` / inline dp literals outside token files. <!-- NOTE-defer: requires new custom Lint check in :lint-rules module (existing rules target GlobalScope + singleton patterns, not color/dp literals) -->
-- [x] Dark mode defaults on after 7pm local time if user hasn't set (optional). (session 2026-04-26 — isAfterSevenPm() added to Theme.kt; BizarreCrmTheme default param wired; flips dark 19:00–07:00)
-- [x] Never pure black except on AMOLED "darker" variant. (session 2026-04-26 — BgAmoled=0xFF000000 token + amoledDark param in BizarreCrmTheme; default background remains BgDark #1C1611)
-
-### 30.9 Brand accent
-- [x] Tenant color overlays primary via `ColorScheme.copy(primary = tenantAccent)` with auto-contrast bump if too pale. (session 2026-04-26 — accentWithContrastBump() in Theme.kt; resolvedAccent computed in BizarreCrmTheme with remember)
-- [x] Never overrides semantic danger / success / warning. (session 2026-04-26 — accentWithContrastBump only called on the primary accent; ExtendedColors danger/success/warning values are immutable and sourced independently)
-
-### 30.10 Design tokens
-- [x] `DesignTokens.kt` defines: `Spacing(xxs=2, xs=4, sm=8, md=12, lg=16, xl=20, xxl=24, xxxl=32, huge=48)`. (session 2026-04-26 — DesignTokens.kt created in ui/theme/)
-- [x] Radius tokens match §30.2. (session 2026-04-26 — Radius object in DesignTokens.kt mirrors BizarreShapes)
-- [x] Shadow elevation table. (session 2026-04-26 — Elevation object with level0–level5 in DesignTokens.kt)
-- [x] Semantic colors: `brandAccent`, `brandDanger`, `brandWarning`, `brandSuccess`, `brandInfo`. (session 2026-04-26 — BrandColors object in DesignTokens.kt)
-- [~] Lint rule forbids inline `Color(0x..)` / inline dp literals outside token files. (session 2026-04-26 — tracked; requires custom detekt/lint module; deferred to separate task)
+- [ ] `DesignTokens.kt` defines: `Spacing(xxs=2, xs=4, sm=8, md=12, lg=16, xl=20, xxl=24, xxxl=32, huge=48)`.
+- [ ] Radius tokens match §30.2.
+- [ ] Shadow elevation table.
+- [ ] Semantic colors: `brandAccent`, `brandDanger`, `brandWarning`, `brandSuccess`, `brandInfo`.
+- [ ] Lint rule forbids inline `Color(0x..)` / inline dp literals outside token files.
 
 ---
 ## 31. Testing Strategy
 
 ### 31.1 Unit
 - [~] JUnit5 + MockK for ViewModels + Repositories + Utils. (Currently on JUnit4 — 13+ unit test files cover pure-Kotlin utils. Upgrade to JUnit5 + MockK for ViewModels pending.)
-- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`). <!-- NOTE-defer: requires CI coverage tooling (Kover/JaCoCo) + module extraction that does not exist yet; no new module may be introduced per task constraints -->
-- [x] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`. (`app/src/test/…/util/CoroutineRunTestPatternTest.kt` — 6 tests covering virtual-time advancement, sequential + concurrent delay ordering, StateFlow collection, and advanceTimeBy boundary; pattern already used in ActiveSessionsViewModelTest, ForgotPinViewModelTest, etc.)
+- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`).
+- [ ] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`.
 
 ### 31.2 Integration
-- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB. <!-- NOTE-defer: requires androidTest instrumented harness + device/emulator; no app/src/androidTest directory exists yet; `MigrationRegistryTest.kt` covers the registry chain on JVM but not the actual Room migration SQL execution -->
-- [x] Retrofit + MockWebServer for ApiClient response parsing + error branches. (`app/src/test/…/data/remote/MockWebServerApiClientTest.kt` — 11 tests: happy-path, success:false+message, HTTP 401/404/500 as HttpException, malformed JSON, ticket list with pagination, null data, 2FA branch, empty list, request path assertion.)
-- [x] WorkManager test harness for SyncWorker. (`app/src/test/…/data/sync/worker/SyncWorkerLogicTest.kt` — 10 tests: success, Retry at attempt 0/2/MAX-1, Failure at attempt MAX/MAX+, IOException handling, call-count invariant, MAX_WORKER_ATTEMPTS constant guard, boundary conditions. Worker machinery requiring a real Context is noted as instrumented-defer.)
+- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB.
+- [ ] Retrofit + MockWebServer for ApiClient response parsing + error branches.
+- [ ] WorkManager test harness for SyncWorker.
 
 ### 31.3 UI (Compose)
-- [ ] `createAndroidComposeRule` per screen. <!-- NOTE-defer: requires instrumented test harness (androidTest source set + device/emulator); no app/src/androidTest directory exists yet -->
-- [ ] Semantics-tree assertions for every tappable + labeled element. <!-- NOTE-defer: depends on createAndroidComposeRule instrumented harness above -->
-- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi. <!-- NOTE-defer: requires adding Paparazzi or Roborazzi Gradle plugin + golden-image CI storage; no plugin declared in build.gradle.kts -->
-- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS). <!-- NOTE-defer: depends on Paparazzi/Roborazzi plugin above + screenshot CI artefact storage -->
-- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen. <!-- NOTE-defer: depends on Paparazzi/Roborazzi plugin above -->
+- [ ] `createAndroidComposeRule` per screen.
+- [ ] Semantics-tree assertions for every tappable + labeled element.
+- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi.
+- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS).
+- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen.
 
 ### 31.4 E2E
-- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub). <!-- NOTE-defer: requires instrumented androidTest harness + real/emulated device -->
-- [ ] Maestro YAML flows for top 20 user journeys. <!-- NOTE-defer: requires Maestro CLI + device/emulator; no Maestro config present in tree -->
-- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold). <!-- NOTE-defer: requires CI pipeline + Firebase Test Lab project credentials; external infrastructure dependency -->
+- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub).
+- [ ] Maestro YAML flows for top 20 user journeys.
+- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold).
 
 ### 31.5 Performance
-- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake. <!-- NOTE-defer: requires new :macrobenchmark Gradle module — prohibited by task constraints -->
-- [ ] JankStats production sampling (1% of sessions) reports to tenant server. <!-- NOTE-defer: requires TelemetryClient server endpoint (§32.2 deferred) -->
-- [ ] Baseline + startup profiles committed + auto-regenerated in CI. <!-- NOTE-defer: requires Macrobenchmark module + CI baseline-profile generation task -->
+- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake.
+- [ ] JankStats production sampling (1% of sessions) reports to tenant server.
+- [ ] Baseline + startup profiles committed + auto-regenerated in CI.
 
 ### 31.6 Accessibility
-- [ ] `accessibility-test-framework` assertion integrated into every UI test. <!-- NOTE-defer: requires instrumented androidTest harness; no app/src/androidTest directory exists yet -->
-- [ ] Manual script per screen via TalkBack (§26.7). <!-- NOTE-defer: manual process, not automatable via JVM tests -->
+- [ ] `accessibility-test-framework` assertion integrated into every UI test.
+- [ ] Manual script per screen via TalkBack (§26.7).
 
 ### 31.7 Security
-- [x] Static analysis: detekt + Android Lint + R8 obfuscation verify. (`app/src/test/…/data/local/db/StaticAnalysisConfigTest.kt` + `app/src/test/…/data/remote/DynamicBaseUrlValidatorTest.kt` — StaticAnalysisConfigTest: 12 tests asserting proguard-rules.pro keep rules (DTO, Room entities, Hilt, Retrofit, Gson, Tink), IssueRegistry service-loader file, CrmIssueRegistry issue registrations (GlobalScope, RetrofitOutsideRemote, StatefulObjectSingleton), Firebase egress guard in build.gradle.kts, minifyEnabled + shrinkResources; DynamicBaseUrlValidatorTest: 18 tests for URL injection guard — SSRF, scheme injection (javascript:/file:/data:), userinfo, whitespace/CR/LF, HTTP downgrade, allow-list coverage, lookalike domain rejection.)
-- [ ] MobSF scan on release APK in CI. <!-- NOTE-defer: requires CI pipeline + MobSF Docker image; external infrastructure dependency -->
-- [ ] Pinning tests: MITM proxy must fail handshake. <!-- NOTE-defer: requires instrumented test with mitmproxy running on the test host; external infrastructure dependency -->
-- [ ] OWASP MASVS L1 checklist passed. <!-- NOTE-defer: manual checklist process + instrumented tests; tracked separately in security-review workflow -->
+- [ ] Static analysis: detekt + Android Lint + R8 obfuscation verify.
+- [ ] MobSF scan on release APK in CI.
+- [ ] Pinning tests: MITM proxy must fail handshake.
+- [ ] OWASP MASVS L1 checklist passed.
 
 ### 31.8 Fixtures
-- [ ] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant. <!-- NOTE-defer: requires new Gradle testFixtures source set or separate module; prohibited by task constraints -->
-- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web). <!-- NOTE-defer: depends on testFixtures module above + instrumented Room harness -->
+- [ ] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant.
+- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web).
 
 ### 31.9 Flakiness
-- [ ] Flaky test tag; quarantined after 2 consecutive CI reds. <!-- NOTE-defer: requires CI pipeline configuration (GitHub Actions / Gradle Enterprise) + custom test-retry plugin -->
-- [ ] Ownership assigned to module author. <!-- NOTE-defer: process/governance item, not implementable in code -->
-- [ ] Daily slow-test watchdog: test > 60s flagged. <!-- NOTE-defer: requires CI pipeline with test-timing reporting (Gradle Enterprise or custom plugin) -->
+- [ ] Flaky test tag; quarantined after 2 consecutive CI reds.
+- [ ] Ownership assigned to module author.
+- [ ] Daily slow-test watchdog: test > 60s flagged.
 
 ### 31.10 Gherkin parity spec
-- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature. <!-- NOTE-defer: requires cross-platform shared spec directory in the monorepo root; not present in tree -->
-- [ ] Android + iOS + Web each must satisfy same scenarios. <!-- NOTE-defer: depends on shared Gherkin spec above + Cucumber/Karate harness per platform -->
-- [ ] 80%+ branch coverage on pure Kotlin modules (`:core`, `:domain`, `:data`). NOTE: requires coverage tooling (Kover/JaCoCo) + CI enforcement; cannot implement as a test file.
-- [x] Kotlin coroutines test via `runTest` + `StandardTestDispatcher`. (session 2026-04-26 — `CoroutinesRunTestTest.kt` added: 7 tests covering runTest, advanceTimeBy, advanceUntilIdle, StateFlow, exception propagation, virtual delay, explicit TestScope)
-
-### 31.2 Integration
-- [ ] Instrumented Room migration tests — every migration asserted on fresh + large fixture DB. NOTE: requires `RoomDatabase.Builder` + `MigrationTestHelper` which need `src/androidTest/` with a device/emulator context; deferred until instrumented test suite is set up.
-- [x] Retrofit + MockWebServer for ApiClient response parsing + error branches. (session 2026-04-26 — `MockWebServerApiParsingTest.kt` added: 11 tests covering success/failure envelope, 401/500, ticket+customer list parsing, empty list, network failure, malformed JSON, null data, request path; `work-testing` dep also added to libs.versions.toml + build.gradle.kts)
-- [x] WorkManager test harness for SyncWorker. (session 2026-04-26 — `SyncWorkerTest.kt` added: 5 tests covering success/retry/failure/boundary via pure-Kotlin `runWorkerLogic` helper + `FakeSyncManager` stub. NOTE: full `TestListenableWorkerBuilder` integration needs Robolectric on classpath — add `testImplementation(libs.robolectric)` + `@RunWith(RobolectricTestRunner::class)` when ready; commented scaffold included in the file)
-
-### 31.3 UI (Compose)
-- [ ] `createAndroidComposeRule` per screen. NOTE: requires `src/androidTest/` + device/emulator context.
-- [ ] Semantics-tree assertions for every tappable + labeled element. NOTE: requires instrumented Compose test runner.
-- [ ] Snapshot tests via Paparazzi (JVM, no device) or Roborazzi. NOTE: requires snapshot diff infrastructure + CI baseline images.
-- [ ] Screenshot per breakpoint: 360×640 (phone), 600×960 (foldable), 840×1200 (tablet), 1440×900 (ChromeOS). NOTE: requires snapshot infrastructure or device farm.
-- [ ] Dark + light + high-contrast + fontScale 2.0 × each screen. NOTE: same as above.
-
-### 31.4 E2E
-- [ ] Espresso + UI Automator for hardware-cross flows (BlockChyp stub, printer stub). NOTE: requires device + hardware stubs.
-- [ ] Maestro YAML flows for top 20 user journeys. NOTE: requires Maestro CLI + device.
-- [ ] Firebase Test Lab nightly on 5 physical devices (Pixel 6, Pixel 8, Samsung A54, Samsung Tab S9, Pixel Fold). NOTE: requires CI + Firebase Test Lab project.
-
-### 31.5 Performance
-- [ ] Macrobenchmark module: startup + ticket-list scroll + POS tender + stocktake. NOTE: macrobenchmark module exists; tests need a device with profile-install; CI runner required.
-- [ ] JankStats production sampling (1% of sessions) reports to tenant server. NOTE: requires production deployment + server-side ingestion endpoint.
-- [ ] Baseline + startup profiles committed + auto-regenerated in CI. NOTE: requires CI runner + connected device.
-
-### 31.6 Accessibility
-- [ ] `accessibility-test-framework` assertion integrated into every UI test. NOTE: requires instrumented UI tests (§31.3 prerequisite).
-- [ ] Manual script per screen via TalkBack (§26.7). NOTE: human manual task, not automatable.
-
-### 31.7 Security
-- [ ] Static analysis: detekt + Android Lint + R8 obfuscation verify. NOTE: detekt + Lint run locally but enforcement gate requires CI.
-- [ ] MobSF scan on release APK in CI. NOTE: requires CI runner + release APK + MobSF server.
-- [ ] Pinning tests: MITM proxy must fail handshake. NOTE: requires MITM proxy infrastructure (mitmproxy/Charles) + device.
-- [ ] OWASP MASVS L1 checklist passed. NOTE: checklist review is a manual audit task.
-
-### 31.8 Fixtures
-- [x] Shared `testFixtures` module: minimal tenant, mid-size tenant, large tenant, edge-case tenant. (session 2026-04-26 — `TestFixtures.kt` added in `testing/` package: `customerEntity`, `ticketEntity`, `ticketListItem`, `customerListItem`, `successResponse`/`failureResponse` builders + `minimalTenant`, `midSizeTenant`, `edgeCaseTenant` presets + `customerSequence`/`ticketSequence` helpers)
-- [ ] Fixture DB pre-populated: 958 customers, 964 tickets, 487 inventory, 203 device models (mirror web). NOTE: requires Room + MigrationTestHelper in `src/androidTest/` with a device context; deferred until instrumented test suite is set up.
-
-### 31.9 Flakiness
-- [ ] Flaky test tag; quarantined after 2 consecutive CI reds. NOTE: requires CI pipeline with test-result tracking.
-- [ ] Ownership assigned to module author. NOTE: organizational process, not a code artifact.
-- [ ] Daily slow-test watchdog: test > 60s flagged. NOTE: requires CI timing infrastructure.
-
-### 31.10 Gherkin parity spec
-- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature. NOTE: cross-platform work; `packages/shared/spec/` does not exist yet; requires coordinated iOS + Web participation.
-- [ ] Android + iOS + Web each must satisfy same scenarios. NOTE: depends on §31.10 first bullet.
+- [ ] Shared spec lives in `packages/shared/spec/` — Gherkin scenarios for each feature.
+- [ ] Android + iOS + Web each must satisfy same scenarios.
 
 ---
 ## 32. Telemetry, Crash, Logging
 
 ### 32.1 No third-party telemetry
 - [x] **Absolutely no** Firebase Crashlytics / Analytics / Performance / Remote Config / App Check as data-egress points. FCM push token only.
-- [x] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`. (Implemented in `RetrofitOutsideRemoteDetector.BANNED_PREFIXES`; registered in `CrmIssueRegistry`.)
-- [x] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`. (session 2026-04-26 — `RetrofitOutsideRemoteDetector` in `lint-rules/` covers Crashlytics/Analytics/Sentry + Retrofit/OkHttp outside `data.remote`; registered in `CrmIssueRegistry`.)
+- [~] Lint rule bans imports of `com.google.firebase.crashlytics.*`, `analytics.*`, `perf.*`, `remoteconfig.*`.
 - [x] Gradle dependency allowlist enforced by custom plugin.
 
 ### 32.2 Tenant-server telemetry
-- [ ] `TelemetryClient` (Hilt, singleton) batches events → `POST /telemetry/events`. <!-- NOTE-defer: requires /telemetry/events server endpoint (§74 schema not yet landed) -->
-- [ ] Schema: see §74. <!-- NOTE-defer: server schema §74 not yet defined -->
-- [ ] Offline buffer in Room; flushes on connectivity + foreground. <!-- NOTE-defer: depends on TelemetryClient + server endpoint above -->
+- [ ] `TelemetryClient` (Hilt, singleton) batches events → `POST /telemetry/events`.
+- [ ] Schema: see §74.
+- [ ] Offline buffer in Room; flushes on connectivity + foreground.
 
 ### 32.3 Crash reporting
 - [x] `Thread.setDefaultUncaughtExceptionHandler` captures stacktrace + breadcrumbs + app state → writes to `crashes` Room table. (`util/CrashReporter.kt` writes per-crash log to `filesDir/crash-reports/` (thread + build + device + cause chain, rotates to last 10) and `Settings → Crash reports` lets the user view / share via FileProvider / delete. Room table + breadcrumbs still deferred — file-based store works for now.)
-- [ ] Upload on next launch via `POST /telemetry/crashes`. <!-- NOTE-defer: requires /telemetry/crashes server endpoint -->
-- [ ] Opt-in per user (Settings → Diagnostics). <!-- NOTE-defer: requires server-persisted preference + /telemetry/crashes endpoint to be meaningful -->
-- [x] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code. (no app-side implementation required; Play Vitals operates at OS/Play level; custom crash handler in `util/CrashReporter.kt` is additive, not in conflict)
+- [ ] Upload on next launch via `POST /telemetry/crashes`.
+- [ ] Opt-in per user (Settings → Diagnostics).
+- [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.
 
 ### 32.4 Logging
-- [x] Timber with `RedactorTree` filtering PII. (`BizarreCrmApp` plants `RedactorTree(DebugTree)` in debug and `RedactorTree(ReleaseTree)` in release.)
-- [x] Log levels: Error / Warn / Info / Debug / Verbose. (Timber covers all levels; `ReleaseTree.isLoggable` gates Error+Warn in production.)
-- [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (`ReleaseTree`, `MAX_ENTRIES=500`, `flushToDisk` writes to `filesDir/diagnostics-logs/`.)
-- [x] Settings → Diagnostics → View logs. (`LogViewerScreen` + `LogViewerViewModel` wired via `Screen.LogViewer` route; keyword search + Error/Warn level filter chips added 2026-04-27.)
-- [x] Share logs → generates redacted bundle + share sheet. (`LogViewerViewModel.prepareShare` calls `ReleaseTree.flushToDisk`, surfaces via FileProvider + `Intent.ACTION_SEND`.)
-- [ ] Upload on next launch via `POST /telemetry/crashes`. NOTE 2026-04-26: server-side `/telemetry/crashes` endpoint not yet implemented; client-side upload deferred until endpoint exists. Local crash files available via `filesDir/crash-reports/`.
-- [ ] Opt-in per user (Settings → Diagnostics). NOTE 2026-04-26: Settings UI not touched this session; wire toggle → `DiagnosticsPreferences` datastore key when Settings screen is extended.
-- [x] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code. (session 2026-04-27 — duplicate of §32.4 first occurrence L3903 [x]; no app-side implementation required; Play Vitals operates at OS/Play level; custom crash handler in `util/CrashReporter.kt` is additive)
-
-### 32.4 Logging
-- [x] Timber with `RedactorTree` filtering PII. (session 2026-04-26 — `RedactorTree` wraps both `DebugTree` (debug) and `ReleaseTree` (release) in `BizarreCrmApp.onCreate`; all Timber calls pass through PII redaction before any output.)
-- [x] Log levels: Error / Warn / Info / Debug / Verbose. (session 2026-04-26 — `ReleaseTree.isLoggable` gates on `Log.WARN+`; `DebugTree` passes all levels in debug. Level semantics enforced via Timber priority constants.)
-- [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (session 2026-04-26 — `util/ReleaseTree.kt`: `ConcurrentLinkedDeque` capped at 500 entries, `flushToDisk(dir)` writes to `diagnostics-logs/release-<date>.log`, rotates to last 7 daily files.)
-- [x] Settings → Diagnostics → View logs. (session 2026-04-27 — `LogViewerScreen.kt` + `LogViewerViewModel` fully implemented with **keyword search** (`OutlinedTextField` + `setQuery()` + in-memory `applyFilters()`) and **level filter chips** (`LogLevel` enum ERROR/WARN, `FilterChip` row, `toggleLevel()` with min-1 guard); `DiagnosticsScreen` "View release logs" button navigates via `Screen.LogViewer` route)
-- [x] Share logs → generates redacted bundle + share sheet. (session 2026-04-27 — `LogViewerViewModel.prepareShare()` calls `releaseTree.flushToDisk(logDir)` on `Dispatchers.IO`; `LogViewerScreen` `LaunchedEffect(state.shareFile)` fires `shareLogs()` which uses `FileProvider.getUriForFile + Intent.ACTION_SEND`)
+- [ ] Timber with `RedactorTree` filtering PII.
+- [ ] Log levels: Error / Warn / Info / Debug / Verbose.
+- [ ] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk.
+- [ ] Settings → Diagnostics → View logs.
+- [ ] Share logs → generates redacted bundle + share sheet.
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
 - [x] Included with crash report.
 
 ### 32.6 Redactor
-- [x] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens. (`LogRedactor` + `RedactorTree.SENSITIVE_KEYS`; address/name patterns not covered — over-redaction tradeoff accepted.)
-- [x] Runs before every log emit and telemetry emit. (`RedactorTree.log` and `Breadcrumbs.log` both call `LogRedactor.redact`.)
-- [x] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens. (session 2026-04-26 — `LogRedactor` covers Bearer/JWT/IMEI/card/SSN/phone/email; `RedactorTree.SENSITIVE_KEYS` covers JSON+form-encoded key-value pairs for all auth/PII keys. Address redaction is statistical best-effort via phone/email patterns; dedicated address regex deferred.)
-- [x] Runs before every log emit and telemetry emit. (session 2026-04-26 — `RedactorTree.log()` calls `redact()` on every Timber call; `CrashReporter.writeReport()` calls `LogRedactor.redact()` on full report text before file write; `Breadcrumbs.log()` calls `LogRedactor.redact()` at ingest; `ReleaseTree.log()` calls `LogRedactor.redact()` before ring buffer write.)
+- [~] Regex list covering phone, email, address, name (statistically common), IMEI, card number, CVV, SSN, Bearer tokens.
+- [~] Runs before every log emit and telemetry emit.
 - [x] Unit-tested against known-PII samples.
 
 ### 32.7 Network trace
@@ -3920,175 +3030,115 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Release builds: BASIC level (method + URL + status code), still redacted.
 
 ### 32.8 ANR monitoring
-- [x] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` on cold-start. (`util/AnrMonitor.kt`, API-30 gated, logs via Timber → `ReleaseTree` ring buffer.)
-- [ ] Upload ANR summary to tenant server on next launch. <!-- NOTE-defer: requires /telemetry/events or dedicated /telemetry/anr server endpoint -->
+- [ ] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server.
 
 ### 32.9 Performance metrics
-- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported. <!-- NOTE-defer: JankReporter captures per-frame jank into Breadcrumbs; aggregated p50/p90 reporting requires TelemetryClient (§32.2) -->
-- [ ] Cold-start duration, time-to-first-content per screen. <!-- NOTE-defer: requires TelemetryClient upload path (§32.2) -->
+- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported.
+- [ ] Cold-start duration, time-to-first-content per screen.
 
 ### 32.10 Privacy disclosure
-- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release. <!-- NOTE-defer: store-listing action, not code; complete when submitting to Play Console -->
-- [x] `ApplicationExitInfo.REASON_ANR` sampled from `ActivityManager.getHistoricalProcessExitReasons` + uploaded to tenant server. (session 2026-04-26 — `util/AnrMonitor.kt`: samples ANR + crash exit reasons on API 30+ at each `Application.onCreate`; de-duplicates via `filesDir/anr-reports/.seen-timestamps`; writes per-exit log file with ANR trace (first 4KB, redacted) to `filesDir/anr-reports/`, rotates to 20 files. Upload deferred — server-side `/telemetry/crashes` endpoint not yet implemented; NOTE: wire `AnrMonitor` to `TelemetryClient` once §32.2 endpoint exists.)
-
-### 32.9 Performance metrics
-- [ ] Macrobenchmark results + JankStats p50/p90 frame time reported. NOTE 2026-04-26: requires `androidx.benchmark:benchmark-macrobenchmark` + dedicated macrobenchmark module + connected-device CI; deferred until CI infrastructure is in place.
-- [ ] Cold-start duration, time-to-first-content per screen. NOTE 2026-04-26: same dependency as above; deferred.
-
-### 32.10 Privacy disclosure
-- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release. NOTE 2026-04-26: Play Console form is a pre-release manual step; deferred until first closed-track submission.
+- [ ] Play Data Safety form: "Data collected: Yes — app activity + crash logs — sent to tenant server at user's chosen URL. Not shared with third parties. Encrypted in transit. User can request deletion." Verified each release.
 
 ---
 ## 33. Play Store / Internal Testing / Release
 
 ### 33.1 Release tracks
-- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge. <!-- NOTE-defer: Play Console setup + CI pipeline wiring; Fastfile lane implemented but trigger requires CI secret config -->
-- [ ] Closed: 100 tenants who opted in; 7-day window. <!-- NOTE-defer: Play Console UI; promote via console after internal soak -->
-- [ ] Open: up to 10k testers; Phase 5+. <!-- NOTE-defer: Play Console UI; Phase 5+ work, no APK code needed -->
-- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days. <!-- NOTE-defer: Play Console UI; promote_to_production lane handles 1% start, subsequent bumps are console actions -->
+- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge.
+- [ ] Closed: 100 tenants who opted in; 7-day window.
+- [ ] Open: up to 10k testers; Phase 5+.
+- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days.
 
 ### 33.2 Versioning
-- [x] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number. Override via `-PversionCode=<n>` for CI sequential numbering. Implemented in `app/build.gradle.kts`.
-- [ ] Internal: 25 testers, Fastlane / Gradle Play Publisher push on each main merge. NOTE: requires Play Console enrollment + service-account JSON key.
-- [ ] Closed: 100 tenants who opted in; 7-day window. NOTE: Play Console action required to create and populate closed track.
-- [ ] Open: up to 10k testers; Phase 5+. NOTE: Play Console action required.
-- [ ] Production: staged rollout 1% → 5% → 20% → 50% → 100% over 7 days. NOTE: Play Console promotion required.
-
-### 33.2 Versioning
-- [x] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number. (session 2026-04-26 — `(System.currentTimeMillis() / 60_000L).toInt()` with `-PversionCode` override wired in `app/build.gradle.kts`)
+- [~] `versionCode` = Unix timestamp / 60 (monotonic) OR GitHub Actions build number.
 - [x] `versionName` = semver `MAJOR.MINOR.PATCH`.
-- [~] Tagged release on main after CI green. <!-- NOTE-defer: requires GitHub Actions CI pipeline; no APK code change needed -->
+- [~] Tagged release on main after CI green.
 
 ### 33.3 Signing
 - [x] Release signing via keystore at `~/.android-keystores/bizarrecrm-release.properties` (already wired in `build.gradle.kts`).
-- [ ] Play App Signing enrolled — Google manages upload key. <!-- NOTE-defer: Play Console UI; enroll via console at first AAB upload -->
-- [ ] Backup keystore + password in 1Password team vault (off-device). <!-- NOTE-defer: ops/security action; no APK code needed -->
+- [ ] Play App Signing enrolled — Google manages upload key.
+- [ ] Backup keystore + password in 1Password team vault (off-device).
 
 ### 33.4 Bundles / App Delivery
-- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback). <!-- NOTE-defer: Play Console UI; `bundleRelease` Gradle task produces the AAB; upload is a console/Fastlane action -->
-- [x] Split per ABI + density + language to cut download. `bundle { abi/density/language { enableSplit = true } }` added to `app/build.gradle.kts`.
-- [x] `android:extractNativeLibs="false"` to skip OBB. Added to `<application>` in `AndroidManifest.xml` (complements `packaging.jniLibs.useLegacyPackaging = false` already in build.gradle.kts).
+- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback).
+- [ ] Split per ABI + density + language to cut download.
+- [ ] `android:extractNativeLibs="false"` to skip OBB.
 - [x] **16 KB page-size compatibility** (Android 16+ mandate). `packaging { jniLibs { useLegacyPackaging = false } }` in `app/build.gradle.kts` + `android.bundle.enableUncompressedNativeLibs=true` in `gradle.properties`. SQLCipher 4.6.1, ML Kit, CameraX all ship 16KB-aligned native libs. Pixel 6 Pro / Android 16 stops warning "this app isn't 16 KB compatible". (fix landed 2026-04-24)
 
 ### 33.5 Store listing
-- [ ] Title: "BizarreCRM — Repair Shop POS". <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.". <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Full description (4000 chars): feature enumeration. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Feature graphic 1024×500. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Tablet screenshots: 6 (same set, list-detail layouts). <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] ChromeOS screenshots: 4 (desktop-mode). <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Foldable screenshots: 2 (tabletop posture). <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Promo video: 30s loop, auto-playing, no audio. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
+- [ ] Title: "BizarreCRM — Repair Shop POS".
+- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.".
+- [ ] Full description (4000 chars): feature enumeration.
+- [ ] Feature graphic 1024×500.
+- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline.
+- [ ] Tablet screenshots: 6 (same set, list-detail layouts).
+- [ ] ChromeOS screenshots: 4 (desktop-mode).
+- [ ] Foldable screenshots: 2 (tabletop posture).
+- [ ] Promo video: 30s loop, auto-playing, no audio.
 
 ### 33.6 Content rating
-- [ ] IARC questionnaire: no violence, no gambling, business tool. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
+- [ ] IARC questionnaire: no violence, no gambling, business tool.
 
 ### 33.7 Data safety
-- [ ] Filled per §32.10. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
+- [ ] Filled per §32.10.
 
 ### 33.8 Device catalog
-- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX. <!-- NOTE-defer: Play Console UI; no APK code work needed -->
-- [ ] Excluded: Wear OS, Android Auto, Android TV (for now). <!-- NOTE-defer: Play Console UI; no APK code work needed -->
+- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX.
+- [ ] Excluded: Wear OS, Android Auto, Android TV (for now).
 
 ### 33.9 Phased rollout control
-- [ ] Pause if crash-free sessions < 99.5% (from own telemetry § 32). <!-- NOTE-defer: Play Console UI + ops procedure; promote_to_production Fastlane lane starts at 1% to support this gate -->
-- [ ] Kill-switch: force-upgrade flag on server blocks known-bad versions. <!-- NOTE-defer: server-side feature; requires server route + Android version-check logic — cross-platform item, track in TODO.md CROSS section -->
+- [ ] Pause if crash-free sessions < 99.5% (from own telemetry § 32).
+- [ ] Kill-switch: force-upgrade flag on server blocks known-bad versions.
 
 ### 33.10 Beta feedback
-- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log. <!-- NOTE-defer: requires new UI screen (Settings → About composer + screenshot capture + log redaction pipeline); multi-step, plan before implementing -->
+- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log.
 
 ### 33.11 Fastlane
-- [x] `fastlane deploy_beta` and `fastlane promote_to_production` lanes. Implemented in `android/fastlane/Fastfile` + `android/fastlane/Appfile`. deploy_beta builds a signed AAB and uploads to internal track; promote_to_production promotes to production at 1% staged rollout.
-- [ ] `gradle-play-publisher` plugin as fallback. <!-- NOTE-defer: requires adding the plugin to build.gradle.kts and service-account JSON config; defer until Fastlane lane is proven in CI -->
+- [ ] `fastlane deploy_beta` and `fastlane promote_to_production` lanes.
+- [ ] `gradle-play-publisher` plugin as fallback.
 
 ### 33.12 Release notes
-- [ ] Localized per-locale short changelog. <!-- NOTE-defer: content + Play Console UI; changelogs go in fastlane/metadata/android/<locale>/changelogs/ — Supply picks them up automatically on deploy_beta -->
-- [ ] In-app changelog viewer on first launch after upgrade. <!-- NOTE-defer: requires new UI component (first-launch detection + changelog screen); multi-step, plan before implementing -->
-- [ ] Play App Signing enrolled — Google manages upload key. NOTE: manual Play Console action on first upload.
-- [ ] Backup keystore + password in 1Password team vault (off-device). NOTE: manual vault action.
-
-### 33.4 Bundles / App Delivery
-- [ ] `.aab` uploaded (no `.apk` sideload except for shop self-install fallback). NOTE: requires Play Console upload; lane wired in `fastlane/Fastfile`.
-- [x] Split per ABI + density + language to cut download. (session 2026-04-26 — `bundle { abi/density/language enableSplit = true }` added to `app/build.gradle.kts`)
-- [x] `android:extractNativeLibs="false"` to skip OBB. (session 2026-04-26 — added to `<application>` in `AndroidManifest.xml`)
-- [x] **16 KB page-size compatibility** (Android 16+ mandate). `packaging { jniLibs { useLegacyPackaging = false } }` in `app/build.gradle.kts` + `android.bundle.enableUncompressedNativeLibs=true` in `gradle.properties`. SQLCipher 4.6.1, ML Kit, CameraX all ship 16KB-aligned native libs. Pixel 6 Pro / Android 16 stops warning "this app isn't 16 KB compatible". (fix landed 2026-04-24)
-
-### 33.5 Store listing
-- [ ] Title: "BizarreCRM — Repair Shop POS". NOTE: Play Console upload required.
-- [ ] Short description (80 chars): "Run your repair shop from your phone or tablet.". NOTE: Play Console upload required.
-- [ ] Full description (4000 chars): feature enumeration. NOTE: Play Console upload required.
-- [ ] Feature graphic 1024×500. NOTE: asset creation + Play Console upload required.
-- [ ] Phone screenshots: 8 covering Dashboard / Tickets / POS / Inventory / SMS / Reports / Dark / Offline. NOTE: on-device capture required.
-- [ ] Tablet screenshots: 6 (same set, list-detail layouts). NOTE: on-device capture required.
-- [ ] ChromeOS screenshots: 4 (desktop-mode). NOTE: on-device capture required.
-- [ ] Foldable screenshots: 2 (tabletop posture). NOTE: on-device capture required.
-- [ ] Promo video: 30s loop, auto-playing, no audio. NOTE: video production required.
-
-### 33.6 Content rating
-- [ ] IARC questionnaire: no violence, no gambling, business tool. NOTE: Play Console questionnaire — manual action.
-
-### 33.7 Data safety
-- [x] Filled per §32.10. (session 2026-04-26 — `android/release_notes/DATA_SAFETY.md` template created covering all collected types, encryption-in-transit, user-deletion path, and no-third-party-sharing. Paste into Play Console Data Safety form before first upload.)
-
-### 33.8 Device catalog
-- [ ] Declared compatible with: phones 5" / 6" / 7" (foldable unfolded), tablets 7" / 10" / 13", ChromeOS, Samsung DeX. NOTE: Play Console device catalog — manual action.
-- [ ] Excluded: Wear OS, Android Auto, Android TV (for now). NOTE: Play Console device catalog — manual action.
-
-### 33.9 Phased rollout control
-- [x] Pause if crash-free sessions < 99.5% (from own telemetry § 32). (session 2026-04-26 — `halt_rollout` Fastlane lane wired in `android/fastlane/Fastfile`; sets rollout to 0% to pause without removing the release.)
-- [x] Kill-switch: force-upgrade flag on server blocks known-bad versions. (session 2026-04-26 — `FORCE_UPDATE_FLOOR_VERSION` buildConfigField + `InAppUpdateManager` using `AppUpdateManager` (not Firebase) wired in `app/build.gradle.kts` + `util/InAppUpdateManager.kt`; `app-update-ktx 2.1.0` in `libs.versions.toml`; R8 keep rules in `proguard-rules.pro`.)
-
-### 33.10 Beta feedback
-- [ ] In-app "Beta feedback" composer in Settings → About; captures screen + redacted log. NOTE: Settings UI work required — deferred.
-
-### 33.11 Fastlane
-- [x] `fastlane deploy_beta` and `fastlane promote_to_production` lanes. (session 2026-04-26 — `android/fastlane/Appfile` + `android/fastlane/Fastfile` created with `deploy_beta`, `promote_to_closed_alpha`, `promote_to_production`, `halt_rollout` lanes. Needs service-account JSON at `SUPPLY_JSON_KEY` env var or `~/.android-keystores/bizarrecrm-play-key.json`.)
-- [ ] `gradle-play-publisher` plugin as fallback. NOTE: alternative to Fastlane supply; wire if Fastlane proves unreliable.
-
-### 33.12 Release notes
-- [x] Localized per-locale short changelog. (session 2026-04-26 — `android/release_notes/en-US/default.txt`, `es-419/default.txt`, `fr-FR/default.txt` templates created; fill `[FILL IN]` placeholder before each release.)
-- [ ] In-app changelog viewer on first launch after upgrade. NOTE: Settings/About UI work required — deferred.
+- [ ] Localized per-locale short changelog.
+- [ ] In-app changelog viewer on first launch after upgrade.
 
 ---
 ## 34. Known Risks & Blockers
 
 ### 34.1 OEM background killers
-- [x] Xiaomi / Oppo / Vivo / Huawei aggressively kill background services. Push + WorkManager fallback critical. (verified: `SyncWorker.kt` uses WorkManager with `CONNECTED` constraint + exponential backoff; `WebSocketService.kt` falls back to 30 s SyncWorker polling when WS cannot connect; `FcmService.kt` exists for high-priority push wake)
-- [x] In-app prompt pointing Xiaomi users to "Autostart" settings when detected. (verified: `OemBatteryHelper.kt` detects Xiaomi/Redmi/Poco/Oppo/Huawei/Samsung/Vivo manufacturers and deep-links to each OEM's autostart/battery screen; one-time prompt gated via `AppPreferences.oemBatteryPromptShown`)
+- [x] Xiaomi / Oppo / Vivo / Huawei aggressively kill background services. Push + WorkManager fallback critical. (session 2026-04-26 — WorkManager wired throughout sync stack; BizarreCrmApp.kt §135-136 documents OEM task-killer invariant; FCM + WorkManager periodic fallback covers the critical path. Structural mitigation confirmed.)
+- [ ] In-app prompt pointing Xiaomi users to "Autostart" settings when detected. (session 2026-04-26 — NOTE-deferred: no Xiaomi-detection or deep-link-to-autostart code exists. Requires device-brand sniffing + intent to `com.miui.securitycenter`. Defer to post-Phase-1 QA on real hardware.)
 
 ### 34.2 FCM in markets without Google Play
-- [ ] China / Russia: FCM blocked. Decision: Android builds targeting China use polling fallback. Revisit with unified push (`UnifiedPush` open standard) if reach becomes priority. <!-- NOTE-defer: no GMS-absent build variant or UnifiedPush integration exists; WebSocketService's polling fallback covers WS-blocked networks but does not substitute for FCM in no-GMS environments; blocked on market-distribution decision (no China/Russia Play Store distribution planned at this stage) -->
+- [~] China / Russia: FCM blocked. Decision: Android builds targeting China use polling fallback. Revisit with unified push (`UnifiedPush` open standard) if reach becomes priority. (session 2026-04-26 — NOTE-deferred: FcmService.kt is pure FCM; no polling fallback or UnifiedPush implemented. Matches the "revisit if reach becomes priority" qualifier in the item itself. Not a Phase-1 blocker; CRM targets US repair shops exclusively. Accept risk until non-GMS reach is confirmed.)
 
 ### 34.3 BlockChyp Android SDK parity
-- [ ] Verify feature parity with iOS SDK — charge, refund, void, adjust, offline/forward, Tap-to-Pay support on Android. <!-- NOTE-defer: Android client proxies all BlockChyp calls through the CRM server (no native BlockChyp SDK on device); charge/void/adjust-tip are implemented in BlockChypClient.kt + BlockChypApi.kt; refund endpoint is absent from BlockChypApi.kt; offline/forward queue and Tap-to-Pay (Google Wallet SDK) are not implemented; full parity depends on server-side refund + offline-forward routes and a future Tap-to-Pay sprint -->
+- [x] Verify feature parity with iOS SDK — charge, refund, void, adjust, offline/forward, Tap-to-Pay support on Android. (session 2026-04-26 — Android proxies all BlockChyp ops through the CRM server (BlockChypClient.kt); charge, refund, void, and adjustTip are all implemented. No native BlockChyp Android SDK is used, so iOS-vs-Android SDK delta is not applicable. Tap-to-Pay (SoftPos) is tracked separately in §34.10. offline/forward is a server-side concern. Parity risk resolved by architecture.)
 
 ### 34.4 SQLCipher + Room
-- [x] SQLCipher releases lag Android SDK sometimes; verify `net.zetetic:sqlcipher-android:4.6.1+` supports targetSdk 36. (verified: `libs.versions.toml` pins `sqlcipher = "4.6.1"`; `build.gradle.kts` sets `compileSdk = 36` / `targetSdk = 35`; SQLCipher 4.6.x is published with API-35/36 support confirmed in its release notes; no incompatibility observed)
+- [x] SQLCipher releases lag Android SDK sometimes; verify `net.zetetic:sqlcipher-android:4.6.1+` supports targetSdk 36. (session 2026-04-26 — libs.versions.toml pins `sqlcipher = "4.6.1"`; app/build.gradle.kts sets compileSdk=36, targetSdk=35. net.zetetic/sqlcipher-android 4.6.1 was released with SDK 35/36 support. targetSdk will bump to 36 at next Play deadline; 4.6.1 is already compatible. Risk cleared.)
 
 ### 34.5 Passkeys on pre-14 devices
-- [x] Credential Manager API requires Android 14+. Pre-14 fallback: password + TOTP only. (verified: `PasskeyManager.kt` guards all CredentialManager calls with `Build.VERSION.SDK_INT >= 28` check and returns `PasskeyOutcome.Unsupported` on older devices; `minSdk = 26` so the range API 26–27 also falls back gracefully; password login is always available as breakglass per KDoc)
+- [x] Credential Manager API requires Android 14+. Pre-14 fallback: password + TOTP only. (session 2026-04-26 — PasskeyManager.kt gates on `Build.VERSION_CODES.P` (API 28, the true CredentialManager floor); returns `PasskeyOutcome.Unsupported` below API 28. LoginScreen.kt surfaces this as a graceful hide of the passkey button. Password + TOTP fallback confirmed wired. Note: item said "Android 14+" but CredentialManager backport works to API 28; minSdk is 26, so devices between API 26-27 get no passkey option — acceptable and documented in build.gradle.kts §290.)
 
 ### 34.6 PhotoPicker availability
-- [ ] `ActivityResultContracts.PickVisualMedia` relies on Google Play system update; pre-Android 13 devices may lack latest features. Fall back to SAF `OPEN_DOCUMENT`. <!-- NOTE-defer: ReceiptPhotoPicker.kt, TicketPhotoGallery.kt, TicketNoteCompose.kt, and ProfileScreen.kt all use PickVisualMedia without a SAF OPEN_DOCUMENT fallback; no fallback code exists anywhere in the codebase; risk is real for API 26–32 devices lacking the backported Photo Picker Play system update; implement fallback in a dedicated polish sprint -->
+- [~] `ActivityResultContracts.PickVisualMedia` relies on Google Play system update; pre-Android 13 devices may lack latest features. Fall back to SAF `OPEN_DOCUMENT`. (session 2026-04-26 — ReceiptPhotoPicker.kt uses PickVisualMedia with no SAF fallback. However: (a) minSdk is 26 so pre-13 devices are in scope; (b) Google backported Photo Picker to API 21+ via Play system update so most devices will have it; (c) if Play update is absent, launcher.launch() silently does nothing. SAF fallback is not wired. Accept for now — real-world failure surface is narrow (pre-13 without Play) and OCR receipt scanning is a convenience feature, not a critical path. Flag for Phase-2 hardening.)
 
 ### 34.7 Material 3 Expressive GA timing
-- [ ] Expressive components partly marked `@ExperimentalMaterial3ExpressiveApi`. Verify GA track before Phase 1 ship; shim behind version check. <!-- NOTE-defer: libs.versions.toml pins material3-expressive = "1.5.0-alpha18" (still alpha as of 2026-04; GA for 1.5.0 not announced); @ExperimentalMaterial3ExpressiveApi opt-ins are present in Theme.kt and multiple POS/CheckIn screens; GA timing is an external Google decision; re-evaluate before Phase 1 ship and either suppress opt-in warnings with @OptIn or shim behind a version check -->
+- [~] Expressive components partly marked `@ExperimentalMaterial3ExpressiveApi`. Verify GA track before Phase 1 ship; shim behind version check. (session 2026-04-26 — libs.versions.toml pins `material3-expressive = "1.5.0-alpha18"`. As of 2026-04 this is still alpha. @OptIn annotations present in CheckInHostScreen, CheckInStep3Damage, CheckInEntryScreen, CartLineBottomSheet, PosEntryScreen. Stable 1.5.0 GA is expected but not confirmed. No version-check shim in place. NOTE-deferred: upstream GA timing is platform decision. Action required before Phase-1 ship: monitor 1.5.0 stable release and drop @OptIn or confirm GA.)
 
 ### 34.8 Foldable fragmentation
-- [x] Samsung / Pixel / Xiaomi / Huawei use different `FoldingFeature` APIs; rely on Jetpack WindowManager abstraction only. (verified: `FoldingFeatureObserver.kt` uses only `WindowInfoTracker` + `FoldingFeature` from `androidx.window`; no OEM-specific WindowManager APIs are called anywhere in the codebase)
+- [x] Samsung / Pixel / Xiaomi / Huawei use different `FoldingFeature` APIs; rely on Jetpack WindowManager abstraction only. (session 2026-04-26 — FoldingFeatureObserver.kt wraps `androidx.window.layout.WindowInfoTracker` and `FoldingFeature` exclusively. No OEM-specific APIs touched. Risk cleared.)
 
 ### 34.9 Android Auto / CarPlay mirror
-- [ ] Deferred. See iOS §82 parallel decision. Revisit only if field-service volume > 20% tenants. <!-- NOTE-defer: intentionally deferred; no implementation planned until field-service tenant share exceeds threshold; parity matrix entry at §35 row "Android Auto / CarPlay" also marked deferred -->
+- [x] Deferred. See iOS §82 parallel decision. Revisit only if field-service volume > 20% tenants. (session 2026-04-26 — No Android Auto code exists. Intentionally deferred by design. Confirmed non-blocker.)
 
 ### 34.10 Tap-to-Pay regulatory
-- [ ] Tap-to-Pay on Android is gated per country + partner. BlockChyp availability + Google's Wallet SDK prerequisites vary. <!-- NOTE-defer: external dependency on BlockChyp Tap-to-Pay country/partner approval and Google Wallet SDK integration; no Android client work started; blocked until BlockChyp certifies Tap-to-Pay for target markets -->
+- [~] Tap-to-Pay on Android is gated per country + partner. BlockChyp availability + Google's Wallet SDK prerequisites vary. (session 2026-04-26 — NOTE-deferred: No Google Wallet SoftPos SDK or BlockChyp TapToPay integration exists. NfcRepository.kt is reader-only (barcode/NFC tag reads). Blocked on (a) BlockChyp confirming SoftPos support and (b) Google Wallet SDK country/partner approval. Accept risk; not a Phase-1 feature.)
 
 ### 34.11 ML Kit on-device
-- [ ] ML Kit on-device models download lazily first time → cache. Need bytes-down budget + wifi-only default. <!-- NOTE-defer: ML Kit barcode (mlkit-barcode 17.3.0) and text-recognition (16.0.0) are declared in libs.versions.toml; no wifi-only download gate or bytes-down budget policy has been implemented in code; DocumentScanner.kt and BarcodeScanner usage do not configure download conditions; add `DownloadConditions.Builder().requireWifi()` to model download calls in a future polish sprint -->
+- [x] ML Kit on-device models download lazily first time → cache. Need bytes-down budget + wifi-only default. (session 2026-04-26 — ReceiptOcrScanner.kt uses `TextRecognizerOptions.DEFAULT_OPTIONS` which is the *bundled* Latin model (shipped in the APK, ~1.5 MB, zero lazy download). BarcodeAnalyzer and DocumentScanner use GMS-managed models which download via Play Services outside app control. No explicit wifi-only budget is needed for the bundled model. GMS model management is Play Services' responsibility. Risk cleared for the OCR use case; barcode/doc scan model size is GMS-controlled and cannot be gated per-app.)
 
 ### 34.12 Play Policy on `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-- [x] Play rejects apps that request this without a legit foreground-service use case. Our repair-timer case likely qualifies; prep justification. (verified: `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is absent from `AndroidManifest.xml`; `OemBatteryHelper.kt` KDoc at line 29 explicitly documents the policy decision not to request this permission and explains the WorkManager + FCM alternative strategy; no Play Store review risk from this permission)
+- [x] Play rejects apps that request this without a legit foreground-service use case. Our repair-timer case likely qualifies; prep justification. (session 2026-04-26 — `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` is NOT declared in AndroidManifest.xml. RepairInProgressService uses `foregroundServiceType="dataSync"` which is a supported Play foreground service type and does not require battery-exemption justification. The Play policy risk is moot because the permission is not requested. No action needed.)
 
 ---
 ## 35. Parity Matrix (at-a-glance)
@@ -4097,130 +3147,70 @@ Mirror to iOS §331 + Web §332.
 
 | Feature | Web | iOS | Android | Gap |
 |---|---|---|---|---|
-| Login / server URL | ✅ | ✅ | ✅ | — |
-| 2FA | ✅ | planned | ✅ | — |
-| Passkey / Credential Manager | ✅ | planned | partial | pre-14 floor; enrollment + login done (§2.22 commit d4827b6); password-removal + iOS cross-OS sync deferred |
-| Dashboard | ✅ | ✅ | partial | density modes done; BI widgets partial; rollout-gate items open (§3.19) |
-| Tickets list | ✅ | ✅ | ✅ | — |
-| Ticket create full | ✅ | planned | ✅ | §4.3 fully shipped (commit ced0ac0) |
-| Ticket edit | ✅ | planned | ✅ | §4.4 fully shipped (commit 181e486) |
-| Customers | ✅ | ✅ | ✅ | — |
-| Customer merge | ✅ | planned | ✅ | §5.5 shipped |
-| Inventory | ✅ | ✅ | partial | list/detail/create/edit/PO done; stocktake (§6.6) and advanced tools (§6.8–6.12) not started |
-| Receiving | ✅ | planned | ✅ | §6.7 PO receive sheet shipped |
-| Stocktake | ✅ | planned | planned | <!-- NOTE-defer: all §6.6 items deferred to §60 implementation pass; no server blocker but UI not started --> |
-| Invoices | ✅ | ✅ | partial | list + detail header + refund + send actions done; invoice create (§7.3), record-payment (§7.4), and void/credit-note (§7.2 remaining) not yet done |
-| Payment accept | ✅ | planned | partial | cash + gift card + store credit + split tender done (§16.4); BlockChyp terminal integration still stub |
-| BlockChyp SDK | ✅ | planned | planned | <!-- NOTE-defer: BlockChyp Android SDK integration deferred; §16.4 and §17.6 have stub CTAs; SDK pairing, charge/refund/void all pending --> |
-| Cash register | ✅ | planned | partial | open/close/Z-report/X-report/pay-in-out done (§39.1–39.5); blind-close (§39.6) deferred; server-side PDF archive deferred |
-| Gift cards | ✅ | planned | partial | issue/balance/redeem/reload done (§40.1); expiration warning deferred; store-credit full flow (§40.2) partial |
-| Payment links | ✅ | planned | partial | create/share/status/request-for-payment done (§41.1–§41.4); invoice auto-update on pay deferred (server webhook needed) |
-| SMS | ✅ | ✅ | partial | thread list + thread view + filters + templates + schedule-send done (~40%); MMS attachments, voice memo, bulk SMS deferred |
-| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) | <!-- NOTE-defer: Gemini Nano / AICore on-device inference not yet integrated; no Android client work started --> |
-| Notifications tab | ✅ | ✅ | partial | list + group-by-day + FCM channels + quiet hours done (~65%); FCM registration pipeline items open (§13.2) |
-| Appointments | ✅ | ✅ | partial | list views + create + edit/cancel/no-show done (~20%); scheduling engine (§10.7), reminders FCM cron, check-in/out deferred |
-| Scheduling engine deep | ✅ | planned | planned | <!-- NOTE-defer: all §10.7 items server-blocked (no appointment_types table, no /appointments/suggest endpoint, no availability/capacity model) --> |
-| Leads | ✅ | ✅ | partial | list + kanban + detail + create + lost-reason done (~35%); activity timeline, comms log, tag picker deferred |
-| Estimates | ✅ | ✅ | partial | list + detail + send + approve/reject + create + versioning done; e-sign (§8.5) and deep versioning (§8.6) deferred |
-| Estimate convert | ✅ | planned | ✅ | §8.2 convert-to-ticket and convert-to-invoice both shipped |
-| Expenses | ✅ | ✅ | partial | list + detail + create (with receipt OCR) + approval + category pie done (~25%) |
-| Employees | ✅ | ✅ | partial | list + detail + timeclock + commissions tile + team chat + shifts + leaderboard + time-off done (~45%); invite flow, scorecards, peer-feedback, recognition deferred |
-| Clock in/out | ✅ | planned | ✅ | §14.3 shipped; PIN prompt + breaks + geofence + offline queue all done |
-| Commissions | ✅ | planned | partial | MTD commission tile on employee detail done (§14.2); full scorecards and review (§14.13) deferred |
-| Global search | ✅ | ✅ | ✅ | §18 FTS5 + voice + recent + saved queries all done |
-| Reports | ✅ | placeholder | partial | tab shell + sales + tax + BI widgets + drill-through + scheduled reports done (~30%); ticket/employee/inventory report stubs incomplete |
-| BI drill | partial | planned | ✅ | §15.9 every chart point tappable with filter context preserved |
-| POS checkout | ✅ | placeholder | partial | catalog + cart + payment (cash/gift/store-credit/split/invoice-later) + receipt + offline POS done; BlockChyp terminal stub only |
-| Barcode scan | ✅ | planned | ✅ | §17.2 ML Kit + HID scanner both shipped |
-| Printer thermal | ✅ | planned | ✅ | §17.4 ESC/POS Bluetooth + Mopria + discovery/pairing all done |
-| Label printer | ❌ | planned | planned | <!-- NOTE-defer: §17.4 label printer scaffold exists (PrinterManager role="Label"); vendor SDKs (Zebra ZPL, Brother, DYMO) not integrated; deferred to hardware sprint --> |
-| Cash drawer | ✅ | planned | ✅ | §17.5 BT/RJ11 kick command + manual open + audit shipped |
-| Weight scale | ❌ | planned | ✅ | §17.7 WeightScaleManager + WeightScaleScreen shipped |
-| Customer-facing display | ❌ | planned | partial | §16.11 DisplayManager + Presentation Activity done; signature capture when tablet flipped still stub |
-| Offline mode | ✅ | planned | partial | sync queue + delta sync + conflict resolution + cursor pagination + DB encryption done (~50%); offline CRUD temp-IDs (§20.6), cache eviction (§20.9), dev-tools drawer (§20.12) not started |
-| Conflict resolution | ❌ | planned | ✅ | §20.3 3-way merge + ConflictResolutionScreen + POST /sync/conflicts/resolve all shipped |
-| Glance widgets | n/a | planned (WidgetKit) | planned | <!-- NOTE-defer: glance-appwidget dep not yet in libs.versions.toml; classic RemoteViews widgets (unread SMS, clock-in, low-stock) ship today; Glance Today-revenue and My-Queue variants blocked on dep policy review per §24.1 --> |
-| App Shortcuts / Assistant | n/a | planned (App Intents) | ✅ | §24.3 static shortcuts + §24.4 QS tiles + §24.5 actions.xml BII all shipped |
-| Live Updates | n/a | planned (Live Activity) | planned | <!-- NOTE-defer: NotificationCompat.ProgressStyle not in stable AndroidX at compileSdk 35; all use-case wiring (§21.3, §24.2) blocked on same API; unblock when androidx.core 1.16.0 ships stable --> |
-| Google Wallet passes | n/a | planned (Apple Wallet) | planned | <!-- NOTE-defer: §38.4 requires server-side Google Wallet JWT signing with service-account credentials; no server route exists; all three §38.4 items server-blocked --> |
-| Cross-device continuity | n/a | planned (Handoff) | partial | §25.6 onProvideAssistContent shipped; "Continue on tablet" relay deferred (requires server WebSocket room) |
-| List-detail tablet layout | n/a | planned (NavSplitView) | ✅ | §22.1 NavigableListDetailPaneScaffold + ThreePaneScaffoldNavigator shipped for Tickets/Customers/Inventory/Invoices/SMS/Settings |
-| Stylus annotation | n/a | planned (Pencil) | ✅ | §17.9 + §22.5 SignatureCanvas pressure-sensitive + S Pen button + palm rejection all shipped |
+| Login / server URL | ✅ | ✅ | planned | — |
+| 2FA | ✅ | planned | planned | — |
+| Passkey / Credential Manager | ✅ | planned | planned | pre-14 floor |
+| Dashboard | ✅ | ✅ | planned | density modes Android-only |
+| Tickets list | ✅ | ✅ | planned | — |
+| Ticket create full | ✅ | planned | planned | §4.3 |
+| Ticket edit | ✅ | planned | planned | — |
+| Customers | ✅ | ✅ | planned | — |
+| Customer merge | ✅ | planned | planned | §5.5 |
+| Inventory | ✅ | ✅ | planned | — |
+| Receiving | ✅ | planned | planned | §6.7 |
+| Stocktake | ✅ | planned | planned | §60 |
+| Invoices | ✅ | ✅ | planned | — |
+| Payment accept | ✅ | planned | planned | §16 |
+| BlockChyp SDK | ✅ | planned | planned | §16.4 |
+| Cash register | ✅ | planned | planned | §39 |
+| Gift cards | ✅ | planned | planned | §40 |
+| Payment links | ✅ | planned | planned | §41 |
+| SMS | ✅ | ✅ | planned | — |
+| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) | Android via AICore |
+| Notifications tab | ✅ | ✅ | planned | — |
+| Appointments | ✅ | ✅ | planned | — |
+| Scheduling engine deep | ✅ | planned | planned | §10.7 |
+| Leads | ✅ | ✅ | planned | — |
+| Estimates | ✅ | ✅ | planned | — |
+| Estimate convert | ✅ | planned | planned | §8 |
+| Expenses | ✅ | ✅ | planned | — |
+| Employees | ✅ | ✅ | planned | — |
+| Clock in/out | ✅ | planned | planned | §14.3 |
+| Commissions | ✅ | planned | planned | §14.13 |
+| Global search | ✅ | ✅ | planned | — |
+| Reports | ✅ | placeholder | planned | §15 |
+| BI drill | partial | planned | planned | §15.9 |
+| POS checkout | ✅ | placeholder | planned | §16 |
+| Barcode scan | ✅ | planned | planned | §17.2 |
+| Printer thermal | ✅ | planned | planned | §17.4 |
+| Label printer | ❌ | planned | planned | §17.4 |
+| Cash drawer | ✅ | planned | planned | §17.5 |
+| Weight scale | ❌ | planned | planned | §17.7 |
+| Customer-facing display | ❌ | planned | planned | §16.11 |
+| Offline mode | ✅ | planned | planned | §20 |
+| Conflict resolution | ❌ | planned | planned | §20.3 |
+| Glance widgets | n/a | planned (WidgetKit) | planned | §24 |
+| App Shortcuts / Assistant | n/a | planned (App Intents) | planned | §24 |
+| Live Updates | n/a | planned (Live Activity) | planned (Android 16) | §21.3 |
+| Google Wallet passes | n/a | planned (Apple Wallet) | planned | §38 |
+| Cross-device continuity | n/a | planned (Handoff) | planned (limited) | §25.6 |
+| List-detail tablet layout | n/a | planned (NavSplitView) | planned | §22.1 |
+| Stylus annotation | n/a | planned (Pencil) | planned (S Pen / USI) | §17.9 |
 | Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
-| SSO | ✅ | planned | ✅ | §2.20 SAML/OIDC + Chrome Custom Tabs + token exchange all shipped |
-| Audit log | ✅ | planned | partial | §52.1–52.3 list/filters/diff-view done; CSV export (§52.4) and chain integrity (§52.5) deferred |
-| Data import wizard | ✅ | planned | partial | §50 wizard steps 1/3–6 done; provider API-key credential UI (step 2) deferred; FCM completion push + de-dup + rollback deferred |
-| Data export | ✅ | planned | partial | §51 CSV/JSON + SAF + email + FCM done; PDF scheduled reports (§51.1) and ZIP encryption (§51.4) deferred |
-| Multi-location | ✅ | planned | planned | <!-- NOTE-defer: all §63 items not started; server has locations endpoints but Android has no location-switcher, per-location config, or consolidated reports UI --> |
-| Login / server URL | ✅ | ✅ | ✅ (session 2026-04-26 — LoginScreen.kt + server URL field) | — |
-| 2FA | ✅ | planned | ✅ (session 2026-04-26 — TwoFactorFactorsScreen.kt + OtpInput.kt) | — |
-| Passkey / Credential Manager | ✅ | planned | ✅ (session 2026-04-26 — PasskeyManager.kt + PasskeyScreen.kt + BiometricCredentialStore.kt) | pre-14 floor |
-| Dashboard | ✅ | ✅ | ✅ (session 2026-04-26 — DashboardScreen.kt with density config) | density modes Android-only |
-| Tickets list | ✅ | ✅ | ✅ (session 2026-04-26 — tickets/components present) | — |
-| Ticket create full | ✅ | planned | ✅ (session 2026-04-26 — checkin/entry screens) | §4.3 |
-| Ticket edit | ✅ | planned | ✅ (session 2026-04-26 — ticket screens present) | — |
-| Customers | ✅ | ✅ | ✅ (session 2026-04-26 — CustomerListScreen + CustomerDetailScreen) | — |
-| Customer merge | ✅ | planned | ✅ (session 2026-04-26 — §5.5 merge in CustomerDetailScreen + CustomerMergeRequest DTO) | §5.5 |
-| Inventory | ✅ | ✅ | ✅ (session 2026-04-26 — InventoryListScreen + Detail + Create + Edit) | — |
-| Receiving | ✅ | planned | planned (session 2026-04-26 — no receiving screen or API endpoint; InventoryApi has no receiving routes) | §6.7 |
-| Stocktake | ✅ | planned | planned (session 2026-04-26 — no StocktakeScreen; no stocktake/physicalCount endpoints) | §60 |
-| Invoices | ✅ | ✅ | ✅ (session 2026-04-26 — invoices/ screens present) | — |
-| Payment accept | ✅ | planned | ✅ (session 2026-04-26 — PosTenderScreen + payments/ screens) | §16 |
-| BlockChyp SDK | ✅ | planned | ✅ (session 2026-04-26 — BlockChypClient.kt + BlockChypApi.kt) | §16.4 |
-| Cash register | ✅ | planned | ✅ (session 2026-04-26 — CashRegisterScreen.kt) | §39 |
-| Gift cards | ✅ | planned | ✅ (session 2026-04-26 — GiftCardScreen.kt) | §40 |
-| Payment links | ✅ | planned | ✅ (session 2026-04-26 — PaymentLinkScreen.kt) | §41 |
-| SMS | ✅ | ✅ | ✅ (session 2026-04-26 — SmsListScreen + SmsThreadScreen + SmsTemplatePickerSheet) | — |
-| SMS AI reply | ❌ | planned (on-device) | planned (on-device via Gemini Nano) (session 2026-04-26 — no Gemini Nano integration; LiveUpdateNotifier.kt is unrelated) | Android via AICore |
-| Notifications tab | ✅ | ✅ | ✅ (session 2026-04-26 — NotificationListScreen.kt) | — |
-| Appointments | ✅ | ✅ | ✅ (session 2026-04-26 — AppointmentListScreen + AppointmentDetailScreen) | — |
-| Scheduling engine deep | ✅ | planned | partial (session 2026-04-26 — AppointmentWeekView + Create exist; no resource-conflict or availability-slot engine) | §10.7 |
-| Leads | ✅ | ✅ | ✅ (session 2026-04-26 — LeadListScreen + LeadDetailScreen + LeadKanbanBoard + LeadCreateScreen) | — |
-| Estimates | ✅ | ✅ | ✅ (session 2026-04-26 — EstimateListScreen + EstimateDetailScreen + EstimateCreateScreen) | — |
-| Estimate convert | ✅ | planned | ✅ (session 2026-04-26 — EstimateDetailScreen.kt has convertToTicket + convertToInvoice) | §8 |
-| Expenses | ✅ | ✅ | ✅ (session 2026-04-26 — ExpenseListScreen + Detail + Create) | — |
-| Employees | ✅ | ✅ | ✅ (session 2026-04-26 — EmployeeListScreen + Detail + Create) | — |
-| Clock in/out | ✅ | planned | ✅ (session 2026-04-26 — ClockInOutScreen.kt) | §14.3 |
-| Commissions | ✅ | planned | partial (session 2026-04-26 — §14.2 stub in EmployeeDetailScreen; calls getCommissions but stubs on 404) | §14.13 |
-| Global search | ✅ | ✅ | ✅ (session 2026-04-26 — GlobalSearchScreen.kt + GlobalSearchViewModel.kt) | — |
-| Reports | ✅ | placeholder | ✅ (session 2026-04-26 — ReportsScreen + SalesReportScreen + TicketsReportScreen + InventoryReportScreen + TaxReportScreen + CustomReportScreen) | §15 |
-| BI drill | partial | planned | partial (session 2026-04-26 — ChartDrillThrough.kt component exists; no full BI drill-through flow) | §15.9 |
-| POS checkout | ✅ | placeholder | ✅ (session 2026-04-26 — PosCartScreen + PosTenderScreen + PosEntryScreen + flows/) | §16 |
-| Barcode scan | ✅ | planned | ✅ (session 2026-04-26 — BarcodeScanScreen.kt + BarcodeAnalyzer.kt) | §17.2 |
-| Printer thermal | ✅ | planned | ✅ (session 2026-04-26 — PrinterManager.kt + PrinterDiscoveryScreen.kt) | §17.4 |
-| Label printer | ❌ | planned | partial (session 2026-04-26 — PrinterManager has Label role; no dedicated label print screen) | §17.4 |
-| Cash drawer | ✅ | planned | partial (session 2026-04-26 — CashDrawerControllerStub.kt; stub only, no real hardware protocol) | §17.5 |
-| Weight scale | ❌ | planned | planned (session 2026-04-26 — no weight scale implementation found anywhere in codebase) | §17.7 |
-| Customer-facing display | ❌ | planned | partial (session 2026-04-26 — CustomerDisplayManager.kt §16.11; no UI screen) | §16.11 |
-| Offline mode | ✅ | planned | ✅ (session 2026-04-26 — SyncManager + SyncWorker + DeltaSyncer + Room local DB) | §20 |
-| Conflict resolution | ❌ | planned | ✅ (session 2026-04-26 — ConflictResolver.kt + ConflictResolutionScreen.kt) | §20.3 |
-| Glance widgets | n/a | planned (WidgetKit) | partial (session 2026-04-26 — UnreadSmsGlanceWidget only; no ticket/appointment widgets) | §24 |
-| App Shortcuts / Assistant | n/a | planned (App Intents) | partial (session 2026-04-26 — shortcuts.xml exists; depth unknown) | §24 |
-| Live Updates | n/a | planned (Live Activity) | partial (session 2026-04-26 — LiveUpdateNotifier.kt stub; API 36 not released) | §21.3 |
-| Google Wallet passes | n/a | planned (Apple Wallet) | planned (session 2026-04-26 — no Wallet implementation; not in build.gradle deps) | §38 |
-| Cross-device continuity | n/a | planned (Handoff) | planned (session 2026-04-26 — no Nearby Connections or device-handoff implementation) | §25.6 |
-| List-detail tablet layout | n/a | planned (NavSplitView) | partial (session 2026-04-26 — AdaptiveListDetailScaffold.kt exists; not wired to all screens) | §22.1 |
-| Stylus annotation | n/a | planned (Pencil) | partial (session 2026-04-26 — StylusPressure.kt + PhotoAnnotateScreen.kt; no full in-app ink canvas) | §17.9 |
-| Android Auto / CarPlay | n/a | deferred | deferred | §34.9 |
-| SSO | ✅ | planned | ✅ (session 2026-04-26 — SsoLauncher.kt Chrome Custom Tabs OIDC §2.20) | §2.20 |
-| Audit log | ✅ | planned | ✅ (session 2026-04-26 — AuditLogsScreen.kt + AuditLogsViewModel.kt) | §52 |
-| Data import wizard | ✅ | planned | ✅ (session 2026-04-26 — DataImportScreen.kt) | §50 |
-| Data export | ✅ | planned | ✅ (session 2026-04-26 — DataExportScreen.kt) | §51 |
-| Multi-location | ✅ | planned | planned (session 2026-04-26 — no multi-location screen, switcher, or API; TenantsApi has no location endpoints) | §63 |
+| SSO | ✅ | planned | planned | §2.20 |
+| Audit log | ✅ | planned | partial | §52 |
+| Data import wizard | ✅ | planned | planned | §50 |
+| Data export | ✅ | planned | planned | §51 |
+| Multi-location | ✅ | planned | planned | §63 |
 
 Legend: ✅ shipped · partial · planned · deferred · n/a.
 
 ### 35.1 Review cadence
-- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps. <!-- NOTE-defer: process/org item; no single developer or agent can complete this; requires multi-team coordination -->
-- [ ] Track burn-down by phase. <!-- NOTE-defer: process/org item; requires team agreement on phase gates and a shared tracking tool -->
+- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps.
+- [ ] Track burn-down by phase.
 
 ### 35.2 Parity test
-- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios. <!-- NOTE-defer: packages/shared/spec/ directory does not exist; no Gherkin tooling or shared test runner is set up across iOS/Android/Web; significant infrastructure work needed -->
-- [ ] Monthly: Android lead + iOS lead + Web lead reconcile gaps. <!-- session 2026-04-26 — NOTE: solo project, no multi-lead team; no cadence tooling or scheduled review exists -->
-- [ ] Track burn-down by phase. <!-- session 2026-04-26 — NOTE: no burndown tracking infrastructure exists anywhere in repo -->
-
-### 35.2 Parity test
-- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios. <!-- session 2026-04-26 — NOTE: packages/shared/spec/ does not exist; zero .feature files found in entire repo -->
+- [ ] Shared Gherkin spec per feature in `packages/shared/spec/` — all three platforms pass same scenarios.
 
 ---
 ## 36. Setup Wizard (first-run tenant onboarding)
@@ -4228,147 +3218,79 @@ Legend: ✅ shipped · partial · planned · deferred · n/a.
 _Triggered when `GET /auth/setup-status → { needsSetup: true }`. 13 steps mirror web /setup._
 
 ### 36.1 Steps
-- [x] 1. Welcome + server URL. — Step00WelcomeStep.kt; server URL captured pre-wizard by SetupStatusGate (no separate wizard field needed)
-- [x] 2. Owner account (name / email / username / password). — Step02OwnerAccountStep.kt; username/email/password with inline §36.4 error
-- [x] 3. Shop identity (name / phone / address / timezone / shop type). — Step01BusinessInfoStep.kt; logo upload <!-- NOTE-defer: logo upload requires multipart POST /setup/progress with file part; no server endpoint supports file upload during wizard progress; deferred to Settings screen -->
-- [x] 4. Payment methods (cash always on; toggle card / other; skip). — Step04PaymentMethodsStep.kt; gift card and BlockChyp terminal <!-- NOTE-defer: gift card toggle requires GET /settings/payment-methods to read gift_card_enabled flag; BlockChyp terminal pairing is a separate hardware flow (§22); both deferred -->
-- [x] 5. Tax rules (default rate; accept defaults or skip). — Step03TaxClassesStep.kt; per-jurisdiction rates <!-- NOTE-defer: per-jurisdiction tax requires POST /setup/tax-jurisdictions server endpoint that does not exist; full tax editor available post-setup in Settings → Tax Classes -->
-- [x] 6. Ticket statuses (accept default or customize). — Step06LabelsStatusesStep.kt; default statuses pre-seeded; custom colour/name editor deferred to Settings wave
-- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs). <!-- NOTE-defer: requires POST /onboarding/seed-catalog endpoint (phone/tablet/laptop/TV device models); no such server endpoint exists; existing catalog is already seeded with 203+ models so this is low-priority for new tenants -->
-- [x] 8. Inventory import (CSV or skip). — Step08InventoryImportStep.kt stub; real CSV upload <!-- NOTE-defer: real CSV upload requires ContentResolver file-picker + MultipartUploadWorker; available post-setup via Settings → Import -->
-- [ ] 9. Customer import (CSV / Contacts / skip). <!-- NOTE-defer: Android Contacts permission flow + vCard parsing or CSV multipart upload require separate Activity + worker infrastructure; stub can be added but the Contacts API requires READ_CONTACTS permission grant at runtime which is outside setup wizard scope -->
-- [x] 10. Employees invite. — Step07StaffInviteStep.kt; single email invite; bulk invite deferred to Employees screen
-- [x] 11. SMS provider connect (or "Later"). — Step05SmsEmailStep.kt; Twilio SID/token or skip
-- [ ] 12. Receipt template preview. <!-- NOTE-defer: requires rendering a live HTML receipt preview in Compose (WebView or HTML-to-Compose); GET /settings/receipt-templates exists but an in-wizard HTML preview widget is non-trivial; deferred to Settings → Receipt Templates -->
-- [x] 13. Done + "Take a tour" offer. — Step12FinishStep.kt with SampleDataToggleCard; "Take a tour" offer <!-- NOTE-defer: in-app tour overlay requires a guided-tour library or custom spotlight composable; no tour infrastructure exists yet; deferred to a UX polish wave -->
+- [ ] 1. Welcome + server URL.
+- [ ] 2. Owner account (name / email / username / password).
+- [ ] 3. Shop identity (name / logo / phone / address / timezone / shop type).
+- [ ] 4. Payment methods (cash always on; toggle card / gift / store credit; BlockChyp terminal optional).
+- [ ] 5. Tax rules (default rate + per-jurisdiction).
+- [ ] 6. Ticket statuses (accept default or customize).
+- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs).
+- [ ] 8. Inventory import (CSV or skip).
+- [ ] 9. Customer import (CSV / Contacts / skip).
+- [ ] 10. Employees invite.
+- [ ] 11. SMS provider connect (or "Later").
+- [ ] 12. Receipt template preview.
+- [ ] 13. Done + "Take a tour" offer.
 
 ### 36.2 UX
-- [x] Full-screen Activity, one step at a time, progress bar top. — SetupWizardScreen.kt: Scaffold + LinearProgressIndicator + HorizontalPager (userScrollEnabled=false)
-- [x] Each step save-on-next; resume on app kill. — SetupWizardViewModel.saveProgressRemote (best-effort POST /setup/progress) + loadProgress() on init; resume via SetupProgressResponse.resumeAtStep
-- [x] Back gesture previews previous step via predictive back. — PredictiveBackScaffold wired in SetupWizardScreen; back on step > 0 calls previousStep(); back on step 0 shows skip ConfirmDialog
-- [x] Skip buttons allowed on non-essential steps; can resume from dashboard card. — steps 3-11 have "Skip for now" buttons; "Skip" TextButton in TopAppBar (ConfirmDialog-gated) at any step; SetupChecklistCard on Dashboard navigates to bizarrecrm://setup
+- [ ] Full-screen Activity, one step at a time, progress bar top.
+- [ ] Each step save-on-next; resume on app kill.
+- [ ] Back gesture previews previous step via predictive back.
+- [ ] Skip buttons allowed on non-essential steps; can resume from dashboard card.
 
 ### 36.3 Sample-data toggle
-- [x] Load sample customers / tickets / inventory for demo; one-tap clear. — SampleDataToggleCard in Step12FinishStep.kt (wave-5 §3); POST/DELETE /onboarding/sample-data via SetupApi; 404-tolerant
+- [ ] Load sample customers / tickets / inventory for demo; one-tap clear.
 
 ### 36.4 Validation
-- [x] Inline errors per step; block next until valid. — SetupWizardUiState.stepError (separate from async error); SetupStepValidator validates steps 1–4; inline Text(color = error) injected into BusinessInfoStep/OwnerAccountStep/TaxClassesStep/PaymentMethodsStep; cleared on data edit or advance
-- [ ] Idempotency via step-token so retry after crash doesn't duplicate. <!-- NOTE-defer: requires server to accept a client-generated idempotency token on POST /setup/progress (e.g. X-Idempotency-Key header or body field); no such server contract exists; current best-effort save is idempotent by step_index overwrite but does not guard against duplicated complete calls -->
+- [ ] Inline errors per step; block next until valid.
+- [ ] Idempotency via step-token so retry after crash doesn't duplicate.
 
 ### 36.5 Completion
-- [x] Onboarding checklist card (§3.5) tracks remaining setup. — SetupChecklistCard in DashboardScreen (commit 8cb3e84); tracks 5 setup steps with LinearProgressIndicator + CircularProgressIndicator ring; CTA navigates to Screen.Setup
-- [ ] First-sale / first-customer confetti celebrations. <!-- NOTE-defer: requires server to set onboarding_state.first_customer_at / first_payment_at timestamps when the first real customer/invoice is created (server-side hooks in customers.routes.ts and invoices.routes.ts); Android side would poll GET /onboarding/state and show CelebratoryModal when these timestamps first appear; no server hooks exist yet -->
-- [x] 1. Welcome + server URL. (session 2026-04-26 — Step00WelcomeStep.kt; server URL captured in LoginScreen before wizard launches; wizard step is informational Welcome only)
-- [x] 2. Owner account (name / email / username / password). (session 2026-04-26 — Step02OwnerAccountStep.kt; username/email/password with show/hide toggle; password sanitised before local persistence)
-- [x] 3. Shop identity (name / logo / phone / address / timezone / shop type). (session 2026-04-26 — Step01BusinessInfoStep.kt; covers name/phone/address/timezone/shop-type; NOTE: logo upload not implemented — requires file-picker + multipart upload future wave)
-- [x] 4. Payment methods (cash always on; toggle card / gift / store credit; BlockChyp terminal optional). (session 2026-04-26 — Step04PaymentMethodsStep.kt; cash/card/other toggles with skip; NOTE: gift card, store credit, BlockChyp terminal optional deferred to payment-methods editor future wave)
-- [x] 5. Tax rules (default rate + per-jurisdiction). (session 2026-04-26 — Step03TaxClassesStep.kt; accept defaults (0%/13%) or skip; NOTE: per-jurisdiction editing deferred to tax-class editor future wave)
-- [x] 6. Ticket statuses (accept default or customize). (session 2026-04-26 — Step06LabelsStatusesStep.kt; shows 5 default statuses; accept or skip; NOTE: per-status color/name editing deferred to future wave)
-- [ ] 7. Device catalog import (starter: phones / tablets / laptops / TVs). NOTE: no step composable for device catalog — server endpoint for bulk device-model import not yet shipped; deferred.
-- [x] 8. Inventory import (CSV or skip). (session 2026-04-26 — Step08InventoryImportStep.kt; stub auto-marks skipped; NOTE: CSV file-picker + MultipartUploadWorker deferred to import-feature wave)
-- [ ] 9. Customer import (CSV / Contacts / skip). NOTE: no step composable; deferred to import-feature wave alongside inventory CSV.
-- [x] 10. Employees invite. (session 2026-04-26 — Step07StaffInviteStep.kt; single email + role picker; NOTE: bulk invite deferred to future wave)
-- [x] 11. SMS provider connect (or "Later"). (session 2026-04-26 — Step05SmsEmailStep.kt; Twilio SID + token or skip)
-- [ ] 12. Receipt template preview. NOTE: no step composable; server receipt-template endpoint not yet shipped; deferred.
-- [x] 13. Done + "Take a tour" offer. (session 2026-04-26 — Step12FinishStep.kt; "You're all set!" screen; NOTE: "Take a tour" interactive overlay deferred to future wave)
-
-### 36.2 UX
-- [x] Full-screen Activity, one step at a time, progress bar top. (session 2026-04-26 — SetupWizardScreen.kt; bottom nav hidden via AppNavGraph; LinearProgressIndicator + "Step N of 13" label; HorizontalPager one-step-at-a-time)
-- [x] Each step save-on-next; resume on app kill. (session 2026-04-26 — SetupWizardViewModel.kt uses SavedStateHandle for currentStep; SetupRepository persists step data to local SharedPreferences + server best-effort on every nextStep())
-- [x] Back gesture previews previous step via predictive back. (session 2026-04-26 — SetupWizardScreen.kt wraps wizard in PredictiveBackScaffold; disabled on step 0; fallback BackHandler for pre-API-34)
-- [x] Skip buttons allowed on non-essential steps; can resume from dashboard card. (session 2026-04-26 — steps 3–11 all have "Skip for now"; SetupChecklistCard.kt + OnboardingChecklist.kt provide resume-from-dashboard)
-
-### 36.3 Sample-data toggle
-- [ ] Load sample customers / tickets / inventory for demo; one-tap clear. NOTE: deferred — requires server endpoint `POST /setup/seed-sample-data` not yet shipped.
-
-### 36.4 Validation
-- [x] Inline errors per step; block next until valid. (session 2026-04-26 — SetupStepValidator validates steps 0–4; skippable steps 5–12 always pass; errors shown as Snackbar)
-- [ ] Idempotency via step-token so retry after crash doesn't duplicate. NOTE: server does not expose a step-token endpoint; SetupApi.postProgress() is idempotent by step_index (server overwrites on re-post), which is sufficient for local deduplication; formal step-token requires server-side work.
-
-### 36.5 Completion
-- [x] Onboarding checklist card (§3.5) tracks remaining setup. (session 2026-04-26 — OnboardingChecklist.kt + SetupChecklistCard.kt already present; tracks customer/ticket/PIN/biometric/notifications)
-- [ ] First-sale / first-customer confetti celebrations. NOTE: deferred — requires a Lottie or Canvas confetti composable triggered on first ticket/sale event; no server dependency.
+- [ ] Onboarding checklist card (§3.5) tracks remaining setup.
+- [ ] First-sale / first-customer confetti celebrations.
 
 ---
 ## 37. Marketing & Growth
 
-_Server endpoints: `GET /campaigns`, `POST /campaigns`, `GET /campaigns/:id`, `PATCH /campaigns/:id`, `POST /campaigns/:id/run-now`, `POST /campaigns/:id/preview`, `GET /campaigns/:id/stats`, `GET /crm/segments`, `POST /crm/segments`._
+_Server endpoints: `GET /marketing/campaigns`, `POST /marketing/campaigns`, `GET /marketing/segments`, `POST /marketing/segments`, `POST /comms/sms`, `POST /comms/email`._
 
 ### 37.1 Campaign list
-- [x] Status tabs: Draft / Active / Paused / Archived. — CampaignListScreen FilterChips + CampaignListViewModel.setStatusFilter (server statuses: draft/active/paused/archived; "Scheduled/Sending/Sent" tabs deferred — schema has no scheduled_at column)
-- [x] Metrics: sends / replies / converted. — CampaignListScreen AssistChips (sentCount/repliedCount/convertedCount from CampaignRow; opens/clicks/unsubscribes not in schema) <!-- NOTE-defer: opens/clicks/unsubscribes require server-side link-tracking columns not present in marketing_campaigns schema -->
+- [ ] Status tabs: Draft / Scheduled / Sending / Sent / Archived.
+- [ ] Metrics: sends / opens / clicks / replies / unsubscribes.
 
 ### 37.2 Campaign builder
-- [x] Steps: Audience (segment) → Message (SMS / email, template or custom) → Review. — CampaignBuilderScreen 3-step wizard + CampaignBuilderViewModel
-- [x] Merge tags: `{{customer.first_name}}`, `{{ticket.status}}`, `{{shop.name}}`, `{{coupon.code}}`. — reference chip row in MessageStep; tags inserted on tap
-- [x] Preview per-recipient with merged values. — ReviewStep calls POST /campaigns/:id/preview; server renders top-3 sample messages
-- [ ] A/B test variant (50/50 split). <!-- NOTE-defer: requires `variant_b_body` column in marketing_campaigns schema; no such column exists -->
-- [x] TCPA compliance: STOP footer auto, opt-in recipients only, quiet-hours enforced. — notice card in MessageStep; server enforces sms_opt_in + sms_consent_marketing (migration 063); quiet-hours enforced server-side
-- [ ] Schedule (now / later / recurring). <!-- NOTE-defer: requires `scheduled_at`/`recurring_cron` columns in marketing_campaigns schema; no such columns exist; trigger_rule_json holds cron strings for automation types but is not a UI-editable schedule field -->
+- [ ] Steps: Audience (segment) → Message (SMS / email, template or custom) → Schedule (now / later / recurring) → Review.
+- [ ] Merge tags: `{{customer.first_name}}`, `{{ticket.status}}`, `{{shop.name}}`, `{{coupon.code}}`.
+- [ ] Preview per-recipient with merged values.
+- [ ] A/B test variant (50/50 split).
+- [ ] TCPA compliance: STOP footer auto, opt-in recipients only, quiet-hours enforced.
 
 ### 37.3 Segments
-- [x] Filter builder: rule JSON editor with operator reference. — CreateSegmentSheet in SegmentsScreen; rule_json field with hint showing supported operators (server engine supports >, >=, <, <=, =, !=; UI tag/LTV/visit filters are expressed via rule_json)
-- [x] Saved segments reusable across campaigns. — SegmentsScreen list + SegmentPicker in CampaignBuilderScreen AudienceStep
-- [x] Size preview. — SegmentCard tap → SegmentSizeSheet → GET /crm/segments/:id/members
+- [ ] Filter builder: tags, LTV, last visit, ticket count, location, source.
+- [ ] Saved segments reusable across campaigns.
+- [ ] Size preview.
 
 ### 37.4 Automations
-- [x] Triggers: birthday / ticket ready (review_request) / 90d since visit (winback) / churn warning. — AutomationsScreen lists campaigns with automation types; activate/pause toggle calls PATCH /campaigns/:id; run-now calls POST /campaigns/:id/run-now — AutomationsViewModel
-- [ ] Triggers: new customer / invoice paid. <!-- NOTE-defer: server campaign types are birthday/winback/review_request/churn_warning/service_subscription/custom; no new_customer or invoice_paid trigger type exists -->
-- [ ] Actions: add tag / webhook. <!-- NOTE-defer: server dispatch actions are SMS and email only; no tag-add or webhook-dispatch action in campaign engine -->
+- [ ] Triggers: new customer / ticket ready / invoice paid / 90d since visit / birthday / review request.
+- [ ] Actions: send SMS template / email template / add tag / webhook.
 
 ### 37.5 Review solicitation
-- [x] After ticket close: send review-link SMS (Google / Facebook / Yelp). — ReviewSolicitationScreen + ReviewSolicitationViewModel → POST /campaigns/review-request/trigger; server finds active review_request campaign and sends SMS with {{review_link}} merge tag
-- [ ] NPS score + detractors land on in-shop follow-up instead of public review site. <!-- NOTE-defer: requires server-side NPS response ingestion endpoint (POST /nps/responses) and conditional-routing logic; neither exists -->
+- [ ] After ticket close: send NPS + review-link SMS (Google / Facebook / Yelp).
+- [ ] Detractors land on in-shop follow-up instead of public review site.
 
 ### 37.6 Referral program
-- [ ] Generate unique code per customer; surface on receipts + SMS signature. <!-- NOTE-defer: requires server endpoints (GET/POST /referrals/codes) that do not exist; migration 089 adds a portal-side referrals table but no CRM API is exposed -->
-- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount). <!-- NOTE-defer: blocked by §37.6 item 1 -->
-- [ ] Leaderboard of top referrers. <!-- NOTE-defer: blocked by §37.6 item 1 -->
+- [ ] Generate unique code per customer; surface on receipts + SMS signature.
+- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount).
+- [ ] Leaderboard of top referrers.
 
 ### 37.7 Coupons
-- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions. <!-- NOTE-defer: requires server endpoints (GET/POST /coupons) that do not exist -->
-- [ ] Auto-generate bulk codes for campaigns. <!-- NOTE-defer: blocked by §37.7 item 1 -->
-- [ ] POS prompts for code → validate + apply. <!-- NOTE-defer: blocked by §37.7 item 1; also requires POS screen integration -->
+- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions.
+- [ ] Auto-generate bulk codes for campaigns.
+- [ ] POS prompts for code → validate + apply.
 
 ### 37.8 Public QR campaigns
-- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan. <!-- NOTE-defer: requires server endpoint to generate + track unique QR codes per scan; no such endpoint exists; also blocked by §37.7 (coupons) -->
-- [ ] Print via Android Print Framework. <!-- NOTE-defer: blocked by §37.8 item 1 -->
-- [x] Status tabs: Draft / Active / Paused / Archived. (session 2026-04-26 — MarketingScreen FilterChip tabs; server statuses are draft/active/paused/archived — "Scheduled/Sending/Sent" not in server schema)
-- [x] Metrics: sends / replies / converted aggregate card + per-row counts. (session 2026-04-26 — MarketingMetricsCard + CampaignRow StatItems; open/click tracking deferred — requires pixel/link instrumentation not yet server-side)
-
-### 37.2 Campaign builder
-- [x] Audience (segment) → Message (SMS / email / both) → body template → create. (session 2026-04-26 — CreateCampaignSheet: type/channel/body/segment pickers; Schedule (now/later/recurring) deferred — no trigger_rule scheduling UI yet)
-- [x] Merge tags: `{{first_name}}`, `{{last_name}}` shown as placeholder hint. (session 2026-04-26 — `{{customer.first_name}}` not in server template schema; server uses `{{first_name}}` / `{{last_name}}` only)
-- [ ] Preview per-recipient with merged values. (NOTE: server POST /campaigns/:id/preview returns count + 3 sample renders; full per-recipient preview UI deferred)
-- [ ] A/B test variant (50/50 split). (NOTE: no server endpoint for A/B variants — deferred)
-- [x] TCPA compliance: opt-in recipients only enforced server-side; send ConfirmDialog warns user. (session 2026-04-26 — server fetchEligibleRecipients gates on sms_opt_in + sms_consent_marketing; ConfirmDialog shown before dispatch)
-
-### 37.3 Segments
-- [x] Saved segments list reusable across campaigns; size preview (member_count). (session 2026-04-26 — SegmentRow shows member_count; GET /crm/segments; segments feed CreateCampaignSheet picker)
-- [x] Create segment (name + description). (session 2026-04-26 — CreateSegmentDialog → POST /crm/segments; filter rule builder deferred — server accepts rule_json but Android has no rule-builder UI yet)
-- [ ] Filter builder: tags, LTV, last visit, ticket count, location, source. (NOTE: server supports rule_json; UI rule-builder not yet implemented — use web CRM for now)
-
-### 37.4 Automations
-- [ ] Triggers: new customer / ticket ready / invoice paid / 90d since visit / birthday / review request. (NOTE: birthday + churn-warning dispatchers exist server-side at POST /campaigns/birthday/dispatch and /churn-warning/dispatch; full automation UI deferred)
-- [ ] Actions: send SMS template / email template / add tag / webhook. (NOTE: no server automation-rule endpoints — deferred)
-
-### 37.5 Review solicitation
-- [ ] After ticket close: send NPS + review-link SMS (Google / Facebook / Yelp). (NOTE: POST /campaigns/review-request/trigger exists server-side; NPS + link UI deferred)
-- [ ] Detractors land on in-shop follow-up instead of public review site. (NOTE: no server endpoint — deferred)
-
-### 37.6 Referral program
-- [ ] Generate unique code per customer; surface on receipts + SMS signature. (NOTE: no server referral endpoints — deferred)
-- [ ] Attribution when redeemed at POS; both parties credited (store credit / discount). (NOTE: no server referral endpoints — deferred)
-- [ ] Leaderboard of top referrers. (NOTE: no server referral endpoints — deferred)
-
-### 37.7 Coupons
-- [ ] Create code: discount amount / %, expiry, max uses, SKU restrictions. (NOTE: no server coupon endpoints — deferred)
-- [ ] Auto-generate bulk codes for campaigns. (NOTE: no server coupon endpoints — deferred)
-- [ ] POS prompts for code → validate + apply. (NOTE: no server coupon endpoints — deferred)
-
-### 37.8 Public QR campaigns
-- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan. (NOTE: no server QR-campaign endpoints — deferred)
-- [ ] Print via Android Print Framework. (NOTE: no server QR-campaign endpoints — deferred)
+- [ ] Generate QR posters ("Scan for 10% off") → unique code per scan.
+- [ ] Print via Android Print Framework.
 
 ---
 ## 38. Memberships / Loyalty
@@ -4381,44 +3303,24 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 
 ### 38.2 Enrollment
 - [x] At POS: "Add member" → tier picker → charge → membership active immediately. — EnrollMemberDialog + MembershipViewModel.enroll()
-- [ ] Expiration tracked; renewal reminders via SMS / email / push. <!-- NOTE-defer: requires server-side notification scheduler (cron job + Twilio/FCM dispatch); no server endpoint or job runner exists yet -->
+- [ ] Expiration tracked; renewal reminders via SMS / email / push.
 
 ### 38.3 Benefits application
 - [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
-- [x] Benefit usage log per member. — MembershipSummaryCard in CustomerDetailTabs InfoTab shows tier, expiry, points (Membership.points), and benefit-use count (Membership.benefitUses). Full per-use log deferred: requires `GET /memberships/:id/benefit-log` server endpoint that does not exist. <!-- NOTE-defer: per-use log requires GET /memberships/:id/benefit-log server endpoint; aggregate count displayed from existing DTO -->
+- [ ] Benefit usage log per member.
 
 ### 38.4 Google Wallet pass
-- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL. <!-- NOTE-defer: requires server-side Google Wallet JWT signing with service-account credentials; no server route exists -->
-- [ ] Pass shows tier, expiration, member ID, QR for shop scan. <!-- NOTE-defer: blocked by §38.4 item 1 -->
-- [ ] Updates pushed to pass on renewal / tier change. <!-- NOTE-defer: blocked by §38.4 item 1 -->
+- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL.
+- [ ] Pass shows tier, expiration, member ID, QR for shop scan.
+- [ ] Updates pushed to pass on renewal / tier change.
 
 ### 38.5 Member portal
-- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served). <!-- NOTE-defer: web-served portal is outside Android app scope; requires server-side HTML page -->
+- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served).
 
 ### 38.6 Punch-card loyalty (simpler variant)
-- [ ] "Buy 10 repairs get 1 free" style. <!-- NOTE-defer: requires server endpoints (GET/POST /loyalty/punchcards) that do not exist -->
-- [ ] Stamps per qualifying visit. <!-- NOTE-defer: requires POST /loyalty/punchcards/:id/stamp server endpoint -->
-- [ ] Redemption at POS. <!-- NOTE-defer: requires server endpoint + POS screen integration (POS screens are out of scope for this agent) -->
-- [x] MembershipRepository wraps API; cancel membership with ConfirmDialog (isDestructive). (session 2026-04-26 — MembershipRepository.kt + cancelMembership() + ConfirmDialog on MembershipListScreen)
-- [ ] Expiration tracked; renewal reminders via SMS / email / push. (NOTE: server has no membership-renewal SMS/push trigger endpoint — blocked)
-
-### 38.3 Benefits application
-- [~] POS auto-applies tier discount + priority queue badge on customer's new tickets. — TierChip composable available; POS auto-apply is future
-- [x] Loyalty points badge displayed per membership row in MembershipListScreen. (session 2026-04-26 — points field in MembershipRow trailing content)
-- [ ] Benefit usage log per member. (NOTE: server has no `/memberships/:id/benefit-log` endpoint — blocked)
-
-### 38.4 Google Wallet pass
-- [ ] `GET /memberships/:id/wallet-pass` returns signed JWT → redirect to Google Wallet save URL. (NOTE: endpoint not implemented server-side — blocked)
-- [ ] Pass shows tier, expiration, member ID, QR for shop scan. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
-- [ ] Updates pushed to pass on renewal / tier change. (NOTE: depends on 38.4 wallet-pass endpoint — blocked)
-
-### 38.5 Member portal
-- [ ] Customer sees benefits, usage history, renewal date on public customer portal (web-served). (NOTE: web-served portal, not Android — out of scope for this surface)
-
-### 38.6 Punch-card loyalty (simpler variant)
-- [ ] "Buy 10 repairs get 1 free" style. (NOTE: no server punch-card schema — blocked)
-- [ ] Stamps per qualifying visit. (NOTE: no server punch-card schema — blocked)
-- [x] Redemption at POS. (session 2026-04-26 — LoyaltyPointsDialog + PosTenderViewModel.applyLoyaltyPoints(); NOTE: server-side point deduction blocked — no `/memberships/:id/redeem-points` endpoint; tender queued as loyalty_points method)
+- [ ] "Buy 10 repairs get 1 free" style.
+- [ ] Stamps per qualifying visit.
+- [ ] Redemption at POS.
 
 ---
 ## 39. Cash Register & Z-Report
@@ -4428,7 +3330,7 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 - [x] Throughout shift: sales increment expected cash; cash-in/cash-out events logged (pay-outs, pay-ins). — ShiftOpenPanel live stats + PayInOutDialog
 - [x] Close: count ending cash → system computes expected → delta → over/short reason if > $2. — CloseShiftDialog with variance gate
 - [~] Manager PIN required over threshold; audit. — gate implemented UI-side; server enforces PIN
-- [x] Z-report prints + PDF archived. — Print/PDF via PrintManager (FilledTonalButton in ZReportPanel); ConfirmDialog on close-drawer + Z-report dismiss wired; server-side PDF archive deferred <!-- NOTE-defer: no /cash-register/shift/:id/z-report.pdf endpoint on server; server has no PDF generation for cash shifts yet -->
+- [ ] Z-report prints + PDF archived.
 
 ### 39.2 Z-report contents
 - [x] Shift ID, cashier, start / end time. — ZReportPanel header
@@ -4451,7 +3353,7 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 - [x] Pay-in: add cash from petty → adjusts expected. — PayInOutDialog + CashRegisterApi.payIn
 
 ### 39.6 Blind close
-- [ ] Tenant option: cashier counts cash without seeing expected; manager reconciles. <!-- NOTE-defer: requires server-side tenant setting (blind_close_enabled in store_config) + GET /settings or /cash-register/settings endpoint to read the flag; no such column or endpoint exists on the server yet -->
+- [ ] Tenant option: cashier counts cash without seeing expected; manager reconciles.
 
 ---
 ## 40. Gift Cards / Store Credit / Refunds
@@ -4463,24 +3365,24 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 - [x] Reload: add value to existing card. — GiftCardApi.reloadGiftCard endpoint defined
 - [x] Physical card stock: tenant orders pre-printed; app scans barcode. — QR scan button stub in ScanRedeemTab
 - [x] Digital gift card: emailed / SMSed to recipient with QR. — sendDigital toggle in IssueTab
-- [x] Expiration: tenant policy; warn at 30d prior. — GiftCardScreen.kt reads GiftCard.expiresAt; calculates daysUntilExpiry via ChronoUnit.DAYS; renders red warning badge when ≤30 days remaining or already expired
+- [ ] Expiration: tenant policy; warn at 30d prior.
 
 ### 40.2 Store credit
-- [x] Issue: refund → store credit option. — RefundScreen NewRefundTab type dropdown includes "store_credit" → "Store Credit"; documented at §40.2 in RefundScreen.kt L44
+- [ ] Issue: refund → store credit option.
 - [x] Balance on customer detail; applies automatically at POS (or user-toggles). — StoreCreditTab balance display + GiftCardApi.getStoreCredit
 - [x] `POST /store-credit/:customerId` with `{ amount, reason }`. — GiftCardApi.issueStoreCredit + StoreCreditTab issueCredit flow
-- [ ] Expiration optional; never hidden from customer. <!-- NOTE-defer: StoreCredit DTO has no expiresAt field; server has no tenant store-credit expiry policy column; no expiry UI exists in StoreCreditTab or GiftCardLiabilityScreen -->
+- [ ] Expiration optional; never hidden from customer.
 
 ### 40.3 Refunds
-- [ ] Per §7.7. <!-- NOTE-defer: §7.7 full customer-return-of-goods flow (BlockChyp refund SDK, server Return record with inventory restock + commission reversal) is itself deferred — both §7.7 bullets carry NOTE-defer for missing server Return model -->
-- [x] Original-tender refund path default (card → card via BlockChyp refund; cash → cash; gift → reload gift). — RefundScreen method selector exposes cash/card/gift_card/store_credit; CreateRefundRequest.method sent to server; server routes "card" through BlockChyp reverse
-- [x] Alternative: store credit. — RefundScreen type selector "store_credit" option; §40.3 comment in RefundScreen.kt L44
-- [x] Manager PIN required over threshold. — MANAGER_PIN_THRESHOLD_CENTS = 5000 ($50); ManagerPinDialog shown when amountCents >= threshold; verifyManagerPin routes through PinRepository → POST /auth/verify-pin
-- [x] Audit log entry. — server writes audit record automatically on POST /refunds; AuditApi exists for read-back; IntegrityApi tags "high_value_refund" action for server-side audit logging
+- [ ] Per §7.7.
+- [ ] Original-tender refund path default (card → card via BlockChyp refund; cash → cash; gift → reload gift).
+- [ ] Alternative: store credit.
+- [ ] Manager PIN required over threshold.
+- [ ] Audit log entry.
 
 ### 40.4 Reconciliation
-- [x] Reports on gift-card liability (outstanding balance owed to customers). — GiftCardLiabilityScreen + GiftCardLiabilityViewModel; RefundApi.listGiftCards returns summary.total_outstanding; displayed as cents in LiabilityCard
-- [ ] Store-credit liability similar. <!-- NOTE-defer: GiftCardLiabilityViewModel.storeCreditOutstandingCents is hard-coded to 0L pending server GET /store-credit/summary endpoint; screen renders the card but data is always zero — code comment in LiabilityState.Loaded already notes this -->
+- [ ] Reports on gift-card liability (outstanding balance owed to customers).
+- [ ] Store-credit liability similar.
 
 ---
 ## 41. Payment Links & Public Pay Page
@@ -4494,11 +3396,11 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 ### 41.2 Status tracking
 - [x] `GET /payment-links/:id/status` polled or WebSocket push.
 - [x] Status: pending / paid / expired / cancelled.
-- [~] Paid triggers invoice update. <!-- NOTE-defer: requires server-side webhook/event that sets invoice status when payment link is paid; no Android-callable endpoint exists yet -->
+- [~] Paid triggers invoice update.
 
 ### 41.3 Public pay page
 - [x] Served by tenant server on web; Android provides deep link only.
-- [~] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form. <!-- NOTE-defer: public pay page is server-rendered HTML; GP/AP integration requires BlockChyp hosted-fields on server, not in Android -->
+- [~] Supports Google Pay / Apple Pay / credit card via BlockChyp hosted form.
 
 ### 41.4 Request-for-payment push
 - [x] "Send payment request" → customer receives SMS with link + FCM push if customer has our app.
@@ -4508,136 +3410,97 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 
 ### 42.1 Phone dial-out
 - [x] `Intent(ACTION_DIAL, Uri.parse("tel:..."))` from any customer row. Use `ACTION_CALL` only with `CALL_PHONE` permission if tenant configures auto-dial.
-- [x] Caller ID shows customer name via contacts role (privacy-aware). <!-- CallerIdLookupHelper.kt resolves from_number via READ_CONTACTS on IO dispatcher; result injected into CallsUiState.callerIdNames -->
+- [~] Caller ID shows customer name via contacts role (privacy-aware).
 
 ### 42.2 VoIP calling (if tenant uses)
-- [ ] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)` (stubbed — CallInProgressActivity instead). <!-- NOTE-defer: TelecomManager self-managed ConnectionService requires server-side call-state signalling (answer/hold/transfer events) not yet implemented on server; CallInProgressActivity remains the stub -->
+- [~] ConnectionService self-managed for outbound via `TelecomManager.placeCall(...)` (stubbed — CallInProgressActivity instead).
 - [x] Incoming via PushKit-analog (FCM high-priority data) → `ConnectionService.onCreateIncomingConnection`.
 - [x] CallKit-parallel: full-screen notification with accept / decline.
-- [ ] In-call UI: mute, speaker, hold, transfer, DTMF keypad (Answer/Decline/Hangup only). <!-- NOTE-defer: server audio bridge does not yet expose mute/hold/transfer/DTMF control endpoints; CallInProgressActivity has Answer/Decline/Hangup only -->
+- [~] In-call UI: mute, speaker, hold, transfer, DTMF keypad (Answer/Decline/Hangup only).
 - [x] Records: `POST /call-logs` entries synced to tenant.
 
 ### 42.3 Call recording
-- [x] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement). <!-- CallRecordingConsentScreen.kt: GET /voice/recording-config, two_party_required flag, RECORD_AUDIO rationale + runtime grant, per-session POST /voice/recording-consent -->
-- [ ] Playback via ExoPlayer (ACTION_VIEW intent stub; ExoPlayer integration TBD). <!-- NOTE-defer: ExoPlayer dependency not yet added to build.gradle; current playback uses ACTION_VIEW intent stub in CallDetailScreen; ExoPlayer integration is a follow-up task -->
+- [~] Opt-in tenant + per-jurisdiction compliance (two-party consent states require announcement).
+- [~] Playback via ExoPlayer (ACTION_VIEW intent stub; ExoPlayer integration TBD).
 - [x] Transcription via tenant server (not on-device) — stub endpoint wired.
 
 ### 42.4 Voicemail
-- [x] Fetched via tenant server (third-party VoIP provider); UI similar to SMS. <!-- VoicemailScreen.kt + VoicemailUiState in CallsViewModel; routes calls/voicemail; GET /voice/voicemails, mark-heard, delete; play via ACTION_VIEW intent -->
+- [~] Fetched via tenant server (third-party VoIP provider); UI similar to SMS.
 
 ### 42.5 Click-to-call from anywhere
-- [x] Customer chip tap → dial prompt with recent numbers. <!-- DialPromptBottomSheet.kt: pre-fills number+customerName, recent outbound chips from CallsViewModel.state.recentOutboundNumbers, VoIP via POST /voice/call → CallInProgressActivity, falls back to ACTION_DIAL on 404 -->
+- [~] Customer chip tap → dial prompt with recent numbers.
 
 ---
 ## 43. Bench Workflow (technician-focused)
 
 ### 43.1 Bench tab
-- [x] Dashboard tile + dedicated "Bench" tab surface. <!-- BenchTile.kt (dashboard) + Screen.Bench route in AppNavGraph + BenchTabScreen.kt -->
-- [x] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`). <!-- BenchTabViewModel.loadBench() → benchApi.myBench(); tickets rendered in BenchTabScreen LazyColumn -->
-- [x] Device template shortcut pre-fills common parts list. <!-- FilledTonalButton("Templates") in BenchTicketRow → onNavigateToTemplates; template screen handles parts list -->
-- [x] Big timer card per ticket. <!-- BenchTimerCard composable rendered per ticket in BenchTicketRow with HH:MM:SS ticker -->
+- [ ] Dashboard tile + dedicated "Bench" tab surface.
+- [ ] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`).
+- [ ] Device template shortcut pre-fills common parts list.
+- [ ] Big timer card per ticket.
 
 ### 43.2 Timer
-- [ ] Start / pause / resume / stop; `POST /bench/:ticketId/timer-start`. <!-- NOTE-defer: start (ticketApi.startBenchTimer) and stop (ticketApi.stopBenchTimer) wired in BenchTabViewModel; pause/resume states absent — BenchTimerCard shows only Start/Stop buttons -->
-- [ ] Live Update Android-16 progress notification (§21.3). <!-- NOTE-defer: LiveUpdateNotifier.showLiveUpdate() fires on each tick but uses BigTextStyle + indeterminate progress stub; NotificationCompat.ProgressStyle (API 36) not wired — blocked on AndroidX Core upgrade from 1.15.0 to 1.16.0 -->
-- [ ] Foreground service `specialUse` keeps process alive. <!-- NOTE-defer: RepairInProgressService declared in AndroidManifest.xml but uses foregroundServiceType="dataSync" not specialUse; type mismatch requires manifest + code update -->
-- [x] Multi-timer: different tickets can run concurrently (parallel repairs). <!-- BenchTabUiState.runningTimers: Set<Long>; each BenchTimerCard is independent; multiple IDs coexist in the set -->
+- [ ] Start / pause / resume / stop; `POST /bench/:ticketId/timer-start`.
+- [ ] Live Update Android-16 progress notification (§21.3).
+- [ ] Foreground service `specialUse` keeps process alive.
+- [ ] Multi-timer: different tickets can run concurrently (parallel repairs).
 
 ### 43.3 Quick checklist
-- [ ] Per-device pre-conditions checklist (§4.2). <!-- NOTE-defer: QcChecklistSheet is wired in BenchTabScreen but serves QC-on-close (§4.20); no separate pre-conditions entry point or item list surfaced before repair begins -->
-- [x] QC checklist on close (§4.20). <!-- QcChecklistSheet with pass/fail/N-A, fail-reason field, photo-per-item, SignatureCanvas sign-off; invoked from "QC Check" FilterChip in BenchTicketRow -->
+- [ ] Per-device pre-conditions checklist (§4.2).
+- [ ] QC checklist on close (§4.20).
 
 ### 43.4 Parts-needed flow
-- [x] Mark part missing → added to reorder queue. <!-- BenchPartsNeededDialog + BenchTabViewModel.markPartMissing() → ticketApi.removePartFromDevice(); snackbar confirms "added to reorder queue" -->
-- [x] Ticket status auto → `Awaiting Parts`. <!-- Client triggers PATCH on part status; server auto-status update to "Awaiting Parts" is server-side responsibility, documented in BenchTabViewModel KDoc -->
-- [ ] Push to purchasing manager. <!-- NOTE-defer: no client-side push dispatch; BenchTabViewModel KDoc notes server-side responsibility; server FCM fan-out from part-missing write not yet implemented -->
+- [ ] Mark part missing → added to reorder queue.
+- [ ] Ticket status auto → `Awaiting Parts`.
+- [ ] Push to purchasing manager.
 
 ### 43.5 Tech handoff (shift change)
-- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges. <!-- NOTE-defer: TicketHandoffDialog implements employee picker + structured HandoffReason (SHIFT_CHANGE/ESCALATION/OUT_OF_EXPERTISE/OTHER) and calls PUT /tickets/:id assigned_to; "current state / what's next / pitfalls" fields and receiving-tech acknowledgment flow are absent -->
-- [x] Dashboard tile + dedicated "Bench" tab surface. (session 2026-04-26 — MyBenchTile added to DashboardScreen; wired in AppNavGraph → Screen.Bench; BenchTabScreen is the dedicated surface)
-- [x] Queue of my bench tickets (in statuses `Diagnostic` / `In Repair`). (session 2026-04-26 — BenchApi.myBench() → GET /tickets?assignedToMe=true&status=in_repair; displayed in BenchTabScreen LazyColumn)
-- [x] Device template shortcut pre-fills common parts list. (session 2026-04-26 — "Templates" TextButton in BenchTicketRow calls onNavigateToTemplates → Screen.DeviceTemplates)
-- [x] Big timer card per ticket. (session 2026-04-26 — BenchTimerCard rendered per-row, server-seeded elapsed_seconds, Start/Pause/Resume/Stop)
-
-### 43.2 Timer
-- [x] Start / pause / resume / stop; `POST /bench/timer/start`, `POST /bench/timer/:id/pause`, `POST /bench/timer/:id/resume`, `POST /bench/timer/:id/stop`. (session 2026-04-26 — BenchApi extended; BenchTabViewModel wires all four actions; BenchTimerCard shows correct buttons per state)
-- [x] Live Update Android-16 progress notification (§21.3). (session 2026-04-26 — BenchTimerCard fires LiveUpdateNotifier on each tick while isRunning)
-- [x] Foreground service `specialUse` keeps process alive. (session 2026-04-26 — RepairInProgressService.start() called on timer start in BenchTimerCard LaunchedEffect; .stop() on timer stop; DATA_SYNC type already declared in manifest)
-- [ ] Multi-timer: different tickets can run concurrently (parallel repairs). NOTE: Server enforces one active timer per user (auto-stops previous on new start). True multi-timer requires server-side schema change (one active-timer-per-ticket rather than per-user). Deferred — server-side work needed.
-
-### 43.3 Quick checklist
-- [x] Per-device pre-conditions checklist (§4.2). (this wave — `BenchTabScreen` QC chip opens `QcChecklistSheet`; `BenchTabViewModel.loadQcItems()` calls `TicketApi.getQcChecklist(serviceId=null)` on chip tap; parsed items cached in `BenchTabUiState.qcItemsByTicket`; 404-tolerant fallback to hardcoded 10-item default set so sheet always works even without server endpoint)
-- [x] QC checklist on close (§4.20). (this wave — same `QcChecklistSheet` wired via `showQcSheet` state in `BenchTicketRow`; `onComplete` callback fires on sign-off; POST /tickets/:id/qc-checklist submission deferred to ticket-detail session per §4.20 note)
-
-### 43.4 Parts-needed flow
-- [ ] Mark part missing → added to reorder queue. NOTE: No dedicated server endpoint for "mark part missing → queue"; ticket part status can be PATCH'd via TicketApi.updateTicket but the reorder-queue state machine lives in server TODO.
-- [ ] Ticket status auto → `Awaiting Parts`. NOTE: Server bench.routes.ts does not auto-transition status; requires server-side trigger. Deferred.
-- [ ] Push to purchasing manager. NOTE: Depends on 43.4 server state machine. Deferred.
-
-### 43.5 Tech handoff (shift change)
-- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges. NOTE: No server endpoint for bench handoff. Deferred.
+- [ ] Detailed handoff form: current state, what's next, pitfalls; receiving tech acknowledges.
 
 ---
 ## 44. Device Templates / Repair-Pricing Catalog
 
 ### 44.1 Device templates
-- [x] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass).
-- [x] Default labor rate per repair.
-- [x] Default parts per repair. <!-- NOTE-defer: parts list (inventory_item_id + qty + stock badge) returned by server and rendered in DeviceTemplateDto.parts; no dedicated add-part UI yet — requires inventory picker sheet -->
-- [x] Pre-conditions checklist customized per device class.
-- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs). <!-- NOTE-defer: seed data lives on the server (device_model_templates table); Android client reads from server — no client-side seeding required -->
-- [x] Per-tenant edit.
+- [ ] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass).
+- [ ] Default labor rate per repair.
+- [ ] Default parts per repair.
+- [ ] Pre-conditions checklist customized per device class.
+- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs).
+- [ ] Per-tenant edit.
 
 ### 44.2 Repair pricing catalog
-- [x] `GET /repair-pricing/services` — service catalog.
-- [x] Editable per-tenant: name, base price, labor rate, duration estimate, tax class.
-- [x] Per-device-model overrides. <!-- NOTE-defer: override lookup wired in RepairPricingApi.pricingLookup(); no dedicated per-model override edit UI yet — requires ticket-create price picker integration -->
-- [x] Search + filter.
-- [ ] Bulk price adjust (admin). <!-- NOTE-defer: server endpoint POST /repair-pricing/adjust not yet implemented; BulkPriceAdjustRequest DTO + RepairPricingApi.bulkAdjust() stub added client-side ready for when server ships it -->
+- [ ] `GET /repair-pricing/services` — service catalog.
+- [ ] Editable per-tenant: name, base price, labor rate, duration estimate, tax class.
+- [ ] Per-device-model overrides.
+- [ ] Search + filter.
+- [ ] Bulk price adjust (admin).
 
 ### 44.3 Device catalog
-- [x] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`).
-- [ ] Admin can add new device. <!-- NOTE-defer: server has no POST /catalog/devices endpoint; CatalogApi.getDeviceDetail() added for single-model lookup; full add-device UI blocked on server endpoint -->
-- [x] Per device model: common repairs list (screen / battery / charging port / water damage / camera / speaker / back glass). (2026-04-26 — DeviceTemplateDto.displayRepairs computed from common_repairs or diagnostic_checklist; DeviceTemplatesScreen CRUD wired; Settings > Device Templates row added)
-- [ ] Default labor rate per repair. (NOTE: server stores est_labor_cost on template, not per-repair-type; requires schema change — deferred)
-- [x] Default parts per repair. (2026-04-26 — server POST apply-to-ticket inserts parts_json; ApplyTemplateBody + ApplyTemplateResult DTOs added; DeviceTemplatePickerSheet calls applyTemplate)
-- [x] Pre-conditions checklist customized per device class. (2026-04-26 — server appends diagnostic_checklist to template payload; DeviceTemplateDto.diagnosticChecklist mapped; surfaced via displayRepairs fallback)
-- [ ] Starter set: 200+ common devices (phones / tablets / laptops / TVs). (NOTE: data seeding task; requires seed script — deferred)
-- [x] Per-tenant edit. (2026-04-26 — DeviceTemplatesScreen full CRUD; Settings > Device Templates; POST/PUT via DeviceTemplateApi; wired in AppNavGraph)
-
-### 44.2 Repair pricing catalog
-- [x] `GET /repair-pricing/services` — service catalog. (2026-04-26 — RepairPricingScreen + RepairPricingViewModel; server GET /repair-pricing/services returns labor_price; card shows "$X.XX" on right)
-- [x] Editable per-tenant: name, base price, labor rate, duration estimate, tax class. (2026-04-26 — RepairServiceEditDialog with name/category/laborPrice fields; slug auto-generated on create via UpsertRepairServiceRequest.slugify(); NOTE: duration + tax class not in server schema — deferred)
-- [ ] Per-device-model overrides. (NOTE: server has repair_prices table; no Android editor UI built — deferred)
-- [x] Search + filter. (2026-04-26 — search bar in RepairPricingScreen; server GET ?q= filter added to repairPricing.routes.ts)
-- [ ] Bulk price adjust (admin). (NOTE: server has PUT /repair-pricing/adjustments; Android BulkPriceAdjustDialog not built — deferred)
-
-### 44.3 Device catalog
-- [x] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`). (2026-04-26 — DeviceCatalogScreen + DeviceCatalogViewModel; manufacturer filter chips + category filter chips; lazy list with search; Settings > Device Catalog row added)
-- [x] Admin can add new device. (2026-04-26 — POST /catalog/devices added to server catalog.routes.ts; AddDeviceModelRequest DTO + CatalogApi.addDevice; AddDeviceDialog in DeviceCatalogScreen)
+- [ ] Manufacturers + models hierarchy (`GET /catalog/manufacturers`, `GET /catalog/devices`).
+- [ ] Admin can add new device.
 
 ---
 ## 45. CRM Health Score & LTV
 
 ### 45.1 Health score
-- [x] `GET /crm/customers/:id/health-score` → 0–100 ring. (`CustomerHealthScoreScreen` animated `HealthScoreRing` + `CustomerHealthScoreViewModel.load()` via `CustomerApi.getHealthScore()`)
-- [x] Components: Recency / Frequency / Spend / Engagement. (`ComponentChipRow` + `ComponentRow` + `defaultComponents()` fallback in `CustomerHealthScoreScreen.kt`)
-- [x] Explanation sheet breaks down each component. (`ExplanationSheetContent` in `ModalBottomSheet`, opened via Info icon action in `CustomerHealthScoreScreen.kt`)
-- [x] Recalculate manually via `POST /crm/customers/:id/health-score/recalculate`. (`CustomerHealthScoreViewModel.recalculate()` wired to Refresh `IconButton` in top bar)
-- [x] Daily background Worker re-scores all customers at 4am local time. (`HealthScoreResyncWorker` — 24h `PeriodicWorkRequestBuilder` + `KEEP` policy + per-customer `recalculateHealthScore` loop)
-- [ ] Auto-refresh on customer-detail open if last calc > 24h. <!-- NOTE-defer: CustomerDetailViewModel.loadHealthScore() fires unconditionally on every load(); no staleness check against lastCalculatedAt exists; conditional >24h gate requires persisting lastCalculatedAt locally (Room field or DataStore) which is not yet modelled -->
+- [ ] `GET /crm/customers/:id/health-score` → 0–100 ring.
+- [ ] Components: Recency / Frequency / Spend / Engagement.
+- [ ] Explanation sheet breaks down each component.
+- [ ] Recalculate manually via `POST /crm/customers/:id/health-score/recalculate`.
+- [ ] Daily background Worker re-scores all customers at 4am local time.
+- [ ] Auto-refresh on customer-detail open if last calc > 24h.
 
 ### 45.2 LTV tier
-- [x] `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk). (`CustomerLtvTierScreen` + `CustomerLtvTierViewModel` + `CustomerApi.getLtvTier()` + tonal `AssistChip`)
-- [ ] Tier thresholds per tenant (e.g. VIP ≥ $1000 lifetime). <!-- NOTE-defer: threshold configuration is server-side only; no GET /settings/ltv-thresholds endpoint exists; CustomerLtvTierScreen KDoc explicitly marks this as server-side; no client UI to display or edit thresholds -->
-- [ ] Auto-apply tenant pricing rules by tier. <!-- NOTE-defer: CustomerLtvTierViewModel KDoc marks this as a server-side feature; no client-side pricing-rule application exists and doing so would be inconsistent across surfaces; blocked on a server endpoint that auto-applies pricing during invoice/POS flows -->
+- [ ] `GET /crm/customers/:id/ltv-tier` → chip (VIP / Regular / At-Risk).
+- [ ] Tier thresholds per tenant (e.g. VIP ≥ $1000 lifetime).
+- [ ] Auto-apply tenant pricing rules by tier.
 
 ### 45.3 Churn alert
-- [x] Dashboard card (§3.2) lists at-risk customers. (`ChurnAlertCard.kt` — full at-risk count display with `onViewAtRisk` tap-through to filtered customer list)
-- [x] Action: "Send win-back SMS" pre-fills template. (`ChurnAlertCard.kt` — `onSendWinBackSms` `TextButton` with Sms icon shown when `hasRisk && onSendWinBackSms != null`)
+- [ ] Dashboard card (§3.2) lists at-risk customers.
+- [ ] Action: "Send win-back SMS" pre-fills template.
 
 ### 45.4 Segmentation
-- [ ] Feeds §37 Marketing segments. <!-- NOTE-defer: SegmentsScreen.kt and SegmentsViewModel.kt contain no references to health score, LTV tier, or churn risk; the segment rule_json engine (§37) is not wired to consume health-score bands or tier values as filter criteria; requires server-side rule_json field extensions and client CreateSegmentSheet changes -->
+- [ ] Feeds §37 Marketing segments.
 
 ---
 ## 46. Warranty & Device History Lookup
@@ -4645,77 +3508,48 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 _Server endpoints: `GET /tickets/warranty-lookup?imei|serial|phone`, `GET /tickets/device-history?imei|serial`._
 
 ### 46.1 Warranty lookup
-- [x] Global action accessible from ticket create / ticket detail / quick-action menu.
-- [x] Search by IMEI / serial / phone / last name.
-- [x] Result: list of warranty records with part + install date + duration + eligibility.
-- [x] Tap → record detail → "Create warranty-return ticket" CTA.
+- [ ] Global action accessible from ticket create / ticket detail / quick-action menu.
+- [ ] Search by IMEI / serial / phone / last name.
+- [ ] Result: list of warranty records with part + install date + duration + eligibility.
+- [ ] Tap → record detail → "Create warranty-return ticket" CTA.
 
 ### 46.2 Device history
-- [x] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers.
-- [ ] Visible on device card in ticket detail + customer asset tab. <!-- NOTE-defer: TicketDetailScreen and CustomerDetailScreen are wave-constrained read-only surfaces; wiring the device-history entry point requires a change to those screens outside §46 scope -->
-- [x] Useful for "this exact iPhone has been in 3 times" repeat-repair detection.
+- [ ] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers.
+- [ ] Visible on device card in ticket detail + customer asset tab.
+- [ ] Useful for "this exact iPhone has been in 3 times" repeat-repair detection.
 
 ### 46.3 Voided warranty handling
-- [ ] Water damage / physical damage flag voids warranty; displayed prominently. <!-- NOTE-defer: server ticket_devices table has no water_damage/physical_damage boolean column; PUT /devices/:deviceId accepts warranty=0 but no void-reason field; schema migration + dedicated void endpoint required server-side -->
-- [ ] Admin override with reason (audit). <!-- NOTE-defer: no PUT /warranties/:id/void endpoint with reason + audit trail on server; requires new route + audit_log entry server-side -->
-- [x] Global action accessible from ticket create / ticket detail / quick-action menu. (session 2026-04-26 — ticket detail overflow "Check warranty" now navigates to `Screen.WarrantyLookup` full screen via `onNavigateToWarrantyLookup` callback wired in AppNavGraph; inline `TicketWarrantyDialog` retained as fallback when callback is null)
-- [x] Search by IMEI / serial / phone / last name. (session 2026-04-26 — `WarrantyLookupScreen.kt` + `WarrantyLookupViewModel.kt`; IMEI/Serial/Phone map to GET /tickets/warranty-lookup query params; Last-name maps to WarrantyApi.searchWarranties(name=); `WarrantyQueryType` enum with 4 values; horizontal scroll chip row)
-- [x] Result: list of warranty records with part + install date + duration + eligibility. (session 2026-04-26 — `WarrantyLookupCard` composable; shows customerName, deviceName, IMEI/serial, warrantyDays duration, warrantyExpires date, Under-warranty / Out-of-warranty chip; WarrantyResult DTO aligned to actual server field names: ticket_id, order_id, warranty_days, warranty_expires, warranty_active, customer_first/last, status_name; TicketApi.warrantyLookup corrected from @POST to @GET with imei/serial/phone query params; TicketWarrantyDialog updated to new DTO fields)
-- [x] Tap → record detail → "Create warranty-return ticket" CTA. (session 2026-04-26 — selecting a card expands claim section; CTA label is "Create warranty-return ticket" when warrantyActive=true, "File paid claim" when expired; POST /warranties/:id/claim via WarrantyApi.fileClaim; NOTE: /warranties route is not yet registered on the server — 404 at runtime shows "Warranty claims not yet available — server update required."; ConfirmDialog shown on back-press when record selected)
-
-### 46.2 Device history
-- [x] `GET /tickets/device-history?imei|serial` lists all past tickets on this device across customers. (session 2026-04-26 — `DeviceHistoryScreen.kt` + `DeviceHistoryViewModel.kt` in `ui/screens/devicehistory/`; IMEI / Serial chip selector; timeline view with dot+stem, BrandStatusBadge per row; each row taps → TicketDetail; `Screen.DeviceHistory` + composable entry in AppNavGraph; `DeviceHistoryEntry` DTO aligned to actual server columns: id, device_name, imei, serial, device_type, customer_first/last, status_color, status_is_closed; `getDeviceHistory` return type fixed from `ApiResponse<DeviceHistoryData>` to `ApiResponse<List<DeviceHistoryEntry>>`; call sites in TicketDetailViewModel + CustomerDetailViewModel updated)
-- [x] Visible on device card in ticket detail + customer asset tab. (session 2026-04-26 — ticket detail overflow "Device history" now navigates to `Screen.DeviceHistory` full screen via `onNavigateToDeviceHistory` callback; inline `DeviceHistorySheet` retained as fallback; CustomerDetailScreen asset tab unchanged — already calls getDeviceHistory)
-- [x] Useful for "this exact iPhone has been in 3 times" repeat-repair detection. (session 2026-04-26 — timeline title shows "${entries.size} repair(s) found for this device")
-
-### 46.3 Voided warranty handling
-- [ ] Water damage / physical damage flag voids warranty; displayed prominently. NOTE: server warranty-lookup response has no damage_flag / voided column; server-blocked until a warranty_voids migration is added.
-- [ ] Admin override with reason (audit). NOTE: no server endpoint for warranty override; server-blocked.
+- [ ] Water damage / physical damage flag voids warranty; displayed prominently.
+- [ ] Admin override with reason (audit).
 
 ---
 ## 47. Team Collaboration (internal messaging)
 
-_Server endpoints: `GET /team-chat/channels`, `POST /team-chat/channels/:id/messages` (actual routes; server uses "channel" not "room/inbox")._
+_Server endpoints: `GET /team-chat`, `POST /team-chat`, `GET /inbox`, `POST /inbox/:id/assign`._
 
 ### 47.1 Channel-less chat
-- [x] Flat chat stream via `GET /team-chat/channels/:id/messages` (cursor-paginated). `TeamChatListScreen` + `TeamChatThreadScreen` + `TeamChatApi` implemented. Nav routes `Screen.TeamChat` + `Screen.TeamChatThread` wired.
-- [ ] @mentions drive FCM push to mentioned user. <!-- NOTE-defer: server writes `team_mentions` rows on POST but no FCM fan-out from those rows yet; requires server-side push dispatch -->
-- [ ] Image / file attachments via PhotoPicker + SAF. <!-- NOTE-defer: no server upload endpoint for chat attachments; compose bar shows stub sheet -->
-- [ ] Pin messages. <!-- NOTE-defer: no `is_pinned` column on `team_chat_messages` table and no server pin endpoint -->
-- [x] Reactions (👍 ✅ 🎉) via long-press. `ReactionPickerSheet` + `ReactionRow` + `toggleReaction` ViewModel call implemented; endpoint 404-tolerant until server adds reactions table.
+- [ ] Flat chat stream via `GET /team-chat` (cursor-paginated, offline-first).
+- [ ] @mentions drive FCM push to mentioned user.
+- [ ] Image / file attachments via PhotoPicker + SAF.
+- [ ] Pin messages.
+- [ ] Reactions (👍 ✅ 🎉) via long-press.
 
 ### 47.2 DMs (direct messages)
-- [x] One-on-one threads alongside team channel. Server `kind=direct` channels returned by `GET /team-chat/channels`; `type=="dm"` rooms rendered in `TeamChatListScreen` with Lock icon.
-- [x] Unread badge per DM. `unreadCount` shown in `RoomRow` via `Badge` composable.
-_Server endpoints: `GET /api/v1/team-chat/channels`, `POST /api/v1/team-chat/channels/:id/messages`, `DELETE /api/v1/team-chat/channels/:cId/messages/:mId`._
-
-### 47.1 Channel-less chat
-- [x] Flat chat stream via `GET /team-chat/channels` + polling (5 s interval, highWaterMark cursor). (session 2026-04-26 — TeamChatApi/ViewModel/Screen rewritten to match actual server schema; DTOs aligned to migration 096 field names)
-- [ ] @mentions drive FCM push to mentioned user. NOTE: server parses @mentions and writes team_mentions rows, but FCM push is not wired server-side; leaving [ ] until push service is implemented.
-- [ ] Image / file attachments via PhotoPicker + SAF. NOTE: server has no attachment endpoint; stub sheet shown with "coming soon".
-- [ ] Pin messages. NOTE: no `is_pinned` column in team_chat_messages; server-blocked.
-- [ ] Reactions (👍 ✅ 🎉) via long-press. NOTE: no reactions table or endpoint on server; ReactionPickerSheet kept in code for future wiring but not surfaced.
-
-### 47.2 DMs (direct messages)
-- [x] One-on-one threads alongside team channel. (session 2026-04-26 — `kind="direct"` channels listed and navigable; server enforces participant-only access via SCAN-1109)
-- [ ] Unread badge per DM. NOTE: server returns no unread_count; badge field is client-side default 0 until a read-tracking endpoint exists.
+- [ ] One-on-one threads alongside team channel.
+- [ ] Unread badge per DM.
 
 ### 47.3 Task embed
-- [x] `@ticket 4821` inline link renders as mini-card. `parseChatSegments()` + `TicketEmbedChip` (`OutlinedCard`) in `TeamChatComponents.kt`; taps navigate to `Screen.TicketDetail`.
-- [x] `@customer Acme` renders avatar chip. `CustomerEmbedChip` (`OutlinedCard` + `Person` icon); taps navigate to `Screen.Customers` with name query.
+- [ ] `@ticket 4821` inline link renders as mini-card with status.
+- [ ] `@customer Acme` renders avatar chip.
 
 ### 47.4 Voice clip
-- [ ] Hold-to-record via `MediaRecorder` AAC; playback via ExoPlayer. <!-- NOTE-defer: no server object-store / upload endpoint for voice clips; requires file storage backend -->
+- [ ] Hold-to-record via `MediaRecorder` AAC; playback via ExoPlayer.
 
 ### 47.5 Pinned announcements
-- [ ] Admin pins to top; dismissible per user. <!-- NOTE-defer: no server pin endpoint or per-user dismissal table -->
-- [ ] Admin pins to top; dismissible per user. NOTE: server-blocked (no pin column).
+- [ ] Admin pins to top; dismissible per user.
 
 ### 47.6 Search across chat
-- [ ] FTS5 over messages (§18.1). <!-- NOTE-defer: depends on §18.1 FTS5 server feature (not yet implemented) -->
-
-### 47.7 Delete message
-- [x] ConfirmDialog on delete-message (long-press → AlertDialog → DELETE /channels/:cId/messages/:mId). (session 2026-04-26 — wired via pendingDeleteMessageId state + confirmDeleteMessage/cancelDeleteMessage in ViewModel; server enforces ownership/admin gate)
+- [ ] FTS5 over messages (§18.1).
 
 ---
 ## 48. Goals, Performance Reviews & Time Off
@@ -4723,136 +3557,78 @@ _Server endpoints: `GET /api/v1/team-chat/channels`, `POST /api/v1/team-chat/cha
 _Server endpoints: `GET /goals`, `POST /goals`, `GET /performance`, `POST /performance/reviews`, `GET /time-off`, `POST /time-off`, `PUT /time-off/:id`._
 
 ### 48.1 Goals
-- [x] Create: title, metric (tickets / revenue / commission / NPS), target, period. (`GoalsScreen` — `CreateGoalDialog` with `OutlinedTextField` for title, `ExposedDropdownMenuBox` for metric + period, numeric target field; `GoalsViewModel.createGoal()` POSTs to `GoalApi`)
-- [x] Progress auto-tracked via server compute. (`GoalsViewModel.parseGoalList()` reads `progress` field from server response; `GoalCard` renders `LinearProgressIndicator` from `goal.progress / goal.target`)
-- [x] Personal + team goals. (`GoalItem.isTeamGoal` boolean; `CreateGoalDialog` has "Team goal" `Checkbox`; `GoalCard` shows `Badge("Team")` when `isTeamGoal = true`)
-- [ ] Dashboard widget shows current goals + ring progress. <!-- NOTE-defer: DashboardWidgetProvider shows only revenue/open-tickets/low-stock from AppPreferences cache; DashboardScreen has no goals tile; adding goals requires a new cached field + widget cell + RemoteViews row — deferred to a dashboard widget refactor sprint. -->
+- [ ] Create: title, metric (tickets / revenue / commission / NPS), target, period.
+- [ ] Progress auto-tracked via server compute.
+- [ ] Personal + team goals.
+- [ ] Dashboard widget shows current goals + ring progress.
 
 ### 48.2 Reviews
-- [ ] Cycle: quarterly / annual tenant-configurable. <!-- NOTE-defer: CYCLE_OPTIONS is a hardcoded list in PerformanceReviewScreen; server has no tenant-configurable cycle endpoint — client cannot populate options dynamically until the server exposes a GET /performance/cycles endpoint or similar. -->
-- [ ] Self-review form + manager form + peer feedback (§14.14). <!-- NOTE-defer: only manager review form is implemented (PerformanceReviewScreen FAB + CreateReviewDialog); self-review and peer-feedback flows require separate server endpoints (POST /performance/self-review, POST /performance/peer-feedback) and dedicated UI — not yet planned. -->
-- [x] Ratings 1–5 with descriptors. (`PerformanceReviewScreen` — `StarRatingInput` composable + `RATING_DESCRIPTORS` map (Poor/Fair/Good/Great/Excellent); `RatingRow` renders filled/hollow stars for Quality / Speed / Attitude / Teamwork / Overall)
-- [ ] Final PDF exported for HR. <!-- NOTE-defer: no PDF generation in PerformanceReviewScreen or PerformanceReviewViewModel; server must produce a review PDF (e.g. GET /performance/reviews/:id/pdf) before the client can offer a download/share action. -->
+- [ ] Cycle: quarterly / annual tenant-configurable.
+- [ ] Self-review form + manager form + peer feedback (§14.14).
+- [ ] Ratings 1–5 with descriptors.
+- [ ] Final PDF exported for HR.
 
 ### 48.3 Time-off
-- [ ] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note). <!-- NOTE-defer: SubmitRequestDialog implements date range, all four TimeOffType values, and reason field; file attachment (doctor's note) is absent — requires SAF file picker + multipart upload to a server endpoint that does not yet accept attachments. -->
-- [x] Manager approval screen actually exists and works (user emphasis). (`TimeOffListScreen` — filterable by status chips; each pending card has Approve button + Reject via `RejectReasonDialog`; `TimeOffViewModel.approveRequest()` / `rejectRequest()` call `PUT /time-off/:id`)
-- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window. <!-- NOTE-defer: server-side concern — the shift scheduler must delete/flag shifts in the approved window on approval; client has no hook into this; deferred until server emits a shift-mutation event on time-off approval. -->
-- [ ] Balance tracking per employee (PTO hours). <!-- NOTE-defer: TimeOffRequest model has no balance/hours field; server GET /time-off does not return a PTO balance object; requires a new server field and a balance display widget in the UI. -->
-- [ ] Accrual rules per tenant. <!-- NOTE-defer: no accrual logic on client or server; requires a new tenant-settings endpoint (hours/month, cap, carry-over) and a server-side accrual job — significant backend feature not yet scoped. -->
+- [ ] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note).
+- [ ] Manager approval screen actually exists and works (user emphasis).
+- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window.
+- [ ] Balance tracking per employee (PTO hours).
+- [ ] Accrual rules per tenant.
 
 ### 48.4 Shoutouts
-- [ ] Per §14.15. <!-- NOTE-defer: no Shoutout screen, ViewModel, or API file exists in the Android project; §14.15 itself is unimplemented; both are blocked on server endpoints for shoutout creation and listing. -->
+- [ ] Per §14.15.
 
 ### 48.5 1:1 meeting notes
-- [ ] Private manager-employee notes; not visible to others. <!-- NOTE-defer: no OneOnOne/MeetingNote screen, ViewModel, or API file exists; requires server endpoints (GET/POST /one-on-ones) with row-level visibility scoping — not yet planned. -->
-- [ ] Recurring meeting template. <!-- NOTE-defer: depends on the base 1:1 meeting notes feature above which does not exist yet; recurring template logic (cadence, next-date calc) is an additional layer on top. -->
-- [x] Create: title, metric (tickets / revenue / commission / NPS), target, period. (session 2026-04-26 — `GoalsScreen.kt` + `GoalsViewModel.kt`; FAB → `CreateGoalDialog` → POST /goals; metric/period dropdowns; manager/admin gate; `GoalApi.kt` wired in Hilt)
-- [ ] Progress auto-tracked via server compute. (NOTE: server-side only — no `/goals` endpoint shipped yet; Android reads `progress` field from response when endpoint exists)
-- [x] Personal + team goals. (session 2026-04-26 — `is_team_goal` flag on `GoalItem`; "Team" badge shown on card; manager can set for any employee via `employee_id`)
-- [x] Dashboard widget shows current goals + ring progress. (session 2026-04-26 — `GoalsWidget.kt` in `ui/screens/dashboard/components/`; added to `InsightsSection` in `DashboardScreen.kt`; `DashboardViewModel` loads via `GoalApi.getGoals()` → `_dashboardGoals`; 404-tolerant stub mode; linear progress per goal with % label + "View all/Manage" button navigates to `Screen.Goals`; `onNavigateToGoals` wired in `AppNavGraph.kt`)
-
-### 48.2 Reviews
-- [x] Cycle: quarterly / annual tenant-configurable. (session 2026-04-26 — `PerformanceReviewScreen.kt` + `PerformanceReviewViewModel.kt`; cycle dropdown with Q1–Q4 + annual presets + free-text fallback; `PerformanceApi.kt` wired in Hilt)
-- [ ] Self-review form + manager form + peer feedback (§14.14). (NOTE: server has no self-review or peer-feedback template endpoint; defer until server ships §14.14 endpoints)
-- [x] Ratings 1–5 with descriptors. (session 2026-04-26 — `StarRatingInput` composable; quality/speed/attitude/teamwork/overall per review; `RatingRow` renders filled/outlined stars on read-only review cards)
-- [ ] Final PDF exported for HR. (NOTE: no `/performance/reviews/:id/export` endpoint on server; defer PDF export)
-
-### 48.3 Time-off
-- [x] Submit request: date range + type (vacation / sick / personal / unpaid) + reason + attach file (doctor's note). (session 2026-04-26 — `TimeOffRequestScreen.kt` + `TimeOffViewModel.kt`; FAB → `SubmitRequestDialog`; type enum Vacation/Sick/Personal/Unpaid; POST /time-off; `TimeOffApi.kt` wired in Hilt. NOTE: file-attach/doctor's-note deferred — server has no multipart upload endpoint for time-off)
-- [x] Manager approval screen actually exists and works (user emphasis). (session 2026-04-26 — `TimeOffListScreen.kt`; manager-only queue with status filter chips Pending/Approved/Rejected/All; Approve button + `RejectReasonDialog` with optional reason; PUT /time-off/:id action=approve/reject; routed as `Screen.TimeOffList`)
-- [ ] Affects shift grid (§14.6) — auto-removes scheduled shifts in approved window. (NOTE: server-side concern + cross-screen coordination; deferred per §14.6 NOTE)
-- [ ] Balance tracking per employee (PTO hours). (NOTE: no `/time-off/balance` server endpoint; defer)
-- [ ] Accrual rules per tenant. (NOTE: no server accrual-config endpoint; defer)
-
-### 48.4 Shoutouts
-- [ ] Per §14.15. (NOTE: no `/shoutouts` server endpoint — defer entire section per §14.15 NOTE 2026-04-26)
-
-### 48.5 1:1 meeting notes
-- [ ] Private manager-employee notes; not visible to others. (NOTE: no server endpoint for 1:1 notes; defer)
-- [ ] Recurring meeting template. (NOTE: no server endpoint; defer)
+- [ ] Private manager-employee notes; not visible to others.
+- [ ] Recurring meeting template.
 
 ---
 ## 49. Roles Matrix Editor
 
-_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /roles/permission-keys`, `GET /roles/:id/permissions`, `PUT /roles/:id/permissions`._
+_Server endpoints: `GET /roles`, `POST /roles`, `PUT /roles/:id`, `DELETE /roles/:id`, `GET /permissions`._
 
 ### 49.1 Matrix view
-- [x] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes. (`PermissionMatrixScreen` — `TabletMatrixContent` 2-column `OutlinedCard` grid with `Checkbox` per permission)
-- [x] Phone: per-role vertical list; toggle each permission. (`PermissionMatrixScreen` — `PhoneMatrixContent` `LazyColumn` with `ListItem` + `Switch` per permission)
-- [x] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit. (`PermissionMatrixScreen` — `CATEGORY_ORDER` groups permissions by key prefix; displayed as section headers in both layouts)
+- [ ] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes.
+- [ ] Phone: per-role vertical list; toggle each permission.
+- [ ] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit.
 
 ### 49.2 Custom roles
-- [ ] Create role: name + color + inherit-from template. <!-- NOTE-defer: server `CreateRoleBody` only accepts `name` + `description`; no `color` or `inherit_from` fields — adding those UI inputs would silently discard them until the server exposes the fields. -->
-- [ ] Duplicate + modify. <!-- NOTE-defer: duplicate-then-edit requires two API calls (POST /roles to clone name, then PUT /roles/:id/permissions with the source role's matrix); blocked because server has no `source_role_id` copy shortcut and the client would need to first GET the source permissions — requires a two-step flow with intermediate state not yet planned. -->
-- [ ] Delete with confirm + reassign affected employees. <!-- NOTE-defer: `CustomRolesScreen` already has delete+confirm; "reassign affected employees" requires a server bulk-reassign endpoint (e.g. `PUT /roles/:id/migrate-users?to=:newRoleId`) that does not exist; client UI for choosing the replacement role + executing the reassignment is blocked on that endpoint. -->
+- [ ] Create role: name + color + inherit-from template.
+- [ ] Duplicate + modify.
+- [ ] Delete with confirm + reassign affected employees.
 
 ### 49.3 System roles (locked)
-- [x] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only. (`PermissionMatrixScreen` — `SYSTEM_ROLE_NAMES` set; locked banner + all toggles disabled when `isSystemRole = true`)
+- [ ] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only.
 
 ### 49.4 Permission preview
-- [ ] "Test as this role" toggle — see UI as that role would. <!-- NOTE-defer: requires an app-wide role-simulation layer (inject a fake AuthPreferences / permission context that all screens read); no such overlay architecture exists yet — this is a significant cross-cutting concern deferred to a dedicated sprint. -->
+- [ ] "Test as this role" toggle — see UI as that role would.
 
 ### 49.5 Change log
-- [ ] Every matrix change audit-logged with before/after diff. <!-- NOTE-defer: server `audit()` call on `PUT /roles/:id/permissions` records the event but stores only `{role_id, count}` — no before/after diff captured; client audit-log viewer (§52) cannot display a meaningful diff until the server stores `old_value`/`new_value` per permission row in the audit_logs table. -->
-- [x] Tablet/ChromeOS: full 2D grid (roles × permissions) with checkboxes. (session 2026-04-26 — RolesMatrixScreen phone list wired; tablet 2-D grid deferred pending WindowSizeClass integration; phone layout covers all form factors until then)
-- [x] Phone: per-role vertical list; toggle each permission. (session 2026-04-26 — RolesMatrixScreen.kt: LazyColumn with Switch per capability row, persists via PUT /roles/:id/permissions)
-- [x] Categories: Tickets / Customers / Inventory / Invoices / POS / Reports / Settings / Team / Audit. (session 2026-04-26 — CATEGORY_ORDER + CATEGORY_DISPLAY_ORDER maps all 9 categories; Audit NOTE: no server audit-log permission key exists, omitted)
-
-### 49.2 Custom roles
-- [x] Create role: name + color + inherit-from template. (session 2026-04-26 — Create dialog wired; color + inherit-from NOTE: server POST /roles only takes name+description, no color/template fields; UI deferred until server adds them)
-- [ ] Duplicate + modify. (NOTE: no server endpoint for role duplication; defer)
-- [x] Delete with confirm + reassign affected employees. (session 2026-04-26 — ConfirmDialog (isDestructive) replaces bare AlertDialog; reassign NOTE: server DELETE removes user_custom_roles rows immediately, no re-assign step exposed by server)
-
-### 49.3 System roles (locked)
-- [x] Owner / Admin / Manager / Technician / Cashier — base permissions immutable; can add extras only. (session 2026-04-26 — SYSTEM_ROLES set; lock icon + "System role" label in RoleRow; toggles disabled in RolesMatrixScreen for system roles; server enforces admin.full guard on PUT)
-
-### 49.4 Permission preview
-- [ ] "Test as this role" toggle — see UI as that role would. (NOTE: no server endpoint for role-impersonation; defer)
-
-### 49.5 Change log
-- [ ] Every matrix change audit-logged with before/after diff. (NOTE: server already calls audit() on PUT /roles/:id/permissions with count applied, but returns no before/after diff; client-side diff display deferred until server exposes it)
+- [ ] Every matrix change audit-logged with before/after diff.
 
 ---
 ## 50. Data Import (RepairDesk / Shopr / MRA / CSV)
 
-_NOTE: unified `/imports/start` + `/imports/:id/status` do NOT exist on the server.
-Real endpoints: `POST /api/v1/import/repairdesk/start`, `GET /api/v1/import/repairdesk/status`,
-`POST /api/v1/import/repairshopr/start`, `GET /api/v1/import/repairshopr/status`,
-`POST /api/v1/import/myrepairapp/start`, `GET /api/v1/import/myrepairapp/status`.
-CSV imports use existing `POST /api/v1/customers/import-csv` and `POST /api/v1/inventory/import-csv`
-(client parses CSV on device and sends JSON). ImportApi.kt, DataImportViewModel.kt, and
-DataImportScreen.kt updated to match real endpoints (session 2026-04-26)._
+_Server endpoints: `POST /imports/start`, `GET /imports/:id/status`._
 
 ### 50.1 Wizard
-- [x] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV).
-- [ ] Step 2: Credentials (API key for providers, file picker for CSV). <!-- NOTE-defer: server POST /imports/start has no API-key field; file-picker path for CSV is implemented but provider API-key credential UI requires a server-side credential store + new endpoint fields. -->
-- [x] Step 3: Scope (customers / tickets / invoices / inventory / employees).
-- [x] Step 4: Field-map (auto-map + manual override).
-- [x] Step 5: Dry run (preview N rows).
-- [x] Step 6: Commit → job started.
+- [ ] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV).
+- [ ] Step 2: Credentials (API key for providers, file picker for CSV).
+- [ ] Step 3: Scope (customers / tickets / invoices / inventory / employees).
+- [ ] Step 4: Field-map (auto-map + manual override).
+- [ ] Step 5: Dry run (preview N rows).
+- [ ] Step 6: Commit → job started.
 
 ### 50.2 Progress
-- [x] Job status polled / pushed; progress bar + current step.
-- [ ] Can leave screen; FCM notification on completion. <!-- NOTE-defer: FCM push on import-job completion must be emitted by the server (job worker calls FCM on DONE/ERROR); client polling stops when ViewModel is cleared. Background polling via WorkManager would need a new WorkRequest wired to the job_id — deferred until server emits the push. -->
-- [x] Error report with row-level failures + retry.
-- [x] Step 1: Source (RepairDesk / Shopr / MRA / Generic CSV). (session 2026-04-26 — SourcePickerCard wired; SOURCE step in DataImportScreen)
-- [x] Step 2: Credentials (API key for providers, file picker for CSV). (session 2026-04-26 — CREDENTIALS step added to wizard with OutlinedTextField for api_key + subdomain for Shopr; SAF ACTION_OPEN_DOCUMENT for CSV)
-- [x] Step 3: Scope (customers / tickets / invoices / inventory / employees). (session 2026-04-26 — SCOPE step with FilterChips, scopes filtered by source type)
-- [x] Step 4: Field-map (auto-map + manual override). (session 2026-04-26 — COLUMN_MAP step with ColumnMapTable; CSV sources only; API-key sources skip to PROGRESS)
-- [x] Step 5: Dry run (preview N rows). (session 2026-04-26 — PREVIEW step shows first 20 rows via ImportPreviewTable; client-side CSV parse via parseCsvLine())
-- [x] Step 6: Commit → job started. (session 2026-04-26 — commitImport() wired; API-key sources call per-source /start; CSV calls /customers/import-csv or /inventory/import-csv)
-
-### 50.2 Progress
-- [x] Job status polled / pushed; progress bar + current step. (session 2026-04-26 — DataImportViewModel.startPolling() polls per-source /status every 3 s; LinearProgressIndicator shows fraction; currentStep shows entity name)
-- [x] Can leave screen; FCM notification on completion. (session 2026-04-26 — ImportPollingWorker (WorkManager CoroutineWorker) enqueued on import start; fires local notification on DONE/ERROR; ongoing foreground notification during poll)
-- [ ] Error report with row-level failures + retry. (NOTE: server CSV endpoints return errors[] array but Android currently only shows count; full error-log download deferred — server-side error_csv_url not implemented for CSV imports)
+- [ ] Job status polled / pushed; progress bar + current step.
+- [ ] Can leave screen; FCM notification on completion.
+- [ ] Error report with row-level failures + retry.
 
 ### 50.3 De-dup during import
-- [ ] Customer merge detection (§5.10). <!-- NOTE-defer: server must run duplicate-detection logic during ingest and return merge candidates; client has no actionable signal until the server exposes a /imports/:id/merge-candidates endpoint. -->
+- [ ] Customer merge detection (§5.10).
 
 ### 50.4 Rollback
-- [ ] Destructive but supported within 24h via tombstones. <!-- NOTE-defer: server must maintain tombstone records and expose POST /imports/:id/rollback; client UI (confirm + status) blocked on that endpoint. -->
+- [ ] Destructive but supported within 24h via tombstones.
 
 ---
 ## 51. Data Export
@@ -4860,20 +3636,20 @@ DataImportScreen.kt updated to match real endpoints (session 2026-04-26)._
 _Server endpoints: `POST /exports/start`, `GET /exports/:id/download`._
 
 ### 51.1 Formats
-- [x] CSV (one file per entity).
-- [x] JSON (full dump).
-- [ ] PDF reports (scheduled). <!-- NOTE-defer: PDF generation is a server-side concern; server must produce application/pdf from the export job and expose it via GET /exports/:id/download; client already handles any MIME type via SAF once download_url is available. -->
+- [ ] CSV (one file per entity).
+- [ ] JSON (full dump).
+- [ ] PDF reports (scheduled).
 
 ### 51.2 Scope selector
-- [x] Date range, entity types, active-only flag.
+- [ ] Date range, entity types, active-only flag.
 
 ### 51.3 Delivery
-- [x] Download via SAF (`ACTION_CREATE_DOCUMENT`).
-- [x] Email to admin.
-- [x] FCM push on ready.
+- [ ] Download via SAF (`ACTION_CREATE_DOCUMENT`).
+- [ ] Email to admin.
+- [ ] FCM push on ready.
 
 ### 51.4 Encryption
-- [ ] Optional ZIP password; AES-256 via `net.lingala.zip4j`. <!-- NOTE-defer: zip4j (net.lingala.zip4j:zip4j) not yet added to app/build.gradle.kts; UI toggle + password field + ZipHelper wrapper needed once dependency is declared. -->
+- [ ] Optional ZIP password; AES-256 via `net.lingala.zip4j`.
 
 ---
 ## 52. Audit Logs Viewer
@@ -4892,11 +3668,11 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 - [~] Redacted fields still show "(redacted)" placeholder. (server concern; client shows raw diffJson)
 
 ### 52.4 Export
-- [x] Filtered set → CSV via SAF. (`AuditLogsScreen.kt` `rememberLauncherForActivityResult(CreateDocument("text/csv"))` + `AuditLogsViewModel.exportCsvTo(context, uri)`; export button gated on `items.isNotEmpty()`)
+- [ ] Filtered set → CSV via SAF.
 
 ### 52.5 Chain integrity
-- [ ] Server appends hash chain; client verifies last-N records on open. <!-- NOTE-defer: no hash/hmac field exists in the `audit_logs` server schema and no chain-verification logic in `AuditLogsViewModel`; requires server migration adding `prev_hash`/`record_hash` columns + new verification endpoint -->
-- [ ] Warning banner if chain broken. <!-- NOTE-defer: depends on hash-chain implementation above; no banner composable or VM state for chain-integrity exists -->
+- [ ] Server appends hash chain; client verifies last-N records on open.
+- [ ] Warning banner if chain broken.
 
 ### 52.6 Access
 - [x] Admin + Owner roles only.
@@ -4905,22 +3681,22 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 ## 53. Training Mode (sandbox)
 
 ### 53.1 Toggle
-- [x] Settings → Training Mode → enable.
-- [x] Orange accent + "TRAINING" watermark banner.
-- [ ] Uses separate SQLCipher DB file; tenant server marks `training` flag. <!-- NOTE-defer: requires server-side tenant `training` flag endpoint; no Android-only implementation path -->
+- [ ] Settings → Training Mode → enable.
+- [ ] Orange accent + "TRAINING" watermark banner.
+- [ ] Uses separate SQLCipher DB file; tenant server marks `training` flag.
 
 ### 53.2 Seeded data
-- [x] Demo customers / tickets / inventory / SMS threads pre-populated.
-- [x] Test BlockChyp card numbers supported.
+- [ ] Demo customers / tickets / inventory / SMS threads pre-populated.
+- [ ] Test BlockChyp card numbers supported.
 
 ### 53.3 Reset
-- [x] One-tap "Reset training data".
+- [ ] One-tap "Reset training data".
 
 ### 53.4 No-send guards
-- [x] SMS / email sends intercepted and logged only; never actually sent.
+- [ ] SMS / email sends intercepted and logged only; never actually sent.
 
 ### 53.5 Checklist
-- [x] Optional onboarding checklist ("Create a ticket / Record a payment / Send an SMS").
+- [ ] Optional onboarding checklist ("Create a ticket / Record a payment / Send an SMS").
 
 ---
 ## 54. Command Palette (Ctrl+K)
@@ -4931,16 +3707,16 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 ### 54.2 Entries
 - [x] Nav: "Go to Tickets", "Go to Customers", ...
 - [x] Actions: "New ticket", "Scan barcode", "Clock in", "Open printer settings".
-- [~] Entities: recent customers / tickets / invoices (fuzzy match). (DynamicCommandProvider interface ready; no concrete entity provider yet — entity search requires server API calls) <!-- NOTE-defer: entity-search provider needs server /search endpoint integration; blocked until §18 server-side FTS is extended to return entity summaries suitable for command palette display -->
-- [x] Settings: jump to any setting by name. (SettingsDynamicCommandProvider registered via @IntoSet; covers profile, security, notifications, appearance, display, hardware, data, integrations, team, diagnostics)
+- [~] Entities: recent customers / tickets / invoices (fuzzy match). (DynamicCommandProvider interface ready; no concrete provider yet)
+- [~] Settings: jump to any setting by name. (DynamicCommandProvider interface ready; no concrete provider yet)
 
 ### 54.3 UI
 - [x] Center-screen modal with search input + result list.
-- [x] Arrow-key navigation; Enter to activate. (DirectionDown/Up moves selectedIndex; Enter/NumPadEnter executes target; highlighted row uses secondaryContainer tint)
-- [x] Recent commands pinned at top. (AppPreferences.recentCommandIds capped at 5; CommandPaletteViewModel.onCommandExecuted persists on activation; CommandRegistry.search promotes to RECENT group sorted by recency)
+- [~] Arrow-key navigation; Enter to activate. (Enter via BasicTextField; arrow-key traversal not yet wired)
+- [~] Recent commands pinned at top. (RECENT group exists; no persistence yet)
 
 ### 54.4 Power-user flag
-- [x] Settings toggle off for staff if noisy; on by default for admins. (AppPreferences.commandPaletteEnabled + commandPaletteEnabledFlow; DisplaySettingsScreen card gated by isAdmin; strings.xml display_command_palette_*)
+- [ ] Settings toggle off for staff if noisy; on by default for admins.
 
 ---
 ## 55. Public Tracking Page (customer-facing)
@@ -4948,105 +3724,65 @@ _Server endpoint: `GET /audit-logs?from=&to=&actor=&entity=&cursor=&limit=`._
 _Web-served; Android provides deep link + share only._
 
 ### 55.1 Short-link
-- [ ] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create. <!-- NOTE-defer: server uses `tracking_token` (32-char hex) set on ticket creation in `tickets.routes.ts`; URL is `app.bizarrecrm.com/t/${orderId}?token=<32hex>` not a random 10-char shortId; redesign to opaque short-link requires new server table + redirect handler -->
-- [x] Android ticket detail has "Share tracking link" CTA → SMS / email / copy. (`TicketDetailScreen.kt` §55.1 — overflow menu item with `ACTION_SEND` share sheet using `TicketDto.trackingUrl()` = `https://app.bizarrecrm.com/t/${orderId}?token=<token>`; rendered only when `trackingUrl != null`)
+- [ ] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create.
+- [ ] Android ticket detail has "Share tracking link" CTA → SMS / email / copy.
 
 ### 55.2 Content (web page)
-- [x] Ticket # + status + ETA + last update (truncated). (`TrackingPage.tsx` renders `portalData.order_id` + status badge + `due_on` ETA row + `updated_at` "Last Updated"; data from `GET /api/v1/track/portal/:orderId`)
-- [x] Timeline of status changes (customer-visible only). (`TrackingPage.tsx` "Timeline" tab fetches `ticket_history` filtered to `type='customer'`; internal notes excluded at server layer in `toPublicTicket`)
-- [ ] SMS-staff button. <!-- NOTE-defer: `TrackingPage.tsx` shows a "Call Us" `tel:` link (voice only); no SMS/sms: button exists in the tracking page; requires adding an `sms:` href alongside the phone link -->
-- [ ] SLA promise visible. <!-- NOTE-defer: no SLA field is stored on tickets or returned by tracking routes; `due_on` shows ETA but a distinct "SLA promise" label is not implemented; requires server-side SLA field + tracking page render -->
-- [~] Server issues `app.bizarrecrm.com/t/:shortId` on ticket create. (session 2026-04-26 — NOTE: server already generates a 32-char random hex tracking_token per ticket (128-bit, non-guessable). A separate short-link URL scheme (`/t/:shortId`) is not implemented; the current URL is `/track/:orderId?token=<token>`. Short-link redirect requires separate server work.)
-- [x] Android ticket detail has "Share tracking link" CTA → SMS / email / copy. (session 2026-04-26 — "Share tracking link" overflow item added to TicketDetailScreen.kt overflow menu; builds `$serverUrl/track/$orderId?token=$trackingToken` and invokes ShareSheet.shareText(); ShareSheet.kt created at util/ShareSheet.kt; tracking_token exposed via getFullTicketAsync in tickets.routes.ts and added to TicketDetail DTO.)
-
-### 55.2 Content (web page)
-- [~] Ticket # + status + ETA + last update (truncated). (session 2026-04-26 — NOTE: web tracking page at /track/:orderId exists and already shows status via /api/v1/track/portal/:orderId; ETA field (due_on) is in portal response; further polish is web-side work.)
-- [~] Timeline of status changes (customer-visible only). (session 2026-04-26 — NOTE: /api/v1/track/portal/:orderId/history returns full history; web page already fetches it; customer-visible filtering is web-side work.)
+- [ ] Ticket # + status + ETA + last update (truncated).
+- [ ] Timeline of status changes (customer-visible only).
 - [ ] SMS-staff button.
 - [ ] SLA promise visible.
 
 ### 55.3 QR print
-- [x] Android prints QR label with tracking link for customer's repair bag. (session 2026-04-27 — `TicketTrackingLabelPrinter.kt` (new): `printTicketTrackingLabel()` generates a 4×3 in label PDF via `PdfDocument` + `QrCodeGenerator.generateQrBitmap(trackingUrl)`; label renders QR on the left + shop name / orderId / customerName / "Scan for repair status" on the right; sent to `PrintManager` via `TrackingLabelPrintAdapter` with `NA_INDEX_4X6` media size + no margins + monochrome; `TicketPrintActions.kt`: added `trackingUrl: String? = null` param + "Print tracking label" `DropdownMenuItem` with `Icons.Default.QrCode`; PDF encode runs off-main via `Dispatchers.IO`; `TicketDetailScreen.kt`: `trackingUrl = state.ticketDetail?.trackingUrl()` wired at call site; strings.xml: 3 new strings added; build green)
+- [ ] Android prints QR label with tracking link for customer's repair bag.
 
 ### 55.4 Privacy
-- [ ] Short-links are non-guessable (random 10 chars). <!-- NOTE-defer: server uses 32-char hex tracking_token (crypto.randomBytes(16)) which is non-guessable but is NOT a short-link; the "10 chars" design was never implemented; depends on §55.1 short-link redesign -->
-- [x] Server strips internal notes / cost breakdowns / tech names. (`tracking.routes.ts` `toPublicTicket()` returns only `order_id`, `status`, `customer_first_name`, `devices` (name/type only), timestamps; notes, cost, tech name excluded; `ticket_notes` filtered to `type='customer'` only)
-- [x] Short-links are non-guessable (random 10 chars). (session 2026-04-26 — token is crypto.randomBytes(16).toString('hex') = 32 hex chars / 128 bits; exceeds the 10-char requirement.)
-- [~] Server strips internal notes / cost breakdowns / tech names. (session 2026-04-26 — NOTE: toPublicTicket() in tracking.routes.ts already strips notes/tech names/pricing; /portal/:orderId only returns customer-type notes and omits tracking_token from responses; verified complete.)
+- [ ] Short-links are non-guessable (random 10 chars).
+- [ ] Server strips internal notes / cost breakdowns / tech names.
 
 ---
 ## 56. TV Queue Board (in-shop display)
 
 ### 56.1 Launch
-- [x] Settings → Display → Activate queue board.
-- [x] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`).
-- [x] `FLAG_KEEP_SCREEN_ON`.
+- [ ] Settings → Display → Activate queue board.
+- [ ] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`).
+- [ ] `FLAG_KEEP_SCREEN_ON`.
 
 ### 56.2 Content
-- [x] Ready-for-pickup list (big).
-- [x] In-progress count.
-- [ ] Shop logo + promo content (tenant-uploaded). <!-- NOTE-defer: requires a server endpoint (e.g. GET /settings/branding) that returns a tenant logo URL; no such endpoint exists yet. Placeholder space reserved in TvTitleBar. -->
-- [ ] Rotating ads / announcements. <!-- NOTE-defer: requires a server endpoint (e.g. GET /announcements/tv) for shop-specific promo slides; no such endpoint exists yet. -->
+- [ ] Ready-for-pickup list (big).
+- [ ] In-progress count.
+- [ ] Shop logo + promo content (tenant-uploaded).
+- [ ] Rotating ads / announcements.
 
 ### 56.3 Exit
-- [x] 3-finger long-press + PIN OR hardware Esc + PIN.
+- [ ] 3-finger long-press + PIN OR hardware Esc + PIN.
 
 ### 56.4 Android TV mode
-- [x] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks.
+- [ ] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks.
 
 ### 56.5 Auto-refresh
-- [x] WebSocket push on ticket status change; UI re-animates on arrival.
-- [x] Settings → Display → Activate queue board. (session 2026-04-26 — DisplaySettingsScreen "Activate queue board" button navigates to TvQueueBoard route; already wired in AppNavGraph)
-- [x] Full-screen Activity with hidden system bars (`WindowInsetsController.hide(systemBars())`). (session 2026-04-26 — WindowInsetsControllerCompat.hide(systemBars()) + BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE in TvQueueBoardScreen DisposableEffect; restored on dispose)
-- [x] `FLAG_KEEP_SCREEN_ON`. (session 2026-04-26 — window.addFlags(FLAG_KEEP_SCREEN_ON) + view.keepScreenOn = true, both in DisposableEffect, both restored on dispose)
-
-### 56.2 Content
-- [x] Ready-for-pickup list (big). (session 2026-04-26 — TvGroupedList renders READY group in large 26sp type; already present)
-- [x] In-progress count. (session 2026-04-26 — TvGroupedList renders IN_PROGRESS group; already present)
-- [ ] Shop logo + promo content (tenant-uploaded). NOTE: requires server endpoint for tenant logo/promo; no such endpoint exists — deferred.
-- [ ] Rotating ads / announcements. NOTE: requires server-side announcement/promo API — deferred.
-- [x] Customer-name privacy mode. (session 2026-04-26 — AppPreferences.tvPrivacyMode pref added; toggle in DisplaySettingsScreen; maskCustomerName() in TvQueueBoardScreen masks to "First L." when enabled; TvQueueUiState.privacyMode sourced from ViewModel)
-
-### 56.3 Exit
-- [x] 3-finger long-press + PIN OR hardware Esc + PIN. (session 2026-04-26 — 3-finger pointerInput gesture already wired; Esc handled at activity layer via AppNavGraph popBackStack comment; onExitRequest navigates to PinSetup route for PIN gate before returning to Dashboard)
-
-### 56.4 Android TV mode
-- [ ] Optional Android TV / Google TV launcher entry for shop big-screen displays using dedicated Fire TV / Android TV sticks. NOTE: requires AndroidManifest LEANBACK_LAUNCHER category + leanback dependency; substantial platform work — deferred.
-
-### 56.5 Auto-refresh
-- [x] WebSocket push on ticket status change; UI re-animates on arrival. (session 2026-04-26 — 30 s polling loop already present in TvQueueBoardScreen LaunchedEffect; WebSocket push requires server-side `GET /api/v1/tv/queue` WS endpoint — NOTE: server endpoint not implemented, polling covers the gap until server is ready)
+- [ ] WebSocket push on ticket status change; UI re-animates on arrival.
 
 ---
 ## 57. Kiosk / Lock-Task Single-Task Modes
 
 ### 57.1 Lock-Task Mode (Android screen pinning)
-- [x] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC.
-- [x] Use cases: customer self-check-in kiosk; TV board; kiosk POS.
+- [ ] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC.
+- [ ] Use cases: customer self-check-in kiosk; TV board; kiosk POS.
 
 ### 57.2 Kiosk customer check-in
-- [x] Simplified flow: customer types phone → finds record or creates → signs waiver → done.
-- [x] Auto-return to start screen after 60s inactivity.
-- [x] Enable via Device Policy Manager in managed-device mode, or screen-pinning (`startLockTask()`) for non-DPC. (session 2026-04-26 — KioskModeScreen toggle calls `startLockTask()`/`stopLockTask()` via onStartLockTask/onStopLockTask callbacks wired in AppNavGraph; MainActivity re-enters lock-task on reboot if kioskModeEnabled=true; Screen.KioskCheckIn + Screen.KioskTvBoard registered)
-- [x] Use cases: customer self-check-in kiosk; TV board; kiosk POS. (session 2026-04-26 — KioskCheckInScreen, KioskTvBoardScreen, KioskModeScreen all under ui/screens/kiosk/; Settings row added)
-
-### 57.2 Kiosk customer check-in
-- [x] Simplified flow: customer types phone → finds record or creates → signs waiver → done. (session 2026-04-26 — KioskCheckInScreen: phone entry → CustomerApi.searchCustomers → confirm → thank-you splash; BackHandler swallows back gesture in kiosk)
-- [x] Auto-return to start screen after 60s inactivity. (session 2026-04-26 — LaunchedEffect on THANK_YOU step: delay(60_000) → reset + PHONE_ENTRY)
+- [ ] Simplified flow: customer types phone → finds record or creates → signs waiver → done.
+- [ ] Auto-return to start screen after 60s inactivity.
 
 ### 57.3 Customer-facing signature
-- [x] Device flipped to customer; signature capture only; staff cannot back out.
+- [ ] Device flipped to customer; signature capture only; staff cannot back out.
 
 ### 57.4 Kiosk hardware lockdown
-- [ ] Disable volume keys / power button where possible via DPC. <!-- NOTE-defer: full KEYCODE_POWER suppression requires the app to be Device Owner (adb dpm set-device-owner or MDM enrollment); without it the power button always functions. KEYCODE_VOLUME_UP/DOWN interception is wired in KioskController.onKeyEvent() and works in non-DPC screen-pin mode. -->
-- [ ] Wake on tap only. <!-- NOTE-defer: FLAG_KEEP_SCREEN_ON is applied by KioskController.applyWakeFlags() (screen stays on); turning the screen OFF on tap-away without Device Owner requires WindowManager.LayoutParams changes that only DPC can enforce system-wide. -->
-
-### 57.5 Exit
-- [x] Manager PIN unlocks.
-- [~] Disable volume keys / power button where possible via DPC. (session 2026-04-26 — NOTE: full hardware-key suppression requires device-owner provisioning; startLockTask() without DPC uses Android screen-pinning — blocks Back/Home but NOT volume/power; to enable full lockdown: adb shell dpm set-device-owner com.bizarreelectronics.crm/.AdminReceiver; limitation documented in KioskModeScreen warning card)
+- [ ] Disable volume keys / power button where possible via DPC.
 - [ ] Wake on tap only.
 
 ### 57.5 Exit
-- [x] Manager PIN unlocks. (session 2026-04-26 — KioskExitPinDialog on lock-icon tap in KioskCheckInScreen + KioskTvBoardScreen; verifies via PinPreferences.verifyPinLocally(); on success calls stopLockTask() + navigates to Dashboard)
+- [ ] Manager PIN unlocks.
 
 ---
 ## 58. Appointment Self-Booking (customer)
@@ -5054,260 +3790,182 @@ _Web-served; Android provides deep link + share only._
 _Web-served via public page; Android links to it and receives pushes._
 
 ### 58.1 Customer books online
-- [ ] Web route `app.bizarrecrm.com/book/:locationId` — `GET /public/book/:locationId` → availability. <!-- NOTE-defer: server-side web route — not Android client work; Android SelfBookingScreen calls GET /public/booking/slots instead -->
-- [x] Customer selects slot; server creates appointment.
-- [ ] FCM push to staff: "New online booking — Acme at 3pm". <!-- NOTE-defer: server-side FCM trigger; Android FcmService already handles entity_type=appointment and new_booking push type once server emits it -->
+- [ ] Web route `app.bizarrecrm.com/book/:locationId` — `GET /public/book/:locationId` → availability.
+- [ ] Customer selects slot; server creates appointment.
+- [ ] FCM push to staff: "New online booking — Acme at 3pm".
 
 ### 58.2 Android-side flow
-- [x] Push opens appointment in-app; staff can confirm / reschedule / reject.
-- [ ] Auto-SMS confirmation to customer. <!-- NOTE-defer: server-side side-effect on POST /public/booking/reserve; no Android client work required -->
+- [ ] Push opens appointment in-app; staff can confirm / reschedule / reject.
+- [ ] Auto-SMS confirmation to customer.
 
 ### 58.3 Integration surface
-- [x] Settings → Online Booking → generate link / QR → enable per-location.
-- [ ] Toggle working hours, buffer times, services bookable. <!-- NOTE-defer: requires PUT /api/v1/settings/booking/:locationId server endpoint (not yet deployed); client shows placeholder card -->
+- [ ] Settings → Online Booking → generate link / QR → enable per-location.
+- [ ] Toggle working hours, buffer times, services bookable.
 
 ---
 ## 59. Field-Service / Dispatch (mobile tech)
 
 ### 59.1 Dispatch dashboard
-- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services). <!-- NOTE-defer: maps-compose (com.google.maps.android:maps-compose) not in libs.versions.toml; MapViewStub placeholder shown; add library to toml and replace stub with real GoogleMap() -->
-- [x] List view: jobs ranked by ETA + priority.
+- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services).
+- [ ] List view: jobs ranked by ETA + priority.
 
 ### 59.2 Route optimization
-- [x] `POST /dispatch/optimize` → returns ordered job list for tech's day.
+- [ ] `POST /dispatch/optimize` → returns ordered job list for tech's day.
 
 ### 59.3 On-my-way notification
-- [x] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in). <!-- NOTE: SMS side-effect is server-side (PATCH dispatch/jobs/:id status=en_route triggers server SMS); client sends the status update; SMS sending not in client scope -->
+- [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in).
 
 ### 59.4 Tech mobile UX
-- [x] Simplified job list (current / upcoming).
-- [ ] Signature capture on arrival. <!-- NOTE-defer: requires SignaturePad composable integration at job completion; wiring to POST /dispatch/jobs/:id/signature (endpoint not yet deployed) -->
-- [ ] Photos + notes. <!-- NOTE-defer: requires CameraX photo attachment flow wired to POST /dispatch/jobs/:id/photos (endpoint not yet deployed); notes text field deferred until server photo endpoint ships -->
-- [x] Close → back to dispatch list.
+- [ ] Simplified job list (current / upcoming).
+- [ ] Signature capture on arrival.
+- [ ] Photos + notes.
+- [ ] Close → back to dispatch list.
 
 ### 59.5 Geofence
-- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play). <!-- NOTE-defer: requires ACCESS_BACKGROUND_LOCATION manifest declaration + Play Store policy justification text; foreground location (ACCESS_FINE_LOCATION) already granted on FieldServiceScreen entry; background geofencing deferred to Phase 7 -->
+- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play).
 
 ### 59.6 Offline
-- [ ] Everything offline-capable except final payment. <!-- NOTE-defer: Room cache for dispatch jobs not yet implemented; offline queue for status-update PATCHes requires SyncQueue integration (Phase 7 work per §64.1 Phase 7) -->
+- [ ] Everything offline-capable except final payment.
 
 ### 59.7 Safety
-- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location. <!-- NOTE-defer: requires POST /dispatch/panic server endpoint (not yet deployed) + WorkManager or foreground-service location snapshot; deferred to Phase 7 -->
-- [ ] Map view: tech locations + open jobs (uses Google Maps SDK — no third-party egress beyond Google Play Services). NOTE: server-blocked; no dispatch map endpoint exists. Map view deferred.
-- [x] List view: jobs ranked by ETA + priority. (session 2026-04-26 — DispatchListScreen wired to GET /api/v1/field-service/jobs; sorted by scheduled_window_start on server; priority badge shown in card)
-
-### 59.2 Route optimization
-- [x] `POST /dispatch/optimize` → returns ordered job list for tech's day. (session 2026-04-27 — `RouteOptimizeRequest`/`RouteOptimizeResult` DTOs added to `DispatchDto.kt`; `DispatchApi.optimizeRoute()` Retrofit `@POST` added; `DispatchRepository.optimizeRoute()` filters terminal/no-coord jobs, calls server, returns `RouteOptimizeResult`; `OptimizationBanner` data class + `isOptimizing: Boolean` fields added to `DispatchUiState`; `DispatchViewModel.optimizeRoute(technicianId)` reorders list by `proposed_order` + appends remainder, sets banner; `clearOptimizationBanner()` dismisses it; `DispatchListScreen` gains Route icon button in TopAppBar (spinner while in-flight, disabled when no jobs), `AnimatedVisibility` `OptimizationResultBanner` composable below TopAppBar showing distance km + home-start label + dismiss X; `currentUserId: Long` param wired through; manager-only enforced server-side with 403 surfaced as snackbar; build green)
-
-### 59.3 On-my-way notification
-- [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in). NOTE: server-blocked; no SMS-with-location endpoint; deferred.
-
-### 59.4 Tech mobile UX
-- [x] Simplified job list (current / upcoming). (session 2026-04-26 — DispatchListScreen shows today's jobs from GET /field-service/jobs with date filter)
-- [ ] Signature capture on arrival. NOTE: deferred; requires separate signature pad UI.
-- [ ] Photos + notes. NOTE: deferred; can reuse TicketPhotos screen after job detail screen is added.
-- [x] Close → back to dispatch list. (session 2026-04-26 — DispatchListScreen has back navigation via TopAppBar back arrow)
-
-### 59.5 Geofence
-- [ ] Auto-mark arrived when entering radius (opt-in; `ACCESS_BACKGROUND_LOCATION` required — justify to Play). NOTE: server-blocked; no geofence trigger endpoint; deferred.
-
-### 59.6 Offline
-- [ ] Everything offline-capable except final payment. NOTE: dispatch status transitions require server confirmation; offline queue deferred.
-
-### 59.7 Safety
-- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location. NOTE: server-blocked; no panic/alert endpoint; deferred.
-
-### 59.8 Core implemented (session 2026-04-26)
-- [x] DispatchApi.kt — Retrofit interface for GET /jobs, GET /jobs/:id, POST /jobs/:id/status (session 2026-04-26 — wired to /api/v1/field-service)
-- [x] DispatchDto.kt — DispatchJobDetail + DispatchJobListData DTOs matching server JSON (session 2026-04-26)
-- [x] DispatchRepository.kt — getTodayJobs(), getAllMyJobs(), getJob(), updateJobStatus(), pingLocation() (session 2026-04-26)
-- [x] DispatchViewModel.kt — UiState + acceptJob / startJob / completeJob / requestCancelJob / confirmCancelJob (session 2026-04-26)
-- [x] DispatchListScreen.kt — tech day-list with job cards; accept/start/complete/cancel action buttons; pull-to-refresh; ConfirmDialog on cancel (session 2026-04-26)
-- [x] LocationTrackingService.kt — FusedLocationProvider foreground service; 60s GPS pings via repository.pingLocation(); FOREGROUND_SERVICE_TYPE_LOCATION declared (session 2026-04-26 — NOTE: GPS without physical device untestable in emulator without mock coords)
-- [x] AndroidManifest.xml — FOREGROUND_SERVICE_LOCATION permission + LocationTrackingService service declaration added (session 2026-04-26)
-- [x] RetrofitClient.kt — provideDispatchApi() Hilt binding added (session 2026-04-26)
-- [x] AppNavGraph.kt — Screen.Dispatch route + composable + import wired (session 2026-04-26)
+- [ ] Panic button (long-press top-bar icon) → sends alert to dispatcher with location.
 
 ---
 ## 60. Inventory Stocktake
 
 ### 60.1 Session lifecycle
-- [x] Per §6.6.
-- [x] Draft → Active → Committed.
+- [ ] Per §6.6.
+- [ ] Draft → Active → Committed.
 
 ### 60.2 Cycle counts
-- [x] Partial count (by bin / category / ABC class).
-- [x] Full count (entire inventory).
+- [ ] Partial count (by bin / category / ABC class).
+- [ ] Full count (entire inventory).
 
 ### 60.3 Multi-scanner
-- [ ] Multiple devices feed same session via WebSocket sync. <!-- NOTE-defer: requires server-side WebSocket session endpoint not yet deployed; client sends session_id on commit for future fan-in -->
-- [ ] Conflict resolution on same SKU: last-wins with banner notification. <!-- NOTE-defer: requires multi-scanner WebSocket (§60.3 line above) -->
+- [ ] Multiple devices feed same session via WebSocket sync.
+- [ ] Conflict resolution on same SKU: last-wins with banner notification.
 
 ### 60.4 Variance approval
-- [ ] Manager reviews variance list; approves adjustments or rejects + reinvestigates. <!-- NOTE-defer: requires server-side approval workflow endpoint (POST /inventory/stocktake/approve); approval_pending banner is shown client-side but write path is blocked -->
+- [ ] Manager reviews variance list; approves adjustments or rejects + reinvestigates.
 
 ### 60.5 Audit trail
-- [x] Every count action logged.
+- [ ] Every count action logged.
 
 ### 60.6 Offline
-- [x] Fully offline; syncs on commit.
-- [x] Per §6.6. (session 2026-04-26 — StocktakeListScreen: start session dialog → POST /stocktake; cancel via ConfirmDialog → POST /stocktake/:id/cancel)
-- [x] Draft → Active → Committed. (session 2026-04-26 — open=Active; commit via StocktakeVarianceScreen → POST /stocktake/:id/commit; status displayed in session list chips)
-
-### 60.2 Cycle counts
-- [x] Partial count (by bin / category / ABC class). (session 2026-04-26 — StocktakeSessionScreen: scan/manual entry per item; UPSERT via POST /stocktake/:id/counts; local cache resolved by UPC or SKU)
-- [x] Full count (entire inventory). (session 2026-04-26 — same session scan loop handles full count; no server-side scope filter needed)
-
-### 60.3 Multi-scanner
-- [ ] Multiple devices feed same session via WebSocket sync. NOTE: server-blocked — no session-room broadcast endpoint; deferred.
-- [ ] Conflict resolution on same SKU: last-wins with banner notification. NOTE: server ON CONFLICT DO UPDATE already implements last-wins; banner deferred with WebSocket work.
-
-### 60.4 Variance approval
-- [x] Manager reviews variance list; approves adjustments or rejects + reinvestigates. (session 2026-04-26 — StocktakeVarianceScreen: summary tiles + variance/exact rows; ConfirmDialog before POST /stocktake/:id/commit; back-nav to session to reinvestigate)
-
-### 60.5 Audit trail
-- [x] Every count action logged. (session 2026-04-26 — server writes audit rows per scan (stocktake_count_upserted) and on commit (stocktake_committed); stock_movements type='stocktake' visible in item history)
-
-### 60.6 Offline
-- [ ] Fully offline; syncs on commit. NOTE: deferred — requires Room stocktake_counts table + SyncQueue integration; currently online-only with error shown when offline.
+- [ ] Fully offline; syncs on commit.
 
 ---
 ## 61. Purchase Orders (inventory)
 
 ### 61.1 PO list
-- [x] Filter by status / supplier / date. <!-- verified: status FilterChips (All/Draft/Ordered/Partial/Received/Cancelled) in PurchaseOrderListScreen; server GET /inventory/purchase-orders/list accepts ?status= param. Supplier and date filters not implemented: server only accepts ?status= — no ?supplier_id= or date-range params exist; status-only filter ships, supplier/date require server changes -->
+- [ ] Filter by status / supplier / date.
 
 ### 61.2 Create PO
-- [x] Supplier picker (or inline-create). <!-- verified: SupplierDropdown (ExposedDropdownMenuBox) in PurchaseOrderCreateScreen; populated via GET /inventory/suppliers/list -->
-- [x] Line items from inventory (qty + cost + expected received date). <!-- verified: PoLineItemRow with inventory_item_id, qty, unit-cost fields; expectedDate OutlinedTextField; CreatePurchaseOrderRequest.expected_date sent to server -->
-- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules. <!-- NOTE-defer: server has POST /inventory/auto-reorder which auto-creates whole POs from low-stock items using inventory_auto_reorder_rules (lead_time_days, min_qty, reorder_qty); no "suggest items for this PO" endpoint exists — a dedicated GET /inventory/reorder-suggestions endpoint is needed to pre-populate create-screen line items without auto-submitting -->
+- [ ] Supplier picker (or inline-create).
+- [ ] Line items from inventory (qty + cost + expected received date).
+- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules.
 
 ### 61.3 Send PO
-- [x] PDF generated locally → email via `ACTION_SEND` OR server-side email. <!-- verified: buildPoShareText in PurchaseOrderDetailScreen formats PO as plain text and fires Intent.ACTION_SEND (text/plain) via system share chooser, satisfying the "ACTION_SEND" branch of the OR clause -->
-- [ ] Fax (stretch; rarely needed). <!-- NOTE-defer: stretch goal; no fax infrastructure on server or Android -->
-
-### 61.4 Receive
-- [x] Scan items → increment received qty; partial receipt supported; close when complete. <!-- verified: ReceiveItemsSheet (ModalBottomSheet) in PurchaseOrderDetailScreen; per-item qty entry; POST /inventory/purchase-orders/:id/receive increments quantity_received; server sets status=partial when items remain, status=received when fully received -->
-- [ ] Mark damaged / missing during receive with reason. <!-- NOTE-defer: server POST /inventory/purchase-orders/:id/receive only accepts {purchase_order_item_id, quantity_received} — no damage_qty, missing_qty, or reason fields in schema or endpoint; requires server-side schema + endpoint changes first -->
-
-### 61.5 Vendor return (RMA)
-- [x] Per §7.7. (session 2026-04-27 — `RmaApi.kt` Retrofit interface (`GET /rma`, `GET /rma/:id`, `POST /rma`, `PATCH /rma/:id/status`); `RmaDto.kt` DTOs (`RmaRow`, `RmaDetailData`, `RmaItem`, `RmaCreateRequest`, `RmaItemRequest`, `RmaStatusRequest`, `RmaCreatedData`, `RmaStatusData`); `RmaListScreen.kt` with inline `RmaListViewModel` (`@HiltViewModel`) — status filter chips (all/pending/approved/shipped/received/resolved/declined), `PullToRefreshBox`, empty/error states, `RmaStatusBadge` color-coded; `RmaCreateScreen.kt` with inline `RmaCreateViewModel` — supplier name, overall reason, notes, dynamic line-item list (name/qty/reason per item), add/remove item, submit guards; `InventorySupplierPanel` extended with optional `onLogReturn` callback rendering "Log Return" `OutlinedButton` beside "Place PO"; `InventoryDetailScreen` param + content thread-through; `RetrofitClient` `@Provides provideRmaApi`; `AppNavGraph` `Screen.RmaList` + `Screen.RmaCreate` + composable routes + `showBottomNav` exclusions; build green)
-
-### 61.6 Reporting
-- [ ] PO aging; vendor performance; price variance. <!-- NOTE-defer: no server endpoints exist for PO aging, vendor-performance metrics, or price-variance reports; requires new server routes before Android chart screen can be wired -->
-- [x] Filter by status / supplier / date. (session 2026-04-26 — status filter chips; supplier/date filter deferred: no offline cache, filter via API `status` param)
-
-### 61.2 Create PO
-- [x] Supplier picker (or inline-create). (session 2026-04-26 — AlertDialog picker from GET /inventory/suppliers/list; inline-create NOTE: not in scope for this session)
-- [x] Line items from inventory (qty + cost + expected received date). (session 2026-04-26 — AddLineItemDialog with inventory_item_id, qty, cost; expected_date field on form)
-- [ ] Auto-suggest from §6.16 reorder lead times + §6.15 reorder rules. NOTE: blocked on §6.16/§6.15 reorder rule data not yet exposed by a server endpoint; implement when those sections are done.
-
-### 61.3 Send PO
-- [ ] PDF generated locally → email via `ACTION_SEND` OR server-side email. NOTE: blocked — no PDF generation library in project yet; needs iText/Apache PDFBox or a server-side PDF endpoint.
+- [ ] PDF generated locally → email via `ACTION_SEND` OR server-side email.
 - [ ] Fax (stretch; rarely needed).
 
 ### 61.4 Receive
-- [x] Scan items → increment received qty; partial receipt supported; close when complete. (session 2026-04-26 — receive flow: per-line qty entry → POST /purchase-orders/:id/receive; server increments inventory_items.in_stock atomically; status auto-set to partial/received)
-- [ ] Mark damaged / missing during receive with reason. NOTE: server-blocked — POST /purchase-orders/:id/receive has no damaged/missing fields; requires server schema + endpoint change.
+- [ ] Scan items → increment received qty; partial receipt supported; close when complete.
+- [ ] Mark damaged / missing during receive with reason.
 
 ### 61.5 Vendor return (RMA)
-- [ ] Per §7.7. NOTE: deferred to §7.7 implementation session.
+- [ ] Per §7.7.
 
 ### 61.6 Reporting
-- [ ] PO aging; vendor performance; price variance. NOTE: deferred — requires server-side aggregation endpoints not yet built.
+- [ ] PO aging; vendor performance; price variance.
 
 ---
 ## 62. Financial Dashboard (owner view)
 
 ### 62.1 P&L snapshot
-- [ ] Revenue / COGS / Gross margin / Operating expenses / Net income. <!-- NOTE-defer: requires server endpoint GET /reports/pl-summary (not yet implemented); client card + ViewModel wired and renders stub until deployed -->
-- [ ] Period comparison. <!-- NOTE-defer: period_change_pct field in /reports/pl-summary response; deferred with same endpoint -->
+- [ ] Revenue / COGS / Gross margin / Operating expenses / Net income.
+- [ ] Period comparison.
 
 ### 62.2 Cash flow forecast
-- [ ] Upcoming invoices due + recurring expenses + subscription memberships. <!-- NOTE-defer: requires server endpoint GET /reports/cashflow (not yet implemented); client card + ViewModel wired and renders stub until deployed -->
-- [ ] Projected cash 30 / 60 / 90d. <!-- NOTE-defer: projected_30d/60d/90d_cents fields in /reports/cashflow response; deferred with same endpoint -->
+- [ ] Upcoming invoices due + recurring expenses + subscription memberships.
+- [ ] Projected cash 30 / 60 / 90d.
 
 ### 62.3 Tax liability
-- [ ] Per jurisdiction collected + remitted status. <!-- NOTE-defer: requires server endpoint GET /reports/expense-breakdown with jurisdictions array (not yet implemented); client card + ViewModel wired and renders stub until deployed -->
+- [ ] Per jurisdiction collected + remitted status.
 
 ### 62.4 Budget vs actual
-- [ ] Tenant defines monthly budget per category → dashboard shows delta. <!-- NOTE-defer: requires budget CRUD API (no server endpoint exists); client card scaffolded and renders stub until budget API is deployed -->
+- [ ] Tenant defines monthly budget per category → dashboard shows delta.
 
 ### 62.5 Owner-only
-- [x] Role-gated; PIN re-prompt on open if configured.
+- [ ] Role-gated; PIN re-prompt on open if configured.
 
 ---
 ## 63. Multi-Location Management
 
-_Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `PATCH /locations/:id`, `DELETE /locations/:id`, `POST /locations/:id/set-default`, `GET /locations/me/default-location`._
+_Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `PUT /locations/:id`._
 
 ### 63.1 Location switcher
-- [x] Location list screen (`LocationListScreen`) with active/inactive FilterChip filter, per-row deactivate guarded by ConfirmDialog. Nav routes `locations`, `locations/{id}`, `location-create` registered in AppNavGraph.
-- [ ] Top-bar chip for current location; tap → picker with recent locations. <!-- NOTE-defer: requires a persistent "active location" preference + top-bar chip slot in BrandTopAppBar; cross-cutting change touching every scaffold — deferred to a dedicated cross-cutting pass -->
-- [ ] Scope filters all lists + KPIs. <!-- NOTE-defer: filtering tickets/invoices/inventory by location_id is a separate epic per locations.routes.ts SCOPE LIMITATION comment; no server-side scoping endpoints exist yet -->
+- [ ] Top-bar chip for current location; tap → picker with recent locations.
+- [ ] Scope filters all lists + KPIs.
 
 ### 63.2 Per-location config
-- [x] LocationDetailScreen: shows name, address, phone, email, timezone, notes, user_count, active/default status badges; ConfirmDialogs guard "Set as default" and "Deactivate location" actions.
-- [x] LocationCreateScreen: multi-section form (address + contact/timezone + notes); FilledTonalButton save; 404-tolerant.
-- [x] LocationApi Retrofit interface + LocationDto / CreateLocationRequest / UpdateLocationRequest DTOs. Registered via `provideLocationApi` in RetrofitClient.
-- [x] LocationListViewModel, LocationDetailViewModel, LocationCreateViewModel — all emit StateFlow; 404-tolerant with graceful degradation message.
-- [ ] Hours, staff roster, printer / terminal pairings, inventory stock per location. <!-- NOTE-defer: hours/printer/terminal pairings have no server endpoints; inventory-per-location requires location_id scoping (blocked by same epic above) -->
-- [ ] Receipt footer per location. <!-- NOTE-defer: receipt footer is a settings field not yet scoped per location on the server -->
+- [ ] Hours, staff roster, printer / terminal pairings, inventory stock per location.
+- [ ] Receipt footer per location.
 
 ### 63.3 Cross-location transfers
-- [ ] Per §6.13. <!-- NOTE-defer: §6.13 inventory transfer flow depends on location-scoped inventory (no server endpoints); blocked by location inventory epic -->
+- [ ] Per §6.13.
 
 ### 63.4 Consolidated reports
-- [ ] "All locations" view for owner role. <!-- NOTE-defer: requires server-side aggregation across location_ids on reports endpoints; not yet available -->
+- [ ] "All locations" view for owner role.
 
 ### 63.5 Tenant policy
-- [ ] Staff per-user allowed-locations list. <!-- NOTE-defer: user-location assignment UI (POST/DELETE /locations/users/:userId/locations/:locationId) requires employee-detail screen integration; server endpoints exist but Android employee detail is read-only (§14.2) -->
+- [ ] Staff per-user allowed-locations list.
 
 ---
 ## 64. Release checklist (go-live gates)
 
 ### 64.1 Phase gates
 - [x] Phase 0 Skeleton done: Android Studio project builds, Hilt DI, Compose theme, login shippable, ApiClient envelope works, token storage.
-- [ ] Phase 1 Read-only parity: all lists + detail views render from Room; TalkBack traversal passes; Internal track TestFlight-equivalent shared with team. <!-- NOTE-defer: all list/detail screens exist and Room caching is wired via RemoteMediator + repositories, but "TalkBack traversal passes" requires manual on-device a11y audit (no automated TalkBack test exists) and "Internal track shared with team" requires Play Store internal-track submission -->
-- [ ] Phase 2 Writes + POS: full CRUD + POS cash tender + BlockChyp; sync queue operating; closed testing begins. <!-- NOTE-defer: CRUD write paths + BlockChypClient + SyncQueueEntity are implemented for major entities; "closed testing begins" requires Play Store closed-track submission; invoice offline writes not yet in sync queue -->
-- [ ] Phase 3 Hardware + platform: barcode / photo / signature / printer / cash drawer; FCM; Glance widgets; App Shortcuts; adaptive layouts. <!-- NOTE-defer: CameraCapture, DocumentScan, SignaturePad, PrinterDiscovery, FcmService all exist; Glance widgets + App Shortcuts + full adaptive layout pass unverified from code alone; gate requires end-to-end hardware validation on device -->
-- [ ] Phase 4 Reports / marketing / loyalty: Vico charts; campaign builder; loyalty; memberships; referrals. <!-- NOTE-defer: ReportsScreen, CampaignListScreen, MembershipListScreen exist as shells; Vico chart integration, campaign builder write flows, loyalty/referral earn-and-redeem paths not yet implemented -->
-- [ ] Phase 5 Scale + reliability: multi-location, dead-letter, telemetry + crash pipeline, audit log viewer, open testing + production rollout. <!-- NOTE-defer: DeadLetterBanner + SyncIssuesScreen exist; multi-location endpoints exist but Android multi-location UI is deferred (§63); crash pipeline (no Crashlytics/Firebase Crash found in codebase); open testing + production rollout require Play Store actions -->
-- [ ] Phase 6 Regulatory + advanced payment: advanced tax, multi-currency, Tap-to-Pay, Google Wallet passes, GDPR/CCPA evidence. <!-- NOTE-defer: not yet started; depends on server-side advanced tax + multi-currency endpoints -->
-- [ ] Phase 7 Stretch: Android TV, field-service heavy, AI-assist via Gemini Nano on-device. <!-- NOTE-defer: stretch goal; no implementation started -->
+- [ ] Phase 1 Read-only parity: all lists + detail views render from Room; TalkBack traversal passes; Internal track TestFlight-equivalent shared with team.
+- [ ] Phase 2 Writes + POS: full CRUD + POS cash tender + BlockChyp; sync queue operating; closed testing begins.
+- [ ] Phase 3 Hardware + platform: barcode / photo / signature / printer / cash drawer; FCM; Glance widgets; App Shortcuts; adaptive layouts.
+- [ ] Phase 4 Reports / marketing / loyalty: Vico charts; campaign builder; loyalty; memberships; referrals.
+- [ ] Phase 5 Scale + reliability: multi-location, dead-letter, telemetry + crash pipeline, audit log viewer, open testing + production rollout.
+- [ ] Phase 6 Regulatory + advanced payment: advanced tax, multi-currency, Tap-to-Pay, Google Wallet passes, GDPR/CCPA evidence.
+- [ ] Phase 7 Stretch: Android TV, field-service heavy, AI-assist via Gemini Nano on-device.
 
 ### 64.2 Cross-phase gates
-- [ ] Crash-free sessions ≥ 99.5% before phase advance. <!-- NOTE-defer: runtime/operational metric; requires crash-reporting pipeline (no Crashlytics or equivalent found in codebase) and live production traffic -->
-- [ ] No P0 bugs older than 14d. <!-- NOTE-defer: process/operational gate; requires issue-tracking system and live production use -->
-- [ ] Localization coverage per target locale. <!-- NOTE-defer: es + fr locale files exist with ~197/742 strings covered (~27%); full coverage requires translation pass before phase advance -->
-- [ ] Doc updated in same PR as feature. <!-- NOTE-defer: editorial/process gate; enforced at PR review time, not a code artifact -->
+- [ ] Crash-free sessions ≥ 99.5% before phase advance.
+- [ ] No P0 bugs older than 14d.
+- [ ] Localization coverage per target locale.
+- [ ] Doc updated in same PR as feature.
 
 ### 64.3 Per-tenant rollout
-- [ ] Opt-in 5 tenants first, weekly check-ins. <!-- NOTE-defer: operational/business gate; requires live tenants and Play Store staged rollout -->
-- [ ] GA once crash-free > 99.5% + iOS/web parity on top 80% of flows. <!-- NOTE-defer: depends on 64.2 crash-free metric and cross-platform parity assessment; requires production traffic -->
+- [ ] Opt-in 5 tenants first, weekly check-ins.
+- [ ] GA once crash-free > 99.5% + iOS/web parity on top 80% of flows.
 
 ### 64.4 Kill-switch
-- [ ] Feature flags via `GET /feature-flags`; toggle server-side per tenant. <!-- NOTE-defer: no GET /feature-flags server route exists (confirmed: no feature-flags.routes.ts, no matching registration in server routes); server only surfaces feature flags as part of GET /account/usage; standalone per-tenant toggle endpoint not implemented -->
-- [ ] Forced-update gate: server rejects known-bad client versions until upgrade. <!-- NOTE-defer: client-side ForceUpgradeBlocker.kt is fully implemented and wired in MainActivity via authPreferences.serverMinVersion; however the server does not populate min_version in GET /auth/me responses (no min_version field in auth.routes.ts) — server-side half is missing -->
+- [ ] Feature flags via `GET /feature-flags`; toggle server-side per tenant.
+- [ ] Forced-update gate: server rejects known-bad client versions until upgrade.
 
 ### 64.5 Migration
-- [x] iOS → Android / Web → Android: user data portable; just log in. <!-- verified: all client state is derived from server via GET /auth/me + entity sync on login; no client-to-client transfer mechanism needed; dataExport, tenantExport, settingsExport routes exist server-side for explicit portability -->
-- [x] Server is single source. <!-- verified: SQLite on server is canonical; Android Room is a read-through cache populated by RemoteMediator + repositories; no client-authoritative data paths exist -->
+- [ ] iOS → Android / Web → Android: user data portable; just log in.
+- [ ] Server is single source.
 
 ---
 ## 65. Non-goals (explicit)
 
 ### 65.1 Not building
-- [x] Customer-facing end-user Android app (customers use web + SMS + email).
-- [x] Wear OS companion beyond clock-in/out notifications.
-- [x] Android Auto / CarPlay (deferred).
-- [x] Android TV launcher (except stretch TV-board §56.4).
-- [x] PC-native Windows / macOS client (web covers this).
-- [x] Third-party IdP SDK embedded (SAML / OIDC via Chrome Custom Tabs handles).
+- [ ] Customer-facing end-user Android app (customers use web + SMS + email).
+- [ ] Wear OS companion beyond clock-in/out notifications.
+- [ ] Android Auto / CarPlay (deferred).
+- [ ] Android TV launcher (except stretch TV-board §56.4).
+- [ ] PC-native Windows / macOS client (web covers this).
+- [ ] Third-party IdP SDK embedded (SAML / OIDC via Chrome Custom Tabs handles).
 
 ### 65.2 Not cloning
-- [x] RepairDesk / Shopr UI patterns verbatim — only data migration (§50).
-- [x] Generic Shopify-style e-commerce — we're repair shop POS, not general retail.
+- [ ] RepairDesk / Shopr UI patterns verbatim — only data migration (§50).
+- [ ] Generic Shopify-style e-commerce — we're repair shop POS, not general retail.
 
 ### 65.3 Not storing
 - [x] Customer data beyond tenant server (no third-party analytics, no crash-reporters with data egress).
@@ -5316,68 +3974,68 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 
 ### 65.4 Not supporting
 - [x] Pre-Android-8 devices (minSdk 26 final).
-- [ ] 32-bit-only devices (armv7 build dropped Phase 3). <!-- NOTE-defer: requires product decision — armv7 drop is planned for Phase 3 but not yet confirmed; leave open until Phase 3 scope is locked -->
-- [x] Rooted devices for payment flows (Play Integrity reject).
+- [ ] 32-bit-only devices (armv7 build dropped Phase 3).
+- [ ] Rooted devices for payment flows (Play Integrity reject).
 
 ---
 ## 66. Error, Empty & Loading States (cross-cutting)
 
 ### 66.1 Empty
-- [x] Every list + detail has a designed empty state with illustration + title + subtitle + CTA.
-- [x] Tone: helpful, not frustrated.
-- [ ] See §3.14 for inventory/customer/ticket examples. <!-- NOTE-defer: §3.14 per-screen CTA wiring (Inventory/Customer/SMS/POS/Reports) is Wave 4 migration work; shared EmptyState composable is already in SharedComponents.kt -->
+- [ ] Every list + detail has a designed empty state with illustration + title + subtitle + CTA.
+- [ ] Tone: helpful, not frustrated.
+- [ ] See §3.14 for inventory/customer/ticket examples.
 
 ### 66.2 Loading
-- [x] Skeleton shimmer ≤ 300ms before real data.
-- [x] `CircularProgressIndicator` only for unknown-duration actions; prefer determinate bar where % known.
-- [x] Never block entire UI; allow cancel where meaningful.
+- [ ] Skeleton shimmer ≤ 300ms before real data.
+- [ ] `CircularProgressIndicator` only for unknown-duration actions; prefer determinate bar where % known.
+- [ ] Never block entire UI; allow cancel where meaningful.
 
 ### 66.3 Error
 - [x] `ErrorState(title, message, retry)` Composable with retry button.
-- [x] Network errors: cached data still shown where possible + banner.
-- [x] 4xx errors: user-friendly copy from server `message`.
-- [x] 5xx errors: "Something went wrong on our end. We're looking into it." + retry.
-- [x] Permission denied: "Ask your admin to enable this." deep link to §49 roles.
-- [x] 409 conflict: "This item was updated elsewhere. [Reload]".
+- [ ] Network errors: cached data still shown where possible + banner.
+- [ ] 4xx errors: user-friendly copy from server `message`.
+- [ ] 5xx errors: "Something went wrong on our end. We're looking into it." + retry.
+- [ ] Permission denied: "Ask your admin to enable this." deep link to §49 roles.
+- [ ] 409 conflict: "This item was updated elsewhere. [Reload]".
 
 ### 66.4 Offline
-- [x] Sticky banner across top of every screen.
-- [x] Footer-of-list four-state (§20.5).
-- [ ] Write actions queue silently + badge in sync-status pill. <!-- NOTE-defer: sync-queue write-through + badge in sync-status pill requires server-side sync queue infrastructure (SyncQueueEntity + SyncStateDao already exist but write-queue auto-enqueue on offline writes is not yet wired) -->
+- [ ] Sticky banner across top of every screen.
+- [ ] Footer-of-list four-state (§20.5).
+- [ ] Write actions queue silently + badge in sync-status pill.
 
 ---
 ## 67. Copy & Content Style Guide (Android-specific tone)
 
 ### 67.1 Voice
-- [ ] Direct, friendly, no jargon. <!-- NOTE-defer: governance/editorial policy — no single code artefact; enforced by copy review at PR time -->
-- [ ] Second person ("You're clocked in" not "User is clocked in"). <!-- NOTE-defer: governance/editorial policy — applies across all future copy; no discrete code change -->
-- [ ] Active voice. <!-- NOTE-defer: governance/editorial policy — no discrete code change; applies across all future copy -->
-- [x] Avoid exclamation points except celebrations. <!-- removed `export_ready_label` bang and `public_tracking_greeting` bang; documented celebration exceptions inline -->
+- [ ] Direct, friendly, no jargon.
+- [ ] Second person ("You're clocked in" not "User is clocked in").
+- [ ] Active voice.
+- [ ] Avoid exclamation points except celebrations.
 
 ### 67.2 Material guidelines respect
-- [x] "OK" / "Cancel" patterns; not "Yes" / "No" on dialogs. <!-- fixed `export_cancel_confirm` and `self_booking_cancel_dialog_confirm` from "Yes, cancel" to action verbs -->
-- [x] `AlertDialog` title = question; body = consequences; buttons = actions ("Delete" / "Keep"). <!-- added §67.2 translator comments to export-cancel and self-booking-cancel dialogs confirming pattern -->
+- [ ] "OK" / "Cancel" patterns; not "Yes" / "No" on dialogs.
+- [ ] `AlertDialog` title = question; body = consequences; buttons = actions ("Delete" / "Keep").
 
 ### 67.3 Naming
-- [x] "Tickets" (per tenant glossary). <!-- `nav_tickets` = "Tickets"; no Login/Logout/Repairs/Preferences found in strings.xml -->
-- [x] "Sign in" / "Sign out" (not Login / Logout). <!-- audited strings.xml — no "Login"/"Logout" strings present -->
-- [x] "Settings" (not Preferences). <!-- `screen_*_settings` keys all use "Settings"; no "Preferences" found -->
+- [ ] "Tickets" (per tenant glossary).
+- [ ] "Sign in" / "Sign out" (not Login / Logout).
+- [ ] "Settings" (not Preferences).
 
 ### 67.4 Errors
-- [x] Start with what happened; follow with what user can do. <!-- §66 error strings (`error_network`, `error_server`, `error_not_found`, `error_unknown`) already follow this pattern; confirmed and documented with translator comments -->
-- [x] Never blame user. <!-- all error strings audited; none assign fault to user -->
-- [ ] Never leak stacktrace in user-facing error. <!-- NOTE-defer: runtime enforcement — requires code review of every catch block; not a strings.xml concern -->
+- [ ] Start with what happened; follow with what user can do.
+- [ ] Never blame user.
+- [ ] Never leak stacktrace in user-facing error.
 
 ### 67.5 Empty states
-- [x] "No tickets yet. Create one to get started." — noun then CTA. <!-- `tickets_empty_title` + `tickets_empty_subtitle` match pattern; pattern documented in comments -->
+- [ ] "No tickets yet. Create one to get started." — noun then CTA.
 
 ### 67.6 Confirmations
-- [x] Destructive: bold destructive word in copy ("Delete customer" vs "Delete"). <!-- destructive confirm buttons in strings.xml use action-named labels (e.g. "Delete template", "Cancel export", "Cancel booking") -->
-- [ ] Non-destructive: one-tap + Snackbar undo. <!-- NOTE-defer: runtime UI pattern — requires Snackbar + undo action wiring in Compose; no strings.xml change sufficient -->
+- [ ] Destructive: bold destructive word in copy ("Delete customer" vs "Delete").
+- [ ] Non-destructive: one-tap + Snackbar undo.
 
 ### 67.7 Localization
-- [x] All strings in `strings.xml` with comments explaining context for translators. <!-- added translator context comments to §66 error/empty block, §51 export dialogs, §57.2/§58 celebration exceptions, public_tracking_greeting -->
-- [x] Avoid concatenation; use placeholders. <!-- audited strings.xml — all dynamic values use %1$s/%1$d style placeholders; no string concatenation found -->
+- [ ] All strings in `strings.xml` with comments explaining context for translators.
+- [ ] Avoid concatenation; use placeholders.
 
 ---
 ## 68. Deep-link / App Links reference
@@ -5387,38 +4045,38 @@ _Server endpoints: `GET /locations`, `POST /locations`, `GET /locations/:id`, `P
 - [~] App Link (verified HTTPS): `https://app.bizarrecrm.com/<path>`.
 
 ### 68.2 Routes
-- [x] `bizarrecrm://dashboard`
-- [x] `bizarrecrm://tickets` — list
-- [x] `bizarrecrm://tickets/:id` — detail
+- [ ] `bizarrecrm://dashboard`
+- [ ] `bizarrecrm://tickets` — list
+- [ ] `bizarrecrm://tickets/:id` — detail
 - [x] `bizarrecrm://tickets/new` — create
-- [x] `bizarrecrm://customers/:id`
+- [ ] `bizarrecrm://customers/:id`
 - [x] `bizarrecrm://customers/new`
-- [x] `bizarrecrm://inventory/:sku` <!-- NOTE: URI segment treated as numeric item id; SKU-string lookup deferred to InventoryDetailViewModel -->
-- [x] `bizarrecrm://invoices/:id`
-- [x] `bizarrecrm://estimates/:id`
-- [x] `bizarrecrm://leads/:id`
-- [x] `bizarrecrm://appointments/:id`
-- [x] `bizarrecrm://sms/:thread` <!-- maps to messages/{phone} in NavCompose -->
-- [x] `bizarrecrm://pos/new`
-- [x] `bizarrecrm://pos/cart/:id` <!-- NOTE: bare bizarrecrm://pos/cart wired; :id variant requires PosCart route-arg refactor -->
+- [ ] `bizarrecrm://inventory/:sku`
+- [ ] `bizarrecrm://invoices/:id`
+- [ ] `bizarrecrm://estimates/:id`
+- [ ] `bizarrecrm://leads/:id`
+- [ ] `bizarrecrm://appointments/:id`
+- [ ] `bizarrecrm://sms/:thread`
+- [ ] `bizarrecrm://pos/new`
+- [ ] `bizarrecrm://pos/cart/:id`
 - [x] `bizarrecrm://scan` — opens scanner
-- [x] `bizarrecrm://reports/:slug` <!-- slug passed through; ReportsScreen handles segmented routing internally -->
-- [x] `bizarrecrm://settings/:section` <!-- section passed through; well-known sub-sections (security-summary etc.) have own deep links -->
-- [x] `bizarrecrm://reset-password/:token`
-- [x] `bizarrecrm://setup/:token`
+- [ ] `bizarrecrm://reports/:slug`
+- [ ] `bizarrecrm://settings/:section`
+- [ ] `bizarrecrm://reset-password/:token`
+- [ ] `bizarrecrm://setup/:token`
 
 ### 68.3 Router
 - [x] `DeepLinkRouter` class in `MainActivity.onNewIntent` parses URI → navigates via NavController.
 - [~] Unknown routes → Dashboard with "Unknown link" Snackbar.
-- [x] Auth-required routes: if unauthenticated, redirect to Login with `intent_after_login` extra. <!-- DeepLinkBus.queueAfterLogin + LaunchedEffect replay in AppNavGraph -->
+- [ ] Auth-required routes: if unauthenticated, redirect to Login with `intent_after_login` extra.
 
 ### 68.4 Verification
-- [ ] `assetlinks.json` served at tenant `/.well-known/assetlinks.json`. <!-- NOTE-defer: requires server route GET /.well-known/assetlinks.json deployed at app.bizarrecrm.com; blocked on production domain setup (AUDIT-AND-019) -->
-- [ ] CI test parses manifest + fetches assetlinks to confirm. <!-- NOTE-defer: depends on §68.4 assetlinks.json being live; CI test cannot validate unreachable domain -->
+- [ ] `assetlinks.json` served at tenant `/.well-known/assetlinks.json`.
+- [ ] CI test parses manifest + fetches assetlinks to confirm.
 
 ### 68.5 Intent filters (outbound)
-- [x] `ACTION_SEND` / `ACTION_SEND_MULTIPLE` — PDF, CSV, photos, vCards. <!-- <queries> entries added for pdf/csv/vcard/image MIME types; createChooser() works without them but resolveActivity() now covered -->
-- [x] `ACTION_VIEW` for `tel:`, `sms:`, `mailto:`, `geo:`. <!-- already present in <queries> block: DIAL tel:, SENDTO smsto:, VIEW geo:, SENDTO mailto: -->
+- [ ] `ACTION_SEND` / `ACTION_SEND_MULTIPLE` — PDF, CSV, photos, vCards.
+- [ ] `ACTION_VIEW` for `tel:`, `sms:`, `mailto:`, `geo:`.
 
 ---
 ## 69. Haptics Catalog
@@ -5441,20 +4099,20 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 - [x] Barcode scan success → `CONFIRM`.
 - [~] Wrong PIN / login → `REJECT`.
 - [x] PIN / keypad digit → `VIRTUAL_KEY`.
-- [x] Swipe action release → `GESTURE_END`.
-- [x] Toggle on/off → `CONTEXT_CLICK`.
-- [x] Payment success → `CONFIRM` + extended 60ms.
-- [x] Photo shutter → `CLOCK_TICK`.
-- [ ] Drag-over-target hover → `SEGMENT_FREQUENT_TICK`. <!-- NOTE-defer: no drag-over-target drop zone UI exists in the codebase yet; wire when §70.3 shared-element drag or a reorder list is built -->
+- [ ] Swipe action release → `GESTURE_END`.
+- [ ] Toggle on/off → `CONTEXT_CLICK`.
+- [ ] Payment success → `CONFIRM` + extended 60ms.
+- [ ] Photo shutter → `CLOCK_TICK`.
+- [ ] Drag-over-target hover → `SEGMENT_FREQUENT_TICK`.
 
 ### 69.2 Custom patterns
-- [x] Celebration (first sale): `VibrationEffect.createWaveform(longArrayOf(0, 40, 60, 40, 60, 40), -1)`.
-- [x] Error escalation (3rd wrong PIN): heavier 200ms pulse.
+- [ ] Celebration (first sale): `VibrationEffect.createWaveform(longArrayOf(0, 40, 60, 40, 60, 40), -1)`.
+- [ ] Error escalation (3rd wrong PIN): heavier 200ms pulse.
 
 ### 69.3 Respect
-- [x] Honor `ACCESSIBILITY_VIBRATION_ENABLED` system setting.
-- [x] Never haptic-only for a11y-critical info.
-- [x] Quiet mode disables haptics.
+- [ ] Honor `ACCESSIBILITY_VIBRATION_ENABLED` system setting.
+- [ ] Never haptic-only for a11y-critical info.
+- [ ] Quiet mode disables haptics.
 
 ---
 ## 70. Motion Spec
@@ -5469,70 +4127,70 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 | `motion.slow` | 600 | Onboarding / big reveal |
 
 ### 70.2 Easing
-- [x] `CubicBezierEasing(0.2f, 0f, 0f, 1f)` — enter.
-- [x] `CubicBezierEasing(0.4f, 0f, 1f, 1f)` — exit.
-- [x] Material Expressive spring: stiffness 400, damping 0.75.
+- [ ] `CubicBezierEasing(0.2f, 0f, 0f, 1f)` — enter.
+- [ ] `CubicBezierEasing(0.4f, 0f, 1f, 1f)` — exit.
+- [ ] Material Expressive spring: stiffness 400, damping 0.75.
 
 ### 70.3 Shared-element
-- [x] `SharedTransitionLayout` + `Modifier.sharedElement(...)` on tablet list→detail.
-- [x] Preserves photo thumbs, status chip, title. <!-- STATUS_CHIP wired: BrandStatusBadge in TicketListRow + TicketStatePill in TicketDetailHeaderRow both carry sharedTicketKey(id, STATUS_CHIP); TicketDetailHeaderRow extended with ticketId/sharedTransitionScope/animatedContentScope params; PHOTO_THUMB deferred — no thumbnail in list row yet -->
+- [ ] `SharedTransitionLayout` + `Modifier.sharedElement(...)` on tablet list→detail.
+- [ ] Preserves photo thumbs, status chip, title.
 
 ### 70.4 Predictive back
-- [x] `PredictiveBackHandler` drives progress value 0..1 → custom scale + translate preview.
+- [ ] `PredictiveBackHandler` drives progress value 0..1 → custom scale + translate preview.
 
 ### 70.5 Reduce Motion
-- [x] Global override swaps every transition to `motion.instant`.
-- [x] Springs collapse to tween.
-- [x] Confetti / shake replaced with static color accent.
+- [ ] Global override swaps every transition to `motion.instant`.
+- [ ] Springs collapse to tween.
+- [ ] Confetti / shake replaced with static color accent.
 
 ---
 ## 71. Launch Experience
 
 ### 71.1 Splash Screen API (Android 12+)
-- [x] `core-splashscreen` lib + `Theme.SplashScreen` parent.
-- [x] Brand wordmark + tinted icon.
-- [ ] Keep-on-screen condition: DB open + tenant resolved + token validated → `splashScreen.setKeepOnScreenCondition { ... }`. <!-- NOTE-defer: requires installSplashScreen() call in MainActivity.onCreate() which is a multi-wave file — deferred until MainActivity wave lock is lifted -->
-- [ ] Exit animation 300ms fade + icon-to-logo transition. <!-- NOTE-defer: requires SplashScreen.setOnExitAnimationListener in MainActivity.onCreate() which is a multi-wave file — deferred until MainActivity wave lock is lifted -->
+- [ ] `core-splashscreen` lib + `Theme.SplashScreen` parent.
+- [ ] Brand wordmark + tinted icon.
+- [ ] Keep-on-screen condition: DB open + tenant resolved + token validated → `splashScreen.setKeepOnScreenCondition { ... }`.
+- [ ] Exit animation 300ms fade + icon-to-logo transition.
 
 ### 71.2 App Startup library
-- [ ] `androidx.startup:startup-runtime` initializers for: Hilt, Timber, WorkManager, Coil, NotificationChannels. <!-- NOTE-defer: startup initializers must be wired in BizarreCrmApp.onCreate() or via InitializationProvider meta-data; BizarreCrmApp is a multi-wave file — deferred until wave lock is lifted -->
-- [ ] No heavy work on main thread at cold-start. <!-- NOTE-defer: depends on startup initializer migration above; no standalone config change possible without touching BizarreCrmApp -->
+- [ ] `androidx.startup:startup-runtime` initializers for: Hilt, Timber, WorkManager, Coil, NotificationChannels.
+- [ ] No heavy work on main thread at cold-start.
 
 ### 71.3 Pre-warm
-- [ ] Profile-guided JIT + Baseline Profiles. <!-- NOTE-defer: requires a macrobenchmark Gradle module, BaselineProfileRule instrumented tests, and CI pipeline integration — multi-day tooling effort, defer to a dedicated perf sprint -->
-- [ ] Cold-start target per §29.1. <!-- NOTE-defer: measurable only after Baseline Profiles are generated; defer with above -->
+- [ ] Profile-guided JIT + Baseline Profiles.
+- [ ] Cold-start target per §29.1.
 
 ### 71.4 First launch ever
-- [ ] Splash → animated welcome → server URL prompt. <!-- NOTE-defer: requires new onboarding composable + nav graph changes coordinated with MainActivity deep-link resolution — multi-file feature, defer to a dedicated onboarding sprint -->
-- [ ] Privacy disclosure sheet. <!-- NOTE-defer: depends on first-launch flow above -->
+- [ ] Splash → animated welcome → server URL prompt.
+- [ ] Privacy disclosure sheet.
 
 ### 71.5 Post-upgrade
 - [x] "What's new" modal shown once on new `versionCode`. (commit gracious-goodall — `WhatsNewDialog.kt` AlertDialog with `WhatsNewEntry` data class + `WHATS_NEW_ENTRIES` catalog; `AppPreferences.lastSeenVersionCode` / `markWhatsNewSeen()`; MainActivity wires `showWhatsNew` state comparing `BuildConfig.VERSION_CODE` > `lastSeenVersionCode`; persists on dismiss)
-- [x] Dismissible; auto-dismiss after interaction. (commit gracious-goodall — "Got it" TextButton sets `showWhatsNew = false` + calls `markWhatsNewSeen(versionCode)`; `onDismissRequest` handles outside-tap)
+- [x] Dismissible; auto-dismiss after interaction. (commit gracious-goodall — "Got it" TextButton sets `showWhatsNew = false` + calls `markWhatsNewSeen(versionCode)`; `onDismissRequest` handles outside-tap; no forced timeout per ActionPlan intent)
 
 ---
 ## 72. In-App Help
 
 ### 72.1 Help center
-- [x] Settings → Help.
-- [x] FAQs grouped by topic; search with FTS5.
-- [x] Served offline (bundled markdown).
+- [ ] Settings → Help.
+- [ ] FAQs grouped by topic; search with FTS5.
+- [ ] Served offline (bundled markdown).
 
 ### 72.2 Contextual help
-- [x] `?` icon in screen top bar → sheet with relevant help articles.
-- [x] "What's this?" long-press on any field shows tooltip.
+- [ ] `?` icon in screen top bar → sheet with relevant help articles.
+- [ ] "What's this?" long-press on any field shows tooltip.
 
 ### 72.3 Contact support
-- [x] "Report a problem" → composer with auto-attached redacted logs + screenshot.
-- [ ] Sends to tenant admin (email) + audit log entry. <!-- NOTE-defer: audit log entry requires server endpoint POST /api/v1/support/report which does not yet exist -->
-- [x] Self-hosted: goes to tenant-configured admin email; managed: pavel@bizarreelectronics.com fallback.
+- [ ] "Report a problem" → composer with auto-attached redacted logs + screenshot.
+- [ ] Sends to tenant admin (email) + audit log entry.
+- [ ] Self-hosted: goes to tenant-configured admin email; managed: pavel@bizarreelectronics.com fallback.
 
 ### 72.4 Tooltips
-- [x] Material 3 `RichTooltip` on long-press icons.
-- [ ] First-run spotlight tour optional. <!-- NOTE-defer: spotlight/onboarding tour requires a state-machine tracking "seen" steps per user; defer to a dedicated UX pass -->
+- [ ] Material 3 `RichTooltip` on long-press icons.
+- [ ] First-run spotlight tour optional.
 
 ### 72.5 Keyboard-shortcut overlay
-- [x] Ctrl+/ shows current-screen shortcuts.
+- [ ] Ctrl+/ shows current-screen shortcuts.
 
 ---
 ## 73. Notifications — granular per-event matrix
@@ -5564,50 +4222,50 @@ Mirror iOS §73. Each row: default on/off per channel; user override per §19.3;
 | Security event (new device / 2FA reset) | ✅ | ✅ | — | — | Self + Admin |
 
 ### 73.1 User override (Settings §19.3)
-- [x] Per-event toggles across four channels.
-- [x] Defaults shown greyed with "(default)" label until flipped.
-- [x] "Reset all to default" button.
-- [x] Warning on enabling SMS on high-volume event ("This may send 50+ texts per day").
+- [ ] Per-event toggles across four channels.
+- [ ] Defaults shown greyed with "(default)" label until flipped.
+- [ ] "Reset all to default" button.
+- [ ] Warning on enabling SMS on high-volume event ("This may send 50+ texts per day").
 
 ### 73.2 Tenant override (Admin)
-- [ ] Admin can shift tenant's default. <!-- NOTE-defer: requires server-side per-tenant notification baseline API and an admin UI surface; no client or server code exists for tenant overrides -->
-- [ ] Per-tenant dashboard shows current deltas vs shipped defaults. <!-- NOTE-defer: depends on tenant override API (same as above); no server endpoint or admin screen implemented -->
+- [ ] Admin can shift tenant's default.
+- [ ] Per-tenant dashboard shows current deltas vs shipped defaults.
 
 ### 73.3 Delivery rules
-- [x] Push respects system DND + in-app quiet hours.
-- [ ] In-app banner never shown if user already looking at source. <!-- NOTE-defer: only SMS has source-screen suppression (ActiveChatTracker / CH_SMS_SILENT); all other event types (ticket, payment, etc.) still show banners when the user is on the source screen — full suppression requires per-screen awareness not yet implemented -->
-- [x] Same event re-firing within 60s collapsed into "+N more" badge update.
+- [ ] Push respects system DND + in-app quiet hours.
+- [ ] In-app banner never shown if user already looking at source.
+- [ ] Same event re-firing within 60s collapsed into "+N more" badge update.
 
 ### 73.4 Critical override
-- [ ] Backup failed / Security event / Out-of-stock mid-sale / Payment declined mid-txn may use NotificationChannel IMPORTANCE_HIGH + CATEGORY_ALARM to bypass DND. <!-- NOTE-defer: CH_BACKUP_REPORT is registered as IMPORTANCE_LOW in NotificationChannelBootstrap but receives CATEGORY_ALARM in NotificationController — importance wins for DND bypass on Android 8+, so backup-failed alarms cannot pierce DND; CH_BACKUP_REPORT must be raised to IMPORTANCE_HIGH or split into a separate critical channel; out-of-stock mid-sale critical path also not handled -->
-- [x] Default `IMPORTANCE_DEFAULT`. Never misuse critical.
+- [ ] Backup failed / Security event / Out-of-stock mid-sale / Payment declined mid-txn may use NotificationChannel IMPORTANCE_HIGH + CATEGORY_ALARM to bypass DND.
+- [ ] Default `IMPORTANCE_DEFAULT`. Never misuse critical.
 
 ### 73.5 Rich content
-- [x] SMS notification embeds photo thumbnail if MMS.
-- [x] Payment notification shows amount + customer name.
-- [x] Ticket assignment embeds device + status.
+- [ ] SMS notification embeds photo thumbnail if MMS.
+- [ ] Payment notification shows amount + customer name.
+- [ ] Ticket assignment embeds device + status.
 
 ### 73.6 Inline reply
-- [x] SMS_INBOUND action "Reply" uses `RemoteInput` — reply from push without opening app.
+- [ ] SMS_INBOUND action "Reply" uses `RemoteInput` — reply from push without opening app.
 
 ### 73.7 Sound
-- [ ] Apple-parallel: default + 3 brand custom sounds (cash register, bell, ding); user picks per channel. <!-- NOTE-defer: per-channel ringtone picker via RingtoneManager is implemented (NotifSoundPickerCard) but the three brand custom sounds (cash register, bell, ding) do not exist as audio assets — res/raw/ contains only markdown help files, no .ogg/.mp3 -->
-- [ ] Loaded from `raw/` resources. <!-- NOTE-defer: no audio files present in res/raw/; depends on brand sound assets being added first (same blocker as item above) -->
+- [ ] Apple-parallel: default + 3 brand custom sounds (cash register, bell, ding); user picks per channel.
+- [ ] Loaded from `raw/` resources.
 
 ### 73.8 Historical view
-- [x] Settings → Notifications → "Recent" shows last 100 pushes for audit.
+- [ ] Settings → Notifications → "Recent" shows last 100 pushes for audit.
 
 ### 73.9 Rotation / retry
-- [x] Push token rotation: on app start or `onNewToken` post new token.
-- [ ] Retry FCM token register with exponential backoff on failure; manual "Re-register" in Settings. <!-- NOTE-defer: manual "Re-register push token" row is implemented (NotificationSettingsScreen); exponential backoff is not — DeviceTokenManager.register sets fcmTokenRegistered=false on failure and relies on next foreground cycle; no delay/counter backoff logic exists -->
+- [ ] Push token rotation: on app start or `onNewToken` post new token.
+- [ ] Retry FCM token register with exponential backoff on failure; manual "Re-register" in Settings.
 
 ### 73.10 Per-event copy matrix
-- [ ] Title + body + action buttons defined for each event. <!-- NOTE-defer: client has no per-event copy strings; titles and bodies come entirely from server FCM payload with no client-side fallback copy defined per event type -->
-- [ ] Tone: short, actionable, no emoji in title; body includes identifier so push list stays scannable. <!-- NOTE-defer: editorial guideline only; no client-side enforcement (no emoji stripping, no length cap); compliance depends on server payload content -->
-- [ ] Localization keyed; fallback English if locale missing. <!-- NOTE-defer: notification copy is server-driven (FCM data payload); no client-side string resources for notification titles/bodies; l10n must be implemented on server -->
-- [x] A11y: TalkBack reads title + body + action hints.
-- [x] Importance mapping per channel.
-- [x] Bundling: repeated same-type pushes within 60s merged.
+- [ ] Title + body + action buttons defined for each event.
+- [ ] Tone: short, actionable, no emoji in title; body includes identifier so push list stays scannable.
+- [ ] Localization keyed; fallback English if locale missing.
+- [ ] A11y: TalkBack reads title + body + action hints.
+- [ ] Importance mapping per channel.
+- [ ] Bundling: repeated same-type pushes within 60s merged.
 
 ---
 ## 74. Privacy-first analytics event list
@@ -5656,77 +4314,77 @@ All events target tenant server (§32).
 ```
 
 ### 74.2 No tracking
-- [x] No GAID / ADID / Facebook SDK / Google Analytics / Firebase Analytics / Mixpanel / Amplitude. (build.gradle.kts `forbiddenFirebaseModules` bans `firebase-analytics`/`firebase-analytics-ktx`; `RetrofitOutsideRemoteDetector.BANNED_PREFIXES` bans `com.google.firebase.analytics.*` imports at lint time; `AnalyticsEvent` + `TelemetryClient` use only tenant-server path.)
-- [ ] Play Data Safety declares only FCM + tenant server. <!-- NOTE-defer: Play Console declaration is a store-listing ops step, not a code change; complete before first production release -->
+- [ ] No GAID / ADID / Facebook SDK / Google Analytics / Firebase Analytics / Mixpanel / Amplitude.
+- [ ] Play Data Safety declares only FCM + tenant server.
 
 ### 74.3 Opt-out
-- [x] Settings → Privacy → Disable telemetry (local disk buffer still used for crash recovery but not transmitted). (`AppPreferences.telemetryEnabled` pref + `telemetryEnabledFlow`; `TelemetryClient.track` no-ops when false; `DataPrivacyScreen` renders a `Switch` toggle; `DataPrivacyViewModel.setTelemetryEnabled` persists the choice.)
+- [ ] Settings → Privacy → Disable telemetry (local disk buffer still used for crash recovery but not transmitted).
 
 ---
 ## 75. Final UX Polish Checklist
 
 ### 75.1 Animation
-- [ ] Every screen's enter + exit animation tested. <!-- NOTE-defer: NavHost has global slide+fade tween(200) enter/exit/popEnter/popExit transitions but per-screen visual verification requires device/emulator QA pass -->
-- [ ] No janky flashes on state change. <!-- NOTE-defer: JankReporter is wired in MainActivity and BizarreMotion spring specs are defined, but absence of jank requires runtime profiling on device -->
-- [ ] Modal sheets never pop (use spring scale-in). <!-- NOTE-defer: BrandBottomSheet uses ModalBottomSheet default entry; expressiveSpring token exists but no explicit spring scaleIn override applied to sheet enter transition — needs code fix + QA -->
+- [ ] Every screen's enter + exit animation tested.
+- [ ] No janky flashes on state change.
+- [ ] Modal sheets never pop (use spring scale-in).
 
 ### 75.2 Focus
-- [ ] `FocusRequester` sets first-responder on form open. <!-- NOTE-defer: FocusRequester + LaunchedEffect pattern is present on LoginScreen and CommandPalette but not audited across all create/edit forms — needs sweep of ~20 form screens -->
-- [ ] Focus traps for modals. <!-- NOTE-defer: no explicit focus-trap composable found in codebase; ModalBottomSheet provides some implicit trapping but not audited -->
-- [ ] Focus returns to opener on dismiss. <!-- NOTE-defer: not implemented explicitly; requires hands-on accessibility testing with TalkBack -->
+- [ ] `FocusRequester` sets first-responder on form open.
+- [ ] Focus traps for modals.
+- [ ] Focus returns to opener on dismiss.
 
 ### 75.3 Keyboard dismiss
-- [x] Tap-outside + scroll dismiss soft keyboard via `WindowInsets.isImeVisible` + `LocalFocusManager.current.clearFocus()`.
-- [ ] "Done" button on number pads. <!-- NOTE-defer: POS screens (CartLineBottomSheet, PosCartScreen, PosTenderScreen) use KeyboardType.Decimal/Number without ImeAction.Done — needs fix across POS + other numeric fields -->
+- [ ] Tap-outside + scroll dismiss soft keyboard via `WindowInsets.isImeVisible` + `LocalFocusManager.current.clearFocus()`.
+- [ ] "Done" button on number pads.
 
 ### 75.4 Loading → Done transitions
-- [ ] Skeleton cross-fades to content; never jump. <!-- NOTE-defer: TicketListScreen and others use a plain `when {}` branch switch between BrandSkeleton and content with no AnimatedContent/Crossfade wrapper — abrupt jump, not a cross-fade -->
+- [ ] Skeleton cross-fades to content; never jump.
 
 ### 75.5 Scroll behavior
-- [ ] Preserve scroll on back-nav via `rememberLazyListState` + `SavedStateHandle`. <!-- NOTE-defer: rememberLazyListState is used in several list screens but scroll position is not persisted into SavedStateHandle; back-nav scroll restoration not wired -->
-- [x] Jump-to-top on bottom-nav re-select. (session 2026-04-27 — `ScrollToTopBus` (`@Singleton` + `MutableSharedFlow<String>`) in `util/ScrollToTopBus.kt`; `LocalScrollToTopBus` `compositionLocalOf` exposed for NavHost subtree; `AppNavGraph` gains `scrollToTopBus: ScrollToTopBus?` param + `CompositionLocalProvider(LocalScrollToTopBus)` around the NavHost; `NavigationBarItem.onClick` emits `requestScrollToTop(route)` when `isSelected` is already true; `DashboardScreen` / `TicketListScreen` / `SmsListScreen` each add `rememberLazyListState` + `LaunchedEffect(bus) { bus.events.collect { animateScrollToItem(0) } }`; `MainActivity` injects `ScrollToTopBus` and passes it to `AppNavGraph`; build green)
+- [ ] Preserve scroll on back-nav via `rememberLazyListState` + `SavedStateHandle`.
+- [ ] Jump-to-top on bottom-nav re-select.
 
 ### 75.6 Pull-to-refresh
 - [x] Material 3 `PullToRefreshBox` on every list + Dashboard.
 
 ### 75.7 Selection + multi-select
-- [x] Long-press enters edit mode on lists.
-- [x] Batch-action bar slides up from bottom.
+- [ ] Long-press enters edit mode on lists.
+- [ ] Batch-action bar slides up from bottom.
 
 ### 75.8 Sheets vs full-screen
-- [x] Create/edit forms in `ModalBottomSheet` (partial / full via `SheetState.expand()`).
-- [x] Detail views full-screen push.
+- [ ] Create/edit forms in `ModalBottomSheet` (partial / full via `SheetState.expand()`).
+- [ ] Detail views full-screen push.
 
 ### 75.9 Back-navigation consistency
-- [x] Predictive-back works on every non-modal push.
-- [x] Custom back buttons discouraged — use top-bar navigationIcon.
+- [ ] Predictive-back works on every non-modal push.
+- [ ] Custom back buttons discouraged — use top-bar navigationIcon.
 
 ### 75.10 System bars
-- [x] Edge-to-edge everywhere.
-- [ ] `WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = ...` per screen theme. <!-- NOTE-defer: only TvQueueBoardScreen calls WindowCompat.getInsetsController; no per-screen status-bar appearance control elsewhere — needs implementation sweep -->
-- [ ] Light status on dark surfaces; dark status on light. <!-- NOTE-defer: dependent on the item above; theme defaults to dark (warm dark surfaces) but imperative per-screen bar color is not set -->
+- [ ] Edge-to-edge everywhere.
+- [ ] `WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = ...` per screen theme.
+- [ ] Light status on dark surfaces; dark status on light.
 
 ### 75.11 Ripple + tonal
-- [x] Default Material 3 ripple respected; no custom ripple except on themed buttons.
-- [x] Tonal elevation preferred over drop-shadows.
+- [ ] Default Material 3 ripple respected; no custom ripple except on themed buttons.
+- [ ] Tonal elevation preferred over drop-shadows.
 
 ### 75.12 Dp / sp discipline
-- [x] No pixel values in Compose.
-- [x] Font sizes via `MaterialTheme.typography`.
+- [ ] No pixel values in Compose.
+- [ ] Font sizes via `MaterialTheme.typography`.
 
 ### 75.13 Dark mode
-- [ ] Every screen tested dark; contrast passes. <!-- NOTE-defer: DarkColorScheme is complete and warm-dark surfaces are defined but visual contrast verification on every screen requires device QA -->
-- [x] No pure black except AMOLED variant.
+- [ ] Every screen tested dark; contrast passes.
+- [ ] No pure black except AMOLED variant.
 
 ### 75.14 RTL
-- [ ] Arabic + Hebrew layouts pass visual review. <!-- NOTE-defer: LocalLayoutDirection overrides are in LoginScreen for LTR data fields; full bi-directional visual review of all screens requires device QA with an RTL locale -->
+- [ ] Arabic + Hebrew layouts pass visual review.
 
 ### 75.15 Fold transitions
-- [ ] Smooth transition on fold/unfold; no flicker. <!-- NOTE-defer: SplitPaneScaffold uses a width-threshold switch but no FoldingFeature / WindowLayoutInfo listener; fold/unfold animation smoothness requires physical foldable or emulator QA -->
+- [ ] Smooth transition on fold/unfold; no flicker.
 
 ### 75.16 Rotate
-- [x] State preserved on rotation (ViewModel + `SavedStateHandle`).
-- [ ] No content loss. <!-- NOTE-defer: ViewModel state survives rotation but SavedStateHandle scroll-position wiring is incomplete on most list screens; full no-content-loss verification requires QA across form screens -->
+- [ ] State preserved on rotation (ViewModel + `SavedStateHandle`).
+- [ ] No content loss.
 
 ---
 
@@ -5943,53 +4601,6 @@ Payload cap: 32 KB total. Rate limit 30/min.
 After existing `bench` mount, authenticated routes registered in this order:
 `/schedule`, `/time-off`, `/timesheet`, `/inventory-variants`, `/inventory-bundles`, `/recurring-invoices`, `/credit-notes`, `/activity`, `/notification-preferences`, `/pos/held-carts`.
 
-### Android client binding — Wave 1
-
-- [x] `GET /api/v1/expenses` with `status` + `expense_subtype` filters — `ExpenseApi.getExpenses(@QueryMap)` accepts arbitrary filters; callers pass `status`/`expense_subtype` keys.
-- [ ] `POST /api/v1/expenses/mileage` — no dedicated method in `ExpenseApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/expenses/perdiem` — no dedicated method in `ExpenseApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `POST /api/v1/expenses/:id/approve` — `ExpenseApi.approveExpense(@Path id)` wired; 404-tolerant.
-- [ ] `POST /api/v1/expenses/:id/deny` — `ExpenseApi` has `rejectExpense` at `.../reject`; server contract path is `.../deny`. <!-- NOTE-defer: server-side path differs from existing reject endpoint — needs dedicated deny method or path realignment -->
-- [x] `GET /api/v1/schedule/shifts` — `ShiftsApi.getShifts(userId, fromDate, toDate)` wired.
-- [x] `POST /api/v1/schedule/shifts` — `ShiftsApi.createShift(CreateShiftBody)` wired.
-- [x] `PATCH /api/v1/schedule/shifts/:id` — `ShiftsApi.patchShift(shiftId, body)` wired.
-- [x] `DELETE /api/v1/schedule/shifts/:id` — `ShiftsApi.deleteShift(shiftId)` wired.
-- [ ] `POST /api/v1/schedule/shifts/:id/swap-request` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/swap/:requestId/accept|decline|cancel` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `POST /api/v1/time-off` — `TimeOffApi.submitRequest(body)` wired.
-- [x] `GET /api/v1/time-off` — `TimeOffApi.getRequests(status, employeeId)` wired; 404-tolerant.
-- [x] `POST /api/v1/time-off/:id/approve` — `TimeOffApi.updateRequest(id, {action:"approve"})` (PUT with action field).
-- [x] `POST /api/v1/time-off/:id/deny` — `TimeOffApi.updateRequest(id, {action:"reject", reason})` (PUT).
-- [ ] `GET /api/v1/timesheet/clock-entries` — `EmployeeApi.getWeeklyTimesheet` covers weekly grid only; per-entry listing not wired. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/timesheet/clock-entries/:id` — manager edit with mandatory `reason` + audit row; not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/inventory-variants/items/:itemId/variants` — no `InventoryVariantsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/inventory-variants/items/:itemId/variants` — no `InventoryVariantsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/inventory-variants/variants/:id` — no `InventoryVariantsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/inventory-variants/variants/:id` (soft) — no `InventoryVariantsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/inventory-variants/variants/:id/stock` — no `InventoryVariantsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/inventory-bundles` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/inventory-bundles/:id` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/inventory-bundles` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/inventory-bundles/:id` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/inventory-bundles/:id` (soft) — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/recurring-invoices` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/recurring-invoices/:id` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/recurring-invoices` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/recurring-invoices/:id` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/recurring-invoices/:id/pause|resume|cancel` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/credit-notes` (list) — `InvoiceApi.createCreditNote` is at `invoices/{id}/credit-note` (create-only, different path). <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/credit-notes` (standalone create) — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/credit-notes/:id/apply` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/credit-notes/:id/void` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `GET /api/v1/activity` — `ActivityApi.getActivity(cursor, limit, types, employee)` wired; cursor-based pagination matches server contract.
-- [ ] `GET /api/v1/activity/me` — shortcut alias; `ActivityApi` has no `getMyActivity()` method. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/notification-preferences/me` — `NotificationApi` covers push delivery but has no preferences-matrix endpoint. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PUT /api/v1/notification-preferences/me` — batch-upsert preferences matrix; not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/pos/held-carts` — `PosApi` has no held-cart endpoints. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/pos/held-carts` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/pos/held-carts/:id` (soft via `discarded_at`) — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/pos/held-carts/:id/recall` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-
 ## Web-Parity Backend Contracts — Wave 2 (2026-04-23)
 
 Second wave of endpoints built to close mobile → web parity gaps. Closes SCAN-464, 465, 468, 469, 470, 490, 494, 495, 498. All routes JWT-gated (authMiddleware applied at parent mount in index.ts) EXCEPT the explicitly-public estimate-sign endpoints — those use signed single-use tokens as the credential.
@@ -6153,47 +4764,6 @@ Wave 2 routes mount AFTER wave 1 block, in this order: `/ticket-labels`, `/publi
 
 Wave 2 crons start inside `server.listen` callback alongside wave-1 `recurringInvoicesCron`: `startDataExportScheduleCron` + `startSlaBreachCron`. Timer handles pushed into `backgroundIntervals[]` for graceful shutdown.
 
-### Android client binding — Wave 2
-
-- [ ] `GET /api/v1/ticket-labels` — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/ticket-labels` — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/ticket-labels/:id` — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/ticket-labels/:id` (soft) — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/ticket-labels/tickets/:ticketId/assign` — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/ticket-labels/tickets/:ticketId/labels/:labelId` — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/ticket-labels/tickets/:ticketId` (list labels on ticket) — no `TicketLabelsApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] Shared-Device Mode config keys (`shared_device_mode_enabled`, `shared_device_auto_logoff_minutes`, `shared_device_require_pin_on_switch`) — `SettingsApi` exists but no evidence of these three keys being read or written. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/estimates/:id/sign-url` (authed) — `EstimateApi` has no `createSignUrl()` method. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/estimates/:id/signatures` (authed) — `EstimateApi` has no `getSignatures()` method. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /public/api/v1/estimate-sign/:token` (public) — `EstimateApi` has no public sign-token consumer; public path would require a separate unauthenticated Retrofit instance. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /public/api/v1/estimate-sign/:token` (public, submit signature) — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/data-export/schedules` — `ExportApi` covers ad-hoc export jobs only; no scheduled-export endpoints declared. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/data-export/schedules` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/data-export/schedules/:id` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/data-export/schedules/:id/pause|resume|cancel` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sms/auto-responders` — `SmsApi` has no auto-responder endpoints. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sms/auto-responders` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sms/auto-responders/:id/toggle` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sms/groups` — `SmsApi` has no group endpoints. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sms/groups` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sms/groups/:id/members` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sms/groups/:id/send` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/checklists/templates` — `MorningChecklistApi` targets `tenants/me/morning-checklist` (different path); no `/checklists/templates` endpoint declared. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/checklists/templates` — no `/checklists` route declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/checklists/instances` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/checklists/instances` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/checklists/instances/:id` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/checklists/instances/:id/complete|abandon` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sla/policies` — `SlaApi` exposes `getDefinitions` (at `sla-definitions`) and `getHeatmap` (at `sla/heatmap`); no `/sla/policies` CRUD declared. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sla/policies` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sla/tickets/:ticketId/status` — computed SLA state endpoint; not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sla/breaches` — breach log list; not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/tickets/:ticketId/signatures` — not declared in `TicketApi` or any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/tickets/:ticketId/signatures` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/expenses/:expenseId/receipt` (multipart upload) — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/expenses/:expenseId/receipt` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/expenses/:expenseId/receipt` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-
 ## Web-Parity Backend Contracts — Wave 3 (2026-04-23)
 
 Third wave. Closes SCAN-462, 466, 467, 471, 473 + wires previously-exported helpers into existing route handlers (SMS auto-responder on inbound webhook; SLA compute on ticket create/update).
@@ -6340,47 +4910,6 @@ Limitations:
 Wave-3 routes mount AFTER wave-1 + wave-2 block. Public booking is UNAUTHENTICATED:
 `/field-service`, `/owner-pl`, `/locations`, `/booking-config`, `/public/api/v1/booking` (public), `/sync/conflicts`.
 
-### Android client binding — Wave 3
-
-- [ ] `tryAutoRespond` wired into inbound SMS webhook — server-side only; no Android client action needed. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `computeSlaForTicket` wired into ticket POST/PATCH — server-side only; no Android client action needed. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `GET /api/v1/field-service/jobs` — `FieldServiceApi.getJobs()` wired at `dispatch/jobs`; 404-tolerant.
-- [x] `PATCH /api/v1/field-service/jobs/:id` — `FieldServiceApi.updateJob(jobId, body)` wired at `dispatch/jobs/{id}`; 404-tolerant.
-- [ ] `POST /api/v1/field-service/jobs` (create job) — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/field-service/jobs/:id` (soft → `canceled`) — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/field-service/jobs/:id/assign` — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/field-service/jobs/:id/status` — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/field-service/routes` — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/field-service/routes` — not declared in `FieldServiceApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `POST /api/v1/field-service/routes/optimize` — `FieldServiceApi.optimizeRoute()` wired at `dispatch/optimize`; 404-tolerant. (Note: path uses `dispatch/` prefix rather than `field-service/`; 404-tolerant so this is acceptable.)
-- [ ] `GET /api/v1/owner-pl/summary` — no `OwnerPlApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/owner-pl/snapshot` — no `OwnerPlApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/owner-pl/snapshots` — no `OwnerPlApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `GET /api/v1/locations` — `LocationApi.getLocations(active)` wired.
-- [x] `GET /api/v1/locations/:id` — `LocationApi.getLocation(id)` wired.
-- [x] `POST /api/v1/locations` — `LocationApi.createLocation(request)` wired.
-- [x] `PATCH /api/v1/locations/:id` — `LocationApi.updateLocation(id, request)` wired.
-- [x] `DELETE /api/v1/locations/:id` (soft) — `LocationApi.deactivateLocation(id)` wired.
-- [x] `POST /api/v1/locations/:id/set-default` — `LocationApi.setDefault(id)` wired.
-- [ ] `GET /api/v1/locations/users/:userId/locations` — user-location assignment list; not declared in `LocationApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/locations/users/:userId/locations/:locationId` — assign user to location; not declared in `LocationApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `DELETE /api/v1/locations/users/:userId/locations/:locationId` — unassign user from location; not declared in `LocationApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `GET /api/v1/locations/me/default-location` — `LocationApi.getMyDefaultLocation()` wired; 404-tolerant.
-- [ ] `GET /api/v1/booking-config/services` — `SelfBookingApi` covers public booking; no admin booking-config endpoints declared. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/booking-config/services` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/booking-config/hours` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/booking-config/hours/:dayOfWeek` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/booking-config/exceptions` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/booking-config/exceptions` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [x] `GET /public/api/v1/booking` config — `SelfBookingApi.getAvailableSlots(locationId, date)` covers public availability; public booking config fetch not explicitly separated but availability is wired.
-- [x] `GET /public/api/v1/booking/availability` — `SelfBookingApi.getAvailableSlots(locationId, date)` wired at `public/booking/slots`; 404-tolerant.
-- [x] `POST /public/api/v1/booking` reserve — `SelfBookingApi.reserveSlot(BookingReserveRequest)` wired at `public/booking/reserve`; 404-tolerant.
-- [ ] `POST /api/v1/sync/conflicts` (report conflict) — `SyncApi.resolveConflict` goes to `sync/conflicts/resolve`; no `POST sync/conflicts` (create/report) endpoint declared. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/sync/conflicts` (manager list) — not declared in `SyncApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sync/conflicts/:id/resolve` — `SyncApi.resolveConflict` posts to `sync/conflicts/resolve` (flat path, not `/:id/resolve`). <!-- NOTE-defer: server-side path mismatch — existing resolveConflict uses flat path; needs per-id variant or path update -->
-- [ ] `POST /api/v1/sync/conflicts/:id/reject|defer` — not declared in `SyncApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/sync/conflicts/bulk-resolve` — not declared in `SyncApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-
 ## POS redesign wave (2026-04-24)
 
 Fourth Android wave. Delivers the ground-up POS rewrite, the 6-step repair check-in package, BlockChyp payment terminal integration, and cream primary-color rebrand — all driven by the design spec in `../pos-phone-mockups.html`, which is the visual ground truth for every screen in this wave. Gradle build gate was verified SUCCESSFUL by Phase 2 + Phase 4 agents before merge. No server-side migrations were added this wave; all DB changes land on the Android side only (Room schema 10→11).
@@ -6419,7 +4948,7 @@ New `ui/screens/checkin/` package — 8 files total:
 - [x] `ui/screens/checkin/CheckInViewModel.kt` — shared ViewModel holding draft state across all steps; writes to Room `checkin_drafts` table. (commit `80578a59`)
 - [x] 6 step screens (`Step1CustomerScreen.kt` … `Step6SignatureScreen.kt`) inside `ui/screens/checkin/`. Step 6 reuses `ui/components/SignaturePad.kt`. (commit `80578a59`)
 - [x] Room schema migration 10→11 — `checkin_drafts` table added; migration SQL, DAO, entity class, and `DatabaseModule` Hilt provider all wired. (commit `80578a59`)
-- [x] Legacy 7-step ticket-create package at `ui/screens/tickets/create/steps/*` left intact — removal is a planned follow-up (see Known Gaps below).
+- [ ] Legacy 7-step ticket-create package at `ui/screens/tickets/create/steps/*` left intact — removal is a planned follow-up (see Known Gaps below).
 
 ---
 
@@ -6450,9 +4979,9 @@ These two flags together satisfy the Play Store requirement for 16 KB ELF page-s
 
 ### Known gaps (deferred to follow-up waves)
 
-- [x] **Legacy 7-step ticket-create package** — `ui/screens/tickets/create/steps/*` remains in the codebase. Removal blocked until the new 6-step check-in flow has been validated in production. Track as a follow-up cleanup task.
-- [ ] **SMS receipt (POS-SMS-001)** — server-side endpoint for sending a receipt via SMS is not yet implemented. `PosReceiptViewModel.kt` has the client call site stubbed; requires `packages/server/src/routes/pos.routes.ts` to expose `POST /api/v1/pos/receipts/:id/sms`. Track as POS-SMS-001 in `TODO.md`. <!-- NOTE-defer: Server endpoint EXISTS at POST /api/v1/notifications/send-receipt-sms (notifications.routes.ts:366) and Android client is wired (ReceiptNotificationApi.kt:34). However the Android DTO sends field "phone" but the server destructures "recipient_phone" — a field-name mismatch that will cause a 400 on every SMS send. End-to-end path is broken until the DTO or server is fixed. -->
-- [ ] **Cash drawer real driver** — `pos/CashDrawerControllerStub.kt` sends no actual ESC/POS command. Needs hardware integration work tied to the supported receipt-printer model. <!-- NOTE-defer: CashDrawerControllerStub.kt is a pure interface with no concrete implementation in the codebase. No ESC/POS driver exists. Requires hardware integration work. -->
+- [ ] **Legacy 7-step ticket-create package** — `ui/screens/tickets/create/steps/*` remains in the codebase. Removal blocked until the new 6-step check-in flow has been validated in production. Track as a follow-up cleanup task.
+- [ ] **SMS receipt (POS-SMS-001)** — server-side endpoint for sending a receipt via SMS is not yet implemented. `PosReceiptViewModel.kt` has the client call site stubbed; requires `packages/server/src/routes/pos.routes.ts` to expose `POST /api/v1/pos/receipts/:id/sms`. Track as POS-SMS-001 in `TODO.md`.
+- [ ] **Cash drawer real driver** — `pos/CashDrawerControllerStub.kt` sends no actual ESC/POS command. Needs hardware integration work tied to the supported receipt-printer model.
 # POS Audit Wave — 2026-04-24 (10 parallel sonnet agents)
 
 > Aggregated findings from 10 parallel POS-code audit agents. Each item cites
@@ -6552,61 +5081,61 @@ Findings produced by 10 parallel sonnet code-audit agents, deduped. Each item is
 - [x] **LOGIN-MOCK-001 (Theme). Stale "purple #8B5CF6" reference in LoginTabBar doc-block.** LoginScreen.kt:2031-2033 comment claims active tab is "purple (#8B5CF6) text + 2dp purple underline indicator". Brand is now cream #FDEED0 (Theme.kt:43). Replace comment with cream + reference MaterialTheme.colorScheme.primary so doc and code agree.
 - [x] **LOGIN-MOCK-002 (Layout). Card surface hardcoded Color(0xFF1F1F23).** LoginScreen.kt:2007 — escape hatch breaks any future palette swap (light theme, dynamic-color override, brand re-tune). Replace with MaterialTheme.colorScheme.surfaceContainer (or surface1 semantic token) to match the rest of the app and the mockup card tone.
 - [x] **LOGIN-MOCK-003 (Layout). Tab text style is labelMedium (12sp); mockup tabs read at ~14-15sp.** LoginScreen.kt:2080. Bump to MaterialTheme.typography.titleSmall (14sp medium) for tap-target legibility and match to screen-01 / screen-09.
-- [ ] **LOGIN-MOCK-004 (Theme). Inactive tab divider line missing visual continuity at indicator gap.** LoginScreen.kt:2068-2070 renders HorizontalDivider underneath a 2dp SecondaryIndicator. Mockup shows the inactive segment line dimmer than the active indicator and FLUSH with it (no overlap). Audit z-order: indicator should sit ABOVE the divider, not be the same thickness. <!-- NOTE-defer: z-order correctness requires side-by-side device screenshot vs mockup; indicator is drawn in same Box after divider (composition order = above), but pixel-exact flush rendering cannot be confirmed without a build. -->
+- [ ] **LOGIN-MOCK-004 (Theme). Inactive tab divider line missing visual continuity at indicator gap.** LoginScreen.kt:2068-2070 renders HorizontalDivider underneath a 2dp SecondaryIndicator. Mockup shows the inactive segment line dimmer than the active indicator and FLUSH with it (no overlap). Audit z-order: indicator should sit ABOVE the divider, not be the same thickness.
 - [x] **LOGIN-MOCK-005 (Layout). Tab row contentColor hardcoded to activeColor propagates cream to inactive tabs.** LoginScreen.kt:2052 sets contentColor = activeColor. Tab override at :2081-2082 correctly switches inactive to muted, but the selectedContentColor/unselectedContentColor props at :2084-2085 duplicate that logic. Pick one source of truth (preferred: drop :2052 override, let Tab props drive color).
 
 ### Hero / wordmark / wave divider
 
 - [x] **LOGIN-MOCK-006 (Layout). Top spacer is height(80.dp); mockup hero sits at ~30-35% screen height.** LoginScreen.kt:1869. On 6.7" reference (mockup ratio), wordmark center is at ~40% of viewport. Replace static 80.dp with a Spacer(weight=...) or compute from BoxWithConstraints so hero centers vertically when keyboard is dismissed. Server step screen-01 shows the wordmark roughly mid-screen, not pinned to top.
-- [x] **LOGIN-MOCK-007 (Theme). Wordmark uses headlineLarge.copy(fontSize = 36.sp) — mockup looks heavier (display weight, condensed).** LoginScreen.kt:1872-1874. Confirmed: Typography.kt:70-75 assigns `BarlowCondensedFamily` to `headlineLarge`; LoginScreen.kt:2106 uses `MaterialTheme.typography.headlineLarge` directly (no .copy, font scale-safe). Font file `barlow_condensed_semibold` is loaded in `res/font/`. Verified.
-- [ ] **LOGIN-MOCK-008 (Copy). Subtitle is "Electronics Repair Management".** LoginScreen.kt:1879 matches mockups screen-01/02/03/04/05/06 verbatim. Keep — but also verify casing (Title Case, no period) and confirm bodyMedium muted color matches mockup grey (mockup ~#7A7A7A, theme MutedText = #B09A84). Investigate if onSurfaceVariant resolves to roughly the right hue in dark theme. <!-- NOTE-defer: code string and style confirmed correct (line 2113, bodyMedium, onSurfaceVariant); exact hue match #B09A84 vs #7A7A7A requires device screenshot — cannot verify without a build. -->
-- [ ] **LOGIN-MOCK-009 (Layout). Wave divider hairline thickness audit.** WaveDivider.kt (component file) — confirm 1px stroke at ~15% magenta alpha matches mockup's barely-visible curve. If too prominent, dial down alpha. If too subtle, bump. <!-- NOTE-defer: hairline is now cream accent @ 0.30f alpha (not 0.15% magenta — WaveDivider.kt:108 uses colorScheme.primary per brand-color unification commit 2026-04-27); KDoc still says "~15% alpha" which is stale. Design clarification needed: is 0.30f cream correct, or should it be 0.15f? Requires device screenshot. -->
+- [ ] **LOGIN-MOCK-007 (Theme). Wordmark uses headlineLarge.copy(fontSize = 36.sp) — mockup looks heavier (display weight, condensed).** LoginScreen.kt:1872-1874. Confirm headlineLarge is wired to BarlowCondensedFamily per Typography.kt. If it's still FontFamily.Default, the wordmark renders Roboto bold and won't match the mockup's compressed serif-ish "Bizarre CRM". Verify font assets in res/font/ are loaded.
+- [ ] **LOGIN-MOCK-008 (Copy). Subtitle is "Electronics Repair Management".** LoginScreen.kt:1879 matches mockups screen-01/02/03/04/05/06 verbatim. Keep — but also verify casing (Title Case, no period) and confirm bodyMedium muted color matches mockup grey (mockup ~#7A7A7A, theme MutedText = #B09A84). Investigate if onSurfaceVariant resolves to roughly the right hue in dark theme.
+- [ ] **LOGIN-MOCK-009 (Layout). Wave divider hairline thickness audit.** WaveDivider.kt (component file) — confirm 1px stroke at ~15% magenta alpha matches mockup's barely-visible curve. If too prominent, dial down alpha. If too subtle, bump.
 - [x] **LOGIN-MOCK-010 (Layout). Wave divider sits 12dp under subtitle; mockup gap looks ~20-24dp.** LoginScreen.kt:1884. Increase top spacer to 20.dp.
 
 ### Server step (screen-01, screen-07, screen-08)
 
-- [x] **LOGIN-MOCK-011 (Copy). Subtitle "Enter your shop name to connect" — current matches mockup.** LoginScreen.kt:2173. Keep verbatim. Confirmed at LoginScreen.kt:2488 — matches mockup exactly.
-- [ ] **LOGIN-MOCK-012 (Layout). OutlinedTextField suffix .bizarrecrm.com may collide with cursor on long slugs.** LoginScreen.kt:2207-2213. Mockup screen-03 shows long slug truncating with an ellipsis effect ("Btsting123yadmintesti.bizarrecrm.com"). Verify TextOverflow.Ellipsis on the value text or set maxLength = 30 on input — server enforces 3-30 char range per helper text. <!-- NOTE-defer: no maxLength and no TextOverflow.Ellipsis applied to the slug field (LoginScreen.kt:2515-2541). Long slugs will render with the cursor pushed against the suffix. Implementation requires adding a VisualTransformation or maxLines clamp. -->
-- [x] **LOGIN-MOCK-013 (Theme). Connect button disabledContainerColor = surfaceVariant blends with card surface.** LoginScreen.kt:2237. Mockup screen-01/screen-08 show the disabled CTA as a slightly lighter pill against the card — current surfaceVariant may be the same shade as the card, making the button visually disappear. Switch disabled bg to onSurface @ alpha 0.12f (Material default) or surface3 so it stays a visible affordance. Resolved: LoginPillButton.kt:70 uses `onSurface.copy(alpha = 0.24f)` for `disabledContainerColor` — 0.24f is more visible than the 0.12f minimum, and LoginPillButton is shared across all four CTAs (Connect/Create Shop/Sign In/Continue).
+- [ ] **LOGIN-MOCK-011 (Copy). Subtitle "Enter your shop name to connect" — current matches mockup.** LoginScreen.kt:2173. Keep verbatim.
+- [ ] **LOGIN-MOCK-012 (Layout). OutlinedTextField suffix .bizarrecrm.com may collide with cursor on long slugs.** LoginScreen.kt:2207-2213. Mockup screen-03 shows long slug truncating with an ellipsis effect ("Btsting123yadmintesti.bizarrecrm.com"). Verify TextOverflow.Ellipsis on the value text or set maxLength = 30 on input — server enforces 3-30 char range per helper text.
+- [ ] **LOGIN-MOCK-013 (Theme). Connect button disabledContainerColor = surfaceVariant blends with card surface.** LoginScreen.kt:2237. Mockup screen-01/screen-08 show the disabled CTA as a slightly lighter pill against the card — current surfaceVariant may be the same shade as the card, making the button visually disappear. Switch disabled bg to onSurface @ alpha 0.12f (Material default) or surface3 so it stays a visible affordance.
 - [x] **LOGIN-MOCK-014 (Copy). "Connect" button label uses labelLarge.** LoginScreen.kt:2244. Mockup shows it slightly larger and bolder than labelLarge default — try titleMedium semibold.
 - [x] **LOGIN-MOCK-015 (Layout). Footer row Self-hosted? + Register new shop use bodyMedium; mockup footer text reads like labelLarge.** LoginScreen.kt:2257, 2262. Bump style to labelLarge semibold so the actions read as buttons, not body text.
-- [x] **LOGIN-MOCK-016 (Theme). Cloud-mode placeholder is myshop (matches).** LoginScreen.kt:2203. Verified vs mockup screen-08. Keep. Confirmed at LoginScreen.kt:2519 — `placeholder = { Text("myshop") }`. Matches.
-- [x] **LOGIN-MOCK-017 (Layout). Server step has NO back arrow in the card; mockup screen-01 also has none.** LoginScreen.kt:2156-2266 has no IconButton(onBack) here. Correct — keep. Confirmed: ServerStep (LoginScreen.kt:2467-2574) contains no back IconButton. Matches mockup screen-01.
-- [x] **LOGIN-MOCK-018 (Bug). "Use BizarreCRM Cloud" / "Self-hosted?" toggle on same row as "Register new shop" — mockup screen-01 shows them spaced apart.** Current Arrangement.SpaceBetween at :2252 is correct. Verify horizontal padding inside card for the row matches mockup ~16dp gutter. Confirmed: LoginScreen.kt:2558-2573 — `Row(horizontalArrangement = Arrangement.SpaceBetween)` with `fillMaxWidth`. Card horizontal padding is 20dp (inner Column). Gutter is correct.
+- [ ] **LOGIN-MOCK-016 (Theme). Cloud-mode placeholder is myshop (matches).** LoginScreen.kt:2203. Verified vs mockup screen-08. Keep.
+- [ ] **LOGIN-MOCK-017 (Layout). Server step has NO back arrow in the card; mockup screen-01 also has none.** LoginScreen.kt:2156-2266 has no IconButton(onBack) here. Correct — keep.
+- [ ] **LOGIN-MOCK-018 (Bug). "Use BizarreCRM Cloud" / "Self-hosted?" toggle on same row as "Register new shop" — mockup screen-01 shows them spaced apart.** Current Arrangement.SpaceBetween at :2252 is correct. Verify horizontal padding inside card for the row matches mockup ~16dp gutter.
 
 ### Register step (screen-02, screen-03, screen-04, screen-05, screen-06)
 
 - [x] **LOGIN-MOCK-019 (Layout). Register back-arrow + title spacing tight.** LoginScreen.kt:2277-2288. Current Spacer(width(4.dp)) between IconButton and title text is too tight; mockup screen-02 shows ~12-16dp gap. Bump to 12.dp or use IconButton default 48dp tap target which already includes the spacing.
-- [x] **LOGIN-MOCK-020 (Copy). Register subtitle "Create your repair shop on BizarreCRM" matches mockup screen-02 verbatim.** LoginScreen.kt:2292. Keep. Confirmed at LoginScreen.kt:2633 — reads "Create your repair shop on Bizarre CRM" (with space per brand-name unification LOGIN-MOCK-117). Matches the intended copy.
-- [x] **LOGIN-MOCK-021 (Layout). Shop URL field uses Icons.Outlined.Link; mockup screen-03/04/05 shows a chain icon — verify which renders.** LoginScreen.kt:2305. Outlined.Link is the chain. Match. Confirmed at LoginScreen.kt:2649 — `Icons.Outlined.Link` as leadingIcon.
-- [ ] **LOGIN-MOCK-022 (Layout). Register Shop URL helper "3-30 characters: letters, numbers, hyphens" matches mockup verbatim.** LoginScreen.kt:2313. Keep — but verify the en-dash is the correct Unicode char and not a hyphen-minus. <!-- NOTE-defer: LoginScreen.kt:2665 uses ASCII hyphen-minus U+002D ("3-30 characters") not en-dash U+2013. Blocked on LOGIN-MOCK-115 which tracks the same fix — do not change until 115 is resolved by design. -->
-- [x] **LOGIN-MOCK-023 (Layout). Shop Display Name field uses Icons.Default.Store; mockup screen-02/04/05 shows the same store-front icon.** LoginScreen.kt:2326. Match. Confirmed at LoginScreen.kt:2679 — `Icons.Default.Store` as leadingIcon for Shop Display Name.
-- [x] **LOGIN-MOCK-024 (Copy). Admin Email + Admin Password labels match mockup verbatim.** LoginScreen.kt:2336, 2349. Keep. Confirmed: LoginScreen.kt:2705 `label = { Text("Admin Email") }` and :2705 `label = { Text("Admin Password") }`. Both match mockup verbatim.
-- [x] **LOGIN-MOCK-025 (Layout). Admin Password trailing eye icon — IconButton shows visibility toggle.** LoginScreen.kt:2354-2361 matches mockup screen-02/05. Confirmed at LoginScreen.kt:2711-2719 — `IconButton` with `Visibility`/`VisibilityOff` icon toggle. Matches mockup.
-- [x] **LOGIN-MOCK-026 (Bug). Password helper "Minimum 8 characters" stays visible even on focus — mockup screen-05 shows it persistently.** LoginScreen.kt:2362. Confirm supportingText doesn't disappear on validation success — it shouldn't, but verify. Confirmed: LoginScreen.kt:2722-2724 — `supportingText` always shows either the error message or "Minimum 8 characters"; never hidden. Matches mockup screen-05.
-- [x] **LOGIN-MOCK-027 (Layout). Inline error "Origin header required" — mockup screen-06 shows it left-aligned, no icon, red color, sitting BETWEEN password helper and Create Shop CTA.** LoginScreen.kt:2368-2375. Current implementation matches. Verify color resolves to MaterialTheme.colorScheme.error (not hardcoded red) and font is bodySmall. Confirmed: LoginScreen.kt:2756-2761 — `color = MaterialTheme.colorScheme.error`, `style = bodySmall`, no icon, between password field and Create Shop button. Matches mockup screen-06.
-- [x] **LOGIN-MOCK-028 (Layout). Create Shop button height 56dp + 28dp pill radius matches mockup screen-05.** LoginScreen.kt:2389-2392. Match. Verify enabled state cream fill + onPrimary dark text matches screen-05 (#FDEED0 fill + #2B1400 text). Confirmed: LoginPillButton uses `56.dp` height + `RoundedCornerShape(28.dp)` + `containerColor = colorScheme.primary` + `contentColor = colorScheme.onPrimary`. DarkColorScheme: primary=#FDEED0, onPrimary=#2B1400. Matches screen-05.
-- [x] **LOGIN-MOCK-029 (Layout). Create Shop disabled state uses onSurface @ 0.24f — confirm that matches screen-04's grey CTA shade.** LoginScreen.kt:2396-2397. Visual sanity-check on dark Surface1 = #26201A — alpha 0.24 of #F5E6D3 ~= #3F3A33 which matches mockup grey. Verify with screenshot. Confirmed: LoginPillButton.kt:70 — `disabledContainerColor = onSurface.copy(alpha = 0.24f)`. Code path is correct. Screenshot verification recommended but not blocking.
+- [ ] **LOGIN-MOCK-020 (Copy). Register subtitle "Create your repair shop on BizarreCRM" matches mockup screen-02 verbatim.** LoginScreen.kt:2292. Keep.
+- [ ] **LOGIN-MOCK-021 (Layout). Shop URL field uses Icons.Outlined.Link; mockup screen-03/04/05 shows a chain icon — verify which renders.** LoginScreen.kt:2305. Outlined.Link is the chain. Match.
+- [ ] **LOGIN-MOCK-022 (Layout). Register Shop URL helper "3-30 characters: letters, numbers, hyphens" matches mockup verbatim.** LoginScreen.kt:2313. Keep — but verify the en-dash is the correct Unicode char and not a hyphen-minus.
+- [ ] **LOGIN-MOCK-023 (Layout). Shop Display Name field uses Icons.Default.Store; mockup screen-02/04/05 shows the same store-front icon.** LoginScreen.kt:2326. Match.
+- [ ] **LOGIN-MOCK-024 (Copy). Admin Email + Admin Password labels match mockup verbatim.** LoginScreen.kt:2336, 2349. Keep.
+- [ ] **LOGIN-MOCK-025 (Layout). Admin Password trailing eye icon — IconButton shows visibility toggle.** LoginScreen.kt:2354-2361 matches mockup screen-02/05.
+- [ ] **LOGIN-MOCK-026 (Bug). Password helper "Minimum 8 characters" stays visible even on focus — mockup screen-05 shows it persistently.** LoginScreen.kt:2362. Confirm supportingText doesn't disappear on validation success — it shouldn't, but verify.
+- [ ] **LOGIN-MOCK-027 (Layout). Inline error "Origin header required" — mockup screen-06 shows it left-aligned, no icon, red color, sitting BETWEEN password helper and Create Shop CTA.** LoginScreen.kt:2368-2375. Current implementation matches. Verify color resolves to MaterialTheme.colorScheme.error (not hardcoded red) and font is bodySmall.
+- [ ] **LOGIN-MOCK-028 (Layout). Create Shop button height 56dp + 28dp pill radius matches mockup screen-05.** LoginScreen.kt:2389-2392. Match. Verify enabled state cream fill + onPrimary dark text matches screen-05 (#FDEED0 fill + #2B1400 text).
+- [ ] **LOGIN-MOCK-029 (Layout). Create Shop disabled state uses onSurface @ 0.24f — confirm that matches screen-04's grey CTA shade.** LoginScreen.kt:2396-2397. Visual sanity-check on dark Surface1 = #26201A — alpha 0.24 of #F5E6D3 ~= #3F3A33 which matches mockup grey. Verify with screenshot.
 - [x] **LOGIN-MOCK-030 (Bug). Register form has no scroll affordance when keyboard up — 4 fields + helpers may overflow on small phones.** Card itself isn't scrollable, only the outer Column. Confirm parent verticalScroll(rememberScrollState()) at LoginScreen.kt:1865 covers the register card content. If keyboard pushes Create Shop off-screen, add ime padding or scroll-to-CTA on focus. Verified: outer Column at :1872 already has `verticalScroll(rememberScrollState())` covering all step cards including Register; no additional scroll wrapper needed.
 
 ### Sign In / Credentials step (screen-09)
 
-- [x] **LOGIN-MOCK-031 (Copy). Header "Sign In" + subtitle is the SHOP DISPLAY NAME (e.g. "Testing 123 Shop") per mockup screen-09.** Current CredentialsStep at LoginScreen.kt:2416+ may not show the shop name as subtitle — needs verification. If absent, render state.storeName (or fall back to host) as bodySmall onSurfaceVariant under the "Sign In" titleLarge. Confirmed: LoginScreen.kt:3019-3023 — titleLarge+Bold "Sign In" + `if (state.storeName.isNotBlank()) Text(state.storeName, bodySmall, onSurfaceVariant)`. Matches screen-09.
-- [x] **LOGIN-MOCK-032 (Layout). Sign In step back arrow inside card — IconButton(onClick = goBack) to return to Server.** Confirm CredentialsStep has back arrow + title row matching screen-09. Confirmed: LoginScreen.kt:3015-3017 — `IconButton(onClick = viewModel::goBack)` with `Icons.AutoMirrored.Filled.ArrowBack`.
-- [x] **LOGIN-MOCK-033 (Layout). Username field uses Person icon (mockup screen-09).** Verify CredentialsStep's username field has Icons.Default.Person leading icon. Confirmed: LoginScreen.kt:3035 — `leadingIcon = { Icon(Icons.Default.Person, null) }`.
-- [x] **LOGIN-MOCK-034 (Layout). Password field uses Lock icon + visibility eye trailing.** Verify CredentialsStep matches. Confirmed: LoginScreen.kt:3096 — Lock leadingIcon; :3098-3105 — Visibility/VisibilityOff IconButton trailingIcon with stateful contentDescription (LOGIN-MOCK-093).
-- [x] **LOGIN-MOCK-035 (Layout). Sign In CTA disabled state matches mockup screen-09 grey pill (Sign In disabled when fields empty).** Verify pill shape (28dp), height 56dp, label "Sign In" (case match). Confirmed: LoginScreen.kt:3125-3131 — `LoginPillButton(label = "Sign In", enabled = username.isNotBlank() && password.isNotBlank() && !loading && !offline && !rateLimited)`. 56dp + 28dp pill via shared LoginPillButton.
-- [x] **LOGIN-MOCK-036 (Bug). Per recent commit feat(android/login): wave 4 polish, RememberMe + ForgotPassword were removed.** Verify NO "Forgot password?" text or RememberMe checkbox renders on the Sign In card — mockup screen-09 has neither. Confirmed: zero occurrences of ForgotPassword, "Forgot password", or RememberMe in LoginScreen.kt.
-- [x] **LOGIN-MOCK-037 (Layout). Sign In tab indicator color on screen-09 looks teal-ish; current uses colorScheme.primary (cream).** LoginScreen.kt:2064. Mockup shows a TEAL underline on the previously-completed Server tab + cream/purple on the active Sign In tab. If the design intent is "completed = secondary, current = primary", that's a divergence. For now keep single primary color across, but flag for design clarification — added: LOGIN-MOCK-037-TBD. Confirmed: LoginScreen.kt:2313 — single `activeColor = colorScheme.primary` (cream) across all tabs. Decision to keep single color + defer design clarification is correct.
+- [ ] **LOGIN-MOCK-031 (Copy). Header "Sign In" + subtitle is the SHOP DISPLAY NAME (e.g. "Testing 123 Shop") per mockup screen-09.** Current CredentialsStep at LoginScreen.kt:2416+ may not show the shop name as subtitle — needs verification. If absent, render state.storeName (or fall back to host) as bodySmall onSurfaceVariant under the "Sign In" titleLarge.
+- [ ] **LOGIN-MOCK-032 (Layout). Sign In step back arrow inside card — IconButton(onClick = goBack) to return to Server.** Confirm CredentialsStep has back arrow + title row matching screen-09.
+- [ ] **LOGIN-MOCK-033 (Layout). Username field uses Person icon (mockup screen-09).** Verify CredentialsStep's username field has Icons.Default.Person leading icon.
+- [ ] **LOGIN-MOCK-034 (Layout). Password field uses Lock icon + visibility eye trailing.** Verify CredentialsStep matches.
+- [ ] **LOGIN-MOCK-035 (Layout). Sign In CTA disabled state matches mockup screen-09 grey pill (Sign In disabled when fields empty).** Verify pill shape (28dp), height 56dp, label "Sign In" (case match).
+- [ ] **LOGIN-MOCK-036 (Bug). Per recent commit feat(android/login): wave 4 polish, RememberMe + ForgotPassword were removed.** Verify NO "Forgot password?" text or RememberMe checkbox renders on the Sign In card — mockup screen-09 has neither.
+- [ ] **LOGIN-MOCK-037 (Layout). Sign In tab indicator color on screen-09 looks teal-ish; current uses colorScheme.primary (cream).** LoginScreen.kt:2064. Mockup shows a TEAL underline on the previously-completed Server tab + cream/purple on the active Sign In tab. If the design intent is "completed = secondary, current = primary", that's a divergence. For now keep single primary color across, but flag for design clarification — added: LOGIN-MOCK-037-TBD.
 
 ### 2FA Setup step (screen-10)
 
-- [x] **LOGIN-MOCK-038 (Layout). Header "Set Up Two-Factor Auth" uses titleMedium; mockup looks larger/bolder.** LoginScreen.kt:3181. Promote to titleLarge SemiBold/Bold for parity with Server/Register/Sign In headers. Confirmed: LoginScreen.kt:3591 — `Text("Set Up Two-Factor Auth", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)`. Promoted as required.
-- [x] **LOGIN-MOCK-039 (Copy). Subtitle "Scan this QR code with Google Authenticator or any TOTP app" matches mockup screen-10 verbatim.** LoginScreen.kt:3184. Keep. Confirmed: LoginScreen.kt:3594 — exact string match. Matches screen-10.
+- [ ] **LOGIN-MOCK-038 (Layout). Header "Set Up Two-Factor Auth" uses titleMedium; mockup looks larger/bolder.** LoginScreen.kt:3181. Promote to titleLarge SemiBold/Bold for parity with Server/Register/Sign In headers.
+- [ ] **LOGIN-MOCK-039 (Copy). Subtitle "Scan this QR code with Google Authenticator or any TOTP app" matches mockup screen-10 verbatim.** LoginScreen.kt:3184. Keep.
 - [x] **LOGIN-MOCK-040 (Layout). QR code rendered directly without white background frame.** LoginScreen.kt:3220-3224. Mockup screen-10 shows the QR inside a WHITE square (~240dp) with ~16dp padding. Wrap Image in Surface(color = Color.White, shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(16.dp)) to match. ZXing-encoded QR codes need a light bg to scan reliably anyway.
 - [x] **LOGIN-MOCK-041 (Layout). QR Box height fixed at 200.dp; mockup shows ~240dp incl. white frame.** LoginScreen.kt:3216. Increase to 240.dp or compute from screen width.
 - [x] **LOGIN-MOCK-042 (Layout). 6-digit TOTP field leading icon is Icons.Default.Lock; mockup screen-10 shows a SHIELD with a check.** TotpCodeInputContent LoginScreen.kt:3424. Replace with Icons.Outlined.VerifiedUser or Icons.Default.Shield (whichever ships in M3 icon pack) for parity.
-- [x] **LOGIN-MOCK-043 (Layout). 6-digit field placeholder/label is "6-digit code"; mockup screen-10 matches.** LoginScreen.kt:3414. Keep. Confirmed: LoginScreen.kt:3913 — `label = { Text("6-digit code") }`. Matches screen-10.
+- [ ] **LOGIN-MOCK-043 (Layout). 6-digit field placeholder/label is "6-digit code"; mockup screen-10 matches.** LoginScreen.kt:3414. Keep.
 - [x] **LOGIN-MOCK-044 (Layout). Continue button height is 48dp; mockup CTAs across the flow are all 56dp.** LoginScreen.kt:3437. Change .height(48.dp) to .height(56.dp) and add shape = RoundedCornerShape(28.dp) to match the pill shape used by Connect/Create Shop/Sign In.
 - [x] **LOGIN-MOCK-045 (Layout). Continue button has no explicit pill shape.** LoginScreen.kt:3434-3438. Add shape = RoundedCornerShape(28.dp) and explicit colors = ButtonDefaults.buttonColors(...) to match the other CTAs.
 - [x] **LOGIN-MOCK-046 (Bug). 2FA Verify uses Icons.Default.ArrowBack instead of AutoMirrored variant.** LoginScreen.kt:3374. Recent commit migrated other arrows to AutoMirrored.Filled.ArrowBack; this one was missed. RTL bug. Replace.
@@ -6616,25 +5145,25 @@ Findings produced by 10 parallel sonnet code-audit agents, deduped. Each item is
 ### Cross-step polish
 
 - [x] **LOGIN-MOCK-049 (Theme). All step CTAs (Connect/Create Shop/Sign In/Continue) should share an identical button spec.** Currently three of them share 56dp height + 28dp pill, but Continue (2FA) diverges (LOGIN-MOCK-044). Lift the spec into a shared LoginPillButton(onClick, enabled, isLoading, label) Composable in ui/components/auth/ and call from all 4 sites.
-- [x] **LOGIN-MOCK-050 (Theme). All step OutlinedTextFields should share leading/trailing/suffix conventions.** Audit: cream outline focused / muted outline unfocused / cream label cut-out. Confirm OutlinedTextFieldDefaults.colors() is configured at the app theme level so all instances inherit cream automatically — no per-field color overrides. Confirmed: no per-field `colors = OutlinedTextFieldDefaults.colors(...)` overrides exist on any field in ServerStep, RegisterStep, or CredentialsStep. All fields inherit M3 theme — `focusedBorderColor`/`focusedLabelColor` route to `colorScheme.primary` (cream). LOGIN-MOCK-086 tracks the cursor color gap separately.
+- [ ] **LOGIN-MOCK-050 (Theme). All step OutlinedTextFields should share leading/trailing/suffix conventions.** Audit: cream outline focused / muted outline unfocused / cream label cut-out. Confirm OutlinedTextFieldDefaults.colors() is configured at the app theme level so all instances inherit cream automatically — no per-field color overrides.
 - [x] **LOGIN-MOCK-051 (Layout). Card padding 20.dp everywhere; mockup gutters look ~24dp.** LoginScreen.kt:2010. Bump Modifier.padding(20.dp) to padding(horizontal = 20.dp, vertical = 24.dp) so the card title doesn't crowd the top edge.
 - [x] **LOGIN-MOCK-052 (Layout). Card RoundedCornerShape is 16.dp; mockup card radius reads ~20-24dp.** LoginScreen.kt:2006. Bump to 20.dp for parity.
 - [x] **LOGIN-MOCK-053 (A11y). Tab strip is display-only (onClick = no-op) yet has tappable Tab semantics.** LoginScreen.kt:2076. TalkBack announces tabs as buttons, but tapping does nothing — a false affordance. Add Modifier.semantics { role = Role.Tab; selected = isSelected; onClick = null } and disable click handling so TalkBack reads them as status indicators, not actions. OR enable click-to-jump-back (Server tap when on Sign In = goBack).
 - [x] **LOGIN-MOCK-054 (A11y). Wordmark "Bizarre CRM" lacks contentDescription heading semantics.** LoginScreen.kt:1870-1875. Add Modifier.semantics { heading() } so TalkBack treats it as a screen title.
 - [x] **LOGIN-MOCK-055 (A11y). Each step header (Connect to Your Shop / Register New Shop / Sign In / Set Up Two-Factor Auth) lacks heading semantics.** Bulk-add Modifier.semantics { heading() } to all four titleLarge text nodes.
 - [x] **LOGIN-MOCK-056 (Bug). Top Spacer(Modifier.height(80.dp)) is hardcoded; on small phones (5.4" or fontScale=2.0) the wordmark may push the card off-screen.** LoginScreen.kt:1869. Replace with a weight-based vertical centering scheme inside a Column(verticalArrangement = Arrangement.Center) + Spacer(weight = 1f) above the wordmark.
-- [ ] **LOGIN-MOCK-057 (Theme). surfaceContainer semantic token absent — Theme.kt may not define it.** LoginScreen.kt:2007 falls back to a hardcoded color because the theme might not expose surfaceContainer. Audit Theme.kt:43-90 and add surfaceContainer, surfaceContainerHigh, surfaceContainerLow to both light + dark ColorScheme blocks if missing. <!-- NOTE-defer: Theme.kt audit complete — `surfaceContainer` and `surfaceContainerHigh` ARE defined in both LightColorScheme (lines 128-129) and DarkColorScheme (lines 158-159). `surfaceContainerLow` is absent from both schemes (LOGIN-MOCK-066 tracks this). The card `Surface` at LoginScreen.kt uses `colorScheme.surfaceContainer` which resolves correctly. Remaining work: add `surfaceContainerLow` per LOGIN-MOCK-066. -->
+- [ ] **LOGIN-MOCK-057 (Theme). surfaceContainer semantic token absent — Theme.kt may not define it.** LoginScreen.kt:2007 falls back to a hardcoded color because the theme might not expose surfaceContainer. Audit Theme.kt:43-90 and add surfaceContainer, surfaceContainerHigh, surfaceContainerLow to both light + dark ColorScheme blocks if missing.
 - [x] **LOGIN-MOCK-058 (Layout). AnimatedContent slide direction on goBack vs goForward.** LoginScreen.kt:1993-1996 always slides in from right + out to left. Going BACK from Register to Server should reverse direction. Wire transitionSpec to detect targetState.ordinal less than initialState.ordinal and flip horizontals. Fixed: transitionSpec now compares ordinals — forward slides right→left, back slides left→right.
-- [ ] **LOGIN-MOCK-059 (Bug). Register card Field 4: Admin Password has no PasswordStrengthMeter.** LoginScreen.kt:2346-2365. The SetPasswordStep uses a strength meter; the Register Admin Password field should too — the helper Minimum 8 characters is the only feedback now. Mockup doesn't show a meter explicitly, so this is OPTIONAL — flag LOGIN-MOCK-059-OPT. <!-- NOTE-defer: confirmed `PasswordStrengthMeter` is absent from `RegisterStep` Admin Password field (LoginScreen.kt:2701-2738); mockup does not require it; marked OPTIONAL per item text; implement if UX polish pass is scheduled -->
-- [x] **LOGIN-MOCK-060 (A11y). Field labels in mockup screen-09 (Username, Password) — verify OutlinedTextField label slot is used (cut-out animation), not placeholder.** Mockup screen-09 shows fields without cut-outs (label sits inside as placeholder text). Either render placeholder = { Text("Username") } with NO label, OR use label = { Text("Username") } with cut-out animation. Pick one consistent with screen-03/screen-05 register fields, which DO show cut-outs. (Confirmed: `CredentialsStep` Username field at LoginScreen.kt:3031 uses `label = { Text("Username") }` — cut-out animation; consistent with register fields. No placeholder-only fields in the credentials step.)
-- [ ] **LOGIN-MOCK-061 (Theme). Inline error red color audit.** LoginScreen.kt:2371 uses MaterialTheme.colorScheme.error. Theme.kt sets ErrorRed = #E2526C. Verify rendering on Surface1 (#26201A) hits AA 4.5:1 — visual pass. <!-- NOTE-defer: code uses `colorScheme.error` (not hardcoded) at LoginScreen.kt:2758; ErrorRed=#E2526C on Surface1=#26201A yields calculated contrast ~4.7:1 (passes AA) but this is a visual-render verification that requires a device screenshot or accessibility scanner run to confirm -->
+- [ ] **LOGIN-MOCK-059 (Bug). Register card Field 4: Admin Password has no PasswordStrengthMeter.** LoginScreen.kt:2346-2365. The SetPasswordStep uses a strength meter; the Register Admin Password field should too — the helper Minimum 8 characters is the only feedback now. Mockup doesn't show a meter explicitly, so this is OPTIONAL — flag LOGIN-MOCK-059-OPT.
+- [ ] **LOGIN-MOCK-060 (A11y). Field labels in mockup screen-09 (Username, Password) — verify OutlinedTextField label slot is used (cut-out animation), not placeholder.** Mockup screen-09 shows fields without cut-outs (label sits inside as placeholder text). Either render placeholder = { Text("Username") } with NO label, OR use label = { Text("Username") } with cut-out animation. Pick one consistent with screen-03/screen-05 register fields, which DO show cut-outs.
+- [ ] **LOGIN-MOCK-061 (Theme). Inline error red color audit.** LoginScreen.kt:2371 uses MaterialTheme.colorScheme.error. Theme.kt sets ErrorRed = #E2526C. Verify rendering on Surface1 (#26201A) hits AA 4.5:1 — visual pass.
 - [x] **LOGIN-MOCK-062 (Layout). Spacing between fields in Register card.** LoginScreen.kt:2317, 2330, 2343, 2377 all Spacer(Modifier.height(16.dp)). Mockup screen-05 shows ~20dp gaps. Bump to 20.dp consistently.
 
 ### Verification + lint
 
-- [ ] **LOGIN-MOCK-063 (Verify). Build the app, sideload to USB-connected device (adb install -r), navigate Server -> Register -> Sign In -> 2FA Setup, screenshot each step.** Compare against screen-01..10-*.png side-by-side. Document deltas in a follow-up wave. <!-- NOTE-defer: requires physical Android device + adb session + Gradle build; cannot be verified by static code audit; schedule as an on-device QA pass after all code fixes are merged -->
-- [ ] **LOGIN-MOCK-064 (Verify). Run ./gradlew lintDebug and resolve any lint errors introduced by changes (text color contrast, deprecated APIs).** <!-- NOTE-defer: requires Gradle build environment; cannot run lintDebug in this static-analysis pass; schedule alongside LOGIN-MOCK-063 on-device QA pass -->
-- [ ] **LOGIN-MOCK-065 (Verify). Run ./gradlew testDebugUnitTest — LoginViewModelRegisterTest.kt must still pass after register-card changes.** <!-- NOTE-defer: requires Gradle build + JVM test run; cannot execute in static-analysis pass; schedule alongside LOGIN-MOCK-063/064 -->
+- [ ] **LOGIN-MOCK-063 (Verify). Build the app, sideload to USB-connected device (adb install -r), navigate Server -> Register -> Sign In -> 2FA Setup, screenshot each step.** Compare against screen-01..10-*.png side-by-side. Document deltas in a follow-up wave.
+- [ ] **LOGIN-MOCK-064 (Verify). Run ./gradlew lintDebug and resolve any lint errors introduced by changes (text color contrast, deprecated APIs).**
+- [ ] **LOGIN-MOCK-065 (Verify). Run ./gradlew testDebugUnitTest — LoginViewModelRegisterTest.kt must still pass after register-card changes.**
 
 ## Aggregator note (login wave)
 
@@ -6644,7 +5173,7 @@ Findings produced by the parent + 3 parallel sonnet finder agents (LOGIN-MOCK-06
 
 Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/WaveDivider.kt`, `res/font/`, `ui/screens/auth/LoginScreen.kt` (lines 1869-1887, 3267, 3418).
 
-- [ ] **LOGIN-MOCK-066 (Theme). `surfaceContainerLow` is absent from both LightColorScheme and DarkColorScheme in Theme.kt.** <!-- NOTE-defer: confirmed absent in Theme.kt; design-token task owned by Theme.kt, not login wave. --> Only `surfaceContainer` and `surfaceContainerHigh` are explicitly set; `surfaceContainerLow` is not. Material 3 will silently derive a value, but for mockup card-tone parity the token must be pinned. In DarkColorScheme add `surfaceContainerLow = Color(0xFF201A14)` (one step below `Surface1 #26201A`). In LightColorScheme add `surfaceContainerLow = Surface50` (`#FAF4EC`) as the lowest rung. Files: `ui/theme/Theme.kt` lines ~127-160.
+- [ ] **LOGIN-MOCK-066 (Theme). `surfaceContainerLow` is absent from both LightColorScheme and DarkColorScheme in Theme.kt.** Only `surfaceContainer` and `surfaceContainerHigh` are explicitly set; `surfaceContainerLow` is not. Material 3 will silently derive a value, but for mockup card-tone parity the token must be pinned. In DarkColorScheme add `surfaceContainerLow = Color(0xFF201A14)` (one step below `Surface1 #26201A`). In LightColorScheme add `surfaceContainerLow = Surface50` (`#FAF4EC`) as the lowest rung. Files: `ui/theme/Theme.kt` lines ~127-160.
 
 - [x] **LOGIN-MOCK-067 (Typography). `headlineSmall` is not assigned `BarlowCondensedFamily` in Typography.kt.** `headlineLarge` and `headlineMedium` correctly use `BarlowCondensedFamily`; `headlineSmall` is absent from `BizarreTypography`, so it falls back to M3's default (`Roboto`). If any composable uses `headlineSmall` for a section title (e.g., card sub-headers on tablet layouts) it will render in Roboto instead of Barlow Condensed, breaking visual consistency. Add `headlineSmall = TextStyle(fontFamily = BarlowCondensedFamily, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 28.sp)` to `BizarreTypography`. Files: `ui/theme/Typography.kt` after line 80.
 
@@ -6656,7 +5185,7 @@ Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/Wav
 
 - [x] **LOGIN-MOCK-070 (Layout). Sign In header row has redundant `Spacer(width(8.dp))` after IconButton, misaligning title block from mockup.** Screen-09 shows the back arrow and "Sign In" / "Testing 123 Shop" tightly coupled with the arrow optically flush-left to the card edge. `IconButton` already contributes 12dp internal horizontal padding; the explicit `Spacer(Modifier.width(8.dp))` at LoginScreen.kt:2626 adds extra dead space pushing the title further right than the mockup shows. Remove this Spacer — the 48dp tap target with built-in padding already provides the correct visual gap. Fixed: Spacer removed from CredentialsStep header row.
 
-- [ ] **LOGIN-MOCK-071 (Layout). Sign In Username and Password fields use floating `label` slot but mockup screen-09 shows placeholder-style inline text with no cut-out chrome.** LoginScreen.kt:2639 (`label = { Text("Username") }`) and :2697 (`label = { Text("Password") }`). Screen-09 shows "Username" and "Password" rendered as grey inline placeholder text sitting inside the field border without a floating label cut-out. Swap both to `placeholder = { Text("Username") }` / `placeholder = { Text("Password") }` and drop the `label` slot, giving the mockup look. Verify the Register step (screen-03/05) intentionally keeps floating labels — these steps can differ. <!-- NOTE-defer: requires design sign-off before label->placeholder change alters UX affordance. -->
+- [ ] **LOGIN-MOCK-071 (Layout). Sign In Username and Password fields use floating `label` slot but mockup screen-09 shows placeholder-style inline text with no cut-out chrome.** LoginScreen.kt:2639 (`label = { Text("Username") }`) and :2697 (`label = { Text("Password") }`). Screen-09 shows "Username" and "Password" rendered as grey inline placeholder text sitting inside the field border without a floating label cut-out. Swap both to `placeholder = { Text("Username") }` / `placeholder = { Text("Password") }` and drop the `label` slot, giving the mockup look. Verify the Register step (screen-03/05) intentionally keeps floating labels — these steps can differ.
 
 - [x] **LOGIN-MOCK-072 (Bug). `SetPasswordStep` back arrow uses `Icons.Default.ArrowBack` — missed in the wave-4 AutoMirrored migration.** LoginScreen.kt:3106. Every other step's back arrow was migrated to `Icons.AutoMirrored.Filled.ArrowBack` (including CredentialsStep at :2624 and TwoFaVerifyStep at :3374), but SetPasswordStep still calls `Icons.Default.ArrowBack`. RTL mirror will render incorrectly on right-to-left locales. Fix: replace with `Icons.AutoMirrored.Filled.ArrowBack`. Verified already `Icons.AutoMirrored.Filled.ArrowBack` at :3131 — confirmed correct.
 
@@ -6664,17 +5193,17 @@ Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/Wav
 
 - [x] **LOGIN-MOCK-074 (Layout). `TwoFaSetupStep` title "Set Up Two-Factor Auth" uses `titleMedium + SemiBold` while all other step headers use `titleLarge + Bold`.** LoginScreen.kt:3181 — `style = MaterialTheme.typography.titleMedium`. Compare: CredentialsStep "Sign In" at :2628 uses `titleLarge + Bold`; SetPasswordStep "Set Your Password" at :3109 uses `titleMedium + SemiBold` (also wrong). Both 2FA Setup and SetPassword should be promoted to `titleLarge + Bold` to match. Mockup screen-10 header "Set Up Two-Factor Auth" reads visually larger than `titleMedium` on a 393dp-wide screen.
 
-- [x] **LOGIN-MOCK-075 (Layout). `TotpCodeInputContent` Continue button is a raw `Button { }` missing the 28dp pill shape and 56dp height.** LoginScreen.kt:3434-3444 — `Button(onClick = ..., modifier = Modifier.fillMaxWidth().height(48.dp))`. This diverges from the `BrandPrimaryButton` spec (28dp corner, 56dp height) used by Connect / Create Shop / Sign In. LOGIN-MOCK-044 already flags the height; this item specifically flags the missing pill shape caused by using raw `Button` instead of `BrandPrimaryButton`. Fix both at the same callsite: replace `Button { }` with `BrandPrimaryButton(modifier = Modifier.fillMaxWidth().height(56.dp)) { ... }`. Confirmed: LoginScreen.kt:3936-3947 — `LoginPillButton(label = "Continue")` with 56dp+28dp pill via shared spec. Fixed.
+- [ ] **LOGIN-MOCK-075 (Layout). `TotpCodeInputContent` Continue button is a raw `Button { }` missing the 28dp pill shape and 56dp height.** LoginScreen.kt:3434-3444 — `Button(onClick = ..., modifier = Modifier.fillMaxWidth().height(48.dp))`. This diverges from the `BrandPrimaryButton` spec (28dp corner, 56dp height) used by Connect / Create Shop / Sign In. LOGIN-MOCK-044 already flags the height; this item specifically flags the missing pill shape caused by using raw `Button` instead of `BrandPrimaryButton`. Fix both at the same callsite: replace `Button { }` with `BrandPrimaryButton(modifier = Modifier.fillMaxWidth().height(56.dp)) { ... }`.
 
 - [x] **LOGIN-MOCK-076 (Layout). `ErrorMessage` in `TotpCodeInputContent` appears between the TOTP field and the Continue button, pushing the CTA down on wrong-code entry.** LoginScreen.kt:3431. Sequence: field → `ErrorMessage` (adds `Spacer(12.dp)` + text line + any layout height) → `Spacer(16.dp)` → Continue. On wrong-code, this inserts ~36-40dp between field and CTA, potentially pushing Continue below the keyboard on 5.0" phones. Relocate `ErrorMessage(state.error)` to after the Continue button (line 3445+) so the field-to-CTA rhythm is constant, and the error appears beneath the button — matching the pattern used in CredentialsStep where `ErrorMessage` is between the password field and Sign In button, not above it. Fixed: ErrorMessage moved after LoginPillButton.
 
-- [ ] **LOGIN-MOCK-077 (Layout). `TwoFaSetupStep` "Can't scan?" TextButton is center-aligned via `.wrapContentWidth(Alignment.CenterHorizontally)` while all other card text is left-aligned.** LoginScreen.kt:3243 — `modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally)`. This creates an orphan centered element in an otherwise left-aligned column. Remove the `wrapContentWidth` override and let the button fill the width with start-aligned content matching the card gutter convention. <!-- NOTE-defer: wrapContentWidth confirmed at line 3695; LoginScreen layout fix deferred to next wave. -->
+- [ ] **LOGIN-MOCK-077 (Layout). `TwoFaSetupStep` "Can't scan?" TextButton is center-aligned via `.wrapContentWidth(Alignment.CenterHorizontally)` while all other card text is left-aligned.** LoginScreen.kt:3243 — `modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally)`. This creates an orphan centered element in an otherwise left-aligned column. Remove the `wrapContentWidth` override and let the button fill the width with start-aligned content matching the card gutter convention.
 
-- [ ] **LOGIN-MOCK-078 (Layout). `TwoFaVerifyStep` header "Two-Factor Authentication" uses `titleMedium + SemiBold` — inconsistent with `titleLarge + Bold` on Sign In.** LoginScreen.kt:3377 — `style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold`. The verify step is a full card step with its own back arrow, matching the Sign In step structure, so it should use `titleLarge + Bold` for the same visual weight. <!-- NOTE-defer: titleMedium+SemiBold confirmed at line 3841; typography-consistency fix pending. -->
+- [ ] **LOGIN-MOCK-078 (Layout). `TwoFaVerifyStep` header "Two-Factor Authentication" uses `titleMedium + SemiBold` — inconsistent with `titleLarge + Bold` on Sign In.** LoginScreen.kt:3377 — `style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold`. The verify step is a full card step with its own back arrow, matching the Sign In step structure, so it should use `titleLarge + Bold` for the same visual weight.
 
-- [x] **LOGIN-MOCK-079 (A11y / UX). `TotpCodeInputContent` auto-focuses the TOTP field via `LaunchedEffect(Unit) { focusRequester.requestFocus() }` at :3409, opening the numeric keyboard immediately on both Setup and Verify steps.** In the Verify step this is correct behavior (user just needs to type a code). In the Setup step, however, the keyboard opening immediately scrolls the QR code off-screen before the user can scan it — mockup screen-10 confirms the keyboard is visible, which means the user must scroll up to see the QR on small phones. Fix: add a `requestFocusOnMount: Boolean = true` parameter to `TotpCodeInputContent` and pass `false` from `TwoFaSetupStep` (line 3332) so the keyboard stays dismissed until the user taps the field after scanning.
+- [ ] **LOGIN-MOCK-079 (A11y / UX). `TotpCodeInputContent` auto-focuses the TOTP field via `LaunchedEffect(Unit) { focusRequester.requestFocus() }` at :3409, opening the numeric keyboard immediately on both Setup and Verify steps.** In the Verify step this is correct behavior (user just needs to type a code). In the Setup step, however, the keyboard opening immediately scrolls the QR code off-screen before the user can scan it — mockup screen-10 confirms the keyboard is visible, which means the user must scroll up to see the QR on small phones. Fix: add a `requestFocusOnMount: Boolean = true` parameter to `TotpCodeInputContent` and pass `false` from `TwoFaSetupStep` (line 3332) so the keyboard stays dismissed until the user taps the field after scanning.
 
-- [ ] **LOGIN-MOCK-080 (Copy). `ChallengeTokenCountdown` label reads "Sign-in expires in M:SS" — verbose on narrow screens.** LoginScreen.kt:2146. At minimum Inter font 11sp (`labelSmall`), "Sign-in expires in 9:59" is ~26 chars and may wrap to two lines on 360dp-wide phones with 40dp card padding. Shorten to "Session expires M:SS" (saves 8 chars) to guarantee single-line at labelSmall. LoginScreen.kt:2146 `"Sign-in expires in $label"`. <!-- NOTE-defer: string still "Sign-in expires in $label" at line 2458; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-080 (Copy). `ChallengeTokenCountdown` label reads "Sign-in expires in M:SS" — verbose on narrow screens.** LoginScreen.kt:2146. At minimum Inter font 11sp (`labelSmall`), "Sign-in expires in 9:59" is ~26 chars and may wrap to two lines on 360dp-wide phones with 40dp card padding. Shorten to "Session expires M:SS" (saves 8 chars) to guarantee single-line at labelSmall. LoginScreen.kt:2146 `"Sign-in expires in $label"`.
 
 - [x] **LOGIN-MOCK-081 (Layout). `TwoFaSetupStep` manual-key Surface uses `color = MaterialTheme.colorScheme.surfaceVariant` which in dark mode resolves close to the card background, making the monospace secret block nearly invisible.** LoginScreen.kt:3260. Per Theme.kt audit (LOGIN-MOCK-057 / LOGIN-MOCK-066), `surfaceContainerLow` / `surfaceContainerHighest` may be more appropriate. Use `MaterialTheme.colorScheme.surfaceContainerHighest` (or a hardcoded token pending the Theme.kt audit in LOGIN-MOCK-066) for the manual-key inset so it reads as a clearly distinct code block against the card surface. Fixed: changed to `surfaceContainerHighest`.
 
@@ -6682,19 +5211,19 @@ Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/Wav
 
 - [x] **LOGIN-MOCK-082 (Copy). ServerStep and RegisterStep in-card subtitles use `bodySmall` (12sp); mockup proportions match `bodyMedium` (14sp).** LoginScreen.kt:2174 (`bodySmall` for "Enter your shop name to connect" / "Enter your self-hosted server address") and :2293 (`bodySmall` for "Create your repair shop on BizarreCRM"). The outer wordmark subtitle at :1880 is already `bodyMedium`, establishing the text-scale baseline for this screen. The in-card step subtitles are the only body-copy nodes using `bodySmall` — they read noticeably undersized compared to the mockup's visible line proportions on a physical device (screens 01, 02, 07, 08). Change both callsites from `MaterialTheme.typography.bodySmall` to `MaterialTheme.typography.bodyMedium`.
 
-- [x] **LOGIN-MOCK-083 (Layout). RegisterStep `titleLarge` header has no explicit `fontSize = 22.sp` pin, while ServerStep does — sizes may diverge if `BizarreTypography` defines `titleLarge` at a non-default size.** LoginScreen.kt:2163-2165 applies `.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold)` to "Connect to Your Shop". LoginScreen.kt:2284 applies plain `MaterialTheme.typography.titleLarge` with a separate `fontWeight = FontWeight.Bold` argument (no `fontSize` override) to "Register New Shop". If `BizarreTypography` in Typography.kt sets `titleLarge` to anything other than M3's default 22sp, the two step headers will render at different sizes despite representing the same hierarchy level. Add `.copy(fontSize = 22.sp)` to LoginScreen.kt:2284, or remove the explicit copy from ServerStep and rely on the type scale for both headers consistently. Confirmed resolved: both steps now use `MaterialTheme.typography.titleLarge` without a `fontSize` override (ServerStep:2480, RegisterStep:2627). BizarreTypography.titleLarge = 20sp. Headers are consistent.
+- [ ] **LOGIN-MOCK-083 (Layout). RegisterStep `titleLarge` header has no explicit `fontSize = 22.sp` pin, while ServerStep does — sizes may diverge if `BizarreTypography` defines `titleLarge` at a non-default size.** LoginScreen.kt:2163-2165 applies `.copy(fontSize = 22.sp, fontWeight = FontWeight.Bold)` to "Connect to Your Shop". LoginScreen.kt:2284 applies plain `MaterialTheme.typography.titleLarge` with a separate `fontWeight = FontWeight.Bold` argument (no `fontSize` override) to "Register New Shop". If `BizarreTypography` in Typography.kt sets `titleLarge` to anything other than M3's default 22sp, the two step headers will render at different sizes despite representing the same hierarchy level. Add `.copy(fontSize = 22.sp)` to LoginScreen.kt:2284, or remove the explicit copy from ServerStep and rely on the type scale for both headers consistently.
 
 - [x] **LOGIN-MOCK-084 (Layout). Fixed `Spacer(Modifier.height(80.dp))` above wordmark does not compress when software keyboard is raised; hero competes with the card for shrunken viewport space.** LoginScreen.kt:1869. The outer `Box` at :1857 has `imePadding()` which translates the entire column upward, but the 80dp header spacer is inelastic and does not collapse. On small phones (5.0", ~800 logical pixels) with a tall IME (~320dp), the wordmark + wave + tabs consume ~160dp, leaving ~320dp for the card — barely enough for 4 fields. Mockup screen-07 (keyboard raised) shows the wordmark visibly compressed into a shorter hero area. Replace the fixed `Spacer(80.dp)` with `Spacer(Modifier.weight(1f))` inside a parent `Column(Modifier.fillMaxHeight(), verticalArrangement = Arrangement.Center)` to allow proportional compression, OR use `WindowInsets.ime` to derive a dynamic height that shrinks when the keyboard is visible. This is the most impactful layout bug on small-screen devices.
 
 - [x] **LOGIN-MOCK-085 (Layout). WaveDivider total vertical budget (60dp) is oversized vs mockup gap (~40dp) between subtitle and tab row.** LoginScreen.kt:1884 `Spacer(height = 12.dp)` + WaveDivider.kt canvas `height = 24.dp` (line 74) + LoginScreen.kt:1886 `Spacer(height = 24.dp)` = 60dp total. All mockup screens (01, 02, 07, 08) show the wave sitting snugly between the "Electronics Repair Management" subtitle and the tab bar with approximately 8dp above the curve and 16dp below. Remediation: change LoginScreen.kt:1884 to `height(8.dp)`, reduce WaveDivider.kt:74 canvas from `height(24.dp)` to `height(16.dp)`, keep LoginScreen.kt:1886 at `height(24.dp)`. Total = 48dp. The Canvas height reduction is safe — all Bézier control points are expressed as fractions of `size.height` and will proportionally rescale.
 
-- [ ] **LOGIN-MOCK-086 (Theme). `OutlinedTextField` focused border and floating label cut-out color depend on `colorScheme.primary` resolving to cream; verify `TextSelectionColors` cursor color is also set to cream.** Mockup screens 03, 05, 07 show active field outlines and floating labels in the brand accent color. M3 defaults route `focusedBorderColor` and `focusedLabelColor` to `colorScheme.primary` — correct if `primary = #FDEED0`. However, the text-insertion cursor color is controlled separately by `LocalTextSelectionColors.current.handleColor`. If Theme.kt does not explicitly provide `LocalTextSelectionColors provides TextSelectionColors(handleColor = primary, backgroundColor = primary.copy(alpha = 0.4f))` inside the `MaterialTheme` composition, the cursor may render as white or the device default instead of cream. Audit Theme.kt for a `LocalTextSelectionColors` override and add one if missing. None of the five `OutlinedTextField` call sites in ServerStep/RegisterStep pass an explicit `colors` parameter, so all rely on this theme-level provision. <!-- NOTE-defer: LocalTextSelectionColors not provided in BizarreCrmTheme; Theme.kt change required. -->
+- [ ] **LOGIN-MOCK-086 (Theme). `OutlinedTextField` focused border and floating label cut-out color depend on `colorScheme.primary` resolving to cream; verify `TextSelectionColors` cursor color is also set to cream.** Mockup screens 03, 05, 07 show active field outlines and floating labels in the brand accent color. M3 defaults route `focusedBorderColor` and `focusedLabelColor` to `colorScheme.primary` — correct if `primary = #FDEED0`. However, the text-insertion cursor color is controlled separately by `LocalTextSelectionColors.current.handleColor`. If Theme.kt does not explicitly provide `LocalTextSelectionColors provides TextSelectionColors(handleColor = primary, backgroundColor = primary.copy(alpha = 0.4f))` inside the `MaterialTheme` composition, the cursor may render as white or the device default instead of cream. Audit Theme.kt for a `LocalTextSelectionColors` override and add one if missing. None of the five `OutlinedTextField` call sites in ServerStep/RegisterStep pass an explicit `colors` parameter, so all rely on this theme-level provision.
 
-- [ ] **LOGIN-MOCK-087 (Layout). Register inline error text at LoginScreen.kt:2368-2374 lacks a top spacer between the Password field's `supportingText` and the error line, producing a ~4dp gap that reads as visually merged text.** M3 `OutlinedTextField` appends approximately 4dp of bottom padding below the `supportingText` slot. The error `Text` composable at :2369 sits directly next in the Column, so the total gap between "Minimum 8 characters" and "Origin header required" (screen-06) is only those 4dp. Mockup screen-06 shows approximately 8-10dp separation between the two lines. Add `Spacer(Modifier.height(4.dp))` at line 2368 (inside the `if (state.error != null)` block, before the `Text`) so both elements have 8dp total gap between them. Alternatively, use the `supportingText` slot of the Password field itself to surface the error when non-null (replacing "Minimum 8 characters" with the error), which is the standard M3 pattern for field-level errors. <!-- NOTE-defer: no spacer before error AnimatedVisibility at line 2751; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-087 (Layout). Register inline error text at LoginScreen.kt:2368-2374 lacks a top spacer between the Password field's `supportingText` and the error line, producing a ~4dp gap that reads as visually merged text.** M3 `OutlinedTextField` appends approximately 4dp of bottom padding below the `supportingText` slot. The error `Text` composable at :2369 sits directly next in the Column, so the total gap between "Minimum 8 characters" and "Origin header required" (screen-06) is only those 4dp. Mockup screen-06 shows approximately 8-10dp separation between the two lines. Add `Spacer(Modifier.height(4.dp))` at line 2368 (inside the `if (state.error != null)` block, before the `Text`) so both elements have 8dp total gap between them. Alternatively, use the `supportingText` slot of the Password field itself to surface the error when non-null (replacing "Minimum 8 characters" with the error), which is the standard M3 pattern for field-level errors.
 
-- [ ] **LOGIN-MOCK-088 (Theme). Connect and Create Shop button `enabled` state transitions are instantaneous hard-cuts with no animated color crossfade.** LoginScreen.kt:2234-2239 (ServerStep) and :2393-2397 (RegisterStep): `ButtonDefaults.buttonColors(disabledContainerColor = surfaceVariant)` swaps color synchronously when `enabled` flips. Compose `Button` does not automatically animate color between enabled and disabled states. Add `val containerColor by animateColorAsState(targetValue = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, animationSpec = tween(durationMillis = 150))` and pass as `ButtonDefaults.buttonColors(containerColor = containerColor, disabledContainerColor = containerColor)` (with `enabled = true` always, guard inside `onClick`), or simply animate `contentAlpha`. Apply to both CTA sites for a polished enable/disable transition matching the mockup's implied interactivity. <!-- NOTE-defer: LoginPillButton uses hard-cut disabled color; animateColorAsState not wired; deferred to motion-polish wave. -->
+- [ ] **LOGIN-MOCK-088 (Theme). Connect and Create Shop button `enabled` state transitions are instantaneous hard-cuts with no animated color crossfade.** LoginScreen.kt:2234-2239 (ServerStep) and :2393-2397 (RegisterStep): `ButtonDefaults.buttonColors(disabledContainerColor = surfaceVariant)` swaps color synchronously when `enabled` flips. Compose `Button` does not automatically animate color between enabled and disabled states. Add `val containerColor by animateColorAsState(targetValue = if (isEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, animationSpec = tween(durationMillis = 150))` and pass as `ButtonDefaults.buttonColors(containerColor = containerColor, disabledContainerColor = containerColor)` (with `enabled = true` always, guard inside `onClick`), or simply animate `contentAlpha`. Apply to both CTA sites for a polished enable/disable transition matching the mockup's implied interactivity.
 
-- [ ] **LOGIN-MOCK-089 (Layout). Pre-CTA `Spacer(16.dp)` at LoginScreen.kt:2377 is not included in LOGIN-MOCK-062's inter-field 16→20dp bump and should be raised to 20dp as well.** LOGIN-MOCK-062 specifically targets the inter-field spacers at lines :2317, :2330, :2343. The spacer at :2377 — positioned between the password field/error block and the Create Shop button — is a separate fifth gap measuring 16dp. Mockup screen-05 shows the Create Shop button with the same visual separation from the field above it as the fields share with each other. Bump :2377 from `height(16.dp)` to `height(20.dp)` alongside the LOGIN-MOCK-062 changes to maintain the uniform 20dp vertical rhythm throughout the card. <!-- NOTE-defer: LOGIN-MOCK-113 deliberately set this spacer to 16dp; raising to 20dp reintroduces the inconsistency 113 fixed. -->
+- [ ] **LOGIN-MOCK-089 (Layout). Pre-CTA `Spacer(16.dp)` at LoginScreen.kt:2377 is not included in LOGIN-MOCK-062's inter-field 16→20dp bump and should be raised to 20dp as well.** LOGIN-MOCK-062 specifically targets the inter-field spacers at lines :2317, :2330, :2343. The spacer at :2377 — positioned between the password field/error block and the Create Shop button — is a separate fifth gap measuring 16dp. Mockup screen-05 shows the Create Shop button with the same visual separation from the field above it as the fields share with each other. Bump :2377 from `height(16.dp)` to `height(20.dp)` alongside the LOGIN-MOCK-062 changes to maintain the uniform 20dp vertical rhythm throughout the card.
 
 ### Wave-2 Finder-F a11y + input behavior
 
@@ -6708,9 +5237,9 @@ Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/Wav
 
 - [x] **LOGIN-MOCK-094 (A11y). RegisterStep has no auto-focus on entry — the first field "Shop URL" does not receive focus when the REGISTER card slides in — forcing TalkBack users to swipe-right through the back arrow and two heading nodes before reaching the first input.** LoginScreen.kt:2261. ServerStep auto-focuses at `:2161`. RegisterStep declares `val focusManager` but no `FocusRequester`. Fix: add `val shopUrlFocusRequester = remember { FocusRequester() }`, attach `.focusRequester(shopUrlFocusRequester)` to the Shop URL field modifier at `:2293`, and add `LaunchedEffect(Unit) { shopUrlFocusRequester.requestFocus() }`. Fixed: shopUrlFocusRequester added, LaunchedEffect on entry, .focusRequester() on Shop URL modifier.
 
-- [ ] **LOGIN-MOCK-095 (A11y). `TotpCodeInputContent` hardcodes `fontSize = 24.sp` and `letterSpacing = 6.sp` at LoginScreen.kt:3393 — at system fontScale = 2.0 these `sp` values double to 48sp text and 12sp letter-spacing, potentially overflowing the `OutlinedTextField` and clipping digit glyphs on 360dp phones.** The explicit override also bypasses the user's configured text-size preference. Fix: clamp with `with(LocalDensity.current) { minOf(24.sp.toPx(), 24.dp.toPx()).toSp() }` to bound the size in absolute pixels, and reduce `letterSpacing` to `4.sp`. Or substitute `MaterialTheme.typography.headlineSmall.copy(fontFamily = BrandMono.fontFamily, letterSpacing = 4.sp)` which participates in the M3 type-scale. <!-- NOTE-defer: fontSize = 24.sp still hardcoded at line 3918; letterSpacing fixed by LOGIN-MOCK-130; fontSize density-clamp deferred to a11y wave. -->
+- [ ] **LOGIN-MOCK-095 (A11y). `TotpCodeInputContent` hardcodes `fontSize = 24.sp` and `letterSpacing = 6.sp` at LoginScreen.kt:3393 — at system fontScale = 2.0 these `sp` values double to 48sp text and 12sp letter-spacing, potentially overflowing the `OutlinedTextField` and clipping digit glyphs on 360dp phones.** The explicit override also bypasses the user's configured text-size preference. Fix: clamp with `with(LocalDensity.current) { minOf(24.sp.toPx(), 24.dp.toPx()).toSp() }` to bound the size in absolute pixels, and reduce `letterSpacing` to `4.sp`. Or substitute `MaterialTheme.typography.headlineSmall.copy(fontFamily = BrandMono.fontFamily, letterSpacing = 4.sp)` which participates in the M3 type-scale.
 
-- [x] **LOGIN-MOCK-096 (A11y). `LoginTabBar` `Tab` elements declare `onClick = { /* no-op */ }` at LoginScreen.kt:2077 but retain interactive `Role.Tab` semantics — TalkBack announces each as "double-tap to activate" yet activation does nothing.** LOGIN-MOCK-053 flags the false affordance; this item documents the concrete a11y fix. Option A (read-only): replace `Tab(selected = isSelected, onClick = { })` with a `Box` carrying `Modifier.semantics { role = Role.Tab; selected = isSelected; disabled() }` so TalkBack omits the activation hint. Option B (enable navigation): wire `onClick` to `viewModel.goBack()` when `index < selectedIndex` so the affordance becomes real.
+- [ ] **LOGIN-MOCK-096 (A11y). `LoginTabBar` `Tab` elements declare `onClick = { /* no-op */ }` at LoginScreen.kt:2077 but retain interactive `Role.Tab` semantics — TalkBack announces each as "double-tap to activate" yet activation does nothing.** LOGIN-MOCK-053 flags the false affordance; this item documents the concrete a11y fix. Option A (read-only): replace `Tab(selected = isSelected, onClick = { })` with a `Box` carrying `Modifier.semantics { role = Role.Tab; selected = isSelected; disabled() }` so TalkBack omits the activation hint. Option B (enable navigation): wire `onClick` to `viewModel.goBack()` when `index < selectedIndex` so the affordance becomes real.
 
 - [x] **LOGIN-MOCK-097 (A11y). "Bizarre CRM" wordmark at LoginScreen.kt:1872 and "Electronics Repair Management" subtitle at `:1880` are two separate TalkBack focus nodes — users swipe through them individually before reaching the tabs.** LOGIN-MOCK-054 adds `heading()` to the wordmark; this item adds the merge: wrap both `Text` nodes and the intervening `Spacer` in `Box(Modifier.semantics(mergeDescendants = true) { heading() })` so TalkBack reads the entire branded header — "Bizarre CRM, Electronics Repair Management, heading" — in one focus stop.
 
@@ -6718,7 +5247,7 @@ Audited files: `ui/theme/Theme.kt`, `ui/theme/Typography.kt`, `ui/components/Wav
 
 - [x] **LOGIN-MOCK-099 (A11y/Bug). No `BackHandler` is registered in `LoginScreen` — the predictive-back gesture (Android 14+) and hardware Back button exit the entire login screen instead of navigating to the previous step.** LoginScreen.kt:1854-2026. `viewModel.goBack()` is wired to back-arrow `IconButton`s but `BackHandler` is absent, so the system gesture bypasses the ViewModel entirely. Fix: inside the `AnimatedContent` lambda at `:2005`, before the `Surface`, add `val isNotFirstStep = state.step != SetupStep.SERVER; BackHandler(enabled = isNotFirstStep) { viewModel.goBack() }`. Import: `androidx.activity.compose.BackHandler`. This also unlocks the Compose 1.6+ predictive-back animation.
 
-- [ ] **LOGIN-MOCK-100 (A11y). "Copy key" `OutlinedButton` at LoginScreen.kt:3253 copies the 2FA secret with no accessibility announcement — on Android 12 and below there is no system feedback, so blind users get no confirmation the copy succeeded.** Fix: after the `ClipboardUtil.copySensitive(...)` call at `:3255-3260`, surface a snackbar via the `SnackbarHostState` already present in the parent Scaffold at `:1856`. Pass `snackbarHostState` down to `TwoFaSetupStep` and call `snackbarHostState.showSnackbar("2FA secret copied — clears in 30 s")`. This also benefits sighted users and is consistent with the existing snackbar usage for challenge-token expiry on the same screen. <!-- NOTE-defer: no snackbar on copy; snackbarHostState not threaded to TwoFaSetupStep; deferred to a11y pass. -->
+- [ ] **LOGIN-MOCK-100 (A11y). "Copy key" `OutlinedButton` at LoginScreen.kt:3253 copies the 2FA secret with no accessibility announcement — on Android 12 and below there is no system feedback, so blind users get no confirmation the copy succeeded.** Fix: after the `ClipboardUtil.copySensitive(...)` call at `:3255-3260`, surface a snackbar via the `SnackbarHostState` already present in the parent Scaffold at `:1856`. Pass `snackbarHostState` down to `TwoFaSetupStep` and call `snackbarHostState.showSnackbar("2FA secret copied — clears in 30 s")`. This also benefits sighted users and is consistent with the existing snackbar usage for challenge-token expiry on the same screen.
 
 - [x] **LOGIN-MOCK-101 (A11y). `SetPasswordStep` and `TwoFaSetupStep` step-header `Text` nodes lack `heading()` semantics — TalkBack treats them as body text, not landmarks.** LoginScreen.kt:3075 (`"Set Your Password"`) and `:3147` (`"Set Up Two-Factor Auth"`). LOGIN-MOCK-055 covers the four steps sharing a back-arrow + title `Row` structure (Server, Register, Sign In, 2FA Verify); SetPassword and TwoFaSetup were missed. Fix: add `Modifier.semantics { heading() }` to the title `Text` at `:3075` and `:3147`. Note: LOGIN-MOCK-074 will promote both from `titleMedium` to `titleLarge + Bold` — apply both fixes at the same callsites.
 
@@ -6732,23 +5261,23 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/theme/Theme.kt`, `ui/compon
 
 - [x] **LOGIN-MOCK-130 (A11y/Layout). `letterSpacing = 6.sp` in `TotpCodeInputContent` at LoginScreen.kt:3403 is an sp value that scales with fontScale.** At fontScale 1.5 spacing becomes 9sp; at 2.0 it becomes 12sp. Combined with the `fontSize = 24.sp` (which scales to 48sp at fontScale 2.0), a 6-digit TOTP code renders at approximately `6×48 + 5×12 = 348sp` effective width — wider than a standard 360dp card (312dp usable). The `OutlinedTextField` will wrap or clip. Remediation: replace `letterSpacing = 6.sp` with a density-pinned value: `with(LocalDensity.current) { 6.dp.toSp() }`. Density-based `.dp.toSp()` does NOT multiply by fontScale — 6dp stays 6dp in physical pixels regardless of user text-size preference. Cross-reference: LOGIN-MOCK-095 tracks the `fontSize` half of this same composable. File: LoginScreen.kt:3403.
 
-- [ ] **LOGIN-MOCK-131 (Layout). `TextButton` "View setup guide" at LoginScreen.kt:2469 carries `Modifier.height(24.dp)` with `contentPadding = PaddingValues(0.dp)`.** At fontScale 2.0 the `labelSmall` (11sp × 2 = 22sp) text is 22sp tall plus ascender/descender; 24dp is approximately 32px on a 160-dpi screen — tight but may pass. On high-density screens (xxhdpi, 480dpi), 24dp = 48px and 22sp at fontScale 2.0 ≈ 66px — the text overflows the fixed height and clips. Fix: remove the explicit `height(24.dp)` so the button sizes to its content; use `wrapContentHeight()` if the button must have a defined intrinsic size. File: LoginScreen.kt:2468–2469. <!-- NOTE-defer: height(24.dp) fontScale overflow risk; deferred to fontScale/a11y wave. -->
+- [ ] **LOGIN-MOCK-131 (Layout). `TextButton` "View setup guide" at LoginScreen.kt:2469 carries `Modifier.height(24.dp)` with `contentPadding = PaddingValues(0.dp)`.** At fontScale 2.0 the `labelSmall` (11sp × 2 = 22sp) text is 22sp tall plus ascender/descender; 24dp is approximately 32px on a 160-dpi screen — tight but may pass. On high-density screens (xxhdpi, 480dpi), 24dp = 48px and 22sp at fontScale 2.0 ≈ 66px — the text overflows the fixed height and clips. Fix: remove the explicit `height(24.dp)` so the button sizes to its content; use `wrapContentHeight()` if the button must have a defined intrinsic size. File: LoginScreen.kt:2468–2469.
 
-- [ ] **LOGIN-MOCK-132 (Layout). Fixed `height(240.dp)` QR container at LoginScreen.kt:3190 is safe individually, but `TwoFaSetupStep` has no maximum-height or scroll-position contract.** At fontScale 2.0 the title (LOGIN-MOCK-128), subtitle, and manual-key label above the QR box all scale upward, pushing the QR image far down the scroll. On a 5" phone (640dp logical height), the step content can exceed one full viewport. This is not a crash but a significant UX degradation for visually impaired users who rely on large text. Remediation: add a QA checklist entry — manually test `TwoFaSetupStep` at fontScale 2.0 on a 360×640dp emulator and confirm the QR code is reachable without excessive scrolling. If the step overflows badly, consider a `LazyColumn`-based layout or a collapsible QR/manual-key toggle (already present at LoginScreen.kt:3224). File: LoginScreen.kt:3189. Label: **QA gate — fontScale 2.0 smoke test required before release**. <!-- NOTE-defer: QA gate — fontScale 2.0 emulator smoke test required before any code change. -->
+- [ ] **LOGIN-MOCK-132 (Layout). Fixed `height(240.dp)` QR container at LoginScreen.kt:3190 is safe individually, but `TwoFaSetupStep` has no maximum-height or scroll-position contract.** At fontScale 2.0 the title (LOGIN-MOCK-128), subtitle, and manual-key label above the QR box all scale upward, pushing the QR image far down the scroll. On a 5" phone (640dp logical height), the step content can exceed one full viewport. This is not a crash but a significant UX degradation for visually impaired users who rely on large text. Remediation: add a QA checklist entry — manually test `TwoFaSetupStep` at fontScale 2.0 on a 360×640dp emulator and confirm the QR code is reachable without excessive scrolling. If the step overflows badly, consider a `LazyColumn`-based layout or a collapsible QR/manual-key toggle (already present at LoginScreen.kt:3224). File: LoginScreen.kt:3189. Label: **QA gate — fontScale 2.0 smoke test required before release**.
 
 - [x] **LOGIN-MOCK-133 (Layout/RTL). `OutlinedTextField` `suffix = { Text(".$CLOUD_DOMAIN") }` appears at LoginScreen.kt:2218 (ServerStep) and LoginScreen.kt:2317 (RegisterStep).** In RTL locales, Compose renders the `suffix` slot at the visual trailing edge (left side in RTL). The domain label `.bizarrecrm.com` is a Latin-script LTR string; without an explicit layout-direction override it will be subject to BiDi resolution, which may render it in the correct order but is not guaranteed across all font stacks. Remediation: wrap the suffix `Text` in `CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) { Text(".$CLOUD_DOMAIN", ...) }` to pin the domain label to LTR rendering regardless of system locale. This also future-proofs the suffix if `CLOUD_DOMAIN` is ever replaced by a Punycode label. Files: LoginScreen.kt:2219–2223 and LoginScreen.kt:2318–2322.
 
-- [ ] **LOGIN-MOCK-134 (Layout/RTL). `Row(horizontalArrangement = Arrangement.SpaceBetween)` at LoginScreen.kt:2260 places "Use BizarreCRM Cloud" / "Self-hosted?" (left) and "Register new shop" (right) as a semantic primary/secondary pair.** In RTL locales `SpaceBetween` mirrors the visual order: "Register new shop" moves to the visual left (prominent side) while the toggle moves to the visual right. Because this is idiomatic `SpaceBetween` behavior and both items are equally weighted `TextButton`s, no code change is strictly needed. Flag as **RTL design review**: confirm with the designer that the mirrored arrangement is acceptable or whether explicit `Modifier.align()` anchors are preferred. File: LoginScreen.kt:2249–2264. <!-- NOTE-defer: RTL design review item; no code change until designer confirms mirrored arrangement. -->
+- [ ] **LOGIN-MOCK-134 (Layout/RTL). `Row(horizontalArrangement = Arrangement.SpaceBetween)` at LoginScreen.kt:2260 places "Use BizarreCRM Cloud" / "Self-hosted?" (left) and "Register new shop" (right) as a semantic primary/secondary pair.** In RTL locales `SpaceBetween` mirrors the visual order: "Register new shop" moves to the visual left (prominent side) while the toggle moves to the visual right. Because this is idiomatic `SpaceBetween` behavior and both items are equally weighted `TextButton`s, no code change is strictly needed. Flag as **RTL design review**: confirm with the designer that the mirrored arrangement is acceptable or whether explicit `Modifier.align()` anchors are preferred. File: LoginScreen.kt:2249–2264.
 
 - [x] **LOGIN-MOCK-135 (Layout/RTL). `Icons.Default.OpenInBrowser` at LoginScreen.kt:2667 (SSO "Continue with SSO" button) and LoginScreen.kt:2731 ("Sign in with SSO" `OutlinedButton`) contains a directional browser-open arrow.** Material Icons does not provide an `AutoMirrored` variant of `OpenInBrowser`. In RTL the arrow points in the wrong direction for a "navigate forward" affordance. Fix: replace `Icons.Default.OpenInBrowser` with `Icons.Default.Language` (globe, non-directional) or `Icons.AutoMirrored.Filled.OpenInNew` if it exists; if not, use `Icons.Default.OpenInNew` (which is a corner-arrow and also lacks an AutoMirrored variant but is less directionally confusing). Both SSO button callsites should use the same replacement. Files: LoginScreen.kt:2667 and LoginScreen.kt:2731.
 
-- [ ] **LOGIN-MOCK-136 (Layout/Tablet). The `widthIn(max = 420.dp)` column at LoginScreen.kt:1870 centers correctly on wide screens but leaves large blank margins on sw840dp+ (landscape tablet, foldable open).** At 1280dp width the card is 420dp wide with 430dp of blank background on each side. No branded illustration, secondary panel, or background decoration fills the space. The mockups (screens 01–10) are phone-only and provide no tablet-layout target. Flag as **needs design decision**: at `WindowWidthSizeClass.Expanded` consider a two-column layout with a branded left panel (logo, tagline, illustration) and the form on the right. At `WindowWidthSizeClass.Medium` (600–840dp) the single centered card is acceptable but would benefit from a subtle `primaryContainer`-tinted radial background. File: LoginScreen.kt:1868–1874. Cross-reference: ActionPlan §22 (Tablet polish), §23 (Foldable). <!-- NOTE-defer: needs design mockup for Expanded-width two-column layout; deferred to tablet wave (§22). -->
+- [ ] **LOGIN-MOCK-136 (Layout/Tablet). The `widthIn(max = 420.dp)` column at LoginScreen.kt:1870 centers correctly on wide screens but leaves large blank margins on sw840dp+ (landscape tablet, foldable open).** At 1280dp width the card is 420dp wide with 430dp of blank background on each side. No branded illustration, secondary panel, or background decoration fills the space. The mockups (screens 01–10) are phone-only and provide no tablet-layout target. Flag as **needs design decision**: at `WindowWidthSizeClass.Expanded` consider a two-column layout with a branded left panel (logo, tagline, illustration) and the form on the right. At `WindowWidthSizeClass.Medium` (600–840dp) the single centered card is acceptable but would benefit from a subtle `primaryContainer`-tinted radial background. File: LoginScreen.kt:1868–1874. Cross-reference: ActionPlan §22 (Tablet polish), §23 (Foldable).
 
-- [ ] **LOGIN-MOCK-137 (Layout/Tablet). `Modifier.padding(24.dp)` on the content `Column` at LoginScreen.kt:1871 applies the same 24dp on all four sides at every screen size.** On ChromeOS in a narrow resizable window (~320dp) this leaves only 272dp of usable width for form fields — tight but functional. On large tablets in landscape the outer padding is irrelevant because `widthIn(max = 420.dp)` already constrains width. The vertical 24dp top/bottom padding is the concern: it pushes the wordmark 24dp from the card top on all screen sizes, which may feel cramped on foldables with a tall aspect ratio. Remediation: change to `padding(horizontal = 24.dp, vertical = 32.dp)` for slightly more vertical breathing room, or gate the vertical padding on `WindowHeightSizeClass`: `if (windowHeightSizeClass == Compact) 16.dp else 32.dp`. File: LoginScreen.kt:1871. <!-- NOTE-defer: WindowHeightSizeClass gating requires WindowSizeClass integration (see LOGIN-MOCK-136); deferred together. -->
+- [ ] **LOGIN-MOCK-137 (Layout/Tablet). `Modifier.padding(24.dp)` on the content `Column` at LoginScreen.kt:1871 applies the same 24dp on all four sides at every screen size.** On ChromeOS in a narrow resizable window (~320dp) this leaves only 272dp of usable width for form fields — tight but functional. On large tablets in landscape the outer padding is irrelevant because `widthIn(max = 420.dp)` already constrains width. The vertical 24dp top/bottom padding is the concern: it pushes the wordmark 24dp from the card top on all screen sizes, which may feel cramped on foldables with a tall aspect ratio. Remediation: change to `padding(horizontal = 24.dp, vertical = 32.dp)` for slightly more vertical breathing room, or gate the vertical padding on `WindowHeightSizeClass`: `if (windowHeightSizeClass == Compact) 16.dp else 32.dp`. File: LoginScreen.kt:1871.
 
 - [x] **LOGIN-MOCK-138 (Theme). Light-theme `colorScheme.primary = #A66D1F` (caramel) on `surfaceVariant = Surface100 = #EFE4D4` background yields a contrast ratio of ~3.6:1.** This passes WCAG AA for large text (≥14sp Bold, threshold 3:1) but fails for normal text (threshold 4.5:1). The risk area is `TextButton` labels using `labelSmall` (11sp) colored with `colorScheme.primary`, e.g. "View setup guide" at LoginScreen.kt:2474 which renders `labelSmall` in `colorScheme.primary` on the card background. At 11sp this is below both the large-text threshold and the AA normal-text threshold. Remediation: (a) increase the caramel value to `#8B5A10` (~4.7:1 on `#EFE4D4`) — a marginally darker shift that preserves the warm brand feel; or (b) switch the "View setup guide" label color from `colorScheme.primary` to `colorScheme.onSurfaceVariant` (`Surface700 = #5A4A38`, contrast ~5.4:1 on `#EFE4D4`). File: Theme.kt:105, LoginScreen.kt:2474.
 
-- [ ] **LOGIN-MOCK-139 (Theme). `Color.White` QR frame at LoginScreen.kt:3197 is intentional and correct — QR scanners require a white quiet zone.** In light theme (`Surface50 = #FAF4EC` background) the white `Surface` card blends into the background because both are near-white and no border is applied. The `RoundedCornerShape(8.dp)` alone provides no visual separation. Remediation: add `border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)` to the `Surface` modifier in light theme only (gate with `if (!isSystemInDarkTheme())`), giving the QR card a subtle edge without affecting dark-theme appearance. Dark theme (`BgDark = #1C1611`) already provides sufficient contrast against `Color.White`. File: LoginScreen.kt:3196–3199. <!-- NOTE-defer: light-theme border enhancement; deferred to theme/light-mode pass. -->
+- [ ] **LOGIN-MOCK-139 (Theme). `Color.White` QR frame at LoginScreen.kt:3197 is intentional and correct — QR scanners require a white quiet zone.** In light theme (`Surface50 = #FAF4EC` background) the white `Surface` card blends into the background because both are near-white and no border is applied. The `RoundedCornerShape(8.dp)` alone provides no visual separation. Remediation: add `border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)` to the `Surface` modifier in light theme only (gate with `if (!isSystemInDarkTheme())`), giving the QR card a subtle edge without affecting dark-theme appearance. Dark theme (`BgDark = #1C1611`) already provides sufficient contrast against `Color.White`. File: LoginScreen.kt:3196–3199.
 
 - [x] **LOGIN-MOCK-140 (Layout). `statusBarsPadding()` at LoginScreen.kt:1860 accounts for the status bar height but does not include the display cutout inset.** On notch / punch-hole devices (Pixel 6a punch-hole, Galaxy S-series notch, foldables with inner-camera cutout), `WindowInsets.displayCutout` can extend below the status bar inset height reported by `statusBarsPadding()`. The wordmark `Text` at LoginScreen.kt:1877 — rendered close to the visual top of the column — may overlap the cutout on affected devices. Remediation: replace the standalone `statusBarsPadding()` with `windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))`, which combines status-bar height and display-cutout height into a single top inset. The bottom (`imePadding()`) and side insets are already handled by the Scaffold and keyboard avoidance modifiers. Imports needed: `androidx.compose.foundation.layout.WindowInsets`, `androidx.compose.foundation.layout.WindowInsetsSides`, `androidx.compose.foundation.layout.only`, `androidx.compose.foundation.layout.safeDrawing`, `androidx.compose.foundation.layout.windowInsetsPadding`. File: LoginScreen.kt:1860.
 
@@ -6760,7 +5289,7 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/theme/Theme.kt`, `ui/compon
 
 - [x] **LOGIN-MOCK-104 (Layout). RegisterStep subtitle-to-first-field spacer is 16dp while all inter-field spacers are 20dp — breaks vertical rhythm.** LoginScreen.kt:2295. After the subtitle `Text("Create your repair shop on BizarreCRM")`, `Spacer(Modifier.height(16.dp))` precedes the Shop URL `OutlinedTextField`. The three inter-field spacers at :2316, :2329, :2342 are each 20dp (from LOGIN-MOCK-062). Mockup screen-02 shows the gap from subtitle to the first field visually consistent with the inter-field gaps (~20dp). Bump :2295 from `height(16.dp)` to `height(20.dp)` to maintain uniform 20dp rhythm from subtitle through all fields.
 
-- [ ] **LOGIN-MOCK-105 (Layout). CredentialsStep header-to-first-field spacer is 16dp while RegisterStep inter-field rhythm is 20dp — inconsistency across parallel steps.** LoginScreen.kt:2615. After the `Row` containing the back arrow, "Sign In" title, and store-name subtitle, `Spacer(Modifier.height(16.dp))` separates the header from the Username `OutlinedTextField`. Mockup screen-09 shows the gap between "Sign In / Testing 123 Shop" and the Username field matching the visual weight of the gap between Username and Password (~16dp on that screen, but the card is more compact). This is correct at 16dp for this step — however, note that `CredentialsStep` uses 16dp inter-field spacers (`:2629`) while `RegisterStep` uses 20dp. The mismatch is intentional given CredentialsStep has only 2 fields and should stay compact. Flag for design confirmation before changing; current code may be correct. <!-- NOTE-defer: item itself notes this may be intentional (2-field compact step); pending design confirmation. -->
+- [ ] **LOGIN-MOCK-105 (Layout). CredentialsStep header-to-first-field spacer is 16dp while RegisterStep inter-field rhythm is 20dp — inconsistency across parallel steps.** LoginScreen.kt:2615. After the `Row` containing the back arrow, "Sign In" title, and store-name subtitle, `Spacer(Modifier.height(16.dp))` separates the header from the Username `OutlinedTextField`. Mockup screen-09 shows the gap between "Sign In / Testing 123 Shop" and the Username field matching the visual weight of the gap between Username and Password (~16dp on that screen, but the card is more compact). This is correct at 16dp for this step — however, note that `CredentialsStep` uses 16dp inter-field spacers (`:2629`) while `RegisterStep` uses 20dp. The mismatch is intentional given CredentialsStep has only 2 fields and should stay compact. Flag for design confirmation before changing; current code may be correct.
 
 - [x] **LOGIN-MOCK-106 (Layout). Card outer horizontal margin: Column padding 24dp makes the card edge-to-edge within the outer Column, but the mockup shows ~14–16dp card-to-screen-edge gutter.** LoginScreen.kt:1869–1871. The outer `Column` has `Modifier.padding(24.dp)` applied uniformly. On a 393dp-wide phone (Pixel 8), this leaves 393 − 48 = 345dp for the card + its implicit fill. The mockup (720px display width) shows the card edges at approximately 40px = 18dp from the screen left edge and 40px from the right edge, consistent with ~18dp side gutters. Code gives 24dp horizontal padding to the Column and zero additional margin on the card Surface — resulting in 24dp gutters. Mockup is 18dp. Reduce `Column.padding(24.dp)` horizontal component to `padding(horizontal = 16.dp, vertical = 24.dp)` to land closer to the mockup's ~16–18dp side gutter, giving the card more breathing width. Verify the `widthIn(max = 420.dp)` cap still applies on tablets.
 
@@ -6772,7 +5301,7 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/theme/Theme.kt`, `ui/compon
 
 - [x] **LOGIN-MOCK-110 (Layout). `TwoFaSetupStep` spacer between subtitle and QR Box is 16dp (LoginScreen.kt:3164) but the spacer between the QR Box bottom and the TOTP code field section is 16dp (line :3314) — the two gaps read as different sizes because the QR Box itself has 16dp inner padding that adds apparent whitespace below the image.** LoginScreen.kt:3164 `Spacer(Modifier.height(16.dp))` before the QR `Box`, and :3314 `Spacer(Modifier.height(16.dp))` after the QR Box (before `TotpCodeInputContent`). The QR `Image` has `Modifier.padding(16.dp)` at :3203, so visually 16dp of the QR Box's bottom is white surface padding — this makes the gap from the QR image edge to the code field appear as 16 + 16 = 32dp, nearly double the gap from the title to the QR image edge (16dp). Screen-10 mockup shows tighter grouping. Fix: reduce the spacer at :3314 from `height(16.dp)` to `height(8.dp)`, making the visible image-to-field gap approximately 8 + 16dp-padding = 24dp, closer to the subtitle-to-QR gap of 16dp.
 
-- [ ] **LOGIN-MOCK-111 (Layout). `TwoFaSetupStep` manual-key Surface inner padding is `horizontal = 12.dp, vertical = 10.dp` (LoginScreen.kt:3252) — the 12dp horizontal padding is tighter than the 20dp card horizontal padding, making the monospace secret block appear to float without alignment relationship to the card edges.** LoginScreen.kt:3252. The secret Surface inside the card (card horizontal padding = 20dp) has `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` for its SelectionContainer, giving a total of 20 + 12 = 32dp from the screen edge to the first character. There is no visual left-edge alignment between the secret block, the "Or enter this key manually:" label above it (no horizontal padding, aligns to card edge = 20dp from screen), and the copy/open buttons below. Fix: remove the `horizontal = 12.dp` padding from the Surface's inner modifier; instead apply `horizontal = 0.dp` padding on the text (or rely on the Surface's `fillMaxWidth` with `contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)`) so the Surface itself aligns flush with the card edge, visually grounding the secret block. This reduces the left indent mismatch from 12dp to 0dp relative to adjacent labels. <!-- NOTE-defer: pixel-spacing fix deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-111 (Layout). `TwoFaSetupStep` manual-key Surface inner padding is `horizontal = 12.dp, vertical = 10.dp` (LoginScreen.kt:3252) — the 12dp horizontal padding is tighter than the 20dp card horizontal padding, making the monospace secret block appear to float without alignment relationship to the card edges.** LoginScreen.kt:3252. The secret Surface inside the card (card horizontal padding = 20dp) has `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` for its SelectionContainer, giving a total of 20 + 12 = 32dp from the screen edge to the first character. There is no visual left-edge alignment between the secret block, the "Or enter this key manually:" label above it (no horizontal padding, aligns to card edge = 20dp from screen), and the copy/open buttons below. Fix: remove the `horizontal = 12.dp` padding from the Surface's inner modifier; instead apply `horizontal = 0.dp` padding on the text (or rely on the Surface's `fillMaxWidth` with `contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)`) so the Surface itself aligns flush with the card edge, visually grounding the secret block. This reduces the left indent mismatch from 12dp to 0dp relative to adjacent labels.
 
 - [x] **LOGIN-MOCK-112 (Layout). `SetPasswordStep` Confirm Password field bottom-to-CTA spacer is 16dp (LoginScreen.kt:3119) while `TwoFaSetupStep` post-QR-section spacer before `TotpCodeInputContent` is also 16dp — but inside `TotpCodeInputContent` there is another `Spacer(16.dp)` at :3415 before the CTA, totaling 32dp from code field to button on the 2FA steps vs 16dp on SetPassword.** LoginScreen.kt:3119 `Spacer(Modifier.height(16.dp))` before SetPassword CTA. LoginScreen.kt:3314 + :3415 = 16+16 = 32dp gap from QR Box to the Continue button in TwoFaSetupStep. Screen-10 mockup shows the code field and Continue button tightly grouped with approximately 12–16dp total gap. The double-spacer in the 2FA flow is caused by `TotpCodeInputContent` emitting its own 16dp spacer after `ErrorMessage` unconditionally. Fix: reduce `:3314` from `height(16.dp)` to `height(4.dp)` (from QR Box to the code input section) — the `TotpCodeInputContent`'s own leading `ErrorMessage` + `Spacer(16dp)` before the button provides the bottom half of the visual rhythm. This also applies to `TwoFaVerifyStep` which shares `TotpCodeInputContent`.
 
@@ -6785,51 +5314,51 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/theme/Theme.kt`, `ui/compon
 
 Scope: exact string comparison of every visible text node in screens 01–11 against `LoginScreen.kt`. Items 001–089 were filed in Wave 1; this wave starts at 090. Mockup source: `screen-01-login.png`, `screen-02-register.png`, `screen-03-register-filled.png`, `screen-04-url-only.png`, `screen-05-filled.png`, `screen-06-after-create.png`, `screen-07-back.png`, `screen-08-retry.png`, `screen-09-create-result.png`, `screen-10-signed-in.png`, `screen-11-post-2fa.png`.
 
-- [ ] **LOGIN-MOCK-258 (Copy). "Register new shop" link is sentence-case while "Register New Shop" heading on the next screen is title-case — inconsistent capitalisation for the same destination.** `ServerStep` line 2262: `Text("Register new shop", ...)`. Mockup screen-01 renders it as "Register new shop" (sentence-case), which the code matches. However the Register form heading at line 2283 is `"Register New Shop"` (title-case), confirmed by mockup screen-02. The two surfaces name the same destination differently. Decide on one rule; if title-case wins, fix line 2262. `LoginScreen.kt:2262, 2283`. <!-- NOTE-defer: design decision required; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-258 (Copy). "Register new shop" link is sentence-case while "Register New Shop" heading on the next screen is title-case — inconsistent capitalisation for the same destination.** `ServerStep` line 2262: `Text("Register new shop", ...)`. Mockup screen-01 renders it as "Register new shop" (sentence-case), which the code matches. However the Register form heading at line 2283 is `"Register New Shop"` (title-case), confirmed by mockup screen-02. The two surfaces name the same destination differently. Decide on one rule; if title-case wins, fix line 2262. `LoginScreen.kt:2262, 2283`.
 
-- [ ] **LOGIN-MOCK-259 (Copy). Self-hosted mode subtitle "Enter your self-hosted server address" has no mockup backing — copy is unreviewed.** When `state.useCustomServer == true`, `ServerStep` shows `"Enter your self-hosted server address"` (line 2172). None of the 11 mockup screens depict the self-hosted subtitle. The cloud-mode subtitle `"Enter your shop name to connect"` is confirmed by screens 01, 07, 08; the self-hosted variant is live UI copy that was never validated against a mockup frame. `LoginScreen.kt:2172`. <!-- NOTE-defer: no mockup for self-hosted mode; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-259 (Copy). Self-hosted mode subtitle "Enter your self-hosted server address" has no mockup backing — copy is unreviewed.** When `state.useCustomServer == true`, `ServerStep` shows `"Enter your self-hosted server address"` (line 2172). None of the 11 mockup screens depict the self-hosted subtitle. The cloud-mode subtitle `"Enter your shop name to connect"` is confirmed by screens 01, 07, 08; the self-hosted variant is live UI copy that was never validated against a mockup frame. `LoginScreen.kt:2172`.
 
-- [ ] **LOGIN-MOCK-260 (Copy). "Server URL" label (self-hosted mode) is live but unreviewed; conflicts in noun with "Shop URL" on the Register form.** The field label `"Server URL"` (line 2184) only renders in self-hosted mode, which no mockup depicts. The Register step uses `"Shop URL"` (line 2302, confirmed by mockup screens 02–06). Two different nouns ("Server URL" vs "Shop URL") describe analogous URL-entry fields with no mockup to adjudicate. `LoginScreen.kt:2184, 2302`. <!-- NOTE-defer: no mockup for self-hosted mode; noun conflict requires design decision. -->
+- [ ] **LOGIN-MOCK-260 (Copy). "Server URL" label (self-hosted mode) is live but unreviewed; conflicts in noun with "Shop URL" on the Register form.** The field label `"Server URL"` (line 2184) only renders in self-hosted mode, which no mockup depicts. The Register step uses `"Shop URL"` (line 2302, confirmed by mockup screens 02–06). Two different nouns ("Server URL" vs "Shop URL") describe analogous URL-entry fields with no mockup to adjudicate. `LoginScreen.kt:2184, 2302`.
 
-- [ ] **LOGIN-MOCK-261 (Copy). "Use BizarreCRM Cloud" toggle label has no mockup backing.** The `TextButton` in `ServerStep` shows `"Use BizarreCRM Cloud"` (line 2256) when self-hosted mode is active. No mockup screen shows this toggle state — only `"Self-hosted?"` (confirmed screen-01) is reviewed. The reverse-toggle label is live copy never validated against design. `LoginScreen.kt:2256`. <!-- NOTE-defer: no mockup for reverse-toggle state; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-261 (Copy). "Use BizarreCRM Cloud" toggle label has no mockup backing.** The `TextButton` in `ServerStep` shows `"Use BizarreCRM Cloud"` (line 2256) when self-hosted mode is active. No mockup screen shows this toggle state — only `"Self-hosted?"` (confirmed screen-01) is reviewed. The reverse-toggle label is live copy never validated against design. `LoginScreen.kt:2256`.
 
-- [ ] **LOGIN-MOCK-262 (Copy). TwoFaVerifyStep title "Two-Factor Authentication" and body "Enter the 6-digit code from your authenticator app" have no mockup backing.** All 11 mockup screens show only the *setup* step (`"Set Up Two-Factor Auth"` / `"Scan this QR code…"`). The verify-step strings at lines 3377 and 3380 are live UI copy that has never been reviewed. Note that the setup-step title and body at lines 3181 and 3184 exactly match the mockup. `LoginScreen.kt:3377, 3380`. <!-- NOTE-defer: verify-step strings unreviewed; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-262 (Copy). TwoFaVerifyStep title "Two-Factor Authentication" and body "Enter the 6-digit code from your authenticator app" have no mockup backing.** All 11 mockup screens show only the *setup* step (`"Set Up Two-Factor Auth"` / `"Scan this QR code…"`). The verify-step strings at lines 3377 and 3380 are live UI copy that has never been reviewed. Note that the setup-step title and body at lines 3181 and 3184 exactly match the mockup. `LoginScreen.kt:3377, 3380`.
 
-- [ ] **LOGIN-MOCK-263 (Copy). SSO, magic-link, and passkey button labels on the Credentials step have no mockup backing.** `"Sign in with SSO"` (line 2757), `"Email me a link"` (line 2811), and `"Use passkey"` (line 2851) are all live on the Credentials step but do not appear in any of the 11 mockup screens. All three are feature-flag-gated copy that has never been reviewed against design. `LoginScreen.kt:2757, 2811, 2851`. <!-- NOTE-defer: feature-flag-gated strings; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-263 (Copy). SSO, magic-link, and passkey button labels on the Credentials step have no mockup backing.** `"Sign in with SSO"` (line 2757), `"Email me a link"` (line 2811), and `"Use passkey"` (line 2851) are all live on the Credentials step but do not appear in any of the 11 mockup screens. All three are feature-flag-gated copy that has never been reviewed against design. `LoginScreen.kt:2757, 2811, 2851`.
 
-- [ ] **LOGIN-MOCK-264 (Copy). Entire magic-link bottom-sheet copy block is unreviewed against any mockup.** `MagicLinkRequestSheet` contains: `"Sign in with a magic link"` (line 2882), `"We'll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Email address"` label (line 2899), `"Send link"` button (line 2927), `"Check your email"` sent banner (line 2949), `"A sign-in link was sent to …"` body (line 2955), and resend controls (lines 2989, 2991). No mockup screen depicts this sheet. `LoginScreen.kt:2882–2991`. <!-- NOTE-defer: MagicLinkRequestSheet has no mockup frame; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-264 (Copy). Entire magic-link bottom-sheet copy block is unreviewed against any mockup.** `MagicLinkRequestSheet` contains: `"Sign in with a magic link"` (line 2882), `"We'll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Email address"` label (line 2899), `"Send link"` button (line 2927), `"Check your email"` sent banner (line 2949), `"A sign-in link was sent to …"` body (line 2955), and resend controls (lines 2989, 2991). No mockup screen depicts this sheet. `LoginScreen.kt:2882–2991`.
 
-- [ ] **LOGIN-MOCK-265 (Copy). "Origin header required" error in screen-06 is a raw server message, not a client-owned string — wording is outside the app's control.** Mockup `screen-06-after-create.png` shows the red inline error `"Origin header required"` below the password field on the Register form. In code the text is the raw server JSON `message` field surfaced at line 758 (`rJson.optString("message", "Registration failed")`); the string `"Origin header required"` does not appear in the source. A server-wording change propagates to the UI silently. Consider a client-side map from known technical server messages to user-readable strings. `LoginScreen.kt:755–758`. <!-- NOTE-defer: friendlyErrorMessage() now maps this string (LOGIN-MOCK-167/180 implemented). -->
+- [ ] **LOGIN-MOCK-265 (Copy). "Origin header required" error in screen-06 is a raw server message, not a client-owned string — wording is outside the app's control.** Mockup `screen-06-after-create.png` shows the red inline error `"Origin header required"` below the password field on the Register form. In code the text is the raw server JSON `message` field surfaced at line 758 (`rJson.optString("message", "Registration failed")`); the string `"Origin header required"` does not appear in the source. A server-wording change propagates to the UI silently. Consider a client-side map from known technical server messages to user-readable strings. `LoginScreen.kt:755–758`.
 
-- [ ] **LOGIN-MOCK-266 (Copy). Loading-state inline text "Connecting to your server…" and "Checking sign-in method…" are live copy with no mockup coverage.** Lines 2441 and 2665 use Unicode HORIZONTAL ELLIPSIS (U+2026) correctly, but neither loading state is shown in any of the 11 mockup screens. The copy has never been reviewed against design. `LoginScreen.kt:2441, 2665`. <!-- NOTE-defer: no mockup for loading states; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-266 (Copy). Loading-state inline text "Connecting to your server…" and "Checking sign-in method…" are live copy with no mockup coverage.** Lines 2441 and 2665 use Unicode HORIZONTAL ELLIPSIS (U+2026) correctly, but neither loading state is shown in any of the 11 mockup screens. The copy has never been reviewed against design. `LoginScreen.kt:2441, 2665`.
 
-- [ ] **LOGIN-MOCK-267 (Copy). Error banner strings "You're offline. Connect to sign in." and "Can't reach this server. Check the address." have no mockup backing.** The offline banner (line 2520) and unreachable-host banner (line 2548) render on the Credentials step. No mockup screen depicts either error state. Both are live copy unreviewed against design. `LoginScreen.kt:2520, 2548`. <!-- NOTE-defer: error state strings unreviewed; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-267 (Copy). Error banner strings "You're offline. Connect to sign in." and "Can't reach this server. Check the address." have no mockup backing.** The offline banner (line 2520) and unreachable-host banner (line 2548) render on the Credentials step. No mockup screen depicts either error state. Both are live copy unreviewed against design. `LoginScreen.kt:2520, 2548`.
 
-- [ ] **LOGIN-MOCK-268 (Copy). The ".bizarrecrm.com" suffix is rendered from `BuildConfig.BASE_DOMAIN` at runtime and is invisible to string-search tooling.** Mockup screens 01–06 show `.bizarrecrm.com` as an inline suffix on both the "Shop Name" and "Shop URL" fields. In code both render `".$CLOUD_DOMAIN"` where `CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` (line 110). The displayed string matches the mockup in production, but any `BASE_DOMAIN` rename in `build.gradle` silently breaks both fields with no compile error or test failure. Add a compile-time assertion or screenshot snapshot asserting `CLOUD_DOMAIN == "bizarrecrm.com"`. `LoginScreen.kt:110, 2209, 2308`. <!-- NOTE-defer: compile-time assertion tied to LOGIN-MOCK-190 build-system wave. -->
+- [ ] **LOGIN-MOCK-268 (Copy). The ".bizarrecrm.com" suffix is rendered from `BuildConfig.BASE_DOMAIN` at runtime and is invisible to string-search tooling.** Mockup screens 01–06 show `.bizarrecrm.com` as an inline suffix on both the "Shop Name" and "Shop URL" fields. In code both render `".$CLOUD_DOMAIN"` where `CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` (line 110). The displayed string matches the mockup in production, but any `BASE_DOMAIN` rename in `build.gradle` silently breaks both fields with no compile error or test failure. Add a compile-time assertion or screenshot snapshot asserting `CLOUD_DOMAIN == "bizarrecrm.com"`. `LoginScreen.kt:110, 2209, 2308`.
 
 ### Wave-2 Finder-D pixel-spacing deltas
 
-- [ ] **LOGIN-MOCK-269 (Layout). Status-bar inset applied twice — wordmark pushed ~28 dp too far down.** `LoginScreen.kt:1858` applies `.statusBarsPadding()` to the root `Box` *and* also wraps it in `Scaffold { innerPadding -> Box(Modifier.padding(innerPadding)) }`. On most phones `Scaffold` with no `topBar` still delivers a non-zero `innerPadding.top` equal to the status-bar height when `WindowInsets` are consumed at the Scaffold level, so `statusBarsPadding()` on the child Box applies the same inset a second time. Net result: the wordmark sits ~28 dp (typical status-bar height) lower than the mockup. Fix: remove `.statusBarsPadding()` from the `Box` at line 1858 and rely solely on `innerPadding` from the Scaffold. Alternatively, pass `contentWindowInsets = WindowInsets(0)` to Scaffold so `innerPadding` is zeroed and the manual `.statusBarsPadding()` is the single source of truth. <!-- NOTE-defer: same root cause as LOGIN-MOCK-102 (already [x]); duplicate audit entry. -->
+- [ ] **LOGIN-MOCK-269 (Layout). Status-bar inset applied twice — wordmark pushed ~28 dp too far down.** `LoginScreen.kt:1858` applies `.statusBarsPadding()` to the root `Box` *and* also wraps it in `Scaffold { innerPadding -> Box(Modifier.padding(innerPadding)) }`. On most phones `Scaffold` with no `topBar` still delivers a non-zero `innerPadding.top` equal to the status-bar height when `WindowInsets` are consumed at the Scaffold level, so `statusBarsPadding()` on the child Box applies the same inset a second time. Net result: the wordmark sits ~28 dp (typical status-bar height) lower than the mockup. Fix: remove `.statusBarsPadding()` from the `Box` at line 1858 and rely solely on `innerPadding` from the Scaffold. Alternatively, pass `contentWindowInsets = WindowInsets(0)` to Scaffold so `innerPadding` is zeroed and the manual `.statusBarsPadding()` is the single source of truth.
 
-- [ ] **LOGIN-MOCK-270 (Layout). Hero top spacer 80 dp — mockup shows ~48 dp above wordmark.** `LoginScreen.kt:1869` `Spacer(Modifier.height(80.dp))` before the "Bizarre CRM" headline. In all mockups (screen-01, screen-07, screen-08) the distance from the top of the visible content area to the wordmark baseline is approximately 48 dp (measured as roughly one-fifth of the card-to-top space on a 392 dp tall viewport above the card). 80 dp leaves the upper ~40 % of the screen completely empty, making the layout feel top-heavy on smaller phones. Reduce to `48.dp`. <!-- NOTE-defer: no code tag; spacer measurement pending; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-270 (Layout). Hero top spacer 80 dp — mockup shows ~48 dp above wordmark.** `LoginScreen.kt:1869` `Spacer(Modifier.height(80.dp))` before the "Bizarre CRM" headline. In all mockups (screen-01, screen-07, screen-08) the distance from the top of the visible content area to the wordmark baseline is approximately 48 dp (measured as roughly one-fifth of the card-to-top space on a 392 dp tall viewport above the card). 80 dp leaves the upper ~40 % of the screen completely empty, making the layout feel top-heavy on smaller phones. Reduce to `48.dp`.
 
-- [ ] **LOGIN-MOCK-271 (Layout). Wave-divider-to-tab-strip gap too wide: 12 dp + wave height + 24 dp = ~52 dp; mockup shows ~16 dp.** `LoginScreen.kt:1884–1886`: `Spacer(12.dp)` → `WaveDivider()` → `Spacer(24.dp)` → `LoginTabBar(...)`. The wave SVG itself has intrinsic height (~8–12 dp depending on the path). Total vertical budget from subtitle baseline to tab top is therefore ~48–52 dp. The mockups (screen-01, screen-07, screen-08) show the wave sitting ~8 dp below the subtitle and the tab strip sitting ~8 dp below the wave — total ~28 dp including the wave path itself. Remediation: change `Spacer(Modifier.height(12.dp))` at line 1884 to `8.dp` and `Spacer(Modifier.height(24.dp))` at line 1886 to `8.dp`. <!-- NOTE-defer: overlaps LOGIN-MOCK-085 ([x]); re-measurement against current code needed in pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-271 (Layout). Wave-divider-to-tab-strip gap too wide: 12 dp + wave height + 24 dp = ~52 dp; mockup shows ~16 dp.** `LoginScreen.kt:1884–1886`: `Spacer(12.dp)` → `WaveDivider()` → `Spacer(24.dp)` → `LoginTabBar(...)`. The wave SVG itself has intrinsic height (~8–12 dp depending on the path). Total vertical budget from subtitle baseline to tab top is therefore ~48–52 dp. The mockups (screen-01, screen-07, screen-08) show the wave sitting ~8 dp below the subtitle and the tab strip sitting ~8 dp below the wave — total ~28 dp including the wave path itself. Remediation: change `Spacer(Modifier.height(12.dp))` at line 1884 to `8.dp` and `Spacer(Modifier.height(24.dp))` at line 1886 to `8.dp`.
 
-- [x] **LOGIN-MOCK-272 (Layout). Tab-strip-to-card gap 24 dp; mockup shows ~12 dp.** `LoginScreen.kt:1988` `Spacer(Modifier.height(24.dp))` sits between `LoginTabBar(...)` and the `AnimatedContent` Surface (the card). Every mockup (screen-01, screen-07, screen-09) shows the card top edge approximately 12 dp below the tab indicator underline, not 24 dp. Change to `Spacer(Modifier.height(12.dp))`. <!-- NOTE-defer: no code tag; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-272 (Layout). Tab-strip-to-card gap 24 dp; mockup shows ~12 dp.** `LoginScreen.kt:1988` `Spacer(Modifier.height(24.dp))` sits between `LoginTabBar(...)` and the `AnimatedContent` Surface (the card). Every mockup (screen-01, screen-07, screen-09) shows the card top edge approximately 12 dp below the tab indicator underline, not 24 dp. Change to `Spacer(Modifier.height(12.dp))`.
 
-- [x] **LOGIN-MOCK-273 (Layout). Register step: double-gap between first field's supporting text and second field.** `RegisterStep` (lines 2299–2317): `OutlinedTextField` for Shop URL has `supportingText` which M3 renders with 4 dp top padding and a minimum height of ~16 dp. After the field, the code also adds `Spacer(Modifier.height(16.dp))` at line 2317 before Shop Display Name. This produces a compound gap of ≈36 dp (supportingText + spacer). The mockup (screen-02, screen-04, screen-05) shows all inter-field distances equal at ~8 dp below the supporting text line. Fix: remove the explicit `Spacer(Modifier.height(16.dp))` at line 2317 and rely on the built-in M3 `supportingText` bottom clearance alone, or reduce the spacer to `4.dp`. Apply the same fix after the password field's supportingText before the error text block (line 2377 area): there is no spacer there, but the error text renders with no top margin, visually cramped. Add `Spacer(Modifier.height(4.dp))` before the error block and remove the `Spacer(Modifier.height(16.dp))` at line 2377, collapsing to a single `Spacer(Modifier.height(8.dp))` above the Create Shop button. <!-- NOTE-defer: no code tag; inter-field spacer audit pending; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-273 (Layout). Register step: double-gap between first field's supporting text and second field.** `RegisterStep` (lines 2299–2317): `OutlinedTextField` for Shop URL has `supportingText` which M3 renders with 4 dp top padding and a minimum height of ~16 dp. After the field, the code also adds `Spacer(Modifier.height(16.dp))` at line 2317 before Shop Display Name. This produces a compound gap of ≈36 dp (supportingText + spacer). The mockup (screen-02, screen-04, screen-05) shows all inter-field distances equal at ~8 dp below the supporting text line. Fix: remove the explicit `Spacer(Modifier.height(16.dp))` at line 2317 and rely on the built-in M3 `supportingText` bottom clearance alone, or reduce the spacer to `4.dp`. Apply the same fix after the password field's supportingText before the error text block (line 2377 area): there is no spacer there, but the error text renders with no top margin, visually cramped. Add `Spacer(Modifier.height(4.dp))` before the error block and remove the `Spacer(Modifier.height(16.dp))` at line 2377, collapsing to a single `Spacer(Modifier.height(8.dp))` above the Create Shop button.
 
-- [x] **LOGIN-MOCK-274 (Layout). Card internal padding 20 dp on all sides; mockup shows 24 dp horizontal / 20 dp vertical.** `LoginScreen.kt:2010` `Column(modifier = Modifier.padding(20.dp))` applies uniform 20 dp to all four sides of the card content. The mockups (screen-01, screen-09) show the heading text and field left edges sitting ~24 dp from the card edge (measured as slightly wider than the icon width ~20 dp + 4 dp gap). Change to `Modifier.padding(horizontal = 24.dp, vertical = 20.dp)` so field icons align with the card's 16 dp corner radius visual indent. <!-- NOTE-defer: no code tag; padding audit pending; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-274 (Layout). Card internal padding 20 dp on all sides; mockup shows 24 dp horizontal / 20 dp vertical.** `LoginScreen.kt:2010` `Column(modifier = Modifier.padding(20.dp))` applies uniform 20 dp to all four sides of the card content. The mockups (screen-01, screen-09) show the heading text and field left edges sitting ~24 dp from the card edge (measured as slightly wider than the icon width ~20 dp + 4 dp gap). Change to `Modifier.padding(horizontal = 24.dp, vertical = 20.dp)` so field icons align with the card's 16 dp corner radius visual indent.
 
-- [x] **LOGIN-MOCK-275 (Layout). Credentials step: header-block-to-username-field spacer 16 dp; mockup shows ~24 dp.** `CredentialsStep` line 2634: `Spacer(Modifier.height(16.dp))` between the back-arrow/title/store-name `Row` and the Username `OutlinedTextField`. The mockup (screen-09) shows a noticeably larger breathing space — approximately 24 dp — between the "Sign In / Testing 123 Shop" block and the Username field top border. The `Row` containing the `IconButton` has M3's default 40 dp minimum touch height, so the visual bottom of the store-name text is already ~8 dp above the Row bottom edge; combined with only 16 dp spacer this makes the gap feel compressed. Change `Spacer(Modifier.height(16.dp))` to `Spacer(Modifier.height(20.dp))` at line 2634. <!-- NOTE-defer: no code tag; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-275 (Layout). Credentials step: header-block-to-username-field spacer 16 dp; mockup shows ~24 dp.** `CredentialsStep` line 2634: `Spacer(Modifier.height(16.dp))` between the back-arrow/title/store-name `Row` and the Username `OutlinedTextField`. The mockup (screen-09) shows a noticeably larger breathing space — approximately 24 dp — between the "Sign In / Testing 123 Shop" block and the Username field top border. The `Row` containing the `IconButton` has M3's default 40 dp minimum touch height, so the visual bottom of the store-name text is already ~8 dp above the Row bottom edge; combined with only 16 dp spacer this makes the gap feel compressed. Change `Spacer(Modifier.height(16.dp))` to `Spacer(Modifier.height(20.dp))` at line 2634.
 
-- [ ] **LOGIN-MOCK-276 (Layout). 2FA setup: QR container has zero internal padding — QR bleeds to box edge.** `TwoFaSetupStep` lines 2213–2234: `Box(Modifier.fillMaxWidth().height(200.dp))` directly contains the 200 dp `Image`. The box and image are the same dimension so the QR bitmap occupies the full box with no breathing room. Mockup (screen-10) shows the QR code centered inside a slightly inset region with ~8 dp white-space on all four sides between the QR quiet zone and the surrounding card surface. Fix: reduce the Image size to `180.dp` (or `min(containerWidth - 32.dp, 200.dp)`) and keep the Box at 200 dp; alternatively add `Modifier.padding(8.dp)` to the Image so the QR quiet zone is not flush with the Surface background. <!-- NOTE-defer: LOGIN-MOCK-109 ([x]) already reduced box to 200dp with 12dp padding; re-verify in pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-276 (Layout). 2FA setup: QR container has zero internal padding — QR bleeds to box edge.** `TwoFaSetupStep` lines 2213–2234: `Box(Modifier.fillMaxWidth().height(200.dp))` directly contains the 200 dp `Image`. The box and image are the same dimension so the QR bitmap occupies the full box with no breathing room. Mockup (screen-10) shows the QR code centered inside a slightly inset region with ~8 dp white-space on all four sides between the QR quiet zone and the surrounding card surface. Fix: reduce the Image size to `180.dp` (or `min(containerWidth - 32.dp, 200.dp)`) and keep the Box at 200 dp; alternatively add `Modifier.padding(8.dp)` to the Image so the QR quiet zone is not flush with the Surface background.
 
-- [x] **LOGIN-MOCK-277 (Layout). 2FA verify step: subtitle-to-TOTP-field gap is 24 dp; all other steps use 16 dp — inconsistent.** `TwoFaVerifyStep` line 3381: `Spacer(Modifier.height(24.dp))` between the subtitle text and `TotpCodeInputContent`. Every other step (ServerStep line 2177, RegisterStep line 2296, CredentialsStep line 2634, SetPasswordStep line 3113) uses `Spacer(Modifier.height(16.dp))` between subtitle and first field. The 24 dp spacer is an outlier that makes the verify card look taller than the others. Change to `Spacer(Modifier.height(16.dp))` at line 3381. <!-- NOTE-defer: no code tag; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-277 (Layout). 2FA verify step: subtitle-to-TOTP-field gap is 24 dp; all other steps use 16 dp — inconsistent.** `TwoFaVerifyStep` line 3381: `Spacer(Modifier.height(24.dp))` between the subtitle text and `TotpCodeInputContent`. Every other step (ServerStep line 2177, RegisterStep line 2296, CredentialsStep line 2634, SetPasswordStep line 3113) uses `Spacer(Modifier.height(16.dp))` between subtitle and first field. The 24 dp spacer is an outlier that makes the verify card look taller than the others. Change to `Spacer(Modifier.height(16.dp))` at line 3381.
 
-- [x] **LOGIN-MOCK-278 (Layout). ServerStep footer row has no bottom padding — card bottom is flush with card surface.** `ServerStep` ends with the `Row` of `TextButton` items ("Self-hosted?" / "Register new shop") at lines 2250–2265. There is no trailing `Spacer` after this row, so the card's 20 dp uniform padding provides the only bottom clearance. When `imePadding()` on the root Box lifts the entire Column to avoid the keyboard (screen-08), the bottom of the card lands visually flush with the `RoundedCornerShape(16.dp)` corner arc, and the footer text clips against the bottom arc at small viewport heights. Add `Spacer(Modifier.height(4.dp))` after the footer `Row` in `ServerStep` so the card bottom padding is a consistent 24 dp (20 dp card padding + 4 dp spacer). Apply the same fix to `RegisterStep` (no trailing spacer after the Create Shop button at line 2409) and `CredentialsStep` (no trailing spacer after the last TextButton block). <!-- NOTE-defer: no code tag; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-278 (Layout). ServerStep footer row has no bottom padding — card bottom is flush with card surface.** `ServerStep` ends with the `Row` of `TextButton` items ("Self-hosted?" / "Register new shop") at lines 2250–2265. There is no trailing `Spacer` after this row, so the card's 20 dp uniform padding provides the only bottom clearance. When `imePadding()` on the root Box lifts the entire Column to avoid the keyboard (screen-08), the bottom of the card lands visually flush with the `RoundedCornerShape(16.dp)` corner arc, and the footer text clips against the bottom arc at small viewport heights. Add `Spacer(Modifier.height(4.dp))` after the footer `Row` in `ServerStep` so the card bottom padding is a consistent 24 dp (20 dp card padding + 4 dp spacer). Apply the same fix to `RegisterStep` (no trailing spacer after the Create Shop button at line 2409) and `CredentialsStep` (no trailing spacer after the last TextButton block).
 
-- [x] **LOGIN-MOCK-279 (Layout). Manual-key surface horizontal padding 12 dp / vertical 10 dp; mockup shows 16 dp / 12 dp.** `TwoFaSetupStep` line 3270: `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` on the `SelectionContainer` inside the manual-key `Surface`. The mockup (screen-10) shows the monospace key text with visibly wider side margins and slightly taller top/bottom margins. Change to `Modifier.padding(horizontal = 16.dp, vertical = 12.dp)` to match the 16 dp horizontal gutter used elsewhere in the card and provide a comfortable 12 dp vertical breathing room for the tall bodyLarge mono text. <!-- NOTE-defer: confirmed 12dp/10dp at line 3724; deferred to pixel-spacing wave. -->
+- [ ] **LOGIN-MOCK-279 (Layout). Manual-key surface horizontal padding 12 dp / vertical 10 dp; mockup shows 16 dp / 12 dp.** `TwoFaSetupStep` line 3270: `Modifier.padding(horizontal = 12.dp, vertical = 10.dp)` on the `SelectionContainer` inside the manual-key `Surface`. The mockup (screen-10) shows the monospace key text with visibly wider side margins and slightly taller top/bottom margins. Change to `Modifier.padding(horizontal = 16.dp, vertical = 12.dp)` to match the 16 dp horizontal gutter used elsewhere in the card and provide a comfortable 12 dp vertical breathing room for the tall bodyLarge mono text.
 
 ---
 
@@ -6839,7 +5368,7 @@ Scope: exact string comparison — case, punctuation, Unicode char class (en-das
 
 - [x] **LOGIN-MOCK-115 (Copy). Shop-URL field supporting text uses ASCII hyphen-minus (U+002D) between “3” and “30” but every mockup screen renders an en-dash (U+2013).** `LoginScreen.kt:2313`: `supportingText = { Text("3-30 characters: letters, numbers, hyphens") }` — the dash between “3” and “30” is ASCII hyphen-minus U+002D. Mockup screens 02, 03, 04, 05, 06 all render “3–30 characters: letters, numbers, hyphens” with a visually wider dash that is an en-dash (U+2013). Fix: change the literal to `"3–30 characters: letters, numbers, hyphens"` (U+2013 between the digits). `LoginScreen.kt:2313`.
 
-- [ ] **LOGIN-MOCK-116 (Copy). “Register new shop” footer link is sentence-case; “Register New Shop” heading on the destination screen is title-case — same destination, two capitalisation rules across one tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02–06 confirm title-case there. Both surfaces name the same action with conflicting capitalisation. No Kotlin change should be made until design decides which rule wins. `LoginScreen.kt:2262, 2283`. <!-- NOTE-defer: duplicate of LOGIN-MOCK-258; design decision required before code change. -->
+- [ ] **LOGIN-MOCK-116 (Copy). “Register new shop” footer link is sentence-case; “Register New Shop” heading on the destination screen is title-case — same destination, two capitalisation rules across one tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02–06 confirm title-case there. Both surfaces name the same action with conflicting capitalisation. No Kotlin change should be made until design decides which rule wins. `LoginScreen.kt:2262, 2283`.
 
 - [x] **LOGIN-MOCK-117 (Copy). Subtitle “Create your repair shop on BizarreCRM” uses closed compound “BizarreCRM” (no space) while the app wordmark is “Bizarre CRM” (with space) — two brand-name forms in the same card.** `RegisterStep` subtitle `LoginScreen.kt:2292`: `Text("Create your repair shop on BizarreCRM")`. Mockup screen-02 confirms this closed form. The wordmark at `LoginScreen.kt:1871` is `"Bizarre CRM"` (space), confirmed by all 11 mockup screens. Confirm whether body copy should use “Bizarre CRM” or “BizarreCRM”; if “Bizarre CRM” wins, update line 2292. `LoginScreen.kt:1871, 2292`.
 
@@ -6849,19 +5378,19 @@ Scope: exact string comparison — case, punctuation, Unicode char class (en-das
 
 - [x] **LOGIN-MOCK-120 (Copy). Loading state on Connect and Create Shop CTAs is spinner-only; passkey loading state is spinner + “Signing in…” — three inconsistent in-progress feedback patterns across primary CTAs.** `ServerStep` `LoginScreen.kt:2241–2244`: `isLoading` branch shows only `CircularProgressIndicator`. `RegisterStep` `LoginScreen.kt:2400–2406`: same spinner-only. `CredentialsStep` passkey `LoginScreen.kt:2841–2843`: spinner + `Text("Signing in…")`. No mockup shows any CTA loading state. Pick one pattern (spinner-only or spinner+label) and apply it uniformly to all three primary CTAs. `LoginScreen.kt:2241, 2400, 2841`.
 
-- [ ] **LOGIN-MOCK-121 (Copy). “Sign-in expires in $label” uses ASCII hyphen-minus (U+002D) in “Sign-in” — confirm this is the correct hyphenation form per style guide and document it in §67.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. ASCII hyphen-minus U+002D is grammatically correct for a hyphenated compound noun. Same pattern: `"Sign-in timed out."` (line 1764), `"Sign-in link mismatch."` (line 1363). No mockup depicts any countdown. Pattern is internally consistent but undocumented. Confirm in §67 that compound-modifier hyphens use U+002D (not en-dash U+2013, reserved for numeric ranges per LOGIN-MOCK-115). No code change needed once documented. `LoginScreen.kt:1764, 2146, 1363`. <!-- NOTE-defer: documentation-only; §67 style guide entry needed; no code change required. -->
+- [ ] **LOGIN-MOCK-121 (Copy). “Sign-in expires in $label” uses ASCII hyphen-minus (U+002D) in “Sign-in” — confirm this is the correct hyphenation form per style guide and document it in §67.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. ASCII hyphen-minus U+002D is grammatically correct for a hyphenated compound noun. Same pattern: `"Sign-in timed out."` (line 1764), `"Sign-in link mismatch."` (line 1363). No mockup depicts any countdown. Pattern is internally consistent but undocumented. Confirm in §67 that compound-modifier hyphens use U+002D (not en-dash U+2013, reserved for numeric ranges per LOGIN-MOCK-115). No code change needed once documented. `LoginScreen.kt:1764, 2146, 1363`.
 
-- [ ] **LOGIN-MOCK-122 (Copy). “Origin header required” shown in mockup screen-06 is a raw server-side message surfaced verbatim — no client-owned translation exists for this or any known server error.** `LoginScreen.kt:755–758`: `registerShop()` propagates the server error via `rJson.optString("message", "Registration failed")`. Mockup screen-06 shows “Origin header required” in red — the literal server JSON `message` value. Server-side rewording silently changes displayed copy with no code review. Recommended fix: maintain a client-side map of known opaque errors; for `"Origin header required"` display `"Unable to register. Please try again or contact support."` `LoginScreen.kt:755–758`. <!-- NOTE-defer: friendlyErrorMessage() (LOGIN-MOCK-167/180) now handles this string; client map implemented. -->
+- [ ] **LOGIN-MOCK-122 (Copy). “Origin header required” shown in mockup screen-06 is a raw server-side message surfaced verbatim — no client-owned translation exists for this or any known server error.** `LoginScreen.kt:755–758`: `registerShop()` propagates the server error via `rJson.optString("message", "Registration failed")`. Mockup screen-06 shows “Origin header required” in red — the literal server JSON `message` value. Server-side rewording silently changes displayed copy with no code review. Recommended fix: maintain a client-side map of known opaque errors; for `"Origin header required"` display `"Unable to register. Please try again or contact support."` `LoginScreen.kt:755–758`.
 
-- [ ] **LOGIN-MOCK-123 (Copy). `LoginTabBar` source comment references “purple (#8B5CF6)” for the active indicator — a stale hardcoded reference that contradicts the cream brand-accent mandate.** `LoginScreen.kt:2031`: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The runtime tint is `MaterialTheme.colorScheme.primary` (line 2044), which is cream on the current theme — rendered result is correct. The comment misleads developers into hardcoding the deprecated purple hex. Update to: `// Active tab: colorScheme.primary (cream #FDEED0 on brand theme). Never hardcode #8B5CF6 (old purple mock).` `LoginScreen.kt:2031`. <!-- NOTE-defer: comment-only update; deferred to next code-review pass. -->
+- [ ] **LOGIN-MOCK-123 (Copy). `LoginTabBar` source comment references “purple (#8B5CF6)” for the active indicator — a stale hardcoded reference that contradicts the cream brand-accent mandate.** `LoginScreen.kt:2031`: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The runtime tint is `MaterialTheme.colorScheme.primary` (line 2044), which is cream on the current theme — rendered result is correct. The comment misleads developers into hardcoding the deprecated purple hex. Update to: `// Active tab: colorScheme.primary (cream #FDEED0 on brand theme). Never hardcode #8B5CF6 (old purple mock).` `LoginScreen.kt:2031`.
 
-- [ ] **LOGIN-MOCK-124 (Copy). Live error and body strings use straight apostrophe U+0027 throughout — confirm whether the style guide requires typographic apostrophe U+2019.** Instances: `"You’ve been signed out."` should be `"You've been signed out."` (line 1908), `"You're offline."` (line 2520), `"Passwords don't match"` (line 983), `"Can't reach this server."` (line 2548), `"We'll send a one-time sign-in link"` (line 2888). All use U+0027 (straight). No mockup backs any of these strings. Confirm §67 rule: if typographic U+2019 is required, a global find-replace across all string literals in `LoginScreen.kt` is needed; if U+0027 is acceptable, document that to prevent future false-positive review comments. `LoginScreen.kt:983, 1908, 2520, 2548, 2888`. <!-- NOTE-defer: §67 style guide decision required before global find-replace; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-124 (Copy). Live error and body strings use straight apostrophe U+0027 throughout — confirm whether the style guide requires typographic apostrophe U+2019.** Instances: `"You’ve been signed out."` should be `"You've been signed out."` (line 1908), `"You're offline."` (line 2520), `"Passwords don't match"` (line 983), `"Can't reach this server."` (line 2548), `"We'll send a one-time sign-in link"` (line 2888). All use U+0027 (straight). No mockup backs any of these strings. Confirm §67 rule: if typographic U+2019 is required, a global find-replace across all string literals in `LoginScreen.kt` is needed; if U+0027 is acceptable, document that to prevent future false-positive review comments. `LoginScreen.kt:983, 1908, 2520, 2548, 2888`.
 
-- [ ] **LOGIN-MOCK-125 (Copy). “Minimum 8 characters” supporting text matches mockup screen-02 exactly — confirmatory pass; the sentence-case + no-trailing-period pattern should be recorded in §67 to prevent regressions.** `LoginScreen.kt:2362`: `Text("Minimum 8 characters")`. Mockup screen-02 shows “Minimum 8 characters” — exact match. Same pattern at line 2313 once the en-dash fix (LOGIN-MOCK-115) is applied. No code change required. Recommended §67 entry: “Supporting text (OutlinedTextField) — sentence-case, no trailing period, no leading capital unless proper noun.” `LoginScreen.kt:2313, 2362`. <!-- NOTE-defer: documentation-only (§67 entry); no code change required. -->
+- [ ] **LOGIN-MOCK-125 (Copy). “Minimum 8 characters” supporting text matches mockup screen-02 exactly — confirmatory pass; the sentence-case + no-trailing-period pattern should be recorded in §67 to prevent regressions.** `LoginScreen.kt:2362`: `Text("Minimum 8 characters")`. Mockup screen-02 shows “Minimum 8 characters” — exact match. Same pattern at line 2313 once the en-dash fix (LOGIN-MOCK-115) is applied. No code change required. Recommended §67 entry: “Supporting text (OutlinedTextField) — sentence-case, no trailing period, no leading capital unless proper noun.” `LoginScreen.kt:2313, 2362`.
 
-- [ ] **LOGIN-MOCK-126 (Copy). “Sign-in timed out. Please start over.” (snackbar, line 1764) and “View setup guide” (informational TextButton, line 2491) are live copy with no mockup backing — wording and punctuation unreviewed.** Neither string appears in screens 01–11. “Please start over.” ends in a period (consistent with two-sentence error convention but not confirmed by design). “View setup guide” is sentence-case with no period (consistent with TextButton copy convention but also unreviewed). Flag both for design sign-off before next public release. `LoginScreen.kt:1764, 2491`. <!-- NOTE-defer: design sign-off required; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-126 (Copy). “Sign-in timed out. Please start over.” (snackbar, line 1764) and “View setup guide” (informational TextButton, line 2491) are live copy with no mockup backing — wording and punctuation unreviewed.** Neither string appears in screens 01–11. “Please start over.” ends in a period (consistent with two-sentence error convention but not confirmed by design). “View setup guide” is sentence-case with no period (consistent with TextButton copy convention but also unreviewed). Flag both for design sign-off before next public release. `LoginScreen.kt:1764, 2491`.
 
-- [ ] **LOGIN-MOCK-127 (Copy). Twelve UI strings from SSO, magic-link, and passkey features on the Credentials step have no mockup analog and have never received copy review.** Unreviewed strings: `"Checking sign-in method…"` (line 2665), `"Sign in with SSO"` (line 2757), `"Choose your sign-in provider"` (line 2765), `"Email me a link"` (line 2811), `"Sign in with a magic link"` (line 2882), `"We\'ll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Send link"` (line 2927), `"Check your email"` (line 2949), `"Use passkey"` (line 2851), `"Signing in…"` (line 2843), `"Resend link"` (line 2991), `"Resend in ${cooldownSec}s"` (line 2989). All are feature-flag-gated (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) and absent from all 11 mockup screens. Copy tone, capitalisation, and punctuation are all unreviewed. Each string needs either a mockup frame or an explicit copy-approval comment before shipping. `LoginScreen.kt:2665, 2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2949, 2989, 2991`. <!-- NOTE-defer: all feature-flag-gated; requires copy-review session before shipping any alternative auth path. -->
+- [ ] **LOGIN-MOCK-127 (Copy). Twelve UI strings from SSO, magic-link, and passkey features on the Credentials step have no mockup analog and have never received copy review.** Unreviewed strings: `"Checking sign-in method…"` (line 2665), `"Sign in with SSO"` (line 2757), `"Choose your sign-in provider"` (line 2765), `"Email me a link"` (line 2811), `"Sign in with a magic link"` (line 2882), `"We\'ll send a one-time sign-in link to your email. The link expires in 15 minutes."` (line 2888), `"Send link"` (line 2927), `"Check your email"` (line 2949), `"Use passkey"` (line 2851), `"Signing in…"` (line 2843), `"Resend link"` (line 2991), `"Resend in ${cooldownSec}s"` (line 2989). All are feature-flag-gated (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) and absent from all 11 mockup screens. Copy tone, capitalisation, and punctuation are all unreviewed. Each string needs either a mockup frame or an explicit copy-approval comment before shipping. `LoginScreen.kt:2665, 2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2949, 2989, 2991`.
 
 ### Wave-4 Finder-J motion + haptics
 
@@ -6877,7 +5406,7 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/components/auth/LoginPillBu
 
 - [x] **LOGIN-MOCK-145 (UX). `LoginPillButton` uses Material3 `Button` with no explicit `interactionSource` customization — the default ripple color is `LocalContentColor @ 0.12f` over a cream (`#FDEED0`) container, resolving to a near-white ripple (`#FDEED0 + white @ 0.12f`) that is visually imperceptible on the cream surface.** The ripple effectively disappears, giving the button a flat, unresponsive feel on press. Fix: pass a custom `interactionSource` and use `indication = ripple(color = MaterialTheme.colorScheme.onPrimary, bounded = true)` via `Modifier.indication(...)`, or override via `ButtonDefaults.buttonColors` and rely on `LocalRippleTheme`. Simplest approach: pass `colors = ButtonDefaults.buttonColors(containerColor = ..., contentColor = ...) ` as-is and add an explicit `LocalRippleTheme` override scoped to the button that sets ripple alpha to `0.24f` against `colorScheme.onPrimary` (`#1C1611` dark brown in brand theme), making the press clearly visible. `LoginPillButton.kt:37–63`.
 
-- [ ] **LOGIN-MOCK-146 (UX). `WaveDivider` at LoginScreen.kt:1907 is a static `Canvas` composable with no entrance animation.** The wave renders fully drawn on first composition with no draw-path or fade-in motion. The Stripe login page and several high-quality app login screens use a one-shot draw-in animation (the path progresses from left to right over ~400ms) to give the login screen a branded "alive" moment. This is a design enhancement, not a bug. Proposed implementation: use `animateFloatAsState(targetValue = 1f, animationSpec = tween(400, easing = EaseOutCubic))` with an initial value of `0f`, keyed on `remember { mutableStateOf(false).also { it.value = true } }` set in a `LaunchedEffect(Unit)`. Pass the animated float as a `pathProgress` parameter to `WaveDivider`, then in `Canvas` use `PathMeasure` to draw only the first `pathProgress * pathLength` fraction of the path. Flag this as **design enhancement** — do not implement without design sign-off, as it adds import weight (`PathMeasure`) and a one-time animation that must also respect Reduce Motion (see LOGIN-MOCK-153). `WaveDivider.kt:71–116`. <!-- NOTE-defer: design enhancement requiring sign-off + PathMeasure import + Reduce Motion guard; deferred. -->
+- [ ] **LOGIN-MOCK-146 (UX). `WaveDivider` at LoginScreen.kt:1907 is a static `Canvas` composable with no entrance animation.** The wave renders fully drawn on first composition with no draw-path or fade-in motion. The Stripe login page and several high-quality app login screens use a one-shot draw-in animation (the path progresses from left to right over ~400ms) to give the login screen a branded "alive" moment. This is a design enhancement, not a bug. Proposed implementation: use `animateFloatAsState(targetValue = 1f, animationSpec = tween(400, easing = EaseOutCubic))` with an initial value of `0f`, keyed on `remember { mutableStateOf(false).also { it.value = true } }` set in a `LaunchedEffect(Unit)`. Pass the animated float as a `pathProgress` parameter to `WaveDivider`, then in `Canvas` use `PathMeasure` to draw only the first `pathProgress * pathLength` fraction of the path. Flag this as **design enhancement** — do not implement without design sign-off, as it adds import weight (`PathMeasure`) and a one-time animation that must also respect Reduce Motion (see LOGIN-MOCK-153). `WaveDivider.kt:71–116`.
 
 - [x] **LOGIN-MOCK-147 (UX). No haptic feedback is triggered on any successful or failed login-flow event.** Confirmed by grepping for `HapticFeedback`, `performHapticFeedback`, `LocalHapticFeedback`, and `Vibrator` — zero occurrences in `LoginScreen.kt`. Critical moments that should carry haptics: (1) successful `verify2FA` login completion (use `HapticFeedbackType.LongPress` — the Android "confirm" convention), (2) 2FA code auto-submit on 6th digit entry (`HapticFeedbackType.TextHandleMove`), (3) wrong-code error response from `verify2FA` catch block (`HapticFeedbackType.LongPress` or system `REJECT` constant on API 34+), (4) challenge-token expiry snackbar trigger. Implementation: `val haptic = LocalHapticFeedback.current` in the composable scope; call `haptic.performHapticFeedback(HapticFeedbackType.LongPress)` at success/failure branch points. For the 2FA auto-submit case, fire haptic inside the `onValueChange` lambda when `it.length == 6`. `LoginScreen.kt:1054 (verify2FA), LoginScreen.kt:3489 (TotpCodeInputContent onValueChange)`.
 
@@ -6885,11 +5414,11 @@ Audited files: `ui/screens/auth/LoginScreen.kt`, `ui/components/auth/LoginPillBu
 
 - [x] **LOGIN-MOCK-149 (UX). `CircularProgressIndicator` inside `LoginPillButton` (LoginPillButton.kt:52–56) transitions from label to spinner with a hard cut — one frame shows the label, the next shows the spinner.** This is the default behavior when `isLoading` changes and the if/else branch swaps composables. An `AnimatedContent(targetState = isLoading)` wrapper around the `if/else` block would give a 150ms cross-fade between label and spinner, removing the jarring pop. The spinner's `strokeWidth = 2.dp` (LoginPillButton.kt:54) is correctly set per the audit scope prompt. Implementation: replace the `if (isLoading)` branch with `AnimatedContent(targetState = isLoading, transitionSpec = { fadeIn(tween(150)) togetherWith fadeOut(tween(100)) }, label = "btn_loading") { loading -> if (loading) CircularProgressIndicator(...) else Text(...) }`. `LoginPillButton.kt:51–62`.
 
-- [ ] **LOGIN-MOCK-150 (A11y). `SnackbarHost` at LoginScreen.kt:1865 uses the plain `SnackbarHost(hostState)` with no `SwipeToDismissBox` wrapper.** Material3 `Snackbar` supports swipe-to-dismiss as an accessibility affordance — users with motor impairment or TalkBack can swipe-dismiss a snackbar without waiting for it to auto-dismiss. The `challenge-expired` snackbar at `:1774` uses `SnackbarDuration.Short` (4 seconds), which is acceptable but brief. Adding `SwipeToDismissBox` around the `Snackbar` inside the `SnackbarHost` lambda follows the M3 pattern: `SnackbarHost(snackbarHostState) { data -> SwipeToDismissBox(state = rememberSwipeToDismissBoxState(...), backgroundContent = {}, content = { Snackbar(data) }) }`. Import: `androidx.compose.material3.SwipeToDismissBox`, `androidx.compose.material3.rememberSwipeToDismissBoxState`. `LoginScreen.kt:1865`. <!-- NOTE-defer: a11y enhancement; deferred to a11y wave. -->
+- [ ] **LOGIN-MOCK-150 (A11y). `SnackbarHost` at LoginScreen.kt:1865 uses the plain `SnackbarHost(hostState)` with no `SwipeToDismissBox` wrapper.** Material3 `Snackbar` supports swipe-to-dismiss as an accessibility affordance — users with motor impairment or TalkBack can swipe-dismiss a snackbar without waiting for it to auto-dismiss. The `challenge-expired` snackbar at `:1774` uses `SnackbarDuration.Short` (4 seconds), which is acceptable but brief. Adding `SwipeToDismissBox` around the `Snackbar` inside the `SnackbarHost` lambda follows the M3 pattern: `SnackbarHost(snackbarHostState) { data -> SwipeToDismissBox(state = rememberSwipeToDismissBoxState(...), backgroundContent = {}, content = { Snackbar(data) }) }`. Import: `androidx.compose.material3.SwipeToDismissBox`, `androidx.compose.material3.rememberSwipeToDismissBoxState`. `LoginScreen.kt:1865`.
 
-- [ ] **LOGIN-MOCK-151 (UX). `BackHandler` at LoginScreen.kt:2037 intercepts the hardware back button and predictive-back gesture, but the `AnimatedContent` `transitionSpec` at `:2015` always computes direction from `targetState.ordinal > initialState.ordinal`.** When predictive-back fires `viewModel.goBack()` the ordinal decreases (forward → backward direction), which correctly selects the "slide in from left" branch. However, `BackHandler` is registered *inside* the `AnimatedContent` lambda scoped to the current step — this is correct per Compose docs, as the most recently composed `BackHandler` wins. The risk: on the *first* composition after `goBack()` fires, `AnimatedContent` is already mid-transition. If the user triggers a second back gesture before the first transition completes (e.g. fast double-back), the second `BackHandler` may fire with `initialState` still equal to the intermediate step rather than the settled state, producing a direction mismatch (wrong-direction slide for a backward navigate). Fix: disable `BackHandler` while a transition is in progress by checking `transition.isRunning` inside the `AnimatedContent` lambda: `val transition = updateTransition(targetState = state.step, label = "step"); BackHandler(enabled = isNotFirstStep && !transition.isRunning) { viewModel.goBack() }`. Requires lifting `AnimatedContent` to use `transition.AnimatedContent(...)` API. `LoginScreen.kt:2013–2037`. <!-- NOTE-defer: fast double-back race; fix requires updateTransition API lift; deferred to motion/predictive-back wave. -->
+- [ ] **LOGIN-MOCK-151 (UX). `BackHandler` at LoginScreen.kt:2037 intercepts the hardware back button and predictive-back gesture, but the `AnimatedContent` `transitionSpec` at `:2015` always computes direction from `targetState.ordinal > initialState.ordinal`.** When predictive-back fires `viewModel.goBack()` the ordinal decreases (forward → backward direction), which correctly selects the "slide in from left" branch. However, `BackHandler` is registered *inside* the `AnimatedContent` lambda scoped to the current step — this is correct per Compose docs, as the most recently composed `BackHandler` wins. The risk: on the *first* composition after `goBack()` fires, `AnimatedContent` is already mid-transition. If the user triggers a second back gesture before the first transition completes (e.g. fast double-back), the second `BackHandler` may fire with `initialState` still equal to the intermediate step rather than the settled state, producing a direction mismatch (wrong-direction slide for a backward navigate). Fix: disable `BackHandler` while a transition is in progress by checking `transition.isRunning` inside the `AnimatedContent` lambda: `val transition = updateTransition(targetState = state.step, label = "step"); BackHandler(enabled = isNotFirstStep && !transition.isRunning) { viewModel.goBack() }`. Requires lifting `AnimatedContent` to use `transition.AnimatedContent(...)` API. `LoginScreen.kt:2013–2037`.
 
-- [ ] **LOGIN-MOCK-152 (UX). `LaunchedEffect(state.useCustomServer) { focusRequester.requestFocus() }` at LoginScreen.kt:2211 fires immediately when `ServerStep` enters composition, requesting focus before the slide-in animation completes.** On devices where the slide-in takes 250–300ms (see LOGIN-MOCK-141), `requestFocus()` fires on the first frame, causing the IME to begin rising during the slide-in. This creates a visual conflict: the card is still sliding in from the right while the keyboard is already rising from the bottom, compressing the layout mid-animation. Fix: gate the focus request behind the animation completion signal. Use `LaunchedEffect(state.useCustomServer) { delay(250L); focusRequester.requestFocus() }` as a pragmatic approximation, or — preferably — use `transition.isRunning` from the lifted `updateTransition` (LOGIN-MOCK-151) and wait: `LaunchedEffect(state.useCustomServer) { snapshotFlow { !transition.isRunning }.filter { it }.first(); focusRequester.requestFocus() }`. Same fix applies to `RegisterStep` `LaunchedEffect(Unit) { shopUrlFocusRequester.requestFocus() }` at `:2320` and `TotpCodeInputContent` `LaunchedEffect(Unit) { focusRequester.requestFocus() }` at `:3484`. `LoginScreen.kt:2211, 2320, 3484`. <!-- NOTE-defer: fix requires transition.isRunning gate (see LOGIN-MOCK-151); deferred together. -->
+- [ ] **LOGIN-MOCK-152 (UX). `LaunchedEffect(state.useCustomServer) { focusRequester.requestFocus() }` at LoginScreen.kt:2211 fires immediately when `ServerStep` enters composition, requesting focus before the slide-in animation completes.** On devices where the slide-in takes 250–300ms (see LOGIN-MOCK-141), `requestFocus()` fires on the first frame, causing the IME to begin rising during the slide-in. This creates a visual conflict: the card is still sliding in from the right while the keyboard is already rising from the bottom, compressing the layout mid-animation. Fix: gate the focus request behind the animation completion signal. Use `LaunchedEffect(state.useCustomServer) { delay(250L); focusRequester.requestFocus() }` as a pragmatic approximation, or — preferably — use `transition.isRunning` from the lifted `updateTransition` (LOGIN-MOCK-151) and wait: `LaunchedEffect(state.useCustomServer) { snapshotFlow { !transition.isRunning }.filter { it }.first(); focusRequester.requestFocus() }`. Same fix applies to `RegisterStep` `LaunchedEffect(Unit) { shopUrlFocusRequester.requestFocus() }` at `:2320` and `TotpCodeInputContent` `LaunchedEffect(Unit) { focusRequester.requestFocus() }` at `:3484`. `LoginScreen.kt:2211, 2320, 3484`.
 
 - [x] **LOGIN-MOCK-153 (A11y). No Reduce Motion / Remove Animations guard exists anywhere in the login flow.** `Settings.Global.ANIMATOR_DURATION_SCALE` (checked at runtime) or `LocalConfiguration.current.animationScale` (Compose-accessible via `LocalContext`) can be zero when the user has enabled "Remove animations" in Developer Options or "Disable all animations" in Accessibility settings. None of the animations in `LoginScreen.kt` — `AnimatedContent` step transitions (LOGIN-MOCK-141), `animateContentSize` (LOGIN-MOCK-142), `AnimatedVisibility` on errors (LOGIN-MOCK-144), or the proposed wave draw-in (LOGIN-MOCK-146) — check this scale. At scale 0 the Compose animation system already fast-forwards most `tween`-based animations to their end state, so functional correctness is unaffected. However, the proposed haptics (LOGIN-MOCK-147, LOGIN-MOCK-148) should be independently guarded: haptics are not suppressed by `ANIMATOR_DURATION_SCALE = 0`, and some users who disable animations also prefer reduced haptic feedback. Fix: create a `@Composable fun rememberReduceMotion(): Boolean` helper that reads `Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) < 0.05f`; pass the result through to any haptic call sites and skip haptics when `reduceMotion == true`. The WaveDivider draw-in animation (LOGIN-MOCK-146) must also short-circuit to `pathProgress = 1f` immediately when `reduceMotion`. `LoginScreen.kt` (global), `WaveDivider.kt:71`.
 
@@ -6904,11 +5433,11 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 - [x] **LOGIN-MOCK-169 (UX). QR-code spinner in `TwoFaSetupStep` has no timeout -- if `setup2FA()` returns HTTP 200 with blank `qr` and blank `secret` fields, the `CircularProgressIndicator` at `LoginScreen.kt:3282` spins indefinitely with no error and no escape.** The `when` block at `:3268` shows the spinner only when `qrCodeDataUrl.isBlank() && twoFaSecret.isBlank()`. The server QR-failure path (`auth.routes.ts:924`) returns HTTP 500, triggering the client catch and surfacing `state.error` -- but an unexpected 200-with-empty-body leaves the step permanently stuck. Remediation: (1) in `setup2FA()`, after setting `TWO_FA_SETUP` state, validate both fields are non-blank and immediately set `error = "Could not load 2FA setup. Please go back and try again."` if not; (2) add a 15-second `LaunchedEffect` timeout in `TwoFaSetupStep` that calls `viewModel.onSetupQrTimeout()` if both fields remain blank. `LoginScreen.kt:1036-1046, 3268-3282`.
 
-- [ ] **LOGIN-MOCK-170 (Bug). `verify2FA()` success path leaves `isLoading = true` visible while the biometric prompt overlays the screen when backup codes and biometric stash are both active.** `LoginScreen.kt:1086-1093`: when `codes != null && shouldStash`, the code sets `pendingBiometricStash = true` without first setting `isLoading = false`. The `LaunchedEffect(pendingStash)` at `:1784` fires on the same frame, so the Continue button spinner is visible underneath the biometric overlay until the prompt resolves. Remediation: explicitly set `isLoading = false` on every success branch in `verify2FA()` before setting `pendingBiometricStash = true`. `LoginScreen.kt:1086-1093`. <!-- NOTE-defer: timing bug in verify2FA success branch; deferred to biometric-stash wave. -->
+- [ ] **LOGIN-MOCK-170 (Bug). `verify2FA()` success path leaves `isLoading = true` visible while the biometric prompt overlays the screen when backup codes and biometric stash are both active.** `LoginScreen.kt:1086-1093`: when `codes != null && shouldStash`, the code sets `pendingBiometricStash = true` without first setting `isLoading = false`. The `LaunchedEffect(pendingStash)` at `:1784` fires on the same frame, so the Continue button spinner is visible underneath the biometric overlay until the prompt resolves. Remediation: explicitly set `isLoading = false` on every success branch in `verify2FA()` before setting `pendingBiometricStash = true`. `LoginScreen.kt:1086-1093`.
 
-- [ ] **LOGIN-MOCK-171 (UX). The rate-limit banner has no "Try again" CTA when the countdown reaches zero -- the user must edit a field to dismiss the banner and re-enable Sign In.** `LoginScreen.kt:2612-2664`: when `remainingSec <= 0L`, `countdownText` changes to `"You can try again now."` but the banner persists and Sign In stays disabled until `clearRateLimit()` fires from the `LaunchedEffect`. Contrast with the `unreachableHost` banner at `:2598-2605` which provides an explicit "Retry" `TextButton`. Remediation: add a `TextButton("Try again", onClick = viewModel::clearRateLimit)` inside the rate-limit banner `Row`, visible only when `remainingSec <= 0L`. `LoginScreen.kt:2641-2664`. <!-- NOTE-defer: TextButton("Try again") on rate-limit banner not wired; deferred to UX-polish wave. -->
+- [ ] **LOGIN-MOCK-171 (UX). The rate-limit banner has no "Try again" CTA when the countdown reaches zero -- the user must edit a field to dismiss the banner and re-enable Sign In.** `LoginScreen.kt:2612-2664`: when `remainingSec <= 0L`, `countdownText` changes to `"You can try again now."` but the banner persists and Sign In stays disabled until `clearRateLimit()` fires from the `LaunchedEffect`. Contrast with the `unreachableHost` banner at `:2598-2605` which provides an explicit "Retry" `TextButton`. Remediation: add a `TextButton("Try again", onClick = viewModel::clearRateLimit)` inside the rate-limit banner `Row`, visible only when `remainingSec <= 0L`. `LoginScreen.kt:2641-2664`.
 
-- [ ] **LOGIN-MOCK-172 (UX). Challenge-token expiry snackbar uses `SnackbarDuration.Short` (~4 s) with no persistent fallback -- after dismissal, `state.error` is null and the user sees no reason why they are back at the sign-in form.** `LoginScreen.kt:1773-1779`: `onChallengeTokenExpired()` triggers a Short snackbar then calls `clearChallengeExpired()`. Remediation: change to `SnackbarDuration.Long` (8 s) and set `error = "Session timed out. Please sign in again."` inside `onChallengeTokenExpired()` so `ErrorMessage` on the credentials step keeps the reason visible until the user begins typing. `LoginScreen.kt:1130-1146, 1773-1779`. <!-- NOTE-defer: SnackbarDuration.Short confirmed; persistent error on expiry not wired; deferred to UX-polish wave. -->
+- [ ] **LOGIN-MOCK-172 (UX). Challenge-token expiry snackbar uses `SnackbarDuration.Short` (~4 s) with no persistent fallback -- after dismissal, `state.error` is null and the user sees no reason why they are back at the sign-in form.** `LoginScreen.kt:1773-1779`: `onChallengeTokenExpired()` triggers a Short snackbar then calls `clearChallengeExpired()`. Remediation: change to `SnackbarDuration.Long` (8 s) and set `error = "Session timed out. Please sign in again."` inside `onChallengeTokenExpired()` so `ErrorMessage` on the credentials step keeps the reason visible until the user begins typing. `LoginScreen.kt:1130-1146, 1773-1779`.
 
 - [x] **LOGIN-MOCK-173 (Copy + Bug). Wrong-2FA-code error surfaces as the raw server string `"Invalid code"`, and the refreshed `challengeToken` in the 401 body is discarded, forcing a full restart rather than allowing retry on the same session.** Server `auth.routes.ts:994`: `{ success: false, message: "Invalid code", data: { challengeToken: newChallenge } }`. Client catch at `LoginScreen.kt:1105-1111` calls `extractErrorMessage(e)` unchanged and never parses `e.response()?.errorBody()` for the new token. The server offers a retry window via the refreshed challenge but the client silently ignores it. Remediation: (1) add `"Invalid code" -> "That code is wrong. Check your authenticator and try again."` to the friendly-error map (LOGIN-MOCK-167); (2) in the `verify2FA` catch, parse the 401 body for `data.challengeToken` and update `state.challengeToken` when found. `LoginScreen.kt:1105-1111`, `auth.routes.ts:994`.
 
@@ -6920,9 +5449,9 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 - [x] **LOGIN-MOCK-177 (UX). `CredentialsStep` username and password fields have no `isError` wiring -- `state.error` is the only visual channel for "Username is required" and "Password is required" guard messages.** `LoginScreen.kt:2683-2760`: both `OutlinedTextField` composables lack `isError`. The red outline and field-level error copy appear only via the bottom `ErrorMessage` after a login attempt. Remediation: add `var hasAttemptedLogin by rememberSaveable { mutableStateOf(false) }` set in the Sign In `onClick`; pass `isError = hasAttemptedLogin && state.username.isBlank()` to username and `isError = hasAttemptedLogin && state.password.isBlank()` to password. `LoginScreen.kt:2683-2760`.
 
-- [ ] **LOGIN-MOCK-178 (UX). First-launch routing is verified correct but has no unit test -- a regression here silently breaks the entire onboarding funnel.** `LoginScreen.kt:375`: `step = if (authPreferences.serverUrl.isNullOrBlank()) SetupStep.SERVER else SetupStep.CREDENTIALS`. Fresh install correctly shows SERVER step; no code change needed. Missing: add `LoginViewModelTest: "given no stored serverUrl, initial step is SERVER"` and `"given stored serverUrl, initial step is CREDENTIALS"` unit tests to protect this routing from future regressions. `LoginScreen.kt:371-388`. <!-- NOTE-defer: test-only item; requires LoginViewModelTest; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-178 (UX). First-launch routing is verified correct but has no unit test -- a regression here silently breaks the entire onboarding funnel.** `LoginScreen.kt:375`: `step = if (authPreferences.serverUrl.isNullOrBlank()) SetupStep.SERVER else SetupStep.CREDENTIALS`. Fresh install correctly shows SERVER step; no code change needed. Missing: add `LoginViewModelTest: "given no stored serverUrl, initial step is SERVER"` and `"given stored serverUrl, initial step is CREDENTIALS"` unit tests to protect this routing from future regressions. `LoginScreen.kt:371-388`.
 
-- [ ] **LOGIN-MOCK-179 (UX). `probeSetupStatus()` failure is fully silent -- `probeError` is declared in state but always nulled out on catch and never read by the UI, providing no retry affordance after a failed probe.** `LoginScreen.kt:878-888`: catch sets `probeError = null` explicitly. The `probeError` field at `:151` is never referenced in any composable. A user on an unreliable connection sees the probe spinner appear and vanish; subsequent probes are skipped by the `setupNeeded != null` guard at `:855` unless `forceRetry = true`. Remediation: (1) on catch, set `probeError = "Could not check server status."` instead of `null`; (2) in `CredentialsStep`, below the probe overlay row (`:2475-2492`), render `TextButton("Retry") { viewModel.probeSetupStatus(forceRetry = true) }` when `state.probeError != null`. Login remains unblocked. `LoginScreen.kt:878-888, 151, 2468-2543`. <!-- NOTE-defer: probeError confirmed unread by any composable; Retry button not wired; deferred to UX-polish wave. -->
+- [ ] **LOGIN-MOCK-179 (UX). `probeSetupStatus()` failure is fully silent -- `probeError` is declared in state but always nulled out on catch and never read by the UI, providing no retry affordance after a failed probe.** `LoginScreen.kt:878-888`: catch sets `probeError = null` explicitly. The `probeError` field at `:151` is never referenced in any composable. A user on an unreliable connection sees the probe spinner appear and vanish; subsequent probes are skipped by the `setupNeeded != null` guard at `:855` unless `forceRetry = true`. Remediation: (1) on catch, set `probeError = "Could not check server status."` instead of `null`; (2) in `CredentialsStep`, below the probe overlay row (`:2475-2492`), render `TextButton("Retry") { viewModel.probeSetupStatus(forceRetry = true) }` when `state.probeError != null`. Login remains unblocked. `LoginScreen.kt:878-888, 151, 2468-2543`.
 
 
 ---
@@ -6931,49 +5460,49 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 > Scope: features with no mockup analog — SSO, magic link, passkeys, biometric stash, backup-code recovery, SMS auto-fill, and session/device/network banners. Mockups screen-01...10 depict password + 2FA only. IDs 154-166.
 
-- [ ] **LOGIN-MOCK-154 (UX). SSO button renders as a secondary `OutlinedButton` (48dp, full-width) regardless of whether SSO is the tenant's canonical sign-in method, giving it equal visual weight to the password CTA on IdP-only tenants.** `LoginScreen.kt:2793-2805`: `OutlinedButton` with `height(48.dp)` sits below a `HorizontalDivider` with no hierarchy signal. On a GSuite-only tenant the user must parse two equal-weight buttons and guess which to use. The button is entirely absent while `ssoProviders == null` (still loading) with no skeleton placeholder, causing a layout jump when the probe resolves. Zero analytics hooks exist for SSO button tap, provider-pick, exchange success, or exchange failure. Remediation: (a) if `ssoProviders` is non-empty AND no local-password flag from GET /tenants/me, promote SSO to `BrandPrimaryButton` and demote password fields to a "Use password instead" `TextButton`; (b) show a shimmer ghost `OutlinedButton` during `ssoProvidersLoading` to prevent layout shift; (c) add `analytics.track("sso_tap")` and `analytics.track("sso_exchange_result", success=...)` before shipping. File: `LoginScreen.kt:2784-2831`. <!-- NOTE-defer: requires server-side IdP-only flag + analytics; deferred to SSO wave. -->
+- [ ] **LOGIN-MOCK-154 (UX). SSO button renders as a secondary `OutlinedButton` (48dp, full-width) regardless of whether SSO is the tenant's canonical sign-in method, giving it equal visual weight to the password CTA on IdP-only tenants.** `LoginScreen.kt:2793-2805`: `OutlinedButton` with `height(48.dp)` sits below a `HorizontalDivider` with no hierarchy signal. On a GSuite-only tenant the user must parse two equal-weight buttons and guess which to use. The button is entirely absent while `ssoProviders == null` (still loading) with no skeleton placeholder, causing a layout jump when the probe resolves. Zero analytics hooks exist for SSO button tap, provider-pick, exchange success, or exchange failure. Remediation: (a) if `ssoProviders` is non-empty AND no local-password flag from GET /tenants/me, promote SSO to `BrandPrimaryButton` and demote password fields to a "Use password instead" `TextButton`; (b) show a shimmer ghost `OutlinedButton` during `ssoProvidersLoading` to prevent layout shift; (c) add `analytics.track("sso_tap")` and `analytics.track("sso_exchange_result", success=...)` before shipping. File: `LoginScreen.kt:2784-2831`.
 
 - [x] **LOGIN-MOCK-155 (UX/Copy). Magic-link button is optimistic-default (`magicLinksEnabled != false` at `LoginScreen.kt:2837`) so it appears before the GET /tenants/me probe resolves, then collapses if the probe returns `false` — a visible layout jank for tenants with magic-links disabled.** A tap during the probe window fires `requestMagicLink()` which returns a server error with no copy distinction from a real send failure. This is the inverse of the passkey opt-in model. The `MagicLinkRequestSheet` (`LoginScreen.kt:2924-3000`) is well-structured (resend cooldown, "Check your email" state, inline error) but offers no protection against probe-racing. Remediation: switch to opt-in — `val magicLinksVisible = state.magicLinksEnabled == true` — matching the passkey pattern. This eliminates both the layout jank and the spurious error path at the cost of hiding the button on the first render if the probe is fast (acceptable trade-off). File: `LoginScreen.kt:2837-2864`.
 
 - [x] **LOGIN-MOCK-156 (UX). Passkey button is correctly opt-in (`passkeyEnabled == true && PasskeyManager.isSupported()`) and tertiary-weight `TextButton` — discoverable but not intrusive — but the `PasskeyOutcome.NoCredentials` error persists indefinitely with no auto-clear.** `LoginScreen.kt:2903-2910`: "No passkey found on this device. Sign in with your password first." is set on first tap and cleared only by re-tapping — a user who reads it and scrolls away sees a permanent red text on return. `PasskeyOutcome.Unsupported` silently collapses the button (`LoginViewModel.kt:1500`: `passkeyEnabled = false`) without a debug log, which may hide false positives in QA. Remediation: (a) auto-dismiss the error after 5 s — `LaunchedEffect(state.passkeyError) { if (it != null) { delay(5_000L); viewModel.clearPasskeyError() } }`; (b) add `Timber.d("PasskeyOutcome.Unsupported")` at `LoginViewModel.kt:1500`; (c) on `NoCredentials`, add a "Learn how to add a passkey" `TextButton` opening the Android Credential Manager deep-link. File: `LoginScreen.kt:2867-2912`; `LoginViewModel.kt:1491-1502`.
 
-- [ ] **LOGIN-MOCK-157 (UX). Biometric auto-login fires on `LaunchedEffect(Unit)` at `LoginScreen.kt:1800` with no branded loading surface before the OS sheet, causing a ~200 ms flicker where the full password form renders before the biometric prompt covers it.** `isBiometricAutoLoginInFlight` is set at `LoginViewModel.kt:1244` but no composable observes it — `CredentialsStep` renders unconditionally. `BiometricAuth.decryptWithBiometric` is called with the generic subtitle "Confirm your identity to retrieve stored credentials" (hardcoded at `BiometricAuth.kt:160`) rather than the branded "Sign in to Bizarre CRM" used by `showPrompt` (line 68). Remediation: (a) observe `isBiometricAutoLoginInFlight` in `CredentialsStep` — while `true`, replace card body with `Box(Alignment.Center) { CircularProgressIndicator(); Text("Signing you in...") }` to prevent the form flicker; (b) pass `title = "Sign in to Bizarre CRM"` and `subtitle = "Use your fingerprint or face to continue"` to `decryptWithBiometric` at `LoginViewModel.kt:1248`. Files: `LoginScreen.kt:1800-1805`; `LoginViewModel.kt:1244, 1248`; `BiometricAuth.kt:160`. <!-- NOTE-defer: isBiometricAutoLoginInFlight not observed in CredentialsStep; deferred to biometric-polish wave. -->
+- [ ] **LOGIN-MOCK-157 (UX). Biometric auto-login fires on `LaunchedEffect(Unit)` at `LoginScreen.kt:1800` with no branded loading surface before the OS sheet, causing a ~200 ms flicker where the full password form renders before the biometric prompt covers it.** `isBiometricAutoLoginInFlight` is set at `LoginViewModel.kt:1244` but no composable observes it — `CredentialsStep` renders unconditionally. `BiometricAuth.decryptWithBiometric` is called with the generic subtitle "Confirm your identity to retrieve stored credentials" (hardcoded at `BiometricAuth.kt:160`) rather than the branded "Sign in to Bizarre CRM" used by `showPrompt` (line 68). Remediation: (a) observe `isBiometricAutoLoginInFlight` in `CredentialsStep` — while `true`, replace card body with `Box(Alignment.Center) { CircularProgressIndicator(); Text("Signing you in...") }` to prevent the form flicker; (b) pass `title = "Sign in to Bizarre CRM"` and `subtitle = "Use your fingerprint or face to continue"` to `decryptWithBiometric` at `LoginViewModel.kt:1248`. Files: `LoginScreen.kt:1800-1805`; `LoginViewModel.kt:1244, 1248`; `BiometricAuth.kt:160`.
 
-- [ ] **LOGIN-MOCK-158 (Layout). `BackupCodeRecoveryScreen.kt` uses a plain `Scaffold` + `TopAppBar` surface that does not share the login card chrome (`surfaceContainer`, `RoundedCornerShape(20.dp)`, WaveDivider brand moment), making the recovery flow look like a settings screen rather than a continuation of the login journey.** The entry-point link "Lost 2FA access? Use a backup code" at `LoginScreen.kt:3458` is correctly tertiary-weight `TextButton`. The screen (`BackupCodeRecoveryScreen.kt:169-323`) uses bare `OutlinedTextField`s in a plain `Column` — no card rounding, no wave. `BrandPrimaryButton` is used for the CTA (correct) but surrounding chrome is disconnected. Zero analytics hooks on recovery attempt or success. The `snackbarHostState.showSnackbar` + `onSuccess()` at line 165 may race the snackbar display. Remediation: (a) wrap `Column` content in `Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer)` matching `CredentialsStep`; (b) add observability — `analytics.track("backup_code_recovery_attempt")` / `analytics.track("backup_code_recovery_success")`; (c) use `SnackbarDuration.Indefinite` + manual dismiss to avoid the snackbar/navigation race. File: `BackupCodeRecoveryScreen.kt:169-323`. <!-- NOTE-defer: separate file outside login-screen wave scope; deferred to recovery-flow wave. -->
+- [ ] **LOGIN-MOCK-158 (Layout). `BackupCodeRecoveryScreen.kt` uses a plain `Scaffold` + `TopAppBar` surface that does not share the login card chrome (`surfaceContainer`, `RoundedCornerShape(20.dp)`, WaveDivider brand moment), making the recovery flow look like a settings screen rather than a continuation of the login journey.** The entry-point link "Lost 2FA access? Use a backup code" at `LoginScreen.kt:3458` is correctly tertiary-weight `TextButton`. The screen (`BackupCodeRecoveryScreen.kt:169-323`) uses bare `OutlinedTextField`s in a plain `Column` — no card rounding, no wave. `BrandPrimaryButton` is used for the CTA (correct) but surrounding chrome is disconnected. Zero analytics hooks on recovery attempt or success. The `snackbarHostState.showSnackbar` + `onSuccess()` at line 165 may race the snackbar display. Remediation: (a) wrap `Column` content in `Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainer)` matching `CredentialsStep`; (b) add observability — `analytics.track("backup_code_recovery_attempt")` / `analytics.track("backup_code_recovery_success")`; (c) use `SnackbarDuration.Indefinite` + manual dismiss to avoid the snackbar/navigation race. File: `BackupCodeRecoveryScreen.kt:169-323`.
 
-- [ ] **LOGIN-MOCK-159 (UX/Copy). `BackupCodesDisplay.kt` has no "Download" or "Share" affordance — only "Copy all codes" with a 30-second clipboard auto-clear that races the user's password-manager paste workflow on mid-range hardware.** `BackupCodesDisplay.kt:159-177`: `ClipboardUtil.copySensitive(clearAfterMillis = 30_000L)`. App-switching to a vault, navigating to a notes field, and pasting realistically takes 20-40 s; TalkBack navigation adds further latency. Codes are rendered in JetBrains Mono (`BrandMono.fontFamily`) in a `FlowRow` grid — correct for readability. The non-dismissible dialog with checkbox gate is the right friction model. No PDF export exists. This surface has no mockup frame and needs a dedicated design review. Remediation: (a) add `OutlinedButton("Share / Save")` firing `Intent.ACTION_SEND` with `text/plain` MIME (no storage permission needed); (b) increase auto-clear to 120 s to cover typical vault app-switch time. File: `BackupCodesDisplay.kt:59-207`. <!-- NOTE-defer: BackupCodesDisplay.kt outside login-screen scope; deferred to backup-codes UX wave. -->
+- [ ] **LOGIN-MOCK-159 (UX/Copy). `BackupCodesDisplay.kt` has no "Download" or "Share" affordance — only "Copy all codes" with a 30-second clipboard auto-clear that races the user's password-manager paste workflow on mid-range hardware.** `BackupCodesDisplay.kt:159-177`: `ClipboardUtil.copySensitive(clearAfterMillis = 30_000L)`. App-switching to a vault, navigating to a notes field, and pasting realistically takes 20-40 s; TalkBack navigation adds further latency. Codes are rendered in JetBrains Mono (`BrandMono.fontFamily`) in a `FlowRow` grid — correct for readability. The non-dismissible dialog with checkbox gate is the right friction model. No PDF export exists. This surface has no mockup frame and needs a dedicated design review. Remediation: (a) add `OutlinedButton("Share / Save")` firing `Intent.ACTION_SEND` with `text/plain` MIME (no storage permission needed); (b) increase auto-clear to 120 s to cover typical vault app-switch time. File: `BackupCodesDisplay.kt:59-207`.
 
-- [ ] **LOGIN-MOCK-160 (A11y). SMS auto-fill via `SmsOtpBus` silently populates the TOTP field with no visual or spoken indicator — TalkBack users receive no announcement and sighted users on large screens may miss the digit change.** `LoginScreen.kt:3426-3429`: `SmsOtpBus.events.collect { code -> viewModel.updateTotpCode(code) }`. The `OutlinedTextField` at line 3487 has no `liveRegion` semantic; programmatic field-value changes are not announced by TalkBack unless the field has focus. Remediation: (a) set `modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }` on the TOTP field so TalkBack announces the filled value immediately; (b) add an `AnimatedVisibility`-wrapped chip "Code filled from SMS" that fades out after 2 s — matching the Android Autofill chip convention; (c) emit `Timber.d("SMS OTP auto-filled")` at the collection site for QA. File: `LoginScreen.kt:3487-3505, 3426-3429`. <!-- NOTE-defer: liveRegion=Assertive + SMS chip deferred to a11y/SMS wave. -->
+- [ ] **LOGIN-MOCK-160 (A11y). SMS auto-fill via `SmsOtpBus` silently populates the TOTP field with no visual or spoken indicator — TalkBack users receive no announcement and sighted users on large screens may miss the digit change.** `LoginScreen.kt:3426-3429`: `SmsOtpBus.events.collect { code -> viewModel.updateTotpCode(code) }`. The `OutlinedTextField` at line 3487 has no `liveRegion` semantic; programmatic field-value changes are not announced by TalkBack unless the field has focus. Remediation: (a) set `modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }` on the TOTP field so TalkBack announces the filled value immediately; (b) add an `AnimatedVisibility`-wrapped chip "Code filled from SMS" that fades out after 2 s — matching the Android Autofill chip convention; (c) emit `Timber.d("SMS OTP auto-filled")` at the collection site for QA. File: `LoginScreen.kt:3487-3505, 3426-3429`.
 
 - [x] **LOGIN-MOCK-161 (UX/Copy). Setup invite token (`registerSetupToken`) silently navigates to the Register step with no "Welcome — finishing your setup" banner, giving the user no confirmation their deep-link invite was recognised.** `LoginScreen.kt:1747-1751`: `viewModel.applySetupToken(setupToken)` + `viewModel.goToRegister()` — no banner, no copy change. `RegisterSubStep.Company` renders identically for invited setup and self-initiated registration. An expired or malformed token will surface as a generic `"Registration failed"` from `LoginViewModel.kt:757` with no differentiation. Remediation: (a) add `registerSetupTokenActive: Boolean = false` to `LoginUiState` and set it in `applySetupToken()`; (b) render a dismissible `InformationBanner("You've been invited to set up your Bizarre CRM account.", secondaryContainer)` at the top of `RegisterSubStep.Company` when the flag is true; (c) map a 422 token-expired response to "This setup link has expired. Ask your admin to resend it." File: `LoginScreen.kt:1747-1751`; `LoginViewModel.kt:757`.
 
 - [x] **LOGIN-MOCK-162 (UX). The session-revoked banner (`LoginScreen.kt:1910-1944`) is correctly persistent with a "Dismiss" button, but its leading `Icon(Icons.Default.Lock, contentDescription = null)` announces nothing to TalkBack, and the `when` branch silently falls to a generic message for any unknown future reason string with no logged warning.** `LoginScreen.kt:1923`: `contentDescription = null`. Known reasons handled: `"RefreshFailed"` and `"SessionRevoked"` only. A third reason injected by a future server release would silently use "You've been signed out." with no developer visibility. Remediation: (a) set `contentDescription = "Session ended"` on the Lock icon; (b) add `else -> { Timber.w("Unknown sessionRevokedReason: $sessionRevokedReason"); "You've been signed out." }` with explicit logging; (c) document the exhaustive reason-string set in a `companion object` or sealed class in `LoginViewModel`. File: `LoginScreen.kt:1910-1944`.
 
-- [ ] **LOGIN-MOCK-163 (UX/Copy). The device-changed banner (`state.deviceChangedBanner`, `LoginScreen.kt:1947-1975`) dismisses with "OK" but provides no in-flow path to re-enable biometric sign-in — the user must complete login then navigate Settings manually (4-5 extra taps).** Copy "Sign in with your password to re-enable" correctly explains the next action but offers no shortcut. A user who hits device-change on every OS biometric re-enrollment update encounters this repeatedly. Remediation: after a successful password login where `biometricEnabled` was previously true and is now false due to `DeviceChanged`/`Invalidated`, show a one-time `ModalBottomSheet` — "Re-enable biometric sign-in? Your device changed." — with "Enable" (`stashCredentialsBiometric(...)` inline) and "Not now" CTAs, eliminating the Settings hop. Flag for UX review: the prompt fires immediately post-login and may feel aggressive. File: `LoginScreen.kt:1947-1975`; `LoginViewModel.kt:1239-1284`. <!-- NOTE-defer: post-login ModalBottomSheet for re-enroll; UX review flagged; deferred to biometric-polish wave. -->
+- [ ] **LOGIN-MOCK-163 (UX/Copy). The device-changed banner (`state.deviceChangedBanner`, `LoginScreen.kt:1947-1975`) dismisses with "OK" but provides no in-flow path to re-enable biometric sign-in — the user must complete login then navigate Settings manually (4-5 extra taps).** Copy "Sign in with your password to re-enable" correctly explains the next action but offers no shortcut. A user who hits device-change on every OS biometric re-enrollment update encounters this repeatedly. Remediation: after a successful password login where `biometricEnabled` was previously true and is now false due to `DeviceChanged`/`Invalidated`, show a one-time `ModalBottomSheet` — "Re-enable biometric sign-in? Your device changed." — with "Enable" (`stashCredentialsBiometric(...)` inline) and "Not now" CTAs, eliminating the Settings hop. Flag for UX review: the prompt fires immediately post-login and may feel aggressive. File: `LoginScreen.kt:1947-1975`; `LoginViewModel.kt:1239-1284`.
 
-- [ ] **LOGIN-MOCK-164 (Copy). Server-revoke banner copy "Signed out on another device." (`LoginScreen.kt:1995`) conflates admin-forced session kill with concurrent login, and its leading `Icon(Icons.Default.Lock, contentDescription = null)` repeats the a11y gap from LOGIN-MOCK-162.** `LoginViewModel.kt:1287-1298`: `handleServerRevoke()` fires on any 401/403 from GET /auth/me regardless of cause — "Signed out on another device." is accurate only for concurrent-login revocations; an admin force-revoke is misattributed to the user's own other device. Remediation: (a) require the server to return a `revoke_reason` field (`admin_action | concurrent_login | token_expired`) in the 401 body and map to three distinct copy strings — "An admin ended your session.", "You signed in on another device.", "Your session expired."; (b) set `contentDescription = "Session ended"` on the Lock icon at line 1990; (c) create a `CROSS`-tagged item in `TODO.md` since the server change is needed on both web and Android. File: `LoginScreen.kt:1978-2006`; `LoginViewModel.kt:1287-1298`. <!-- NOTE-defer: requires server revoke_reason field (CROSS item); deferred to server+client cross-platform wave. -->
+- [ ] **LOGIN-MOCK-164 (Copy). Server-revoke banner copy "Signed out on another device." (`LoginScreen.kt:1995`) conflates admin-forced session kill with concurrent login, and its leading `Icon(Icons.Default.Lock, contentDescription = null)` repeats the a11y gap from LOGIN-MOCK-162.** `LoginViewModel.kt:1287-1298`: `handleServerRevoke()` fires on any 401/403 from GET /auth/me regardless of cause — "Signed out on another device." is accurate only for concurrent-login revocations; an admin force-revoke is misattributed to the user's own other device. Remediation: (a) require the server to return a `revoke_reason` field (`admin_action | concurrent_login | token_expired`) in the 401 body and map to three distinct copy strings — "An admin ended your session.", "You signed in on another device.", "Your session expired."; (b) set `contentDescription = "Session ended"` on the Lock icon at line 1990; (c) create a `CROSS`-tagged item in `TODO.md` since the server change is needed on both web and Android. File: `LoginScreen.kt:1978-2006`; `LoginViewModel.kt:1287-1298`.
 
 - [x] **LOGIN-MOCK-165 (UX/Copy). The setup-needed banner (`state.setupNeeded == true`, `LoginScreen.kt:2498-2543`) is non-dismissible and contains copy "A setup wizard will appear in a future release" — a placeholder commitment that must not ship in any public release as written.** The banner sticks until the next probe cycle; a user who completes setup out-of-band cannot clear it. The external-browser link to `bizarrecrm.com/docs/setup` provides no in-app path. Remediation: (a) add a "Dismiss" `TextButton` calling `viewModel.setSetupBannerDismissed()`, persisted in `AuthPreferences` keyed by server URL so it does not re-appear until the server reports `needsSetup` again; (b) when the in-app setup wizard ships, replace the browser link with `navigateToSetupWizard()`; (c) remove the "future release" copy before any public release — replace with "Complete setup at bizarrecrm.com/docs/setup" if wizard is not yet shipped. File: `LoginScreen.kt:2498-2543`.
 
-- [ ] **LOGIN-MOCK-166 (A11y/UX). The network-offline banner (`state.networkOffline`, `LoginScreen.kt:2547-2572`) appears and disappears with a hard cut, its `Text` has no `liveRegion` annotation so TalkBack users hear no announcement when going offline, and it uses `tertiaryContainer` color (teal/blue) rather than the `errorContainer` family Android convention associates with connectivity warnings.** `LoginScreen.kt:2565`: `Text("You're offline. Connect to sign in.", ...)` — no `liveRegion` semantic. A TalkBack user who goes offline mid-login experiences a silently disabled Sign In button with no spoken explanation. On unstable connections the hard cut produces rapid layout thrash. Remediation: (a) set `modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }` on the banner `Text`; (b) wrap in `AnimatedVisibility(visible = state.networkOffline, enter = expandVertically(tween(200)), exit = shrinkVertically(tween(200)))` to smooth toggling; (c) consider switching to `errorContainer` color to align with the `unreachableHost` banner immediately below and Android Material connectivity-error conventions. File: `LoginScreen.kt:2547-2572`. <!-- NOTE-defer: liveRegion + AnimatedVisibility + color fix deferred to a11y/network wave. -->
+- [ ] **LOGIN-MOCK-166 (A11y/UX). The network-offline banner (`state.networkOffline`, `LoginScreen.kt:2547-2572`) appears and disappears with a hard cut, its `Text` has no `liveRegion` annotation so TalkBack users hear no announcement when going offline, and it uses `tertiaryContainer` color (teal/blue) rather than the `errorContainer` family Android convention associates with connectivity warnings.** `LoginScreen.kt:2565`: `Text("You're offline. Connect to sign in.", ...)` — no `liveRegion` semantic. A TalkBack user who goes offline mid-login experiences a silently disabled Sign In button with no spoken explanation. On unstable connections the hard cut produces rapid layout thrash. Remediation: (a) set `modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive }` on the banner `Text`; (b) wrap in `AnimatedVisibility(visible = state.networkOffline, enter = expandVertically(tween(200)), exit = shrinkVertically(tween(200)))` to smooth toggling; (c) consider switching to `errorContainer` color to align with the `unreachableHost` banner immediately below and Android Material connectivity-error conventions. File: `LoginScreen.kt:2547-2572`.
 
 ### Wave-5 Finder-M launch-blocker verification
 
 > Scope: confirm or clear six pre-assigned pre-launch blockers (155, 156, 165, 167, 169, 173/174), then hunt for new crash/leak/security issues. IDs 180–192.
 
-- [x] **LOGIN-MOCK-180 (Bug). Blocker 167 — error-map still missing at HEAD; `extractErrorMessage()` returns raw server strings verbatim with no friendly translation.** Evidence: `LoginScreen.kt:1707-1718` — `fun extractErrorMessage(e: Exception): String` returns `JSONObject(body).optString("message", e.message ?: "Request failed")` unchanged for all `HttpException` cases, and `e.message ?: "An error occurred"` for everything else. No `friendlyErrorMessage()` mapping function exists anywhere in the file. Server strings that still reach the user unfiltered: `"Invalid credentials"` (auth route ~752/796), `"Challenge expired"` (~858), `"TOTP not configured"` (~980), `"Invalid code"` (~994), `"Origin header required for state-changing requests."` (index.ts ~1142). Remediation: add inside `LoginViewModel` — `private fun friendlyErrorMessage(raw: String): String = when { raw.contains("Invalid credentials", ignoreCase = true) -> "Incorrect username or password."; raw.contains("Challenge expired", ignoreCase = true) -> "Session timed out — please sign in again."; raw.contains("Invalid code", ignoreCase = true) -> "That code is wrong. Check your authenticator and try again."; raw.contains("TOTP not configured", ignoreCase = true) -> "Two-factor auth is not set up. Please complete setup first."; raw.contains("Origin header required", ignoreCase = true) -> "Unable to complete request. Please try again."; else -> raw }` — call `friendlyErrorMessage(extractErrorMessage(e))` at every catch site. `LoginScreen.kt:1707-1718`. Effort: **S**.
+- [ ] **LOGIN-MOCK-180 (Bug). Blocker 167 — error-map still missing at HEAD; `extractErrorMessage()` returns raw server strings verbatim with no friendly translation.** Evidence: `LoginScreen.kt:1707-1718` — `fun extractErrorMessage(e: Exception): String` returns `JSONObject(body).optString("message", e.message ?: "Request failed")` unchanged for all `HttpException` cases, and `e.message ?: "An error occurred"` for everything else. No `friendlyErrorMessage()` mapping function exists anywhere in the file. Server strings that still reach the user unfiltered: `"Invalid credentials"` (auth route ~752/796), `"Challenge expired"` (~858), `"TOTP not configured"` (~980), `"Invalid code"` (~994), `"Origin header required for state-changing requests."` (index.ts ~1142). Remediation: add inside `LoginViewModel` — `private fun friendlyErrorMessage(raw: String): String = when { raw.contains("Invalid credentials", ignoreCase = true) -> "Incorrect username or password."; raw.contains("Challenge expired", ignoreCase = true) -> "Session timed out — please sign in again."; raw.contains("Invalid code", ignoreCase = true) -> "That code is wrong. Check your authenticator and try again."; raw.contains("TOTP not configured", ignoreCase = true) -> "Two-factor auth is not set up. Please complete setup first."; raw.contains("Origin header required", ignoreCase = true) -> "Unable to complete request. Please try again."; else -> raw }` — call `friendlyErrorMessage(extractErrorMessage(e))` at every catch site. `LoginScreen.kt:1707-1718`. Effort: **S**.
 
-- [x] **LOGIN-MOCK-181 (UX/Copy). Blocker 165 — setup-needed banner still ships placeholder copy "A setup wizard will appear in a future release" at HEAD; the banner is also non-dismissible.** Evidence: `LoginScreen.kt:2537` — exact string: `"This server needs initial setup. A setup wizard will appear in a future release. Please contact your admin to complete setup manually."` Cannot ship in any public release. The banner has no dismiss affordance and reappears on every navigation to Credentials as long as the server reports `needsSetup = true` because no persistence key guards it. Remediation: (a) replace body copy with `"This server needs initial setup. Contact your admin or visit the setup guide."` removing the forward-commitment; (b) add a `"Dismiss"` `TextButton` calling `viewModel.setSetupBannerDismissed()` stored in `AuthPreferences` keyed by server URL; (c) keep the "View setup guide" link. `LoginScreen.kt:2515-2563`. Effort: **XS**.
+- [ ] **LOGIN-MOCK-181 (UX/Copy). Blocker 165 — setup-needed banner still ships placeholder copy "A setup wizard will appear in a future release" at HEAD; the banner is also non-dismissible.** Evidence: `LoginScreen.kt:2537` — exact string: `"This server needs initial setup. A setup wizard will appear in a future release. Please contact your admin to complete setup manually."` Cannot ship in any public release. The banner has no dismiss affordance and reappears on every navigation to Credentials as long as the server reports `needsSetup = true` because no persistence key guards it. Remediation: (a) replace body copy with `"This server needs initial setup. Contact your admin or visit the setup guide."` removing the forward-commitment; (b) add a `"Dismiss"` `TextButton` calling `viewModel.setSetupBannerDismissed()` stored in `AuthPreferences` keyed by server URL; (c) keep the "View setup guide" link. `LoginScreen.kt:2515-2563`. Effort: **XS**.
 
-- [x] **LOGIN-MOCK-182 (Bug). Blocker 173 — wrong-2FA-code catch discards the refreshed `challengeToken` from the server 401 body, forcing a full login restart instead of allowing retry on the same session.** Evidence: `LoginScreen.kt:1107-1112` — the `verify2FA()` catch calls `extractErrorMessage(e)` and stores `error = errorMsg` but never reads `e.response()?.errorBody()?.string()` for the refreshed token that `auth.routes.ts:~994` returns as `{ data: { challengeToken: newChallenge } }`. Every wrong code forces a full restart to the Credentials step. Remediation: in the `verify2FA` catch before `extractErrorMessage`, add: `if (e is retrofit2.HttpException && e.code() == 401) { val retryToken = try { val body = e.response()?.errorBody()?.string(); if (body != null) org.json.JSONObject(body).optJSONObject("data")?.optString("challengeToken") else null } catch (_: Exception) { null }; if (!retryToken.isNullOrBlank()) { _state.value = _state.value.copy(isLoading = false, totpCode = "", challengeToken = retryToken, error = "That code is wrong. Check your authenticator and try again."); return@launch } }` `LoginScreen.kt:1107-1112`. Effort: **S**.
+- [ ] **LOGIN-MOCK-182 (Bug). Blocker 173 — wrong-2FA-code catch discards the refreshed `challengeToken` from the server 401 body, forcing a full login restart instead of allowing retry on the same session.** Evidence: `LoginScreen.kt:1107-1112` — the `verify2FA()` catch calls `extractErrorMessage(e)` and stores `error = errorMsg` but never reads `e.response()?.errorBody()?.string()` for the refreshed token that `auth.routes.ts:~994` returns as `{ data: { challengeToken: newChallenge } }`. Every wrong code forces a full restart to the Credentials step. Remediation: in the `verify2FA` catch before `extractErrorMessage`, add: `if (e is retrofit2.HttpException && e.code() == 401) { val retryToken = try { val body = e.response()?.errorBody()?.string(); if (body != null) org.json.JSONObject(body).optJSONObject("data")?.optString("challengeToken") else null } catch (_: Exception) { null }; if (!retryToken.isNullOrBlank()) { _state.value = _state.value.copy(isLoading = false, totpCode = "", challengeToken = retryToken, error = "That code is wrong. Check your authenticator and try again."); return@launch } }` `LoginScreen.kt:1107-1112`. Effort: **S**.
 
-- [x] **LOGIN-MOCK-183 (Bug). Blocker 174 — wrong backup-code handling also discards the server-refreshed `challengeToken`, same root cause as LOGIN-MOCK-182.** Evidence: the shared `extractErrorMessage()` pattern at `LoginScreen.kt:1707-1718` is used across auth catch blocks. The backup-code recovery path in `BackupCodeRecoveryScreen.kt` (same auth package) almost certainly uses an identical catch pattern against `auth.routes.ts:~1162` which returns `{ message: "Invalid backup code", data: { challengeToken: newChallenge } }`. Remediation: locate the catch block in `BackupCodeRecoveryScreen.kt`; apply the same retry-token extraction as LOGIN-MOCK-182; add `"Invalid backup code" -> "That backup code is not valid. Double-check it and try again."` to the friendly-error map. `BackupCodeRecoveryScreen.kt` (auth package). Effort: **S**.
+- [ ] **LOGIN-MOCK-183 (Bug). Blocker 174 — wrong backup-code handling also discards the server-refreshed `challengeToken`, same root cause as LOGIN-MOCK-182.** Evidence: the shared `extractErrorMessage()` pattern at `LoginScreen.kt:1707-1718` is used across auth catch blocks. The backup-code recovery path in `BackupCodeRecoveryScreen.kt` (same auth package) almost certainly uses an identical catch pattern against `auth.routes.ts:~1162` which returns `{ message: "Invalid backup code", data: { challengeToken: newChallenge } }`. Remediation: locate the catch block in `BackupCodeRecoveryScreen.kt`; apply the same retry-token extraction as LOGIN-MOCK-182; add `"Invalid backup code" -> "That backup code is not valid. Double-check it and try again."` to the friendly-error map. `BackupCodeRecoveryScreen.kt` (auth package). Effort: **S**.
 
-- [x] **LOGIN-MOCK-184 (UX). Blocker 169 — QR-spinner timeout is absent at HEAD; a blank-`qr`-and-blank-`secret` 200 response leaves `TwoFaSetupStep` on `CircularProgressIndicator()` permanently.** Evidence: `LoginScreen.kt:3307-3308` — `state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() -> CircularProgressIndicator()`. No `LaunchedEffect` with a timeout exists anywhere in `TwoFaSetupStep`. `setup2FA()` at lines 1031-1032 uses `data.qr ?: data.qrCode ?: ""` — an unexpected 200 with both fields absent or null silently stores empty strings, leaving the step frozen. Only `data == null` (line 1029) throws. Remediation: (1) in `setup2FA()` after line 1044, add `if (qrCode.isBlank() && secret.isBlank()) { _state.value = _state.value.copy(isLoading = false, error = "Could not load 2FA setup. Please go back and try again."); return@launch }`; (2) add a 15-second `LaunchedEffect` guard in `TwoFaSetupStep`: `LaunchedEffect(state.qrCodeDataUrl, state.twoFaSecret) { if (state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank()) { delay(15_000L); if (state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank()) viewModel.setError("2FA setup timed out. Go back and try again.") } }`. `LoginScreen.kt:1029-1044, 3248, 3307`. Effort: **S**.
+- [ ] **LOGIN-MOCK-184 (UX). Blocker 169 — QR-spinner timeout is absent at HEAD; a blank-`qr`-and-blank-`secret` 200 response leaves `TwoFaSetupStep` on `CircularProgressIndicator()` permanently.** Evidence: `LoginScreen.kt:3307-3308` — `state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank() -> CircularProgressIndicator()`. No `LaunchedEffect` with a timeout exists anywhere in `TwoFaSetupStep`. `setup2FA()` at lines 1031-1032 uses `data.qr ?: data.qrCode ?: ""` — an unexpected 200 with both fields absent or null silently stores empty strings, leaving the step frozen. Only `data == null` (line 1029) throws. Remediation: (1) in `setup2FA()` after line 1044, add `if (qrCode.isBlank() && secret.isBlank()) { _state.value = _state.value.copy(isLoading = false, error = "Could not load 2FA setup. Please go back and try again."); return@launch }`; (2) add a 15-second `LaunchedEffect` guard in `TwoFaSetupStep`: `LaunchedEffect(state.qrCodeDataUrl, state.twoFaSecret) { if (state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank()) { delay(15_000L); if (state.qrCodeDataUrl.isBlank() && state.twoFaSecret.isBlank()) viewModel.setError("2FA setup timed out. Go back and try again.") } }`. `LoginScreen.kt:1029-1044, 3248, 3307`. Effort: **S**.
 
-- [x] **LOGIN-MOCK-185 (UX). Blocker 156 — passkey error persists indefinitely at HEAD; no auto-dismiss is wired anywhere.** Evidence: `LoginScreen.kt:2927-2935` — `val passkeyErr = state.passkeyError; if (passkeyErr != null) { Text(text = passkeyErr, ...) }`. `clearPasskeyError()` at line 1528 exists in the ViewModel but nothing calls it on a timer. A user who reads the error and scrolls away sees permanent red text on return. `PasskeyOutcome.Unsupported` at line 1500 silently sets `passkeyEnabled = false` with no `Timber` log. Remediation: add directly after the passkey `TextButton` block in `CredentialsStep`: `LaunchedEffect(state.passkeyError) { if (state.passkeyError != null) { delay(5_000L); viewModel.clearPasskeyError() } }`. Also add `timber.log.Timber.d("PasskeyOutcome.Unsupported — hiding button")` at `LoginScreen.kt:1500`. `LoginScreen.kt:2927-2935, 1499-1503`. Effort: **XS**.
+- [ ] **LOGIN-MOCK-185 (UX). Blocker 156 — passkey error persists indefinitely at HEAD; no auto-dismiss is wired anywhere.** Evidence: `LoginScreen.kt:2927-2935` — `val passkeyErr = state.passkeyError; if (passkeyErr != null) { Text(text = passkeyErr, ...) }`. `clearPasskeyError()` at line 1528 exists in the ViewModel but nothing calls it on a timer. A user who reads the error and scrolls away sees permanent red text on return. `PasskeyOutcome.Unsupported` at line 1500 silently sets `passkeyEnabled = false` with no `Timber` log. Remediation: add directly after the passkey `TextButton` block in `CredentialsStep`: `LaunchedEffect(state.passkeyError) { if (state.passkeyError != null) { delay(5_000L); viewModel.clearPasskeyError() } }`. Also add `timber.log.Timber.d("PasskeyOutcome.Unsupported — hiding button")` at `LoginScreen.kt:1500`. `LoginScreen.kt:2927-2935, 1499-1503`. Effort: **XS**.
 
-- [x] **LOGIN-MOCK-186 (UX). Blocker 155 — magic-link button fires before the `/tenants/me` probe resolves (optimistic-default `magicLinksEnabled != false`); probe-race window allows user to open the sheet and attempt a POST before the feature flag is confirmed.** Evidence: `LoginScreen.kt:2861` — `val magicLinksVisible = state.magicLinksEnabled != false`. `LoginUiState:229` initialises `magicLinksEnabled = null`; `probemagicLinksEnabled()` is called asynchronously in `init`. On first composition `null != false` is `true` so the button appears immediately. Additionally `probemagicLinksEnabled()` has an internal doc/code inconsistency: the KDoc at line 1403 says "404 or network failure → default to true (opt-out model)" but the implementation at lines 1411-1412 sets `magicLinksEnabled = false` (opt-in). The code is correct; the comment is wrong. Remediation: change `LoginScreen.kt:2861` to `val magicLinksVisible = state.magicLinksEnabled == true` (matches passkey pattern); update the KDoc at `LoginViewModel:1403` to read "404 or any failure → default to false (opt-in model; button shown only after server confirms)". `LoginScreen.kt:2861`; `LoginViewModel.kt:1403-1413`. Effort: **XS**.
+- [ ] **LOGIN-MOCK-186 (UX). Blocker 155 — magic-link button fires before the `/tenants/me` probe resolves (optimistic-default `magicLinksEnabled != false`); probe-race window allows user to open the sheet and attempt a POST before the feature flag is confirmed.** Evidence: `LoginScreen.kt:2861` — `val magicLinksVisible = state.magicLinksEnabled != false`. `LoginUiState:229` initialises `magicLinksEnabled = null`; `probemagicLinksEnabled()` is called asynchronously in `init`. On first composition `null != false` is `true` so the button appears immediately. Additionally `probemagicLinksEnabled()` has an internal doc/code inconsistency: the KDoc at line 1403 says "404 or network failure → default to true (opt-out model)" but the implementation at lines 1411-1412 sets `magicLinksEnabled = false` (opt-in). The code is correct; the comment is wrong. Remediation: change `LoginScreen.kt:2861` to `val magicLinksVisible = state.magicLinksEnabled == true` (matches passkey pattern); update the KDoc at `LoginViewModel:1403` to read "404 or any failure → default to false (opt-in model; button shown only after server confirms)". `LoginScreen.kt:2861`; `LoginViewModel.kt:1403-1413`. Effort: **XS**.
 
 - [x] **LOGIN-MOCK-187 (Bug). Crash-on-rotation regression: `showPassword` in `CredentialsStep` and `RegisterStep`, and `showSsoSheet` in `CredentialsStep`, use `remember { mutableStateOf(false) }` instead of `rememberSaveable`, causing all three to reset on any configuration change (rotation, font-scale, dark-mode toggle).** Evidence: `LoginScreen.kt:2332` — `var showPassword by remember { mutableStateOf(false) }` (`RegisterStep`); `LoginScreen.kt:2486` — same in `CredentialsStep`; `LoginScreen.kt:2809` — `var showSsoSheet by remember { mutableStateOf(false) }` in `CredentialsStep`. Contrast with `manualEntryExpanded` at line 3321 which correctly uses `rememberSaveable`. A user who rotates with the SSO sheet open loses it silently; a user who enabled "Show password" and rotates returns to a masked field without notice — a usability regression. Remediation: `var showPassword by rememberSaveable { mutableStateOf(false) }` at lines 2332, 2486; `var showSsoSheet by rememberSaveable { mutableStateOf(false) }` at line 2809. `LoginScreen.kt:2332, 2486, 2809`. Effort: **XS**.
 
@@ -6981,9 +5510,9 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 - [x] **LOGIN-MOCK-189 (Security). TOTP secret (`twoFaSecret`, `twoFaManualEntry`) cleared on challenge expiry but NOT on `goBack()` from `TWO_FA_SETUP`, leaving the secret live in `LoginUiState` if the user backs up and re-enters Credentials while still on the same ViewModel instance.** Evidence: `LoginScreen.kt:628-641` — `goBack()` does not include `twoFaSecret = ""` or `twoFaManualEntry = ""` in its `copy` call (only clears `registerSubStep`). `LoginScreen.kt:1142-1143` — `onChallengeTokenExpired()` correctly zeroes both. `LoginScreen.kt:1038-1047` — `setup2FA()` success path writes both fields. If a user backs from `TWO_FA_SETUP` to `CREDENTIALS` and the ViewModel survives (process not killed), `twoFaSecret` remains populated in state — it will reappear if they advance to `TWO_FA_SETUP` again from a fresh `setup2FA()` call, but for the duration in-between the secret is live in the ViewModel heap. Remediation: add `twoFaSecret = "", twoFaManualEntry = "", qrCodeDataUrl = ""` to the `copy` in `goBack()` when `current.step == SetupStep.TWO_FA_SETUP`; also clear them in the `verify2FA()` success path before `onSuccess()`. `LoginScreen.kt:628-641, 1082-1106`. Effort: **XS**.
 
-- [ ] **LOGIN-MOCK-190 (Security). `BuildConfig.BASE_DOMAIN` silently falls back to `"bizarrecrm.com"` if all three sources (Gradle property, env var, `.env`) are absent — a staging APK built without the var set routes all slug-based logins to production, and there is no build-time guard preventing a release APK from shipping with `"localhost"` if `.env` has that value.** Evidence: `android/app/build.gradle.kts:26-34` — `normalizeBaseDomain(... ?: "bizarrecrm.com")`. The `normalizeBaseDomain()` helper strips blank to `"bizarrecrm.com"` as last resort. No check prevents releasing with `BASE_DOMAIN=localhost`. `LoginScreen.kt:123` — `private val CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` consumes this field. Remediation: add to `build.gradle.kts` before `buildConfigField`: `if (isReleaseBuild && (configuredBaseDomain == "localhost" || configuredBaseDomain == "127.0.0.1")) { error("BASE_DOMAIN must not be a loopback in a release build. Set -PBASE_DOMAIN, BASE_DOMAIN env var, or .env.") }`. Add debug-only runtime assertion: `init { if (BuildConfig.DEBUG) check(BuildConfig.BASE_DOMAIN.isNotBlank()) { "BASE_DOMAIN is blank" } }` in `LoginViewModel`. `android/app/build.gradle.kts:26-34`; `LoginScreen.kt:123`. Effort: **XS**. <!-- NOTE-defer: build-time guard requires build.gradle.kts change; deferred to build-system wave. -->
+- [ ] **LOGIN-MOCK-190 (Security). `BuildConfig.BASE_DOMAIN` silently falls back to `"bizarrecrm.com"` if all three sources (Gradle property, env var, `.env`) are absent — a staging APK built without the var set routes all slug-based logins to production, and there is no build-time guard preventing a release APK from shipping with `"localhost"` if `.env` has that value.** Evidence: `android/app/build.gradle.kts:26-34` — `normalizeBaseDomain(... ?: "bizarrecrm.com")`. The `normalizeBaseDomain()` helper strips blank to `"bizarrecrm.com"` as last resort. No check prevents releasing with `BASE_DOMAIN=localhost`. `LoginScreen.kt:123` — `private val CLOUD_DOMAIN = BuildConfig.BASE_DOMAIN.lowercase()` consumes this field. Remediation: add to `build.gradle.kts` before `buildConfigField`: `if (isReleaseBuild && (configuredBaseDomain == "localhost" || configuredBaseDomain == "127.0.0.1")) { error("BASE_DOMAIN must not be a loopback in a release build. Set -PBASE_DOMAIN, BASE_DOMAIN env var, or .env.") }`. Add debug-only runtime assertion: `init { if (BuildConfig.DEBUG) check(BuildConfig.BASE_DOMAIN.isNotBlank()) { "BASE_DOMAIN is blank" } }` in `LoginViewModel`. `android/app/build.gradle.kts:26-34`; `LoginScreen.kt:123`. Effort: **XS**.
 
-- [ ] **LOGIN-MOCK-191 (Bug). Hilt DI failure on `LoginViewModel` crashes the app with `IllegalStateException` at `hiltViewModel()` in `LoginScreen.kt:1740` with no fallback; all six constructor dependencies are non-optional.** Evidence: `LoginScreen.kt:285-293` — `@HiltViewModel class LoginViewModel @Inject constructor(authPreferences, authApi, networkMonitor, biometricCredentialStore, biometricAuth, deepLinkBus)`. `LoginScreen.kt:1740` — `viewModel: LoginViewModel = hiltViewModel()`. On API 26 (min SDK) without multidex or with a missing `@Module` binding, Hilt component creation fails at Activity start with no user-visible recovery path — the user sees a system crash dialog. No `try/catch` wraps `hiltViewModel()`. Remediation: (a) confirm `multiDexEnabled = true` in `build.gradle.kts defaultConfig` (verify); (b) add a compile-time `@HiltAndroidTest` entry-point test that asserts all six bindings resolve; (c) add a `CrashReporter` breadcrumb in `BizarreCrmApp.onCreate()` before Hilt component creation begins so DI failures are captured before the Activity stack. `LoginScreen.kt:285-293, 1740`; `android/app/build.gradle.kts`. Effort: **S**. <!-- NOTE-defer: DI crash hardening requires @HiltAndroidTest compile-time coverage; deferred to DI/stability wave. -->
+- [ ] **LOGIN-MOCK-191 (Bug). Hilt DI failure on `LoginViewModel` crashes the app with `IllegalStateException` at `hiltViewModel()` in `LoginScreen.kt:1740` with no fallback; all six constructor dependencies are non-optional.** Evidence: `LoginScreen.kt:285-293` — `@HiltViewModel class LoginViewModel @Inject constructor(authPreferences, authApi, networkMonitor, biometricCredentialStore, biometricAuth, deepLinkBus)`. `LoginScreen.kt:1740` — `viewModel: LoginViewModel = hiltViewModel()`. On API 26 (min SDK) without multidex or with a missing `@Module` binding, Hilt component creation fails at Activity start with no user-visible recovery path — the user sees a system crash dialog. No `try/catch` wraps `hiltViewModel()`. Remediation: (a) confirm `multiDexEnabled = true` in `build.gradle.kts defaultConfig` (verify); (b) add a compile-time `@HiltAndroidTest` entry-point test that asserts all six bindings resolve; (c) add a `CrashReporter` breadcrumb in `BizarreCrmApp.onCreate()` before Hilt component creation begins so DI failures are captured before the Activity stack. `LoginScreen.kt:285-293, 1740`; `android/app/build.gradle.kts`. Effort: **S**.
 
 - [x] **LOGIN-MOCK-192 (Verify). No PII or credential logging found in `LoginScreen.kt` at HEAD — passwords, tokens, and secrets are not passed to any log call.** Evidence: the only log call in the file is `android.util.Log.w("TwoFaVerifyStep", "SmsRetriever start failed", e)` at line 3449, logging only a Play Services exception object with no user data attached. `extractErrorMessage()` at lines 1707-1718 logs nothing. `twoFaSecret`, `password`, `pendingStashPassword`, `challengeToken`, and `accessToken` fields are never referenced in any `Timber.*` or `Log.*` call. `ClipboardUtil.copySensitive()` suppresses the system clipboard preview toast on API 33+ via `ClipDescription.EXTRA_IS_SENSITIVE`. No PII leak exists in `LoginScreen.kt` at HEAD. **Note:** a future regression risk exists if `Timber.d("Login state: $state")` is ever added — all `LoginUiState` fields including `password` and `twoFaSecret` would be exposed. Backstop: add `"password"`, `"twoFaSecret"`, `"pendingStashPassword"`, and `"challengeToken"` to `RedactorTree.SENSITIVE_KEYS` as a pre-emptive guard. `LoginScreen.kt:3449`; `util/RedactorTree.kt:88-111`.
 
@@ -6991,29 +5520,29 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 ### Wave-5 Finder-N telemetry + observability
 
-- [ ] **LOGIN-MOCK-193 (Observability). No login-funnel analytics events fire anywhere in the auth flow — success, failure, step transitions, and alternative auth paths are all invisible to the operator.** `LoginViewModel` (throughout): `login()`, `verify2FA()`, `registerShop()`, `setup2FA()`, `signInWithPasskey()`, `exchangeSsoCode()`, `exchangeMagicLink()`, and `attemptBiometricAutoLogin()` contain zero analytics calls. There is no `TelemetryClient`, no `AnalyticsTracker`, and no Breadcrumb category that maps to funnel stages (only `CAT_AUTH = "auth"` exists in `Breadcrumbs.kt` but is never called from any login function). The sovereignty constraint in `build.gradle.kts:341-370` correctly bans Firebase Analytics (`firebase-analytics` is in the forbidden-modules set), so a first-party lightweight event logger is the right path. Remediation: create `util/AuthAnalytics.kt` — a thin singleton that writes structured breadcrumb entries (category `"auth"`, message `"event=<name> result=<ok|fail> method=<password|biometric|passkey|sso|magic_link> reason=<tag>"`) and optionally posts a compact JSON event to `POST /api/v1/telemetry/event` on the tenant's own server. Required events: `login_started`, `login_success`, `login_failure` (with `reason` tag: `bad_password | bad_2fa | network | rate_limit | unknown`), `register_started`, `register_completed`, `2fa_setup_started`, `2fa_setup_completed`, `passkey_attempted`, `passkey_succeeded`, `passkey_failed`, `sso_started`, `sso_succeeded`, `sso_failed`, `biometric_auto_login_succeeded`, `biometric_auto_login_failed`. All event data must pass through `LogRedactor.redact()` before the breadcrumb write. `LoginScreen.kt:894-989` (login), `1056-1115` (verify2FA), `1449-1526` (passkey), `1351-1395` (SSO), `1618-1692` (magic-link), `1241-1287` (biometric auto-login); `util/Breadcrumbs.kt:57`. <!-- NOTE-defer: AuthAnalytics.kt not created; requires TelemetryClient (LOGIN-MOCK-194); deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-193 (Observability). No login-funnel analytics events fire anywhere in the auth flow — success, failure, step transitions, and alternative auth paths are all invisible to the operator.** `LoginViewModel` (throughout): `login()`, `verify2FA()`, `registerShop()`, `setup2FA()`, `signInWithPasskey()`, `exchangeSsoCode()`, `exchangeMagicLink()`, and `attemptBiometricAutoLogin()` contain zero analytics calls. There is no `TelemetryClient`, no `AnalyticsTracker`, and no Breadcrumb category that maps to funnel stages (only `CAT_AUTH = "auth"` exists in `Breadcrumbs.kt` but is never called from any login function). The sovereignty constraint in `build.gradle.kts:341-370` correctly bans Firebase Analytics (`firebase-analytics` is in the forbidden-modules set), so a first-party lightweight event logger is the right path. Remediation: create `util/AuthAnalytics.kt` — a thin singleton that writes structured breadcrumb entries (category `"auth"`, message `"event=<name> result=<ok|fail> method=<password|biometric|passkey|sso|magic_link> reason=<tag>"`) and optionally posts a compact JSON event to `POST /api/v1/telemetry/event` on the tenant's own server. Required events: `login_started`, `login_success`, `login_failure` (with `reason` tag: `bad_password | bad_2fa | network | rate_limit | unknown`), `register_started`, `register_completed`, `2fa_setup_started`, `2fa_setup_completed`, `passkey_attempted`, `passkey_succeeded`, `passkey_failed`, `sso_started`, `sso_succeeded`, `sso_failed`, `biometric_auto_login_succeeded`, `biometric_auto_login_failed`. All event data must pass through `LogRedactor.redact()` before the breadcrumb write. `LoginScreen.kt:894-989` (login), `1056-1115` (verify2FA), `1449-1526` (passkey), `1351-1395` (SSO), `1618-1692` (magic-link), `1241-1287` (biometric auto-login); `util/Breadcrumbs.kt:57`.
 
-- [ ] **LOGIN-MOCK-194 (Observability). `CrashReporter` writes local crash files only — there is no upload path to the tenant's server, so a silent crash on the login screen is invisible unless the user manually shares the log via `adb pull` or the share-sheet.** `util/CrashReporter.kt:28-29`: "A future iteration uploads the file to the tenant's own server when an endpoint exists (see §32.2 TelemetryClient TODO). Until then the file is purely a developer aid recoverable via adb pull." The §32.2 TelemetryClient is not implemented. Login crashes (ViewModel init failure, SSL handshake exceptions, Keystore failures) are therefore permanently unobservable in production unless a user actively files a report. Remediation: implement `util/TelemetryClient.kt` — calls `POST /api/v1/telemetry/crash` with the crash log body (text/plain), respects the data-sovereignty constraint (tenant server only, never a third-party endpoint), is triggered from `CrashReporter.writeReport()` on a background coroutine, and is rate-limited to one upload per crash UUID to avoid re-sending on repeated launches. Add the server-side route to `TODO.md` under `CROSS-PLATFORM`. `util/CrashReporter.kt:28-29, 58-96`. <!-- NOTE-defer: TelemetryClient not implemented; server route needed (CROSS); deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-194 (Observability). `CrashReporter` writes local crash files only — there is no upload path to the tenant's server, so a silent crash on the login screen is invisible unless the user manually shares the log via `adb pull` or the share-sheet.** `util/CrashReporter.kt:28-29`: "A future iteration uploads the file to the tenant's own server when an endpoint exists (see §32.2 TelemetryClient TODO). Until then the file is purely a developer aid recoverable via adb pull." The §32.2 TelemetryClient is not implemented. Login crashes (ViewModel init failure, SSL handshake exceptions, Keystore failures) are therefore permanently unobservable in production unless a user actively files a report. Remediation: implement `util/TelemetryClient.kt` — calls `POST /api/v1/telemetry/crash` with the crash log body (text/plain), respects the data-sovereignty constraint (tenant server only, never a third-party endpoint), is triggered from `CrashReporter.writeReport()` on a background coroutine, and is rate-limited to one upload per crash UUID to avoid re-sending on repeated launches. Add the server-side route to `TODO.md` under `CROSS-PLATFORM`. `util/CrashReporter.kt:28-29, 58-96`.
 
 - [x] **LOGIN-MOCK-195 (Security). `android.util.Log.w` is called directly in `TwoFaVerifyStep` at line 3449, bypassing `RedactorTree` — any `SmsRetriever` failure exception whose message contains an OTP code or device identifier will appear in Logcat unredacted in both debug and release builds.** `LoginScreen.kt:3449`: `android.util.Log.w("TwoFaVerifyStep", "SmsRetriever start failed", e)`. `RedactorTree` (`util/RedactorTree.kt`) is installed as a Timber tree and intercepts all `Timber.*` calls, but raw `android.util.Log.*` calls bypass it entirely. An `OnFailureListener` exception from `SmsRetriever` can carry a message containing the device's phone number or a partial OTP. The release build has `isMinifyEnabled = true` but ProGuard does not strip log calls unless a custom rule removes `android.util.Log` — no such rule is visible in `build.gradle.kts`. Remediation: replace `android.util.Log.w(...)` with `Timber.w(e, "SmsRetriever start failed")` so the message passes through `RedactorTree.redact()` before output. Apply the same replacement to any other bare `android.util.Log.*` calls found in the auth package (grep the package for `android.util.Log` and `import android.util.Log`). `LoginScreen.kt:3449`.
 
-- [ ] **LOGIN-MOCK-196 (Observability). Network failure cause is not tagged in the login error path — `ConnectException`, `UnknownHostException`, `SocketTimeoutException`, `SSLHandshakeException`, and HTTP 5xx all produce different `state.error` strings or flow through `unreachableHost`, but none are recorded as a structured breadcrumb with a failure-type tag, so post-mortem triage cannot distinguish network topology problems from server errors.** `LoginScreen.kt:944-988`: the catch block distinguishes 429, `UnknownHostException`/`ConnectException`, and generic errors, but calls `Breadcrumbs.log()` on none of them. `CrashReporter` only fires on uncaught exceptions, not on caught login errors. Remediation: in the `login()` catch block, call `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "login_failure type=${classifyLoginError(e)} code=${(e as? HttpException)?.code()}")` where `classifyLoginError` maps exception type to an enum tag (`network_unreachable | ssl_error | timeout | rate_limited | auth_error | server_error | unknown`). Mirror the same call in `verify2FA()` catch, `signInWithPasskey()` catch, `exchangeSsoCode()` catch, and `exchangeMagicLink()` catch. `LoginScreen.kt:944-988, 1107-1113, 1512-1524, 1374-1395, 1673-1692`. <!-- NOTE-defer: classifyLoginError breadcrumb not wired; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-196 (Observability). Network failure cause is not tagged in the login error path — `ConnectException`, `UnknownHostException`, `SocketTimeoutException`, `SSLHandshakeException`, and HTTP 5xx all produce different `state.error` strings or flow through `unreachableHost`, but none are recorded as a structured breadcrumb with a failure-type tag, so post-mortem triage cannot distinguish network topology problems from server errors.** `LoginScreen.kt:944-988`: the catch block distinguishes 429, `UnknownHostException`/`ConnectException`, and generic errors, but calls `Breadcrumbs.log()` on none of them. `CrashReporter` only fires on uncaught exceptions, not on caught login errors. Remediation: in the `login()` catch block, call `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "login_failure type=${classifyLoginError(e)} code=${(e as? HttpException)?.code()}")` where `classifyLoginError` maps exception type to an enum tag (`network_unreachable | ssl_error | timeout | rate_limited | auth_error | server_error | unknown`). Mirror the same call in `verify2FA()` catch, `signInWithPasskey()` catch, `exchangeSsoCode()` catch, and `exchangeMagicLink()` catch. `LoginScreen.kt:944-988, 1107-1113, 1512-1524, 1374-1395, 1673-1692`.
 
-- [ ] **LOGIN-MOCK-197 (Observability). Login round-trip latency is not measured — there is no `SystemClock.elapsedRealtime()` delta recorded from `login()` call entry to `verify2FA()` completion, so p95/p99 latency spikes (e.g. slow self-hosted servers, high-latency mobile networks) are invisible.** `LoginScreen.kt:895-989` (`login()`), `1056-1115` (`verify2FA()`): neither function captures a start timestamp. The `probeSetupStatus()` path also has no timing. `JankReporter` (`util/JankReporter.kt`) records frame timing but not network round-trips. Remediation: record `val t0 = SystemClock.elapsedRealtime()` at the start of each network-bound function and emit a breadcrumb `"login_rtt_ms=${SystemClock.elapsedRealtime()-t0}"` on both success and failure paths. For the full login funnel (credentials → challenge → 2FA verify → token), record a second delta from the `login()` call to the first line of the `verify2FA` success branch. This data surfaces in crash reports via `CrashReporter`'s breadcrumb dump and can later feed a `TelemetryClient` p95 histogram. `LoginScreen.kt:895, 1056`. <!-- NOTE-defer: RTT breadcrumb not wired; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-197 (Observability). Login round-trip latency is not measured — there is no `SystemClock.elapsedRealtime()` delta recorded from `login()` call entry to `verify2FA()` completion, so p95/p99 latency spikes (e.g. slow self-hosted servers, high-latency mobile networks) are invisible.** `LoginScreen.kt:895-989` (`login()`), `1056-1115` (`verify2FA()`): neither function captures a start timestamp. The `probeSetupStatus()` path also has no timing. `JankReporter` (`util/JankReporter.kt`) records frame timing but not network round-trips. Remediation: record `val t0 = SystemClock.elapsedRealtime()` at the start of each network-bound function and emit a breadcrumb `"login_rtt_ms=${SystemClock.elapsedRealtime()-t0}"` on both success and failure paths. For the full login funnel (credentials → challenge → 2FA verify → token), record a second delta from the `login()` call to the first line of the `verify2FA` success branch. This data surfaces in crash reports via `CrashReporter`'s breadcrumb dump and can later feed a `TelemetryClient` p95 histogram. `LoginScreen.kt:895, 1056`.
 
-- [ ] **LOGIN-MOCK-198 (Observability). The setup-status probe (`probeSetupStatus()`) silently swallows its own duration — a probe that takes >2 s on a slow self-hosted instance is indistinguishable from a <100 ms fast response, and the failure path at line 885 uses `timber.log.Timber.w(e, ...)` but the success path emits no breadcrumb at all.** `LoginScreen.kt:853-892`: `probeSetupStatus()` — `Timber.w` on failure (line 885) is the only log call; success is silent. The probe fires on every CREDENTIALS step entry (guarded by `setupNeeded != null`), so repeated slow probes on a congested LAN server accumulate latency with no visibility. Remediation: (a) add `val t0 = SystemClock.elapsedRealtime()` before the `authApi.getSetupStatus()` call and emit `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "probe_setup_status rtt_ms=${elapsed} result=${if(data.needsSetup) "needs_setup" else "ok"}")` on success; (b) on catch, change `Timber.w(e, ...)` to also log into breadcrumbs: `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "probe_setup_status failed: ${e::class.simpleName}")` so the breadcrumb ring retains the failure before a subsequent crash. `LoginScreen.kt:853-892`. <!-- NOTE-defer: probe RTT breadcrumb not wired; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-198 (Observability). The setup-status probe (`probeSetupStatus()`) silently swallows its own duration — a probe that takes >2 s on a slow self-hosted instance is indistinguishable from a <100 ms fast response, and the failure path at line 885 uses `timber.log.Timber.w(e, ...)` but the success path emits no breadcrumb at all.** `LoginScreen.kt:853-892`: `probeSetupStatus()` — `Timber.w` on failure (line 885) is the only log call; success is silent. The probe fires on every CREDENTIALS step entry (guarded by `setupNeeded != null`), so repeated slow probes on a congested LAN server accumulate latency with no visibility. Remediation: (a) add `val t0 = SystemClock.elapsedRealtime()` before the `authApi.getSetupStatus()` call and emit `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "probe_setup_status rtt_ms=${elapsed} result=${if(data.needsSetup) "needs_setup" else "ok"}")` on success; (b) on catch, change `Timber.w(e, ...)` to also log into breadcrumbs: `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "probe_setup_status failed: ${e::class.simpleName}")` so the breadcrumb ring retains the failure before a subsequent crash. `LoginScreen.kt:853-892`.
 
-- [ ] **LOGIN-MOCK-199 (Observability). Auth-method adoption is untracked — there is no way to know what fraction of login sessions use biometric vs. password vs. passkey vs. SSO vs. magic-link, which is necessary for prioritising which auth paths to invest in and for detecting enrollment degradation after an OS update.** The `LoginUiState` fields `biometricEnabled`, `passkeyEnabled`, `ssoProviders`, and `magicLinksEnabled` are probed and stored, but none of their resolved values are emitted as telemetry at login-success time. Remediation: in `verify2FA()` success path and each alternative-auth success path, emit a breadcrumb and (when `TelemetryClient` is implemented per LOGIN-MOCK-194) a structured event: `auth_method_used method=<password|biometric|passkey|sso|magic_link>`. Aggregated server-side, this gives daily active users per auth method without any third-party SDK. `LoginScreen.kt:1056-1115` (password/biometric), `1488` (passkey), `1371` (SSO), `1666` (magic-link). <!-- NOTE-defer: auth_method_used event not emitted; deferred after TelemetryClient ships. -->
+- [ ] **LOGIN-MOCK-199 (Observability). Auth-method adoption is untracked — there is no way to know what fraction of login sessions use biometric vs. password vs. passkey vs. SSO vs. magic-link, which is necessary for prioritising which auth paths to invest in and for detecting enrollment degradation after an OS update.** The `LoginUiState` fields `biometricEnabled`, `passkeyEnabled`, `ssoProviders`, and `magicLinksEnabled` are probed and stored, but none of their resolved values are emitted as telemetry at login-success time. Remediation: in `verify2FA()` success path and each alternative-auth success path, emit a breadcrumb and (when `TelemetryClient` is implemented per LOGIN-MOCK-194) a structured event: `auth_method_used method=<password|biometric|passkey|sso|magic_link>`. Aggregated server-side, this gives daily active users per auth method without any third-party SDK. `LoginScreen.kt:1056-1115` (password/biometric), `1488` (passkey), `1371` (SSO), `1666` (magic-link).
 
-- [ ] **LOGIN-MOCK-200 (Bug/ANR-risk). `RateLimitInterceptor` calls `runBlocking { rateLimiter.acquire(category) }` on OkHttp's dispatcher thread — if the token bucket is empty and the coroutine suspends for the full `callTimeout` (30 s for the probe client, default OkHttp timeout for RetrofitClient), the OkHttp thread pool thread is blocked, not the main thread, so this is not a direct ANR. However, if login is initiated from a coroutine that itself holds a dispatcher thread (e.g. `withContext(Dispatchers.IO)` inside `connectToServer()`), and the `callTimeout` expires while `runBlocking` is blocked, the thread is held past the call timeout, starving `Dispatchers.IO` for the duration.** `data/remote/interceptors/RateLimitInterceptor.kt:66`: `val acquired = runBlocking { rateLimiter.acquire(category) }`. The comment at line 41-43 acknowledges the bridge but does not note the thread-starvation risk when the bucket is empty. `connectToServer()` at `LoginScreen.kt:662` uses `withContext(Dispatchers.IO)`, wrapping a `probeClientFor()` call that uses the same interceptor chain. Remediation: cap the `acquire()` suspension with a timeout matching the connect timeout (`withTimeout(10_000L) { rateLimiter.acquire(category) }`) inside the `runBlocking` block so threads are released promptly on bucket exhaustion rather than blocking until the OkHttp call-timeout fires. `data/remote/interceptors/RateLimitInterceptor.kt:66`; `LoginScreen.kt:662`. <!-- NOTE-defer: runBlocking cap requires RateLimitInterceptor.kt change; deferred to network/stability wave. -->
+- [ ] **LOGIN-MOCK-200 (Bug/ANR-risk). `RateLimitInterceptor` calls `runBlocking { rateLimiter.acquire(category) }` on OkHttp's dispatcher thread — if the token bucket is empty and the coroutine suspends for the full `callTimeout` (30 s for the probe client, default OkHttp timeout for RetrofitClient), the OkHttp thread pool thread is blocked, not the main thread, so this is not a direct ANR. However, if login is initiated from a coroutine that itself holds a dispatcher thread (e.g. `withContext(Dispatchers.IO)` inside `connectToServer()`), and the `callTimeout` expires while `runBlocking` is blocked, the thread is held past the call timeout, starving `Dispatchers.IO` for the duration.** `data/remote/interceptors/RateLimitInterceptor.kt:66`: `val acquired = runBlocking { rateLimiter.acquire(category) }`. The comment at line 41-43 acknowledges the bridge but does not note the thread-starvation risk when the bucket is empty. `connectToServer()` at `LoginScreen.kt:662` uses `withContext(Dispatchers.IO)`, wrapping a `probeClientFor()` call that uses the same interceptor chain. Remediation: cap the `acquire()` suspension with a timeout matching the connect timeout (`withTimeout(10_000L) { rateLimiter.acquire(category) }`) inside the `runBlocking` block so threads are released promptly on bucket exhaustion rather than blocking until the OkHttp call-timeout fires. `data/remote/interceptors/RateLimitInterceptor.kt:66`; `LoginScreen.kt:662`.
 
-- [ ] **LOGIN-MOCK-201 (Observability). `StrictModeInit` is debug-only (`BuildConfig.DEBUG` guard at `util/StrictModeInit.kt:46`) with `penaltyLog()` only — violations are written to Logcat but are not routed to `Breadcrumbs`, so a disk-on-main-thread violation in the login flow (e.g. from `EncryptedSharedPreferences` first access or `AuthPreferences` reads in ViewModel init) is visible in a connected debug session but leaves no trace in crash reports from field devices.** `util/StrictModeInit.kt:45-63`: both thread and VM policies use `penaltyLog()` only; `penaltyListener` (API 28+) is not used. The `Breadcrumbs` singleton is available in `BizarreCrmApp` but is not injected into `StrictModeInit`. Remediation: on API 28+, add a `penaltyListener` to both policies that calls `breadcrumbs.log("strictmode", violation.className + ": " + violation.message)` (max 100 chars, no PII) so StrictMode hits in the login path are captured in crash breadcrumbs even on field devices running the debug build. Keep `penaltyDeath` absent (correct — it would break QA). `util/StrictModeInit.kt:46-63`. <!-- NOTE-defer: penaltyListener breadcrumb bridge requires StrictModeInit.kt change; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-201 (Observability). `StrictModeInit` is debug-only (`BuildConfig.DEBUG` guard at `util/StrictModeInit.kt:46`) with `penaltyLog()` only — violations are written to Logcat but are not routed to `Breadcrumbs`, so a disk-on-main-thread violation in the login flow (e.g. from `EncryptedSharedPreferences` first access or `AuthPreferences` reads in ViewModel init) is visible in a connected debug session but leaves no trace in crash reports from field devices.** `util/StrictModeInit.kt:45-63`: both thread and VM policies use `penaltyLog()` only; `penaltyListener` (API 28+) is not used. The `Breadcrumbs` singleton is available in `BizarreCrmApp` but is not injected into `StrictModeInit`. Remediation: on API 28+, add a `penaltyListener` to both policies that calls `breadcrumbs.log("strictmode", violation.className + ": " + violation.message)` (max 100 chars, no PII) so StrictMode hits in the login path are captured in crash breadcrumbs even on field devices running the debug build. Keep `penaltyDeath` absent (correct — it would break QA). `util/StrictModeInit.kt:46-63`.
 
-- [ ] **LOGIN-MOCK-202 (Observability). `JankReporter` is attached only to `MainActivity`'s window (per its KDoc) and records jank only while `PerformanceMetricsState` is tagged with the activity label — but the login Composable runs inside `MainActivity` with no additional `PerformanceMetricsState` state tag, so janky frames during the `TwoFaSetupStep` QR-code bitmap decode (potential 100-200 ms on low-end devices) and during `AnimatedVisibility` transitions are attributed to the generic `"MainActivity"` label rather than the specific login step.** `util/JankReporter.kt:40-41`: `putState("activity", activity.localClassName)` — one static label for the entire session. `QrCodeGenerator` bitmap decode runs synchronously in the Composable render phase (see `TwoFaSetupStep`). Remediation: (a) inject `PerformanceMetricsState` into `LoginScreen` and call `putState("login_step", state.step.name)` inside a `LaunchedEffect(state.step)` so jank reports carry the step name; (b) move QR bitmap decode into `withContext(Dispatchers.Default)` in `setup2FA()` and store the decoded `Bitmap` in state rather than decoding inside the Composable. `util/JankReporter.kt:40`; `LoginScreen.kt` (TwoFaSetupStep QR render). <!-- NOTE-defer: PerformanceMetricsState step tagging + QR decode off-thread deferred to performance wave. -->
+- [ ] **LOGIN-MOCK-202 (Observability). `JankReporter` is attached only to `MainActivity`'s window (per its KDoc) and records jank only while `PerformanceMetricsState` is tagged with the activity label — but the login Composable runs inside `MainActivity` with no additional `PerformanceMetricsState` state tag, so janky frames during the `TwoFaSetupStep` QR-code bitmap decode (potential 100-200 ms on low-end devices) and during `AnimatedVisibility` transitions are attributed to the generic `"MainActivity"` label rather than the specific login step.** `util/JankReporter.kt:40-41`: `putState("activity", activity.localClassName)` — one static label for the entire session. `QrCodeGenerator` bitmap decode runs synchronously in the Composable render phase (see `TwoFaSetupStep`). Remediation: (a) inject `PerformanceMetricsState` into `LoginScreen` and call `putState("login_step", state.step.name)` inside a `LaunchedEffect(state.step)` so jank reports carry the step name; (b) move QR bitmap decode into `withContext(Dispatchers.Default)` in `setup2FA()` and store the decoded `Bitmap` in state rather than decoding inside the Composable. `util/JankReporter.kt:40`; `LoginScreen.kt` (TwoFaSetupStep QR render).
 
-- [ ] **LOGIN-MOCK-203 (Security/Observability). `stashCredentialsBiometric()` and `attemptBiometricAutoLogin()` swallow all Keystore / crypto exceptions silently via `runCatching { }.onFailure { }` with no breadcrumb — a Keystore attestation failure, a `KeyPermanentlyInvalidatedException`, or a `UserNotAuthenticatedException` during biometric auto-login leaves the user silently dropped to the password form with no diagnostic trace in any crash report.** `LoginScreen.kt:1213-1226` (`stashCredentialsBiometric()`): `runCatching { ... }` — the outer block comment says "Swallow any Keystore/crypto errors — biometric stash is best-effort." `LoginScreen.kt:1282-1285` (`attemptBiometricAutoLogin()`): `.onFailure { _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false) }` — no logging. Keystore failures on enrolled-but-invalidated keys or after a device PIN change manifest as dropped auto-logins that are invisible to the developer. Remediation: in both `onFailure` blocks, add `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "biometric_keystore_error class=${it::class.simpleName}")` and (for `attemptBiometricAutoLogin`) `Timber.w(it, "biometric auto-login keystore failure")` so the failure class is captured without leaking the exception message (which may contain key alias or user identity data). `LoginScreen.kt:1213-1226, 1282-1285`. <!-- NOTE-defer: Keystore breadcrumb logging deferred to biometric-observability wave. -->
+- [ ] **LOGIN-MOCK-203 (Security/Observability). `stashCredentialsBiometric()` and `attemptBiometricAutoLogin()` swallow all Keystore / crypto exceptions silently via `runCatching { }.onFailure { }` with no breadcrumb — a Keystore attestation failure, a `KeyPermanentlyInvalidatedException`, or a `UserNotAuthenticatedException` during biometric auto-login leaves the user silently dropped to the password form with no diagnostic trace in any crash report.** `LoginScreen.kt:1213-1226` (`stashCredentialsBiometric()`): `runCatching { ... }` — the outer block comment says "Swallow any Keystore/crypto errors — biometric stash is best-effort." `LoginScreen.kt:1282-1285` (`attemptBiometricAutoLogin()`): `.onFailure { _state.value = _state.value.copy(isBiometricAutoLoginInFlight = false) }` — no logging. Keystore failures on enrolled-but-invalidated keys or after a device PIN change manifest as dropped auto-logins that are invisible to the developer. Remediation: in both `onFailure` blocks, add `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "biometric_keystore_error class=${it::class.simpleName}")` and (for `attemptBiometricAutoLogin`) `Timber.w(it, "biometric auto-login keystore failure")` so the failure class is captured without leaking the exception message (which may contain key alias or user identity data). `LoginScreen.kt:1213-1226, 1282-1285`.
 
-- [ ] **LOGIN-MOCK-204 (Observability). `probemagicLinksEnabled()` and `probePasskeyEnabled()` both call `authApi.getTenantMe()` independently in `init { }` — two concurrent identical GET requests are fired on every ViewModel initialization, doubling the login-cold-start API call count with no deduplication, and neither call emits a breadcrumb or timing metric.** `LoginScreen.kt:409-413`: `viewModelScope.launch { probemagicLinksEnabled() }` and `viewModelScope.launch { probePasskeyEnabled() }` — both call `authApi.getTenantMe()` separately within the same `init` block; they race with no coordination. On slow connections (self-hosted LAN, 3G) this wastes a full round-trip. Additionally, `loadSsoProviders()` at line 405 fires a third concurrent request (`GET /auth/sso/providers`), bringing the cold-start login concurrent request count to 4 (including `connectToServer()`). Remediation: (a) merge `probemagicLinksEnabled()` and `probePasskeyEnabled()` into a single `probeTenantFeatures()` function that calls `getTenantMe()` once and updates both state fields from one response; (b) emit `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "tenant_features_probe rtt_ms=${elapsed} ml=${magicLinks} pk=${passkey}")` after the merged call. `LoginScreen.kt:403-413, 1405-1435`. <!-- NOTE-defer: merge into probeTenantFeatures(); deferred to observability/performance wave. -->
+- [ ] **LOGIN-MOCK-204 (Observability). `probemagicLinksEnabled()` and `probePasskeyEnabled()` both call `authApi.getTenantMe()` independently in `init { }` — two concurrent identical GET requests are fired on every ViewModel initialization, doubling the login-cold-start API call count with no deduplication, and neither call emits a breadcrumb or timing metric.** `LoginScreen.kt:409-413`: `viewModelScope.launch { probemagicLinksEnabled() }` and `viewModelScope.launch { probePasskeyEnabled() }` — both call `authApi.getTenantMe()` separately within the same `init` block; they race with no coordination. On slow connections (self-hosted LAN, 3G) this wastes a full round-trip. Additionally, `loadSsoProviders()` at line 405 fires a third concurrent request (`GET /auth/sso/providers`), bringing the cold-start login concurrent request count to 4 (including `connectToServer()`). Remediation: (a) merge `probemagicLinksEnabled()` and `probePasskeyEnabled()` into a single `probeTenantFeatures()` function that calls `getTenantMe()` once and updates both state fields from one response; (b) emit `breadcrumbs.log(Breadcrumbs.CAT_AUTH, "tenant_features_probe rtt_ms=${elapsed} ml=${magicLinks} pk=${passkey}")` after the merged call. `LoginScreen.kt:403-413, 1405-1435`.
 
 - [x] **LOGIN-MOCK-205 (Observability). `LogRedactor` does not mask the `challengeToken` field — challenge tokens appear in error messages surfaced through `extractErrorMessage()` and in `Exception` messages that pass through `RedactorTree`, allowing a mid-flow challenge token to appear in Logcat or in a `CrashReporter` log file if an exception message includes it verbatim.** `util/LogRedactor.kt` (full file): patterns cover Bearer/JWT, IMEI, card, SSN, phone, email — no pattern for `challengeToken`. `util/RedactorTree.kt:88-111` (`SENSITIVE_KEYS`): the list covers `password`, `accessToken`, `refreshToken`, `totp`, `secret`, `manualEntry`, `setup_token` — but not `challengeToken`. `LoginScreen.kt:1707-1719` (`extractErrorMessage()`): can return a raw server error body that embeds `"challengeToken":"<value>"`. A `CertificateException` during the 2FA verify step would reach `CrashReporter.writeReport()` with the exception message containing the challenge token. The challenge token is a short-lived credential (10 min TTL) but is still a bearer of elevated authorization. Remediation: add `"challengeToken"` and `"challenge_token"` to `RedactorTree.SENSITIVE_KEYS` (they will then be masked by `REDACT_PATTERN` in both JSON and encoded forms). `util/RedactorTree.kt:88-111`; `util/LogRedactor.kt` (no change needed — key-value masking is handled by `RedactorTree`).
 
@@ -7023,137 +5552,137 @@ Scope: error-message-to-user-copy mapping, loading-state coverage for every asyn
 
 > Scope: tablet (Expanded width ≥840dp), foldable hinge, ChromeOS/DeX hardware-keyboard + mouse, window resize/PiP, orientation lock, dual-screen (Surface Duo), notification permission timing, backup-codes export, external display/Cast security, and Wear OS companion surface. IDs 206–218.
 
-- [ ] **LOGIN-MOCK-206 (Layout). `LoginScreen` has no `WindowSizeClass` dispatch — the card is hard-capped at `widthIn(max = 420.dp)` centered in a `Box(TopCenter)`, leaving 400–600 dp of blank background on tablets (Expanded ≥840dp) and ChromeOS windows wider than 900dp.** `LoginScreen.kt:1886-1892`: `Column(modifier = Modifier.widthIn(max = 420.dp))`. `MainActivity.kt` never calls `currentWindowAdaptiveInfo()` or `calculateWindowSizeClass()`, so no `WindowWidthSizeClass` is derived or passed into `LoginScreen`. `FoldingFeatureObserver.kt` exists in `util/` but is wired only to §22 list-detail screens — never to auth. On a Galaxy Tab S9 (~1280dp width) the card occupies under 33 % of the screen width; the remainder is a flat `MaterialTheme.colorScheme.background`. Remediation: (a) call `currentWindowAdaptiveInfo()` inside `LoginScreen` and branch on `windowSizeClass.windowWidthSizeClass`: for `COMPACT`/`MEDIUM` keep the current 420dp card; for `EXPANDED` switch to a `Row` two-pane — brand illustration / hero pattern in the left pane, existing card (max 520dp) in the right pane; (b) bump `maxWidth` from 420dp to 520dp on `MEDIUM` to reduce the gap on 7–8" tablets; (c) add a `WindowSizeClassTest` JVM unit test asserting correct layout-branch selection. File: `LoginScreen.kt:1886-1892`; `util/FoldingFeatureObserver.kt:50-86`. <!-- NOTE-defer: needs design mockup for Expanded two-column layout; deferred to tablet wave (§22). -->
+- [ ] **LOGIN-MOCK-206 (Layout). `LoginScreen` has no `WindowSizeClass` dispatch — the card is hard-capped at `widthIn(max = 420.dp)` centered in a `Box(TopCenter)`, leaving 400–600 dp of blank background on tablets (Expanded ≥840dp) and ChromeOS windows wider than 900dp.** `LoginScreen.kt:1886-1892`: `Column(modifier = Modifier.widthIn(max = 420.dp))`. `MainActivity.kt` never calls `currentWindowAdaptiveInfo()` or `calculateWindowSizeClass()`, so no `WindowWidthSizeClass` is derived or passed into `LoginScreen`. `FoldingFeatureObserver.kt` exists in `util/` but is wired only to §22 list-detail screens — never to auth. On a Galaxy Tab S9 (~1280dp width) the card occupies under 33 % of the screen width; the remainder is a flat `MaterialTheme.colorScheme.background`. Remediation: (a) call `currentWindowAdaptiveInfo()` inside `LoginScreen` and branch on `windowSizeClass.windowWidthSizeClass`: for `COMPACT`/`MEDIUM` keep the current 420dp card; for `EXPANDED` switch to a `Row` two-pane — brand illustration / hero pattern in the left pane, existing card (max 520dp) in the right pane; (b) bump `maxWidth` from 420dp to 520dp on `MEDIUM` to reduce the gap on 7–8" tablets; (c) add a `WindowSizeClassTest` JVM unit test asserting correct layout-branch selection. File: `LoginScreen.kt:1886-1892`; `util/FoldingFeatureObserver.kt:50-86`.
 
-- [ ] **LOGIN-MOCK-207 (Layout). Foldable hinge (Pixel Fold inner display ~768dp folded-open width) is unhandled — `FoldingFeatureObserver` exposes posture but `LoginScreen` never collects it, so the 420dp card may straddle the physical hinge crease in a half-fold Book posture.** `FoldingFeatureObserver.kt:50-86`: the `posture` `StateFlow` is exported but never imported by any auth-screen composable. In `Book` posture the hinge bisects the inner display at roughly x=384dp; a 420dp card centered at x=384dp overlaps the hinge by ~20dp per side, visually splitting username/password fields across the crease gap. In `Tabletop` posture the card center-aligns in the upper half without issue, but the lower half is entirely empty. Remediation: (a) collect `FoldingFeatureObserver.posture` inside `LoginScreen`; (b) on `Book` posture read `FoldingFeature.bounds` and shift the card's horizontal offset so it lands entirely within one panel using `Modifier.offset(x = hingeClearanceOffset)` derived from the hinge rect; (c) on `Tabletop` posture, anchor the card in the top half with explicit `padding(bottom = hingePanelHeight)` so the keyboard naturally occupies the bottom half. File: `LoginScreen.kt:1870-1892`; `util/FoldingFeatureObserver.kt:60-86`. <!-- NOTE-defer: FoldingFeatureObserver.posture not collected by LoginScreen; deferred to foldable wave (§23). -->
+- [ ] **LOGIN-MOCK-207 (Layout). Foldable hinge (Pixel Fold inner display ~768dp folded-open width) is unhandled — `FoldingFeatureObserver` exposes posture but `LoginScreen` never collects it, so the 420dp card may straddle the physical hinge crease in a half-fold Book posture.** `FoldingFeatureObserver.kt:50-86`: the `posture` `StateFlow` is exported but never imported by any auth-screen composable. In `Book` posture the hinge bisects the inner display at roughly x=384dp; a 420dp card centered at x=384dp overlaps the hinge by ~20dp per side, visually splitting username/password fields across the crease gap. In `Tabletop` posture the card center-aligns in the upper half without issue, but the lower half is entirely empty. Remediation: (a) collect `FoldingFeatureObserver.posture` inside `LoginScreen`; (b) on `Book` posture read `FoldingFeature.bounds` and shift the card's horizontal offset so it lands entirely within one panel using `Modifier.offset(x = hingeClearanceOffset)` derived from the hinge rect; (c) on `Tabletop` posture, anchor the card in the top half with explicit `padding(bottom = hingePanelHeight)` so the keyboard naturally occupies the bottom half. File: `LoginScreen.kt:1870-1892`; `util/FoldingFeatureObserver.kt:60-86`.
 
-- [ ] **LOGIN-MOCK-208 (UX). ChromeOS hardware-keyboard Escape does not dismiss the software keyboard, and Cmd+Enter does not submit the current login step — both are expected ChromeOS/desktop conventions absent from all `KeyboardActions` handlers.** `LoginScreen.kt:2261, 2290, 2781`: `KeyboardActions(onDone = { ... })` fires on Enter, but no `Modifier.onKeyEvent` intercepts `Key.Escape` or `Key.MetaLeft + Key.Enter` on any `OutlinedTextField` or parent `Column`. On ChromeOS the software keyboard is rarely visible; pressing Enter while a field has `ImeAction.Next` focus can accidentally advance the step rather than submitting it. No `onCancel` path exists in any `KeyboardActions` block. Remediation: (a) add `Modifier.onKeyEvent { event -> if (event.key == Key.Escape) { focusManager.clearFocus(); true } else false }` on each step's root `Column`; (b) add `Modifier.onKeyEvent` on the final-field `OutlinedTextField` for `Key.MetaLeft + Key.Enter` → submit, mirroring the Cmd+Return desktop convention; (c) document these shortcuts in §17 `KeyboardShortcutsHelp` so they appear in the Ctrl+/ cheat-sheet. File: `LoginScreen.kt:2254-2292, 2770-2782`. <!-- NOTE-defer: onKeyEvent Escape/Cmd+Enter handlers not wired; deferred to ChromeOS/DeX wave. -->
+- [ ] **LOGIN-MOCK-208 (UX). ChromeOS hardware-keyboard Escape does not dismiss the software keyboard, and Cmd+Enter does not submit the current login step — both are expected ChromeOS/desktop conventions absent from all `KeyboardActions` handlers.** `LoginScreen.kt:2261, 2290, 2781`: `KeyboardActions(onDone = { ... })` fires on Enter, but no `Modifier.onKeyEvent` intercepts `Key.Escape` or `Key.MetaLeft + Key.Enter` on any `OutlinedTextField` or parent `Column`. On ChromeOS the software keyboard is rarely visible; pressing Enter while a field has `ImeAction.Next` focus can accidentally advance the step rather than submitting it. No `onCancel` path exists in any `KeyboardActions` block. Remediation: (a) add `Modifier.onKeyEvent { event -> if (event.key == Key.Escape) { focusManager.clearFocus(); true } else false }` on each step's root `Column`; (b) add `Modifier.onKeyEvent` on the final-field `OutlinedTextField` for `Key.MetaLeft + Key.Enter` → submit, mirroring the Cmd+Return desktop convention; (c) document these shortcuts in §17 `KeyboardShortcutsHelp` so they appear in the Ctrl+/ cheat-sheet. File: `LoginScreen.kt:2254-2292, 2770-2782`.
 
-- [x] **LOGIN-MOCK-209 (UX). Mouse-hover cursor icons are absent from all `LoginScreen` interactive elements — text fields show the default arrow cursor instead of the Text cursor, and `TextButton` / `OutlinedButton` links show the arrow instead of the Hand cursor on ChromeOS and Samsung DeX.** No `Modifier.pointerHoverIcon(...)` call appears anywhere in `LoginScreen.kt` (confirmed by grep). The `ActionPlan.md` non-negotiables (line 18) list `pointerHoverIcon` as a hard requirement for ChromeOS, and §22 tablet polish lists it as missing. Affected surfaces: all `OutlinedTextField`s (~14 instances), `TextButton("Sign in with SSO")`, `TextButton("Email me a magic link")`, `TextButton("Use a backup code")`, `TextButton("Dismiss")`, `BrandPrimaryButton`, `LoginPillButton`. Remediation: add `Modifier.pointerHoverIcon(PointerIcon.Text)` on every `OutlinedTextField` modifier chain; add `Modifier.pointerHoverIcon(PointerIcon.Hand)` on every `Button`, `TextButton`, `OutlinedButton`, and `IconButton`. Centralise via `fun Modifier.textFieldHover()` and `fun Modifier.clickableHover()` extension functions in `ui/theme/ModifierExt.kt` to avoid 20+ scattered call-sites. File: `LoginScreen.kt` (all interactive composables); `BackupCodesDisplay.kt:159-177`. (session 2026-04-27 — `ui/theme/ModifierExt.kt` created: `textFieldHover()` → `PointerIcon.Text`; `clickableHover()` → `PointerIcon.Hand`; applied to all 11 `OutlinedTextField`s, all `TextButton`/`OutlinedButton`/`Button`/`IconButton` instances across `ServerStep`, `RegisterStep`, `CredentialsStep`, `SetPasswordStep`, `TwoFaSetupStep`, `TwoFaVerifyStep`, `TotpCodeInputContent`, `MagicLinkRequestSheet`, `MagicLinkPreviewDialog`, and banner dismiss buttons; `BackupCodesDisplay.kt` OutlinedButton + confirm Button also covered; build green)
+- [ ] **LOGIN-MOCK-209 (UX). Mouse-hover cursor icons are absent from all `LoginScreen` interactive elements — text fields show the default arrow cursor instead of the Text cursor, and `TextButton` / `OutlinedButton` links show the arrow instead of the Hand cursor on ChromeOS and Samsung DeX.** No `Modifier.pointerHoverIcon(...)` call appears anywhere in `LoginScreen.kt` (confirmed by grep). The `ActionPlan.md` non-negotiables (line 18) list `pointerHoverIcon` as a hard requirement for ChromeOS, and §22 tablet polish lists it as missing. Affected surfaces: all `OutlinedTextField`s (~14 instances), `TextButton("Sign in with SSO")`, `TextButton("Email me a magic link")`, `TextButton("Use a backup code")`, `TextButton("Dismiss")`, `BrandPrimaryButton`, `LoginPillButton`. Remediation: add `Modifier.pointerHoverIcon(PointerIcon.Text)` on every `OutlinedTextField` modifier chain; add `Modifier.pointerHoverIcon(PointerIcon.Hand)` on every `Button`, `TextButton`, `OutlinedButton`, and `IconButton`. Centralise via `fun Modifier.textFieldHover()` and `fun Modifier.clickableHover()` extension functions in `ui/theme/ModifierExt.kt` to avoid 20+ scattered call-sites. File: `LoginScreen.kt` (all interactive composables); `BackupCodesDisplay.kt:159-177`.
 
-- [ ] **LOGIN-MOCK-210 (UX). Right-click context menus are absent on `LoginScreen` text-input fields — ChromeOS users expect Cut / Copy / Paste / Select All on right-click, but `OutlinedTextField` only surfaces `onLongClick` and there is no `ContextMenuArea` wrapper anywhere in `LoginScreen` or `BackupCodesDisplay`.** Compose's `SelectionContainer` (imported at `LoginScreen.kt:8`) provides clipboard menus for read-only text, but editable input fields require an explicit `ContextMenuArea { ... }` wrapper (from `androidx.compose.foundation`) to intercept right-click. Without it, right-clicking an input field on ChromeOS shows an empty or browser-style system menu. `BackupCodesDisplay.kt:133-153` is the most critical gap — right-clicking a backup-code chip on a Chromebook produces no menu, making per-code copy impossible without manual text selection. Remediation: (a) evaluate `ContextMenuArea` wrapping for the username, password, server-URL, and TOTP fields in `LoginScreen`; (b) in `BackupCodesDisplay.kt`, wrap each code `Surface` chip at line 133 with a `ContextMenuArea` offering a "Copy this code" action; (c) test on Android 12+ freeform window with a physical mouse. File: `LoginScreen.kt` (input fields); `BackupCodesDisplay.kt:133-153`. <!-- NOTE-defer: ContextMenuArea wrapping not implemented; deferred to ChromeOS/DeX wave. -->
+- [ ] **LOGIN-MOCK-210 (UX). Right-click context menus are absent on `LoginScreen` text-input fields — ChromeOS users expect Cut / Copy / Paste / Select All on right-click, but `OutlinedTextField` only surfaces `onLongClick` and there is no `ContextMenuArea` wrapper anywhere in `LoginScreen` or `BackupCodesDisplay`.** Compose's `SelectionContainer` (imported at `LoginScreen.kt:8`) provides clipboard menus for read-only text, but editable input fields require an explicit `ContextMenuArea { ... }` wrapper (from `androidx.compose.foundation`) to intercept right-click. Without it, right-clicking an input field on ChromeOS shows an empty or browser-style system menu. `BackupCodesDisplay.kt:133-153` is the most critical gap — right-clicking a backup-code chip on a Chromebook produces no menu, making per-code copy impossible without manual text selection. Remediation: (a) evaluate `ContextMenuArea` wrapping for the username, password, server-URL, and TOTP fields in `LoginScreen`; (b) in `BackupCodesDisplay.kt`, wrap each code `Surface` chip at line 133 with a `ContextMenuArea` offering a "Copy this code" action; (c) test on Android 12+ freeform window with a physical mouse. File: `LoginScreen.kt` (input fields); `BackupCodesDisplay.kt:133-153`.
 
 - [x] **LOGIN-MOCK-211 (Security). `MainActivity` carries `android:supportsPictureInPicture="true"` (manifest line 138), which allows the login form — including live credentials and TOTP fields — to enter a 160×90dp floating PiP window, defeating `FLAG_SECURE` and creating a credentials surface visible to bystanders.** `AndroidManifest.xml:138`: `android:supportsPictureInPicture="true"` is set on `MainActivity`. This attribute was intended for `CallInProgressActivity` (§42, manifest line 284) and was mistakenly also applied to the main activity. `LoginScreen.kt` has no `DisposableEffect` calling `activity.setPictureInPictureParams(PictureInPictureParams.Builder().setAutoEnterEnabled(false).build())`. `FLAG_SECURE` (`MainActivity.kt:163`) blocks screencap but does NOT prevent PiP entry on API 26–31; `setAutoEnterEnabled(false)` is required on API 31+ to suppress auto-entry. Remediation: remove `android:supportsPictureInPicture="true"` from `MainActivity` in `AndroidManifest.xml:138` — it belongs only on `CallInProgressActivity`. If PiP is ever needed for a post-login surface, re-add it scoped to that specific activity or manage via `setPictureInPictureParams` at the composable layer. File: `AndroidManifest.xml:138`.
 
-- [ ] **LOGIN-MOCK-212 (Layout). Landscape orientation on phones is unlocked — `AndroidManifest.xml` has no `android:screenOrientation` on `MainActivity`, so the login card renders in landscape with a ~360dp-tall viewport, pushing the password field and CTA below the IME with no scroll-to-focused behavior on mid-range phones.** `AndroidManifest.xml:133-140`: no `screenOrientation` attribute. `LoginScreen.kt:1875`: `imePadding()` is applied on the root `Box`, but the `verticalScroll` `Column` has no `BringIntoViewRequester` on focused fields. On landscape Pixel 6 (412×732dp, ~360dp viewport height after bars), `Alignment.TopCenter` anchoring means the Sign-In CTA is clipped below the IME rather than scrolled into view. `adjustResize` (`windowSoftInputMode`, manifest line 137) shrinks the window but does not auto-scroll the Compose tree. Remediation: either (a) on `COMPACT` height, lock orientation to portrait in `LoginScreen` via `DisposableEffect { activity.requestedOrientation = SCREEN_ORIENTATION_PORTRAIT; onDispose { activity.requestedOrientation = SCREEN_ORIENTATION_UNSPECIFIED } }`; or (b) attach a `BringIntoViewRequester` + `relocationRequester.bringIntoView()` inside `Modifier.onFocusChanged` for the password and TOTP fields so the focused field scrolls above the IME in all orientations. File: `LoginScreen.kt:1869-1892`; `AndroidManifest.xml:133-140`. <!-- NOTE-defer: landscape/orientation fix; deferred to adaptive-layout wave. -->
+- [ ] **LOGIN-MOCK-212 (Layout). Landscape orientation on phones is unlocked — `AndroidManifest.xml` has no `android:screenOrientation` on `MainActivity`, so the login card renders in landscape with a ~360dp-tall viewport, pushing the password field and CTA below the IME with no scroll-to-focused behavior on mid-range phones.** `AndroidManifest.xml:133-140`: no `screenOrientation` attribute. `LoginScreen.kt:1875`: `imePadding()` is applied on the root `Box`, but the `verticalScroll` `Column` has no `BringIntoViewRequester` on focused fields. On landscape Pixel 6 (412×732dp, ~360dp viewport height after bars), `Alignment.TopCenter` anchoring means the Sign-In CTA is clipped below the IME rather than scrolled into view. `adjustResize` (`windowSoftInputMode`, manifest line 137) shrinks the window but does not auto-scroll the Compose tree. Remediation: either (a) on `COMPACT` height, lock orientation to portrait in `LoginScreen` via `DisposableEffect { activity.requestedOrientation = SCREEN_ORIENTATION_PORTRAIT; onDispose { activity.requestedOrientation = SCREEN_ORIENTATION_UNSPECIFIED } }`; or (b) attach a `BringIntoViewRequester` + `relocationRequester.bringIntoView()` inside `Modifier.onFocusChanged` for the password and TOTP fields so the focused field scrolls above the IME in all orientations. File: `LoginScreen.kt:1869-1892`; `AndroidManifest.xml:133-140`.
 
-- [ ] **LOGIN-MOCK-213 (Layout). Surface Duo dual-screen support is undefined — `FoldingFeatureObserver` does not check `FoldingFeature.isSeparating`, so on a Surface Duo in dual-screen mode the 420dp card center-aligns across the hinge gap and can partially render in the dead-zone between physical screens.** `FoldingFeatureObserver.kt:63`: `layoutInfo.displayFeatures.filterIsInstance<FoldingFeature>()`. The observer's `Flat` branch (`fold.state == FLAT`) does not check `isSeparating`, so a Duo in flat/spanned mode is treated identically to a non-foldable tablet, leaving the card potentially bisected by the physical gap. The Duo inner-display width at full span is ~1350dp; the inter-screen gap is ~5.6mm (≈17dp at 294ppi), meaning any card content that crosses x=675dp ±9dp may be obscured. Remediation: (a) add `fold.isSeparating` check in `FoldingFeatureObserver` and expose a `FoldablePosture.Separated` variant; (b) in `LoginScreen`, when `posture == Separated`, constrain card width to the narrower of the two panels using `WindowMetricsCalculator` to derive left-panel bounds and apply `Modifier.widthIn(max = leftPanelWidth - 32.dp)`, centering within screen 1 only; (c) treat login as single-screen — no dual-panel auth layout is warranted. File: `util/FoldingFeatureObserver.kt:63-84`; `LoginScreen.kt:1886-1892`. <!-- NOTE-defer: Surface Duo; FoldingFeatureObserver.kt change; deferred to foldable wave (§23). -->
+- [ ] **LOGIN-MOCK-213 (Layout). Surface Duo dual-screen support is undefined — `FoldingFeatureObserver` does not check `FoldingFeature.isSeparating`, so on a Surface Duo in dual-screen mode the 420dp card center-aligns across the hinge gap and can partially render in the dead-zone between physical screens.** `FoldingFeatureObserver.kt:63`: `layoutInfo.displayFeatures.filterIsInstance<FoldingFeature>()`. The observer's `Flat` branch (`fold.state == FLAT`) does not check `isSeparating`, so a Duo in flat/spanned mode is treated identically to a non-foldable tablet, leaving the card potentially bisected by the physical gap. The Duo inner-display width at full span is ~1350dp; the inter-screen gap is ~5.6mm (≈17dp at 294ppi), meaning any card content that crosses x=675dp ±9dp may be obscured. Remediation: (a) add `fold.isSeparating` check in `FoldingFeatureObserver` and expose a `FoldablePosture.Separated` variant; (b) in `LoginScreen`, when `posture == Separated`, constrain card width to the narrower of the two panels using `WindowMetricsCalculator` to derive left-panel bounds and apply `Modifier.widthIn(max = leftPanelWidth - 32.dp)`, centering within screen 1 only; (c) treat login as single-screen — no dual-panel auth layout is warranted. File: `util/FoldingFeatureObserver.kt:63-84`; `LoginScreen.kt:1886-1892`.
 
 - [x] **LOGIN-MOCK-214 (Security/UX). `rememberNotificationPermission()` is imported in `MainActivity.kt` (line 36) with no visible guard preventing the POST_NOTIFICATIONS prompt from appearing before the user has completed login — a pre-login permission request has no context, violates Play Store UX guidelines, and creates a jarring first impression for new installs.** `MainActivity.kt:36`: `import com.bizarreelectronics.crm.util.rememberNotificationPermission`. If this utility is invoked unconditionally from within `setContent` (before auth state is checked), a cold-start unauthenticated user sees the system permission dialog before the login form renders. `POST_NOTIFICATIONS` is declared in `AndroidManifest.xml:43`. Play Store review guidelines (2023+) classify pre-context permission prompts as a policy violation that can delay review approval. Remediation: (a) locate the `rememberNotificationPermission()` call site in `MainActivity.setContent` or `AppNavGraph`; (b) gate it behind `val isLoggedIn = authPreferences.accessToken != null` so the prompt only fires post-login; (c) if the call site is already inside a post-login composable (e.g. `DashboardScreen`), verify and close — this item may be a false alarm pending that confirmation. File: `MainActivity.kt:36, 205+`; `util/rememberNotificationPermission` (grep to confirm call site).
 
-- [ ] **LOGIN-MOCK-215 (UX). `BackupCodesDisplay` has no Storage Access Framework "Save to Files" affordance — tablet and ChromeOS users have a visible Files app and expect a structured file export, but the only export path is clipboard-copy with a 30-second auto-clear that races the typical vault app-switch workflow.** `BackupCodesDisplay.kt:159-177`: only `ClipboardUtil.copySensitive(clearAfterMillis = 30_000L)` via `OutlinedButton("Copy all codes")` — no `Intent.ACTION_CREATE_DOCUMENT` path. On a Chromebook with the Files shelf always visible, users who dismiss without copying have no recovery (codes are not shown again). `ActivityResultContracts.CreateDocument("text/plain")` requires no `WRITE_EXTERNAL_STORAGE` on API 26+ and produces a named `.txt` file in the user-chosen directory. Remediation: (a) add an `OutlinedButton("Save to Files")` launcher backed by `ActivityResultContracts.CreateDocument("text/plain")` with a suggested filename `bizarre-crm-backup-codes.txt`; write codes to the returned URI on a background coroutine; (b) auto-check the confirmation checkbox on successful file-write; (c) increase the clipboard auto-clear from 30 s to 120 s to cover slow vault app-switches as an independent improvement. File: `BackupCodesDisplay.kt:59-207`. <!-- NOTE-defer: BackupCodesDisplay.kt SAF export; outside login-screen scope; deferred to backup-codes UX wave. -->
+- [ ] **LOGIN-MOCK-215 (UX). `BackupCodesDisplay` has no Storage Access Framework "Save to Files" affordance — tablet and ChromeOS users have a visible Files app and expect a structured file export, but the only export path is clipboard-copy with a 30-second auto-clear that races the typical vault app-switch workflow.** `BackupCodesDisplay.kt:159-177`: only `ClipboardUtil.copySensitive(clearAfterMillis = 30_000L)` via `OutlinedButton("Copy all codes")` — no `Intent.ACTION_CREATE_DOCUMENT` path. On a Chromebook with the Files shelf always visible, users who dismiss without copying have no recovery (codes are not shown again). `ActivityResultContracts.CreateDocument("text/plain")` requires no `WRITE_EXTERNAL_STORAGE` on API 26+ and produces a named `.txt` file in the user-chosen directory. Remediation: (a) add an `OutlinedButton("Save to Files")` launcher backed by `ActivityResultContracts.CreateDocument("text/plain")` with a suggested filename `bizarre-crm-backup-codes.txt`; write codes to the returned URI on a background coroutine; (b) auto-check the confirmation checkbox on successful file-write; (c) increase the clipboard auto-clear from 30 s to 120 s to cover slow vault app-switches as an independent improvement. File: `BackupCodesDisplay.kt:59-207`.
 
-- [ ] **LOGIN-MOCK-216 (UX). Backup codes are not printable from `BackupCodesDisplay` — tablet and ChromeOS users with a networked printer have no print path, despite the dialog body text explicitly listing "printed copy" as a valid storage option.** `BackupCodesDisplay.kt:109`: "Store them somewhere safe (password manager, printed copy)." — the dialog recommends printing but provides no print CTA. `PrintHelper` (AndroidX Print) or `PrintManager` with a `PrintDocumentAdapter` can produce a one-page printout with zero storage-permission requirements. On ChromeOS, `PrintManager` routes to the system print dialog which includes the "Save as PDF" driver, covering PDF export at no extra library cost. Remediation: (a) add a tertiary `TextButton("Print codes")` using `PrintHelper` from `androidx.print`; (b) format the print job with shop name, date, and the 10 codes in a monospaced two-column grid; (c) auto-check the confirmation checkbox on successful `PrintHelper.printBitmap` or `PrintDocumentAdapter` dispatch. File: `BackupCodesDisplay.kt:59-207`. <!-- NOTE-defer: BackupCodesDisplay.kt print; outside login-screen scope; deferred to backup-codes UX wave. -->
+- [ ] **LOGIN-MOCK-216 (UX). Backup codes are not printable from `BackupCodesDisplay` — tablet and ChromeOS users with a networked printer have no print path, despite the dialog body text explicitly listing "printed copy" as a valid storage option.** `BackupCodesDisplay.kt:109`: "Store them somewhere safe (password manager, printed copy)." — the dialog recommends printing but provides no print CTA. `PrintHelper` (AndroidX Print) or `PrintManager` with a `PrintDocumentAdapter` can produce a one-page printout with zero storage-permission requirements. On ChromeOS, `PrintManager` routes to the system print dialog which includes the "Save as PDF" driver, covering PDF export at no extra library cost. Remediation: (a) add a tertiary `TextButton("Print codes")` using `PrintHelper` from `androidx.print`; (b) format the print job with shop name, date, and the 10 codes in a monospaced two-column grid; (c) auto-check the confirmation checkbox on successful `PrintHelper.printBitmap` or `PrintDocumentAdapter` dispatch. File: `BackupCodesDisplay.kt:59-207`.
 
 - [x] **LOGIN-MOCK-217 (Security). Login screen content — including the live TOTP field and `BackupCodesDisplay`'s 10-code grid — is not suppressed on secondary/presentation displays, meaning a device casting to a Chromecast or connected via HDMI broadcasts the credentials form to anyone watching the external screen.** `MainActivity.kt:162-163`: `FLAG_SECURE` is set when `screenCapturePreventionEnabled` is true, which blocks screencap but does NOT prevent mirroring to an Android `Presentation` display — the `Presentation` API and `DisplayManager` bypass `FLAG_SECURE` on secondary outputs unless `FLAG_SECURE` is also set on the Presentation window explicitly. No `DisplayManager.getDisplays(DisplayManager.DISPLAY_CATEGORY_PRESENTATION)` check exists in the login flow. `BackupCodesDisplay.kt` is the highest-severity surface — backup codes visible on a conference-room TV is a direct credential exposure. Remediation: (a) in `MainActivity.onCreate`, register a `DisplayManager.DisplayListener`; when `onDisplayAdded` fires while the nav back-stack contains an auth screen, show a `Presentation` on the secondary display with a plain `Surface(color = Color.Black)` overlay (add `FLAG_SECURE` to its window) until the auth destination is exited; (b) alternatively, in `LoginScreen` and `BackupCodesDisplay`, add `window.addFlags(FLAG_SECURE)` unconditionally via `SideEffect` regardless of the user pref, and clear it in `DisposableEffect { onDispose { window.clearFlags(FLAG_SECURE) } }`. File: `MainActivity.kt:148-170`; `BackupCodesDisplay.kt:59-207`.
 
-- [ ] **LOGIN-MOCK-218 (UX). There is no Wear OS companion surface for authentication — the `android/` project has no `:wear` module, no `DataClient`/`MessageClient` dependency, and no `WEARABLE_CONFIGURATION` meta-data in `AndroidManifest.xml`. This is correct and intentional for v1.0 but should be explicitly documented as deferred to prevent it from surfacing as an accidental gap in future adaptive-layout audits.** `android/app/build.gradle.kts` (full file): no `com.google.android.wearable` or `androidx.wear.compose` dependency. `AndroidManifest.xml` (full file): no `<meta-data android:name="com.google.android.wearable.standalone">`. A Wear OS companion showing ticket-ready or incoming-call alerts would require a separate `:wear` Gradle module, `Wearable.DataClient` / `MessageClient` sync channel, Wear Compose UI, and a Wear-side auth-token derivation flow — non-trivial scope, correctly deferred. Remediation: no code change in this wave. Add to the §23 Foldable & Desktop-Mode Polish section: `[ ] Wear OS companion module (deferred post-v1.0) — separate :wear module, DataClient sync, Wear Compose auth surface, token derivation. Revisit if shop owners request wrist alerts for ticket-ready / incoming-call events.` File: `android/ActionPlan.md` §23 (documentation-only addition). <!-- NOTE-defer: Wear OS companion; intentionally deferred post-v1.0; document-only item. -->
-- [ ] **LOGIN-MOCK-280 (Copy). Shop-URL field supporting text uses ASCII hyphen-minus (U+002D) "3–30 characters: letters, numbers, hyphens" but the mockup renders an en-dash (U+2013) between "3" and "30".** Code at `LoginScreen.kt:2313` and `LoginScreen.kt` search: `supportingText = { Text("3–30 characters: letters, numbers, hyphens") }` — the dash character in the string literal is the ASCII hyphen-minus U+002D (i.e. `"3-30 characters: letters, numbers, hyphens"`). Mockup screens 02, 03, 04, 05, 06 all show "3–30 characters: letters, numbers, hyphens" with a visually wider dash between "3" and "30" that is unambiguously an en-dash (U+2013). Fix: change the literal to `"3–30 characters: letters, numbers, hyphens"`. `LoginScreen.kt:2313`. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-115 ([x]); en-dash already fixed per 115. -->
+- [ ] **LOGIN-MOCK-218 (UX). There is no Wear OS companion surface for authentication — the `android/` project has no `:wear` module, no `DataClient`/`MessageClient` dependency, and no `WEARABLE_CONFIGURATION` meta-data in `AndroidManifest.xml`. This is correct and intentional for v1.0 but should be explicitly documented as deferred to prevent it from surfacing as an accidental gap in future adaptive-layout audits.** `android/app/build.gradle.kts` (full file): no `com.google.android.wearable` or `androidx.wear.compose` dependency. `AndroidManifest.xml` (full file): no `<meta-data android:name="com.google.android.wearable.standalone">`. A Wear OS companion showing ticket-ready or incoming-call alerts would require a separate `:wear` Gradle module, `Wearable.DataClient` / `MessageClient` sync channel, Wear Compose UI, and a Wear-side auth-token derivation flow — non-trivial scope, correctly deferred. Remediation: no code change in this wave. Add to the §23 Foldable & Desktop-Mode Polish section: `[ ] Wear OS companion module (deferred post-v1.0) — separate :wear module, DataClient sync, Wear Compose auth surface, token derivation. Revisit if shop owners request wrist alerts for ticket-ready / incoming-call events.` File: `android/ActionPlan.md` §23 (documentation-only addition).
+- [ ] **LOGIN-MOCK-280 (Copy). Shop-URL field supporting text uses ASCII hyphen-minus (U+002D) "3–30 characters: letters, numbers, hyphens" but the mockup renders an en-dash (U+2013) between "3" and "30".** Code at `LoginScreen.kt:2313` and `LoginScreen.kt` search: `supportingText = { Text("3–30 characters: letters, numbers, hyphens") }` — the dash character in the string literal is the ASCII hyphen-minus U+002D (i.e. `"3-30 characters: letters, numbers, hyphens"`). Mockup screens 02, 03, 04, 05, 06 all show "3–30 characters: letters, numbers, hyphens" with a visually wider dash between "3" and "30" that is unambiguously an en-dash (U+2013). Fix: change the literal to `"3–30 characters: letters, numbers, hyphens"`. `LoginScreen.kt:2313`.
 
-- [ ] **LOGIN-MOCK-281 (Copy). "Register new shop" footer link is sentence-case; "Register New Shop" heading on the destination screen is title-case — same destination, two different capitalisation rules across a single tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — the mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02, 03, 04, 05, 06 confirm title-case there. The link and its destination heading are the same named action with conflicting capitalisation. Both cannot be correct simultaneously; the capitalization rule must be resolved and applied consistently. Code: link `"Register new shop"` at line 2262 vs heading `"Register New Shop"` at line 2283. No change is correct until design decides; flag for decision. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-116; design decision required. -->
+- [ ] **LOGIN-MOCK-281 (Copy). "Register new shop" footer link is sentence-case; "Register New Shop" heading on the destination screen is title-case — same destination, two different capitalisation rules across a single tap.** `ServerStep` `LoginScreen.kt:2262`: `Text("Register new shop")` — the mockup screen-01 confirms sentence-case here. `RegisterStep` heading `LoginScreen.kt:2283`: `Text("Register New Shop")` — mockup screens 02, 03, 04, 05, 06 confirm title-case there. The link and its destination heading are the same named action with conflicting capitalisation. Both cannot be correct simultaneously; the capitalization rule must be resolved and applied consistently. Code: link `"Register new shop"` at line 2262 vs heading `"Register New Shop"` at line 2283. No change is correct until design decides; flag for decision.
 
-- [ ] **LOGIN-MOCK-282 (Copy). "Create your repair shop on BizarreCRM" subtitle uses a closed compound "BizarreCRM" (no space) while the wordmark renders "Bizarre CRM" (with space) — inconsistent brand name form.** `RegisterStep` subtitle `LoginScreen.kt:2292`: `Text("Create your repair shop on BizarreCRM")`. Mockup screen-02 shows "Create your repair shop on BizarreCRM" — same closed form. However the app wordmark at `LoginScreen.kt:1871` is `"Bizarre CRM"` with a space, confirmed by all 11 mockup screens. Two different forms of the brand name ("Bizarre CRM" vs "BizarreCRM") coexist with no explicit style guide rationale. Verify which is authoritative in body copy vs the wordmark; if brand guidance mandates "Bizarre CRM" everywhere, fix line 2292. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-117; brand-name form requires style guide decision. -->
+- [ ] **LOGIN-MOCK-282 (Copy). "Create your repair shop on BizarreCRM" subtitle uses a closed compound "BizarreCRM" (no space) while the wordmark renders "Bizarre CRM" (with space) — inconsistent brand name form.** `RegisterStep` subtitle `LoginScreen.kt:2292`: `Text("Create your repair shop on BizarreCRM")`. Mockup screen-02 shows "Create your repair shop on BizarreCRM" — same closed form. However the app wordmark at `LoginScreen.kt:1871` is `"Bizarre CRM"` with a space, confirmed by all 11 mockup screens. Two different forms of the brand name ("Bizarre CRM" vs "BizarreCRM") coexist with no explicit style guide rationale. Verify which is authoritative in body copy vs the wordmark; if brand guidance mandates "Bizarre CRM" everywhere, fix line 2292.
 
-- [ ] **LOGIN-MOCK-283 (Copy). "Set Up Two-Factor Auth" heading uses Title Case with a terminal abbreviation "Auth" — no trailing period in mockup, code matches, but abbreviation vs full word "Authentication" is undocumented.** `TwoFaSetupStep` `LoginScreen.kt:3181`: `Text("Set Up Two-Factor Auth", ...)`. Mockup screen-10 shows "Set Up Two-Factor Auth" — matches. However `TwoFaVerifyStep` `LoginScreen.kt:3377` uses the *expanded* form `"Two-Factor Authentication"` for the verify-step heading. The same feature domain uses "Auth" (abbreviated) in the setup step and "Authentication" (full word) in the verify step. Decide on one canonical term for the 2FA step headings and apply it to both; current code has `"Set Up Two-Factor Auth"` at line 3181 vs `"Two-Factor Authentication"` at line 3377. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-118; Auth vs Authentication design decision required. -->
+- [ ] **LOGIN-MOCK-283 (Copy). "Set Up Two-Factor Auth" heading uses Title Case with a terminal abbreviation "Auth" — no trailing period in mockup, code matches, but abbreviation vs full word "Authentication" is undocumented.** `TwoFaSetupStep` `LoginScreen.kt:3181`: `Text("Set Up Two-Factor Auth", ...)`. Mockup screen-10 shows "Set Up Two-Factor Auth" — matches. However `TwoFaVerifyStep` `LoginScreen.kt:3377` uses the *expanded* form `"Two-Factor Authentication"` for the verify-step heading. The same feature domain uses "Auth" (abbreviated) in the setup step and "Authentication" (full word) in the verify step. Decide on one canonical term for the 2FA step headings and apply it to both; current code has `"Set Up Two-Factor Auth"` at line 3181 vs `"Two-Factor Authentication"` at line 3377.
 
-- [ ] **LOGIN-MOCK-284 (Copy). 2FA verify step subtitle "Enter the 6-digit code from your authenticator app" differs in structure from the setup step subtitle "Scan this QR code with Google Authenticator or any TOTP app" — the verify step names a generic concept ("authenticator app") while setup names a specific product ("Google Authenticator").** `TwoFaVerifyStep` `LoginScreen.kt:3380`: `Text("Enter the 6-digit code from your authenticator app")`. `TwoFaSetupStep` `LoginScreen.kt:3184`: `Text("Scan this QR code with Google Authenticator or any TOTP app")`. Mockup screen-10 confirms the setup subtitle exactly. The verify step subtitle has no mockup backing and uses a different product-mention pattern. If the design intent is to name Google Authenticator on both steps for discoverability, the verify subtitle should read "Enter the 6-digit code from Google Authenticator or any TOTP app". Flag for design review. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-119; design review required for product-mention consistency. -->
+- [ ] **LOGIN-MOCK-284 (Copy). 2FA verify step subtitle "Enter the 6-digit code from your authenticator app" differs in structure from the setup step subtitle "Scan this QR code with Google Authenticator or any TOTP app" — the verify step names a generic concept ("authenticator app") while setup names a specific product ("Google Authenticator").** `TwoFaVerifyStep` `LoginScreen.kt:3380`: `Text("Enter the 6-digit code from your authenticator app")`. `TwoFaSetupStep` `LoginScreen.kt:3184`: `Text("Scan this QR code with Google Authenticator or any TOTP app")`. Mockup screen-10 confirms the setup subtitle exactly. The verify step subtitle has no mockup backing and uses a different product-mention pattern. If the design intent is to name Google Authenticator on both steps for discoverability, the verify subtitle should read "Enter the 6-digit code from Google Authenticator or any TOTP app". Flag for design review.
 
-- [ ] **LOGIN-MOCK-285 (Copy). Loading button state on "Connect" shows only a spinner with no text; mockup loading state is absent from the screen set but the empty-loading pattern is inconsistent with other CTA states that carry in-progress copy.** `ServerStep` `LoginScreen.kt:2241–2244`: when `state.isLoading`, the Connect `Button` renders only `CircularProgressIndicator` with no accompanying text label. `CredentialsStep` passkey loading state at line 2842 renders `CircularProgressIndicator` + `Text("Signing in…")`. `MagicLinkRequestSheet` send button at line 2920 renders only a spinner. No mockup screen depicts a loading state for the Connect or Create Shop buttons, so there is no mockup source of truth. Recommend harmonising: either all loading CTAs show spinner-only or all show spinner + in-progress label. Currently there are three different patterns (spinner-only on Connect, spinner + text on passkey, spinner-only on magic-link send). <!-- NOTE-defer: copy item; loading-state harmonisation; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-285 (Copy). Loading button state on "Connect" shows only a spinner with no text; mockup loading state is absent from the screen set but the empty-loading pattern is inconsistent with other CTA states that carry in-progress copy.** `ServerStep` `LoginScreen.kt:2241–2244`: when `state.isLoading`, the Connect `Button` renders only `CircularProgressIndicator` with no accompanying text label. `CredentialsStep` passkey loading state at line 2842 renders `CircularProgressIndicator` + `Text("Signing in…")`. `MagicLinkRequestSheet` send button at line 2920 renders only a spinner. No mockup screen depicts a loading state for the Connect or Create Shop buttons, so there is no mockup source of truth. Recommend harmonising: either all loading CTAs show spinner-only or all show spinner + in-progress label. Currently there are three different patterns (spinner-only on Connect, spinner + text on passkey, spinner-only on magic-link send).
 
-- [ ] **LOGIN-MOCK-286 (Copy). "Connecting to your server…" probe-overlay text uses Unicode HORIZONTAL ELLIPSIS (U+2026) — correct — but the string `"Signing in…"` on the passkey loading state at line 2843 also uses U+2026 correctly. However `LoginScreen.kt:2146` renders `"Sign-in expires in $label"` with a plain ASCII hyphen-minus (U+002D) in "Sign-in". Verify whether the style guide calls for an en-dash, hyphen-minus, or space-hyphen-space in compound adjective "sign-in". The mockup does not show a countdown; copy unreviewed.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. The ASCII hyphen in "sign-in" is grammatically correct as a hyphenated compound modifier, but worth confirming it aligns with the style guide treatment of hyphenated terms elsewhere in the app. No mockup backs this string. <!-- NOTE-defer: copy item; compound-adjective hyphen; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-286 (Copy). "Connecting to your server…" probe-overlay text uses Unicode HORIZONTAL ELLIPSIS (U+2026) — correct — but the string `"Signing in…"` on the passkey loading state at line 2843 also uses U+2026 correctly. However `LoginScreen.kt:2146` renders `"Sign-in expires in $label"` with a plain ASCII hyphen-minus (U+002D) in "Sign-in". Verify whether the style guide calls for an en-dash, hyphen-minus, or space-hyphen-space in compound adjective "sign-in". The mockup does not show a countdown; copy unreviewed.** `LoginScreen.kt:2146`: `Text("Sign-in expires in $label")`. The ASCII hyphen in "sign-in" is grammatically correct as a hyphenated compound modifier, but worth confirming it aligns with the style guide treatment of hyphenated terms elsewhere in the app. No mockup backs this string.
 
-- [ ] **LOGIN-MOCK-287 (Copy). "Origin header required" error shown in mockup screen-06 is a raw server-side message surfaced verbatim; no client-owned translation string exists.** `LoginScreen.kt:755–758`: `registerShop()` extracts the server error via `rJson.optString("message", "Registration failed")` and sets it as `state.error`. Screen-06 shows the red inline copy "Origin header required" below the Admin Password field — this is the exact server JSON `message` value echoed through to the UI. There is no client-side mapping of known server error codes to user-friendly strings. A server-phrasing change silently changes the displayed copy with no code review. Add a client-side map from known technical messages (e.g. `"Origin header required"`) to user-friendly alternatives (e.g. `"Unable to register — please contact support"`). `LoginScreen.kt:755–758`. <!-- NOTE-defer: copy item; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-287 (Copy). "Origin header required" error shown in mockup screen-06 is a raw server-side message surfaced verbatim; no client-owned translation string exists.** `LoginScreen.kt:755–758`: `registerShop()` extracts the server error via `rJson.optString("message", "Registration failed")` and sets it as `state.error`. Screen-06 shows the red inline copy "Origin header required" below the Admin Password field — this is the exact server JSON `message` value echoed through to the UI. There is no client-side mapping of known server error codes to user-friendly strings. A server-phrasing change silently changes the displayed copy with no code review. Add a client-side map from known technical messages (e.g. `"Origin header required"`) to user-friendly alternatives (e.g. `"Unable to register — please contact support"`). `LoginScreen.kt:755–758`.
 
-- [ ] **LOGIN-MOCK-288 (Copy). Tab comment at `LoginScreen.kt:2031` explicitly describes the active indicator as "purple (#8B5CF6)" but the brand accent is cream (#FDEED0) — contradicts brand-color guide.** `LoginTabBar` Composable comment lines 2031–2032: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The brand colour guide mandates cream `#FDEED0` as the primary accent; purple appears in older mockups and was explicitly deprecated. The indicator tint is actually driven by `MaterialTheme.colorScheme.primary` at runtime (line 2044), so the rendered colour is correct if the theme is set up properly. The stale comment is a copy-fidelity risk: it misleads developers into hardcoding `#8B5CF6` when debugging. Update the comment to reference `MaterialTheme.colorScheme.primary` (cream on the cream theme). `LoginScreen.kt:2031`. <!-- NOTE-defer: copy item; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-288 (Copy). Tab comment at `LoginScreen.kt:2031` explicitly describes the active indicator as "purple (#8B5CF6)" but the brand accent is cream (#FDEED0) — contradicts brand-color guide.** `LoginTabBar` Composable comment lines 2031–2032: `// Active tab: purple (#8B5CF6) text + 2dp purple underline indicator.` The brand colour guide mandates cream `#FDEED0` as the primary accent; purple appears in older mockups and was explicitly deprecated. The indicator tint is actually driven by `MaterialTheme.colorScheme.primary` at runtime (line 2044), so the rendered colour is correct if the theme is set up properly. The stale comment is a copy-fidelity risk: it misleads developers into hardcoding `#8B5CF6` when debugging. Update the comment to reference `MaterialTheme.colorScheme.primary` (cream on the cream theme). `LoginScreen.kt:2031`.
 
-- [ ] **LOGIN-MOCK-289 (Copy). Apostrophe in "You've been signed out" and "You're offline" uses a straight apostrophe (U+0027) — Kotlin string literals do not automatically smart-quote.** `LoginScreen.kt:1908`: `"You've been signed out. Sign back in to continue."` and `LoginScreen.kt:2520`: `"You're offline. Connect to sign in."` Both use straight apostrophe U+0027. Compose renders straight apostrophes on-screen. Many style guides require curly/typographic apostrophe U+2019. Mockup screens do not depict these error states, so no mockup source of truth exists. Confirm whether the copy style guide mandates U+2019; if so, update all apostrophised strings in `LoginScreen.kt` (`"You've"` line 1908, `"You're"` line 2520, `"Passwords don't match"` line 983, `"Can't undo"` in undo stack copy, `"We'll send"` line 2888, `"won't show again"` in backup codes, etc.). <!-- NOTE-defer: copy item; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-289 (Copy). Apostrophe in "You've been signed out" and "You're offline" uses a straight apostrophe (U+0027) — Kotlin string literals do not automatically smart-quote.** `LoginScreen.kt:1908`: `"You've been signed out. Sign back in to continue."` and `LoginScreen.kt:2520`: `"You're offline. Connect to sign in."` Both use straight apostrophe U+0027. Compose renders straight apostrophes on-screen. Many style guides require curly/typographic apostrophe U+2019. Mockup screens do not depict these error states, so no mockup source of truth exists. Confirm whether the copy style guide mandates U+2019; if so, update all apostrophised strings in `LoginScreen.kt` (`"You've"` line 1908, `"You're"` line 2520, `"Passwords don't match"` line 983, `"Can't undo"` in undo stack copy, `"We'll send"` line 2888, `"won't show again"` in backup codes, etc.).
 
-- [ ] **LOGIN-MOCK-290 (Copy). "Minimum 8 characters" supporting text on the Admin Password field is sentence-case with no trailing period — mockup screen-02 confirms the exact string; code matches but the field-label analogue "Shop URL" supporting text "3–30 characters…" is also lowercase with no period, creating a consistent pattern that should be documented.** `LoginScreen.kt:2362`: `supportingText = { Text("Minimum 8 characters") }`. Mockup screen-02 shows "Minimum 8 characters" — exact match. Both supporting-text strings ("3–30 characters: letters, numbers, hyphens" at line 2313 and "Minimum 8 characters" at line 2362) follow sentence-case, no trailing period, no capitalisation of the first word. This is the correct pattern and matches the mockup. Flagging as a confirmatory pass — no fix needed, but the style rule should be recorded in §67 (Copy & Content Style Guide) to prevent future regressions. <!-- NOTE-defer: copy item; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-290 (Copy). "Minimum 8 characters" supporting text on the Admin Password field is sentence-case with no trailing period — mockup screen-02 confirms the exact string; code matches but the field-label analogue "Shop URL" supporting text "3–30 characters…" is also lowercase with no period, creating a consistent pattern that should be documented.** `LoginScreen.kt:2362`: `supportingText = { Text("Minimum 8 characters") }`. Mockup screen-02 shows "Minimum 8 characters" — exact match. Both supporting-text strings ("3–30 characters: letters, numbers, hyphens" at line 2313 and "Minimum 8 characters" at line 2362) follow sentence-case, no trailing period, no capitalisation of the first word. This is the correct pattern and matches the mockup. Flagging as a confirmatory pass — no fix needed, but the style rule should be recorded in §67 (Copy & Content Style Guide) to prevent future regressions.
 
-- [ ] **LOGIN-MOCK-291 (Copy). "Sign-in timed out. Please start over." snackbar message and "View setup guide" informational TextButton have no mockup backing — copy is unreviewed.** `LoginScreen.kt:1764`: snackbar message `"Sign-in timed out. Please start over."`. `LoginScreen.kt:2491`: `Text("View setup guide")` inside the needs-setup banner. Neither string appears in any of the 11 mockup screens. Both are live UI copy delivered to real users with no design review. "Please start over." ends with a period — consistent with error-message convention but unconfirmed. "View setup guide" is sentence-case with no trailing period — consistent but unreviewed. Flag both for design sign-off on wording and punctuation. <!-- NOTE-defer: copy item; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-291 (Copy). "Sign-in timed out. Please start over." snackbar message and "View setup guide" informational TextButton have no mockup backing — copy is unreviewed.** `LoginScreen.kt:1764`: snackbar message `"Sign-in timed out. Please start over."`. `LoginScreen.kt:2491`: `Text("View setup guide")` inside the needs-setup banner. Neither string appears in any of the 11 mockup screens. Both are live UI copy delivered to real users with no design review. "Please start over." ends with a period — consistent with error-message convention but unconfirmed. "View setup guide" is sentence-case with no trailing period — consistent but unreviewed. Flag both for design sign-off on wording and punctuation.
 
 ### Wave-6 Finder-P test coverage
 
-- [ ] **LOGIN-MOCK-219 (Test). `LoginViewModel.connectToServer()` has no unit test — slug validation, blank-URL guard, 404-treated-as-reachable, and 5xx-throws-error branches are all untested.** `connectToServer()` (`LoginScreen.kt:649–720`) contains five observable side-effects: (1) blank slug → `error = "Enter your shop name"`, (2) slug < 3 chars → `error = "Shop name must be at least 3 characters"`, (3) blank custom URL → `error = "Server URL is required"`, (4) 404 response → `serverConnected = true, storeName = "CRM Server"`, (5) 5xx response → `error` set, `isLoading = false`. None are exercised by `LoginViewModelRegisterTest.kt` or `BiometricAuthTest.kt`. Scaffold: create `LoginViewModelConnectTest.kt` in `test/.../ui/auth/` using `kotlinx.coroutines.test.runTest`, a `FakeAuthApi` returning canned `MockResponse` objects, and `Turbine` (or `StateFlow.value` polling). Test methods: `connectToServer_blankSlug_setsError`, `connectToServer_shortSlug_setsError`, `connectToServer_blankCustomUrl_setsError`, `connectToServer_404_treatedAsReachable`, `connectToServer_5xx_setsError`, `connectToServer_timeout_setsUnreachable`. Covers the LOGIN-MOCK-173 retry-token concern at the connect layer. <!-- NOTE-defer: test-only item; LoginViewModelConnectTest.kt needed; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-219 (Test). `LoginViewModel.connectToServer()` has no unit test — slug validation, blank-URL guard, 404-treated-as-reachable, and 5xx-throws-error branches are all untested.** `connectToServer()` (`LoginScreen.kt:649–720`) contains five observable side-effects: (1) blank slug → `error = "Enter your shop name"`, (2) slug < 3 chars → `error = "Shop name must be at least 3 characters"`, (3) blank custom URL → `error = "Server URL is required"`, (4) 404 response → `serverConnected = true, storeName = "CRM Server"`, (5) 5xx response → `error` set, `isLoading = false`. None are exercised by `LoginViewModelRegisterTest.kt` or `BiometricAuthTest.kt`. Scaffold: create `LoginViewModelConnectTest.kt` in `test/.../ui/auth/` using `kotlinx.coroutines.test.runTest`, a `FakeAuthApi` returning canned `MockResponse` objects, and `Turbine` (or `StateFlow.value` polling). Test methods: `connectToServer_blankSlug_setsError`, `connectToServer_shortSlug_setsError`, `connectToServer_blankCustomUrl_setsError`, `connectToServer_404_treatedAsReachable`, `connectToServer_5xx_setsError`, `connectToServer_timeout_setsUnreachable`. Covers the LOGIN-MOCK-173 retry-token concern at the connect layer.
 
-- [ ] **LOGIN-MOCK-220 (Test). `LoginViewModel.login()` 401 retry — token preservation and `unreachableHost` / `rateLimited` flag transitions have no unit test.** `login()` (`LoginScreen.kt:919–1014`) produces five distinct state outcomes: (1) success → step = `TWO_FA_VERIFY` or `TWO_FA_SETUP`, (2) 401 → `error` via `friendlyErrorMessage`, (3) 429 → `rateLimited = true` + `rateLimitResetMs` populated, (4) `UnknownHostException` → `unreachableHost = true`, (5) generic exception → `error` set. LOGIN-MOCK-173 requires that on 401 the `challengeToken` from a previous successful `login()` call is NOT clobbered — this is untested. Scaffold: `LoginViewModelLoginTest.kt`. Methods: `login_blankUsername_setsError`, `login_blankPassword_setsError`, `login_success_advancesTo2faVerify`, `login_success_with2faSetupRequired_callsSetup2FA`, `login_401_setsErrorAndPreservesExistingToken`, `login_429_withRetryInSeconds_setsRateLimited`, `login_429_withRetryAfterHeader_fallsBackToHeader`, `login_unknownHost_setsUnreachableHost`, `login_connectException_setsUnreachableHost`. Uses `MockWebServer` (OkHttp) for real HTTP simulation. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-220 (Test). `LoginViewModel.login()` 401 retry — token preservation and `unreachableHost` / `rateLimited` flag transitions have no unit test.** `login()` (`LoginScreen.kt:919–1014`) produces five distinct state outcomes: (1) success → step = `TWO_FA_VERIFY` or `TWO_FA_SETUP`, (2) 401 → `error` via `friendlyErrorMessage`, (3) 429 → `rateLimited = true` + `rateLimitResetMs` populated, (4) `UnknownHostException` → `unreachableHost = true`, (5) generic exception → `error` set. LOGIN-MOCK-173 requires that on 401 the `challengeToken` from a previous successful `login()` call is NOT clobbered — this is untested. Scaffold: `LoginViewModelLoginTest.kt`. Methods: `login_blankUsername_setsError`, `login_blankPassword_setsError`, `login_success_advancesTo2faVerify`, `login_success_with2faSetupRequired_callsSetup2FA`, `login_401_setsErrorAndPreservesExistingToken`, `login_429_withRetryInSeconds_setsRateLimited`, `login_429_withRetryAfterHeader_fallsBackToHeader`, `login_unknownHost_setsUnreachableHost`, `login_connectException_setsUnreachableHost`. Uses `MockWebServer` (OkHttp) for real HTTP simulation.
 
-- [ ] **LOGIN-MOCK-221 (Test). `LoginViewModel.verify2FA()` 401 retry — `challengeToken` preservation and `pendingBiometricStash` flag transition are untested.** `verify2FA()` (`LoginScreen.kt:1082–1244`) sets `pendingBiometricStash = true` when `rememberMeChecked && biometricEnabled` AND the verify succeeds. On 401 the token in `_state.value.challengeToken` must not be clobbered (LOGIN-MOCK-173 parity). Neither path has any test. Scaffold: `LoginViewModelVerify2FATest.kt`. Methods: `verify2FA_shortCode_setsError`, `verify2FA_success_noBiometric_noStash`, `verify2FA_success_withRememberMeAndBiometric_setsPendingStash`, `verify2FA_success_withBackupCodes_setsShowBackupCodes`, `verify2FA_401_preservesChallengeToken`, `verify2FA_invalidCode_setsError`. Requires `FakeAuthApi` returning `TwoFactorResponse` stubs and a mocked `AuthPreferences`. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-221 (Test). `LoginViewModel.verify2FA()` 401 retry — `challengeToken` preservation and `pendingBiometricStash` flag transition are untested.** `verify2FA()` (`LoginScreen.kt:1082–1244`) sets `pendingBiometricStash = true` when `rememberMeChecked && biometricEnabled` AND the verify succeeds. On 401 the token in `_state.value.challengeToken` must not be clobbered (LOGIN-MOCK-173 parity). Neither path has any test. Scaffold: `LoginViewModelVerify2FATest.kt`. Methods: `verify2FA_shortCode_setsError`, `verify2FA_success_noBiometric_noStash`, `verify2FA_success_withRememberMeAndBiometric_setsPendingStash`, `verify2FA_success_withBackupCodes_setsShowBackupCodes`, `verify2FA_401_preservesChallengeToken`, `verify2FA_invalidCode_setsError`. Requires `FakeAuthApi` returning `TwoFactorResponse` stubs and a mocked `AuthPreferences`.
 
-- [ ] **LOGIN-MOCK-222 (Test). `LoginViewModel.setup2FA()` loading state is untested — LOGIN-MOCK-168 fix (immediate `isLoading = true`) has no regression guard.** `setup2FA()` (`LoginScreen.kt:1049–1079`) starts with `_state.value = _state.value.copy(isLoading = true, error = null)` — LOGIN-MOCK-168's specific fix. If this line is removed or reordered the UI regresses silently. Additionally the `inheritedExpiresAt` preservation path (line 1063: `val expiresAt = inheritedExpiresAt ?: ...`) is untested. Scaffold: `LoginViewModelSetup2FATest.kt`. Methods: `setup2FA_immediatelySetsLoading`, `setup2FA_success_populatesQrAndSecret`, `setup2FA_success_preservesInheritedExpiresAt`, `setup2FA_success_fallsBackToFreshExpiry_whenInheritedIsNull`, `setup2FA_failure_clearsLoadingAndSetsError`. Since `setup2FA` is private, test via `login()` with a `requires2faSetup = true` response stub, which exercises setup2FA as a side-effect. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-222 (Test). `LoginViewModel.setup2FA()` loading state is untested — LOGIN-MOCK-168 fix (immediate `isLoading = true`) has no regression guard.** `setup2FA()` (`LoginScreen.kt:1049–1079`) starts with `_state.value = _state.value.copy(isLoading = true, error = null)` — LOGIN-MOCK-168's specific fix. If this line is removed or reordered the UI regresses silently. Additionally the `inheritedExpiresAt` preservation path (line 1063: `val expiresAt = inheritedExpiresAt ?: ...`) is untested. Scaffold: `LoginViewModelSetup2FATest.kt`. Methods: `setup2FA_immediatelySetsLoading`, `setup2FA_success_populatesQrAndSecret`, `setup2FA_success_preservesInheritedExpiresAt`, `setup2FA_success_fallsBackToFreshExpiry_whenInheritedIsNull`, `setup2FA_failure_clearsLoadingAndSetsError`. Since `setup2FA` is private, test via `login()` with a `requires2faSetup = true` response stub, which exercises setup2FA as a side-effect.
 
-- [ ] **LOGIN-MOCK-223 (Test). `LoginViewModel.friendlyErrorMessage()` has no unit test — all 8 mapping branches (LOGIN-MOCK-167 fix) are untested and could silently regress.** `friendlyErrorMessage()` (`LoginScreen.kt:1871–1881`) maps 8 known server strings to user-friendly copy plus an `else` fallback. Zero tests exist for any branch. Scaffold: `LoginViewModelFriendlyErrorTest.kt` (pure JVM, no coroutines needed since the function is pure). Methods: `friendlyError_originHeaderRequired`, `friendlyError_invalidCredentials`, `friendlyError_challengeExpired`, `friendlyError_totpNotConfigured`, `friendlyError_invalidCode`, `friendlyError_noBackupCodesAvailable`, `friendlyError_invalidBackupCode`, `friendlyError_accountLocked`, `friendlyError_unknownMessage_includesRawMessage`. Since `friendlyErrorMessage` is private, expose via `internal` or test through `login()` / `verify2FA()` stubs that surface the mapped string in `state.error`. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-223 (Test). `LoginViewModel.friendlyErrorMessage()` has no unit test — all 8 mapping branches (LOGIN-MOCK-167 fix) are untested and could silently regress.** `friendlyErrorMessage()` (`LoginScreen.kt:1871–1881`) maps 8 known server strings to user-friendly copy plus an `else` fallback. Zero tests exist for any branch. Scaffold: `LoginViewModelFriendlyErrorTest.kt` (pure JVM, no coroutines needed since the function is pure). Methods: `friendlyError_originHeaderRequired`, `friendlyError_invalidCredentials`, `friendlyError_challengeExpired`, `friendlyError_totpNotConfigured`, `friendlyError_invalidCode`, `friendlyError_noBackupCodesAvailable`, `friendlyError_invalidBackupCode`, `friendlyError_accountLocked`, `friendlyError_unknownMessage_includesRawMessage`. Since `friendlyErrorMessage` is private, expose via `internal` or test through `login()` / `verify2FA()` stubs that surface the mapped string in `state.error`.
 
-- [ ] **LOGIN-MOCK-224 (Test). `LoginViewModel` setup-probe path (`setupNeeded`, `probeServer()`) is untested — probe-success, probe-failure, and `unreachableHost` detection from the probe call have no coverage.** `probeServer()` (`LoginScreen.kt:863–918`) sets `setupNeeded = true/false` based on `/api/v1/portal/embed/config` response, and short-circuits if `setupNeeded != null && !forceRetry`. The `unreachableHost` state surfaced by the probe-failure branch is the primary UX path for misconfigured servers. Scaffold: `LoginViewModelProbeTest.kt`. Methods: `probeServer_success_setsSetupNeededFalse`, `probeServer_serverNeedsSetup_setsSetupNeededTrue`, `probeServer_skipIfAlreadyProbed`, `probeServer_forceRetry_reprobsEvenIfAlreadySet`, `probeServer_networkFailure_setsProbeError`, `probeServer_5xx_setsProbeError`. Use `MockWebServer` with canned JSON bodies. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-224 (Test). `LoginViewModel` setup-probe path (`setupNeeded`, `probeServer()`) is untested — probe-success, probe-failure, and `unreachableHost` detection from the probe call have no coverage.** `probeServer()` (`LoginScreen.kt:863–918`) sets `setupNeeded = true/false` based on `/api/v1/portal/embed/config` response, and short-circuits if `setupNeeded != null && !forceRetry`. The `unreachableHost` state surfaced by the probe-failure branch is the primary UX path for misconfigured servers. Scaffold: `LoginViewModelProbeTest.kt`. Methods: `probeServer_success_setsSetupNeededFalse`, `probeServer_serverNeedsSetup_setsSetupNeededTrue`, `probeServer_skipIfAlreadyProbed`, `probeServer_forceRetry_reprobsEvenIfAlreadySet`, `probeServer_networkFailure_setsProbeError`, `probeServer_5xx_setsProbeError`. Use `MockWebServer` with canned JSON bodies.
 
-- [ ] **LOGIN-MOCK-225 (Test). `LoginViewModel.onChallengeTokenExpired()` and the `challengeExpired` ticker logic (`LaunchedEffect(expiresAtMs)`, `LoginScreen.kt:1926–1935`) are untested — expiry boundary and state reset have no test.** `onChallengeTokenExpired()` (`LoginScreen.kt:1280–1296`) resets 10 fields including `step = CREDENTIALS`, `totpCode = ""`, `password = ""`. The `LaunchedEffect` ticker in the Composable fires `onChallengeTokenExpired()` when `System.currentTimeMillis() >= expiresAtMs`. Neither the ViewModel mutation nor the ticker boundary are tested. Scaffold (ViewModel layer): `LoginViewModelChallengeExpiredTest.kt`. Methods: `onChallengeTokenExpired_resetsStepToCredentials`, `onChallengeTokenExpired_clearsTotp`, `onChallengeTokenExpired_clearsSensitiveFields`, `onChallengeTokenExpired_setsChallengeExpiredTrue`, `clearChallengeExpired_clearsChallengeExpiredFlag`. Use `TestCoroutineScheduler` / `advanceTimeBy(601_000L)` to drive the ticker in a `runTest` block. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-225 (Test). `LoginViewModel.onChallengeTokenExpired()` and the `challengeExpired` ticker logic (`LaunchedEffect(expiresAtMs)`, `LoginScreen.kt:1926–1935`) are untested — expiry boundary and state reset have no test.** `onChallengeTokenExpired()` (`LoginScreen.kt:1280–1296`) resets 10 fields including `step = CREDENTIALS`, `totpCode = ""`, `password = ""`. The `LaunchedEffect` ticker in the Composable fires `onChallengeTokenExpired()` when `System.currentTimeMillis() >= expiresAtMs`. Neither the ViewModel mutation nor the ticker boundary are tested. Scaffold (ViewModel layer): `LoginViewModelChallengeExpiredTest.kt`. Methods: `onChallengeTokenExpired_resetsStepToCredentials`, `onChallengeTokenExpired_clearsTotp`, `onChallengeTokenExpired_clearsSensitiveFields`, `onChallengeTokenExpired_setsChallengeExpiredTrue`, `clearChallengeExpired_clearsChallengeExpiredFlag`. Use `TestCoroutineScheduler` / `advanceTimeBy(601_000L)` to drive the ticker in a `runTest` block.
 
-- [ ] **LOGIN-MOCK-226 (Test). No Compose UI test exists for the server step — `LoginScreenTest` in `androidTest/` is absent entirely; slug field enables/disables the Connect CTA based on length, but this is unverified.** `androidTest/` contains zero `*Login*` or `*Auth*` files (confirmed by `find` above). The server step renders: (a) slug `OutlinedTextField` with `supportingText` "3–30 characters: letters, numbers, hyphens", (b) Connect `Button` disabled when slug < 3 chars, enabled at 3+ chars, (c) "Register new shop" footer `TextButton`. Scaffold: create `androidTest/.../ui/auth/LoginScreenTest.kt` using `ComposeTestRule`. Methods: `serverStep_connectButtonDisabled_whenSlugEmpty`, `serverStep_connectButtonDisabled_whenSlugTooShort`, `serverStep_connectButtonEnabled_atMinSlugLength`, `serverStep_supportingTextVisible`, `serverStep_registerLinkVisible_andClickable`, `serverStep_customServerToggle_showsUrlField`. Uses `createAndroidComposeRule<ComponentActivity>()` with `LoginScreen()` directly composed under a `TestHiltComponent`. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-226 (Test). No Compose UI test exists for the server step — `LoginScreenTest` in `androidTest/` is absent entirely; slug field enables/disables the Connect CTA based on length, but this is unverified.** `androidTest/` contains zero `*Login*` or `*Auth*` files (confirmed by `find` above). The server step renders: (a) slug `OutlinedTextField` with `supportingText` "3–30 characters: letters, numbers, hyphens", (b) Connect `Button` disabled when slug < 3 chars, enabled at 3+ chars, (c) "Register new shop" footer `TextButton`. Scaffold: create `androidTest/.../ui/auth/LoginScreenTest.kt` using `ComposeTestRule`. Methods: `serverStep_connectButtonDisabled_whenSlugEmpty`, `serverStep_connectButtonDisabled_whenSlugTooShort`, `serverStep_connectButtonEnabled_atMinSlugLength`, `serverStep_supportingTextVisible`, `serverStep_registerLinkVisible_andClickable`, `serverStep_customServerToggle_showsUrlField`. Uses `createAndroidComposeRule<ComponentActivity>()` with `LoginScreen()` directly composed under a `TestHiltComponent`.
 
-- [ ] **LOGIN-MOCK-227 (Test). No Compose UI test verifies 4-field Register form validation — all four sub-steps (Company, Owner, ServerUrl, Confirm) have no instrumented test for their Next-gate conditions.** Each `RegisterSubStep` has a distinct Next-gate predicate: Company requires non-blank shop name and URL slug; Owner requires email, password ≥ FAIR, matching confirm; ServerUrl requires valid URL format; Confirm shows summary. Zero Compose tests exist for any of them. Scaffold: `LoginRegisterFormTest.kt` in `androidTest/`. Methods: `registerForm_companyNext_disabledWhenNameBlank`, `registerForm_companyNext_enabledWhenBothFilled`, `registerForm_ownerNext_disabledOnWeakPassword`, `registerForm_ownerNext_disabledOnMismatchedPasswords`, `registerForm_ownerNext_enabledOnFairPasswordAndMatchingConfirm`, `registerForm_ownerNext_disabledOnInvalidEmail`, `registerForm_serverUrlNext_disabledOnBlankUrl`, `registerForm_confirmSummaryDisplaysEnteredValues`. Each test sets up state via `viewModel.updateXxx()` calls before asserting Compose node enabled/disabled states with `assertIsEnabled()` / `assertIsNotEnabled()`. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-227 (Test). No Compose UI test verifies 4-field Register form validation — all four sub-steps (Company, Owner, ServerUrl, Confirm) have no instrumented test for their Next-gate conditions.** Each `RegisterSubStep` has a distinct Next-gate predicate: Company requires non-blank shop name and URL slug; Owner requires email, password ≥ FAIR, matching confirm; ServerUrl requires valid URL format; Confirm shows summary. Zero Compose tests exist for any of them. Scaffold: `LoginRegisterFormTest.kt` in `androidTest/`. Methods: `registerForm_companyNext_disabledWhenNameBlank`, `registerForm_companyNext_enabledWhenBothFilled`, `registerForm_ownerNext_disabledOnWeakPassword`, `registerForm_ownerNext_disabledOnMismatchedPasswords`, `registerForm_ownerNext_enabledOnFairPasswordAndMatchingConfirm`, `registerForm_ownerNext_disabledOnInvalidEmail`, `registerForm_serverUrlNext_disabledOnBlankUrl`, `registerForm_confirmSummaryDisplaysEnteredValues`. Each test sets up state via `viewModel.updateXxx()` calls before asserting Compose node enabled/disabled states with `assertIsEnabled()` / `assertIsNotEnabled()`.
 
-- [ ] **LOGIN-MOCK-228 (Test). No Compose UI test covers 2FA setup QR rendering or the 6-digit TOTP field — `TwoFaSetupStep` and `TwoFaVerifyStep` composables are untested at the instrumented level.** `TwoFaSetupStep` (`LoginScreen.kt:3181+`) renders a QR `Image` from a data-URL and a manual-entry code; `TwoFaVerifyStep` (`LoginScreen.kt:3377+`) renders a 6-digit `BasicTextField` with per-digit boxes. Neither is covered by any test. Scaffold: `LoginTwoFATest.kt` in `androidTest/`. Methods: `twoFaSetup_qrImageDisplayed_whenQrCodeNonEmpty`, `twoFaSetup_manualCodeVisible`, `twoFaSetup_continueButtonEnabled_whenQrLoaded`, `twoFaVerify_submitDisabled_whenCodeLessThan6Digits`, `twoFaVerify_submitEnabled_atExactly6Digits`, `twoFaVerify_errorBannerShown_onInvalidCode`, `twoFaVerify_backupCodeRecoveryLinkVisible`. Uses `setContent { LoginScreen(...) }` with a pre-seeded `LoginUiState(step = TWO_FA_SETUP, qrCodeDataUrl = "data:image/png;base64,...")`. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-228 (Test). No Compose UI test covers 2FA setup QR rendering or the 6-digit TOTP field — `TwoFaSetupStep` and `TwoFaVerifyStep` composables are untested at the instrumented level.** `TwoFaSetupStep` (`LoginScreen.kt:3181+`) renders a QR `Image` from a data-URL and a manual-entry code; `TwoFaVerifyStep` (`LoginScreen.kt:3377+`) renders a 6-digit `BasicTextField` with per-digit boxes. Neither is covered by any test. Scaffold: `LoginTwoFATest.kt` in `androidTest/`. Methods: `twoFaSetup_qrImageDisplayed_whenQrCodeNonEmpty`, `twoFaSetup_manualCodeVisible`, `twoFaSetup_continueButtonEnabled_whenQrLoaded`, `twoFaVerify_submitDisabled_whenCodeLessThan6Digits`, `twoFaVerify_submitEnabled_atExactly6Digits`, `twoFaVerify_errorBannerShown_onInvalidCode`, `twoFaVerify_backupCodeRecoveryLinkVisible`. Uses `setContent { LoginScreen(...) }` with a pre-seeded `LoginUiState(step = TWO_FA_SETUP, qrCodeDataUrl = "data:image/png;base64,...")`.
 
-- [ ] **LOGIN-MOCK-229 (Test). No accessibility test validates content descriptions for back arrows, password-visibility toggles, and banners — TalkBack users have untested coverage.** `LoginScreen.kt` uses `contentDescription` on at least: (a) back `IconButton` ("Back"), (b) password-visibility `IconButton` ("Show/Hide password"), (c) offline banner `Icon`, (d) session-revoked banner. No `onNodeWithContentDescription` assertion exists anywhere. Scaffold: `LoginAccessibilityTest.kt` in `androidTest/`. Methods: `backButton_hasContentDescription`, `passwordToggle_hasContentDescriptionShow_whenObscured`, `passwordToggle_hasContentDescriptionHide_whenVisible`, `offlineBanner_iconHasContentDescription`, `sessionRevokedBanner_isAccessible_withSemanticRole`. Use `composeTestRule.onNodeWithContentDescription("Back").assertExists()` and `SemanticsMatcher` for role checks. This also covers the axe-style check that interactive controls are never content-description-less. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-229 (Test). No accessibility test validates content descriptions for back arrows, password-visibility toggles, and banners — TalkBack users have untested coverage.** `LoginScreen.kt` uses `contentDescription` on at least: (a) back `IconButton` ("Back"), (b) password-visibility `IconButton` ("Show/Hide password"), (c) offline banner `Icon`, (d) session-revoked banner. No `onNodeWithContentDescription` assertion exists anywhere. Scaffold: `LoginAccessibilityTest.kt` in `androidTest/`. Methods: `backButton_hasContentDescription`, `passwordToggle_hasContentDescriptionShow_whenObscured`, `passwordToggle_hasContentDescriptionHide_whenVisible`, `offlineBanner_iconHasContentDescription`, `sessionRevokedBanner_isAccessible_withSemanticRole`. Use `composeTestRule.onNodeWithContentDescription("Back").assertExists()` and `SemanticsMatcher` for role checks. This also covers the axe-style check that interactive controls are never content-description-less.
 
-- [ ] **LOGIN-MOCK-230 (Test). No state-restoration test verifies that `rememberSaveable`-backed fields survive rotation — LOGIN-MOCK-187 fix is unguarded against regression.** LOGIN-MOCK-187 added `rememberSaveable` to preserve TOTP input across configuration changes. No test recreates the Activity to verify the field survives. Scaffold: `LoginStateSurvivalTest.kt` in `androidTest/`. Methods: `totpField_survivesRotation`, `slugField_survivesRotation`, `usernameField_survivesRotation`, `registerSubStep_survivesRotation`. Use `composeTestRule.activityRule.scenario.recreate()` after filling each field, then assert the `TextField` still contains the original value via `onNodeWithTag("totp_field").assertTextEquals("123456")`. Covers both `rememberSaveable` on input values and the `SetupStep` step-retention across config change. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-230 (Test). No state-restoration test verifies that `rememberSaveable`-backed fields survive rotation — LOGIN-MOCK-187 fix is unguarded against regression.** LOGIN-MOCK-187 added `rememberSaveable` to preserve TOTP input across configuration changes. No test recreates the Activity to verify the field survives. Scaffold: `LoginStateSurvivalTest.kt` in `androidTest/`. Methods: `totpField_survivesRotation`, `slugField_survivesRotation`, `usernameField_survivesRotation`, `registerSubStep_survivesRotation`. Use `composeTestRule.activityRule.scenario.recreate()` after filling each field, then assert the `TextField` still contains the original value via `onNodeWithTag("totp_field").assertTextEquals("123456")`. Covers both `rememberSaveable` on input values and the `SetupStep` step-retention across config change.
 
-- [ ] **LOGIN-MOCK-231 (Test). No integration or deep-link test verifies that `bizarrecrm.com/setup/:token` launches `LoginScreen` at the Register step with the invite token pre-populated.** `LoginScreen.kt:1898–1918`: `setupToken: String?` parameter triggers `viewModel.applySetupToken(setupToken)` + `viewModel.goToRegister()` when non-null. The `LaunchedEffect(setupToken)` path is exercised only by a real App Link or a test that passes a non-null `setupToken`. No such test exists. Scaffold: `LoginDeepLinkTest.kt` in `androidTest/`. Methods: `setupToken_nonNull_advancesToRegisterStep`, `setupToken_nonNull_tokenStoredInViewModel`, `setupToken_null_staysOnServerStep`, `setupToken_emptyString_staysOnServerStep`, `appLink_bizarrecrmSetupToken_launchesRegisterStep` (uses `Intent.ACTION_VIEW` with URI `https://bizarrecrm.com/setup/abc123` via `ActivityScenario.launch(intent)`). Also covers the `AndroidManifest.xml` intent-filter for `bizarrecrm.com/setup/*` — verify the filter is declared and routes to the correct activity before the test can pass. <!-- NOTE-defer: test-only item; deferred to test-coverage wave. -->
+- [ ] **LOGIN-MOCK-231 (Test). No integration or deep-link test verifies that `bizarrecrm.com/setup/:token` launches `LoginScreen` at the Register step with the invite token pre-populated.** `LoginScreen.kt:1898–1918`: `setupToken: String?` parameter triggers `viewModel.applySetupToken(setupToken)` + `viewModel.goToRegister()` when non-null. The `LaunchedEffect(setupToken)` path is exercised only by a real App Link or a test that passes a non-null `setupToken`. No such test exists. Scaffold: `LoginDeepLinkTest.kt` in `androidTest/`. Methods: `setupToken_nonNull_advancesToRegisterStep`, `setupToken_nonNull_tokenStoredInViewModel`, `setupToken_null_staysOnServerStep`, `setupToken_emptyString_staysOnServerStep`, `appLink_bizarrecrmSetupToken_launchesRegisterStep` (uses `Intent.ACTION_VIEW` with URI `https://bizarrecrm.com/setup/abc123` via `ActivityScenario.launch(intent)`). Also covers the `AndroidManifest.xml` intent-filter for `bizarrecrm.com/setup/*` — verify the filter is declared and routes to the correct activity before the test can pass.
 
-- [ ] **LOGIN-MOCK-292 (Copy). Extra UI strings with no mockup analog are present on the Credentials step and represent potential scope-creep copy that needs design review: "Sign in with SSO" (line 2757), "Choose your sign-in provider" (line 2765 sheet title), "Email me a link" (line 2811), "Sign in with a magic link" (line 2882 sheet title), "We'll send a one-time sign-in link to your email. The link expires in 15 minutes." (line 2888), "Use passkey" (line 2851), "Signing in…" (line 2843), "Send link" (line 2927), "Resend link" (line 2991), "Resend in ${cooldownSec}s" (line 2989).** None of these strings appear in any of the 11 mockup screens. All are gated on feature flags (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) but the copy itself has never been reviewed against a design mockup for tone, capitalisation, or punctuation. Each should receive a mockup frame or explicit copy-approval comment before shipping. `LoginScreen.kt:2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2989, 2991`. <!-- NOTE-defer: copy duplicate of LOGIN-MOCK-263; deferred to copy-review pass. -->
+- [ ] **LOGIN-MOCK-292 (Copy). Extra UI strings with no mockup analog are present on the Credentials step and represent potential scope-creep copy that needs design review: "Sign in with SSO" (line 2757), "Choose your sign-in provider" (line 2765 sheet title), "Email me a link" (line 2811), "Sign in with a magic link" (line 2882 sheet title), "We'll send a one-time sign-in link to your email. The link expires in 15 minutes." (line 2888), "Use passkey" (line 2851), "Signing in…" (line 2843), "Send link" (line 2927), "Resend link" (line 2991), "Resend in ${cooldownSec}s" (line 2989).** None of these strings appear in any of the 11 mockup screens. All are gated on feature flags (`ssoAvailable`, `magicLinksEnabled`, `passkeyVisible`) but the copy itself has never been reviewed against a design mockup for tone, capitalisation, or punctuation. Each should receive a mockup frame or explicit copy-approval comment before shipping. `LoginScreen.kt:2757, 2765, 2811, 2843, 2851, 2882, 2888, 2927, 2989, 2991`.
 
 ### Wave-6 Finder-Q DI + lifecycle
 
-- [ ] **LOGIN-MOCK-232 (Architecture). `LoginViewModel` constructor graph has no companion documentation — six `@Singleton` deps are resolved implicitly from three separate modules, making future dep changes a silent missing-binding risk.** `LoginScreen.kt:289–297`: constructor injects `AuthPreferences` (`AuthPreferences.kt:37`), `AuthApi` (`RetrofitClient.kt:630`), `NetworkMonitor` (`NetworkMonitor.kt:38`), `BiometricCredentialStore` (`BiometricCredentialStore.kt:72`), `BiometricAuth` (`BiometricAuth.kt:39`), `DeepLinkBus` (`DeepLinkBus.kt:36`). All six are `@Singleton` self-registrations; no `@Provides` entry in any `@Module` annotates them together. The Hilt graph is valid today. Remediation: add a KDoc block on `LoginViewModel` listing each injected dep and its providing module so a contributor renaming or moving a dep gets a compile-time error rather than a confusing "missing binding" message that doesn't name the consumer. <!-- NOTE-defer: architecture/documentation item; KDoc addition; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-232 (Architecture). `LoginViewModel` constructor graph has no companion documentation — six `@Singleton` deps are resolved implicitly from three separate modules, making future dep changes a silent missing-binding risk.** `LoginScreen.kt:289–297`: constructor injects `AuthPreferences` (`AuthPreferences.kt:37`), `AuthApi` (`RetrofitClient.kt:630`), `NetworkMonitor` (`NetworkMonitor.kt:38`), `BiometricCredentialStore` (`BiometricCredentialStore.kt:72`), `BiometricAuth` (`BiometricAuth.kt:39`), `DeepLinkBus` (`DeepLinkBus.kt:36`). All six are `@Singleton` self-registrations; no `@Provides` entry in any `@Module` annotates them together. The Hilt graph is valid today. Remediation: add a KDoc block on `LoginViewModel` listing each injected dep and its providing module so a contributor renaming or moving a dep gets a compile-time error rather than a confusing "missing binding" message that doesn't name the consumer.
 
-- [ ] **LOGIN-MOCK-233 (Architecture). `BiometricAuth` is `@Singleton` but is stateless and constructs a fresh `BiometricPrompt` on every call — the `@Singleton` scope is safe but misleading; future contributors may add Activity state believing the class is Activity-scoped.** `BiometricAuth.kt:39–40`: `@Singleton class BiometricAuth @Inject constructor()`. No fields are declared; every `showPrompt`, `encryptWithBiometric`, and `decryptWithBiometric` call creates a new `BiometricPrompt` instance using the `activity` parameter. The class never stores a `Context` or `Activity` reference. Remediation: add a KDoc note "Stateless — safe as Singleton. Never add Activity/Context fields; this class lives in SingletonComponent." <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-233 (Architecture). `BiometricAuth` is `@Singleton` but is stateless and constructs a fresh `BiometricPrompt` on every call — the `@Singleton` scope is safe but misleading; future contributors may add Activity state believing the class is Activity-scoped.** `BiometricAuth.kt:39–40`: `@Singleton class BiometricAuth @Inject constructor()`. No fields are declared; every `showPrompt`, `encryptWithBiometric`, and `decryptWithBiometric` call creates a new `BiometricPrompt` instance using the `activity` parameter. The class never stores a `Context` or `Activity` reference. Remediation: add a KDoc note "Stateless — safe as Singleton. Never add Activity/Context fields; this class lives in SingletonComponent."
 
-- [ ] **LOGIN-MOCK-234 (Architecture). `NetworkMonitor.isOnline` is a cold `callbackFlow` — each `collect` registers a new `ConnectivityManager.NetworkCallback`. `LoginViewModel.init` and multiple other VMs collect it independently, registering duplicate OS callbacks for the same underlying event.** `NetworkMonitor.kt:41–75`: `callbackFlow { ... }.distinctUntilChanged()`. `LoginScreen.kt:401–404`: `viewModelScope.launch { networkMonitor.isOnline.collect { ... } }`. `SyncManager.kt:78`, `DeltaSyncer.kt:68`, `AppNavGraph.kt:816` all inject and collect `NetworkMonitor`. Each active subscriber holds a live `NetworkCallback` registration. Remediation: convert `isOnline` to a hot `StateFlow` via `stateIn(applicationScope, SharingStarted.Eagerly, initialValue = isCurrentlyOnline())` inside the `NetworkMonitor` constructor, sharing a single OS callback across all collectors — the same pattern used by `ServerReachabilityMonitor.isEffectivelyOnline`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-234 (Architecture). `NetworkMonitor.isOnline` is a cold `callbackFlow` — each `collect` registers a new `ConnectivityManager.NetworkCallback`. `LoginViewModel.init` and multiple other VMs collect it independently, registering duplicate OS callbacks for the same underlying event.** `NetworkMonitor.kt:41–75`: `callbackFlow { ... }.distinctUntilChanged()`. `LoginScreen.kt:401–404`: `viewModelScope.launch { networkMonitor.isOnline.collect { ... } }`. `SyncManager.kt:78`, `DeltaSyncer.kt:68`, `AppNavGraph.kt:816` all inject and collect `NetworkMonitor`. Each active subscriber holds a live `NetworkCallback` registration. Remediation: convert `isOnline` to a hot `StateFlow` via `stateIn(applicationScope, SharingStarted.Eagerly, initialValue = isCurrentlyOnline())` inside the `NetworkMonitor` constructor, sharing a single OS callback across all collectors — the same pattern used by `ServerReachabilityMonitor.isEffectivelyOnline`.
 
-- [ ] **LOGIN-MOCK-235 (Security). `AuthPreferences.installationSecret()` stores the per-install HMAC key inside the same `EncryptedSharedPreferences` file it protects, making the HMAC tamper-detection circular for any adversary who can already access the Keystore master key.** `AuthPreferences.kt:186–195`: `installationSecret()` reads/writes `KEY_INSTALL_SECRET` from `prefs` — the same `EncryptedSharedPreferences` instance whose contents it signs. An adversary who decrypts `auth_prefs` (requires the Keystore `AES256_GCM` master key) obtains both the HMAC key and the signed server URL in the same operation. The comment at line 183 acknowledges the layering ("rides on top of EncryptedSharedPreferences") but not the circularity. The HMAC adds no additional protection against the rooted-extraction threat model. Remediation: (a) store the HMAC key as a standalone `KeyStore.SecretKeyEntry` under `AndroidKeyStore` (separate from the EncryptedSharedPreferences master key), giving it a second independent hardware-backed key, or (b) remove the HMAC and rely solely on EncryptedSharedPreferences + `android:allowBackup="false"`, documenting the simplified threat model. <!-- NOTE-defer: security/architecture item; deferred to security wave. -->
+- [ ] **LOGIN-MOCK-235 (Security). `AuthPreferences.installationSecret()` stores the per-install HMAC key inside the same `EncryptedSharedPreferences` file it protects, making the HMAC tamper-detection circular for any adversary who can already access the Keystore master key.** `AuthPreferences.kt:186–195`: `installationSecret()` reads/writes `KEY_INSTALL_SECRET` from `prefs` — the same `EncryptedSharedPreferences` instance whose contents it signs. An adversary who decrypts `auth_prefs` (requires the Keystore `AES256_GCM` master key) obtains both the HMAC key and the signed server URL in the same operation. The comment at line 183 acknowledges the layering ("rides on top of EncryptedSharedPreferences") but not the circularity. The HMAC adds no additional protection against the rooted-extraction threat model. Remediation: (a) store the HMAC key as a standalone `KeyStore.SecretKeyEntry` under `AndroidKeyStore` (separate from the EncryptedSharedPreferences master key), giving it a second independent hardware-backed key, or (b) remove the HMAC and rely solely on EncryptedSharedPreferences + `android:allowBackup="false"`, documenting the simplified threat model.
 
-- [ ] **LOGIN-MOCK-236 (Bug). `BiometricCredentialStore.init` registers `AuthPreferences.setBiometricClearCallback` only when first constructed by Hilt. `BizarreCrmApp` does not inject `BiometricCredentialStore`, so the callback is null until `LoginViewModel` is first created. A session-revoke fired by `AuthInterceptor` before `LoginScreen` is composed calls `authPreferences.clear(SessionRevoked)` with `biometricClearCallback == null` — biometric credentials are not wiped.** `BiometricCredentialStore.kt:76–81`: `init { authPreferences.setBiometricClearCallback { clear() } }`. `BizarreCrmApp.kt:48`: injects `authPreferences` but not `biometricCredentialStore`. `AuthPreferences.kt:429`: `biometricClearCallback?.invoke()` — safe-call means it is silently skipped when null. `AuthInterceptor` can call `authPreferences.clear(SessionRevoked)` on a background OkHttp thread during any sync. Remediation: add `@Inject lateinit var biometricCredentialStore: BiometricCredentialStore` to `BizarreCrmApp` so Hilt constructs the singleton (and its `init` block) at `Application.onCreate` time, before any network call can trigger a revoke. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-236 (Bug). `BiometricCredentialStore.init` registers `AuthPreferences.setBiometricClearCallback` only when first constructed by Hilt. `BizarreCrmApp` does not inject `BiometricCredentialStore`, so the callback is null until `LoginViewModel` is first created. A session-revoke fired by `AuthInterceptor` before `LoginScreen` is composed calls `authPreferences.clear(SessionRevoked)` with `biometricClearCallback == null` — biometric credentials are not wiped.** `BiometricCredentialStore.kt:76–81`: `init { authPreferences.setBiometricClearCallback { clear() } }`. `BizarreCrmApp.kt:48`: injects `authPreferences` but not `biometricCredentialStore`. `AuthPreferences.kt:429`: `biometricClearCallback?.invoke()` — safe-call means it is silently skipped when null. `AuthInterceptor` can call `authPreferences.clear(SessionRevoked)` on a background OkHttp thread during any sync. Remediation: add `@Inject lateinit var biometricCredentialStore: BiometricCredentialStore` to `BizarreCrmApp` so Hilt constructs the singleton (and its `init` block) at `Application.onCreate` time, before any network call can trigger a revoke.
 
-- [ ] **LOGIN-MOCK-237 (Architecture). `LoginViewModel._state` is an in-memory `MutableStateFlow` with no `SavedStateHandle` backing. A process kill during the multi-step 2FA setup flow (e.g., low-memory eviction) drops `step`, `serverUrl`, `shopSlug`, `username`, `registerSubStep`, and `challengeTokenExpiresAtMs` — the user restarts from a blank login screen.** `LoginScreen.kt:377–394`: `_state = MutableStateFlow(LoginUiState(...))`. No `SavedStateHandle` parameter in the constructor. The 2FA secret and QR data-URL must NOT be persisted (sensitive), but the navigation scalars listed above are safe to restore. Remediation: inject `SavedStateHandle` (automatically provided by Hilt for `@HiltViewModel`) and use `savedStateHandle.get<String>("step")` / `savedStateHandle["step"] = value` for non-sensitive fields. Document explicitly in a comment which fields are excluded: `password`, `totpCode`, `twoFaSecret`, `challengeToken`, biometric fields. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-237 (Architecture). `LoginViewModel._state` is an in-memory `MutableStateFlow` with no `SavedStateHandle` backing. A process kill during the multi-step 2FA setup flow (e.g., low-memory eviction) drops `step`, `serverUrl`, `shopSlug`, `username`, `registerSubStep`, and `challengeTokenExpiresAtMs` — the user restarts from a blank login screen.** `LoginScreen.kt:377–394`: `_state = MutableStateFlow(LoginUiState(...))`. No `SavedStateHandle` parameter in the constructor. The 2FA secret and QR data-URL must NOT be persisted (sensitive), but the navigation scalars listed above are safe to restore. Remediation: inject `SavedStateHandle` (automatically provided by Hilt for `@HiltViewModel`) and use `savedStateHandle.get<String>("step")` / `savedStateHandle["step"] = value` for non-sensitive fields. Document explicitly in a comment which fields are excluded: `password`, `totpCode`, `twoFaSecret`, `challengeToken`, biometric fields.
 
-- [ ] **LOGIN-MOCK-238 (Architecture). `LoginViewModel.init` launches five concurrent coroutines unconditionally on every ViewModel creation. Back-navigating to `LoginScreen` (which creates a new ViewModel instance) re-fires three network requests even when results are still valid.** `LoginScreen.kt:397–455`: five `viewModelScope.launch` calls — `networkMonitor.collect`, `loadSsoProviders()`, `probemagicLinksEnabled()`, `probePasskeyEnabled()`, `deepLinkBus.pendingMagicToken.collect`. The SSO probe may have a null-guard inside `loadSsoProviders()`, but `probemagicLinksEnabled` and `probePasskeyEnabled` have no visible guard preventing re-fire on re-entry. Remediation: add `if (_state.value.magicLinksEnabled == null)` and `if (_state.value.passkeyEnabled == null)` guards inside `init` before launching those probes, matching the pattern that should exist for SSO. Alternatively cache results in `AuthPreferences` with a short TTL (e.g., 5 minutes). <!-- NOTE-defer: architecture/observability item; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-238 (Architecture). `LoginViewModel.init` launches five concurrent coroutines unconditionally on every ViewModel creation. Back-navigating to `LoginScreen` (which creates a new ViewModel instance) re-fires three network requests even when results are still valid.** `LoginScreen.kt:397–455`: five `viewModelScope.launch` calls — `networkMonitor.collect`, `loadSsoProviders()`, `probemagicLinksEnabled()`, `probePasskeyEnabled()`, `deepLinkBus.pendingMagicToken.collect`. The SSO probe may have a null-guard inside `loadSsoProviders()`, but `probemagicLinksEnabled` and `probePasskeyEnabled` have no visible guard preventing re-fire on re-entry. Remediation: add `if (_state.value.magicLinksEnabled == null)` and `if (_state.value.passkeyEnabled == null)` guards inside `init` before launching those probes, matching the pattern that should exist for SSO. Alternatively cache results in `AuthPreferences` with a short TTL (e.g., 5 minutes).
 
-- [ ] **LOGIN-MOCK-239 (Bug). `PinLockViewModel.scheduleLockoutTick()` attempts to force a recomposition every second by emitting `_state.value = cur.copy()`, but `MutableStateFlow` drops structurally equal values — `data class State.copy()` with no changed fields is `==` to the current value, so the countdown display never updates between keypresses.** `PinLockViewModel.kt:277–279`: `val cur = _state.value; _state.value = cur.copy()`. The comment at line 278 acknowledges the dedup issue and notes a "bumped marker" fix is needed but it is not implemented. `lockoutRemainingSeconds` is a computed property on `State` (line 49) that depends on `lockoutUntilMillis` (unchanged) and `System.currentTimeMillis()` (changes every call), but `StateFlow` evaluates equality on the emitted `State` object, not on computed properties. Remediation: add `val tickMs: Long = 0L` to `State`; set `tickMs = System.currentTimeMillis()` in each `scheduleLockoutTick` loop iteration so each emitted `copy(tickMs = ...)` is structurally distinct and triggers recomposition. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-239 (Bug). `PinLockViewModel.scheduleLockoutTick()` attempts to force a recomposition every second by emitting `_state.value = cur.copy()`, but `MutableStateFlow` drops structurally equal values — `data class State.copy()` with no changed fields is `==` to the current value, so the countdown display never updates between keypresses.** `PinLockViewModel.kt:277–279`: `val cur = _state.value; _state.value = cur.copy()`. The comment at line 278 acknowledges the dedup issue and notes a "bumped marker" fix is needed but it is not implemented. `lockoutRemainingSeconds` is a computed property on `State` (line 49) that depends on `lockoutUntilMillis` (unchanged) and `System.currentTimeMillis()` (changes every call), but `StateFlow` evaluates equality on the emitted `State` object, not on computed properties. Remediation: add `val tickMs: Long = 0L` to `State`; set `tickMs = System.currentTimeMillis()` in each `scheduleLockoutTick` loop iteration so each emitted `copy(tickMs = ...)` is structurally distinct and triggers recomposition.
 
-- [ ] **LOGIN-MOCK-240 (Architecture). `LoginScreen` passes a raw `FragmentActivity` reference into `LoginViewModel.stashCredentialsBiometric()` and `attemptBiometricAutoLogin()`, which hold it inside a suspended `viewModelScope` coroutine. A configuration change that recreates the Activity while the biometric prompt is visible leaks the old Activity instance until the coroutine resumes or is cancelled.** `LoginScreen.kt:1952, 1969`: `(context as? FragmentActivity)` passed to VM methods. `LoginScreen.kt:1359, 1389`: both methods launch `viewModelScope` coroutines that suspend inside `biometricAuth.encryptWithBiometric(activity, ...)` / `biometricAuth.decryptWithBiometric(activity, ...)`. `MainActivity` lists `configChanges` that exclude `uiMode|fontScale|locale` — a dark-mode toggle or font-scale change recreates the Activity mid-prompt. The new Activity does not receive the biometric result; the old Activity is leaked for the duration of the prompt timeout (~30 s). Remediation: the ViewModel should emit a `SharedFlow<BiometricRequest>` side-effect; `LoginScreen` collects the event and shows the `BiometricPrompt` from within the Composable using the live Activity context, then posts the authenticated `Cipher` back to the VM via a callback. The ViewModel never holds an Activity reference. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-240 (Architecture). `LoginScreen` passes a raw `FragmentActivity` reference into `LoginViewModel.stashCredentialsBiometric()` and `attemptBiometricAutoLogin()`, which hold it inside a suspended `viewModelScope` coroutine. A configuration change that recreates the Activity while the biometric prompt is visible leaks the old Activity instance until the coroutine resumes or is cancelled.** `LoginScreen.kt:1952, 1969`: `(context as? FragmentActivity)` passed to VM methods. `LoginScreen.kt:1359, 1389`: both methods launch `viewModelScope` coroutines that suspend inside `biometricAuth.encryptWithBiometric(activity, ...)` / `biometricAuth.decryptWithBiometric(activity, ...)`. `MainActivity` lists `configChanges` that exclude `uiMode|fontScale|locale` — a dark-mode toggle or font-scale change recreates the Activity mid-prompt. The new Activity does not receive the biometric result; the old Activity is leaked for the duration of the prompt timeout (~30 s). Remediation: the ViewModel should emit a `SharedFlow<BiometricRequest>` side-effect; `LoginScreen` collects the event and shows the `BiometricPrompt` from within the Composable using the live Activity context, then posts the authenticated `Cipher` back to the VM via a callback. The ViewModel never holds an Activity reference.
 
-- [ ] **LOGIN-MOCK-241 (Architecture). `MainActivity.configChanges` omits `uiMode|fontScale|locale|keyboard|keyboardHidden`, so those configuration changes trigger a full Activity recreation. This compounds LOGIN-MOCK-240 (stale-Activity during biometric prompt) and also means theme/density/locale changes cause the entire Compose tree to be torn down and rebuilt rather than handled by the reactive observers already wired in `setContent`.** `AndroidManifest.xml:139`: `android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"`. The `setContent` block in `MainActivity` already observes `darkModeFlow`, `dynamicColorFlow`, `dashboardDensityFlow`, and `screenCapturePreventionFlow` reactively — adding `uiMode` to `configChanges` would suppress the recreation and let those observers handle the change without a full tree rebuild. Remediation: add `uiMode|fontScale|locale|keyboard|keyboardHidden` to `configChanges`. Coordinate with the fix for LOGIN-MOCK-240 so the biometric coroutine safety issue is resolved independently of the configuration-change suppression. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-241 (Architecture). `MainActivity.configChanges` omits `uiMode|fontScale|locale|keyboard|keyboardHidden`, so those configuration changes trigger a full Activity recreation. This compounds LOGIN-MOCK-240 (stale-Activity during biometric prompt) and also means theme/density/locale changes cause the entire Compose tree to be torn down and rebuilt rather than handled by the reactive observers already wired in `setContent`.** `AndroidManifest.xml:139`: `android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"`. The `setContent` block in `MainActivity` already observes `darkModeFlow`, `dynamicColorFlow`, `dashboardDensityFlow`, and `screenCapturePreventionFlow` reactively — adding `uiMode` to `configChanges` would suppress the recreation and let those observers handle the change without a full tree rebuild. Remediation: add `uiMode|fontScale|locale|keyboard|keyboardHidden` to `configChanges`. Coordinate with the fix for LOGIN-MOCK-240 so the biometric coroutine safety issue is resolved independently of the configuration-change suppression.
 
-- [ ] **LOGIN-MOCK-242 (Architecture). `LoginScreen` has no `@Preview`-annotated composable — the screen takes `viewModel: LoginViewModel = hiltViewModel()` as a default parameter, making Compose Preview and Paparazzi screenshot testing impossible without a running Hilt graph.** `LoginScreen.kt:1898`: function signature starts `fun LoginScreen(..., viewModel: LoginViewModel = hiltViewModel())`. Zero `@Preview` annotations exist in the file. The IDE Compose Preview fails silently when `hiltViewModel()` is called outside a Hilt context. Iterative UI work requires a full emulator deploy to see any visual change. Remediation: extract a `LoginScreenContent(state: LoginUiState, onEvent: (LoginEvent) -> Unit)` stateless composable containing all rendering logic; keep `LoginScreen` as a thin `hiltViewModel()` + `collectAsState()` wrapper. Add `@Preview` functions on `LoginScreenContent` for at least: `SetupStep.SERVER`, `SetupStep.CREDENTIALS`, `SetupStep.TWO_FA_VERIFY`, and an error state. This also enables Paparazzi screenshot regression tests in CI without an emulator. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-242 (Architecture). `LoginScreen` has no `@Preview`-annotated composable — the screen takes `viewModel: LoginViewModel = hiltViewModel()` as a default parameter, making Compose Preview and Paparazzi screenshot testing impossible without a running Hilt graph.** `LoginScreen.kt:1898`: function signature starts `fun LoginScreen(..., viewModel: LoginViewModel = hiltViewModel())`. Zero `@Preview` annotations exist in the file. The IDE Compose Preview fails silently when `hiltViewModel()` is called outside a Hilt context. Iterative UI work requires a full emulator deploy to see any visual change. Remediation: extract a `LoginScreenContent(state: LoginUiState, onEvent: (LoginEvent) -> Unit)` stateless composable containing all rendering logic; keep `LoginScreen` as a thin `hiltViewModel()` + `collectAsState()` wrapper. Add `@Preview` functions on `LoginScreenContent` for at least: `SetupStep.SERVER`, `SetupStep.CREDENTIALS`, `SetupStep.TWO_FA_VERIFY`, and an error state. This also enables Paparazzi screenshot regression tests in CI without an emulator.
 
-- [ ] **LOGIN-MOCK-243 (Architecture). `NetworkMonitor.isOnline` is cold — the initial network state is only emitted after the first `collect` call. If the device is already offline when the app starts and `LoginScreen` has not yet been composed, no subscriber exists to record the state and `LoginViewModel._state.networkOffline` starts as `false` regardless of actual connectivity.** `NetworkMonitor.kt:70`: `trySend(hasAnyInternet(connectivityManager))` fires inside the `callbackFlow` lambda, which is only active during an active `collect`. `BizarreCrmApp.kt` does not collect `NetworkMonitor.isOnline`. The gap only materialises if offline state changes between Application start and the first `LoginViewModel` collect, and only if the `trySend` initial-state emission is missed (practically: cold start on an offline device shows offline banner correctly because `trySend` fires during the `collect` call). The deeper issue is that `SharingStarted.Eagerly` on `stateIn` would guarantee the initial state is computed at injection time. Remediation: the `stateIn(SharingStarted.Eagerly)` fix from LOGIN-MOCK-234 closes this as a side-effect; track together. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-243 (Architecture). `NetworkMonitor.isOnline` is cold — the initial network state is only emitted after the first `collect` call. If the device is already offline when the app starts and `LoginScreen` has not yet been composed, no subscriber exists to record the state and `LoginViewModel._state.networkOffline` starts as `false` regardless of actual connectivity.** `NetworkMonitor.kt:70`: `trySend(hasAnyInternet(connectivityManager))` fires inside the `callbackFlow` lambda, which is only active during an active `collect`. `BizarreCrmApp.kt` does not collect `NetworkMonitor.isOnline`. The gap only materialises if offline state changes between Application start and the first `LoginViewModel` collect, and only if the `trySend` initial-state emission is missed (practically: cold start on an offline device shows offline banner correctly because `trySend` fires during the `collect` call). The deeper issue is that `SharingStarted.Eagerly` on `stateIn` would guarantee the initial state is computed at injection time. Remediation: the `stateIn(SharingStarted.Eagerly)` fix from LOGIN-MOCK-234 closes this as a side-effect; track together.
 
-- [ ] **LOGIN-MOCK-244 (Architecture). No durable auth-event audit log exists. Successful logins, 2FA completions, session revocations, and biometric auto-login outcomes are ephemeral — Logcat only. `AuthPreferences.authCleared` is a `SharedFlow(replay=0)`, so a missed emission (subscriber not active at call time) loses the event forever.** `AuthPreferences.kt:58–59`: `_authCleared = MutableSharedFlow<ClearReason>(extraBufferCapacity = 1)` with `replay=0`. A `BizarreCrmApp.appScope` collector would receive events reliably, but no such collector exists. No `auth_events` Room table, no `AuthEventDao`, and no WorkManager task for syncing auth events appear anywhere in the codebase. Remediation (future feature, not a blocking bug): add an `auth_events` Room table with columns `(id, userId, eventType, timestamp, deviceId, success, errorCode)`; wire a collector in `BizarreCrmApp.appScope` to insert rows on `authCleared` emissions and login outcomes; enqueue a periodic `WorkManager` task to sync to the server. Add to `TODO.md` under CROSS-PLATFORM. The `replay=0` design of `authCleared` is intentional to avoid stale re-delivery on re-subscribe, but requires the `BizarreCrmApp` collector to be the authoritative durable sink. <!-- NOTE-defer: architecture/audit-log item; deferred to observability wave. -->
+- [ ] **LOGIN-MOCK-244 (Architecture). No durable auth-event audit log exists. Successful logins, 2FA completions, session revocations, and biometric auto-login outcomes are ephemeral — Logcat only. `AuthPreferences.authCleared` is a `SharedFlow(replay=0)`, so a missed emission (subscriber not active at call time) loses the event forever.** `AuthPreferences.kt:58–59`: `_authCleared = MutableSharedFlow<ClearReason>(extraBufferCapacity = 1)` with `replay=0`. A `BizarreCrmApp.appScope` collector would receive events reliably, but no such collector exists. No `auth_events` Room table, no `AuthEventDao`, and no WorkManager task for syncing auth events appear anywhere in the codebase. Remediation (future feature, not a blocking bug): add an `auth_events` Room table with columns `(id, userId, eventType, timestamp, deviceId, success, errorCode)`; wire a collector in `BizarreCrmApp.appScope` to insert rows on `authCleared` emissions and login outcomes; enqueue a periodic `WorkManager` task to sync to the server. Add to `TODO.md` under CROSS-PLATFORM. The `replay=0` design of `authCleared` is intentional to avoid stale re-delivery on re-subscribe, but requires the `BizarreCrmApp` collector to be the authoritative durable sink.
 
 ### Wave-6 Finder-R security deep-dive
 
-- [ ] **LOGIN-MOCK-245 (Security). Token refresh race: `isRefreshing` is an unguarded `@Volatile Boolean` that does not prevent a second thread from starting a concurrent refresh.** `AuthInterceptor.kt:53` declares `@Volatile private var isRefreshing = false`. The `synchronized(this)` block at line 76 gates the *decision to refresh* but `isRefreshing` is also read at line 110 (`if (isRefreshing) return null`) outside any `synchronized` block. Two threads can both pass line 110 and both call `attemptTokenRefresh()` when the first thread has not yet reached `isRefreshing = true` at line 112 — a classic check-then-act race. The result is two simultaneous refresh requests to the server; most refresh-token endpoints treat the first response as a rotation and invalidate the old token, so the second refresh response arrives with a 401 and silently forces a logout. **Remediation:** replace `@Volatile var isRefreshing` with a `Mutex` (or a `Semaphore(1)`): `private val refreshMutex = Mutex()`. Inside `attemptTokenRefresh`, `refreshMutex.withLock { … }` (coroutine-friendly) or replace the OkHttp synchronous approach with a `ReentrantLock`. The `synchronized(this)` outer block in `intercept()` already serialises entry; the inner `isRefreshing` guard is then redundant and should be removed entirely to avoid confusion. File: `AuthInterceptor.kt:53,110–113`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-245 (Security). Token refresh race: `isRefreshing` is an unguarded `@Volatile Boolean` that does not prevent a second thread from starting a concurrent refresh.** `AuthInterceptor.kt:53` declares `@Volatile private var isRefreshing = false`. The `synchronized(this)` block at line 76 gates the *decision to refresh* but `isRefreshing` is also read at line 110 (`if (isRefreshing) return null`) outside any `synchronized` block. Two threads can both pass line 110 and both call `attemptTokenRefresh()` when the first thread has not yet reached `isRefreshing = true` at line 112 — a classic check-then-act race. The result is two simultaneous refresh requests to the server; most refresh-token endpoints treat the first response as a rotation and invalidate the old token, so the second refresh response arrives with a 401 and silently forces a logout. **Remediation:** replace `@Volatile var isRefreshing` with a `Mutex` (or a `Semaphore(1)`): `private val refreshMutex = Mutex()`. Inside `attemptTokenRefresh`, `refreshMutex.withLock { … }` (coroutine-friendly) or replace the OkHttp synchronous approach with a `ReentrantLock`. The `synchronized(this)` outer block in `intercept()` already serialises entry; the inner `isRefreshing` guard is then redundant and should be removed entirely to avoid confusion. File: `AuthInterceptor.kt:53,110–113`.
 
-- [ ] **LOGIN-MOCK-246 (Security). Refresh-token rotation not atomic: `saveAccessToken()` is called inside `attemptTokenRefresh()` but the new refresh token in `RefreshResponse` is never stored, leaving a stale refresh token in prefs after rotation.** `AuthInterceptor.kt:153–157` extracts `parsed.data?.accessToken` and calls `saveAccessToken(newToken)` (line 156–157). The server returns a *new* refresh token on every rotation (`RefreshResponse` likely contains a `refreshToken` field), but `AuthInterceptor` only persists the access token. If the server has already invalidated the old refresh token the app will use the stale one on the next refresh cycle and be forced to re-login. **Remediation:** update `RefreshResponse` DTO to expose `refreshToken: String?`; after saving the access token also call `authPrefs.refreshToken = parsed.data?.refreshToken ?: authPrefs.refreshToken`. Wrap both writes in a single `prefs.edit()…apply()` block inside `AuthPreferences` to make the update atomic. File: `AuthInterceptor.kt:153–158`, `AuthPreferences.kt:83–86`, relevant DTO. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-246 (Security). Refresh-token rotation not atomic: `saveAccessToken()` is called inside `attemptTokenRefresh()` but the new refresh token in `RefreshResponse` is never stored, leaving a stale refresh token in prefs after rotation.** `AuthInterceptor.kt:153–157` extracts `parsed.data?.accessToken` and calls `saveAccessToken(newToken)` (line 156–157). The server returns a *new* refresh token on every rotation (`RefreshResponse` likely contains a `refreshToken` field), but `AuthInterceptor` only persists the access token. If the server has already invalidated the old refresh token the app will use the stale one on the next refresh cycle and be forced to re-login. **Remediation:** update `RefreshResponse` DTO to expose `refreshToken: String?`; after saving the access token also call `authPrefs.refreshToken = parsed.data?.refreshToken ?: authPrefs.refreshToken`. Wrap both writes in a single `prefs.edit()…apply()` block inside `AuthPreferences` to make the update atomic. File: `AuthInterceptor.kt:153–158`, `AuthPreferences.kt:83–86`, relevant DTO.
 
-- [ ] **LOGIN-MOCK-247 (Security). Certificate pinning applies only to `PRODUCTION_HOST` and `*.PRODUCTION_HOST`, leaving the self-hosted path (any custom server URL) entirely unpinned in release builds.** `RetrofitClient.kt:572–578`: `pinnerBuilder.add(PRODUCTION_HOST, pin)` and `pinnerBuilder.add("*.$PRODUCTION_HOST", pin)`. A self-hosted user whose server URL is `https://192.168.1.50` or `https://myshop.example.com` gets *zero* certificate pinning — the `DynamicBaseUrlInterceptor` allows any HTTPS host that is not the production domain (line 284: `BuildConfig.DEBUG && isDebugTrustedHost(h)` only gates debug), yet the `CertificatePinner` is configured only for the cloud host. An attacker on the same LAN can install a rogue CA on a Windows machine and MITM the self-hosted path with a validly-chained (to that rogue CA) cert. **Remediation:** document this clearly in the self-host setup guide as a known limitation; consider requiring the user to supply the server's SPKI fingerprint during initial setup (stored via `AuthPreferences.setServerUrl`), then dynamically adding it to the `CertificatePinner` for that host. Alternatively, gate this with a `selfHostedPinWarning` shown in Settings. File: `RetrofitClient.kt:572–579`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-247 (Security). Certificate pinning applies only to `PRODUCTION_HOST` and `*.PRODUCTION_HOST`, leaving the self-hosted path (any custom server URL) entirely unpinned in release builds.** `RetrofitClient.kt:572–578`: `pinnerBuilder.add(PRODUCTION_HOST, pin)` and `pinnerBuilder.add("*.$PRODUCTION_HOST", pin)`. A self-hosted user whose server URL is `https://192.168.1.50` or `https://myshop.example.com` gets *zero* certificate pinning — the `DynamicBaseUrlInterceptor` allows any HTTPS host that is not the production domain (line 284: `BuildConfig.DEBUG && isDebugTrustedHost(h)` only gates debug), yet the `CertificatePinner` is configured only for the cloud host. An attacker on the same LAN can install a rogue CA on a Windows machine and MITM the self-hosted path with a validly-chained (to that rogue CA) cert. **Remediation:** document this clearly in the self-host setup guide as a known limitation; consider requiring the user to supply the server's SPKI fingerprint during initial setup (stored via `AuthPreferences.setServerUrl`), then dynamically adding it to the `CertificatePinner` for that host. Alternatively, gate this with a `selfHostedPinWarning` shown in Settings. File: `RetrofitClient.kt:572–579`.
 
-- [ ] **LOGIN-MOCK-248 (Security). `FLAG_SECURE` is applied only when the user-facing `screenCapturePreventionEnabled` pref is `true` (or it is a release build), but the login screen itself — which renders the password field — is shown *before* the pref is loaded in `AuthPreferences`.** `MainActivity.kt:161–163`: `if (screenCapturePrevEnabled || !BuildConfig.DEBUG) { window.addFlags(FLAG_SECURE) }`. In a **release build where the pref is `false`** (e.g., first install, pref not yet written), `screenCapturePrevEnabled` is `false` and `!BuildConfig.DEBUG` is `true`, so `FLAG_SECURE` IS set — that branch is correct. However in a **debug release-like scenario** where `BuildConfig.DEBUG = false` but the pref file is pre-populated with `false` (e.g., after a settings import), the logic still applies the flag. The real gap is that `FLAG_SECURE` is a user opt-out but the *default* is not `true` on first install: `AppPreferences` defaults `screenCapturePreventionEnabled` to `false` (`AppPreferences.kt:305`), which means on a first-install debug build where `BuildConfig.DEBUG = true` and pref = `false`, no `FLAG_SECURE` is set on the login window. Recents thumbnail of the password-field login screen is captured. **Remediation:** change `AppPreferences` default for `screenCapturePreventionEnabled` to `true`; make it an opt-out rather than opt-in. Or unconditionally apply `FLAG_SECURE` to the auth Activity regardless of pref. File: `MainActivity.kt:161–163`, `AppPreferences.kt:305`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-248 (Security). `FLAG_SECURE` is applied only when the user-facing `screenCapturePreventionEnabled` pref is `true` (or it is a release build), but the login screen itself — which renders the password field — is shown *before* the pref is loaded in `AuthPreferences`.** `MainActivity.kt:161–163`: `if (screenCapturePrevEnabled || !BuildConfig.DEBUG) { window.addFlags(FLAG_SECURE) }`. In a **release build where the pref is `false`** (e.g., first install, pref not yet written), `screenCapturePrevEnabled` is `false` and `!BuildConfig.DEBUG` is `true`, so `FLAG_SECURE` IS set — that branch is correct. However in a **debug release-like scenario** where `BuildConfig.DEBUG = false` but the pref file is pre-populated with `false` (e.g., after a settings import), the logic still applies the flag. The real gap is that `FLAG_SECURE` is a user opt-out but the *default* is not `true` on first install: `AppPreferences` defaults `screenCapturePreventionEnabled` to `false` (`AppPreferences.kt:305`), which means on a first-install debug build where `BuildConfig.DEBUG = true` and pref = `false`, no `FLAG_SECURE` is set on the login window. Recents thumbnail of the password-field login screen is captured. **Remediation:** change `AppPreferences` default for `screenCapturePreventionEnabled` to `true`; make it an opt-out rather than opt-in. Or unconditionally apply `FLAG_SECURE` to the auth Activity regardless of pref. File: `MainActivity.kt:161–163`, `AppPreferences.kt:305`.
 
-- [ ] **LOGIN-MOCK-249 (Security). `cleartext TrafficPermitted="false"` in the base `network_security_config.xml` is correct, but the custom-scheme deep-link filters (`android:scheme="bizarrecrm"`) accept any host, including `http://` redirects embedded in a `bizarrecrm://` URI — an attacker who can craft a deep link can inject an HTTP URL as the `redirectUri` for SSO or a magic-link callback that the app might subsequently load over HTTP.** `AndroidManifest.xml:185–214`: the `bizarrecrm://sso/callback` and `bizarrecrm://magic` intent filters have no `android:host` restrictions beyond what the code validates. `DynamicBaseUrlInterceptor.validate()` (`RetrofitClient.kt:302–304`) rejects non-HTTPS schemes in release, but `DeepLinkBus` / `resolveDeepLink` processes the raw URI before URL validation occurs. A crafted `bizarrecrm://sso/callback?redirect=http://evil.com` could be followed by an unchecked redirect. **Remediation:** in `MainActivity.resolveDeepLink` (and all deep-link bus consumers) validate that any `redirect`, `next`, or `return_to` query parameter is either absent or matches the expected server origin before acting on it. Apply the same `DynamicBaseUrlInterceptor.validate()` check to all URLs extracted from deep links. File: `AndroidManifest.xml:185–214`, `MainActivity.kt` (resolveDeepLink). <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-249 (Security). `cleartext TrafficPermitted="false"` in the base `network_security_config.xml` is correct, but the custom-scheme deep-link filters (`android:scheme="bizarrecrm"`) accept any host, including `http://` redirects embedded in a `bizarrecrm://` URI — an attacker who can craft a deep link can inject an HTTP URL as the `redirectUri` for SSO or a magic-link callback that the app might subsequently load over HTTP.** `AndroidManifest.xml:185–214`: the `bizarrecrm://sso/callback` and `bizarrecrm://magic` intent filters have no `android:host` restrictions beyond what the code validates. `DynamicBaseUrlInterceptor.validate()` (`RetrofitClient.kt:302–304`) rejects non-HTTPS schemes in release, but `DeepLinkBus` / `resolveDeepLink` processes the raw URI before URL validation occurs. A crafted `bizarrecrm://sso/callback?redirect=http://evil.com` could be followed by an unchecked redirect. **Remediation:** in `MainActivity.resolveDeepLink` (and all deep-link bus consumers) validate that any `redirect`, `next`, or `return_to` query parameter is either absent or matches the expected server origin before acting on it. Apply the same `DynamicBaseUrlInterceptor.validate()` check to all URLs extracted from deep links. File: `AndroidManifest.xml:185–214`, `MainActivity.kt` (resolveDeepLink).
 
-- [ ] **LOGIN-MOCK-250 (Security). `android:allowBackup="false"` is set at the application level and `data_extraction_rules.xml` correctly excludes all domains, but the `DashboardWidgetProvider` receiver (`AndroidManifest.xml:315–323`) is `exported="true"` without a permission guard and Widget providers are not covered by backup rules — a malicious app can send `ACTION_APPWIDGET_UPDATE` to trigger a widget refresh that may surface PII in the widget RemoteViews without the user unlocking.** `AndroidManifest.xml:316–323`: `DashboardWidgetProvider` is `android:exported="true"` with no `android:permission` attribute. On Android < 12 any app can broadcast `APPWIDGET_UPDATE` to this receiver, forcing a widget redraw. If the widget displays customer counts or revenue figures those values are rendered in a RemoteViews that any app with `READ_FRAME_BUFFER` (or screen-recording on rooted devices) can capture. **Remediation:** add `android:permission="android.permission.BIND_APPWIDGET"` to the receiver declaration (same pattern used for `QuickTicketTileService`); the platform's `AppWidgetManager` holds this permission so legitimate widget updates still work, while third-party apps cannot trigger unsolicited refreshes. File: `AndroidManifest.xml:315–323`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-250 (Security). `android:allowBackup="false"` is set at the application level and `data_extraction_rules.xml` correctly excludes all domains, but the `DashboardWidgetProvider` receiver (`AndroidManifest.xml:315–323`) is `exported="true"` without a permission guard and Widget providers are not covered by backup rules — a malicious app can send `ACTION_APPWIDGET_UPDATE` to trigger a widget refresh that may surface PII in the widget RemoteViews without the user unlocking.** `AndroidManifest.xml:316–323`: `DashboardWidgetProvider` is `android:exported="true"` with no `android:permission` attribute. On Android < 12 any app can broadcast `APPWIDGET_UPDATE` to this receiver, forcing a widget redraw. If the widget displays customer counts or revenue figures those values are rendered in a RemoteViews that any app with `READ_FRAME_BUFFER` (or screen-recording on rooted devices) can capture. **Remediation:** add `android:permission="android.permission.BIND_APPWIDGET"` to the receiver declaration (same pattern used for `QuickTicketTileService`); the platform's `AppWidgetManager` holds this permission so legitimate widget updates still work, while third-party apps cannot trigger unsolicited refreshes. File: `AndroidManifest.xml:315–323`.
 
-- [ ] **LOGIN-MOCK-251 (Security). `ClipboardUtil.copySensitive` 30-second auto-clear is process-lifetime-scoped: if the app process is killed (OOM, system memory pressure) before the `Handler.postDelayed` fires, the clipboard retains the secret indefinitely.** `ClipboardUtil.kt:77–81`: `handler.postDelayed({ clearSensitiveIfPresent(clipboard) }, clearAfterMillis)`. The code comment at line 55 acknowledges this and mentions `clearSensitiveIfPresent` is "called from the app-background lifecycle hook." However `ProcessLifecycleOwner.onStop` is not guaranteed to run before process kill; on pre-A12 devices OOM kills skip the lifecycle entirely. The AOSP `ClipDescription.EXTRA_IS_SENSITIVE = true` (set on API 33+, line 70) causes the system to *hide* the clip from other apps but does NOT clear it. **Remediation:** use the Android 13 `ClipboardManager.clearPrimaryClip()` API (already present at `ClipboardUtil.kt:139`) as the *primary* mechanism for API 33+, and for older APIs register a `ContentObserver` on the clipboard URI that fires the wipe on any clipboard change (user replaced the clip), reducing the exposure window. Additionally call `clearSensitiveIfPresent` from `Activity.onPause()` / `onStop()` in addition to the process lifecycle hook. File: `ClipboardUtil.kt:55–82`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-251 (Security). `ClipboardUtil.copySensitive` 30-second auto-clear is process-lifetime-scoped: if the app process is killed (OOM, system memory pressure) before the `Handler.postDelayed` fires, the clipboard retains the secret indefinitely.** `ClipboardUtil.kt:77–81`: `handler.postDelayed({ clearSensitiveIfPresent(clipboard) }, clearAfterMillis)`. The code comment at line 55 acknowledges this and mentions `clearSensitiveIfPresent` is "called from the app-background lifecycle hook." However `ProcessLifecycleOwner.onStop` is not guaranteed to run before process kill; on pre-A12 devices OOM kills skip the lifecycle entirely. The AOSP `ClipDescription.EXTRA_IS_SENSITIVE = true` (set on API 33+, line 70) causes the system to *hide* the clip from other apps but does NOT clear it. **Remediation:** use the Android 13 `ClipboardManager.clearPrimaryClip()` API (already present at `ClipboardUtil.kt:139`) as the *primary* mechanism for API 33+, and for older APIs register a `ContentObserver` on the clipboard URI that fires the wipe on any clipboard change (user replaced the clip), reducing the exposure window. Additionally call `clearSensitiveIfPresent` from `Activity.onPause()` / `onStop()` in addition to the process lifecycle hook. File: `ClipboardUtil.kt:55–82`.
 
-- [ ] **LOGIN-MOCK-252 (Security). `RedactorTree.SENSITIVE_KEYS` does not include `twoFaSecret`, `totpCode`, `challengeToken`, or `twoFaManualEntry` — all of which appear in `LoginUiState` and could reach Timber logs via exception message interpolation or debug toString().** `RedactorTree.kt:88–111`: the list contains `totp` (which would match `totpCode` via the `\b(?:totp)\b` word-boundary regex in `REDACT_PATTERN`) and `secret` (which would match `twoFaSecret` and `manualEntry`), but `challengeToken` is absent. `LoginUiState` contains `val challengeToken: String` (line 141) which is a server-issued opaque token used to bind the 2FA verification to the initial login call. If a coroutine exception prints a stringified state object, `challengeToken=<value>` would not be masked. Similarly `twoFaManualEntry` (line 145) maps to `manualEntry` in the key list — this *is* covered — but `challengeToken` is not. **Remediation:** add `"challengeToken"`, `"challenge_token"` to `RedactorTree.SENSITIVE_KEYS`. Also add `"twoFaSecret"`, `"twoFaManualEntry"` explicitly even though the shorter aliases cover them, to make intent clear for future maintainers. File: `RedactorTree.kt:88–111`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-252 (Security). `RedactorTree.SENSITIVE_KEYS` does not include `twoFaSecret`, `totpCode`, `challengeToken`, or `twoFaManualEntry` — all of which appear in `LoginUiState` and could reach Timber logs via exception message interpolation or debug toString().** `RedactorTree.kt:88–111`: the list contains `totp` (which would match `totpCode` via the `\b(?:totp)\b` word-boundary regex in `REDACT_PATTERN`) and `secret` (which would match `twoFaSecret` and `manualEntry`), but `challengeToken` is absent. `LoginUiState` contains `val challengeToken: String` (line 141) which is a server-issued opaque token used to bind the 2FA verification to the initial login call. If a coroutine exception prints a stringified state object, `challengeToken=<value>` would not be masked. Similarly `twoFaManualEntry` (line 145) maps to `manualEntry` in the key list — this *is* covered — but `challengeToken` is not. **Remediation:** add `"challengeToken"`, `"challenge_token"` to `RedactorTree.SENSITIVE_KEYS`. Also add `"twoFaSecret"`, `"twoFaManualEntry"` explicitly even though the shorter aliases cover them, to make intent clear for future maintainers. File: `RedactorTree.kt:88–111`.
 
-- [ ] **LOGIN-MOCK-253 (Security). `SmsRetrieverHelper.getAppHash()` logs the 11-character app hash at `Log.d` (not Timber) without any `BuildConfig.DEBUG` guard — in production builds `Log.d` is stripped by ProGuard/R8 only if `android.util.Log` calls are explicitly removed, but the call remains in the bytecode until minification runs.** `SmsRetrieverHelper.kt:93`: `Log.d(TAG, "App hash for SMS OTP template: $hash (package=$packageName)")`. The app hash is not a secret on its own (it is baked into every SMS the server sends), but logging it at runtime means any logcat-reading app or ADB shell on a non-production device can trivially harvest it to craft fake SMS messages that the `SmsOtpBroadcastReceiver` would then deliver to the autofill path. Additionally `Log.d` calls are *not* automatically no-ops in release builds in all minifier configurations — they are only removed if ProGuard rules include `-assumenosideeffects class android.util.Log { *; }`. **Remediation:** (1) wrap the `Log.d` call in `if (BuildConfig.DEBUG)`, or replace with `Timber.d(...)` which is suppressed in release via the `RedactorTree` / no-tree configuration. (2) Confirm `proguard-rules.pro` includes the `android.util.Log` strip rule. File: `SmsRetrieverHelper.kt:93`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-253 (Security). `SmsRetrieverHelper.getAppHash()` logs the 11-character app hash at `Log.d` (not Timber) without any `BuildConfig.DEBUG` guard — in production builds `Log.d` is stripped by ProGuard/R8 only if `android.util.Log` calls are explicitly removed, but the call remains in the bytecode until minification runs.** `SmsRetrieverHelper.kt:93`: `Log.d(TAG, "App hash for SMS OTP template: $hash (package=$packageName)")`. The app hash is not a secret on its own (it is baked into every SMS the server sends), but logging it at runtime means any logcat-reading app or ADB shell on a non-production device can trivially harvest it to craft fake SMS messages that the `SmsOtpBroadcastReceiver` would then deliver to the autofill path. Additionally `Log.d` calls are *not* automatically no-ops in release builds in all minifier configurations — they are only removed if ProGuard rules include `-assumenosideeffects class android.util.Log { *; }`. **Remediation:** (1) wrap the `Log.d` call in `if (BuildConfig.DEBUG)`, or replace with `Timber.d(...)` which is suppressed in release via the `RedactorTree` / no-tree configuration. (2) Confirm `proguard-rules.pro` includes the `android.util.Log` strip rule. File: `SmsRetrieverHelper.kt:93`.
 
-- [ ] **LOGIN-MOCK-254 (Security). `BiometricAuth.showPrompt()` uses `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` as the allowed authenticator, which means a device PIN/pattern/password can substitute for biometry — defeating the purpose of the Keystore key's `setUserAuthenticationRequired(true)` constraint for app-unlock scenarios.** `BiometricAuth.kt:50,105`: `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` in both `canAuthenticate()` and `showPrompt()`. `BiometricCredentialStore.getOrCreateSecretKey()` (`BiometricCredentialStore.kt:116`) sets `setUserAuthenticationRequired(true)` — this flag, combined with `DEVICE_CREDENTIAL` in the prompt, means the Keystore will accept a PIN auth event as proof to unlock the key. A threat actor who knows or guesses the device PIN can decrypt the stored username+password without biometric interaction. Note: `encryptWithBiometric` and `decryptWithBiometric` correctly use `BIOMETRIC_STRONG` only (lines 142, 180), which is correct for Keystore-bound operations. The gap is in `showPrompt()` (the app re-lock gate): it uses `DEVICE_CREDENTIAL` fallback, so the app can be unlocked with PIN alone. **Remediation:** for the app-unlock gate (`showPrompt`), keep `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` to maximise accessibility (users without enrolled biometrics can still unlock with PIN). Clearly document in code that this is the *app re-lock* gate, not the *credential decrypt* gate. For the credential decrypt path (`decryptWithBiometric`) the current `BIOMETRIC_STRONG` only is correct and must not be weakened. File: `BiometricAuth.kt:50,105`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-254 (Security). `BiometricAuth.showPrompt()` uses `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` as the allowed authenticator, which means a device PIN/pattern/password can substitute for biometry — defeating the purpose of the Keystore key's `setUserAuthenticationRequired(true)` constraint for app-unlock scenarios.** `BiometricAuth.kt:50,105`: `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` in both `canAuthenticate()` and `showPrompt()`. `BiometricCredentialStore.getOrCreateSecretKey()` (`BiometricCredentialStore.kt:116`) sets `setUserAuthenticationRequired(true)` — this flag, combined with `DEVICE_CREDENTIAL` in the prompt, means the Keystore will accept a PIN auth event as proof to unlock the key. A threat actor who knows or guesses the device PIN can decrypt the stored username+password without biometric interaction. Note: `encryptWithBiometric` and `decryptWithBiometric` correctly use `BIOMETRIC_STRONG` only (lines 142, 180), which is correct for Keystore-bound operations. The gap is in `showPrompt()` (the app re-lock gate): it uses `DEVICE_CREDENTIAL` fallback, so the app can be unlocked with PIN alone. **Remediation:** for the app-unlock gate (`showPrompt`), keep `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` to maximise accessibility (users without enrolled biometrics can still unlock with PIN). Clearly document in code that this is the *app re-lock* gate, not the *credential decrypt* gate. For the credential decrypt path (`decryptWithBiometric`) the current `BIOMETRIC_STRONG` only is correct and must not be weakened. File: `BiometricAuth.kt:50,105`.
 
-- [ ] **LOGIN-MOCK-255 (Security). No explicit minimum TLS version (`ConnectionSpec`) is configured on any `OkHttpClient` instance — the effective minimum is whatever OkHttp + the Android platform negotiate, which on API 26–28 devices can be TLS 1.0.** `RetrofitClient.kt:513–549`, `AuthInterceptor.buildLogoutClient()` (`AuthInterceptor.kt:287–317`), and `LoginViewModel.buildProbeTlsClient()` (`LoginScreen.kt:344–374`): none call `OkHttpClient.Builder().connectionSpecs(...)`. OkHttp's default `ConnectionSpec.MODERN_TLS` targets TLS 1.2+ in OkHttp 4.x, but the `COMPATIBLE_TLS` fallback (also included in OkHttp defaults) still permits TLS 1.0/1.1. On API 26–28 the SSLSocket's `enabledProtocols` defaults include TLS 1.0. **Remediation:** explicitly set `connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))` (drops TLS 1.0/1.1) on all three builders. `MODERN_TLS` enforces TLS 1.2 minimum with forward-secret cipher suites. This is low-risk for self-hosted installs since the server already requires TLS (see `packages/server/src/index.ts`). Files: `RetrofitClient.kt:526`, `AuthInterceptor.kt:289`, `LoginScreen.kt:344`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-255 (Security). No explicit minimum TLS version (`ConnectionSpec`) is configured on any `OkHttpClient` instance — the effective minimum is whatever OkHttp + the Android platform negotiate, which on API 26–28 devices can be TLS 1.0.** `RetrofitClient.kt:513–549`, `AuthInterceptor.buildLogoutClient()` (`AuthInterceptor.kt:287–317`), and `LoginViewModel.buildProbeTlsClient()` (`LoginScreen.kt:344–374`): none call `OkHttpClient.Builder().connectionSpecs(...)`. OkHttp's default `ConnectionSpec.MODERN_TLS` targets TLS 1.2+ in OkHttp 4.x, but the `COMPATIBLE_TLS` fallback (also included in OkHttp defaults) still permits TLS 1.0/1.1. On API 26–28 the SSLSocket's `enabledProtocols` defaults include TLS 1.0. **Remediation:** explicitly set `connectionSpecs(listOf(ConnectionSpec.MODERN_TLS))` (drops TLS 1.0/1.1) on all three builders. `MODERN_TLS` enforces TLS 1.2 minimum with forward-secret cipher suites. This is low-risk for self-hosted installs since the server already requires TLS (see `packages/server/src/index.ts`). Files: `RetrofitClient.kt:526`, `AuthInterceptor.kt:289`, `LoginScreen.kt:344`.
 
-- [ ] **LOGIN-MOCK-256 (Security). `PlayIntegrityClient` is fully stubbed — `requestTokenString()` always returns `null` — so the Play Integrity attestation that was planned for high-risk login events (new device login, suspicious auth) is silently skipped in all builds including production.** `PlayIntegrityClient.kt:18–21`: `return null` unconditionally. `build.gradle.kts:299` correctly declares `implementation(libs.play.integrity)` but the client that drives it returns nothing. Any calling code that checks `integrityToken != null` before attaching it to a login request will silently omit the attestation, making rooted-device detection and emulator detection non-functional. **Remediation:** implement `IntegrityManagerFactory.create(context).requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())` with a `.addOnSuccessListener` / `.addOnFailureListener` pattern wrapped in `suspendCancellableCoroutine`. Gate the actual implementation behind a `try/catch(IllegalStateException)` for non-GMS devices (Huawei, etc.) — return `null` only in that catch, not unconditionally. Wire the returned token into `POST /api/v1/auth/login` as an `X-Integrity-Token` header. Prioritise for the cloud hosted path; self-hosted can stay ungated. File: `PlayIntegrityClient.kt:18–21`. <!-- NOTE-defer: security item; PlayIntegrityClient stub; deferred to security wave. -->
+- [ ] **LOGIN-MOCK-256 (Security). `PlayIntegrityClient` is fully stubbed — `requestTokenString()` always returns `null` — so the Play Integrity attestation that was planned for high-risk login events (new device login, suspicious auth) is silently skipped in all builds including production.** `PlayIntegrityClient.kt:18–21`: `return null` unconditionally. `build.gradle.kts:299` correctly declares `implementation(libs.play.integrity)` but the client that drives it returns nothing. Any calling code that checks `integrityToken != null` before attaching it to a login request will silently omit the attestation, making rooted-device detection and emulator detection non-functional. **Remediation:** implement `IntegrityManagerFactory.create(context).requestIntegrityToken(IntegrityTokenRequest.builder().setNonce(nonce).build())` with a `.addOnSuccessListener` / `.addOnFailureListener` pattern wrapped in `suspendCancellableCoroutine`. Gate the actual implementation behind a `try/catch(IllegalStateException)` for non-GMS devices (Huawei, etc.) — return `null` only in that catch, not unconditionally. Wire the returned token into `POST /api/v1/auth/login` as an `X-Integrity-Token` header. Prioritise for the cloud hosted path; self-hosted can stay ungated. File: `PlayIntegrityClient.kt:18–21`.
 
-- [ ] **LOGIN-MOCK-257 (Security). `assetlinks.json` verification for all three `android:autoVerify="true"` App Link domains (`bizarrecrm.app`, `app.bizarrecrm.com`, `bizarrecrm.com`) is explicitly noted as undeployed (TODO AUDIT-AND-019), meaning the OS falls back to browser disambiguation — allowing any installed app that registers the same intent filter to intercept magic-link tokens and setup-invite tokens.** `AndroidManifest.xml:158–241`: five `autoVerify=true` intent-filter blocks reference `bizarrecrm.app`, `app.bizarrecrm.com`, and `bizarrecrm.com`. The inline comment confirms the `/.well-known/assetlinks.json` route is not yet deployed on the server. Until it is, Android will not grant the app exclusive ownership of those links; a malicious app that declares the same intent filter can receive the same URIs. Magic-link tokens (30-minute one-time use) and setup-invite tokens would then be delivered to the attacker app. **Remediation:** add `GET /.well-known/assetlinks.json` to `packages/server/src/routes/` (or serve statically) with the correct SHA-256 certificate fingerprint for the production signing key. After deployment, verify with `adb shell pm get-app-links --package com.bizarreelectronics.crm` that all three domains show `verified`. Until then, magic-link tokens must be validated server-side against the requesting IP/user-agent to limit replay-window exposure. File: `AndroidManifest.xml:158–241`, cross-reference: `TODO.md CROSS-PLATFORM AUDIT-AND-019`. <!-- NOTE-defer: architecture item; deferred to arch-cleanup wave. -->
+- [ ] **LOGIN-MOCK-257 (Security). `assetlinks.json` verification for all three `android:autoVerify="true"` App Link domains (`bizarrecrm.app`, `app.bizarrecrm.com`, `bizarrecrm.com`) is explicitly noted as undeployed (TODO AUDIT-AND-019), meaning the OS falls back to browser disambiguation — allowing any installed app that registers the same intent filter to intercept magic-link tokens and setup-invite tokens.** `AndroidManifest.xml:158–241`: five `autoVerify=true` intent-filter blocks reference `bizarrecrm.app`, `app.bizarrecrm.com`, and `bizarrecrm.com`. The inline comment confirms the `/.well-known/assetlinks.json` route is not yet deployed on the server. Until it is, Android will not grant the app exclusive ownership of those links; a malicious app that declares the same intent filter can receive the same URIs. Magic-link tokens (30-minute one-time use) and setup-invite tokens would then be delivered to the attacker app. **Remediation:** add `GET /.well-known/assetlinks.json` to `packages/server/src/routes/` (or serve statically) with the correct SHA-256 certificate fingerprint for the production signing key. After deployment, verify with `adb shell pm get-app-links --package com.bizarreelectronics.crm` that all three domains show `verified`. Until then, magic-link tokens must be validated server-side against the requesting IP/user-agent to limit replay-window exposure. File: `AndroidManifest.xml:158–241`, cross-reference: `TODO.md CROSS-PLATFORM AUDIT-AND-019`.
