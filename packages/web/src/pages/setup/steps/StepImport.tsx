@@ -300,7 +300,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={() => setPhase('select-entities')}
             disabled={testStatus !== 'ok'}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next &rarr; What to import
           </button>
@@ -343,7 +343,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={startImport}
             disabled={selectedEntities.size === 0}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+            className="rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Start import
           </button>

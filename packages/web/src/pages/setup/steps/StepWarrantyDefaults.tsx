@@ -190,7 +190,7 @@ export function StepWarrantyDefaults({
             <button
               type="button"
               onClick={handleContinue}
-              className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+              className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
               <ShieldCheck className="h-4 w-4" />

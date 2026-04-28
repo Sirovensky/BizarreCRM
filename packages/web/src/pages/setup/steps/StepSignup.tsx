@@ -379,7 +379,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
         <button
           type="submit"
           disabled={submitting || !formValid}
-          className="bg-primary-500 hover:bg-primary-600 text-primary-950 font-semibold py-3 rounded-lg w-full inline-flex items-center justify-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="bg-primary-500 hover:bg-primary-500 text-primary-950 font-semibold py-3 rounded-lg w-full inline-flex items-center justify-center gap-2 transition disabled:cursor-not-allowed disabled:opacity-50"
         >
           {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
           {submitting ? 'Creating your shop…' : 'Create my shop'}

@@ -291,7 +291,7 @@ export function StepBookingPolicy({
             <button
               type="button"
               onClick={handleContinue}
-              className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700"
+              className="rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400"
             >
               Continue
             </button>
