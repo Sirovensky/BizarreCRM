@@ -305,6 +305,18 @@ data class TicketStatusItem(
     val isCancelled: Int,
     @SerializedName("notify_customer")
     val notifyCustomer: Int,
+    /**
+     * §19.16 / §4.19 — SLA pause flags.
+     * When [waitingCustomer] == 1, SLA timer pauses while ticket holds this status
+     * (customer has been contacted and we are waiting for their reply / decision).
+     * When [awaitingParts] == 1, SLA timer pauses while parts are on order.
+     * Both columns exist in the server DB; server SLA calculator reads them directly.
+     * Default 0 so existing DTOs without the field deserialise cleanly.
+     */
+    @SerializedName("waiting_customer")
+    val waitingCustomer: Int = 0,
+    @SerializedName("awaiting_parts")
+    val awaitingParts: Int = 0,
     /** L740 — transition guards; server returns list like ["note_added","photos_taken"]. */
     @SerializedName("transition_requirements")
     val transitionRequirements: List<String> = emptyList(),

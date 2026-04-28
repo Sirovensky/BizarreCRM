@@ -131,8 +131,13 @@ class TicketStatusEditorViewModel @Inject constructor(
 
     /**
      * Persist an edited status row.
-     * [name], [color] (hex), [notifyCustomer], [isClosed], [isCancelled]
-     * are sent to PUT /settings/statuses/:id.
+     * [name], [color] (hex), [notifyCustomer], [isClosed], [isCancelled],
+     * [waitingCustomer], [awaitingParts] are sent to PUT /settings/statuses/:id.
+     *
+     * [waitingCustomer] and [awaitingParts] control server-side SLA pause
+     * (§4.19 / §19.16): when a ticket moves to a status with either flag set,
+     * the SLA countdown is suspended until the status changes again.
+     *
      * Optimistic update applied immediately; rolled back on failure.
      */
     fun saveStatus(
@@ -142,6 +147,8 @@ class TicketStatusEditorViewModel @Inject constructor(
         notifyCustomer: Boolean,
         isClosed: Boolean,
         isCancelled: Boolean,
+        waitingCustomer: Boolean,
+        awaitingParts: Boolean,
     ) {
         if (name.isBlank()) return
         val original = _state.value.statuses.find { it.id == id } ?: return
@@ -156,6 +163,8 @@ class TicketStatusEditorViewModel @Inject constructor(
                     notifyCustomer = if (notifyCustomer) 1 else 0,
                     isClosed = if (isClosed) 1 else 0,
                     isCancelled = if (isCancelled) 1 else 0,
+                    waitingCustomer = if (waitingCustomer) 1 else 0,
+                    awaitingParts = if (awaitingParts) 1 else 0,
                 ) else s
             },
         )
@@ -170,6 +179,8 @@ class TicketStatusEditorViewModel @Inject constructor(
                         put("notify_customer", if (notifyCustomer) 1 else 0)
                         put("is_closed", if (isClosed) 1 else 0)
                         put("is_cancelled", if (isCancelled) 1 else 0)
+                        put("waiting_customer", if (waitingCustomer) 1 else 0)
+                        put("awaiting_parts", if (awaitingParts) 1 else 0)
                     },
                 )
             }.onSuccess {
@@ -205,6 +216,8 @@ class TicketStatusEditorViewModel @Inject constructor(
  *   - Pick a color from the swatch palette
  *   - Toggle "Notify customer on this transition"
  *   - Toggle "Counts as closed" / "Counts as cancelled"
+ *   - Toggle "Pauses SLA — waiting for customer" (§4.19)
+ *   - Toggle "Pauses SLA — awaiting parts" (§4.19)
  *
  * Changes are persisted via PUT /settings/statuses/:id (admin-only on server).
  * Optimistic update applied; rolled back on network failure.
@@ -303,7 +316,7 @@ fun TicketStatusEditorScreen(
         StatusEditDialog(
             status = target,
             onDismiss = { editingStatus = null },
-            onSave = { name, color, notify, closed, cancelled ->
+            onSave = { name, color, notify, closed, cancelled, waitingCust, awaitParts ->
                 viewModel.saveStatus(
                     id = target.id,
                     name = name,
@@ -311,6 +324,8 @@ fun TicketStatusEditorScreen(
                     notifyCustomer = notify,
                     isClosed = closed,
                     isCancelled = cancelled,
+                    waitingCustomer = waitingCust,
+                    awaitingParts = awaitParts,
                 )
                 editingStatus = null
             },
@@ -344,6 +359,8 @@ private fun StatusRow(
                 if (status.isClosed == 1) add("Closed")
                 if (status.isCancelled == 1) add("Cancelled")
                 if (status.notifyCustomer == 1) add("Notifies customer")
+                if (status.waitingCustomer == 1) add("SLA paused — waiting customer")
+                if (status.awaitingParts == 1) add("SLA paused — awaiting parts")
             }
             if (tags.isNotEmpty()) {
                 Text(
@@ -395,19 +412,36 @@ private fun StatusRow(
  *  - "Notify customer on this transition" switch
  *  - "Counts as closed" switch
  *  - "Counts as cancelled" switch
+ *  - "Pauses SLA — waiting for customer" switch (§4.19 / §19.16)
+ *  - "Pauses SLA — awaiting parts" switch (§4.19 / §19.16)
+ *
+ * The two SLA-pause flags are persisted via PUT /settings/statuses/:id as
+ * `waiting_customer` and `awaiting_parts`.  The server SLA calculator reads
+ * these columns directly to suspend the countdown while a ticket holds a
+ * matching status.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatusEditDialog(
     status: TicketStatusItem,
     onDismiss: () -> Unit,
-    onSave: (name: String, color: String, notifyCustomer: Boolean, isClosed: Boolean, isCancelled: Boolean) -> Unit,
+    onSave: (
+        name: String,
+        color: String,
+        notifyCustomer: Boolean,
+        isClosed: Boolean,
+        isCancelled: Boolean,
+        waitingCustomer: Boolean,
+        awaitingParts: Boolean,
+    ) -> Unit,
 ) {
     var name by remember { mutableStateOf(status.name) }
     var selectedColor by remember { mutableStateOf(status.color ?: "#6b7280") }
     var notifyCustomer by remember { mutableStateOf(status.notifyCustomer == 1) }
     var isClosed by remember { mutableStateOf(status.isClosed == 1) }
     var isCancelled by remember { mutableStateOf(status.isCancelled == 1) }
+    var waitingCustomer by remember { mutableStateOf(status.waitingCustomer == 1) }
+    var awaitingParts by remember { mutableStateOf(status.awaitingParts == 1) }
 
     val nameError = name.isBlank()
 
@@ -504,12 +538,38 @@ private fun StatusEditDialog(
                     checked = isCancelled,
                     onCheckedChange = { isCancelled = it },
                 )
+
+                HorizontalDivider()
+
+                // ── SLA pause flags (§4.19 / §19.16) ─────────────────────────
+                Text(
+                    "SLA behaviour",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                StatusToggleRow(
+                    label = "Pauses SLA — waiting for customer",
+                    supporting = "SLA countdown suspends while ticket holds this status. " +
+                        "Use when you are waiting for customer approval or reply.",
+                    checked = waitingCustomer,
+                    onCheckedChange = { waitingCustomer = it },
+                )
+                StatusToggleRow(
+                    label = "Pauses SLA — awaiting parts",
+                    supporting = "SLA countdown suspends while parts are on order. " +
+                        "Resume is automatic when status changes.",
+                    checked = awaitingParts,
+                    onCheckedChange = { awaitingParts = it },
+                )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (!nameError) onSave(name, selectedColor, notifyCustomer, isClosed, isCancelled)
+                    if (!nameError) onSave(
+                        name, selectedColor, notifyCustomer,
+                        isClosed, isCancelled, waitingCustomer, awaitingParts,
+                    )
                 },
                 enabled = !nameError,
             ) {
