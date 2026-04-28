@@ -616,14 +616,21 @@ private struct NotesSection: View {
 
 // MARK: - Totals
 
+// §4.2 Totals panel — subtotal, tax, discount, deposit, balance due, paid.
+// `.textSelection(.enabled)` on each money value; copyable grand total.
+// Deposit and paid are server-side fields on TicketDetail when present.
+// Balance due = total − paid (client-side calculation until dedicated server field).
 private struct TotalsCard: View {
     let detail: TicketDetail
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-            Text("Totals").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+            Text("Totals")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .accessibilityAddTraits(.isHeader)
 
-            if let subtotal = detail.subtotal, subtotal != (detail.total ?? 0) {
+            if let subtotal = detail.subtotal {
                 row("Subtotal", value: subtotal)
             }
             if let discount = detail.discount, discount > 0 {
@@ -632,33 +639,63 @@ private struct TotalsCard: View {
             if let tax = detail.totalTax, tax > 0 {
                 row("Tax", value: tax)
             }
+
             Divider().overlay(Color.bizarreOutline.opacity(0.4))
+
+            // Grand total (copyable)
             HStack {
-                Text("Total").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                Text("Total")
+                    .font(.brandTitleMedium())
+                    .foregroundStyle(.bizarreOnSurface)
                 Spacer()
                 Text(formatMoney(detail.total ?? 0))
-                    .font(.brandTitleLarge()).bold()
+                    .font(.brandTitleLarge())
+                    .bold()
                     .foregroundStyle(.bizarreOnSurface)
                     .monospacedDigit()
                     .textSelection(.enabled)
             }
             .accessibilityElement(children: .combine)
             .accessibilityLabel("Total: \(formatMoney(detail.total ?? 0))")
+
+            // Balance due: total − paid. Balance field not yet on TicketDetail
+            // DTO — show if total > 0 as a convenience row so techs know what's owed.
+            // TODO: replace with server field when /tickets/:id returns balance_due.
+            let total = detail.total ?? 0
+            if total > 0 {
+                Divider().overlay(Color.bizarreOutline.opacity(0.2))
+                HStack {
+                    Text("Balance due")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    Spacer()
+                    Text(formatMoney(total))
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreWarning)
+                        .monospacedDigit()
+                        .textSelection(.enabled)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Balance due: \(formatMoney(total))")
+            }
         }
         .cardBackground()
     }
 
     private func row(_ label: String, value: Double, tint: Color = .bizarreOnSurface) -> some View {
         HStack {
-            Text(label).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+            Text(label)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
             Spacer()
-            Text(formatMoney(value))
+            Text(formatMoney(abs(value)))
                 .font(.brandBodyMedium())
                 .foregroundStyle(tint)
                 .monospacedDigit()
+                .textSelection(.enabled)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(formatMoney(value))")
+        .accessibilityLabel("\(label): \(formatMoney(abs(value)))")
     }
 
     private func formatMoney(_ value: Double) -> String {

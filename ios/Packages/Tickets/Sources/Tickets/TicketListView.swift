@@ -16,7 +16,7 @@ public struct TicketListView: View {
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
-    // §22 quick-action handlers — no-op unless api is wired.
+    // §22 + §4.1 quick-action handlers — no-op unless api is wired.
     private var quickActionHandlers: TicketQuickActionHandlers {
         TicketQuickActionHandlers(
             onAdvanceStatus: { [weak vm] ticket, transition in
@@ -39,6 +39,47 @@ public struct TicketListView: View {
             onDelete: { [weak vm] ticket in
                 guard let vm else { return }
                 Task { await vm.delete(ticket: ticket) }
+            },
+            // §4.1: SMS customer — open Messages.app via sms: URL scheme
+            onSMSCustomer: { ticket in
+                let phone = ticket.customer?.mobile ?? ticket.customer?.phone ?? ""
+                let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                guard !cleaned.isEmpty, let url = URL(string: "sms:\(cleaned)") else { return }
+                Task { @MainActor in
+                    UIApplication.shared.open(url)
+                }
+            },
+            // §4.1: Call customer — open Phone.app via tel: URL scheme
+            onCallCustomer: { ticket in
+                let phone = ticket.customer?.mobile ?? ticket.customer?.phone ?? ""
+                let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                guard !cleaned.isEmpty, let url = URL(string: "tel:\(cleaned)") else { return }
+                Task { @MainActor in
+                    UIApplication.shared.open(url)
+                }
+            },
+            // §4.1: Convert to invoice — endpoint wired in Phase-5 (§4.5)
+            onConvertToInvoice: { ticket in
+                AppLog.ui.debug("Convert to invoice requested: ticket=\(ticket.id)")
+                // TODO: POST /tickets/:id/convert-to-invoice — Phase 5
+            },
+            // §4.1: Copy order ID to pasteboard
+            onCopyOrderId: { ticket in
+                UIPasteboard.general.string = ticket.orderId
+            },
+            // §4.1: Mark complete — advance to last allowed transition
+            onMarkComplete: { [weak vm] ticket in
+                guard let vm else { return }
+                let status = TicketStatus(rawValue: ticket.status?.name.lowercased().replacingOccurrences(of: " ", with: "") ?? "")
+                if let status,
+                   let last = TicketStateMachine.allowedTransitions(from: status).last {
+                    Task { await vm.advanceStatus(ticket: ticket, transition: last) }
+                }
+            },
+            // §4.1: Assign to me — endpoint wired in Phase-4
+            onAssignToMe: { ticket in
+                AppLog.ui.debug("Assign-to-me requested: ticket=\(ticket.id)")
+                // TODO: POST /tickets/:id/assign { employee_id: currentUserId } — Phase 4
             }
         )
     }
@@ -92,6 +133,7 @@ public struct TicketListView: View {
             }
             .toolbar {
                 newTicketToolbar
+                sortToolbarItem
                 stalenessToolbarItem
             }
             .sheet(isPresented: $showingCreate, onDismiss: { Task { await vm.refresh() } }) {
@@ -122,6 +164,7 @@ public struct TicketListView: View {
             .refreshable { await vm.refresh() }
             .toolbar {
                 newTicketToolbar
+                sortToolbarItem
                 stalenessToolbarItem
             }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
@@ -169,6 +212,30 @@ public struct TicketListView: View {
     private var stalenessToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .topBarLeading) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+        }
+    }
+
+    /// §4.1: Sort dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
+    private var sortToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Menu {
+                ForEach(TicketSortOrder.allCases) { order in
+                    Button {
+                        vm.applySort(order)
+                    } label: {
+                        HStack {
+                            Text(order.displayName)
+                            if vm.sortOrder == order {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                    .accessibilityLabel("Sort by \(order.displayName)\(vm.sortOrder == order ? ", currently selected" : "")")
+                }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .accessibilityLabel("Sort tickets. Current: \(vm.sortOrder.displayName)")
         }
     }
 

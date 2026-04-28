@@ -41,6 +41,10 @@ public final class EstimateCreateViewModel {
         DraftAutoSaver(screen: "estimate.create", store: _draftStoreValue)
 
     @ObservationIgnored private let api: APIClient
+    /// §8.3: Per-session idempotency key generated at VM init.
+    /// Sent with every create attempt so that retries on network failure
+    /// don't produce duplicate estimates.
+    @ObservationIgnored private let idempotencyKey: String = UUID().uuidString
 
     public init(api: APIClient) { self.api = api }
 
@@ -120,16 +124,18 @@ public final class EstimateCreateViewModel {
             lineItems.compactMap { $0.toRequest() }
         let discountValue: Double? = discountText.isEmpty ? nil : Double(discountText)
 
-        let body = CreateEstimateRequest(
+        // §8.3: Use idempotent create so retries don't produce duplicate estimates.
+        let body = CreateEstimateWithIdempotencyRequest(
             customerId: cid,
             notes: notes.isEmpty ? nil : notes,
             validUntil: validUntil.isEmpty ? nil : validUntil,
             discount: discountValue,
-            lineItems: requestLineItems
+            lineItems: requestLineItems,
+            idempotencyKey: idempotencyKey
         )
 
         do {
-            let created = try await api.createEstimate(body)
+            let created = try await api.createEstimateIdempotent(body)
             createdId = created.id
             await _draftAutoSaverValue.clear()
         } catch {

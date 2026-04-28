@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre CRM — Login flow mockups · platform comparison</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #050403;
+    --surface: #14110d;
+    --surface-2: #1c1814;
+    --outline: rgba(255,250,240,0.08);
+    --primary: #fdeed0;
+    --primary-dim: rgba(253,238,208,0.72);
+    --on: #f2eef9;
+    --muted: #a8a4a0;
+    --muted-2: #7e7a76;
+    --magenta: #d94f9b;
+    --orange: #e8a33d;
+    --teal: #4db8c9;
+    /* Brand fonts — Bebas Neue (display) + Futura Medium (body, Jost fallback) + JetBrains Mono. */
+    --font-text: "Futura", "Futura Medium", "Jost", -apple-system, Segoe UI, Roboto, sans-serif;
+    --font-display: "Bebas Neue", "Saved By Zero", "Impact", -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse 900px 700px at 8% -10%, rgba(217,79,155,0.22), transparent 55%),
+      radial-gradient(ellipse 1000px 800px at 100% 100%, rgba(232,163,61,0.16), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 50% 45%, rgba(77,184,201,0.10), transparent 55%),
+      var(--bg);
+    color: var(--on);
+    font-family: var(--font-text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    text-align: center;
+    padding: 64px 24px 12px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 56px;
+    letter-spacing: -0.02em;
+    background: linear-gradient(180deg, #fff, #d4cfc8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .subtitle {
+    margin: 14px 0 0;
+    color: var(--muted);
+    font-size: 16px; line-height: 1.55;
+  }
+  .subtitle code {
+    background: rgba(255,255,255,0.06);
+    padding: 2px 7px; border-radius: 5px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px; color: var(--primary);
+  }
+  .chip-row {
+    display: flex; flex-wrap: wrap; justify-content: center;
+    gap: 10px; padding: 24px 16px 8px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 14px; border-radius: 99px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 12px; font-weight: 600; color: var(--on);
+    backdrop-filter: blur(14px) saturate(180%);
+    -webkit-backdrop-filter: blur(14px) saturate(180%);
+  }
+  .chip.primary { background: var(--primary); color: #2b1400; border-color: var(--primary); }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted-2); }
+  .chip.primary .dot { background: #2b1400; }
+  .chip.magenta .dot { background: var(--magenta); }
+  .chip.orange .dot { background: var(--orange); }
+  .chip.teal .dot { background: var(--teal); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 28px;
+    max-width: 1320px;
+    margin: 0 auto;
+    padding: 36px 24px 96px;
+  }
+  .card {
+    position: relative;
+    display: flex; flex-direction: column;
+    background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+    border: 1px solid var(--outline);
+    border-radius: 22px;
+    overflow: hidden;
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.08),
+      0 18px 50px rgba(0,0,0,0.45);
+    transition: transform 0.35s cubic-bezier(.34,1.56,.64,1), box-shadow 0.35s ease;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.14),
+      0 28px 72px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.14);
+  }
+  .card a.full {
+    position: absolute; inset: 0; z-index: 2;
+  }
+  .card .hero {
+    aspect-ratio: 16 / 10;
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at 30% 20%, rgba(217,79,155,0.22), transparent 55%),
+                radial-gradient(ellipse at 85% 85%, rgba(232,163,61,0.18), transparent 55%),
+                #0a0806;
+    overflow: hidden;
+  }
+  .card .hero::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 70%, rgba(0,0,0,0.5));
+  }
+  .device {
+    position: relative;
+    display: flex; align-items: center; justify-content: center;
+    gap: 10px;
+  }
+  .mini-phone {
+    width: 120px; height: 260px;
+    border: 4px solid #0a080d;
+    border-radius: 26px;
+    background: linear-gradient(180deg, #1c1814, #0a0806);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 30px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+  }
+  .mini-phone::before {
+    content: ""; position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 12px; background: #000; border-radius: 8px;
+  }
+  .mini-phone .mscreen {
+    position: absolute; inset: 22px 10px 16px;
+    border-radius: 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 8px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.01));
+  }
+  .mini-phone .mhead {
+    font-family: var(--font-display); font-size: 12px; font-weight: 600;
+    color: var(--primary);
+  }
+  .mini-phone .mfield {
+    height: 18px; border-radius: 6px; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .mini-phone .mcta {
+    margin-top: auto;
+    height: 22px; border-radius: 8px;
+    background: linear-gradient(180deg, #fff7e0, #fdeed0);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+
+  .mini-tablet {
+    width: 230px; height: 170px;
+    border: 5px solid #0a080d;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #1c1814, #0a0806);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 14px 30px rgba(0,0,0,0.5);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 36px 1fr 60px;
+  }
+  .mini-tablet .mrail {
+    background: rgba(255,255,255,0.04);
+    border-right: 1px solid rgba(255,255,255,0.08);
+  }
+  .mini-tablet .mrail::after {
+    content: ""; display: block; width: 14px; height: 14px;
+    border-radius: 4px; background: var(--primary);
+    margin: 12px auto 0;
+  }
+  .mini-tablet .mdetail {
+    padding: 14px 10px; display: flex; flex-direction: column; gap: 7px;
+  }
+  .mini-tablet .mhead {
+    font-family: var(--font-display); font-size: 14px; font-weight: 600;
+    color: var(--primary);
+  }
+  .mini-tablet .mfield {
+    height: 12px; border-radius: 4px; background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .mini-tablet .mcta {
+    margin-top: auto;
+    height: 16px; border-radius: 6px;
+    background: linear-gradient(180deg, #fff7e0, #fdeed0);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
+  }
+  .mini-tablet .msupport {
+    background: rgba(255,255,255,0.03);
+    border-left: 1px solid rgba(255,255,255,0.08);
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 12px 6px;
+  }
+  .mini-tablet .msupport .mline {
+    height: 8px; border-radius: 2px; background: rgba(255,255,255,0.06);
+  }
+  .mini-tablet.ipad {
+    grid-template-columns: 68px 1fr;
+  }
+  .mini-tablet.ipad .mrail::after {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: linear-gradient(160deg, #fdeed0, #d4b582);
+  }
+
+  .badge {
+    position: absolute; top: 14px; left: 14px; z-index: 3;
+    padding: 5px 10px; border-radius: 99px;
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: rgba(0,0,0,0.42);
+    border: 1px solid rgba(255,255,255,0.14);
+    color: var(--primary);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .badge.ios { color: #eef7ff; }
+
+  .card .meta {
+    padding: 20px 22px 22px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .meta h3 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 24px; font-weight: 600; letter-spacing: -0.01em;
+    color: #fff;
+  }
+  .meta p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13.5px; line-height: 1.55;
+  }
+  .tags {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px;
+  }
+  .tag {
+    font-size: 10.5px; font-weight: 600;
+    padding: 4px 9px; border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--muted);
+  }
+  .tag.glass { color: #c0d7ff; border-color: rgba(120,165,255,0.25); background: rgba(77,141,255,0.08); }
+  .tag.m3   { color: #ffe6b5; border-color: rgba(232,163,61,0.28); background: rgba(232,163,61,0.08); }
+  .tag.size { color: var(--teal); border-color: rgba(77,184,201,0.28); background: rgba(77,184,201,0.08); }
+
+  .open {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 4px; font-weight: 700; font-size: 13px;
+    color: var(--primary);
+    letter-spacing: 0.02em;
+  }
+  .open svg { width: 14px; height: 14px; }
+
+  .notes {
+    max-width: 960px; margin: 48px auto 0; padding: 0 24px 96px;
+    color: var(--muted); font-size: 13.5px; line-height: 1.7;
+  }
+  .notes h2 {
+    color: var(--on); font-family: var(--font-display); font-size: 24px; font-weight: 600;
+    margin: 0 0 14px; letter-spacing: -0.01em;
+  }
+  .notes ul { padding-left: 22px; }
+  .notes li { margin-bottom: 6px; }
+  .notes b { color: var(--on); }
+
+  footer {
+    max-width: 960px; margin: 0 auto;
+    padding: 0 24px 80px;
+    text-align: center;
+    color: var(--muted-2); font-size: 12px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Bizarre CRM — Login flow mockups</h1>
+  <p class="subtitle">
+    Four parallel design takes, one flow. Android runs <b>Material 3 Expressive α</b>
+    (<code>material3 1.5.0-alpha18</code>). iOS runs <b>iOS 26 Liquid Glass</b>.
+    iPad ≠ upscaled iPhone · Android tablet ≠ upscaled phone. Dark + light for every frame.
+  </p>
+  <div class="chip-row">
+    <span class="chip primary"><span class="dot"></span> Cream #FDEED0 · brand primary</span>
+    <span class="chip magenta"><span class="dot"></span> Magenta tertiary · decorative</span>
+    <span class="chip orange"><span class="dot"></span> Amber warning</span>
+    <span class="chip teal"><span class="dot"></span> Teal secondary</span>
+  </div>
+</header>
+
+<section class="grid">
+
+  <!-- ───── iPhone ───── -->
+  <article class="card">
+    <a class="full" href="ios/login-iphone-mockups.html" aria-label="Open iPhone mockups"></a>
+    <span class="badge ios">iOS 26 · compact</span>
+    <div class="hero">
+      <div class="device">
+        <div class="mini-phone">
+          <div class="mscreen">
+            <span class="mhead">Sign in</span>
+            <div class="mfield"></div>
+            <div class="mfield"></div>
+            <div class="mcta"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <h3>iPhone</h3>
+      <p>7 states × dark + light. Liquid Glass sheet, SVG refraction rim, Dynamic Island,
+         PIN keypad, 6-cell OTP, Face ID offer, multi-radial warm orb bg.</p>
+      <div class="tags">
+        <span class="tag glass">Liquid Glass</span>
+        <span class="tag">393 × 852</span>
+        <span class="tag size">14 frames</span>
+      </div>
+      <a class="open" href="ios/login-iphone-mockups.html">
+        Open iPhone file
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 8h8M8 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </div>
+  </article>
+
+  <!-- ───── iPad ───── -->
+  <article class="card">
+    <a class="full" href="ios/login-ipad-mockups.html" aria-label="Open iPad mockups"></a>
+    <span class="badge ios">iPadOS 26 · regular</span>
+    <div class="hero">
+      <div class="device">
+        <div class="mini-tablet ipad">
+          <div class="mrail"></div>
+          <div class="mdetail" style="grid-column: 2">
+            <span class="mhead">Sign in to Paradise Repair</span>
+            <div class="mfield"></div>
+            <div class="mfield"></div>
+            <div class="mcta"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <h3>iPad</h3>
+      <p>5 states × dark + light. <code style="font-family:var(--font-text)">NavigationSplitView</code>
+         with floating 320pt glass sidebar. Tenant history, 2FA trust toggle, 4-step register rail,
+         Pencil-hover success grid.</p>
+      <div class="tags">
+        <span class="tag glass">Liquid Glass</span>
+        <span class="tag">1366 × 1024</span>
+        <span class="tag size">10 frames</span>
+      </div>
+      <a class="open" href="ios/login-ipad-mockups.html">
+        Open iPad file
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 8h8M8 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </div>
+  </article>
+
+  <!-- ───── Android phone ───── -->
+  <article class="card">
+    <a class="full" href="android/login-phone-mockups.html" aria-label="Open Android phone mockups"></a>
+    <span class="badge">M3 Expressive α · compact</span>
+    <div class="hero">
+      <div class="device">
+        <div class="mini-phone">
+          <div class="mscreen">
+            <span class="mhead">Pick your shop</span>
+            <div class="mfield"></div>
+            <div class="mfield"></div>
+            <div class="mcta"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <h3>Android phone</h3>
+      <p>7 states × dark + light. Pixel 9 Pro. Wavy progress, 9-sided cookie hero,
+         shape-morph buttons, FAB Menu expanded, Split Button, 429 lockout timer.
+         No glass — solid surfaces per Theme.kt.</p>
+      <div class="tags">
+        <span class="tag m3">M3 Expressive α</span>
+        <span class="tag">412 × 916</span>
+        <span class="tag size">14 frames</span>
+      </div>
+      <a class="open" href="android/login-phone-mockups.html">
+        Open Android phone file
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 8h8M8 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </div>
+  </article>
+
+  <!-- ───── Android tablet ───── -->
+  <article class="card">
+    <a class="full" href="android/login-tablet-mockups.html" aria-label="Open Android tablet mockups"></a>
+    <span class="badge">M3 Expressive α · medium</span>
+    <div class="hero">
+      <div class="device">
+        <div class="mini-tablet">
+          <div class="mrail"></div>
+          <div class="mdetail">
+            <span class="mhead">Sign In</span>
+            <div class="mfield"></div>
+            <div class="mfield"></div>
+            <div class="mcta"></div>
+          </div>
+          <div class="msupport">
+            <div class="mline"></div>
+            <div class="mline" style="width:70%"></div>
+            <div class="mline" style="width:85%"></div>
+            <div class="mline" style="width:55%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="meta">
+      <h3>Android tablet</h3>
+      <p>5 states × dark + light. Pixel Tablet landscape. 80px nav rail +
+         center detail + supporting pane. Expanded FAB Menu, Split Button,
+         4-step register rail, Done shortcut cards.</p>
+      <div class="tags">
+        <span class="tag m3">M3 Expressive α</span>
+        <span class="tag">1280 × 800</span>
+        <span class="tag size">10 frames</span>
+      </div>
+      <a class="open" href="android/login-tablet-mockups.html">
+        Open Android tablet file
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 8h8M8 4l4 4-4 4"/>
+        </svg>
+      </a>
+    </div>
+  </article>
+
+</section>
+
+<section class="notes">
+  <h2>Design language cheatsheet</h2>
+  <ul>
+    <li><b>Liquid Glass (iOS).</b> Five cues: real refraction via SVG <code>feDisplacementMap</code>,
+        specular rim gradient, saturation pickup <code>saturate(180%)</code>, low bg alpha
+        <code>0.08</code>, inner top highlight. Concentric corners 28 → 22 → 14. Warm
+        multi-radial orb background so glass has color to bend.</li>
+    <li><b>M3 Expressive α (Android).</b> <code>LargeFlexibleTopAppBar</code>,
+        <code>LinearWavyProgressIndicator</code>, shape-morph buttons (28 → 16 on press),
+        <code>MaterialShapes</code> 9-sided cookie, FAB Menu, Split Button, emphasized type.
+        No glassmorphism — explicit ban in <code>Theme.kt</code>.</li>
+    <li><b>Shared brand.</b> Cream <code>#FDEED0</code> primary stays mobile-distinct.
+        Surface ramp now Zinc neutral aligned with bizarrecrm.com web —
+        <code>#09090B → #18181B → #27272A</code> dark, <code>#FAFAFA → #F4F4F5</code> light.
+        Brand orange <code>#F58220</code> available as accent.
+        Barlow Condensed display, Inter body, JetBrains Mono for OTP / tokens.</li>
+    <li><b>Tablet parity.</b> iPad uses <code>NavigationSplitView</code>. Android tablet uses
+        nav rail + supporting pane. Neither is an upscaled phone.</li>
+    <li><b>Gate.</b> HTML mockups only. Tag both apps before any Compose / SwiftUI implementation.</li>
+  </ul>
+</section>
+
+<footer>
+  <p>Bizarre CRM · design review · <span style="color:var(--muted)">2026-04-24</span></p>
+</footer>
+
+</body>
+</html>

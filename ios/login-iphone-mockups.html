@@ -1,0 +1,1695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bizarre CRM — iPhone login flow (iOS 26 Liquid Glass)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   BIZARRE CRM — iPhone login flow mockups
+   iOS 26 Liquid Glass · 7 frames × 2 themes (dark / light)
+   Copy from ios/Packages/Auth/Sources/Auth/LoginFlowView.swift
+   ─── Liquid Glass anatomy ─────────────────────────────────────────────
+   1. Real-time refraction: SVG <feDisplacementMap> on rim only
+   2. Specular edge highlight: gradient hairline border + inset top
+   3. Dynamic tint pickup: saturate(180–200%) over saturated bg orbs
+   4. Adaptive light/dark: dark-tokens vs light-tokens per section
+   5. Concentric corners: sheet 28 → field 14 → button 14 → chip pill
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Brand */
+  --brand-orange: #e8a33d;
+  --brand-orange-bright: #f5b85a;
+  --brand-magenta: #d94f9b;
+  --brand-teal: #4db8c9;
+  --brand-cream: #fdeed0;
+  --brand-cream-bright: #fff7e0;
+  --on-cream: #2b1400;
+
+  /* Dark surface tokens — Zinc neutral, aligned with bizarrecrm.com web */
+  --d-bg-deep: #09090B;
+  --d-on: #FAFAFA;
+  --d-on-muted: rgba(250,250,250,0.62);
+  --d-on-faint: rgba(250,250,250,0.34);
+  --d-outline: rgba(250,250,250,0.12);
+  --d-outline-bright: rgba(250,250,250,0.22);
+  --d-success: #34c47e;
+  --d-warning: #e8a33d;
+  --d-error: #e2526c;
+
+  /* Light surface tokens — Zinc neutral whites */
+  --l-bg-deep: #FAFAFA;
+  --l-on: #18181B;
+  --l-on-muted: rgba(24,24,27,0.62);
+  --l-on-faint: rgba(24,24,27,0.36);
+  --l-outline: rgba(24,24,27,0.12);
+  --l-outline-bright: rgba(24,24,27,0.22);
+  --l-success: #0E7A3B;
+  --l-warning: #8B5F00;
+  --l-error: #BA1A2E;
+
+  /* Brand fonts — Bebas Neue (display) + Futura Medium (body, Jost fallback) + JetBrains Mono.
+     See TODO BRAND-FONTS-PARITY for Theme.kt + iOS DesignSystem + web alignment. */
+  --font-text: "Futura", "Futura Medium", "Jost", -apple-system, "SF Pro Text", Segoe UI, Roboto, Arial, sans-serif;
+  --font-display: "Bebas Neue", "Saved By Zero", "Impact", "SF Pro Display", -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: var(--font-text);
+  font-size: 14px;
+  min-height: 100vh;
+  color: var(--d-on);
+}
+
+/* ── PAGE BACKGROUND — neutral dark, very subtle vignette. No orbs. ── */
+body {
+  background:
+    radial-gradient(ellipse 1400px 900px at 50% -10%, rgba(255,255,255,0.025), transparent 70%),
+    radial-gradient(ellipse 1200px 800px at 50% 110%, rgba(0,0,0,0.35), transparent 70%),
+    #08070b;
+  background-attachment: fixed;
+}
+
+h1 {
+  text-align: center;
+  padding: 44px 16px 8px; margin: 0;
+  font-family: var(--font-display);
+  font-size: 36px; font-weight: 600; letter-spacing: -0.02em;
+  background: linear-gradient(180deg, #fff, #d4cfc8);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.intro {
+  text-align: center; color: var(--d-on-muted);
+  padding: 0 24px 12px; font-size: 14px; line-height: 1.6;
+  max-width: 880px; margin: 0 auto;
+}
+.intro code {
+  background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 12px; color: var(--brand-cream);
+}
+.intro .checklist {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  margin-top: 12px;
+}
+.intro .checklist span {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 99px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  font-size: 11.5px; color: var(--d-on);
+}
+.intro .checklist span::before {
+  content: "✓"; color: var(--brand-cream); font-weight: 700;
+}
+
+.section-label {
+  text-align: center;
+  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+  padding: 36px 16px 16px;
+  font-weight: 600;
+}
+.section-label.dark   { color: rgba(244,240,231,0.5); }
+.section-label.light  { color: rgba(244,240,231,0.5); }
+
+.frame-caption {
+  text-align: center;
+  font-size: 12.5px; padding: 14px 8px 0; letter-spacing: 0.01em;
+  font-weight: 500;
+  color: var(--d-on-muted);
+}
+.theme-light .frame-caption { color: var(--d-on-muted); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  gap: 40px; padding: 16px 28px 56px;
+  max-width: 2100px; margin: 0 auto;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   iPhone 16 Pro frame — 393 × 852
+   ═══════════════════════════════════════════════════════════════════════════ */
+.phone {
+  width: 393px; height: 852px; margin: 0 auto;
+  background: var(--d-bg-deep);
+  border: 7px solid #0a080d;
+  border-radius: 52px;
+  overflow: hidden;
+  position: relative;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.05) inset,
+    0 0 0 1px rgba(255,255,255,0.07) inset,
+    0 30px 80px rgba(0,0,0,0.55),
+    0 0 0 1px rgba(232,163,61,0.07);
+}
+.phone.light {
+  background: #FAFAFA;
+  border-color: #18181B;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.6) inset,
+    0 0 0 1px rgba(24,24,27,0.05) inset,
+    0 30px 80px rgba(24,24,27,0.18),
+    0 0 0 1px rgba(245,130,32,0.10);
+}
+
+.island {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  width: 124px; height: 36px; background: #000;
+  border-radius: 22px; z-index: 80;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+.home-indicator {
+  position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+  width: 136px; height: 5px; border-radius: 3px; z-index: 75;
+  background: rgba(255,255,255,0.5);
+}
+.phone.light .home-indicator { background: rgba(42,27,5,0.4); }
+
+.phone-body {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* Per-phone background — sophisticated dark surface, no garish orbs.
+   Glass elements pick up subtle surface tint and grain rather than colored glow. */
+.phone-bg {
+  position: absolute; inset: 0; z-index: 0;
+  background:
+    /* Subtle warm cream wash at top — barely-there brand presence */
+    radial-gradient(ellipse 320px 280px at 50% -8%, rgba(253,238,208,0.04), transparent 65%),
+    /* Vertical surface gradient */
+    linear-gradient(180deg, #14111c 0%, #0d0b14 55%, #07060a 100%);
+}
+/* Fine grain texture overlay — gives depth without the 2008 glow look */
+.phone-bg::after {
+  content: "";
+  position: absolute; inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  mix-blend-mode: overlay;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.phone.light .phone-bg {
+  background:
+    radial-gradient(ellipse 320px 260px at 50% -8%, rgba(245,130,32,0.05), transparent 65%),
+    linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 65%, #F4F4F5 100%);
+}
+.phone.light .phone-bg::after {
+  mix-blend-mode: multiply;
+  opacity: 0.30;
+}
+
+/* Status bar */
+.statusbar {
+  position: relative; z-index: 5;
+  height: 58px; padding: 18px 32px 0;
+  display: flex; align-items: flex-start; justify-content: space-between;
+  font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+  color: var(--d-on);
+  font-family: var(--font-text);
+}
+.phone.light .statusbar { color: var(--l-on); }
+.statusbar-time { font-variant-numeric: tabular-nums; }
+.statusbar-icons { display: flex; align-items: center; gap: 6px; padding-top: 2px; }
+.statusbar-icons svg { display: block; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS PRIMITIVES — copy verbatim from research brief
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* DARK theme defaults — Regular variant */
+.lg-regular {
+  position: relative;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255,255,255,0.45),
+    inset 0 -1px 0 0 rgba(255,255,255,0.08),
+    inset 0 0 20px 0 rgba(255,255,255,0.06),
+    0 8px 32px rgba(0,0,0,0.18);
+}
+/* Specular gradient rim (refraction-tinted) */
+.lg-regular::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(255,255,255,0.55) 0%,
+    rgba(255,255,255,0.10) 35%,
+    rgba(255,255,255,0.05) 65%,
+    rgba(255,255,255,0.45) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+  filter: url(#glass-refract);
+  mix-blend-mode: overlay;
+  opacity: 0.85;
+}
+
+/* Prominent — primary CTA (Sign in / Continue) — cream tinted */
+.lg-prominent {
+  position: relative;
+  background: linear-gradient(180deg, rgba(253,238,208,0.92), rgba(253,238,208,0.78));
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 1px solid rgba(255,255,255,0.28);
+  color: var(--on-cream);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.60),
+    inset 0 -6px 14px rgba(255,255,255,0.10),
+    0 8px 22px rgba(253,238,208,0.18),
+    0 4px 14px rgba(232,163,61,0.16);
+}
+.lg-prominent::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg,
+    rgba(255,255,255,0.85) 0%,
+    rgba(255,255,255,0.20) 50%,
+    rgba(255,255,255,0.60) 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Clear — for chips floating over photos / orb-bg */
+.lg-clear {
+  position: relative;
+  background: rgba(255,255,255,0.04);
+  backdrop-filter: blur(14px) saturate(200%) brightness(1.05);
+  -webkit-backdrop-filter: blur(14px) saturate(200%) brightness(1.05);
+  border: 1px solid rgba(255,255,255,0.22);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.55),
+    0 4px 16px rgba(0,0,0,0.25);
+}
+
+/* LIGHT theme variants — swap alphas, warm cream substrate */
+.theme-light .lg-regular {
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255,255,255,0.85),
+    inset 0 -1px 0 0 rgba(42,27,5,0.05),
+    inset 0 0 20px 0 rgba(255,255,255,0.20),
+    0 8px 28px rgba(42,27,5,0.10);
+  color: var(--l-on);
+}
+.theme-light .lg-regular::before {
+  background: linear-gradient(135deg,
+    rgba(255,255,255,0.95) 0%,
+    rgba(255,255,255,0.3) 35%,
+    rgba(255,255,255,0.2) 65%,
+    rgba(255,255,255,0.85) 100%);
+  opacity: 0.75;
+}
+.theme-light .lg-prominent {
+  background: linear-gradient(180deg, rgba(232,163,61,0.95), rgba(232,163,61,0.82));
+  border: 1px solid rgba(255,255,255,0.55);
+  color: #2B1400;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    inset 0 -6px 14px rgba(255,255,255,0.18),
+    0 8px 22px rgba(232,163,61,0.30),
+    0 4px 14px rgba(232,163,61,0.18);
+}
+.theme-light .lg-clear {
+  background: rgba(255,255,255,0.40);
+  border: 1px solid rgba(255,255,255,0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.85),
+    0 4px 16px rgba(42,27,5,0.10);
+  color: var(--l-on);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Header (display title + subtitle + WaveDivider)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.header {
+  position: relative; z-index: 5;
+  padding: 14px 28px 0;
+  text-align: center;
+}
+.header h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 32px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--d-on);
+  line-height: 1.05;
+}
+.phone.light .header h2 { color: var(--l-on); }
+.header .subtitle {
+  font-size: 14px;
+  margin-top: 6px;
+  color: var(--d-on-muted);
+  line-height: 1.4;
+}
+.phone.light .header .subtitle { color: var(--l-on-muted); }
+.wave-divider {
+  width: 90px; height: 14px; margin: 10px auto 0;
+  display: block;
+  opacity: 0.55;
+}
+.phone.light .wave-divider { opacity: 0.6; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sheet / panel container
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sheet {
+  position: relative; z-index: 5;
+  margin: 18px 18px 0;
+  border-radius: 28px;
+  padding: 22px 20px;
+}
+.step-indicator {
+  display: flex; gap: 6px;
+  margin-bottom: 16px;
+}
+.step-bar {
+  height: 4px; flex: 1; border-radius: 2px;
+  background: rgba(255,255,255,0.18);
+}
+.step-bar.active { background: var(--brand-orange-bright); }
+.phone.light .step-bar { background: rgba(42,27,5,0.18); }
+.phone.light .step-bar.active { background: var(--brand-orange); }
+
+/* Field label + control */
+.field-group { display: flex; flex-direction: column; gap: 6px; }
+.field-group + .field-group { margin-top: 14px; }
+.field-label {
+  font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--d-on-faint); font-weight: 600;
+}
+.phone.light .field-label { color: var(--l-on-faint); }
+
+.field {
+  display: flex; align-items: center; gap: 10px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  font-size: 14px;
+  min-height: 48px;
+  position: relative;
+}
+.phone.light .field {
+  background: rgba(255,255,255,0.45);
+  border: 1px solid rgba(42,27,5,0.10);
+  color: var(--l-on);
+}
+.field svg.f-icon { flex-shrink: 0; opacity: 0.6; }
+.field .f-text {
+  flex: 1; font-size: 14.5px; font-weight: 500;
+  color: var(--d-on);
+}
+.phone.light .field .f-text { color: var(--l-on); }
+.field .f-text.placeholder {
+  color: var(--d-on-faint); font-weight: 400;
+}
+.phone.light .field .f-text.placeholder { color: var(--l-on-faint); }
+.field .f-suffix {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--d-on-muted);
+}
+.phone.light .field .f-suffix { color: var(--l-on-muted); }
+.field .f-eye {
+  width: 26px; height: 26px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.55; cursor: pointer;
+}
+
+/* Caret blink */
+.caret {
+  display: inline-block;
+  width: 1.5px; height: 16px; margin-left: 1px;
+  background: var(--brand-orange);
+  vertical-align: -2px;
+  animation: caret-blink 1.1s steps(2) infinite;
+}
+@keyframes caret-blink { 0%,49% { opacity: 1; } 50%,100% { opacity: 0; } }
+
+/* Buttons */
+.btn-primary {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%;
+  padding: 15px 18px;
+  border-radius: 14px;
+  font-family: var(--font-text);
+  font-weight: 700; font-size: 15.5px; letter-spacing: -0.005em;
+  margin-top: 18px;
+}
+.btn-link {
+  background: none; border: 0;
+  color: var(--brand-teal);
+  font-weight: 600; font-size: 13.5px;
+  cursor: pointer;
+}
+.phone.light .btn-link { color: #0d6e7e; }
+
+.btn-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+/* Pills row (Passkey / Face ID / Email) */
+.pill-row {
+  display: flex; gap: 8px;
+  margin-top: 16px;
+  justify-content: space-between;
+}
+.pill {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 11px 8px;
+  border-radius: 14px;
+  font-size: 11.5px; font-weight: 600;
+  text-align: center;
+}
+.pill svg { display: block; }
+
+/* Server slug chips */
+.recent-row {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-top: 14px;
+}
+.recent-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 12px;
+  border-radius: 99px;
+  font-size: 12px; font-weight: 600;
+}
+.recent-pill .dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--d-success);
+}
+.phone.light .recent-pill .dot { background: var(--l-success); }
+
+.toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 4px 0;
+  font-size: 13px;
+  color: var(--d-on-muted);
+}
+.phone.light .toggle-row { color: var(--l-on-muted); }
+.toggle-row .toggle-label {
+  display: flex; align-items: center; gap: 8px;
+}
+.toggle {
+  width: 38px; height: 22px;
+  border-radius: 11px;
+  background: rgba(255,255,255,0.12);
+  position: relative; flex-shrink: 0;
+}
+.toggle.on { background: var(--brand-orange); }
+.toggle::after {
+  content: ""; position: absolute;
+  top: 2px; left: 2px;
+  width: 18px; height: 18px;
+  background: #fff; border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  transition: transform 0.2s;
+}
+.toggle.on::after { transform: translateX(16px); }
+.phone.light .toggle { background: rgba(42,27,5,0.18); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   OTP cells (2FA verify)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.otp-row {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+.otp-cell {
+  width: 100%; aspect-ratio: 44/54;
+  border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 22px; font-weight: 500;
+  letter-spacing: 0;
+  color: var(--d-on);
+}
+.phone.light .otp-cell { color: var(--l-on); }
+.otp-cell.empty { color: var(--d-on-faint); }
+.phone.light .otp-cell.empty { color: var(--l-on-faint); }
+.otp-cell.active {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: -1px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Password strength meter
+   ═══════════════════════════════════════════════════════════════════════════ */
+.strength-row {
+  display: flex; gap: 6px;
+  margin-top: 4px;
+}
+.strength-seg {
+  flex: 1; height: 6px;
+  border-radius: 3px;
+  background: rgba(255,255,255,0.10);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.phone.light .strength-seg {
+  background: rgba(42,27,5,0.10);
+  border: 1px solid rgba(42,27,5,0.04);
+}
+.strength-seg.fill-1 { background: var(--d-error); }
+.strength-seg.fill-2 { background: var(--d-warning); }
+.strength-seg.fill-3 { background: #c5d34a; }
+.strength-seg.fill-4 { background: var(--d-success); }
+.strength-label {
+  display: flex; justify-content: space-between;
+  font-size: 11px;
+  color: var(--d-on-muted);
+  margin-top: 6px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.phone.light .strength-label { color: var(--l-on-muted); }
+.strength-label .good { color: var(--d-success); }
+.phone.light .strength-label .good { color: var(--l-success); }
+
+.rules {
+  display: flex; flex-direction: column; gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.rule {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--d-on-muted);
+}
+.phone.light .rule { color: var(--l-on-muted); }
+.rule.ok { color: var(--d-success); }
+.phone.light .rule.ok { color: var(--l-success); }
+.rule .check {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid currentColor;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800;
+}
+.rule.ok .check { background: var(--d-success); color: white; border-color: var(--d-success); }
+.phone.light .rule.ok .check { background: var(--l-success); border-color: var(--l-success); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Biometric (Face ID) icon center
+   ═══════════════════════════════════════════════════════════════════════════ */
+.biometric-center {
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding: 22px 0 6px;
+}
+.faceid-wrap {
+  width: 116px; height: 116px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 26px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.30),
+    0 4px 18px rgba(232,163,61,0.20);
+}
+.phone.light .faceid-wrap {
+  background: rgba(255,255,255,0.55);
+  border: 1px solid rgba(255,255,255,0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.9),
+    0 4px 18px rgba(232,163,61,0.18);
+}
+.biometric-headline {
+  font-family: var(--font-display);
+  font-weight: 600; font-size: 22px;
+  text-align: center;
+  letter-spacing: -0.005em;
+  color: var(--d-on);
+}
+.phone.light .biometric-headline { color: var(--l-on); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PIN dots + keypad
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pin-dots {
+  display: flex; gap: 18px; justify-content: center;
+  padding: 14px 0 18px;
+}
+.pin-dot {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--d-outline-bright);
+}
+.pin-dot.filled {
+  background: var(--brand-orange);
+  border-color: var(--brand-orange);
+  box-shadow: 0 0 0 4px rgba(232,163,61,0.12);
+}
+.phone.light .pin-dot { border-color: var(--l-outline-bright); }
+
+.keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+.key {
+  aspect-ratio: 1/1;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--d-on);
+  position: relative;
+}
+.phone.light .key { color: var(--l-on); }
+.key.empty {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+.key.empty::before { display: none; }
+.key.action {
+  font-size: 16px; font-weight: 600;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--d-on-muted);
+}
+.phone.light .key.action {
+  background: rgba(255,255,255,0.30);
+  border: 1px solid rgba(42,27,5,0.10);
+  color: var(--l-on-muted);
+}
+.key.pressed {
+  background: rgba(232,163,61,0.18);
+  border-color: rgba(232,163,61,0.35);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIGHT THEME PAGE
+   ═══════════════════════════════════════════════════════════════════════════ */
+.theme-light-page {
+  background:
+    radial-gradient(ellipse 1200px 700px at 50% -10%, rgba(245,130,32,0.06), transparent 70%),
+    linear-gradient(180deg, #FAFAFA 0%, #F4F4F5 100%);
+  background-attachment: fixed;
+  padding-top: 1px;
+  margin-top: 22px;
+  border-top: 1px solid rgba(24,24,27,0.06);
+}
+.theme-light-page .section-label { color: rgba(42,27,5,0.5); }
+.theme-light-page .frame-caption { color: var(--l-on-muted); }
+
+/* Subtle smaller helper rows */
+.helper {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--d-on-muted);
+  margin-top: 10px;
+}
+.phone.light .helper { color: var(--l-on-muted); }
+
+/* sheet animation breathing */
+.sheet-breath { animation: sheet-breath 14s ease-in-out infinite; }
+@keyframes sheet-breath {
+  0%,100% { box-shadow: 0 0 0 0 rgba(232,163,61,0); }
+  50%     { box-shadow: 0 0 28px 0 rgba(232,163,61,0.06); }
+}
+
+/* helper for forgot/back row */
+.minor-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 10px;
+}
+
+/* small badge */
+.tiny-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   responsive: keep device frame rigid; only the page grid reflows
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 920px) {
+  .grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ─── Hidden SVG refraction filter ───────────────────────────────────── -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <filter id="glass-refract" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.05" numOctaves="2" seed="3" stitchTiles="stitch"/>
+      <feDisplacementMap in="SourceGraphic" scale="18"/>
+    </filter>
+    <filter id="glass-refract-soft" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feDisplacementMap in="SourceGraphic" scale="10"/>
+    </filter>
+    <!-- Wave divider -->
+    <symbol id="wave" viewBox="0 0 90 14">
+      <path d="M2 7 Q 12 0, 22 7 T 42 7 T 62 7 T 82 7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+    </symbol>
+    <!-- Face ID glyph -->
+    <symbol id="faceid" viewBox="0 0 96 96">
+      <g fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+        <!-- corners -->
+        <path d="M10 30 V18 Q10 10, 18 10 H30"/>
+        <path d="M66 10 H78 Q86 10, 86 18 V30"/>
+        <path d="M10 66 V78 Q10 86, 18 86 H30"/>
+        <path d="M66 86 H78 Q86 86, 86 78 V66"/>
+        <!-- eyes -->
+        <line x1="34" y1="38" x2="34" y2="46"/>
+        <line x1="62" y1="38" x2="62" y2="46"/>
+        <!-- nose -->
+        <path d="M48 38 V52 Q48 56, 44 56 H42"/>
+        <!-- smile -->
+        <path d="M34 64 Q48 74, 62 64"/>
+      </g>
+    </symbol>
+    <!-- person icon -->
+    <symbol id="i-person" viewBox="0 0 18 18"><path d="M9 9.5a3 3 0 100-6 3 3 0 000 6zM3 15.5c.5-2.7 3-4 6-4s5.5 1.3 6 4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 18 18"><rect x="4" y="8" width="10" height="7" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M6 8V6a3 3 0 016 0v2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 18 18"><path d="M1.5 9s2.5-5 7.5-5 7.5 5 7.5 5-2.5 5-7.5 5S1.5 9 1.5 9z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/></symbol>
+    <symbol id="i-eye-slash" viewBox="0 0 18 18"><path d="M1.5 9s2.5-5 7.5-5 7.5 5 7.5 5-2.5 5-7.5 5S1.5 9 1.5 9z" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="9" cy="9" r="2" fill="none" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="3" x2="15" y2="15" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-store" viewBox="0 0 18 18"><path d="M2 6l1-3h12l1 3v1.5a2 2 0 01-4 0 2 2 0 01-4 0 2 2 0 01-4 0 2 2 0 01-4 0V6zm1 1.5V15h12V7.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+    <symbol id="i-envelope" viewBox="0 0 18 18"><rect x="2" y="4" width="14" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 5l6.5 5 6.5-5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></symbol>
+    <symbol id="i-num" viewBox="0 0 18 18"><circle cx="9" cy="9" r="6" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M7 7h2v4M7 11h4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+    <symbol id="i-key" viewBox="0 0 18 18"><circle cx="6" cy="9" r="3" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M9 9h7l-2 2 2 2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-back" viewBox="0 0 18 18"><path d="M11 4l-5 5 5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-passkey" viewBox="0 0 22 22"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 18.5c.6-2.3 3-3.6 6-3.6m6-7c1.7 0 3 1.3 3 3 0 1.4-.9 2.5-2 3v3l1 1-1 1v2l-1 1-1-1v-6c-1.1-.5-2-1.6-2-3 0-1.7 1.3-3 3-3z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-faceid-mini" viewBox="0 0 22 22"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5.5Q3 3, 5.5 3H8M14 3h2.5Q19 3, 19 5.5V8M3 14v2.5Q3 19, 5.5 19H8M14 19h2.5Q19 19, 19 16.5V14"/><line x1="8" y1="10" x2="8" y2="11.5"/><line x1="14" y1="10" x2="14" y2="11.5"/><path d="M11 10v4q0 1-1 1h-.5"/><path d="M8 14.5q3 2 6 0"/></g></symbol>
+    <symbol id="i-mail-pill" viewBox="0 0 22 22"><rect x="3" y="6" width="16" height="11" rx="1.8" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 7l7.5 5.6L18.5 7" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></symbol>
+    <symbol id="i-check" viewBox="0 0 18 18"><circle cx="9" cy="9" r="7" fill="currentColor"/><path d="M5.5 9l2.5 2.5 5-5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-delete" viewBox="0 0 22 18"><path d="M7 1H19a2 2 0 012 2v12a2 2 0 01-2 2H7L1 9z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 6l6 6M16 6l-6 6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></symbol>
+    <!-- status bar icons -->
+    <symbol id="sb-signal" viewBox="0 0 17 11"><rect x="0" y="7" width="3" height="4" rx="0.6" fill="currentColor"/><rect x="4.5" y="5" width="3" height="6" rx="0.6" fill="currentColor"/><rect x="9" y="2.5" width="3" height="8.5" rx="0.6" fill="currentColor"/><rect x="13.5" y="0" width="3" height="11" rx="0.6" fill="currentColor"/></symbol>
+    <symbol id="sb-wifi" viewBox="0 0 16 12"><path d="M8 11l-2-2a3 3 0 014 0zM8 7l-5-5a8 8 0 0110 0zM8 4L4.5 0.5a5 5 0 017 0z" fill="currentColor"/></symbol>
+    <symbol id="sb-batt" viewBox="0 0 26 12"><rect x="0.5" y="0.5" width="22" height="11" rx="3" fill="none" stroke="currentColor" opacity="0.5"/><rect x="2" y="2" width="18" height="8" rx="1.5" fill="currentColor"/><rect x="23.5" y="3.5" width="2" height="5" rx="1" fill="currentColor" opacity="0.5"/></symbol>
+  </defs>
+</svg>
+
+<h1>Bizarre CRM — iPhone login flow (iOS 26 Liquid Glass)</h1>
+<p class="intro">
+  Seven steps from <code>LoginFlowView.swift</code> rendered as iPhone 16 Pro mockups in iOS 26
+  Liquid Glass. The glass uses <code>.lg-regular</code> for sheets, <code>.lg-prominent</code> for the primary
+  CTA, <code>.lg-clear</code> for floating chips. A neutral dark surface with fine grain gives the glass
+  color to refract; a tiny SVG <code>feDisplacementMap</code> bends the rim. Concentric corners
+  cascade <code>28 → 14 → pill</code> through the device's 52px frame.
+  <span class="checklist">
+    <span>Real-time refraction</span>
+    <span>Specular edge highlight</span>
+    <span>Dynamic tint pickup</span>
+    <span>Adaptive light/dark</span>
+    <span>Concentric corners</span>
+  </span>
+</p>
+
+<div class="section-label dark">Dark — iOS 26 Liquid Glass · .lg-regular / .lg-prominent</div>
+
+<div class="grid">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       1 · SERVER PICK
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Pick your shop.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar"></div>
+            <div class="step-bar"></div>
+            <div class="step-bar"></div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Shop name</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-store"/></svg>
+              <span class="f-text">paradise-repair<span class="caret"></span></span>
+              <span class="f-suffix">.bizarrecrm.com</span>
+            </div>
+          </div>
+          <div class="recent-row">
+            <div class="recent-pill lg-clear"><span class="dot"></span>paradise-repair</div>
+            <div class="recent-pill lg-clear"><span class="dot"></span>downtown-fix</div>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-label">Use my own server</div>
+            <div class="toggle"></div>
+          </div>
+          <button class="btn-primary lg-prominent">Continue</button>
+          <div class="minor-row">
+            <button class="btn-link">Self-hosted?</button>
+            <button class="btn-link">Create new shop</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">1 · Server pick · slug + recent shops</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       2 · CREDENTIALS
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Sign in to Paradise Repair.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar"></div>
+            <div class="step-bar"></div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Username or email</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-person"/></svg>
+              <span class="f-text">jess@paradise-repair.com</span>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Password</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+              <span class="f-text">••••••••••<span class="caret"></span></span>
+              <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+            </div>
+          </div>
+          <button class="btn-primary lg-prominent">Sign in</button>
+          <div class="minor-row">
+            <button class="btn-link">Forgot password?</button>
+            <button class="btn-link" style="color:var(--d-on-muted)">Change server</button>
+          </div>
+          <div class="pill-row">
+            <div class="pill lg-clear">
+              <svg width="22" height="22" style="color:var(--brand-cream)"><use href="#i-passkey"/></svg>
+              <span>Passkey</span>
+            </div>
+            <div class="pill lg-clear">
+              <svg width="22" height="22" style="color:var(--brand-cream)"><use href="#i-faceid-mini"/></svg>
+              <span>Face ID</span>
+            </div>
+            <div class="pill lg-clear">
+              <svg width="22" height="22" style="color:var(--brand-cream)"><use href="#i-mail-pill"/></svg>
+              <span>Email link</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">2 · Credentials · password + passkey/Face ID/email</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       3 · 2FA VERIFY
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Enter your 6-digit code.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar"></div>
+          </div>
+          <div class="field-label" style="margin-bottom:2px">Authenticator code</div>
+          <div class="otp-row">
+            <div class="otp-cell lg-clear">9</div>
+            <div class="otp-cell lg-clear">3</div>
+            <div class="otp-cell lg-clear">7</div>
+            <div class="otp-cell lg-clear empty active">_</div>
+            <div class="otp-cell lg-clear empty">_</div>
+            <div class="otp-cell lg-clear empty">_</div>
+          </div>
+          <div class="helper">
+            <span class="tiny-badge" style="background:rgba(77,184,201,0.18);color:var(--brand-teal);border:1px solid rgba(77,184,201,0.4)">TOTP</span>
+            <span>From Google Authenticator, 1Password, or Authy.</span>
+          </div>
+          <button class="btn-primary lg-prominent" style="margin-top:24px">Verify</button>
+          <div class="minor-row" style="justify-content:flex-start;gap:14px">
+            <button class="btn-link">Use a backup code instead</button>
+          </div>
+          <div class="minor-row">
+            <button class="btn-link" style="color:var(--d-on-muted);display:flex;align-items:center;gap:4px">
+              <svg width="14" height="14"><use href="#i-back"/></svg>
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">3 · 2FA verify · 6-cell OTP, partial fill</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       4 · SET NEW PASSWORD
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Your admin requested a reset. Choose a new password to continue.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar"></div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">New password</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+              <span class="f-text">••••••••••••<span class="caret"></span></span>
+              <span class="f-eye"><svg width="18" height="18"><use href="#i-eye-slash"/></svg></span>
+            </div>
+          </div>
+          <div class="strength-row">
+            <div class="strength-seg fill-1 lg-clear"></div>
+            <div class="strength-seg fill-2 lg-clear"></div>
+            <div class="strength-seg fill-3 lg-clear"></div>
+            <div class="strength-seg lg-clear"></div>
+          </div>
+          <div class="strength-label">
+            <span>Strength</span>
+            <span class="good">Good</span>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Confirm password</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+              <span class="f-text">••••••••••••</span>
+              <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+            </div>
+          </div>
+          <div class="rules">
+            <div class="rule ok"><span class="check">✓</span>At least 8 characters</div>
+            <div class="rule ok"><span class="check">✓</span>One number</div>
+            <div class="rule ok"><span class="check">✓</span>Mixed case</div>
+            <div class="rule"><span class="check"></span>One symbol</div>
+          </div>
+          <button class="btn-primary lg-prominent">Update password</button>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">4 · Set new password · strength meter + rules</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       5 · BIOMETRIC OFFER
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Unlock faster next time?</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+            <div class="step-bar active"></div>
+          </div>
+          <div class="biometric-center">
+            <div class="faceid-wrap">
+              <svg width="96" height="96" style="color:var(--brand-orange)" aria-hidden="true"><use href="#faceid"/></svg>
+            </div>
+            <div class="biometric-headline">Unlock quickly with Face ID.</div>
+            <p style="font-size:13px;color:var(--d-on-muted);text-align:center;margin:0 12px;line-height:1.5">
+              Your password stays put — Face ID just speeds up the next sign in. You can switch this off in Settings any time.
+            </p>
+          </div>
+          <button class="btn-primary lg-prominent" style="margin-top:18px">Enable Face ID</button>
+          <button class="btn-link" style="display:block;margin:14px auto 0;color:var(--d-on-muted);font-size:14px">Not now</button>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">5 · Biometric offer · Face ID glyph + enable / not now</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       6 · REGISTER · CREATE SHOP
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Create a new shop on Bizarre CRM Cloud.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <div class="step-indicator">
+            <div class="step-bar active"></div>
+            <div class="step-bar"></div>
+            <div class="step-bar"></div>
+            <div class="step-bar"></div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Shop slug</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-store"/></svg>
+              <span class="f-text">main-street-repair<span class="caret"></span></span>
+              <span class="f-suffix">.bizarrecrm.com</span>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Admin email</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-envelope"/></svg>
+              <span class="f-text">owner@example.com</span>
+            </div>
+          </div>
+          <div class="field-group">
+            <div class="field-label">Password</div>
+            <div class="field">
+              <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+              <span class="f-text">••••••••••</span>
+              <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+            </div>
+          </div>
+          <div class="strength-row">
+            <div class="strength-seg fill-1 lg-clear"></div>
+            <div class="strength-seg fill-2 lg-clear"></div>
+            <div class="strength-seg lg-clear"></div>
+            <div class="strength-seg lg-clear"></div>
+          </div>
+          <div class="strength-label">
+            <span>Strength</span>
+            <span style="color:var(--d-warning)">Fair</span>
+          </div>
+          <button class="btn-primary lg-prominent">Continue</button>
+          <button class="btn-link" style="display:flex;align-items:center;gap:4px;margin-top:12px;color:var(--d-on-muted)">
+            <svg width="14" height="14"><use href="#i-back"/></svg>
+            Back
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">6 · Register · 4-step indicator, slug + email + strength</div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       7 · PIN UNLOCK
+       ════════════════════════════════════════════════════════════════════ -->
+  <div>
+    <div class="phone">
+      <div class="phone-bg"></div>
+      <div class="island"></div>
+      <div class="home-indicator"></div>
+      <div class="phone-body">
+        <div class="statusbar">
+          <span class="statusbar-time">9:41</span>
+          <span class="statusbar-icons">
+            <svg width="17" height="11"><use href="#sb-signal"/></svg>
+            <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+            <svg width="26" height="12"><use href="#sb-batt"/></svg>
+          </span>
+        </div>
+        <div class="header">
+          <h2>Bizarre CRM</h2>
+          <div class="subtitle">Enter your PIN.</div>
+          <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+        </div>
+        <div class="sheet lg-regular sheet-breath">
+          <p style="text-align:center;font-size:12.5px;color:var(--d-on-muted);margin:2px 0 4px">
+            You signed in on this device earlier.
+          </p>
+          <div class="pin-dots">
+            <div class="pin-dot filled"></div>
+            <div class="pin-dot filled"></div>
+            <div class="pin-dot"></div>
+            <div class="pin-dot"></div>
+          </div>
+          <div class="keypad">
+            <div class="key lg-regular">1</div>
+            <div class="key lg-regular">2</div>
+            <div class="key lg-regular">3</div>
+            <div class="key lg-regular">4</div>
+            <div class="key lg-regular pressed">5</div>
+            <div class="key lg-regular">6</div>
+            <div class="key lg-regular">7</div>
+            <div class="key lg-regular">8</div>
+            <div class="key lg-regular">9</div>
+            <div class="key empty"></div>
+            <div class="key lg-regular">0</div>
+            <div class="key action lg-clear"><svg width="22" height="18"><use href="#i-delete"/></svg></div>
+          </div>
+          <div class="minor-row" style="justify-content:center;margin-top:14px">
+            <button class="btn-link" style="color:var(--brand-teal);display:flex;align-items:center;gap:6px">
+              <svg width="16" height="16"><use href="#i-faceid-mini"/></svg>
+              Use Face ID
+            </button>
+          </div>
+          <div class="minor-row" style="justify-content:center;margin-top:6px">
+            <button class="btn-link" style="color:var(--d-on-muted);font-size:12px">Forgot your PIN? · Sign in again</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="frame-caption">7 · PIN unlock · 4 dots + 3×4 keypad</div>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     LIGHT THEME SECTION — same 7 frames, light substrate
+     ════════════════════════════════════════════════════════════════════════ -->
+<div class="theme-light theme-light-page">
+  <div class="section-label light">Light — Zinc neutral substrate · brand parity with bizarrecrm.com web</div>
+
+  <div class="grid">
+
+    <!-- 1 · server pick (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Pick your shop.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar"></div>
+              <div class="step-bar"></div>
+              <div class="step-bar"></div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Shop name</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-store"/></svg>
+                <span class="f-text">paradise-repair<span class="caret"></span></span>
+                <span class="f-suffix">.bizarrecrm.com</span>
+              </div>
+            </div>
+            <div class="recent-row">
+              <div class="recent-pill lg-clear"><span class="dot"></span>paradise-repair</div>
+              <div class="recent-pill lg-clear"><span class="dot"></span>downtown-fix</div>
+            </div>
+            <div class="toggle-row">
+              <div class="toggle-label">Use my own server</div>
+              <div class="toggle"></div>
+            </div>
+            <button class="btn-primary lg-prominent">Continue</button>
+            <div class="minor-row">
+              <button class="btn-link">Self-hosted?</button>
+              <button class="btn-link">Create new shop</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">1 · Server pick · slug + recent shops</div>
+    </div>
+
+    <!-- 2 · credentials (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Sign in to Paradise Repair.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar"></div>
+              <div class="step-bar"></div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Username or email</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-person"/></svg>
+                <span class="f-text">jess@paradise-repair.com</span>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Password</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+                <span class="f-text">••••••••••<span class="caret"></span></span>
+                <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+              </div>
+            </div>
+            <button class="btn-primary lg-prominent">Sign in</button>
+            <div class="minor-row">
+              <button class="btn-link">Forgot password?</button>
+              <button class="btn-link" style="color:var(--l-on-muted)">Change server</button>
+            </div>
+            <div class="pill-row">
+              <div class="pill lg-clear">
+                <svg width="22" height="22" style="color:#a14f06"><use href="#i-passkey"/></svg>
+                <span>Passkey</span>
+              </div>
+              <div class="pill lg-clear">
+                <svg width="22" height="22" style="color:#a14f06"><use href="#i-faceid-mini"/></svg>
+                <span>Face ID</span>
+              </div>
+              <div class="pill lg-clear">
+                <svg width="22" height="22" style="color:#a14f06"><use href="#i-mail-pill"/></svg>
+                <span>Email link</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">2 · Credentials · password + passkey/Face ID/email</div>
+    </div>
+
+    <!-- 3 · 2fa verify (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Enter your 6-digit code.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar"></div>
+            </div>
+            <div class="field-label" style="margin-bottom:2px">Authenticator code</div>
+            <div class="otp-row">
+              <div class="otp-cell lg-clear">9</div>
+              <div class="otp-cell lg-clear">3</div>
+              <div class="otp-cell lg-clear">7</div>
+              <div class="otp-cell lg-clear empty active">_</div>
+              <div class="otp-cell lg-clear empty">_</div>
+              <div class="otp-cell lg-clear empty">_</div>
+            </div>
+            <div class="helper">
+              <span class="tiny-badge" style="background:rgba(77,184,201,0.22);color:#0d6e7e;border:1px solid rgba(77,184,201,0.45)">TOTP</span>
+              <span>From Google Authenticator, 1Password, or Authy.</span>
+            </div>
+            <button class="btn-primary lg-prominent" style="margin-top:24px">Verify</button>
+            <div class="minor-row" style="justify-content:flex-start;gap:14px">
+              <button class="btn-link">Use a backup code instead</button>
+            </div>
+            <div class="minor-row">
+              <button class="btn-link" style="color:var(--l-on-muted);display:flex;align-items:center;gap:4px">
+                <svg width="14" height="14"><use href="#i-back"/></svg>
+                Back
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">3 · 2FA verify · 6-cell OTP, partial fill</div>
+    </div>
+
+    <!-- 4 · set new password (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Your admin requested a reset. Choose a new password to continue.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar"></div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">New password</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+                <span class="f-text">••••••••••••<span class="caret"></span></span>
+                <span class="f-eye"><svg width="18" height="18"><use href="#i-eye-slash"/></svg></span>
+              </div>
+            </div>
+            <div class="strength-row">
+              <div class="strength-seg fill-1 lg-clear"></div>
+              <div class="strength-seg fill-2 lg-clear"></div>
+              <div class="strength-seg fill-3 lg-clear"></div>
+              <div class="strength-seg lg-clear"></div>
+            </div>
+            <div class="strength-label">
+              <span>Strength</span>
+              <span class="good">Good</span>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Confirm password</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+                <span class="f-text">••••••••••••</span>
+                <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+              </div>
+            </div>
+            <div class="rules">
+              <div class="rule ok"><span class="check">✓</span>At least 8 characters</div>
+              <div class="rule ok"><span class="check">✓</span>One number</div>
+              <div class="rule ok"><span class="check">✓</span>Mixed case</div>
+              <div class="rule"><span class="check"></span>One symbol</div>
+            </div>
+            <button class="btn-primary lg-prominent">Update password</button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">4 · Set new password · strength meter + rules</div>
+    </div>
+
+    <!-- 5 · biometric offer (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Unlock faster next time?</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+              <div class="step-bar active"></div>
+            </div>
+            <div class="biometric-center">
+              <div class="faceid-wrap">
+                <svg width="96" height="96" style="color:var(--brand-orange)" aria-hidden="true"><use href="#faceid"/></svg>
+              </div>
+              <div class="biometric-headline">Unlock quickly with Face ID.</div>
+              <p style="font-size:13px;color:var(--l-on-muted);text-align:center;margin:0 12px;line-height:1.5">
+                Your password stays put — Face ID just speeds up the next sign in. You can switch this off in Settings any time.
+              </p>
+            </div>
+            <button class="btn-primary lg-prominent" style="margin-top:18px">Enable Face ID</button>
+            <button class="btn-link" style="display:block;margin:14px auto 0;color:var(--l-on-muted);font-size:14px">Not now</button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">5 · Biometric offer · Face ID glyph + enable / not now</div>
+    </div>
+
+    <!-- 6 · register (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Create a new shop on Bizarre CRM Cloud.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <div class="step-indicator">
+              <div class="step-bar active"></div>
+              <div class="step-bar"></div>
+              <div class="step-bar"></div>
+              <div class="step-bar"></div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Shop slug</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-store"/></svg>
+                <span class="f-text">main-street-repair<span class="caret"></span></span>
+                <span class="f-suffix">.bizarrecrm.com</span>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Admin email</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-envelope"/></svg>
+                <span class="f-text">owner@example.com</span>
+              </div>
+            </div>
+            <div class="field-group">
+              <div class="field-label">Password</div>
+              <div class="field">
+                <svg class="f-icon" width="18" height="18"><use href="#i-lock"/></svg>
+                <span class="f-text">••••••••••</span>
+                <span class="f-eye"><svg width="18" height="18"><use href="#i-eye"/></svg></span>
+              </div>
+            </div>
+            <div class="strength-row">
+              <div class="strength-seg fill-1 lg-clear"></div>
+              <div class="strength-seg fill-2 lg-clear"></div>
+              <div class="strength-seg lg-clear"></div>
+              <div class="strength-seg lg-clear"></div>
+            </div>
+            <div class="strength-label">
+              <span>Strength</span>
+              <span style="color:var(--l-warning)">Fair</span>
+            </div>
+            <button class="btn-primary lg-prominent">Continue</button>
+            <button class="btn-link" style="display:flex;align-items:center;gap:4px;margin-top:12px;color:var(--l-on-muted)">
+              <svg width="14" height="14"><use href="#i-back"/></svg>
+              Back
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">6 · Register · 4-step indicator, slug + email + strength</div>
+    </div>
+
+    <!-- 7 · pin (light) -->
+    <div>
+      <div class="phone light">
+        <div class="phone-bg"></div>
+        <div class="island"></div>
+        <div class="home-indicator"></div>
+        <div class="phone-body">
+          <div class="statusbar">
+            <span class="statusbar-time">9:41</span>
+            <span class="statusbar-icons">
+              <svg width="17" height="11"><use href="#sb-signal"/></svg>
+              <svg width="16" height="12"><use href="#sb-wifi"/></svg>
+              <svg width="26" height="12"><use href="#sb-batt"/></svg>
+            </span>
+          </div>
+          <div class="header">
+            <h2>Bizarre CRM</h2>
+            <div class="subtitle">Enter your PIN.</div>
+            <svg class="wave-divider" style="color:var(--brand-orange)"><use href="#wave"/></svg>
+          </div>
+          <div class="sheet lg-regular sheet-breath">
+            <p style="text-align:center;font-size:12.5px;color:var(--l-on-muted);margin:2px 0 4px">
+              You signed in on this device earlier.
+            </p>
+            <div class="pin-dots">
+              <div class="pin-dot filled"></div>
+              <div class="pin-dot filled"></div>
+              <div class="pin-dot"></div>
+              <div class="pin-dot"></div>
+            </div>
+            <div class="keypad">
+              <div class="key lg-regular">1</div>
+              <div class="key lg-regular">2</div>
+              <div class="key lg-regular">3</div>
+              <div class="key lg-regular">4</div>
+              <div class="key lg-regular pressed">5</div>
+              <div class="key lg-regular">6</div>
+              <div class="key lg-regular">7</div>
+              <div class="key lg-regular">8</div>
+              <div class="key lg-regular">9</div>
+              <div class="key empty"></div>
+              <div class="key lg-regular">0</div>
+              <div class="key action lg-clear"><svg width="22" height="18"><use href="#i-delete"/></svg></div>
+            </div>
+            <div class="minor-row" style="justify-content:center;margin-top:14px">
+              <button class="btn-link" style="color:#0d6e7e;display:flex;align-items:center;gap:6px">
+                <svg width="16" height="16"><use href="#i-faceid-mini"/></svg>
+                Use Face ID
+              </button>
+            </div>
+            <div class="minor-row" style="justify-content:center;margin-top:6px">
+              <button class="btn-link" style="color:var(--l-on-muted);font-size:12px">Forgot your PIN? · Sign in again</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="frame-caption">7 · PIN unlock · 4 dots + 3×4 keypad</div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

@@ -35,10 +35,16 @@ public enum EstimateStatusFilter: String, CaseIterable, Sendable, Identifiable {
 public final class EstimateListViewModel {
     public private(set) var items: [Estimate] = []
     public private(set) var isLoading = false
+    public private(set) var isLoadingMore = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
     /// §8.1 Active status tab.
     public var statusFilter: EstimateStatusFilter = .all
+    /// §8.1 Active list filters (date range, customer, amount, validity).
+    public var filters: EstimateListFilters = EstimateListFilters()
+    // §8.1: Cursor-based pagination state
+    private var nextCursor: String? = nil
+    private var hasMore: Bool = false
 
     // Phase-3: staleness + offline
     public private(set) var lastSyncedAt: Date?
@@ -51,6 +57,23 @@ public final class EstimateListViewModel {
 
     /// Legacy convenience init keeps existing call sites compiling.
     public init(api: APIClient) { self.repo = EstimateRepositoryImpl(api: api) }
+
+    // MARK: - §8.1 Cursor pagination
+
+    /// Load the next page of estimates. No-op if already loading or no more pages.
+    public func loadMoreIfNeeded() async {
+        guard !isLoadingMore, hasMore, let cursor = nextCursor else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await repo.listPage(cursor: cursor, keyword: searchQuery.isEmpty ? nil : searchQuery, status: statusFilter.serverValue)
+            items.append(contentsOf: page.estimates)
+            nextCursor = page.nextCursor
+            hasMore = page.hasMore
+        } catch {
+            AppLog.ui.warning("Estimates loadMore failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
@@ -79,8 +102,24 @@ public final class EstimateListViewModel {
 
     private func fetch(forceRemote: Bool) async {
         errorMessage = nil
+        // Reset cursor state on every fresh fetch.
+        nextCursor = nil
+        hasMore = false
         let keyword = searchQuery.isEmpty ? nil : searchQuery
         do {
+            // §8.1: Try cursor-based pagination first page.
+            do {
+                let page = try await repo.listPage(cursor: nil, keyword: keyword, status: statusFilter.serverValue)
+                items = page.estimates
+                nextCursor = page.nextCursor
+                hasMore = page.hasMore
+                lastSyncedAt = Date()
+                return
+            } catch {
+                // Cursor endpoint not yet supported — fall through to legacy path.
+                AppLog.ui.warning("Cursor pagination unavailable, using legacy list: \(error.localizedDescription, privacy: .public)")
+            }
+            // Legacy path (in-memory cache or direct API)
             var all: [Estimate]
             if let cached = repo as? EstimateCachedRepositoryImpl {
                 let result: CachedResult<[Estimate]>
@@ -110,6 +149,11 @@ public final class EstimateListViewModel {
 public struct EstimateListView: View {
     @State private var vm: EstimateListViewModel
     @State private var searchText: String = ""
+    // §8.1 Filters sheet
+    @State private var showFilters: Bool = false
+    // §8.1 Bulk-action selection
+    @State private var selectedIds: Set<Int64> = []
+    @State private var editMode: EditMode = .inactive
 
     public init(repo: EstimateRepository) { _vm = State(wrappedValue: EstimateListViewModel(repo: repo)) }
 
@@ -125,6 +169,12 @@ public struct EstimateListView: View {
             await vm.load()
         }
         .refreshable { await vm.refresh() }
+        .sheet(isPresented: $showFilters) {
+            EstimateListFiltersView(filters: $vm.filters)
+                .onChange(of: vm.filters) { _, _ in
+                    Task { await vm.load() }
+                }
+        }
     }
 
     private var compactLayout: some View {
@@ -140,9 +190,30 @@ public struct EstimateListView: View {
             .navigationTitle("Estimates")
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .environment(\.editMode, $editMode)
             .toolbar {
                 ToolbarItem(placement: .status) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+                // §8.1: Filter button with active-count badge
+                ToolbarItem(placement: .topBarLeading) {
+                    filterButton
+                }
+                // §8.1: Bulk select toggle
+                ToolbarItem(placement: .primaryAction) {
+                    Button(editMode.isEditing ? "Done" : "Select") {
+                        withAnimation {
+                            editMode = editMode.isEditing ? .inactive : .active
+                            if !editMode.isEditing { selectedIds.removeAll() }
+                        }
+                    }
+                    .accessibilityLabel(editMode.isEditing ? "Exit selection mode" : "Enter selection mode for bulk actions")
+                }
+            }
+            // §8.1: Bulk-action bar shown when items are selected
+            .safeAreaInset(edge: .bottom) {
+                if editMode.isEditing && !selectedIds.isEmpty {
+                    estimateBulkActionBar
                 }
             }
         }
@@ -162,9 +233,26 @@ public struct EstimateListView: View {
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .environment(\.editMode, $editMode)
             .toolbar {
                 ToolbarItem(placement: .status) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    filterButton
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(editMode.isEditing ? "Done" : "Select") {
+                        withAnimation {
+                            editMode = editMode.isEditing ? .inactive : .active
+                            if !editMode.isEditing { selectedIds.removeAll() }
+                        }
+                    }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if editMode.isEditing && !selectedIds.isEmpty {
+                    estimateBulkActionBar
                 }
             }
         } detail: {
@@ -214,15 +302,92 @@ public struct EstimateListView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List {
+                List(selection: $selectedIds) {
                     ForEach(vm.items) { est in
-                        Row(estimate: est).listRowBackground(Color.bizarreSurface1)
+                        Row(estimate: est)
+                            .listRowBackground(Color.bizarreSurface1)
+                            .tag(est.id)
+                            // §8.1: load-more trigger on last row
+                            .onAppear {
+                                if est.id == vm.items.last?.id {
+                                    Task { await vm.loadMoreIfNeeded() }
+                                }
+                            }
+                    }
+                    // Loading-more indicator
+                    if vm.isLoadingMore {
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .accessibilityLabel("Loading more estimates")
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
+    }
+
+    // MARK: - Filter button
+
+    private var filterButton: some View {
+        Button {
+            showFilters = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .accessibilityHidden(true)
+                if vm.filters.activeCount > 0 {
+                    Text("\(vm.filters.activeCount)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(3)
+                        .background(Color.bizarreOrange, in: Circle())
+                        .offset(x: 6, y: -6)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .accessibilityLabel(vm.filters.activeCount > 0 ? "Filters (\(vm.filters.activeCount) active)" : "Filters")
+        .accessibilityHint("Opens estimate filter options")
+    }
+
+    // MARK: - §8.1 Bulk action bar
+
+    private var estimateBulkActionBar: some View {
+        HStack(spacing: BrandSpacing.md) {
+            Text("\(selectedIds.count) selected")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer()
+            Button {
+                // TODO: POST /api/v1/estimates/bulk-send when server endpoint ships
+                AppLog.ui.info("Bulk send \(selectedIds.count) estimates — endpoint pending")
+            } label: {
+                Label("Send", systemImage: "paperplane")
+            }
+            .buttonStyle(.bordered)
+            .disabled(selectedIds.isEmpty)
+            .accessibilityLabel("Send selected estimates")
+
+            Button(role: .destructive) {
+                // TODO: DELETE /api/v1/estimates/bulk-delete when server endpoint ships
+                AppLog.ui.info("Bulk delete \(selectedIds.count) estimates — endpoint pending")
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .disabled(selectedIds.isEmpty)
+            .accessibilityLabel("Delete selected estimates")
+        }
+        .padding(BrandSpacing.md)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.bottom, BrandSpacing.sm)
     }
 
     /// §8.1 Status tab chips — All / Draft / Sent / Approved / Rejected / Expired / Converted.

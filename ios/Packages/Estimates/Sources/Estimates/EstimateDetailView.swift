@@ -19,6 +19,11 @@ public struct EstimateDetailView: View {
     @State private var showExpireConfirm: Bool = false
     @State private var isExpiring: Bool = false
     @State private var expireErrorMessage: String?
+    // §8.2: Approve / Reject / Convert-to-invoice / Versioning
+    @State private var showApproveSheet: Bool = false
+    @State private var showRejectSheet: Bool = false
+    @State private var showConvertToInvoiceSheet: Bool = false
+    @State private var showVersioningView: Bool = false
     #if canImport(UIKit)
     @State private var showSignSheet: Bool = false
     #endif
@@ -61,6 +66,12 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { compactToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
+        .sheet(isPresented: $showConvertToInvoiceSheet) { convertToInvoiceSheet }
+        .navigationDestination(isPresented: $showVersioningView) {
+            EstimateVersioningView(estimate: estimate, api: api)
+        }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
         #endif
@@ -101,6 +112,12 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { ipadToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
+        .sheet(isPresented: $showConvertToInvoiceSheet) { convertToInvoiceSheet }
+        .navigationDestination(isPresented: $showVersioningView) {
+            EstimateVersioningView(estimate: estimate, api: api)
+        }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
         #endif
@@ -319,6 +336,36 @@ public struct EstimateDetailView: View {
             let isSigned = (status == "signed")
             let isAlreadyExpired = (status == "expired")
 
+            // §8.2: Approve action
+            let isApproved = (status == "approved")
+            let isRejected = (status == "rejected")
+            Button {
+                showApproveSheet = true
+            } label: {
+                Label(isApproved ? "Approved" : "Approve",
+                      systemImage: isApproved ? "checkmark.seal.fill" : "checkmark.seal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .tint(isApproved ? .green : .bizarreOrange)
+            .disabled(isApproved || isConverted || isAlreadyExpired)
+            .accessibilityLabel(isApproved ? "Estimate already approved" : "Approve this estimate")
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+
+            // §8.2: Reject action
+            Button(role: .destructive) {
+                showRejectSheet = true
+            } label: {
+                Label(isRejected ? "Rejected" : "Reject",
+                      systemImage: isRejected ? "xmark.seal.fill" : "xmark.seal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isRejected || isConverted || isAlreadyExpired)
+            .accessibilityLabel(isRejected ? "Estimate already rejected" : "Reject this estimate")
+
+            Divider()
+
             Button {
                 showConvertSheet = true
             } label: {
@@ -329,6 +376,28 @@ public struct EstimateDetailView: View {
             .disabled(isConverted)
             .accessibilityLabel(isConverted ? "Already converted to ticket" : "Convert estimate to a service ticket")
             .keyboardShortcut("k", modifiers: [.command, .shift])
+
+            // §8.2: Convert to invoice
+            Button {
+                showConvertToInvoiceSheet = true
+            } label: {
+                Label("Convert to Invoice", systemImage: "doc.text")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isConverted)
+            .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to an invoice")
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+
+            // §8.2: Version history
+            Button {
+                showVersioningView = true
+            } label: {
+                Label("Version History", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("View estimate version history")
 
             #if canImport(UIKit)
             Button {
@@ -409,12 +478,48 @@ public struct EstimateDetailView: View {
             let isSigned = (status == "signed")
             let isAlreadyExpired = (status == "expired")
             Menu {
+                // §8.2: Approve / Reject
+                let isApproved = (estimate.status == "approved")
+                let isRejected = (estimate.status == "rejected")
+                Button {
+                    showApproveSheet = true
+                } label: {
+                    Label(isApproved ? "Approved" : "Approve",
+                          systemImage: isApproved ? "checkmark.seal.fill" : "checkmark.seal")
+                }
+                .disabled(isApproved || isConverted || isAlreadyExpired)
+
+                Button(role: .destructive) {
+                    showRejectSheet = true
+                } label: {
+                    Label(isRejected ? "Rejected" : "Reject",
+                          systemImage: isRejected ? "xmark.seal.fill" : "xmark.seal")
+                }
+                .disabled(isRejected || isConverted || isAlreadyExpired)
+
+                Divider()
+
                 Button {
                     showConvertSheet = true
                 } label: {
                     Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(isConverted)
+
+                // §8.2: Convert to invoice
+                Button {
+                    showConvertToInvoiceSheet = true
+                } label: {
+                    Label("Convert to Invoice", systemImage: "doc.text")
+                }
+                .disabled(isConverted)
+
+                // §8.2: Version history
+                Button {
+                    showVersioningView = true
+                } label: {
+                    Label("Version History", systemImage: "clock.arrow.circlepath")
+                }
 
                 #if canImport(UIKit)
                 Button {
@@ -490,6 +595,36 @@ public struct EstimateDetailView: View {
                 showConvertSheet = false
                 onTicketCreated(ticketId)
             }
+        )
+    }
+
+    // MARK: - §8.2 Approve sheet
+
+    private var approveSheet: some View {
+        EstimateApproveSheet(
+            estimate: estimate,
+            api: api,
+            onApproved: { showApproveSheet = false }
+        )
+    }
+
+    // MARK: - §8.2 Reject sheet
+
+    private var rejectSheet: some View {
+        EstimateRejectSheet(
+            estimate: estimate,
+            api: api,
+            onRejected: { showRejectSheet = false }
+        )
+    }
+
+    // MARK: - §8.2 Convert to invoice sheet
+
+    private var convertToInvoiceSheet: some View {
+        EstimateConvertToInvoiceSheet(
+            estimate: estimate,
+            api: api,
+            onSuccess: { _ in showConvertToInvoiceSheet = false }
         )
     }
 

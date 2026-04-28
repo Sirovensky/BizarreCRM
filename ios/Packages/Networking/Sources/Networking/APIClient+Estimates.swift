@@ -51,6 +51,67 @@ public struct IssueSignUrlResponse: Decodable, Sendable {
     }
 }
 
+// MARK: - EstimatesCursorPage
+//
+// §8.1: Cursor-based pagination response.
+// Server returns: { estimates: [...], next_cursor: String?, has_more: Bool }
+// When `nextCursor` is nil the list is exhausted.
+
+public struct EstimatesCursorPage: Decodable, Sendable {
+    public let estimates: [Estimate]
+    public let nextCursor: String?
+    public let hasMore: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case estimates
+        case nextCursor = "next_cursor"
+        case hasMore    = "has_more"
+    }
+}
+
+// MARK: - CreateEstimateWithIdempotencyRequest
+//
+// §8.3: Wraps CreateEstimateRequest, adding an `idempotency_key` field.
+// The server uses this UUID to deduplicate duplicate POSTs (e.g. on retry after
+// a timeout). Sent as a JSON body field (not a header) per established pattern.
+
+public struct CreateEstimateWithIdempotencyRequest: Encodable, Sendable {
+    public let customerId: Int64
+    public let subject: String?
+    public let notes: String?
+    public let validUntil: String?
+    public let discount: Double?
+    public let lineItems: [EstimateLineItemRequest]?
+    /// Client-generated UUID preventing duplicate creates on retry.
+    public let idempotencyKey: String
+
+    public init(
+        customerId: Int64,
+        subject: String? = nil,
+        notes: String? = nil,
+        validUntil: String? = nil,
+        discount: Double? = nil,
+        lineItems: [EstimateLineItemRequest]? = nil,
+        idempotencyKey: String
+    ) {
+        self.customerId = customerId
+        self.subject = subject
+        self.notes = notes
+        self.validUntil = validUntil
+        self.discount = discount
+        self.lineItems = lineItems
+        self.idempotencyKey = idempotencyKey
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case subject, notes, discount
+        case customerId     = "customer_id"
+        case validUntil     = "valid_until"
+        case lineItems      = "line_items"
+        case idempotencyKey = "idempotency_key"
+    }
+}
+
 // MARK: - APIClient extension
 
 public extension APIClient {
@@ -69,5 +130,39 @@ public extension APIClient {
             body: body,
             as: IssueSignUrlResponse.self
         )
+    }
+
+    // MARK: - §8.1 Cursor-based pagination
+
+    /// `GET /api/v1/estimates?cursor=<opaque>&limit=<n>&keyword=<q>&status=<s>`
+    ///
+    /// Fetches one page of estimates using opaque cursor pagination.
+    /// Pass `cursor: nil` to fetch the first page.
+    /// The response includes `next_cursor` (nil when exhausted) + `has_more`.
+    func listEstimatesCursor(
+        cursor: String? = nil,
+        limit: Int = 50,
+        keyword: String? = nil,
+        status: String? = nil
+    ) async throws -> EstimatesCursorPage {
+        var query: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let c = cursor { query.append(URLQueryItem(name: "cursor", value: c)) }
+        if let k = keyword, !k.isEmpty { query.append(URLQueryItem(name: "keyword", value: k)) }
+        if let s = status { query.append(URLQueryItem(name: "status", value: s)) }
+        // Fallback: server may not yet support cursor pagination — if response
+        // decoding fails (missing next_cursor/has_more), catch and wrap the
+        // old envelope. The do/catch is handled by the caller via CachedRepository.
+        return try await get("/api/v1/estimates", query: query, as: EstimatesCursorPage.self)
+    }
+
+    // MARK: - §8.3 Idempotent create
+
+    /// `POST /api/v1/estimates` with an idempotency key to deduplicate retries.
+    ///
+    /// The `idempotencyKey` is a client-generated UUID included in the request body.
+    /// The server indexes on this key and returns the previously-created estimate if
+    /// the same key is submitted twice within the dedup window.
+    func createEstimateIdempotent(_ req: CreateEstimateWithIdempotencyRequest) async throws -> CreatedResource {
+        try await post("/api/v1/estimates", body: req, as: CreatedResource.self)
     }
 }
