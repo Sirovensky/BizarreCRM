@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import Foundation
 import Core
+import Networking
 
 // MARK: - §5.6 Bulk export selected customers as CSV
 

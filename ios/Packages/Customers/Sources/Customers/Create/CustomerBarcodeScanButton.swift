@@ -124,6 +124,7 @@ struct BarcodeCameraView: UIViewRepresentable {
     func updateUIView(_ uiView: BarcodeCameraUIView, context: Context) {}
 }
 
+@MainActor
 final class BarcodeCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate {
     var onCodeDetected: ((String) -> Void)?
 
@@ -163,14 +164,16 @@ final class BarcodeCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate 
         previewLayer?.frame = bounds
     }
 
-    func metadataOutput(_ output: AVCaptureMetadataOutput,
-                        didOutput objects: [AVMetadataObject],
-                        from connection: AVCaptureConnection) {
+    nonisolated func metadataOutput(_ output: AVCaptureMetadataOutput,
+                                    didOutput objects: [AVMetadataObject],
+                                    from connection: AVCaptureConnection) {
         guard let obj = objects.first as? AVMetadataMachineReadableCodeObject,
               let value = obj.stringValue, !value.isEmpty else { return }
-        session.stopRunning()
         AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
-        onCodeDetected?(value)
+        Task { @MainActor [weak self] in
+            self?.session.stopRunning()
+            self?.onCodeDetected?(value)
+        }
     }
 }
 
@@ -205,11 +208,15 @@ public struct CustomerBarcodeScanButton: View {
 extension APIClient {
     /// `GET /api/v1/customers/lookup?code=:code` — resolve barcode/QR to a customer ID.
     public func lookupCustomerByCardCode(code: String) async throws -> Int64 {
-        struct Response: Decodable { let customerId: Int64; enum CodingKeys: String, CodingKey { case customerId = "customer_id" } }
         let q = [URLQueryItem(name: "code", value: code)]
-        let r = try await get("/api/v1/customers/lookup", query: q, as: Response.self)
+        let r = try await get("/api/v1/customers/lookup", query: q, as: CustomerCardCodeLookupResponse.self)
         return r.customerId
     }
+}
+
+private struct CustomerCardCodeLookupResponse: Decodable, Sendable {
+    let customerId: Int64
+    enum CodingKeys: String, CodingKey { case customerId = "customer_id" }
 }
 
 #endif

@@ -58,7 +58,7 @@ public final class CustomerMergeViewModel {
 
     // MARK: - Dependencies
 
-    @ObservationIgnored private let api: APIClient
+    @ObservationIgnored let api: APIClient
 
     // MARK: - Init
 

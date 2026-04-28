@@ -158,6 +158,10 @@ public actor ComplaintSLAService {
     public struct SLARule: Sendable {
         public let responseHours: Int    // default 24
         public let resolutionDays: Int   // default 7
+        public init(responseHours: Int, resolutionDays: Int) {
+            self.responseHours = responseHours
+            self.resolutionDays = resolutionDays
+        }
     }
 
     private let api: APIClient

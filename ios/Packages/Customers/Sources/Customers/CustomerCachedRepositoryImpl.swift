@@ -74,6 +74,11 @@ public actor CustomerCachedRepositoryImpl: CustomerCachedRepository {
         try await remote.listPage(cursor: cursor, query: query)
     }
 
+    public func createFromContact(_ req: ContactImportCreateRequest) async throws {
+        try await remote.createFromContact(req)
+        cache.removeAll()
+    }
+
     /// Delegates to the underlying repository and invalidates the cache for
     /// all keywords so the next `list(keyword:)` call returns fresh data.
     public func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {

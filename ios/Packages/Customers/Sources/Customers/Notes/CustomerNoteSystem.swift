@@ -212,7 +212,7 @@ public struct CustomerAddNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var noteType: CustomerNoteType = .quick
-    @State private var body = ""
+    @State private var noteBody = ""
     @State private var isManagerOnly = false
     @State private var showingTemplates = false
     @State private var isSaving = false
@@ -242,7 +242,7 @@ public struct CustomerAddNoteSheet: View {
     private var isInternal: Bool { noteType.isAlwaysInternal }
 
     private var isValid: Bool {
-        !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var resolvedLinkedTicketId: Int64? {
@@ -286,20 +286,20 @@ public struct CustomerAddNoteSheet: View {
                         .pickerStyle(.menu)
                         .onChange(of: noteType) { _, new in
                             // Switching to internalOnly auto-sets body prefix
-                            if new == .internalOnly && body.isEmpty {
-                                body = "Staff note (internal): "
+                            if new == .internalOnly && noteBody.isEmpty {
+                                noteBody = "Staff note (internal): "
                             }
                         }
                     }
 
                     // Body (§5 L949 — accessible via VoiceOver, §5 L943 — @mention detection)
                     Section {
-                        TextEditor(text: $body)
+                        TextEditor(text: $noteBody)
                             .font(.brandBodyMedium())
                             .frame(minHeight: noteType == .detail || noteType == .meeting ? 160 : 80)
                             .accessibilityLabel("Note body")
                             .accessibilityHint("Type the note content here. Use @name to mention a teammate.")
-                            .onChange(of: body) { _, newValue in
+                            .onChange(of: noteBody) { _, newValue in
                                 updateMentionQuery(text: newValue)
                             }
                     } header: {
@@ -428,7 +428,7 @@ public struct CustomerAddNoteSheet: View {
             .sheet(isPresented: $showingTemplates) {
                 NoteTemplatePickerSheet { template in
                     noteType = template.noteType
-                    body = template.body
+                    noteBody = template.body
                     showingTemplates = false
                 }
             }
@@ -463,12 +463,12 @@ public struct CustomerAddNoteSheet: View {
     /// Replaces the trailing `@query` token with `@DisplayName ` and records the user ID.
     private func insertMention(_ employee: Employee) {
         // Remove the trailing partial `@query` and append the resolved mention.
-        var words = body.components(separatedBy: " ")
+        var words = noteBody.components(separatedBy: " ")
         if words.last?.hasPrefix("@") == true {
             words.removeLast()
         }
         words.append("@\(employee.displayName)")
-        body = words.joined(separator: " ") + " "
+        noteBody = words.joined(separator: " ") + " "
         mentionedUserIds.insert(employee.id)
         mentionQuery = nil
     }
@@ -488,7 +488,7 @@ public struct CustomerAddNoteSheet: View {
     }
 
     private func save() async {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = noteBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         isSaving = true
         errorMessage = nil
@@ -635,17 +635,9 @@ extension APIClient {
         linkedTicketId: Int64? = nil,
         mentionedUserIds: [Int64] = []
     ) async throws {
-        struct Body: Encodable {
-            let body: String
-            let note_type: String
-            let is_manager_only: Bool
-            let linked_ticket_id: Int64?
-            let mentioned_user_ids: [Int64]
-            // is_internal_only is derived server-side from note_type == "internal_only"
-        }
-        try await post(
+        _ = try await post(
             "/api/v1/customers/\(customerId)/notes",
-            body: Body(
+            body: CustomerNoteCreateBody(
                 body: body,
                 note_type: noteType.rawValue,
                 is_manager_only: isManagerOnly,
@@ -660,6 +652,14 @@ extension APIClient {
     public func customerNoteVersions(noteId: Int64) async throws -> [CustomerNoteVersion] {
         try await get("/api/v1/notes/\(noteId)/versions", as: [CustomerNoteVersion].self)
     }
+}
+
+private struct CustomerNoteCreateBody: Encodable, Sendable {
+    let body: String
+    let note_type: String
+    let is_manager_only: Bool
+    let linked_ticket_id: Int64?
+    let mentioned_user_ids: [Int64]
 }
 
 #endif

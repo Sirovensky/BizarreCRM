@@ -534,15 +534,16 @@ extension APIClient {
     /// `POST /api/v1/files/:fileId/annotations` — save PencilKit annotation PNG.
     public func uploadCustomerFileAnnotation(fileId: Int64, pngData: Data) async throws {
         let base64 = pngData.base64EncodedString()
-        struct Body: Encodable {
-            let annotation_png_base64: String
-        }
-        try await post(
+        _ = try await post(
             "/api/v1/files/\(fileId)/annotations",
-            body: Body(annotation_png_base64: base64),
+            body: FileAnnotationBody(annotation_png_base64: base64),
             as: EmptyResponse.self
         )
     }
+}
+
+private struct FileAnnotationBody: Encodable, Sendable {
+    let annotation_png_base64: String
 }
 
 #endif

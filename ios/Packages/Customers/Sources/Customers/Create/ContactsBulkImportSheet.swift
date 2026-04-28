@@ -24,7 +24,7 @@ import Foundation
 
 // MARK: - Import candidate
 
-public struct ContactImportCandidate: Identifiable, Sendable {
+public struct ContactImportCandidate: Identifiable, Sendable, Equatable, Hashable {
     public let id: String          // CNContact.identifier
     public let displayName: String
     /// All phone numbers from the contact (for field-selection UI).
@@ -53,6 +53,18 @@ public struct ContactImportResult: Sendable {
     public let skipped: Int
     public let total: Int
     public let errors: [String]
+
+    public init(imported: Int, skipped: Int, errors: [String]) {
+        self.imported = imported
+        self.skipped = skipped
+        self.errors = errors
+    }
+}
+
+extension ContactImportResult: Equatable {
+    public static func == (lhs: ContactImportResult, rhs: ContactImportResult) -> Bool {
+        lhs.imported == rhs.imported && lhs.skipped == rhs.skipped && lhs.errors == rhs.errors
+    }
 }
 
 // MARK: - Import summary phase
@@ -70,7 +82,7 @@ private enum ImportPhase: Equatable {
 @MainActor
 @Observable
 final class ContactsBulkImportViewModel {
-    var phase: ImportPhase = .picking
+    fileprivate var phase: ImportPhase = .picking
     var isRequestingAccess = false
     var errorMessage: String?
 

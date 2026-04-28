@@ -502,19 +502,16 @@ extension APIClient {
         description: String,
         linkedTicketId: Int64?
     ) async throws {
-        struct Body: Encodable {
-            let category: String
-            let severity: Int
-            let description: String
-            let linked_ticket_id: Int64?
-        }
-        try await post("/api/v1/customers/\(customerId)/complaints",
-                       body: Body(
-                           category: category.rawValue,
-                           severity: severity.rawValue,
-                           description: description,
-                           linked_ticket_id: linkedTicketId
-                       ), as: EmptyResponse.self)
+        _ = try await post(
+            "/api/v1/customers/\(customerId)/complaints",
+            body: ComplaintCreateBody(
+                category: category.rawValue,
+                severity: severity.rawValue,
+                description: description,
+                linked_ticket_id: linkedTicketId
+            ),
+            as: EmptyResponse.self
+        )
     }
 
     /// `POST /api/v1/complaints/:id/resolve`
@@ -522,19 +519,34 @@ extension APIClient {
         complaintId: Int64,
         rootCause: ComplaintCategory
     ) async throws {
-        struct Body: Encodable { let root_cause: String }
-        try await post("/api/v1/complaints/\(complaintId)/resolve",
-                       body: Body(root_cause: rootCause.rawValue),
-                       as: EmptyResponse.self)
+        _ = try await post(
+            "/api/v1/complaints/\(complaintId)/resolve",
+            body: ComplaintResolveBody(root_cause: rootCause.rawValue),
+            as: EmptyResponse.self
+        )
     }
 
     /// `POST /api/v1/complaints/:id/reject`
     public func rejectCustomerComplaint(complaintId: Int64) async throws {
-        try await post("/api/v1/complaints/\(complaintId)/reject",
-                       body: EmptyBody(), as: EmptyResponse.self)
+        _ = try await post(
+            "/api/v1/complaints/\(complaintId)/reject",
+            body: ComplaintEmptyBody(),
+            as: EmptyResponse.self
+        )
     }
 }
 
-private struct EmptyBody: Encodable {}
+private struct ComplaintEmptyBody: Encodable, Sendable {}
+
+private struct ComplaintCreateBody: Encodable, Sendable {
+    let category: String
+    let severity: Int
+    let description: String
+    let linked_ticket_id: Int64?
+}
+
+private struct ComplaintResolveBody: Encodable, Sendable {
+    let root_cause: String
+}
 
 #endif

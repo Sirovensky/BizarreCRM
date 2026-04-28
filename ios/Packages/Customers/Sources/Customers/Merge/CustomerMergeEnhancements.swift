@@ -242,17 +242,18 @@ extension CustomerMergeViewModel {
 extension APIClient {
     /// `POST /api/v1/customers/merge` — returns full migration summary.
     public func mergeCustomersDetailed(_ req: CustomerMergeRequest) async throws -> MergeMigrationSummary {
-        struct Envelope: Decodable {
-            let success: Bool
-            let data: MergeMigrationSummary?
-        }
         let envelope = try await post(
             "/api/v1/customers/merge",
             body: req,
-            as: Envelope.self
+            as: MergeMigrationEnvelope.self
         )
         return envelope.data ?? MergeMigrationSummary.stub(
             keepId: req.keepId, mergedId: req.mergeId
         )
     }
+}
+
+private struct MergeMigrationEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: MergeMigrationSummary?
 }

@@ -58,7 +58,7 @@ public enum SpotlightIndexWindow {
 @MainActor
 public final class SpotlightSyncTrigger {
     private let coordinator: SpotlightCoordinator
-    private var observer: NSObjectProtocol?
+    nonisolated(unsafe) private var observer: NSObjectProtocol?
 
     private var ticketProvider: (@Sendable () async -> [Ticket])?
     private var customerProvider: (@Sendable () async -> [Customer])?

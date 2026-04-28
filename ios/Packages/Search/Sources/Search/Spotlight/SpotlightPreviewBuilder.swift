@@ -37,7 +37,7 @@ public enum SpotlightPreviewBuilder {
         // Richer description for preview card.
         var desc = ticket.status.displayName
         if let device = ticket.deviceSummary { desc += " · \(device)" }
-        if let notes = ticket.technicianNotes, !notes.isEmpty {
+        if let notes = ticket.diagnosis, !notes.isEmpty {
             let truncated = String(notes.prefix(120))
             desc += "\n\(truncated)"
         }

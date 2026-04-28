@@ -317,17 +317,24 @@ extension APIClient {
 
     /// `PATCH /api/v1/customers/:id/notes/:noteId` — set pinned state.
     public func setCustomerNotePinned(customerId: Int64, noteId: Int64, pinned: Bool) async throws {
-        struct Body: Encodable { let is_pinned: Bool }
-        try await patch("/api/v1/customers/\(customerId)/notes/\(noteId)",
-                        body: Body(is_pinned: pinned))
+        _ = try await patch(
+            "/api/v1/customers/\(customerId)/notes/\(noteId)",
+            body: PinnedNoteBody(is_pinned: pinned),
+            as: EmptyResponse.self
+        )
     }
 
     /// `POST /api/v1/customers/:id/notes` — create a new note.
     public func createCustomerNote(customerId: Int64, body: String) async throws {
-        struct Body: Encodable { let body: String }
-        try await post("/api/v1/customers/\(customerId)/notes",
-                       body: Body(body: body), as: EmptyResponse.self)
+        _ = try await post(
+            "/api/v1/customers/\(customerId)/notes",
+            body: PinnedNoteCreateBody(body: body),
+            as: EmptyResponse.self
+        )
     }
 }
+
+private struct PinnedNoteBody: Encodable, Sendable { let is_pinned: Bool }
+private struct PinnedNoteCreateBody: Encodable, Sendable { let body: String }
 
 #endif

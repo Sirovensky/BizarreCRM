@@ -173,15 +173,17 @@ extension APIClient {
     public func setCustomerUpdatePrefs(
         customerId: Int64, sms: Bool, email: Bool
     ) async throws {
-        struct Body: Encodable {
-            let sms_updates_enabled: Bool
-            let email_updates_enabled: Bool
-        }
-        try await patch(
+        _ = try await patch(
             "/api/v1/customers/\(customerId)/comm-prefs",
-            body: Body(sms_updates_enabled: sms, email_updates_enabled: email)
+            body: CustomerUpdatePrefsBody(sms_updates_enabled: sms, email_updates_enabled: email),
+            as: EmptyResponse.self
         )
     }
+}
+
+private struct CustomerUpdatePrefsBody: Encodable, Sendable {
+    let sms_updates_enabled: Bool
+    let email_updates_enabled: Bool
 }
 
 #endif

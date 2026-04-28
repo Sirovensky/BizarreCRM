@@ -395,11 +395,14 @@ private struct FlowLayout: Layout {
 extension APIClient {
     /// `POST /api/v1/customers/dedup-scan` — run dedup analysis across all customers.
     public func runCustomerDedupScan(autoMergeExact: Bool) async throws -> CustomerDedupScanResult {
-        struct Body: Encodable { let auto_merge_exact: Bool }
         return try await post("/api/v1/customers/dedup-scan",
-                              body: Body(auto_merge_exact: autoMergeExact),
+                              body: CustomerDedupScanBody(auto_merge_exact: autoMergeExact),
                               as: CustomerDedupScanResult.self)
     }
+}
+
+private struct CustomerDedupScanBody: Encodable, Sendable {
+    let auto_merge_exact: Bool
 }
 
 #endif
