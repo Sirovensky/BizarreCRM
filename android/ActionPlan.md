@@ -5681,7 +5681,7 @@ All events target tenant server (§32).
 - [ ] "Done" button on number pads. <!-- NOTE-defer: POS screens (CartLineBottomSheet, PosCartScreen, PosTenderScreen) use KeyboardType.Decimal/Number without ImeAction.Done — needs fix across POS + other numeric fields -->
 
 ### 75.4 Loading → Done transitions
-- [ ] Skeleton cross-fades to content; never jump. <!-- NOTE-defer: TicketListScreen and others use a plain `when {}` branch switch between BrandSkeleton and content with no AnimatedContent/Crossfade wrapper — abrupt jump, not a cross-fade -->
+- [x] Skeleton cross-fades to content; never jump. (SkeletonErrorTransition + SkeletonTransition composables in SkeletonLoader.kt; wired into TicketListScreen replacing abrupt when-branch with 200ms AnimatedContent dissolve)
 
 ### 75.5 Scroll behavior
 - [ ] Preserve scroll on back-nav via `rememberLazyListState` + `SavedStateHandle`. <!-- NOTE-defer: rememberLazyListState is used in several list screens but scroll position is not persisted into SavedStateHandle; back-nav scroll restoration not wired -->

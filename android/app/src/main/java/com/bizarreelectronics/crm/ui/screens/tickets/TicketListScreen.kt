@@ -43,6 +43,8 @@ import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
+import com.bizarreelectronics.crm.ui.components.shared.SkeletonErrorTransition
+import com.bizarreelectronics.crm.ui.components.shared.skeletonErrorTransitionKey
 import com.bizarreelectronics.crm.ui.components.shared.BrandStatusBadge
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -411,8 +413,12 @@ fun TicketListScreen(
                 return@Column
             }
 
-            when {
-                state.isLoading -> {
+            // §75.4 — SkeletonErrorTransition cross-fades between the skeleton
+            // placeholder and real content so the switch is a 200ms dissolve
+            // instead of an abrupt jump.
+            SkeletonErrorTransition(
+                targetState = skeletonErrorTransitionKey(state.isLoading, state.error != null),
+                skeleton = {
                     Box(
                         modifier = Modifier.semantics(mergeDescendants = true) {
                             contentDescription = "Loading tickets"
@@ -420,8 +426,8 @@ fun TicketListScreen(
                     ) {
                         BrandSkeleton(rows = 6, modifier = Modifier.padding(top = 8.dp))
                     }
-                }
-                state.error != null -> {
+                },
+                errorContent = {
                     Box(
                         modifier = Modifier.semantics {
                             liveRegion = LiveRegionMode.Assertive
@@ -432,8 +438,11 @@ fun TicketListScreen(
                             onRetry = { viewModel.loadTickets() },
                         )
                     }
-                }
-                state.tickets.isEmpty() -> {
+                },
+            ) {
+            // Content slot — rendered (inside SkeletonErrorTransition) when
+            // isLoading=false and error=null.
+            if (state.tickets.isEmpty()) {
                     @OptIn(ExperimentalMaterial3Api::class)
                     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                         isRefreshing = state.isRefreshing,
@@ -467,8 +476,7 @@ fun TicketListScreen(
                             }
                         }
                     }
-                }
-                else -> {
+                } else {
                     @OptIn(ExperimentalMaterial3Api::class)
                     androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                         isRefreshing = state.isRefreshing,

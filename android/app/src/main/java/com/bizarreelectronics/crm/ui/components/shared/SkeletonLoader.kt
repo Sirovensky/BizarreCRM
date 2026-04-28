@@ -8,13 +8,22 @@ package com.bizarreelectronics.crm.ui.components.shared
 // §66.2: "Skeleton shimmer ≤ 300ms before real data."
 // The shimmer animation uses tween(durationMillis = 300) + RepeatMode.Reverse — the
 // same spec as BrandSkeleton — so all skeletons share identical timing.
+//
+// §75.4: [SkeletonTransition] wraps [AnimatedContent] to cross-fade between the
+// skeleton placeholder and real content. Screens must replace plain `when { isLoading
+// -> BrandSkeleton(...) ... }` blocks with [SkeletonTransition] calls so the
+// transition is a smooth dissolve instead of an abrupt state-switch jump.
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -157,3 +166,173 @@ fun DetailHeaderSkeleton(modifier: Modifier = Modifier) {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// §75.4 SkeletonTransition — cross-fade skeleton → content
+//
+// Replaces the abrupt `when { isLoading -> BrandSkeleton(...) }` branch with
+// an [AnimatedContent] dissolve so screens never "jump" on data arrival.
+//
+// Usage (replaces plain when-branch on isLoading):
+//
+//   SkeletonTransition(
+//       isLoading = state.isLoading,
+//       skeleton  = { BrandSkeleton(rows = 6) },
+//   ) {
+//       // real content here — only composed when isLoading == false
+//       LazyColumn { ... }
+//   }
+//
+// Accessibility:
+//   • The skeleton slot carries contentDescription "Loading" (via the Box
+//     wrapper in the caller — callers retain full control over semantics).
+//   • AnimatedContent label "skeletonTransition" is used for tooling.
+//
+// Reduce Motion:
+//   Pass [reduceMotion] = true (e.g. from rememberReduceMotion()) to collapse
+//   the cross-fade to an instant snap so users with vestibular sensitivity do
+//   not perceive the dissolve. Defaults to false (animated) for normal builds.
+// ---------------------------------------------------------------------------
+
+/**
+ * §75.4 — Wraps [AnimatedContent] to cross-fade between a [skeleton] composable
+ * (shown while [isLoading] is `true`) and real [content] (shown when `false`).
+ *
+ * Prior pattern (abrupt jump — do not use):
+ * ```kotlin
+ * when {
+ *     state.isLoading -> BrandSkeleton(rows = 6)
+ *     else            -> LazyColumn { ... }
+ * }
+ * ```
+ *
+ * New pattern (smooth dissolve):
+ * ```kotlin
+ * SkeletonTransition(
+ *     isLoading = state.isLoading,
+ *     skeleton  = { BrandSkeleton(rows = 6) },
+ * ) {
+ *     LazyColumn { ... }
+ * }
+ * ```
+ *
+ * @param isLoading     When `true` the [skeleton] slot is visible; when `false`
+ *                      [content] fades in over the dissolving skeleton.
+ * @param skeleton      Composable shown while data is loading (typically a
+ *                      [BrandSkeleton], [CardGridSkeleton], or [DetailHeaderSkeleton]).
+ * @param modifier      Applied to the outer [AnimatedContent] container.
+ * @param fadeDurationMs Duration of the cross-fade in milliseconds. Defaults to
+ *                      [SKELETON_FADE_DURATION_MS] (200 ms). Ignored when
+ *                      [reduceMotion] is `true`.
+ * @param reduceMotion  When `true` the fade collapses to 0 ms (instant snap).
+ *                      Read from [com.bizarreelectronics.crm.util.rememberReduceMotion].
+ * @param content       The real screen content, composed only when [isLoading] is `false`.
+ */
+@Composable
+fun SkeletonTransition(
+    isLoading: Boolean,
+    skeleton: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    fadeDurationMs: Int = SKELETON_FADE_DURATION_MS,
+    reduceMotion: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val effectiveDuration = if (reduceMotion) 0 else fadeDurationMs
+    AnimatedContent(
+        targetState = isLoading,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(durationMillis = effectiveDuration)) togetherWith
+                fadeOut(animationSpec = tween(durationMillis = effectiveDuration))
+        },
+        label = "skeletonTransition",
+        modifier = modifier,
+    ) { loading ->
+        if (loading) {
+            skeleton()
+        } else {
+            content()
+        }
+    }
+}
+
+/**
+ * §75.4 — Variant that also cross-fades between an [errorContent] slot and real
+ * [content]. Handles the three-state loading/error/loaded pattern in one composable.
+ *
+ * The [targetState] is an integer key that encodes the screen phase:
+ *   0 = loading, 1 = error, 2 = content ready
+ *
+ * Use [skeletonErrorTransitionKey] to convert the typical ViewModel boolean flags:
+ * ```kotlin
+ * SkeletonErrorTransition(
+ *     targetState  = skeletonErrorTransitionKey(state.isLoading, state.error != null),
+ *     skeleton     = { BrandSkeleton(rows = 6) },
+ *     errorContent = { ErrorState(...) },
+ * ) {
+ *     LazyColumn { ... }
+ * }
+ * ```
+ *
+ * @param targetState   0 = loading, 1 = error, 2 = ready. Use [skeletonErrorTransitionKey].
+ * @param skeleton      Composable rendered in state 0.
+ * @param errorContent  Composable rendered in state 1.
+ * @param modifier      Applied to the [AnimatedContent] container.
+ * @param fadeDurationMs Cross-fade duration. Collapsed to 0 when [reduceMotion] is `true`.
+ * @param reduceMotion  Reads system or in-app Reduce Motion setting.
+ * @param content       Composable rendered in state 2 (real data ready).
+ */
+@Composable
+fun SkeletonErrorTransition(
+    targetState: Int,
+    skeleton: @Composable () -> Unit,
+    errorContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    fadeDurationMs: Int = SKELETON_FADE_DURATION_MS,
+    reduceMotion: Boolean = false,
+    content: @Composable () -> Unit,
+) {
+    val effectiveDuration = if (reduceMotion) 0 else fadeDurationMs
+    AnimatedContent(
+        targetState = targetState,
+        transitionSpec = {
+            fadeIn(animationSpec = tween(durationMillis = effectiveDuration)) togetherWith
+                fadeOut(animationSpec = tween(durationMillis = effectiveDuration))
+        },
+        label = "skeletonErrorTransition",
+        modifier = modifier,
+    ) { state ->
+        when (state) {
+            SKELETON_STATE_LOADING -> skeleton()
+            SKELETON_STATE_ERROR   -> errorContent()
+            else                   -> content()
+        }
+    }
+}
+
+/**
+ * §75.4 — Converts the typical ViewModel boolean flags into an integer [targetState]
+ * for [SkeletonErrorTransition].
+ *
+ * Priority: loading > error > content-ready.
+ *
+ * @param isLoading `true` while the initial fetch is in-flight.
+ * @param hasError  `true` when the last fetch ended with a non-null error.
+ * @return          0 = loading, 1 = error, 2 = content ready.
+ */
+fun skeletonErrorTransitionKey(isLoading: Boolean, hasError: Boolean): Int = when {
+    isLoading -> SKELETON_STATE_LOADING
+    hasError  -> SKELETON_STATE_ERROR
+    else      -> SKELETON_STATE_CONTENT
+}
+
+/** Default cross-fade duration for skeleton → content transitions (§75.4). */
+const val SKELETON_FADE_DURATION_MS: Int = 200
+
+/** [SkeletonErrorTransition] state key: initial data load in progress. */
+const val SKELETON_STATE_LOADING: Int = 0
+
+/** [SkeletonErrorTransition] state key: last fetch ended with an error. */
+const val SKELETON_STATE_ERROR: Int = 1
+
+/** [SkeletonErrorTransition] state key: data is ready to render. */
+const val SKELETON_STATE_CONTENT: Int = 2
