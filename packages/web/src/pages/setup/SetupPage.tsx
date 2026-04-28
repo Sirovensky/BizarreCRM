@@ -239,7 +239,7 @@ export function SetupPage() {
   // ── Guards ──────────────────────────────────────────────────────
   if (checkingStatus) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-950 dark:to-surface-900">
+      <div className="flex min-h-screen items-center justify-center bg-surface-50 dark:bg-surface-900">
         <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
       </div>
     );
@@ -338,7 +338,7 @@ export function SetupPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-950 dark:to-surface-900">
+    <div className="min-h-screen bg-surface-50 dark:bg-surface-900">
       {/* Top bar — brand + skip only. Step counter intentionally removed:
           the per-step WizardBreadcrumb pill below already shows current
           phase + prev/next neighbors with consistent body-order numbering. */}

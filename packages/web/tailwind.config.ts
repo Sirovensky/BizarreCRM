@@ -63,17 +63,22 @@ export default {
           900: '#1e3a8a',
         },
         surface: {
-          50: '#fafafa',
-          100: '#f4f4f5',
-          200: '#e4e4e7',
-          300: '#d4d4d8',
-          400: '#a1a1aa',
-          500: '#71717a',
-          600: '#52525b',
-          700: '#3f3f46',
-          800: '#27272a',
-          900: '#18181b',
-          950: '#09090b',
+          // Tailwind 'stone' ramp — warm neutrals to complement the cream
+          // primary. Originally mapped to 'zinc' (cool) which clashed with
+          // brand warmth. Mockup at docs/setup-wizard-preview.html uses
+          // stone explicitly (#1C1917 / #292524 / etc.) — switching globally
+          // brings every surface in line with the design intent.
+          50:  '#FAFAF9',
+          100: '#F5F5F4',
+          200: '#E7E5E4',
+          300: '#D6D3D1',
+          400: '#A8A29E',
+          500: '#78716C',
+          600: '#57534E',
+          700: '#44403C',
+          800: '#292524',
+          900: '#1C1917',
+          950: '#0C0A09',
         },
         // WEB-FQ-004 / FIXED-by-Fixer-JJJ 2026-04-25 — semantic status palette.
         // 244+ raw `text-red-*`/`bg-green-*` callsites currently bake the brand
