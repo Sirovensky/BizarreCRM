@@ -65,6 +65,8 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandPrimaryButton
 import com.bizarreelectronics.crm.util.PasswordStrength
 import com.bizarreelectronics.crm.ui.theme.BrandMono
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
+import com.bizarreelectronics.crm.ui.theme.clickableHover
+import com.bizarreelectronics.crm.ui.theme.textFieldHover
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.AuthApi
 import com.bizarreelectronics.crm.data.remote.dto.*
@@ -2194,7 +2196,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = onSessionBannerDismissed) {
+                        TextButton(onClick = onSessionBannerDismissed, modifier = Modifier.clickableHover()) {
                             Text("Dismiss")
                         }
                     }
@@ -2225,7 +2227,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::dismissDeviceChangedBanner) {
+                        TextButton(onClick = viewModel::dismissDeviceChangedBanner, modifier = Modifier.clickableHover()) {
                             Text("OK")
                         }
                     }
@@ -2256,7 +2258,7 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = viewModel::dismissServerRevokeBanner) {
+                        TextButton(onClick = viewModel::dismissServerRevokeBanner, modifier = Modifier.clickableHover()) {
                             Text("Dismiss")
                         }
                     }
@@ -2537,7 +2539,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             label = { Text("Server URL") },
             placeholder = { Text("https://192.168.0.240:443") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
             leadingIcon = { Icon(Icons.Default.Dns, null) },
             trailingIcon = {
                 if (state.serverConnected) {
@@ -2555,7 +2557,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             label = { Text("Shop Name") },
             placeholder = { Text("myshop") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
             leadingIcon = { Icon(Icons.Default.Store, null) },
             suffix = {
                 // LOGIN-MOCK-108: bodyLarge (16sp) matches OutlinedTextField value text size.
@@ -2596,14 +2598,14 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TextButton(onClick = viewModel::toggleCustomServer) {
+        TextButton(onClick = viewModel::toggleCustomServer, modifier = Modifier.clickableHover()) {
             Text(
                 if (state.useCustomServer) "Use BizarreCRM Cloud" else "Self-hosted?",
                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
             )
         }
         if (!state.useCustomServer) {
-            TextButton(onClick = viewModel::goToRegister) {
+            TextButton(onClick = viewModel::goToRegister, modifier = Modifier.clickableHover()) {
                 Text("Register new shop", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold))
             }
         }
@@ -2655,7 +2657,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
     // LOGIN-MOCK-098/055: title + subtitle merged into one heading stop; back arrow
     // sits outside the merged Column so it remains independently focusable.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(12.dp))
@@ -2683,7 +2685,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         label = { Text("Shop URL") },
         singleLine = true,
         // LOGIN-MOCK-094: shopUrlFocusRequester for auto-focus on card entry.
-        modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester),
+        modifier = Modifier.fillMaxWidth().focusRequester(shopUrlFocusRequester).textFieldHover(),
         leadingIcon = { Icon(Icons.Outlined.Link, contentDescription = null) },
         isError = shopSlugError,
         suffix = {
@@ -2713,7 +2715,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterShopName,
         label = { Text("Shop Display Name") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
@@ -2726,7 +2728,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterEmail,
         label = { Text("Admin Email") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         isError = emailError,
         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
         // LOGIN-MOCK-176: inline email validation
@@ -2742,14 +2744,14 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         onValueChange = viewModel::updateRegisterPassword,
         label = { Text("Admin Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         isError = passwordError,
         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
         visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
         trailingIcon = {
             // LOGIN-MOCK-093: stateful contentDescription so TalkBack announces
             // the resulting visibility state, not a generic static label.
-            IconButton(onClick = { showPassword = !showPassword }) {
+            IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
                 Icon(
                     if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                     contentDescription = if (showPassword) "Hide password" else "Show password",
@@ -2892,7 +2894,7 @@ private fun CredentialsStep(
                     // LOGIN-MOCK-165: dismiss button
                     IconButton(
                         onClick = { viewModel.dismissSetupNeededBanner() },
-                        modifier = androidx.compose.ui.Modifier.size(24.dp),
+                        modifier = androidx.compose.ui.Modifier.size(24.dp).clickableHover(),
                     ) {
                         Icon(
                             Icons.Default.Close,
@@ -2912,7 +2914,7 @@ private fun CredentialsStep(
                         setupContext.startActivity(intent)
                     },
                     contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
-                    modifier = androidx.compose.ui.Modifier.height(24.dp),
+                    modifier = androidx.compose.ui.Modifier.height(24.dp).clickableHover(),
                 ) {
                     Text(
                         "View setup guide",
@@ -2982,6 +2984,7 @@ private fun CredentialsStep(
                 TextButton(
                     onClick = viewModel::login,
                     contentPadding = PaddingValues(4.dp),
+                    modifier = Modifier.clickableHover(),
                 ) {
                     Text("Retry", style = MaterialTheme.typography.labelSmall)
                 }
@@ -3052,7 +3055,7 @@ private fun CredentialsStep(
     // LOGIN-MOCK-070: removed redundant Spacer(width(8.dp)) — IconButton already has
     // 12dp internal horizontal padding giving the correct optical gap to the title.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
@@ -3069,7 +3072,7 @@ private fun CredentialsStep(
         onValueChange = viewModel::updateUsername,
         label = { Text("Username") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
         // LOGIN-MOCK-177: inline username validation
@@ -3130,13 +3133,13 @@ private fun CredentialsStep(
                 onValueChange = viewModel::updatePassword,
                 label = { Text("Password") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().textFieldHover(),
                 isError = credPasswordError,
                 leadingIcon = { Icon(Icons.Default.Lock, null) },
                 visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
                     // LOGIN-MOCK-093: stateful contentDescription (CredentialsStep)
-                    IconButton(onClick = { showPassword = !showPassword }) {
+                    IconButton(onClick = { showPassword = !showPassword }, modifier = Modifier.clickableHover()) {
                         Icon(
                             if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                             contentDescription = if (showPassword) "Hide password" else "Show password",
@@ -3184,7 +3187,7 @@ private fun CredentialsStep(
 
         OutlinedButton(
             onClick = { showSsoSheet = true },
-            modifier = Modifier.fillMaxWidth().height(48.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp).clickableHover(),
             enabled = !state.ssoExchangeLoading,
         ) {
             if (state.ssoExchangeLoading) {
@@ -3214,7 +3217,7 @@ private fun CredentialsStep(
                                     viewModel.launchSsoProvider(activity, provider)
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickableHover(),
                         ) {
                             Text(provider.name)
                         }
@@ -3239,7 +3242,7 @@ private fun CredentialsStep(
 
         TextButton(
             onClick = { viewModel.openMagicLinkSheet() },
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             Icon(
                 Icons.Default.Email,
@@ -3274,7 +3277,7 @@ private fun CredentialsStep(
                 }
             },
             enabled = !state.passkeyLoading,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             if (state.passkeyLoading) {
                 CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -3346,7 +3349,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                     onValueChange = viewModel::updateMagicLinkEmail,
                     label = { Text("Email address") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().textFieldHover(),
                     leadingIcon = { Icon(Icons.Default.Email, null) },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Email,
@@ -3363,7 +3366,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                 Button(
                     onClick = { viewModel.requestMagicLink() },
                     enabled = state.magicLinkEmail.isNotBlank() && !state.magicLinkLoading,
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp).clickableHover(),
                 ) {
                     if (state.magicLinkLoading) {
                         CircularProgressIndicator(
@@ -3431,7 +3434,7 @@ private fun MagicLinkRequestSheet(state: LoginUiState, viewModel: LoginViewModel
                         viewModel.requestMagicLink()
                     },
                     enabled = cooldownSec <= 0L && !state.magicLinkLoading,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().clickableHover(),
                 ) {
                     if (cooldownSec > 0L) {
                         Text("Resend in ${cooldownSec}s", style = MaterialTheme.typography.labelMedium)
@@ -3535,7 +3538,7 @@ private fun MagicLinkPreviewDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isLoading) {
+            TextButton(onClick = onDismiss, enabled = !isLoading, modifier = Modifier.clickableHover()) {
                 Text("Cancel")
             }
         },
@@ -3551,7 +3554,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
     val focusManager = LocalFocusManager.current
     // LOGIN-MOCK-098/055/101: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -3568,7 +3571,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         onValueChange = viewModel::updateNewPassword,
         label = { Text("New Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
@@ -3584,7 +3587,7 @@ private fun SetPasswordStep(state: LoginUiState, viewModel: LoginViewModel) {
         onValueChange = viewModel::updateConfirmPassword,
         label = { Text("Confirm Password") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().textFieldHover(),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = { viewModel.setPassword() }),
@@ -3732,7 +3735,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
         Spacer(Modifier.height(4.dp))
         TextButton(
             onClick = { manualEntryExpanded = (manualEntryExpanded == false) },
-            modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally),
+            modifier = Modifier.fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).clickableHover(),
         ) {
             Text(
                 if (manualEntryExpanded) "Hide manual key" else "Can't scan?",
@@ -3780,7 +3783,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                             clearAfterMillis = 30_000L,
                         )
                     },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).clickableHover(),
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
@@ -3811,7 +3814,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                         onClick = {
                             context.startActivity(Intent(Intent.ACTION_VIEW, otpauthUri))
                         },
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).clickableHover(),
                     ) {
                         Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
@@ -3872,7 +3875,7 @@ private fun TwoFaVerifyStep(
 
     // LOGIN-MOCK-098/055: merge title + subtitle into one heading stop.
     Row(verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = viewModel::goBack) {
+        IconButton(onClick = viewModel::goBack, modifier = Modifier.clickableHover()) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", modifier = Modifier.size(20.dp))
         }
         Spacer(Modifier.width(8.dp))
@@ -3899,7 +3902,7 @@ private fun TwoFaVerifyStep(
         Spacer(Modifier.height(4.dp))
         TextButton(
             onClick = onBackupCodeRecovery,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().clickableHover(),
         ) {
             Text(
                 "Lost 2FA access? Use a backup code",
@@ -3955,7 +3958,7 @@ private fun TotpCodeInputContent(
         },
         label = { Text("6-digit code") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester).textFieldHover(),
         textStyle = LocalTextStyle.current.copy(
             fontFamily = BrandMono.fontFamily,
             fontSize = 24.sp,
