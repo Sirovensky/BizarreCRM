@@ -3882,7 +3882,10 @@ private fun TwoFaVerifyStep(
             Text("Enter the 6-digit code from your TOTP app", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
-    Spacer(Modifier.height(24.dp))
+    // LOGIN-MOCK-277: align with every other step's 16 dp subtitle-to-first-field gap
+    // (ServerStep, RegisterStep, CredentialsStep, SetPasswordStep all use 16 dp here).
+    // The previous 24 dp made the verify card appear taller than its siblings.
+    Spacer(Modifier.height(16.dp))
 
     TotpCodeInputContent(state, viewModel, onSuccess)
     // §2.13-L366: countdown shown while challenge token is live
