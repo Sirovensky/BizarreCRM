@@ -51,6 +51,7 @@ import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ExportCsvMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinToggleMenuItem
+import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaHeatmapMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinnedTicketsHeader
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
@@ -85,6 +86,11 @@ fun TicketListScreen(
     // ticket". Default no-op so existing call-sites without the wiring
     // still compile + the secondary link just doesn't render.
     onImportFromOldSystem: () -> Unit = {},
+    // §4.22 — Manager SLA heatmap entry point. Default no-op so existing
+    // call-sites without the wiring (tests, previews) still compile cleanly.
+    // The overflow menu item only renders when this callback is non-trivial
+    // (always true when wired from AppNavGraph).
+    onSlaHeatmapClick: () -> Unit = {},
     viewModel: TicketListViewModel = hiltViewModel(),
     networkMonitor: NetworkMonitor? = null,
 ) {
@@ -180,6 +186,11 @@ fun TicketListScreen(
                                     ExportCsvMenuItem(
                                         state = state,
                                         onDismiss = { showOverflowMenu = false },
+                                    )
+                                    // §4.22 — SLA heatmap entry point (manager surface).
+                                    SlaHeatmapMenuItem(
+                                        onDismiss = { showOverflowMenu = false },
+                                        onClick = onSlaHeatmapClick,
                                     )
                                 }
                             }

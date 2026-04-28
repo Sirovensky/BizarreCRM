@@ -44,6 +44,7 @@ import com.bizarreelectronics.crm.ui.screens.auth.ResetPasswordScreen
 import com.bizarreelectronics.crm.ui.screens.dashboard.DashboardScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketListScreen
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketDetailScreen
+import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaHeatmapScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerListScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerDetailScreen
 import com.bizarreelectronics.crm.ui.screens.customers.CustomerBarcodeLookupScreen
@@ -563,6 +564,10 @@ sealed class Screen(val route: String) {
 
     // §60 — Inventory Stocktake flow.
     data object Stocktake : Screen("inventory/stocktake")
+
+    // §4.22 — Manager SLA heatmap: all-open tickets sorted by SLA health,
+    // red-zone first. Entry point: Tickets screen overflow menu (manager+).
+    data object SlaHeatmap : Screen("tickets/sla-heatmap")
 
     // §19.7 — Ticket settings (default due-date, IMEI required, photo required).
     data object TicketSettings : Screen("settings/tickets")
@@ -1569,6 +1574,7 @@ fun AppNavGraph(
                     onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.CheckInEntry.route) },
                     onImportFromOldSystem = { navController.navigate(Screen.DataImport.route) },
+                    onSlaHeatmapClick = { navController.navigate(Screen.SlaHeatmap.route) },
                 )
             }
             // §68.2 — deep link: bizarrecrm://tickets/{id}
@@ -1627,6 +1633,17 @@ fun AppNavGraph(
                     ticketId = ticketId,
                     deviceId = deviceId,
                     onBack = { navController.popBackStack() },
+                )
+            }
+            // §4.22 — Manager SLA heatmap: all-open tickets sorted by SLA health.
+            // Entry point: Tickets screen overflow menu → "SLA Heatmap" item.
+            // Ticket row taps navigate into the standard ticket-detail route.
+            composable(Screen.SlaHeatmap.route) {
+                SlaHeatmapScreen(
+                    onBack = { navController.popBackStack() },
+                    onTicketClick = { id ->
+                        navController.navigate(Screen.TicketDetail.createRoute(id))
+                    },
                 )
             }
             // Legacy Screen.TicketCreate composable removed 2026-04-24.

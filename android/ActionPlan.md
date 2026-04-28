@@ -948,7 +948,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Detail header: progress bar with phase markers (diagnose / awaiting parts / repair / QC); long-press reveals phase timestamps + remaining. (session 2026-04-26 — `SlaProgress` composable wired into `TicketDetailContent` LazyColumn above tabs; uses `dueOn` + `reduceMotion`; phase markers pass-through empty until server SLA defs available)
 - [ ] Timeline overlay: status history overlays SLA curve to show phase-budget consumption.
   - **NOTE (2026-04-26):** Requires server to return status history with timestamps alongside ticket. Deferred.
-- [ ] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top.
+- [x] Manager aggregated view: all-open tickets on SLA heatmap (tickets × time to SLA); red-zone sortable to top. (session 2026-04-27 — `Screen.SlaHeatmap("tickets/sla-heatmap")` added to sealed class in `AppNavGraph.kt`; composable route wired with `onBack` + `onTicketClick → TicketDetail`; `onBack` navigationIcon + `Icons.AutoMirrored.Filled.ArrowBack` added to `SlaHeatmapScreen`; `SlaHeatmapMenuItem` composable added to `TicketExportActions.kt`; `onSlaHeatmapClick` param threaded through `TicketListScreen` overflow → AppNavGraph call-site; build green)
   - **NOTE (2026-04-26):** `SlaHeatmapScreen.kt` already exists; needs nav route + `SlaApi.getHeatmap` server endpoint deployment.
 - [ ] Projection: predict breach time at current pace ("At current rate, will breach at 14:32").
   - **NOTE (2026-04-26):** Requires server-side projection data or status history with cadence.
