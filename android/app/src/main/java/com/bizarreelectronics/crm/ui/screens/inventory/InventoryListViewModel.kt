@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
+import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRunResult
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryFilter
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
@@ -35,6 +36,11 @@ data class InventoryListUiState(
     val currentSort: InventorySort = InventorySort.NameAZ,
     val selectedIds: Set<Long> = emptySet(),
     val isSelectionMode: Boolean = false,
+    // §6.8 auto-reorder run
+    val isRunningAutoReorder: Boolean = false,
+    /** Non-null while the result dialog is visible. Cleared by [clearAutoReorderResult]. */
+    val autoReorderResult: AutoReorderRunResult? = null,
+    val autoReorderError: String? = null,
 )
 
 @HiltViewModel
@@ -213,6 +219,50 @@ class InventoryListViewModel @Inject constructor(
 
     fun clearBarcodeLookup() {
         _state.value = _state.value.copy(barcodeLookupId = null, barcodeLookupError = null)
+    }
+
+    // -----------------------------------------------------------------------
+    // §6.8 Auto-reorder run
+    // -----------------------------------------------------------------------
+
+    /**
+     * Triggers POST /inventory/auto-reorder on the server.
+     *
+     * Sets [InventoryListUiState.isRunningAutoReorder] during the request.
+     * On success: populates [InventoryListUiState.autoReorderResult] so the
+     * caller can show the [RunAutoReorderDialog] result view.
+     * On failure: populates [InventoryListUiState.autoReorderError].
+     *
+     * Callers must guard against offline state before invoking — the repository
+     * call is online-only.
+     */
+    fun runAutoReorder() {
+        if (_state.value.isRunningAutoReorder) return
+        _state.value = _state.value.copy(
+            isRunningAutoReorder = true,
+            autoReorderError = null,
+        )
+        viewModelScope.launch {
+            try {
+                val result = inventoryRepository.runAutoReorder()
+                _state.value = _state.value.copy(
+                    isRunningAutoReorder = false,
+                    autoReorderResult = result,
+                )
+                // Refresh list so updated stock levels / new POs are visible
+                refresh()
+            } catch (e: Exception) {
+                Log.w(TAG, "runAutoReorder failed: ${e.message}")
+                _state.value = _state.value.copy(
+                    isRunningAutoReorder = false,
+                    autoReorderError = "Auto-reorder failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun clearAutoReorderResult() {
+        _state.value = _state.value.copy(autoReorderResult = null, autoReorderError = null)
     }
 
     companion object {

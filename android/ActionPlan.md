@@ -1545,8 +1545,9 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 ### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
 - [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.
   - **NOTE (2026-04-26):** Bin picker in detail screen (`InventoryBinPicker.kt`) exists for assignment. Creation/management UI (Settings → Inventory → Bin Locations) requires a new settings sub-screen. Deferred.
-- [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
+- [x] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs.
   - **NOTE (2026-04-26):** `InventoryAutoReorderCard.kt` handles per-item rule. "Run now" → draft POs requires §6.7. Deferred.
+  - **DONE (2026-04-27):** `RunAutoReorderDialog.kt` (3-phase confirm→running→result), admin overflow menu in `InventoryListScreen.kt`, `InventoryListViewModel.runAutoReorder()`, `InventoryRepository.runAutoReorder()`, DTOs in `InventoryDto.kt`. POST /inventory/auto-reorder wired end-to-end.
 - [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup.
   - **NOTE (2026-04-26):** Serial list display already in detail screen (§6.2). Assign + lookup requires cross-entity search screen. Deferred.
 - [ ] **Shrinkage report** — expected vs actual; variance trend chart.

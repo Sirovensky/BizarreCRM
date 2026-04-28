@@ -51,6 +51,7 @@ import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySort
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventorySortDropdown
 import com.bizarreelectronics.crm.ui.screens.inventory.components.InventoryStockBadge
 import com.bizarreelectronics.crm.ui.screens.inventory.components.QuickStockAdjust
+import com.bizarreelectronics.crm.ui.screens.inventory.components.RunAutoReorderDialog
 import com.bizarreelectronics.crm.ui.screens.inventory.components.loadInventoryColumns
 import com.bizarreelectronics.crm.ui.theme.*
 import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
@@ -93,6 +94,18 @@ fun InventoryListScreen(
         mutableStateOf(loadInventoryColumns(context))
     }
     var showColumnsPicker by remember { mutableStateOf(false) }
+
+    // §6.8: auto-reorder dialog
+    var showAutoReorderDialog by remember { mutableStateOf(false) }
+    // Admin overflow menu
+    var showAdminOverflow by remember { mutableStateOf(false) }
+
+    // Show auto-reorder error in snackbar
+    LaunchedEffect(state.autoReorderError) {
+        val err = state.autoReorderError ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(err)
+        viewModel.clearAutoReorderResult()
+    }
 
     // §6.5: HID-scanner support — hidden focused BasicTextField captures rapid
     // keystrokes from an external Bluetooth scanner operating in HID keyboard
@@ -155,6 +168,22 @@ fun InventoryListScreen(
         )
     }
 
+    // §6.8: Run auto-reorder dialog (admin-only)
+    if (showAutoReorderDialog || state.isRunningAutoReorder || state.autoReorderResult != null) {
+        RunAutoReorderDialog(
+            isRunning = state.isRunningAutoReorder,
+            result = state.autoReorderResult,
+            errorMessage = state.autoReorderError,
+            onConfirm = {
+                viewModel.runAutoReorder()
+            },
+            onDismiss = {
+                showAutoReorderDialog = false
+                viewModel.clearAutoReorderResult()
+            },
+        )
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
@@ -206,6 +235,32 @@ fun InventoryListScreen(
                     }
                     IconButton(onClick = { viewModel.loadItems() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh inventory")
+                    }
+                    // §6.8: admin-only overflow with auto-reorder action
+                    if (isAdmin) {
+                        Box {
+                            IconButton(onClick = { showAdminOverflow = true }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "Admin actions",
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showAdminOverflow,
+                                onDismissRequest = { showAdminOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Run auto-reorder") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Autorenew, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        showAutoReorderDialog = true
+                                    },
+                                )
+                            }
+                        }
                     }
                 },
             )

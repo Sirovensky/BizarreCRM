@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
+import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRunResult
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
@@ -261,6 +262,26 @@ class InventoryRepository @Inject constructor(
                 Log.d(TAG, "Background inventory detail refresh failed: ${e.message}")
             }
         }
+    }
+
+    /**
+     * §6.8 — Trigger an auto-reorder run on the server.
+     *
+     * Finds every active item where in_stock ≤ reorder_level AND supplier is
+     * assigned, groups by supplier, and creates draft purchase orders.
+     *
+     * Online-only: returns null when the device is offline (caller should show
+     * a "you're offline" message instead of calling this function).
+     *
+     * @throws Exception on HTTP error or network failure (caller wraps in try/catch).
+     */
+    suspend fun runAutoReorder(): AutoReorderRunResult {
+        val response = inventoryApi.runAutoReorder()
+        return response.data ?: AutoReorderRunResult(
+            ordersCreated = 0,
+            itemsOrdered = 0,
+            orders = emptyList(),
+        )
     }
 
     companion object {

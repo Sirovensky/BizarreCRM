@@ -268,6 +268,47 @@ data class PhotoListData(
     val photos: List<InventoryPhoto>,
 )
 
+// ─── §6.8 Auto-reorder run result ────────────────────────────────────────────
+
+/**
+ * One line item inside a purchase order created by [InventoryApi.runAutoReorder].
+ */
+data class AutoReorderCreatedOrderItem(
+    val name: String?,
+    @SerializedName("quantity_ordered")
+    val quantityOrdered: Int,
+    @SerializedName("cost_price")
+    val costPrice: Double?,
+)
+
+/**
+ * A purchase order created as part of [AutoReorderRunResult].
+ */
+data class AutoReorderCreatedOrder(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("supplier_name")
+    val supplierName: String?,
+    val subtotal: Double?,
+    val items: List<AutoReorderCreatedOrderItem>,
+)
+
+/**
+ * Top-level response from POST /inventory/auto-reorder.
+ *
+ * [ordersCreated] — number of purchase orders generated.
+ * [itemsOrdered]  — total line-item count across all orders.
+ * [orders]        — per-order detail (supplier, items, subtotal).
+ */
+data class AutoReorderRunResult(
+    @SerializedName("orders_created")
+    val ordersCreated: Int,
+    @SerializedName("items_ordered")
+    val itemsOrdered: Int,
+    val orders: List<AutoReorderCreatedOrder>,
+)
+
 // ─── §6.7 Purchase Order DTOs ────────────────────────────────────────────────
 
 data class SupplierListItem(

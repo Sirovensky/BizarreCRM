@@ -3,6 +3,7 @@ package com.bizarreelectronics.crm.data.remote.api
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRequest
+import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRunResult
 import com.bizarreelectronics.crm.data.remote.dto.BinListData
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetailData
@@ -76,6 +77,19 @@ interface InventoryApi {
         @Path("id") id: Long,
         @Body config: AutoReorderRequest,
     ): ApiResponse<Unit>
+
+    /**
+     * §6.8 — Run auto-reorder: scan all low-stock items with a supplier assigned,
+     * group by supplier, and create draft purchase orders.
+     *
+     * Server route: POST /api/v1/inventory/auto-reorder
+     * Requires `inventory.bulk_action` permission (admin-only in current schema).
+     *
+     * Returns [AutoReorderRunResult] with order count + per-order detail, or an
+     * empty result set when no items qualify.
+     */
+    @POST("inventory/auto-reorder")
+    suspend fun runAutoReorder(): ApiResponse<AutoReorderRunResult>
 
     // ── L1076: Bins autocomplete ─────────────────────────────────────────────
     @GET("inventory/bins")
