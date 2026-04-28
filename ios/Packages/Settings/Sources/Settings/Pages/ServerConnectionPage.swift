@@ -164,7 +164,7 @@ public struct ServerConnectionPage: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Connection failed: \(msg)")
             }
-        }
+
             // §65.1 — Universal Links transparency (agent-9 b5)
             Section {
                 VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -187,11 +187,19 @@ public struct ServerConnectionPage: View {
             }
         }
         .navigationTitle("Server Connection")
-        #if canImport(UIKit)
-        .listStyle(.insetGrouped)
-        #endif
+        .modifier(InsetGroupedListStyleIfAvailable())
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+    }
+
+    private struct InsetGroupedListStyleIfAvailable: ViewModifier {
+        func body(content: Content) -> some View {
+            #if canImport(UIKit)
+            content.listStyle(.insetGrouped)
+            #else
+            content
+            #endif
+        }
     }
 
     @ViewBuilder

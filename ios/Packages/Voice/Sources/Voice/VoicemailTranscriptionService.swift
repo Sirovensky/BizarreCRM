@@ -75,21 +75,21 @@ public actor VoicemailTranscriptionService {
         request.shouldReportPartialResults = false
         request.addsPunctuation = true
 
-        AppLog.voice.info("VoicemailTranscriptionService: starting on-device=\(request.requiresOnDeviceRecognition) locale=\(locale.identifier, privacy: .public)")
+        AppLog.app.info("VoicemailTranscriptionService: starting on-device=\(request.requiresOnDeviceRecognition) locale=\(locale.identifier, privacy: .public)")
 
         // 5. Run recognition via async continuation
         return try await withCheckedThrowingContinuation { continuation in
             var task: SFSpeechRecognitionTask?
             task = recognizer.recognitionTask(with: request) { result, error in
                 if let error {
-                    AppLog.voice.error("VoicemailTranscriptionService: recognition error: \(error.localizedDescription, privacy: .public)")
+                    AppLog.app.error("VoicemailTranscriptionService: recognition error: \(error.localizedDescription, privacy: .public)")
                     continuation.resume(throwing: TranscriptionError.recognitionFailed(error.localizedDescription))
                     return
                 }
                 guard let result else { return }
                 if result.isFinal {
                     let text = result.bestTranscription.formattedString
-                    AppLog.voice.info("VoicemailTranscriptionService: completed \(text.count) chars")
+                    AppLog.app.info("VoicemailTranscriptionService: completed \(text.count) chars")
                     continuation.resume(returning: text)
                 } else {
                     let progress = min(0.99, Double(result.bestTranscription.segments.count) / 20.0)

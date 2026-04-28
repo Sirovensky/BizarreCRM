@@ -136,10 +136,11 @@ extension APIClient {
     }
 
     func putInvoiceSettings(_ settings: InvoiceSettings) async throws -> InvoiceSettings {
-        struct Wrapper: Encodable { let settings: InvoiceSettings }
-        return try await put("/api/v1/settings/invoices", body: Wrapper(settings: settings), as: InvoiceSettings.self)
+        return try await put("/api/v1/settings/invoices", body: InvoiceSettingsWrapper(settings: settings), as: InvoiceSettings.self)
     }
 }
+
+private struct InvoiceSettingsWrapper: Encodable, Sendable { let settings: InvoiceSettings }
 
 // MARK: - View
 

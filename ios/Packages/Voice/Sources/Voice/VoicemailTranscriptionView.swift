@@ -126,7 +126,7 @@ public struct VoicemailTranscriptionView: View {
 
     private func runTranscription() async {
         guard let url = audioURL else {
-            state = .failed("No audio file available.")
+            state = .failed(message: "No audio file available.")
             return
         }
         state = .transcribing(progress: 0)
@@ -138,7 +138,7 @@ public struct VoicemailTranscriptionView: View {
             }
             state = .done(text: text)
         } catch {
-            state = .failed(error.localizedDescription)
+            state = .failed(message: error.localizedDescription)
         }
     }
 }

@@ -83,7 +83,7 @@ public extension APIClient {
     func dismissNotification(id: Int64) async throws {
         _ = try await patch("/api/v1/notifications/\(id)/dismiss",
                             body: EmptyBody(),
-                            as: EmptyResponse.self)
+                            as: NotifDismissResponse.self)
     }
 }
 
@@ -91,6 +91,7 @@ public extension APIClient {
 public struct NotifDismissResponse: Decodable, Sendable {
     public let success: Bool
     public init(success: Bool) { self.success = success }
+}
 
 // ---------------------------------------------------------------------------
 // Notification Preferences — /api/v1/notification-preferences

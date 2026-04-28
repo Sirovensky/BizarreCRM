@@ -122,9 +122,9 @@ public enum BluetoothScanPolicy: Sendable {
     ///
     /// `CBCentralManagerScanOptionAllowDuplicatesKey: false` — no duplicate events.
     /// We never pass `true` as that enables continuous background scanning.
-    public static let defaultScanOptions: [String: Any] = [
-        CBCentralManagerScanOptionAllowDuplicatesKey: false
-    ]
+    public static var defaultScanOptions: [String: Any] {
+        [CBCentralManagerScanOptionAllowDuplicatesKey: false]
+    }
 }
 
 // MARK: - Discovered note for Agent 10

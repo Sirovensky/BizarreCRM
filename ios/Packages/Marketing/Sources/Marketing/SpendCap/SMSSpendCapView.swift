@@ -286,9 +286,13 @@ public struct SMSSpendCapUsage: Decodable, Sendable {
     }
 }
 
-private struct SMSSpendCapSettingsPatch: Encodable, Sendable {
-    let monthlyCap: Int
-    let haltOnCapReached: Bool
+public struct SMSSpendCapSettingsPatch: Encodable, Sendable {
+    public let monthlyCap: Int
+    public let haltOnCapReached: Bool
+    public init(monthlyCap: Int, haltOnCapReached: Bool) {
+        self.monthlyCap = monthlyCap
+        self.haltOnCapReached = haltOnCapReached
+    }
     enum CodingKeys: String, CodingKey {
         case monthlyCap       = "monthly_cap"
         case haltOnCapReached = "halt_on_cap_reached"

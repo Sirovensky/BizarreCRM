@@ -67,7 +67,6 @@ public actor BarcodeVisionScanner {
     public static let allSymbologies: [VNBarcodeSymbology] = [
         .ean13,
         .ean8,
-        .upca,   // UPC-A (12-digit; distinct from EAN-13 in Vision framework)
         .upce,
         .code128,
         .code39,

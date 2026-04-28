@@ -108,7 +108,6 @@ public final class BarcodeCoordinator: NSObject {
         .barcode(symbologies: [
             .ean13,
             .ean8,
-            .upca,   // UPC-A (12-digit retail; distinct case in DataScannerViewController)
             .upce,
             .code128,
             .code39,

@@ -75,15 +75,13 @@ public final class LabelPageRenderer: UIPrintPageRenderer {
 
     // MARK: - Factory: printable rect per label
 
-    override public func paperRect(forPage pageIndex: Int) -> CGRect {
-        // Convert inches → points at 72 DPI (PDF standard)
+    public func paperRect(forPage pageIndex: Int) -> CGRect {
         let w = spec.widthInches * 72.0
         let h = spec.heightInches * 72.0
         return CGRect(x: 0, y: 0, width: w, height: h)
     }
 
-    override public func printableRect(forPage pageIndex: Int) -> CGRect {
-        // No margin for label stock — bleed to edge
+    public func printableRect(forPage pageIndex: Int) -> CGRect {
         return paperRect(forPage: pageIndex)
     }
 }

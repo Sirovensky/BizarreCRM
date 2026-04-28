@@ -70,12 +70,9 @@ cat > "${PLIST}" <<'PLIST_EOF'
 
     <key>UIBackgroundModes</key>
     <array>
-        <string>remote-notification</string>
+        <!-- remote-notification + voip stripped for personal-team dev signing (free Apple ID can't sign these caps) -->
         <string>processing</string>
         <string>fetch</string>
-        <!-- §42.4 PushKit VoIP — wakes app on incoming call push; unblocks Agent 7 CallKit + Agent 2 PushKit -->
-        <string>voip</string>
-        <!-- §17 Discovered[Agent 2→10]: CoreBluetooth state-restoration for BluetoothBackgroundManager -->
         <string>bluetooth-central</string>
     </array>
 

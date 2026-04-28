@@ -166,8 +166,8 @@ targets:
         product: KioskMode
       - package: RolesEditor
         product: RolesEditor
-      - target: BizarreCRMControlCenter
-        embed: true
+      # - target: BizarreCRMControlCenter   # disabled for personal-team dev signing
+      #   embed: true
       # - target: BizarreCRMWidgets       # TODO: add in Xcode UI — xcodegen 2.45.x
       #   embed: true                      # doesn't parse app-extension.widget-extension.
 
@@ -175,25 +175,25 @@ targets:
   #   type: app-extension.widget-extension
   #   ...
 
-  BizarreCRMControlCenter:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: App/Intents
-        includes:
-          - ControlCenterControls.swift
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm.controlcenter
-        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
-        SWIFT_VERSION: "6.0"
-        INFOPLIST_FILE: App/Resources/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-    entitlements:
-      path: App/Resources/BizarreCRM.entitlements
-    dependencies:
-      - package: Core
-        product: Core
+  # BizarreCRMControlCenter:   # disabled for personal-team dev signing (free tier can't sign app extensions)
+  #   type: app-extension
+  #   platform: iOS
+  #   sources:
+  #     - path: App/Intents
+  #       includes:
+  #         - ControlCenterControls.swift
+  #   settings:
+  #     base:
+  #       PRODUCT_BUNDLE_IDENTIFIER: com.bizarrecrm.controlcenter
+  #       IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+  #       SWIFT_VERSION: "6.0"
+  #       INFOPLIST_FILE: App/Resources/Info.plist
+  #       GENERATE_INFOPLIST_FILE: NO
+  #   entitlements:
+  #     path: App/Resources/BizarreCRM.entitlements
+  #   dependencies:
+  #     - package: Core
+  #       product: Core
 
   BizarreCRMTests:
     type: bundle.unit-test

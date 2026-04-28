@@ -165,7 +165,7 @@ public final class MembershipAutoRenewViewModel {
         do {
             try await api.post(
                 "/api/v1/memberships/\(membership.id)/renew",
-                body: EmptyBody(),
+                body: AutoRenewEmptyBody(),
                 as: EmptyResponse.self
             )
             chargeTriggeredToast = true
@@ -430,4 +430,4 @@ public struct MembershipAutoRenewView: View {
 
 // MARK: - Helpers
 
-private struct EmptyBody: Encodable {}
+private struct AutoRenewEmptyBody: Encodable {}

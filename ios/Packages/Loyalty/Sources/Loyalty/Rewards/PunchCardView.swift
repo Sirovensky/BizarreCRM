@@ -52,7 +52,7 @@ public struct PunchCard: Codable, Sendable, Identifiable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, note
+        case id
         case customerId        = "customer_id"
         case serviceTypeName   = "service_type_name"
         case serviceTypeSymbol = "service_type_symbol"

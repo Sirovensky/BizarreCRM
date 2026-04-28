@@ -78,23 +78,25 @@ public final class ClockInLiveActivityManager {
 
     /// Update elapsed time on the Live Activity (call every 30s from `ClockInOutTile`).
     public func tick(clockInDate: Date) async {
-        guard let activity else { return }
+        guard let current = activity else { return }
         let elapsed = Int(Date().timeIntervalSince(clockInDate))
         let newState = ClockInAttributes.ClockState(
             clockInDate: clockInDate,
             elapsedSeconds: elapsed
         )
-        await activity.update(using: newState)
+        let content = ActivityContent(state: newState, staleDate: nil)
+        await current.update(content)
     }
 
     /// End the Live Activity when the employee clocks out.
     public func end(clockInDate: Date) async {
-        guard let activity else { return }
+        guard let current = activity else { return }
         let finalState = ClockInAttributes.ClockState(
             clockInDate: clockInDate,
             elapsedSeconds: Int(Date().timeIntervalSince(clockInDate))
         )
-        await activity.end(using: finalState, dismissalPolicy: .immediate)
+        let content = ActivityContent(state: finalState, staleDate: nil)
+        await current.end(content, dismissalPolicy: .immediate)
         self.activity = nil
     }
 }

@@ -48,13 +48,15 @@ public extension APIClient {
     /// the current tenant. Call before switching tenants or on sign-out
     /// so pushes from the old tenant stop arriving.
     func unregisterDeviceToken(token: String) async throws {
-        // Server expects the token in the path or body depending on implementation.
-        // Using POST to /unregister as it's the most cross-compatible pattern.
-        struct UnregisterBody: Encodable, Sendable { let token: String; let platform: String }
         _ = try await post(
             "/api/v1/device-tokens/unregister",
-            body: UnregisterBody(token: token, platform: "ios"),
+            body: UnregisterDeviceTokenBody(token: token, platform: "ios"),
             as: DeviceTokenResponse.self
         )
     }
+}
+
+private struct UnregisterDeviceTokenBody: Encodable, Sendable {
+    let token: String
+    let platform: String
 }

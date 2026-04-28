@@ -14,21 +14,11 @@ public enum TicketListFooterState: Sendable, Equatable {
     case offline(count: Int, lastSyncedAt: Date?)
 }
 
-// MARK: - §4.1 Ticket Sort Order
+// MARK: - §4.1 Ticket Sort Order — UI extensions
+// (Canonical enum lives in Networking so endpoint signatures can use it.)
 
-/// Sort order for the ticket list — mirrors the server `sort_by` + `sort_dir` query params.
-public enum TicketSortOrder: String, CaseIterable, Sendable, Identifiable {
-    case newest    = "newest"
-    case oldest    = "oldest"
-    case status    = "status"
-    case urgency   = "urgency"
-    case assignee  = "assignee"
-    case dueDate   = "due_date"
-    case totalDesc = "total_desc"
-
-    public var id: String { rawValue }
-
-    public var displayName: String {
+public extension TicketSortOrder {
+    var displayName: String {
         switch self {
         case .newest:    return "Newest first"
         case .oldest:    return "Oldest first"

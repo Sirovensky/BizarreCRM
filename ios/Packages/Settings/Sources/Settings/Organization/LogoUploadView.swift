@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import PhotosUI
 import Observation
 import Core
@@ -188,7 +189,7 @@ public struct LogoUploadView: View {
 #if DEBUG
 #Preview {
     VStack {
-        LogoUploadView(api: MockAPIClient())
+        LogoUploadView(api: APIClientImpl())
     }
     .padding()
 }

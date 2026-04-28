@@ -263,8 +263,7 @@ public extension APIClient {
     /// `GET /health` — ping the server; returns latency in milliseconds.
     func pingHealth() async throws -> Int {
         let start = Date()
-        struct HealthResponse: Decodable, Sendable { let status: String? }
-        _ = try await get("/health", as: HealthResponse.self)
+        _ = try await get("/health", as: SettingsHealthResponse.self)
         return Int(Date().timeIntervalSince(start) * 1000)
     }
 
@@ -285,3 +284,5 @@ public extension APIClient {
         try await patch("/tax-rates/\(id)", body: body, as: TaxRateDTO.self)
     }
 }
+
+private struct SettingsHealthResponse: Decodable, Sendable { let status: String? }

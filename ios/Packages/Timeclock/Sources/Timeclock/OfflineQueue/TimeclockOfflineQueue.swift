@@ -50,7 +50,10 @@ public actor TimeclockOfflineQueue {
     private var isDraining = false
 
     private init() {
-        loadFromDefaults()
+        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+           let events = try? JSONDecoder().decode([PendingTimeclockEvent].self, from: data) {
+            pending = events
+        }
     }
 
     // MARK: - Public API

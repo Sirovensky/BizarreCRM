@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import Core
 
 // MARK: - §19.2 Trusted devices — mark device to skip 2FA (90-day expiry)
@@ -235,7 +236,7 @@ private struct TrustedDeviceRow: View {
 #if DEBUG
 #Preview("Trusted Devices") {
     NavigationStack {
-        TrustedDevicesPage(api: MockAPIClient())
+        TrustedDevicesPage(api: APIClientImpl())
     }
 }
 #endif

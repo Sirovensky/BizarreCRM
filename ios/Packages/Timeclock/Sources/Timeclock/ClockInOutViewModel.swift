@@ -90,8 +90,7 @@ public final class ClockInOutViewModel {
             let entry = try await api.clockIn(userId: userId, pin: pin)
             state = .active(entry)
             updateElapsed(from: entry)
-        } catch let URLError.notConnectedToInternet,
-                let URLError.networkConnectionLost:
+        } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
             // Offline — queue the event and show optimistic state.
             let event = PendingTimeclockEvent(userId: userId, action: .clockIn, pin: pin)
             await TimeclockOfflineQueue.shared.enqueue(event)
@@ -119,8 +118,7 @@ public final class ClockInOutViewModel {
             _ = try await api.clockOut(userId: userId, pin: pin)
             state = .idle
             runningElapsed = 0
-        } catch let URLError.notConnectedToInternet,
-                let URLError.networkConnectionLost:
+        } catch let error as URLError where error.code == .notConnectedToInternet || error.code == .networkConnectionLost {
             let event = PendingTimeclockEvent(userId: userId, action: .clockOut, pin: pin)
             await TimeclockOfflineQueue.shared.enqueue(event)
             state = .idle

@@ -122,12 +122,11 @@ public final class DiagnosticsViewModel: Sendable {
             "=== Bizarre CRM Diagnostic Bundle ===",
             "Generated: \(Date())",
             "Version: \(Platform.appVersion) (\(Platform.buildNumber))",
-            #if canImport(UIKit)
-            "Device: \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)",
-            #endif
-            "",
-            "=== Recent Logs (last 100) ===",
         ]
+        #if canImport(UIKit)
+        lines.append("Device: \(UIDevice.current.model) iOS \(UIDevice.current.systemVersion)")
+        #endif
+        lines += ["", "=== Recent Logs (last 100) ==="]
         let fmt = DateFormatter()
         fmt.dateFormat = "HH:mm:ss.SSS"
         for entry in logEntries.prefix(100) {

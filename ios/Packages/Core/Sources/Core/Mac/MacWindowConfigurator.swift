@@ -54,7 +54,7 @@ public enum MacWindowConfigurator {
         // Set minimum / preferred sizes via UIWindowScene.sizeRestrictions
         if let restrictions = scene.sizeRestrictions {
             restrictions.minimumSize  = CGSize(width: minimumWidth,  height: minimumHeight)
-            restrictions.maximumSize  = CGSize(width: .infinity,     height: .infinity)
+            restrictions.maximumSize  = CGSize(width: CGFloat.infinity, height: CGFloat.infinity)
         }
 
         // Set window title so the title-bar reads e.g. "Ticket #1234 - BizarreCRM".

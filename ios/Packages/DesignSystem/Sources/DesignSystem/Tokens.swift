@@ -1,5 +1,9 @@
 import SwiftUI
 
+public enum DesignSystemBundle {
+    public static var bundle: Bundle { .main }
+}
+
 /// §80 Master design tokens. Single source.
 ///
 /// **Hard rule** (per `ios/agent-ownership.md` → Independence rules):
@@ -164,27 +168,27 @@ public enum DesignTokens {
     // in both light and dark mode (see §80.4 / §80.5 tables).
     public enum SemanticColor {
         // Accent
-        public static let accent   = Color("bizarrePrimary",  bundle: .module)
-        public static let danger   = Color("bizarreDanger",   bundle: .module)
-        public static let warning  = Color("bizarreWarning",  bundle: .module)
-        public static let success  = Color("bizarreSuccess",  bundle: .module)
-        public static let info     = Color("bizarreInfo",     bundle: .module)
+        public static let accent   = Color("bizarrePrimary",  bundle: DesignSystemBundle.bundle)
+        public static let danger   = Color("bizarreDanger",   bundle: DesignSystemBundle.bundle)
+        public static let warning  = Color("bizarreWarning",  bundle: DesignSystemBundle.bundle)
+        public static let success  = Color("bizarreSuccess",  bundle: DesignSystemBundle.bundle)
+        public static let info     = Color("bizarreInfo",     bundle: DesignSystemBundle.bundle)
 
         // Surfaces
-        public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: .module)
-        public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: .module)
-        public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: .module)
+        public static let surfaceBase    = Color("bizarreSurfaceBase",     bundle: DesignSystemBundle.bundle)
+        public static let surfaceRaised  = Color("bizarreSurfaceElevated", bundle: DesignSystemBundle.bundle)
+        public static let surfaceInset   = Color("bizarreSurfaceDepth",    bundle: DesignSystemBundle.bundle)
 
         // Text
-        public static let textPrimary   = Color("bizarreText",          bundle: .module)
-        public static let textSecondary = Color("bizarreTextSecondary", bundle: .module)
-        public static let textMuted     = Color("bizarreTextMuted",     bundle: .module)
-        public static let textInverse   = Color("bizarreTextOnBrand",   bundle: .module)
+        public static let textPrimary   = Color("bizarreText",          bundle: DesignSystemBundle.bundle)
+        public static let textSecondary = Color("bizarreTextSecondary", bundle: DesignSystemBundle.bundle)
+        public static let textMuted     = Color("bizarreTextMuted",     bundle: DesignSystemBundle.bundle)
+        public static let textInverse   = Color("bizarreTextOnBrand",   bundle: DesignSystemBundle.bundle)
 
         // Borders
-        public static let borderSubtle = Color("bizarreDivider",       bundle: .module)
-        public static let borderStrong = Color("bizarreDividerStrong", bundle: .module)
-        public static let borderAccent = Color("bizarrePrimary",       bundle: .module)
+        public static let borderSubtle = Color("bizarreDivider",       bundle: DesignSystemBundle.bundle)
+        public static let borderStrong = Color("bizarreDividerStrong", bundle: DesignSystemBundle.bundle)
+        public static let borderAccent = Color("bizarrePrimary",       bundle: DesignSystemBundle.bundle)
     }
 
     // MARK: - Skeleton tokens (§30.9 / §29 loading states)
@@ -201,10 +205,10 @@ public enum DesignTokens {
     public enum Skeleton {
         /// Base fill for skeleton placeholders.
         /// Dark mode: warm zinc; light mode: neutral grey.
-        public static let base      = Color("SkeletonBase",      bundle: .module)
+        public static let base      = Color("SkeletonBase",      bundle: DesignSystemBundle.bundle)
         /// Highlight gradient for the shimmer sweep.
         /// Slightly lighter than `base` in both color schemes.
-        public static let highlight = Color("SkeletonHighlight", bundle: .module)
+        public static let highlight = Color("SkeletonHighlight", bundle: DesignSystemBundle.bundle)
 
         // Fallback values when asset catalog entries are missing (CI / SPM preview builds).
         public static let baseFallbackDark      = Color(white: 0.18)

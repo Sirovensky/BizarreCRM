@@ -142,7 +142,7 @@ public actor BarcodeOfflineLookup {
 // Declared in Camera (which imports Networking) so the dependency flows
 // Camera → Networking only, never the reverse.
 
-extension APIClient: BarcodeOfflineLookup.BarcodeNetworkSource {
+extension APIClientImpl: BarcodeOfflineLookup.BarcodeNetworkSource {
     public func lookupInventoryItem(barcode code: String) async throws -> BarcodeInventoryItem {
         let item = try await inventoryItemByBarcode(code)
         return BarcodeInventoryItem(

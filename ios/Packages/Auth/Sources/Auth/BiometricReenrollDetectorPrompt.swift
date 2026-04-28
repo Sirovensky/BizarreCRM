@@ -4,7 +4,7 @@ import LocalAuthentication
 import Persistence
 import DesignSystem
 
-// MARK: - §2.6 Biometric re-enroll prompt
+// MARK: - §2.6 Biometric re-enroll detector prompt
 
 /// Detects when the device's biometric enrollment changes (e.g. a new
 /// fingerprint is added to Touch ID, or Face ID is re-enrolled) and prompts

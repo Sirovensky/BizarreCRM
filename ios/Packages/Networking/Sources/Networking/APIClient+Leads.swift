@@ -80,7 +80,8 @@ public extension APIClient {
     /// Server endpoint: `PATCH /api/v1/leads/:id/tags` (§9 extension).
     @discardableResult
     func setLeadTags(leadId: Int64, tags: [String]) async throws -> LeadDetail {
-        struct Body: Encodable { let tags: [String] }
-        return try await patch("/api/v1/leads/\(leadId)/tags", body: Body(tags: tags), as: LeadDetail.self)
+        return try await patch("/api/v1/leads/\(leadId)/tags", body: LeadTagsBody(tags: tags), as: LeadDetail.self)
     }
 }
+
+private struct LeadTagsBody: Encodable, Sendable { let tags: [String] }

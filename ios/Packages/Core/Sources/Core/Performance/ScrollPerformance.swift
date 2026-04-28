@@ -43,7 +43,7 @@ public struct EquatableContent<Value: Equatable, Content: View>: View, Equatable
         content(value)
     }
 
-    public static func == (lhs: Self, rhs: Self) -> Bool {
+    nonisolated public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.value == rhs.value
     }
 }

@@ -50,6 +50,13 @@ public enum TicketServerError: Sendable {
     case deletedOnServer
 }
 
+// MARK: - File-scoped helpers (generic-funcs can't nest types)
+private struct ChecklistSuccessResp: Decodable, Sendable { let success: Bool? }
+private struct TicketSignatureBody: Encodable, Sendable {
+    let base64: String
+    let name: String
+}
+
 // MARK: - APIClient wrappers
 
 public extension APIClient {
@@ -69,12 +76,10 @@ public extension APIClient {
             technicianSignature: technicianSignature
         )
         // Server returns { success: Bool, data: null, message: String? }.
-        // We use the shared SuccessResponse shim.
-        struct _Resp: Decodable, Sendable { let success: Bool? }
         let resp = try await put(
             "/api/v1/tickets/devices/\(deviceId)/checklist",
             body: req,
-            as: _Resp.self
+            as: ChecklistSuccessResp.self
         )
         return resp.success ?? true
     }
@@ -93,15 +98,10 @@ public extension APIClient {
         base64Png: String,
         signerName: String
     ) async throws {
-        struct _Body: Encodable, Sendable {
-            let base64: String
-            let name: String
-        }
-        struct _Resp: Decodable, Sendable { let success: Bool? }
         _ = try await post(
             "/api/v1/tickets/\(ticketId)/signatures",
-            body: _Body(base64: base64Png, name: signerName),
-            as: _Resp.self
+            body: TicketSignatureBody(base64: base64Png, name: signerName),
+            as: ChecklistSuccessResp.self
         )
     }
 }

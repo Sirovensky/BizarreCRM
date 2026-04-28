@@ -41,7 +41,7 @@ public enum ThermalPaperWidth: Int, Sendable, Codable {
 // MARK: - ThermalTransport
 
 /// Physical transports the model supports.
-public struct ThermalTransport: OptionSet, Sendable {
+public struct ThermalTransport: OptionSet, Sendable, Hashable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }
 
@@ -58,7 +58,7 @@ public struct ThermalTransport: OptionSet, Sendable {
 // MARK: - ThermalPrinterModelSpec
 
 /// Capability descriptor for a supported thermal printer model.
-public struct ThermalPrinterModelSpec: Sendable, Identifiable {
+public struct ThermalPrinterModelSpec: Sendable, Identifiable, Hashable {
     /// Human-readable model name (e.g. "Star TSP100IV").
     public let modelName: String
     public let vendor: ThermalVendor

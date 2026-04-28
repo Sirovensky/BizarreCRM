@@ -72,7 +72,7 @@ public struct DiscoveredPrinter: Identifiable, Sendable, Hashable {
 public protocol BonjourPrinterBrowserProtocol: Sendable {
     /// Returns an `AsyncStream` that emits the current list of discovered printers
     /// whenever the list changes. The stream runs until cancelled.
-    func discoveryStream() -> AsyncStream<[DiscoveredPrinter]>
+    func discoveryStream() async -> AsyncStream<[DiscoveredPrinter]>
     /// Restarts the underlying browsers (flushes stale results).
     func refresh() async
     /// Stops all browsing. The stream will receive one final empty emission.

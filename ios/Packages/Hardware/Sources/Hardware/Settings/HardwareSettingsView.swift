@@ -245,7 +245,7 @@ private struct HardwareRow: View {
 
 /// Scale settings: shows paired BLE scales with status + test-read button.
 /// Full implementation wired once ScaleRepository lands (§17.6).
-private struct ScaleSettingsView: View {
+private struct ScaleSettingsPlaceholder: View {
     var body: some View {
         ContentUnavailableView(
             "Weight Scales",

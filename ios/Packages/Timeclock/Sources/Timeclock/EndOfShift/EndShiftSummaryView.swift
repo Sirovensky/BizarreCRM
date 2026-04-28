@@ -80,7 +80,7 @@ public struct EndShiftSummaryView: View {
                 if let s = vm.summary {
                     shiftKPIGrid(summary: s)
                 }
-                Text("Tap "Count Cash" to proceed to the cash close-out.")
+                Text("Tap \"Count Cash\" to proceed to the cash close-out.")
                     .font(.brandBodyMedium())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .multilineTextAlignment(.center)

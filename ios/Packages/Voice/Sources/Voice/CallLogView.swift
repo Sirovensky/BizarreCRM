@@ -326,19 +326,16 @@ private struct CallDetailView: View {
     let api: APIClient
 
     @State private var showRecordingPlayer: Bool = false
+    @State private var resolvedRecordingURL: URL?
 
-    /// Resolved absolute URL for the recording.
-    ///
-    /// The DTO `recordingUrl` may be:
-    /// - An absolute HTTPS URL from the provider → used directly.
-    /// - A relative `/uploads/...` path from the server → prepended with `APIClient.currentBaseURL()`.
-    private var resolvedRecordingURL: URL? {
-        guard let urlStr = entry.recordingUrl else { return nil }
+    private func loadResolvedRecordingURL() async {
+        guard let urlStr = entry.recordingUrl else { return }
         if let absolute = URL(string: urlStr), absolute.scheme != nil {
-            return absolute
+            resolvedRecordingURL = absolute
+            return
         }
-        guard let base = api.currentBaseURL() else { return nil }
-        return URL(string: urlStr, relativeTo: base)?.absoluteURL
+        guard let base = await api.currentBaseURL() else { return }
+        resolvedRecordingURL = URL(string: urlStr, relativeTo: base)?.absoluteURL
     }
 
     var body: some View {
@@ -405,6 +402,7 @@ private struct CallDetailView: View {
         }
         .navigationTitle(entry.customerName ?? entry.phoneNumber)
         .navigationBarTitleDisplayMode(.large)
+        .task { await loadResolvedRecordingURL() }
         .sheet(isPresented: $showRecordingPlayer) {
             if let url = resolvedRecordingURL {
                 CallRecordingPlayerView(entry: entry, recordingURL: url) {

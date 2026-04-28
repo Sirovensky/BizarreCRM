@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import Observation
 import Core
 import DesignSystem
@@ -293,7 +294,7 @@ public struct TicketNumberFormatPage: View {
 #if DEBUG
 #Preview {
     NavigationStack {
-        TicketNumberFormatPage(api: MockAPIClient())
+        TicketNumberFormatPage(api: APIClientImpl())
     }
 }
 #endif

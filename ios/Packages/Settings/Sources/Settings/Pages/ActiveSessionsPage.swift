@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import Observation
 import Core
 import DesignSystem
@@ -244,7 +245,7 @@ public struct ActiveSessionsPage: View {
 #if DEBUG
 #Preview {
     NavigationStack {
-        ActiveSessionsPage(api: MockAPIClient())
+        ActiveSessionsPage(api: APIClientImpl())
     }
 }
 #endif

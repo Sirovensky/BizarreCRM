@@ -48,7 +48,7 @@ public struct ChurnMemberRow: Decodable, Sendable, Identifiable {
 }
 
 public struct ChurnTrendPoint: Decodable, Sendable, Identifiable {
-    public let id: String { periodLabel }
+    public var id: String { periodLabel }
     public let periodLabel: String    // e.g. "Apr 2026"
     public let churnedCount: Int
     public let newCount: Int

@@ -123,32 +123,31 @@ public extension APIClient {
         entityId: String,
         documentType: String
     ) async throws -> String {
-        struct UploadBody: Encodable, Sendable {
-            let entityKind: String
-            let entityId: String
-            let documentType: String
-            let fileName: String
-            enum CodingKeys: String, CodingKey {
-                case entityKind   = "entity_kind"
-                case entityId     = "entity_id"
-                case documentType = "document_type"
-                case fileName     = "file_name"
-            }
-        }
-        struct UploadResponse: Decodable, Sendable {
-            let documentId: String
-            enum CodingKeys: String, CodingKey { case documentId = "document_id" }
-        }
-        // NOTE: Full multipart implementation deferred until background URLSession
-        // infrastructure (§20) is wired. This JSON call records the intent and
-        // returns a server ID; binary upload follows via multipart helper (§1 roadmap).
-        let body = UploadBody(
+        let body = PDFArchiveUploadBody(
             entityKind: entityKind,
             entityId: entityId,
             documentType: documentType,
             fileName: fileURL.lastPathComponent
         )
-        let response = try await post("/api/v1/documents/upload", body: body, as: UploadResponse.self)
+        let response = try await post("/api/v1/documents/upload", body: body, as: PDFArchiveUploadResponse.self)
         return response.documentId
     }
+}
+
+private struct PDFArchiveUploadBody: Encodable, Sendable {
+    let entityKind: String
+    let entityId: String
+    let documentType: String
+    let fileName: String
+    enum CodingKeys: String, CodingKey {
+        case entityKind   = "entity_kind"
+        case entityId     = "entity_id"
+        case documentType = "document_type"
+        case fileName     = "file_name"
+    }
+}
+
+private struct PDFArchiveUploadResponse: Decodable, Sendable {
+    let documentId: String
+    enum CodingKeys: String, CodingKey { case documentId = "document_id" }
 }

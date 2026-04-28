@@ -113,7 +113,7 @@ public struct TerminalFallbackView: View {
                     FallbackOptionButton(
                         icon: "clock.badge.plus",
                         title: "Queue for Later",
-                        subtitle: "Save as "card pending" — retry when terminal reconnects. Requires manager approval on pickup.",
+                        subtitle: "Save as \"card pending\" — retry when terminal reconnects. Requires manager approval on pickup.",
                         color: .orange
                     ) {
                         onSelectAction(.queueOfflineSale)

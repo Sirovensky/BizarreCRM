@@ -1,5 +1,6 @@
 import Foundation
 import Core
+import Networking
 
 // MARK: - APIClient + Security settings endpoints (§19.2)
 //

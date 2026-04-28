@@ -178,6 +178,7 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
 /// §4.1: All / Open / On hold / Closed / Cancelled / Active (mirrors server `status_group`).
 public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
     case all
+    case myTickets
     case open
     case onHold
     case active
@@ -204,6 +205,8 @@ public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
         switch self {
         case .all:
             return []
+        case .myTickets:
+            return [URLQueryItem(name: "assigned_to", value: "me")]
         case .open:
             return [URLQueryItem(name: "status_group", value: "open")]
         case .onHold:
@@ -253,6 +256,24 @@ public enum TicketUrgencyFilter: String, CaseIterable, Sendable, Identifiable {
 
     public var queryItem: URLQueryItem {
         URLQueryItem(name: "urgency", value: rawValue)
+    }
+}
+
+/// §4.1 — sort order shared between Networking calls and the Tickets list view.
+/// UI-side `displayName` and `apply(to:)` extensions live in the Tickets package.
+public enum TicketSortOrder: String, CaseIterable, Sendable, Identifiable {
+    case newest    = "newest"
+    case oldest    = "oldest"
+    case status    = "status"
+    case urgency   = "urgency"
+    case assignee  = "assignee"
+    case dueDate   = "due_date"
+    case totalDesc = "total_desc"
+
+    public var id: String { rawValue }
+
+    public var queryItem: URLQueryItem {
+        URLQueryItem(name: "sort", value: rawValue)
     }
 }
 

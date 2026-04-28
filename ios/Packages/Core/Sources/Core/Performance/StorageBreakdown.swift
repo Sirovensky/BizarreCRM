@@ -270,7 +270,7 @@ public struct StorageMonitor: Sendable {
         let fm = FileManager.default
         guard let enumerator = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) else { return 0 }
         var total: Int64 = 0
-        for case let url as URL in enumerator {
+        for case let url as URL in enumerator.allObjects {
             guard predicate(url.lastPathComponent) else { continue }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             total += Int64(size)

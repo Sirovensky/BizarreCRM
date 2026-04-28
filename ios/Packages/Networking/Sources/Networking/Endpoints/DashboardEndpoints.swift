@@ -1,4 +1,5 @@
 import Foundation
+import Core
 
 /// Mirrors `GET /api/v1/reports/dashboard`. Server route:
 ///   packages/server/src/routes/reports.routes.ts:52
@@ -195,7 +196,7 @@ public extension APIClient {
             return nil
         } catch {
             // 404 / feature-not-enabled → nil (tile hidden)
-            AppLog.net.debug("teamInboxCount: \(error.localizedDescription, privacy: .public)")
+            AppLog.networking.debug("teamInboxCount: \(error.localizedDescription, privacy: .public)")
             return nil
         }
     }

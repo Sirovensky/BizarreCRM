@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import Core
 
 // MARK: - §19.2 2FA — TOTP enrollment (QR scan + verification + backup codes)
@@ -303,7 +304,7 @@ private struct BackupCodesStep: View {
 #if DEBUG
 #Preview("TOTP Enrollment") {
     TOTPEnrollmentSheet(
-        api: MockAPIClient(),
+        api: APIClientImpl(),
         onEnrolled: { print("enrolled") },
         onCancel: { print("cancel") }
     )

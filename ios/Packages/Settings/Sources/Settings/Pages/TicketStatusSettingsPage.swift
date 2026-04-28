@@ -151,8 +151,7 @@ extension APIClient {
     }
 
     func createTicketStatus(name: String, color: String) async throws -> TicketStatus {
-        struct Body: Encodable { let name: String; let color: String }
-        return try await post("/api/v1/settings/statuses", body: Body(name: name, color: color), as: TicketStatus.self)
+        return try await post("/api/v1/settings/statuses", body: TicketStatusCreateBody(name: name, color: color), as: TicketStatus.self)
     }
 
     func updateTicketStatus(_ status: TicketStatus) async throws -> TicketStatus {
@@ -160,11 +159,13 @@ extension APIClient {
     }
 
     func reorderTicketStatuses(_ ids: [Int]) async throws {
-        struct Body: Encodable { let order: [Int] }
-        struct Ack: Decodable {}
-        _ = try? await post("/api/v1/settings/statuses/reorder", body: Body(order: ids), as: Ack.self)
+        _ = try? await post("/api/v1/settings/statuses/reorder", body: TicketStatusReorderBody(order: ids), as: TicketStatusReorderAck.self)
     }
 }
+
+private struct TicketStatusCreateBody: Encodable, Sendable { let name: String; let color: String }
+private struct TicketStatusReorderBody: Encodable, Sendable { let order: [Int] }
+private struct TicketStatusReorderAck: Decodable, Sendable {}
 
 private struct TicketStatusListResponse: Decodable {
     let statuses: [TicketStatus]

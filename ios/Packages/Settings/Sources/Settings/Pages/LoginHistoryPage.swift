@@ -1,4 +1,5 @@
 import SwiftUI
+import Networking
 import Observation
 import Core
 import DesignSystem
@@ -216,7 +217,7 @@ private extension String {
 #if DEBUG
 #Preview {
     NavigationStack {
-        LoginHistoryPage(api: MockAPIClient())
+        LoginHistoryPage(api: APIClientImpl())
     }
 }
 #endif

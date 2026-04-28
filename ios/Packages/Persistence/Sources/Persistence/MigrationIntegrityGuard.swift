@@ -54,7 +54,8 @@ public enum MigrationIntegrityGuard: Sendable {
     ///
     /// - Throws: ``MigrationIntegrityError.missingMigrations`` when one or
     ///   more expected names are absent from `grdb_migrations`.
-    public static func verify(pool: DatabasePool, bundle: Bundle = .module) throws {
+    public static func verify(pool: DatabasePool, bundle: Bundle? = nil) throws {
+        let bundle = bundle ?? .module
         // 1. Collect expected migration identifiers from SQL filenames.
         let expected = expectedMigrationNames(in: bundle)
         guard !expected.isEmpty else {
