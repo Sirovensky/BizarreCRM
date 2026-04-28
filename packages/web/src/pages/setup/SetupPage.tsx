@@ -109,15 +109,54 @@ export function SetupPage() {
   // authSetupData is read in flushAndExit() below for skip-count bumping.
   const orderedPhases = useMemo<WizardPhase[]>(() => WIZARD_BODY_ORDER, []);
 
-  // The wizard body starts at 'welcome' for already-authenticated users.
-  // Pre-wizard auth (firstLogin/signup/forcePassword/verifyEmail/twoFactorSetup)
-  // is rendered only when the gate has not yet redirected here from /login.
-  // Our existing gate in App.tsx routes to /setup AFTER auth, so the default
-  // entry phase here is 'welcome'.
-  const [phase, setPhase] = useState<WizardPhase>('welcome');
-  const [pending, setPending] = useState<PendingWrites>({});
+  // ── Persistent wizard state ─────────────────────────────────────
+  // sessionStorage survives page refreshes within the same tab so the user
+  // never loses progress to F5 / browser autoreload / Vite HMR. Cleared
+  // when the wizard finishes (complete/skip flushAndExit) AND when the tab
+  // closes — a brand-new tab starts a fresh wizard. Keyed per session so
+  // multiple tabs of the same browser don't collide.
+  const STORAGE_KEY = 'bizarrecrm:setup-wizard:v1';
+  type Persisted = { phase: WizardPhase; pending: PendingWrites };
+
+  const [phase, setPhase] = useState<WizardPhase>(() => {
+    if (typeof window === 'undefined') return 'welcome';
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return 'welcome';
+      const parsed = JSON.parse(raw) as Persisted;
+      // Validate phase is in the body order — otherwise restart fresh.
+      if (parsed.phase && WIZARD_BODY_ORDER.includes(parsed.phase)) {
+        return parsed.phase;
+      }
+    } catch {
+      // Corrupt JSON or storage disabled — fall through to default.
+    }
+    return 'welcome';
+  });
+  const [pending, setPending] = useState<PendingWrites>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const raw = sessionStorage.getItem(STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Persisted;
+      return parsed.pending ?? {};
+    } catch {
+      return {};
+    }
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // Persist every state change so a refresh restores both phase + pending.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ phase, pending } satisfies Persisted));
+    } catch {
+      // Storage quota exceeded / disabled — silently ignore. Worst case the
+      // user loses partial state on refresh, which is the pre-fix behavior.
+    }
+  }, [phase, pending]);
 
   const update = useCallback((patch: Partial<PendingWrites>) => {
     setPending((prev) => ({ ...prev, ...patch }));
@@ -168,6 +207,15 @@ export function SetupPage() {
         queryClient.refetchQueries({ queryKey: ['auth-setup-status'] }),
       ]);
       queryClient.invalidateQueries({ queryKey: ['settings'] });
+
+      // Wizard finished successfully (complete or skip) — clear persisted
+      // state so a future revisit to /setup starts fresh instead of resuming
+      // a stale half-complete session.
+      try {
+        sessionStorage.removeItem(STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
 
       setPhase('done');
       navigate('/dashboard', { replace: true });
