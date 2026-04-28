@@ -1,8 +1,11 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,13 +20,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -47,13 +52,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -201,6 +209,63 @@ class TicketStatusEditorViewModel @Inject constructor(
         }
     }
 
+    /**
+     * §19.16 — Reorder statuses by moving the item at [fromIndex] to [toIndex].
+     *
+     * The in-memory list is reordered immediately (optimistic UI) so the drag
+     * preview feels instant. After the drop is committed the caller should call
+     * [persistOrder] to fire the PUT requests for any items whose `sort_order`
+     * changed.
+     */
+    fun reorderStatus(fromIndex: Int, toIndex: Int) {
+        val current = _state.value.statuses.toMutableList()
+        if (fromIndex < 0 || toIndex < 0 ||
+            fromIndex >= current.size || toIndex >= current.size
+        ) return
+        val item = current.removeAt(fromIndex)
+        current.add(toIndex, item)
+        // Assign new sort_order values (0-based index) so the list stays
+        // consistent even before the server round-trip finishes.
+        val reindexed = current.mapIndexed { idx, s -> s.copy(sortOrder = idx) }
+        _state.value = _state.value.copy(statuses = reindexed)
+    }
+
+    /**
+     * §19.16 — Persist the current in-memory sort order to the server.
+     *
+     * Fires PUT /settings/statuses/:id with `sort_order = index` for every item
+     * whose position changed relative to [originalOrder]. Runs the PUTs
+     * sequentially to avoid race conditions on the server (SQLite).
+     *
+     * [originalOrder] is the list of IDs in the order they were before the drag
+     * began so we only persist items that actually moved.
+     */
+    fun persistOrder(originalOrder: List<Long>) {
+        val updated = _state.value.statuses
+        val changed = updated.filter { s ->
+            val originalIndex = originalOrder.indexOf(s.id)
+            originalIndex >= 0 && originalIndex != updated.indexOf(s)
+        }
+        if (changed.isEmpty()) return
+
+        viewModelScope.launch {
+            changed.forEach { s ->
+                runCatching {
+                    settingsApi.putStatus(
+                        id = s.id,
+                        body = mapOf("sort_order" to s.sortOrder),
+                    )
+                }.onFailure { err ->
+                    _state.value = _state.value.copy(
+                        snackMessage = "Reorder save failed: ${err.message}",
+                    )
+                    return@launch // stop on first error to avoid cascading failures
+                }
+            }
+            _state.value = _state.value.copy(snackMessage = "Order saved")
+        }
+    }
+
     fun clearSnack() { _state.value = _state.value.copy(snackMessage = null) }
     fun clearError() { _state.value = _state.value.copy(errorMessage = null) }
 }
@@ -211,6 +276,12 @@ class TicketStatusEditorViewModel @Inject constructor(
  * §19.16 Ticket-status editor.
  *
  * Lists all tenant ticket statuses (GET /settings/statuses).
+ *
+ * **Drag-to-reorder** (§19.16): long-press the drag-handle icon on any row to
+ * enter drag mode.  Release to drop.  New [TicketStatusItem.sortOrder] values
+ * (0-based index) are sent to the server via sequential PUT /settings/statuses/:id
+ * calls only for items whose position actually changed, to minimise network load.
+ *
  * Tapping the Edit icon for a row opens [StatusEditDialog] where staff can:
  *   - Rename the status
  *   - Pick a color from the swatch palette
@@ -221,9 +292,6 @@ class TicketStatusEditorViewModel @Inject constructor(
  *
  * Changes are persisted via PUT /settings/statuses/:id (admin-only on server).
  * Optimistic update applied; rolled back on network failure.
- *
- * Does NOT support reorder (drag) or delete — those require a broader UX pass
- * that includes transition-guard matrix. Deferred per §19.16 notes.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -236,6 +304,18 @@ fun TicketStatusEditorScreen(
 
     // Status row that is currently open in the edit dialog (null = no dialog)
     var editingStatus by remember { mutableStateOf<TicketStatusItem?>(null) }
+
+    // ── Drag-to-reorder state (§19.16) ────────────────────────────────────────
+    // dragIndex   = row currently held by the finger (null = no active drag)
+    // dragTarget  = row that the dragged item is hovering over
+    // dragOffsetY = cumulative vertical movement of the active drag gesture
+    var dragIndex by remember { mutableStateOf<Int?>(null) }
+    var dragTarget by remember { mutableStateOf<Int?>(null) }
+    var dragOffsetY by remember { mutableStateOf(0f) }
+
+    // Snapshot of status IDs in their pre-drag order — used by persistOrder()
+    // to detect which items actually moved so we only PUT the changed rows.
+    val preDragOrder = remember { mutableStateListOf<Long>() }
 
     LaunchedEffect(state.snackMessage) {
         state.snackMessage?.let {
@@ -291,6 +371,7 @@ fun TicketStatusEditorScreen(
 
             else -> {
                 LazyColumn(
+                    state = rememberLazyListState(),
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(padding),
@@ -298,11 +379,65 @@ fun TicketStatusEditorScreen(
                         vertical = 8.dp,
                     ),
                 ) {
-                    items(state.statuses, key = { it.id }) { status ->
+                    itemsIndexed(state.statuses, key = { _, s -> s.id }) { index, status ->
+                        val isDragging = dragIndex == index
+
+                        // Shadow elevation animates during drag to give tactile lift.
+                        val elevation by animateDpAsState(
+                            targetValue = if (isDragging) 6.dp else 0.dp,
+                            animationSpec = tween(durationMillis = 150),
+                            label = "drag_elevation_${status.id}",
+                        )
+
                         StatusRow(
                             status = status,
                             isSaving = state.savingId == status.id,
+                            isDragging = isDragging,
+                            elevation = elevation,
                             onEdit = { editingStatus = status },
+                            // Drag-handle modifier: long-press starts drag on this row.
+                            dragHandleModifier = Modifier.pointerInput(status.id) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        // Capture the pre-drag order once on first finger-down.
+                                        preDragOrder.clear()
+                                        preDragOrder.addAll(state.statuses.map { it.id })
+                                        dragIndex = index
+                                        dragTarget = index
+                                        dragOffsetY = 0f
+                                    },
+                                    onDrag = { _, dragAmount ->
+                                        dragOffsetY += dragAmount.y
+                                        // Estimate target row from cumulative drag distance.
+                                        // Row height is ~72dp (ListItem with supporting text);
+                                        // using 64f px as a conservative threshold gives
+                                        // smooth snapping without over-sensitivity.
+                                        val rowHeightPx = 64f
+                                        val newTarget = (index + (dragOffsetY / rowHeightPx).toInt())
+                                            .coerceIn(0, state.statuses.lastIndex)
+                                        if (newTarget != dragTarget) {
+                                            dragTarget = newTarget
+                                            val from = dragIndex
+                                                ?: return@detectDragGesturesAfterLongPress
+                                            if (from != newTarget) {
+                                                viewModel.reorderStatus(from, newTarget)
+                                                dragIndex = newTarget
+                                            }
+                                        }
+                                    },
+                                    onDragEnd = {
+                                        viewModel.persistOrder(preDragOrder.toList())
+                                        dragIndex = null
+                                        dragTarget = null
+                                        dragOffsetY = 0f
+                                    },
+                                    onDragCancel = {
+                                        dragIndex = null
+                                        dragTarget = null
+                                        dragOffsetY = 0f
+                                    },
+                                )
+                            },
                         )
                         HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                     }
@@ -335,11 +470,25 @@ fun TicketStatusEditorScreen(
 
 // ─── Status list row ──────────────────────────────────────────────────────────
 
+/**
+ * A single row in the status editor list.
+ *
+ * @param status            The status item to display.
+ * @param isSaving          True while a PUT request for this row is in-flight.
+ * @param isDragging        True when this row is currently being dragged.
+ * @param elevation         Shadow elevation to apply (animated externally via [animateDpAsState]).
+ * @param onEdit            Called when the Edit icon is tapped.
+ * @param dragHandleModifier Modifier applied to the drag-handle icon; contains the
+ *                          [detectDragGesturesAfterLongPress] pointer-input (§19.16).
+ */
 @Composable
 private fun StatusRow(
     status: TicketStatusItem,
     isSaving: Boolean,
+    isDragging: Boolean,
+    elevation: androidx.compose.ui.unit.Dp,
     onEdit: () -> Unit,
+    dragHandleModifier: Modifier = Modifier,
 ) {
     val dotColor = remember(status.color) {
         runCatching {
@@ -347,58 +496,88 @@ private fun StatusRow(
         }.getOrElse { Color(0xFF6b7280) }
     }
 
-    ListItem(
-        headlineContent = {
-            Text(
-                status.name,
-                fontWeight = FontWeight.Medium,
-            )
-        },
-        supportingContent = {
-            val tags = buildList {
-                if (status.isClosed == 1) add("Closed")
-                if (status.isCancelled == 1) add("Cancelled")
-                if (status.notifyCustomer == 1) add("Notifies customer")
-                if (status.waitingCustomer == 1) add("SLA paused — waiting customer")
-                if (status.awaitingParts == 1) add("SLA paused — awaiting parts")
-            }
-            if (tags.isNotEmpty()) {
+    // Lifted surface while dragging so the row visually "floats" over its siblings.
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = elevation, shape = MaterialTheme.shapes.small),
+        color = if (isDragging)
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        else
+            MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        ListItem(
+            headlineContent = {
                 Text(
-                    tags.joinToString(" · "),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    status.name,
+                    fontWeight = FontWeight.Medium,
                 )
-            }
-        },
-        leadingContent = {
-            Box(
-                modifier = Modifier
-                    .size(18.dp)
-                    .clip(CircleShape)
-                    .background(dotColor)
-                    .semantics {
-                        contentDescription = "Status color: ${status.color ?: "gray"}"
-                    },
-            )
-        },
-        trailingContent = {
-            if (isSaving) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.semantics {
-                        contentDescription = "Edit status ${status.name}"
-                    },
-                ) {
-                    Icon(Icons.Filled.Edit, contentDescription = null)
+            },
+            supportingContent = {
+                val tags = buildList {
+                    if (status.isClosed == 1) add("Closed")
+                    if (status.isCancelled == 1) add("Cancelled")
+                    if (status.notifyCustomer == 1) add("Notifies customer")
+                    if (status.waitingCustomer == 1) add("SLA paused — waiting customer")
+                    if (status.awaitingParts == 1) add("SLA paused — awaiting parts")
                 }
-            }
-        },
-        colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    )
+                if (tags.isNotEmpty()) {
+                    Text(
+                        tags.joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            leadingContent = {
+                // Drag-handle icon — long-press here to start reorder drag (§19.16).
+                Icon(
+                    Icons.Filled.DragHandle,
+                    contentDescription = "Drag to reorder ${status.name}",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = dragHandleModifier
+                        .size(24.dp)
+                        .semantics {
+                            contentDescription = "Drag handle for ${status.name}"
+                        },
+                )
+            },
+            trailingContent = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Color dot
+                    Box(
+                        modifier = Modifier
+                            .size(14.dp)
+                            .clip(CircleShape)
+                            .background(dotColor)
+                            .semantics {
+                                contentDescription = "Status color: ${status.color ?: "gray"}"
+                            },
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                        )
+                    } else {
+                        IconButton(
+                            onClick = onEdit,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Edit status ${status.name}"
+                            },
+                        ) {
+                            Icon(Icons.Filled.Edit, contentDescription = null)
+                        }
+                    }
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent,
+            ),
+        )
+    }
 }
 
 // ─── Edit dialog ──────────────────────────────────────────────────────────────
