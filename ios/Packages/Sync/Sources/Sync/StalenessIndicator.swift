@@ -109,7 +109,6 @@ public struct StalenessIndicator: View {
         .padding(.horizontal, BrandSpacing.sm)
         .padding(.vertical, BrandSpacing.xxs)
         .brandGlass(.clear, tint: level.color.opacity(0.15))
-        .fixedSize(horizontal: true, vertical: false)
         .transition(chipTransition)
         .animation(chipAnimation, value: logic.label)
     }

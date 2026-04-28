@@ -43,12 +43,23 @@ public actor SyncFlusher {
         handlers["\(entity).\(op)"] != nil
     }
 
+    /// Outcome of a flush pass. Lets callers decide whether to refresh the
+    /// "Just synced N min ago" UI badge — we only want to advance the
+    /// `lastSyncedAt` watermark on real success or a no-op (nothing to do).
+    public enum FlushOutcome: Sendable, Equatable {
+        case empty       // nothing was due
+        case allOK       // every due record replayed cleanly
+        case partial     // at least one record failed
+        case readError   // could not read the due queue
+    }
+
     /// Pull every due record and attempt to replay. Safe to call multiple
     /// times in a row — a second invocation while the first is still
     /// running is a no-op (the single-writer in-flight guard makes the
     /// flusher re-entrancy-safe).
-    public func flush() async {
-        guard !isFlushing else { return }
+    @discardableResult
+    public func flush() async -> FlushOutcome {
+        guard !isFlushing else { return .empty }
         isFlushing = true
         defer { isFlushing = false }
 
@@ -57,11 +68,13 @@ public actor SyncFlusher {
             due = try await SyncQueueStore.shared.due(limit: 50)
         } catch {
             AppLog.sync.error("flush() failed to read due rows: \(error.localizedDescription, privacy: .public)")
-            return
+            return .readError
         }
-        if due.isEmpty { return }
+        if due.isEmpty { return .empty }
 
         AppLog.sync.info("sync flush started — \(due.count) record(s) due")
+
+        var failureCount = 0
 
         for record in due {
             guard let id = record.id else { continue }
@@ -71,6 +84,7 @@ public actor SyncFlusher {
                 try await SyncQueueStore.shared.markInFlight(id)
             } catch {
                 AppLog.sync.error("markInFlight failed for \(kind, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                failureCount += 1
                 continue
             }
 
@@ -79,6 +93,7 @@ public actor SyncFlusher {
                 // just fail it. Fast-track to dead-letter instead.
                 AppLog.sync.error("no handler for \(kind, privacy: .public) — promoting to dead-letter")
                 try? await promoteStraightToDeadLetter(id: id)
+                failureCount += 1
                 continue
             }
 
@@ -93,10 +108,12 @@ public actor SyncFlusher {
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 try? await SyncQueueStore.shared.markFailed(id, error: message)
                 AppLog.sync.warning("sync replay failed: \(kind, privacy: .public) id=\(id) — \(message, privacy: .public)")
+                failureCount += 1
             }
         }
 
-        AppLog.sync.info("sync flush finished")
+        AppLog.sync.info("sync flush finished — failures=\(failureCount)")
+        return failureCount == 0 ? .allOK : .partial
     }
 
     /// Bump the row's attempt count to `maxAttempts` in a single shot so

@@ -63,21 +63,23 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
         // here only added an empty toggleable ghost column on iOS 17+ because
         // `.detailOnly` is honoured loosely once the user taps the system
         // sidebar-toggle.
+        // Custom rail sits beside the feature view. SwiftUI honours `.zIndex`
+        // on HStack children for paint order, so the rail renders on top of
+        // any animation overlay leaking out of the feature's own
+        // `NavigationSplitView` sidebar (the "inner sidebar paving over rail
+        // icons" bug from the screenshot walkthrough). It does not affect
+        // layout — the rail stays leftmost, content fills the remainder.
         HStack(spacing: 0) {
             RailSidebarView(
                 items: RailCatalog.primary,
                 selection: $selection
             )
-            // Keep the custom rail above the feature view's `NavigationSplitView`
-            // sidebar overlay so opening/closing the inner sidebar slides
-            // *behind* the rail instead of paving over the rail icons.
-            .zIndex(2)
+            .zIndex(1)
 
             Divider()
-                .zIndex(2)
+                .zIndex(1)
 
             content(selection)
-                .zIndex(0)
         }
         .ignoresSafeArea(.container, edges: .top)
     }

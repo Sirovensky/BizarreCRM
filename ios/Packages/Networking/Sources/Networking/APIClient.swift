@@ -14,8 +14,14 @@ public protocol APIClient: Sendable {
     func setAuthToken(_ token: String?) async
     func setBaseURL(_ url: URL?) async
     func currentBaseURL() async -> URL?
-    func currentAuthToken() async -> String?
     func setRefresher(_ refresher: AuthSessionRefresher?) async
+
+    /// Run an authenticated raw data request (for CSV/PDF downloads etc.).
+    /// The actor stamps `Authorization: Bearer <token>` and routes through
+    /// the same configured `URLSession` as the JSON path, so SPKI pinning
+    /// + standard headers (`X-Origin`, gzip/br) + timeouts apply. Returns
+    /// the response body and metadata. Throws on transport / non-2xx.
+    func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse)
 }
 
 public extension APIClient {
@@ -90,8 +96,20 @@ public actor APIClientImpl: APIClient {
     public func setAuthToken(_ token: String?) { self.authToken = token }
     public func setBaseURL(_ url: URL?) { self.baseURL = url }
     public func currentBaseURL() -> URL? { baseURL }
-    public func currentAuthToken() -> String? { authToken }
     public func setRefresher(_ refresher: AuthSessionRefresher?) { self.refresher = refresher }
+
+    public func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        var req = request
+        if let token = authToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            let message = String(data: data, encoding: .utf8)
+            throw APITransportError.httpStatus(http.statusCode, message: message)
+        }
+        return (data, response)
+    }
 
     public func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {
         try await unwrap(perform(request(path, method: "GET", query: query, body: nil as String?), as: T.self))

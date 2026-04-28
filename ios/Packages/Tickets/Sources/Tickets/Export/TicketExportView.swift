@@ -18,7 +18,7 @@ import Networking
 public struct TicketExportView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isDownloading: Bool = false
-    @State private var downloadedFile: URL?
+    @State private var hasBaseURL: Bool = false
     @State private var errorMessage: String?
 
     private let api: APIClient
@@ -54,6 +54,12 @@ public struct TicketExportView: View {
             }
         }
         .presentationDetents([.medium])
+        .task {
+            // Pre-flight the base URL so we can disable the button immediately
+            // when the API client has not been wired (offline-first launch /
+            // before login). Avoids spinning + showing an error after a tap.
+            hasBaseURL = (await api.currentBaseURL()) != nil
+        }
     }
 
     // MARK: - Content
@@ -103,9 +109,17 @@ public struct TicketExportView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.bizarreOrange)
-            .disabled(isDownloading)
+            .disabled(isDownloading || !hasBaseURL)
             .padding(.horizontal, BrandSpacing.lg)
             .accessibilityLabel("Download tickets as CSV")
+
+            if !hasBaseURL {
+                Text("Sign in to a server first to enable export.")
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.lg)
+            }
         }
         .padding(BrandSpacing.lg)
     }
@@ -137,24 +151,47 @@ public struct TicketExportView: View {
 
     // MARK: - Helpers
 
+    @MainActor
     private func downloadAndShare() async {
         isDownloading = true
-        defer { isDownloading = false }
         errorMessage = nil
-        guard let file = await api.downloadTicketsCSV(filter: filter, keyword: keyword, sort: sort) else {
+        let file = await api.downloadTicketsCSV(filter: filter, keyword: keyword, sort: sort)
+        isDownloading = false
+        guard let file else {
             errorMessage = "Could not download CSV. Make sure you're signed in and online."
             return
         }
-        downloadedFile = file
-        await MainActor.run { presentShareSheet(for: file) }
+
+        // Mac (Designed for iPad) opens the file directly in the system app
+        // associated with `.csv` (Numbers / Excel). Better than the
+        // truncated Catalyst share sheet.
+        if Platform.isMac {
+            await UIApplication.shared.open(file)
+            // Schedule cleanup so we don't accumulate temp CSVs.
+            scheduleCleanup(file)
+            dismiss()
+            return
+        }
+
+        // iPad/iPhone: share sheet. Dismiss the export panel after the share
+        // sheet completes (or on cancel) so the user isn't left staring at
+        // the download screen.
+        presentShareSheet(for: file) { dismiss() }
     }
 
     @MainActor
-    private func presentShareSheet(for file: URL) {
+    private func presentShareSheet(for file: URL, completion: @escaping () -> Void) {
         let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+        activity.completionWithItemsHandler = { _, _, _, _ in
+            scheduleCleanup(file)
+            completion()
+        }
         guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
-              let vc = window.rootViewController else { return }
+              let vc = window.rootViewController else {
+            completion()
+            return
+        }
         if let popover = activity.popoverPresentationController {
             popover.sourceView = window
             let bounds = window.bounds
@@ -165,6 +202,16 @@ public struct TicketExportView: View {
         var top: UIViewController = vc
         while let presented = top.presentedViewController { top = presented }
         top.present(activity, animated: true)
+    }
+}
+
+/// Best-effort cleanup of a temp CSV file once the user is done sharing.
+/// Lives at file scope so both branches in `TicketExportView` can call it.
+@MainActor
+private func scheduleCleanup(_ url: URL) {
+    Task.detached {
+        try? await Task.sleep(for: .seconds(60))
+        try? FileManager.default.removeItem(at: url)
     }
 }
 #endif

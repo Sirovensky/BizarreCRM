@@ -68,38 +68,43 @@ public struct SmsListView: View {
     // MARK: - iPad layout — permanent left sidebar with conversation list,
     // detail pane on right shows the selected thread or an empty-state.
 
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var selectedPhone: String?
 
     private var regularBody: some View {
-        NavigationSplitView(columnVisibility: .constant(.all)) {
-            ZStack {
-                Color.bizarreSurfaceBase.ignoresSafeArea()
-                content
-            }
-            .navigationTitle("SMS")
-            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 480)
-            .searchable(text: $searchText, prompt: "Search by name or phone")
-            .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
-            .task { await vm.load() }
-            .refreshable { await vm.refresh() }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showTemplates = true } label: {
-                        Image(systemName: "text.bubble.badge.clock")
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Sidebar — wrap in `NavigationStack` so `.navigationTitle`,
+            // `.toolbar`, and `.searchable` have a host to render into.
+            NavigationStack {
+                ZStack {
+                    Color.bizarreSurfaceBase.ignoresSafeArea()
+                    content
+                }
+                .navigationTitle("SMS")
+                .searchable(text: $searchText, prompt: "Search by name or phone")
+                .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+                .task { await vm.load() }
+                .refreshable { await vm.refresh() }
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button { showTemplates = true } label: {
+                            Image(systemName: "text.bubble.badge.clock")
+                        }
+                        .accessibilityLabel("Message Templates")
+                        .keyboardShortcut("t", modifiers: [.command, .shift])
                     }
-                    .accessibilityLabel("Message Templates")
-                    .keyboardShortcut("t", modifiers: [.command, .shift])
+                    ToolbarItem(placement: .automatic) {
+                        StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                    }
                 }
-                ToolbarItem(placement: .automatic) {
-                    StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
+                .sheet(isPresented: $showTemplates) {
+                    MessageTemplateListView(api: api)
+                }
+                .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
+                    vm.clearActionError()
                 }
             }
-            .sheet(isPresented: $showTemplates) {
-                MessageTemplateListView(api: api)
-            }
-            .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
-                vm.clearActionError()
-            }
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 480)
         } detail: {
             if let phone = selectedPhone {
                 NavigationStack {
@@ -125,9 +130,11 @@ public struct SmsListView: View {
         }
         .navigationSplitViewStyle(.balanced)
         .onChange(of: path) { _, new in
-            // SmsListView's existing rows still drive `path` for iPhone; mirror
-            // the latest pushed phone into `selectedPhone` so taps populate the
-            // detail column on iPad too.
+            // The conversation rows still push to `path` (used by the iPhone
+            // `NavigationStack`). On iPad we mirror the most recent pushed
+            // phone into `selectedPhone` so the detail column updates.
+            // `NavigationLink(value:)` taps inside the sidebar `NavigationStack`
+            // append to `path`, which fires this observer.
             selectedPhone = new.last
         }
     }

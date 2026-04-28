@@ -146,30 +146,36 @@ public struct AppearancePage: View {
                 .accessibilityIdentifier("appearance.theme")
             }
 
-            Section("Accent color") {
-                HStack(spacing: BrandSpacing.base) {
-                    ForEach(AccentColor.allCases, id: \.self) { color in
-                        Button {
-                            vm.accent = color
-                            vm.save()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(color.color)
-                                    .frame(width: 36, height: 36)
-                                if vm.accent == color {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundStyle(.white)
+            // Accent-color section is hidden while the palette only ships a
+            // single brand colour (cream/orange via `bizarrePrimary`). A
+            // single-circle picker would be meaningless UI. Re-enable when a
+            // second accent ships.
+            if AccentColor.allCases.count > 1 {
+                Section("Accent color") {
+                    HStack(spacing: BrandSpacing.base) {
+                        ForEach(AccentColor.allCases, id: \.self) { color in
+                            Button {
+                                vm.accent = color
+                                vm.save()
+                            } label: {
+                                ZStack {
+                                    Circle()
+                                        .fill(color.color)
+                                        .frame(width: 36, height: 36)
+                                    if vm.accent == color {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 14, weight: .bold))
+                                            .foregroundStyle(.white)
+                                    }
                                 }
                             }
+                            .accessibilityLabel("\(color.displayName) accent\(vm.accent == color ? ", selected" : "")")
+                            .accessibilityIdentifier("appearance.accent.\(color.rawValue)")
                         }
-                        .accessibilityLabel("\(color.displayName) accent\(vm.accent == color ? ", selected" : "")")
-                        .accessibilityIdentifier("appearance.accent.\(color.rawValue)")
+                        Spacer()
                     }
-                    Spacer()
+                    .padding(.vertical, BrandSpacing.xxs)
                 }
-                .padding(.vertical, BrandSpacing.xxs)
             }
 
             Section("Density") {

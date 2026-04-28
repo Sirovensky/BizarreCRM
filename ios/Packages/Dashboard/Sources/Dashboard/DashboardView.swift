@@ -419,14 +419,16 @@ private struct LoadedBody: View {
 
         if total > 0 {
             // §3.3 — row-level chips for stale tickets and overdue invoices.
-            // Forward "View ticket" / "View invoice" taps to the dashboard's
-            // host (set by RootView/iPadShell) so the rail can switch to the
-            // right destination instead of relying on `openURL` deep links
-            // that the iPad shell does not subscribe to.
+            // Forward "View ticket" taps to the dashboard's host (set by
+            // RootView/iPadShell) so the rail can switch to the Tickets list.
+            // `onViewInvoice` is left nil so `NeedsAttentionCard` falls back
+            // to its `openURL("bizarrecrm://invoices/<id>")` path — replacing
+            // it with a no-op silently broke a feature that previously worked
+            // via the deep-link router.
             NeedsAttentionCard(
                 attention: a,
-                onViewTicket: { id in onMyQueueTicketTap?(id) },
-                onViewInvoice: { _ in /* TODO: invoice nav */ }
+                onViewTicket: onMyQueueTicketTap.map { handler in { id in handler(id) } },
+                onViewInvoice: nil
             )
         }
     }

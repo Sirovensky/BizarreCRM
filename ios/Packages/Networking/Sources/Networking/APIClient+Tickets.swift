@@ -152,10 +152,10 @@ public extension APIClient {
     }
 
     /// Authenticated CSV download. SafariView can't carry the bearer token
-    /// (the server returns 401 → "auth no token") — so download bytes via the
-    /// shared `URLSession` with an explicit `Authorization` header, write to
-    /// a temp file, and let the caller present a share sheet. Returns the
-    /// temp file URL on success or nil on failure.
+    /// (the server returns 401 → "auth no token"). The download runs through
+    /// the actor's pinned + configured `URLSession` via `authedDataRequest`
+    /// so SPKI pinning + standard headers + timeouts apply. Returns a temp
+    /// file URL on success or nil on failure.
     func downloadTicketsCSV(
         filter: TicketListFilter = .all,
         keyword: String? = nil,
@@ -167,15 +167,8 @@ public extension APIClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("text/csv", forHTTPHeaderField: "Accept")
-        if let token = await currentAuthToken() {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                AppLog.networking.error("Ticket CSV export HTTP \(http.statusCode, privacy: .public)")
-                return nil
-            }
+            let (data, _) = try await authedDataRequest(request)
             let tmp = FileManager.default.temporaryDirectory
                 .appendingPathComponent("tickets-export-\(Int(Date().timeIntervalSince1970)).csv")
             try data.write(to: tmp, options: .atomic)

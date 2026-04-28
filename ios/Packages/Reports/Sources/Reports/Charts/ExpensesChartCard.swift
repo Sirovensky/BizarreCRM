@@ -220,6 +220,8 @@ public struct ExpensesChartCard: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(BrandSpacing.md)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No expense data for this period")
     }
 
     // MARK: - Helpers
