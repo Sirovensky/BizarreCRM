@@ -45,8 +45,10 @@ import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterSh
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterState
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSortDropdown
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusChip
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoicePaymentMethodPieChart
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusPieChart
 import com.bizarreelectronics.crm.ui.screens.invoices.components.buildInvoiceStatusSlices
+import com.bizarreelectronics.crm.ui.screens.invoices.components.buildPaymentMethodSlices
 import com.bizarreelectronics.crm.ui.screens.invoices.components.invoiceChipStateFor
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
@@ -347,11 +349,11 @@ fun InvoiceListScreen(
  * Stats header card for the invoice list.
  *
  * On **phone** (compact width): three financial pills (Unpaid / Paid / Overdue).
- * On **tablet / ChromeOS** (medium or expanded width, §7.1 line 1715): pills column +
- * [InvoiceStatusPieChart] donut side-by-side via a [Row].
+ * On **tablet / ChromeOS** (medium or expanded width, §7.1): Financials column |
+ * [InvoiceStatusPieChart] | [InvoicePaymentMethodPieChart] side-by-side in a [Row].
  *
- * When [stats] is null (server returned 404 / offline) the pills column is omitted and
- * only the donut chart is shown (if [invoices] is non-empty).
+ * When [stats] is null (server returned 404 / offline) the pills column is omitted.
+ * The payment-method donut only shows when [stats.methodDistribution] is non-empty.
  */
 @Composable
 private fun InvoiceStatsHeader(
@@ -359,7 +361,10 @@ private fun InvoiceStatsHeader(
     invoices: List<InvoiceEntity>,
 ) {
     val isTablet = isMediumOrExpandedWidth()
-    val slices = remember(invoices) { buildInvoiceStatusSlices(invoices) }
+    val statusSlices = remember(invoices) { buildInvoiceStatusSlices(invoices) }
+    val methodSlices = remember(stats?.methodDistribution) {
+        buildPaymentMethodSlices(stats?.methodDistribution ?: emptyList())
+    }
 
     BrandCard(
         modifier = Modifier
@@ -367,13 +372,13 @@ private fun InvoiceStatsHeader(
             .padding(horizontal = 16.dp, vertical = 4.dp),
     ) {
         if (isTablet) {
-            // Tablet: pills column + donut side-by-side
+            // Tablet/ChromeOS: Financials | Status donut | Payment-method donut (§7.1)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
             ) {
                 if (stats != null) {
                     Column(
@@ -381,6 +386,12 @@ private fun InvoiceStatsHeader(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
+                        Text(
+                            text = "Financials",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         StatPill(
                             label = "Unpaid",
                             value = "$${"%.0f".format(stats.totalUnpaid)}",
@@ -398,10 +409,20 @@ private fun InvoiceStatsHeader(
                         )
                     }
                 }
-                InvoiceStatusPieChart(
-                    slices = slices,
-                    modifier = Modifier.weight(if (stats != null) 1.2f else 1f),
-                )
+                // Status donut — always shown when invoices are cached
+                if (statusSlices.isNotEmpty()) {
+                    InvoiceStatusPieChart(
+                        slices   = statusSlices,
+                        modifier = Modifier.weight(1.2f),
+                    )
+                }
+                // Payment-method donut — shown when server method_distribution available
+                if (methodSlices.isNotEmpty()) {
+                    InvoicePaymentMethodPieChart(
+                        slices   = methodSlices,
+                        modifier = Modifier.weight(1.2f),
+                    )
+                }
             }
         } else {
             // Phone: financial pills row only
