@@ -447,6 +447,51 @@ class TicketListViewModel @Inject constructor(
     }
 
     // -----------------------------------------------------------------------
+    // §4.21 — Bulk label apply (line 940)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Apply [label] to all currently-selected tickets via
+     * POST /tickets/bulk-labels { ids, label }.
+     *
+     * 404 is tolerated — the endpoint may not be deployed on self-hosted
+     * instances; a graceful toast is shown and select mode exits regardless.
+     */
+    fun bulkApplyLabel(label: String) {
+        val ids = _state.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                ticketApi.bulkSetLabels(mapOf("ids" to ids, "label" to label))
+                _state.value = _state.value.copy(
+                    isSelecting = false,
+                    selectedIds = emptySet(),
+                    toastMessage = "Label [$label] applied to ${ids.size} ticket${if (ids.size == 1) "" else "s"}",
+                )
+            } catch (e: HttpException) {
+                if (e.code() == 404) {
+                    // Endpoint not yet deployed on this tenant's server — exit gracefully.
+                    _state.value = _state.value.copy(
+                        isSelecting = false,
+                        selectedIds = emptySet(),
+                        toastMessage = "Label feature not available on this server",
+                    )
+                } else {
+                    Log.w(TAG, "bulkApplyLabel: HTTP ${e.code()} — ${e.message()}")
+                    _state.value = _state.value.copy(
+                        toastMessage = "Could not apply label — ${e.message()}",
+                    )
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "bulkApplyLabel: ${e.message}")
+                _state.value = _state.value.copy(
+                    toastMessage = "Could not apply label",
+                )
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // View mode toggle (L644)
     // -----------------------------------------------------------------------
 

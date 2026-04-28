@@ -937,7 +937,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
 - [x] Filter ticket list by label. (session 2026-04-26 — `activeLabelFilter` in `TicketListUiState`; `onLabelFilterChanged()` in VM; active filter chip shown above status row with remove; label chip tap toggles filter)
 - [ ] Auto-rules: "device-value > $500 → auto-label VIP"; "parts-ordered → auto-label on PO link".
   - **NOTE (2026-04-26):** Auto-rules are server-side business logic; Android renders what the server sends.
-- [ ] Multi-select bulk apply/remove label.
+- [x] Multi-select bulk apply/remove label. (session 2026-04-27 — `TicketListScreen` bottomBar now uses extracted `TicketBulkActionBar` (replaces dead private composable); `onBulkTag` opens `AlertDialog` with `OutlinedTextField`; `TicketListViewModel.bulkApplyLabel(label)` calls `TicketApi.bulkSetLabels(mapOf("ids" to ids, "label" to label))`; 404-tolerant with graceful toast; exits select mode on success or 404)
   - **NOTE (2026-04-26):** `TicketApi.bulkAction` exists; needs `BulkActionBar` label picker UI — deferred to bulk-actions pass.
 - [x] Conceptual: ticket labels are ticket-scoped vs customer tags are customer-scoped — don't conflate. (session 2026-04-26 — confirmed by entity model)
 - [ ] Label break-outs in revenue/duration reports (e.g. "Insurance claims avg turn time = 8d").

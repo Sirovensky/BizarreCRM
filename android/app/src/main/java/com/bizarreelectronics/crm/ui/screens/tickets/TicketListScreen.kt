@@ -56,6 +56,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterStat
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRowBadges
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketBulkActionBar
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSavedViewSheet
 import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaChip
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSortDropdown
@@ -133,6 +134,9 @@ fun TicketListScreen(
     var showSavedViewSheet by remember { mutableStateOf(false) }
     // Overflow menu (Export CSV etc.)
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §4.21 — Bulk label picker dialog
+    var showBulkLabelDialog by remember { mutableStateOf(false) }
+    var bulkLabelInput by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -195,12 +199,18 @@ fun TicketListScreen(
                 }
             }
         },
-        // Bulk action bar (L643) — bottom of screen in select mode
+        // Bulk action bar (L643 / §4.21) — bottom of screen in select mode
         bottomBar = {
             if (state.isSelecting && isExpandedWidth) {
-                BulkActionBar(
+                TicketBulkActionBar(
                     selectedCount = state.selectedIds.size,
+                    onBulkAssign = { /* TODO(plan:L643): Bulk assign — needs employee picker */ },
                     onBulkStatus = { viewModel.onBulkStatusChange("Closed") },
+                    onBulkArchive = { /* TODO(plan:L643): Bulk archive */ },
+                    onBulkTag = {
+                        bulkLabelInput = ""
+                        showBulkLabelDialog = true
+                    },
                     onExitSelect = { viewModel.exitSelectMode() },
                 )
             }
@@ -586,6 +596,41 @@ fun TicketListScreen(
             onDismiss = { showSavedViewSheet = false },
         )
     }
+
+    // §4.21 — Bulk label dialog: staff types a label name to apply to all selected tickets.
+    if (showBulkLabelDialog) {
+        AlertDialog(
+            onDismissRequest = { showBulkLabelDialog = false; bulkLabelInput = "" },
+            title = { Text("Apply label") },
+            text = {
+                OutlinedTextField(
+                    value = bulkLabelInput,
+                    onValueChange = { bulkLabelInput = it },
+                    label = { Text("Label name") },
+                    singleLine = true,
+                    placeholder = { Text("e.g. urgent, VIP, warranty") },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val label = bulkLabelInput.trim()
+                        if (label.isNotBlank()) {
+                            viewModel.bulkApplyLabel(label)
+                            showBulkLabelDialog = false
+                            bulkLabelInput = ""
+                        }
+                    },
+                    enabled = bulkLabelInput.isNotBlank(),
+                ) { Text("Apply") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBulkLabelDialog = false; bulkLabelInput = "" }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -901,45 +946,6 @@ private fun TicketViewModeToggle(
 // -----------------------------------------------------------------------
 // Bulk action bar (L643 — tablet/ChromeOS only)
 // -----------------------------------------------------------------------
-
-@Composable
-private fun BulkActionBar(
-    selectedCount: Int,
-    onBulkStatus: () -> Unit,
-    onExitSelect: () -> Unit,
-) {
-    Surface(
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                "$selectedCount selected",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
-            )
-            // Bulk status (only action exposed for now per spec)
-            OutlinedButton(onClick = onBulkStatus) {
-                Text("Mark done")
-            }
-            // Bulk assign / bulk delete — TODO per plan:L643
-            TextButton(
-                onClick = { /* TODO(plan:L643): Bulk assign — not yet wired */ },
-                enabled = false,
-            ) { Text("Assign…") }
-            IconButton(onClick = onExitSelect) {
-                Icon(Icons.Default.Close, contentDescription = "Exit selection")
-            }
-        }
-    }
-}
 
 // -----------------------------------------------------------------------
 // Ticket status group — same as before (internal helpers)
