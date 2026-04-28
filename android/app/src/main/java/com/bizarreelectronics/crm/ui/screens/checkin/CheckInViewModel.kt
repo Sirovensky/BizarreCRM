@@ -6,6 +6,7 @@ import com.bizarreelectronics.crm.data.local.db.BizarreDatabase
 import com.bizarreelectronics.crm.data.local.db.dao.CheckInDraftDao
 import com.bizarreelectronics.crm.data.local.db.entities.CheckInDraftEntity
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.RepairPricingApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketDeviceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateTicketRequest
@@ -24,6 +25,7 @@ import javax.inject.Inject
 class CheckInViewModel @Inject constructor(
     private val ticketApi: TicketApi,
     private val inventoryApi: InventoryApi,
+    private val repairPricingApi: RepairPricingApi,
     private val checkInDraftDao: CheckInDraftDao,
     private val gson: Gson,
 ) : ViewModel() {
@@ -46,7 +48,13 @@ class CheckInViewModel @Inject constructor(
     fun advance() {
         val current = _uiState.value.currentStep
         if (current < TOTAL_STEPS - 1) {
-            _uiState.update { it.copy(currentStep = current + 1) }
+            val next = current + 1
+            _uiState.update { it.copy(currentStep = next) }
+            // Quote step (index 4) — auto-fill subtotal from RepairPricingApi
+            // catalog. Server services seeded at first-run setup wizard
+            // (todofixes426 commit 07ec4c4b). Honors user override: skips if
+            // subtotal already set or auto-fill already ran.
+            if (next == 4) maybeAutoFillQuoteSubtotal()
         }
     }
 
@@ -185,8 +193,57 @@ class CheckInViewModel @Inject constructor(
     }
 
     fun setQuoteSubtotalCents(cents: Long) {
-        _uiState.update { it.copy(quoteSubtotalCents = cents) }
+        // Mark as user-touched so subsequent advance()→Quote re-entries don't
+        // overwrite the manual value with the auto-fill.
+        _uiState.update { it.copy(quoteSubtotalCents = cents, subtotalAutoFilled = true) }
         scheduleSave()
+    }
+
+    /**
+     * Symptom-label → service-search-term map used to translate the cashier's
+     * symptom selection into a fuzzy service catalog query. Server matches
+     * `q` against `repair_services.name LIKE %q%` so simple keywords work.
+     */
+    private val symptomToServiceQuery = mapOf(
+        "Cracked screen" to "screen",
+        "Battery drain" to "battery",
+        "Won't charge" to "charge",
+        "Liquid damage" to "liquid",
+        "No sound" to "speaker",
+        "Camera" to "camera",
+        "Buttons" to "button",
+    )
+
+    private fun maybeAutoFillQuoteSubtotal() {
+        val s = _uiState.value
+        if (s.quoteSubtotalCents > 0L || s.subtotalAutoFilled) return
+        if (s.symptoms.isEmpty()) return
+        viewModelScope.launch {
+            var totalCents = 0L
+            var matched = false
+            try {
+                for (symptom in s.symptoms) {
+                    val query = symptomToServiceQuery[symptom] ?: continue
+                    val response = repairPricingApi.getServices(query = query)
+                    val first = response.data?.firstOrNull { it.isActive == 1 }
+                    if (first != null && first.laborPrice > 0.0) {
+                        totalCents += (first.laborPrice * 100).toLong()
+                        matched = true
+                    }
+                }
+            } catch (_: Exception) {
+                // Network/server failure — leave subtotal blank so cashier
+                // notices and enters manually. Don't surface an error: the
+                // pricing catalog may simply be empty pre-setup-wizard.
+                return@launch
+            }
+            if (matched) {
+                _uiState.update {
+                    it.copy(quoteSubtotalCents = totalCents, subtotalAutoFilled = true)
+                }
+                scheduleSave()
+            }
+        }
     }
 
     fun setTaxRateBps(bps: Int) {
@@ -340,6 +397,10 @@ data class CheckInUiState(
     val batteryCycles: Int? = null,
     // Step 5
     val quoteSubtotalCents: Long = 0L,
+    /** True once the cashier has touched the subtotal field, OR the auto-fill
+     *  from the pricing catalog has run. Prevents repeat advance()→Quote
+     *  visits from clobbering a manually-entered value. */
+    val subtotalAutoFilled: Boolean = false,
     val taxRateBps: Int = 800,
     val depositCents: Long = 0L,
     val depositFullBalance: Boolean = false,
