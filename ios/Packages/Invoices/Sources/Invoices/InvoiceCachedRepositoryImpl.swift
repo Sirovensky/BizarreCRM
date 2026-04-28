@@ -55,11 +55,12 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
         statusTab: InvoiceStatusTab,
         keyword: String?,
         sort: InvoiceSortOption,
-        cursor: String?
+        cursor: String?,
+        advancedFilter: InvoiceListFilter
     ) async throws -> InvoicesListResponse {
         // Cursor fetches bypass cache (they're paginated)
         if cursor != nil {
-            return try await underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: cursor)
+            return try await underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: cursor, advancedFilter: advancedFilter)
         }
         let key = InvoiceCacheFilter(filter: statusTab.legacyFilter, keyword: keyword, sort: sort, statusTab: statusTab)
         let cached = cache[key] ?? []
@@ -73,7 +74,7 @@ public actor InvoiceCachedRepositoryImpl: InvoiceRepository {
         if isStale {
             Task {
                 do {
-                    let fresh = try await self.underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: nil)
+                    let fresh = try await self.underlying.listExtended(statusTab: statusTab, keyword: keyword, sort: sort, cursor: nil, advancedFilter: advancedFilter)
                     await self.updateCache(key: key, items: fresh.invoices)
                 } catch {
                     AppLog.sync.warning("Invoices extended refresh failed: \(error.localizedDescription, privacy: .public)")

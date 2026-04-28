@@ -3,8 +3,6 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
-import Nuke
-import NukeUI
 
 // MARK: - §5.2 Photo mementos — recent repair photos gallery (horizontal scroll)
 
@@ -82,20 +80,23 @@ public struct CustomerPhotoMementosSection: View {
             RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
                 .fill(Color.bizarreSurface2)
                 .frame(width: 80, height: 80)
-            LazyImage(url: URL(string: photo.thumbnailURL ?? photo.url)) { state in
-                if let image = state.image {
+            AsyncImage(url: URL(string: photo.thumbnailURL ?? photo.url)) { phase in
+                switch phase {
+                case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 80, height: 80)
                         .clipped()
-                } else if state.isLoading {
+                case .empty:
                     ProgressView().frame(width: 80, height: 80)
-                } else {
+                case .failure:
                     Image(systemName: "photo")
                         .font(.system(size: 24))
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                         .frame(width: 80, height: 80)
+                @unknown default:
+                    EmptyView()
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
@@ -128,8 +129,9 @@ private struct PhotoLightboxView: View {
         NavigationStack {
             ZStack {
                 Color.black.ignoresSafeArea()
-                LazyImage(url: URL(string: photo.url)) { state in
-                    if let image = state.image {
+                AsyncImage(url: URL(string: photo.url)) { phase in
+                    switch phase {
+                    case .success(let image):
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fit)
@@ -140,10 +142,12 @@ private struct PhotoLightboxView: View {
                             .onTapGesture(count: 2) {
                                 withAnimation(.spring()) { scale = scale > 1 ? 1 : 3 }
                             }
-                    } else if state.isLoading {
+                    case .empty:
                         ProgressView().tint(.white)
-                    } else {
+                    case .failure:
                         Image(systemName: "photo").foregroundStyle(.white).font(.system(size: 48))
+                    @unknown default:
+                        EmptyView()
                     }
                 }
             }

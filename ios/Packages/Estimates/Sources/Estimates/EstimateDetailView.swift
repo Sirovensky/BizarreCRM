@@ -37,12 +37,7 @@ public struct EstimateDetailView: View {
     #if canImport(UIKit)
     @State private var showSignSheet: Bool = false      // existing sign-url sheet
     @State private var showSendSheet: Bool = false      // §8.2 send
-    @State private var showApproveSheet: Bool = false   // §8.2 approve
-    @State private var showRejectSheet: Bool = false    // §8.2 reject
     #endif
-    // §8.4 expire
-    @State private var showExpireConfirm: Bool = false
-    @State private var isExpiring: Bool = false
 
     public init(
         estimate: Estimate,
@@ -511,7 +506,6 @@ public struct EstimateDetailView: View {
             .tint(.bizarreError)
             .disabled(isRejected || isConverted || isApproved)
             .accessibilityLabel(isRejected ? "Already rejected" : "Reject this estimate with a reason")
-            #endif
 
             // Convert to ticket (existing)
             Button { showConvertSheet = true } label: {
@@ -616,6 +610,7 @@ public struct EstimateDetailView: View {
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreError)
             }
+            #endif
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
@@ -835,22 +830,6 @@ public struct EstimateDetailView: View {
         .presentationDetents([.medium])
     }
 
-    private var approveSheet: some View {
-        EstimateApproveSheet(
-            estimateId: estimate.id,
-            orderId: estimate.orderId ?? "EST-?",
-            api: api
-        )
-    }
-
-    private var rejectSheet: some View {
-        EstimateRejectSheet(
-            estimateId: estimate.id,
-            orderId: estimate.orderId ?? "EST-?",
-            api: api
-        )
-        .presentationDetents([.medium])
-    }
     #endif
 
     // MARK: - Convert to invoice action

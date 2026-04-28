@@ -113,7 +113,6 @@ public extension APIClient {
     /// Server is expected to recalculate subtotal / tax / total and return the
     /// updated invoice. We discard the response and let the caller reload.
     func updateInvoiceLines(invoiceId: Int64, body: UpdateInvoiceLinesRequest) async throws {
-        struct EmptyResponse: Decodable {}
         _ = try await put("/api/v1/invoices/\(invoiceId)/lines", body: body, as: EmptyResponse.self)
     }
 }

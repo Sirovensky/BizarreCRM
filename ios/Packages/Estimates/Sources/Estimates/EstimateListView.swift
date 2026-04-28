@@ -113,11 +113,6 @@ public final class EstimateListViewModel {
         }
     }
 
-    public func applyStatusFilter(_ f: EstimateStatusFilter) async {
-        statusFilter = f
-        await fetch(forceRemote: false)
-    }
-
     public func onSearchChange(_ q: String) {
         searchQuery = q
         searchTask?.cancel()
@@ -503,11 +498,6 @@ public struct EstimateListView: View {
         }
         .scrollClipDisabled()
     }
-
-    private struct Row: View {
-        let estimate: Estimate
-        @Environment(\.accessibilityReduceMotion) private var reduceMotion
-        @State private var pulsing: Bool = false
 
     @ViewBuilder
     private func rowContextMenu(for est: Estimate) -> some View {

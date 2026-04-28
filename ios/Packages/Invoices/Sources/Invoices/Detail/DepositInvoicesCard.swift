@@ -32,12 +32,13 @@ public extension APIClient {
     /// Returns deposit invoices linked to the given parent invoice.
     func depositInvoices(parentId: Int64) async throws -> [DepositInvoiceSummary] {
         let query = [URLQueryItem(name: "deposit_parent_id", value: String(parentId))]
-        struct ListResponse: Decodable {
-            let data: [DepositInvoiceSummary]?
-        }
-        let resp = try await get("/api/v1/invoices", query: query, as: ListResponse.self)
+        let resp = try await get("/api/v1/invoices", query: query, as: DepositInvoicesListResponse.self)
         return resp.data ?? []
     }
+}
+
+private struct DepositInvoicesListResponse: Decodable, Sendable {
+    let data: [DepositInvoiceSummary]?
 }
 
 // MARK: - DepositInvoicesCard

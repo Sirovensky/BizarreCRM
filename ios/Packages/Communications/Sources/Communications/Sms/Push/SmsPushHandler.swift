@@ -71,7 +71,7 @@ public struct SmsPushHandler: Sendable {
     /// - For `.actionCall` / `.actionOpen` / body tap: posts `openThreadNotification`.
     public static func handleResponse(
         _ response: UNNotificationResponse,
-        send: ((phone: String, text: String) -> Void)? = nil
+        send: ((_ phone: String, _ text: String) -> Void)? = nil
     ) {
         let userInfo = response.notification.request.content.userInfo
         let phone = userInfo["phone"] as? String ?? ""
@@ -80,7 +80,7 @@ public struct SmsPushHandler: Sendable {
         case actionReply:
             if let text = (response as? UNTextInputNotificationResponse)?.userText,
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                send?((phone: phone, text: text))
+                send?(phone, text)
             }
             // Also open thread so user sees the sent message
             broadcastOpen(phone: phone)

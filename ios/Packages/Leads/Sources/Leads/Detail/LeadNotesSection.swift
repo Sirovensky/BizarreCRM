@@ -264,8 +264,7 @@ extension APIClient {
 
     /// `POST /leads/:id/notes`
     public func createLeadNote(leadId: Int64, body: String) async throws -> LeadNote {
-        struct Req: Encodable { let body: String }
-        return try await post("/leads/\(leadId)/notes", body: Req(body: body), as: LeadNote.self)
+        return try await post("/leads/\(leadId)/notes", body: LeadNoteBody(body: body), as: LeadNote.self)
     }
 
     /// `DELETE /leads/:id/notes/:noteId`
@@ -273,5 +272,7 @@ extension APIClient {
         try await delete("/leads/\(leadId)/notes/\(noteId)")
     }
 }
+
+private struct LeadNoteBody: Encodable, Sendable { let body: String }
 
 #endif

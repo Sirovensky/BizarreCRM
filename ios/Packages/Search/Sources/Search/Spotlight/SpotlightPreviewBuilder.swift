@@ -1,5 +1,6 @@
 import CoreSpotlight
 import Core
+import Networking
 
 // MARK: - §25.1 Spotlight preview — rich preview card with avatar/thumbnail + status
 //
@@ -89,16 +90,17 @@ public enum SpotlightPreviewBuilder {
     /// Enrich an attribute set with preview-card data for an invoice.
     public static func enrich(
         attrs: CSSearchableItemAttributeSet,
-        invoice: Invoice,
+        invoice: InvoiceSummary,
         tenantSlug: String
     ) {
         attrs.contentURL = URL(string: "bizarrecrm://\(tenantSlug)/invoices/\(invoice.id)")
 
-        let amountStr = String(format: "$%.2f", invoice.total)
-        attrs.contentDescription = "\(invoice.status.displayName) · \(amountStr)"
+        let amountStr = String(format: "$%.2f", invoice.total ?? 0.0)
+        let statusStr = invoice.status ?? "unknown"
+        attrs.contentDescription = "\(statusStr) · \(amountStr)"
 
         var kw = attrs.keywords ?? []
-        kw.append(contentsOf: [invoice.displayId, "invoice", invoice.status.displayName, amountStr])
+        kw.append(contentsOf: [invoice.displayId, "invoice", statusStr, amountStr])
         attrs.keywords = kw.uniqued()
     }
 
@@ -110,14 +112,13 @@ public enum SpotlightPreviewBuilder {
     ) {
         attrs.contentURL = URL(string: "bizarrecrm://\(tenantSlug)/appointments/\(appointment.id)")
 
-        let df = DateFormatter()
-        df.dateStyle = .medium
-        df.timeStyle = .short
-        attrs.contentDescription = df.string(from: appointment.startTime)
+        let when = appointment.startTime ?? ""
+        attrs.contentDescription = when
             + (appointment.notes.map { " · \($0)" } ?? "")
 
         var kw = attrs.keywords ?? []
-        kw.append(contentsOf: [appointment.customerName, "appointment"])
+        if let name = appointment.customerName { kw.append(name) }
+        kw.append("appointment")
         attrs.keywords = kw.uniqued()
     }
 }

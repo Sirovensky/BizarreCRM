@@ -52,7 +52,7 @@ final class EstimateRejectSheetViewModel {
                 as: Estimate.self
             )
             didReject = true
-            AppLog.ui.info("Estimate \(estimateId) rejected. Reason: \(reason, privacy: .private)")
+            AppLog.ui.info("Estimate \(self.estimateId) rejected. Reason: \(self.reason, privacy: .private)")
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate reject failed: \(error.localizedDescription, privacy: .public)")

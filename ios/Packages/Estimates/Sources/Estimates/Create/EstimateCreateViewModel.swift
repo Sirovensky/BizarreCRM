@@ -44,8 +44,6 @@ public final class EstimateCreateViewModel {
     /// §8.3: Per-session idempotency key generated at VM init.
     /// Sent with every create attempt so that retries on network failure
     /// don't produce duplicate estimates.
-    @ObservationIgnored private let idempotencyKey: String = UUID().uuidString
-
     /// §8.3 — Exposed for RepairServicePickerSheet inside EstimateCreateView.
     public var apiForPicker: APIClient { api }
 

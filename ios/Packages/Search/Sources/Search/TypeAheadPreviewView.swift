@@ -149,7 +149,7 @@ private struct TypeAheadRow: View {
 
 /// Sticky glass search bar for use at the top of every list view.
 /// Wraps SwiftUI's `.searchable` pattern with glass styling + filter chip row.
-public struct ScopedSearchBar: View {
+public struct SimpleSearchBar: View {
     @Binding var query: String
     let placeholder: String
 

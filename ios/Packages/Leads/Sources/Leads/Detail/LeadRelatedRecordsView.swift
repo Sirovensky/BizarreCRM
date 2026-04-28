@@ -274,11 +274,12 @@ extension APIClient {
     /// `POST /api/v1/leads/:id/convert-to-estimate` — create an estimate from lead data.
     @discardableResult
     public func convertLeadToEstimate(leadId: Int64, notes: String?) async throws -> CreatedResource {
-        struct Body: Encodable, Sendable { let notes: String? }
         return try await post(
             "/api/v1/leads/\(leadId)/convert-to-estimate",
-            body: Body(notes: notes),
+            body: ConvertLeadToEstimateBody(notes: notes),
             as: CreatedResource.self
         )
     }
 }
+
+private struct ConvertLeadToEstimateBody: Encodable, Sendable { let notes: String? }

@@ -301,9 +301,14 @@ extension APIClient {
 
     /// `POST /emails/send` wrapper used from lead detail quick-compose.
     public func sendLeadEmail(to email: String, subject: String, body: String) async throws {
-        struct Body: Encodable { let to: String; let subject: String; let body: String }
-        _ = try await post("/emails/send", body: Body(to: email, subject: subject, body: body), as: EmptyResponse.self)
+        _ = try await post("/emails/send", body: LeadEmailBody(to: email, subject: subject, body: body), as: EmptyResponse.self)
     }
+}
+
+private struct LeadEmailBody: Encodable, Sendable {
+    let to: String
+    let subject: String
+    let body: String
 }
 
 #endif
