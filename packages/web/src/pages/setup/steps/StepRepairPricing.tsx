@@ -242,13 +242,32 @@ export function StepRepairPricing({
         ))}
       </div>
 
-      <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p>
-          <span className="font-semibold">💡 Per-device override available later in Settings →
-          Repair pricing → Matrix.</span>{' '}
-          These are starting defaults — every device's actual price can be tweaked individually.
-        </p>
+      <div className="mt-5 space-y-3">
+        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+          <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="space-y-1.5">
+            <p>
+              <span className="font-semibold">Tier defaults are just the starting line.</span>{' '}
+              These three buckets exist to get you out of this wizard fast — every shop tunes them later.
+            </p>
+            <p>
+              After setup you'll get two more powerful surfaces in <strong>Settings → Repair pricing</strong>:
+            </p>
+            <ul className="ml-1 list-inside list-disc space-y-0.5">
+              <li>
+                <strong>Full per-device matrix</strong> — a spreadsheet of every model × service. Override iPhone 15 Pro screen
+                without touching anything else. Bulk-edit, CSV roundtrip, profit heatmap.
+              </li>
+              <li>
+                <strong>Auto-margin rules</strong> — set a target (e.g. 60% margin or +$80 over parts cost) and the system
+                recalculates labor whenever the catalog scraper updates parts pricing. Keeps you priced right without manual upkeep.
+              </li>
+            </ul>
+            <p className="pt-1 text-xs">
+              See TODO items <code>DPI-1</code> through <code>DPI-15</code> for the full roadmap.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="mt-4 flex justify-center">
