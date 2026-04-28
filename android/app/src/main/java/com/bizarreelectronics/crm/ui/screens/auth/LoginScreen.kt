@@ -397,6 +397,17 @@ class LoginViewModel @Inject constructor(
     val state = _state.asStateFlow()
 
     init {
+        // Diagnostic: log every step transition so the double-Sign-In bug
+        // can be reproduced from logcat. `adb logcat -s LoginVM:V` to read.
+        viewModelScope.launch {
+            var prev: SetupStep? = null
+            _state.collect {
+                if (it.step != prev) {
+                    timber.log.Timber.tag("LoginVM").i("step transition: %s -> %s", prev, it.step)
+                    prev = it.step
+                }
+            }
+        }
         // §2.12-L358 — observe device network state and mirror it into uiState.
         // This is purely informational: the offline banner cannot be bypassed
         // because login always requires a real network round-trip.
@@ -925,9 +936,18 @@ class LoginViewModel @Inject constructor(
     /** Step 2: Login with credentials */
     fun login() {
         val s = _state.value
+        if (s.isLoading) {
+            // Double-fire guard: ignore taps while a login round-trip is in flight.
+            // Without this, biometric auto-login + manual Sign In can race and the
+            // server's second response can briefly stomp the first, surfacing as a
+            // "sign-in screen showed twice" UX bug.
+            timber.log.Timber.tag("LoginVM").w("login() ignored — already isLoading")
+            return
+        }
         if (s.username.isBlank()) { _state.value = s.copy(error = "Username is required"); return }
         if (s.password.isBlank()) { _state.value = s.copy(error = "Password is required"); return }
 
+        timber.log.Timber.tag("LoginVM").i("login() start — step=%s", s.step)
         // Clear any stale probe/unreachable state from a previous attempt so
         // a successful login never leaves a misleading error banner visible.
         _state.value = s.copy(isLoading = true, error = null, probeError = null, unreachableHost = false)
@@ -2059,7 +2079,24 @@ fun LoginScreen(
     // inset twice, leaving a dark blank band masking the Connect button when the keyboard
     // was open. See ScaffoldInsetsDefaults.standaloneModal KDoc for the full strategy.
     Scaffold(
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        snackbarHost = {
+            // LOGIN-MOCK-150: wrap each snackbar in SwipeToDismissBox so the user can
+            // swipe it away instead of waiting for the auto-dismiss timer.
+            SnackbarHost(hostState = snackbarHostState) { data ->
+                val dismissState = rememberSwipeToDismissBoxState()
+                LaunchedEffect(dismissState.currentValue) {
+                    if (dismissState.currentValue != SwipeToDismissBoxValue.Settled) {
+                        data.dismiss()
+                    }
+                }
+                SwipeToDismissBox(
+                    state = dismissState,
+                    backgroundContent = {},
+                ) {
+                    Snackbar(snackbarData = data)
+                }
+            }
+        },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.standaloneModal,
     ) { innerPadding ->
