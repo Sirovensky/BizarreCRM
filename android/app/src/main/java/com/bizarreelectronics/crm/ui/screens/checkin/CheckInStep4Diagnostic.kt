@@ -46,12 +46,11 @@ fun CheckInStep4Diagnostic(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                // Brand cream `primary` not teal `secondaryContainer` — All OK
+                // is a flow shortcut button so it should match the bottom-shelf
+                // cream CTA pill, not look like a different action class.
                 Button(
                     onClick = onAllOk,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .semantics { contentDescription = "Set all tests to pass" },
