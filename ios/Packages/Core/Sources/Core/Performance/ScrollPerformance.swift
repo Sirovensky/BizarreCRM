@@ -40,21 +40,11 @@ public struct EquatableContent<Value: Equatable, Content: View>: View, Equatable
     }
 
     public var body: some View {
-        EquatableView(content: _ContentWrapper(value: value, content: content))
+        content(value)
     }
 
     public static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.value == rhs.value
-    }
-
-    // Internal wrapper satisfying `Equatable` + `View`.
-    private struct _ContentWrapper: View, Equatable {
-        let value: Value
-        let content: (Value) -> Content
-
-        var body: some View { content(value) }
-
-        static func == (lhs: Self, rhs: Self) -> Bool { lhs.value == rhs.value }
     }
 }
 

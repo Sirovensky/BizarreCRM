@@ -180,7 +180,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] `UIBackgroundModes`: `remote-notification`, `processing`, `fetch`. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] `UIAppFonts` list kept in sync with `scripts/fetch-fonts.sh` and `BrandFonts.swift`. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] `GRDB.DatabaseMigrator` with named migrations in `Packages/Persistence/Sources/Persistence/Migrations/` — immutable once shipped. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 registered.)
-- [ ] Migration-tracking table records applied names; app refuses to launch if a known migration is missing.
+- [x] Migration-tracking table records applied names; app refuses to launch if a known migration is missing. (`Persistence/MigrationIntegrityGuard.swift` — reads `grdb_migrations` after apply; throws `MigrationIntegrityError.missingMigrations` if any bundle SQL file absent; wired into `Database.open(at:)`. feat(§1.6): b12)
 - [x] Forward-only (no downgrades). Reverted iOS version → "Database newer than app — contact support". (`DatabaseVersionGuard.checkCompatibility(pool:appVersion:)` + `DatabaseVersionError.databaseNewerThanApp` in `Persistence/DatabaseVersionGuard.swift`; called from `Database.open(at:)` before migration run; throws user-friendly `LocalizedError`. feat(§1.6): forward-only DB version guard 2228b18c)
 - [ ] Large migrations split into batches; progress sheet "Migrating 50%"; runs in `BGProcessingTask` so user can leave app.
 - [x] Backup-before-migrate: copy SQLCipher file to `~/Library/Caches/pre-migration-<date>.db`; keep 7d or until next successful launch. (`Persistence/Backup/MigrationBackupService.swift` — ISO8601-dated copy, 7d pruning, listBackups(). feat(§1.6): bf131efb)
@@ -3540,9 +3540,9 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [ ] **Unsynced writes count** — tab badge red dot.
 
 ### 20.9 Cache invalidation + eviction
-- [ ] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use.
+- [x] **Image cache — tiered eviction per §29.3** (not blunt 500 MB LRU). Thumbnails always cached; full-res LRU with tenant-size-scaled cap (default 2 GB, configurable 500 MB – 20 GB or no-limit); pinned-offline store + active-ticket photos never auto-evicted. Cleanup runs at most once / 24h in `BGProcessingTask`; never during active use. (`Core/Performance/StorageBreakdown.swift` — `ImageCachePolicy` singleton; `StorageMonitor`; tiered eviction policy with `isEvictable` per `StorageCategory`. feat(§20.9): b12)
 - [ ] **GRDB VACUUM** — monthly on-launch background task; skipped if sync queue has pending writes.
-- [ ] **Size monitoring** — footer in Settings → Data shows live breakdown (§29.3 storage panel). Warn only on device-low-disk (< 2 GB free), not on app-cache growth alone.
+- [x] **Size monitoring** — footer in Settings → Data shows live breakdown (§29.3 storage panel). Warn only on device-low-disk (< 2 GB free), not on app-cache growth alone. (`StorageMonitor.measure(inject:)` async scanner + `StorageBreakdown` snapshot struct in `Core/Performance/StorageBreakdown.swift`; `ImageCachePolicy.isDeviceLowOnDisk()` threshold guard. feat(§29.3): b12)
 - [ ] **Low-disk pause** — temporarily freeze writes to cache if device free-space drops below 2 GB; toast "Free up space — app cache paused". Never evict pinned or in-use items to satisfy the guard.
 
 ### 20.10 Multi-device consistency
@@ -4024,7 +4024,7 @@ Gate every spring / parallax / auto-play on the OS flag. Default = full motion.
 - [ ] **Charts** — dashed / dotted patterns in addition to color whenever `accessibilityDifferentiateWithoutColor` is true.
 
 ### 26.7 Tap targets
-- [ ] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI.
+- [x] **Min 44×44pt** — enforced via debug-build assertion in a `.tappableFrame()` ViewModifier that reads the rendered frame from `GeometryReader` and `assert(size.width >= 44 && size.height >= 44)`. CI snapshot test + SwiftLint rule bans bare `.onTapGesture` on non-standard controls so every tappable goes through the checked modifier. No runtime overlay; violations trip at dev time or in CI, never in production UI. (`Core/A11y/TappableFrame.swift` — `TappableFrameModifier` + `View.tappableFrame(minWidth:minHeight:)`; DEBUG `assertionFailure` via GeometryReader.onAppear; RELEASE no-op; `bare_on_tap_gesture` SwiftLint rule already in `.swiftlint.yml`. feat(§26.6): b12)
 - [ ] **Spacing** between adjacent tappable rows ≥ 8pt (same enforcement: lint rule + snapshot geometry check).
 
 ### 26.8 Voice Control
@@ -4308,7 +4308,7 @@ Rules:
 - [ ] **`textContentType(.oneTimeCode)`** is the ONE exception — only on the OTP field, where iOS's autofill is desired (Messages-sourced code).
 - [ ] **Name / address fields** near payment flows use `.name`, `.postalCode`, etc. explicitly (so iOS offers contact info, not cards). Never leave `textContentType` blank on those — blank is the riskiest because iOS guesses.
 - [ ] **BlockChyp SDK tokenization sheet (§16.6 cardholder-not-present path)** — the PAN-entry view lives inside the BlockChyp SDK's process; Apple AutoFill behavior there is BlockChyp's concern. We confirm via the SDK readme + a manual test each release that no iOS card-autofill surfaces inside their sheet on the devices we support; file an issue with BlockChyp if it does.
-- [ ] **Lint rule** — SwiftLint custom rule flags `textContentType(.creditCardNumber)` and friends anywhere in our codebase.
+- [x] **Lint rule** — SwiftLint custom rule flags `textContentType(.creditCardNumber)` and friends anywhere in our codebase. (`forbidden_credit_card_content_type` ERROR rule + `credit_field_missing_autocorrect_disable` WARNING rule in `ios/.swiftlint.yml`. feat(§28.5): b12)
 - [ ] **Unit test** — snapshot-inspect the view hierarchy of each field on a payment/checkout screen, assert no field has a content-type from the `.creditCard*` family.
 
 ### 28.10 Biometric auth
@@ -4389,7 +4389,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
   - Thumbnails evicted last (they're tiny and always useful).
   - Full-res photos attached to an active ticket or the current user's own recent activity never auto-evicted.
 - [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
-- [ ] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action).
+- [x] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action). (`StorageBreakdown` + `StorageMonitor` + `ImageCachePolicy` in `Core/Performance/StorageBreakdown.swift`; `StorageCategory.isEvictable` gates clear buttons. feat(§29.3): b12)
 - [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
 - [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
 - [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
@@ -4698,7 +4698,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
 - [ ] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5).
 - [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
-- [ ] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers.
+- [x] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers. (`inline_animation_duration` WARNING rule in `ios/.swiftlint.yml` — regex catches `withAnimation(.easeInOut(duration: <digit>`. feat(§67): b12)
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
 - [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion. (`StaggeredAppearModifier` + `.staggeredAppear(index:trigger:)` in `DesignSystem/BrandMotion.swift`; Reduce Motion → opacity fade only. feat(§67): d8b0c172)
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).

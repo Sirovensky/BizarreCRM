@@ -377,7 +377,7 @@ public extension View {
             Spacer()
         }
         .padding()
-        .background(Color(.systemBackground))
+        .background(.background)
         .optimisticPending(isSending: true)
     }
     .padding()

@@ -51,12 +51,14 @@ public struct AppSnapshotPrivacyModifier: ViewModifier {
 
 /// Full-screen branded overlay displayed during the app-switcher snapshot.
 ///
-/// Uses a solid `bizarreSurfaceBase` background so even on older devices
+/// Uses a solid background (dark adaptive) so even on older devices
 /// (pre-iOS 26 without `.glassEffect`) the snapshot is opaque and shows
-/// nothing of the previous UI.
+/// nothing of the previous UI. Avoids a DesignSystem dependency so Core
+/// stays a leaf package.
 private struct BrandedSnapshotOverlay: View {
     var body: some View {
-        Color.bizarreSurfaceBase
+        Rectangle()
+            .fill(.background)
             .overlay(
                 VStack(spacing: 12) {
                     Image(systemName: "lock.fill")

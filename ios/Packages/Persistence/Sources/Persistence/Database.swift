@@ -64,6 +64,12 @@ public actor Database {
         try DatabaseVersionGuard.checkCompatibility(pool: pool, appVersion: Migrator.schemaVersion)
 
         try Migrator.register(on: pool)
+
+        // §1.6 Migration integrity guard — verifies every known SQL migration
+        // was applied. Throws `MigrationIntegrityError.missingMigrations` if
+        // any bundle SQL file is absent from `grdb_migrations`.
+        try MigrationIntegrityGuard.verify(pool: pool)
+
         self._pool = pool
 
         AppLog.persistence.info("GRDB opened at \(url.path, privacy: .public)")

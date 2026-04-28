@@ -49,7 +49,7 @@ public final class CorruptCacheRecovery: Sendable {
         entity: String,
         error: Error,
         recover: @escaping @Sendable () async throws -> Void,
-        refetch: (@escaping @Sendable () async throws -> Void)? = nil
+        refetch: (@Sendable () async throws -> Void)? = nil
     ) {
         Task.detached(priority: .utility) {
             do {

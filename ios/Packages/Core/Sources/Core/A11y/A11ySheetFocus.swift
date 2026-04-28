@@ -47,7 +47,9 @@ public struct A11ySheetFocusModifier: ViewModifier {
     public func body(content: Content) -> some View {
         content
             .onAppear {
+#if canImport(UIKit)
                 guard UIAccessibility.isVoiceOverRunning else { return }
+#endif
                 // Brief delay so the sheet presentation animation settles
                 // before we redirect focus. VoiceOver reacts oddly when focus
                 // is set mid-animation.

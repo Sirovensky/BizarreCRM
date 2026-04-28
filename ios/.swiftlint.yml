@@ -105,6 +105,35 @@ custom_rules:
     message: "Wrap in `Button` or add `.accessibilityAddTraits(.isButton)` + `.accessibilityLabel` (§26 + §31)."
     severity: warning
 
+  # §28.5 Credit-card autofill content types: ban textContentType(.creditCardNumber)
+  # and related card-autofill content types. These surface iOS QuickType card
+  # suggestions and the "Scan Card" camera prompt — never desired on our forms.
+  # The ONE exception is textContentType(.oneTimeCode) on OTP fields, which is
+  # intentional and documented in §28.5.
+  forbidden_credit_card_content_type:
+    name: "Forbidden credit card textContentType (§28.5)"
+    regex: '\.textContentType\s*\(\s*\.(creditCardNumber|creditCardExpiration|creditCardExpirationMonth|creditCardExpirationYear|creditCardSecurityCode|creditCardType|creditCardName|creditCardGivenName|creditCardMiddleName|creditCardFamilyName)\s*\)'
+    message: "Do not use credit-card textContentType. iOS will surface card autofill + Scan Card on this field. See §28.5 — BlockChyp handles PAN entry. Use .none or .name/.postalCode for contact fields."
+    severity: error
+
+  # §28.5 Autocorrect/autocapitalization on IMEI/coupon/order-number fields.
+  # Fields near POS / payment that might attract card-shaped QuickType
+  # suggestions should be explicitly silenced with .autocorrectionDisabled.
+  # (Advisory-only rule: human review decides if the regex match is a payment field.)
+  credit_field_missing_autocorrect_disable:
+    name: "IMEI / coupon field possibly missing autocorrectionDisabled (§28.5)"
+    regex: '\.textContentType\s*\(\s*\.(username|none)\s*\).*\.keyboardType\s*\(\s*\.numberPad\s*\)'
+    message: "Add .autocorrectionDisabled(true) + .textInputAutocapitalization(.never) to numeric fields near payment flows (§28.5)."
+    severity: warning
+
+  # §29.3 / §26.6 Inline animation duration literals.
+  # No raw millisecond numbers in withAnimation calls — use MotionCatalog tokens.
+  inline_animation_duration:
+    name: "Inline animation duration literal (§30.6 / §67)"
+    regex: 'withAnimation\s*\(\s*\.easeInOut\s*\(\s*duration:\s*[0-9]'
+    message: "Use MotionCatalog tokens (BrandMotion.fab/banner/sheet/tab/chip) instead of raw duration literals (§30.6/§67)."
+    severity: warning
+
   # §1.4 / §29.5 Glass budget lint — flag files with 7+ .brandGlass call sites.
   # The debug-build GlassBudgetMonitor fires at runtime (per screen); this
   # rule catches structural over-use at code-review time. Files containing
