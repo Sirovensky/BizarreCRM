@@ -360,3 +360,9 @@ data class UpdateBinLocationRequest(
     val shelf: String? = null,
     val bin: String? = null,
 )
+
+/** Response from POST /inventory/:id/image (§6.3). */
+data class InventoryImageUploadData(
+    @SerializedName("image_url")
+    val imageUrl: String,
+)

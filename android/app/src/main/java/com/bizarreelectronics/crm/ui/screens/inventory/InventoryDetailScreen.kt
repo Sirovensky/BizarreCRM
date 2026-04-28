@@ -1,5 +1,10 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
+import android.content.Context
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -13,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -32,6 +38,14 @@ import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
+import com.bizarreelectronics.crm.util.ExifStripper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.FileOutputStream
 import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryGroupPrice
 import com.bizarreelectronics.crm.data.remote.dto.InventorySerial
@@ -107,6 +121,10 @@ data class InventoryDetailUiState(
     val availableBins: List<String> = emptyList(),
     /** Photo URLs for the gallery (L1083). */
     val photoUrls: List<String> = emptyList(),
+    /** True while a photo upload is in-flight (§6.3). */
+    val isUploadingPhoto: Boolean = false,
+    /** Non-null when a photo upload failed; shown as a snackbar (§6.3). */
+    val uploadPhotoError: String? = null,
     /** True when admin controls (tax class editor) are visible (L1082). */
     val isAdmin: Boolean = false,
     /** True while auto-reorder PATCH is in-flight (L1075). */
@@ -332,6 +350,69 @@ class InventoryDetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * §6.3: Upload a photo selected from the system picker.
+     *
+     * Steps:
+     *  1. Copy URI content to a temp JPEG in cacheDir (URI may not be a real
+     *     file path on all devices).
+     *  2. Strip EXIF metadata (GPS, make/model, timestamp) on IO dispatcher.
+     *  3. POST multipart to /inventory/:id/image.
+     *  4. On success, prepend the returned image_url to [photoUrls] so the
+     *     gallery updates immediately without a full reload.
+     *
+     * Limit: the server stores a single primary image and replaces it on each
+     * upload, so [photoUrls] is replaced with the single new URL.
+     */
+    fun uploadPhoto(context: Context, uri: Uri) {
+        if (_state.value.isUploadingPhoto) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isUploadingPhoto = true, uploadPhotoError = null)
+            try {
+                val imageUrl = withContext(Dispatchers.IO) {
+                    // 1. Copy URI → temp file
+                    val tmp = File(context.cacheDir, "inv_upload_${itemId}_${System.currentTimeMillis()}.jpg")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tmp).use { output -> input.copyTo(output) }
+                    } ?: error("Cannot open image URI")
+
+                    // 2. Strip EXIF (GPS, timestamps, make/model)
+                    ExifStripper.stripFromFile(tmp)
+
+                    // 3. Build multipart part
+                    val requestBody = tmp.asRequestBody("image/jpeg".toMediaTypeOrNull())
+                    val part = MultipartBody.Part.createFormData("image", tmp.name, requestBody)
+
+                    // 4. POST to server
+                    val response = inventoryApi.uploadImage(itemId, part)
+
+                    // Clean up temp file
+                    tmp.delete()
+
+                    response.data?.imageUrl
+                        ?: error("Server returned no image_url")
+                }
+                // Resolve to full URL if server returns a relative path
+                val fullUrl = if (imageUrl.startsWith("http")) imageUrl else imageUrl
+                _state.value = _state.value.copy(
+                    isUploadingPhoto = false,
+                    photoUrls = listOf(fullUrl),
+                    actionMessage = "Photo uploaded",
+                )
+            } catch (e: Exception) {
+                Timber.tag("InventoryPhoto").e(e, "Photo upload failed for item $itemId")
+                _state.value = _state.value.copy(
+                    isUploadingPhoto = false,
+                    uploadPhotoError = "Upload failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun clearUploadPhotoError() {
+        _state.value = _state.value.copy(uploadPhotoError = null)
+    }
+
     /** L1075: Save auto-reorder configuration. */
     fun saveAutoReorder(threshold: Int, qty: Int, supplier: String) {
         viewModelScope.launch {
@@ -523,6 +604,22 @@ fun InventoryDetailScreen(
     var showTypeDropdown by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    // §6.3: System photo picker launcher — no runtime permission needed on API 33+.
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        uri?.let { viewModel.uploadPhoto(context, it) }
+    }
+
+    // §6.3: Show upload error in snackbar.
+    LaunchedEffect(state.uploadPhotoError) {
+        state.uploadPhotoError?.let { err ->
+            snackbarHostState.showSnackbar(err)
+            viewModel.clearUploadPhotoError()
+        }
+    }
 
     // Pop back after successful delete/deactivate
     LaunchedEffect(state.deletedAndShouldPop) {
@@ -841,7 +938,13 @@ fun InventoryDetailScreen(
                     onLoadMoreMovements = { viewModel.loadMoreMovements() },
                     onSaveAutoReorder = { t, q, s -> viewModel.saveAutoReorder(t, q, s) },
                     onSaveBin = { bin -> viewModel.saveBin(bin) },
-                    onUploadPhoto = { /* TODO: launch image picker → MultipartUpload */ },
+                    onUploadPhoto = {
+                        if (!state.isUploadingPhoto) {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        }
+                    },
                     onDeactivate = { viewModel.setShowDeactivateDialog(true) },
                     onTicketClick = { /* deep-link to ticket — caller wires nav */ },
                     onNavigateToRma = onNavigateToRma,
@@ -1213,6 +1316,7 @@ private fun InventoryDetailContent(
             InventoryPhotoGallery(
                 photoUrls = state.photoUrls,
                 onUploadPhoto = onUploadPhoto,
+                isUploading = state.isUploadingPhoto,
             )
         }
 

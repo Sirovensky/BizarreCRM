@@ -9,6 +9,7 @@ import com.bizarreelectronics.crm.data.remote.dto.BinLocationItem
 import com.bizarreelectronics.crm.data.remote.dto.CreateBinLocationRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetailData
+import com.bizarreelectronics.crm.data.remote.dto.InventoryImageUploadData
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListData
 import com.bizarreelectronics.crm.data.remote.dto.MovementPage
 import com.bizarreelectronics.crm.data.remote.dto.PhotoListData
@@ -18,12 +19,15 @@ import com.bizarreelectronics.crm.data.remote.dto.SupplierDetailData
 import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.remote.dto.TicketUsageData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateBinLocationRequest
+import okhttp3.MultipartBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.Multipart
 import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 import retrofit2.http.QueryMap
@@ -116,6 +120,19 @@ interface InventoryApi {
     // ── L1083: Photos ────────────────────────────────────────────────────────
     @GET("inventory/{id}/photos")
     suspend fun getPhotos(@Path("id") id: Long): ApiResponse<PhotoListData>
+
+    // ── §6.3: Upload/replace primary image ──────────────────────────────────
+    /**
+     * POST /inventory/:id/image — multipart upload, field name "image".
+     * Server stores the file and returns { image_url: "<relative-path>" }.
+     * This replaces the existing primary image (single-image model).
+     */
+    @Multipart
+    @POST("inventory/{id}/image")
+    suspend fun uploadImage(
+        @Path("id") id: Long,
+        @Part image: MultipartBody.Part,
+    ): ApiResponse<InventoryImageUploadData>
 
     // ── §6.4: Delete (soft-delete; server sets is_active=0) ──────────────────
     @DELETE("inventory/{id}")
