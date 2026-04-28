@@ -3664,7 +3664,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 29.4 Memory
 - [ ] Heap < 256 MB on phone under load.
 - [x] Bitmap decoding via Coil (inSampleSize, `size(...)`). (session 2026-04-26 — CoilModule.kt added as explicit Hilt singleton binding for ImageLoader; EncryptedCoilCache.buildImageLoader sets DiskCache 100 MB + MemoryCache 25 %-of-heap; Coil3 fires inSampleSize automatically when caller passes Modifier.size or ImageRequest.size())
-- [ ] PagingData + virtualization.
+- [x] PagingData + virtualization. (session 2026-04-27 — duplicate of §29.4 first occurrence L3659; Paging 3 `RemoteMediator` + `LazyColumn` with stable keys already shipped; confirmed via `TicketRemoteMediator.kt`, `InventoryRemoteMediator.kt`, `CustomerRemoteMediator.kt`)
 
 ### 29.5 Battery
 - [x] Background sync every 15min (not more).
@@ -3689,8 +3689,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 29.7 Disk
 - [x] Coil disk cache cap 100 MB. (session 2026-04-26 — MAX_CACHE_BYTES = 100 MB already in EncryptedCoilCache; CoilModule.kt exposes it as Hilt singleton)
-- [ ] Drafts / attachments cap 50 MB.
-- [ ] Room vacuum weekly.
+- [x] Drafts / attachments cap 50 MB. (session 2026-04-27 — duplicate of §29.7 first occurrence L3681; `CachePurgeWorker.kt` enforces 50 MB LRU cap on attachment staging dir via `evictAttachmentStagingIfOverCap()`; scheduled via WorkManager periodic 24 h)
+- [x] Room vacuum weekly. (session 2026-04-27 — duplicate of §29.7 first occurrence L3682; `RoomVacuumWorker.kt` (`@HiltWorker`) runs `VACUUM` on `BizarreDatabase.openHelper.writableDatabase` weekly via `PeriodicWorkRequestBuilder<RoomVacuumWorker>(7, TimeUnit.DAYS)`; scheduled via `WorkManager.enqueueUniquePeriodicWork(KEEP)`)
 
 ### 29.8 Instrumentation
 - [~] Macrobenchmark module in CI for: startup, ticket-list scroll, POS tender round-trip (mock), large inventory stocktake. (session 2026-04-26 — :macrobenchmark scaffold created; StartupBenchmark + BaselineProfileGenerator classes present; module commented out in settings.gradle.kts pending CI physical device; PerfTrace DisposableEffect wired in Dashboard, TicketList, InventoryList, PosTender, CustomerList)
@@ -3910,14 +3910,14 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Share logs → generates redacted bundle + share sheet. (`LogViewerViewModel.prepareShare` calls `ReleaseTree.flushToDisk`, surfaces via FileProvider + `Intent.ACTION_SEND`.)
 - [ ] Upload on next launch via `POST /telemetry/crashes`. NOTE 2026-04-26: server-side `/telemetry/crashes` endpoint not yet implemented; client-side upload deferred until endpoint exists. Local crash files available via `filesDir/crash-reports/`.
 - [ ] Opt-in per user (Settings → Diagnostics). NOTE 2026-04-26: Settings UI not touched this session; wire toggle → `DiagnosticsPreferences` datastore key when Settings screen is extended.
-- [ ] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code.
+- [x] Android system crash reporting (Play Vitals) is permitted — it's device-level opt-in, not app code. (session 2026-04-27 — duplicate of §32.4 first occurrence L3903 [x]; no app-side implementation required; Play Vitals operates at OS/Play level; custom crash handler in `util/CrashReporter.kt` is additive)
 
 ### 32.4 Logging
 - [x] Timber with `RedactorTree` filtering PII. (session 2026-04-26 — `RedactorTree` wraps both `DebugTree` (debug) and `ReleaseTree` (release) in `BizarreCrmApp.onCreate`; all Timber calls pass through PII redaction before any output.)
 - [x] Log levels: Error / Warn / Info / Debug / Verbose. (session 2026-04-26 — `ReleaseTree.isLoggable` gates on `Log.WARN+`; `DebugTree` passes all levels in debug. Level semantics enforced via Timber priority constants.)
 - [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (session 2026-04-26 — `util/ReleaseTree.kt`: `ConcurrentLinkedDeque` capped at 500 entries, `flushToDisk(dir)` writes to `diagnostics-logs/release-<date>.log`, rotates to last 7 daily files.)
-- [ ] Settings → Diagnostics → View logs. NOTE 2026-04-26: `ReleaseTree.snapshot()` and `flushToDisk()` are ready; Settings UI screen not yet extended this session.
-- [ ] Share logs → generates redacted bundle + share sheet. NOTE 2026-04-26: call `releaseTree.flushToDisk(filesDir/diagnostics-logs)` + FileProvider + `ACTION_SEND` intent when Settings UI is wired.
+- [x] Settings → Diagnostics → View logs. (session 2026-04-27 — duplicate of §32.4 first occurrence L3909 [x]; `LogViewerScreen.kt` + `LogViewerViewModel` fully implemented; VM calls `releaseTree.snapshot()` in `load()`, renders monospace `LogLine` composable per entry in `LazyColumn`; route wired via `Screen.LogViewer`)
+- [x] Share logs → generates redacted bundle + share sheet. (session 2026-04-27 — duplicate of §32.4 first occurrence L3910 [x]; `LogViewerViewModel.prepareShare()` calls `releaseTree.flushToDisk(logDir)` on `Dispatchers.IO`; `LogViewerScreen` `LaunchedEffect(state.shareFile)` fires `shareLogs()` which uses `FileProvider.getUriForFile + Intent.ACTION_SEND`)
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
