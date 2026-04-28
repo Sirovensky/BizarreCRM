@@ -97,6 +97,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.RecoveryCodesScreen
 import com.bizarreelectronics.crm.ui.screens.settings.TwoFactorFactorsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.RateLimitBucketsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.LanguageScreen
+import com.bizarreelectronics.crm.ui.screens.settings.NotificationChannelPreviewScreen
 import com.bizarreelectronics.crm.ui.screens.settings.NotificationSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.ProfileScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SecurityScreen
@@ -346,6 +347,10 @@ sealed class Screen(val route: String) {
     // CROSS38b-notif: Settings > Notifications preferences sub-page. Distinct
     // from `Notifications` (the notifications inbox list) per CROSS54.
     data object NotificationSettings : Screen("settings/notifications")
+
+    // §19.3 — In-app notification channel preview: importance / sound / badge / vibration
+    // per registered Android NotificationChannel, with per-channel deep-link into system settings.
+    data object NotificationChannelPreview : Screen("settings/notifications/channels")
 
     // AUD-20260414-M5: "Sync Issues" screen — lists dead-letter sync_queue
     // entries with a per-row Retry button that resurrects them back into
@@ -2338,6 +2343,14 @@ fun AppNavGraph(
             }
             composable(Screen.NotificationSettings.route) {
                 NotificationSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    // §19.3 — in-app channel preview sub-screen.
+                    onChannelPreview = { navController.navigate(Screen.NotificationChannelPreview.route) },
+                )
+            }
+            // §19.3 — Notification channel preview sub-screen.
+            composable(Screen.NotificationChannelPreview.route) {
+                NotificationChannelPreviewScreen(
                     onBack = { navController.popBackStack() },
                 )
             }

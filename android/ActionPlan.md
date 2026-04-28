@@ -2814,7 +2814,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Sign-out button.
 
 ### 19.3 Notifications
-- [~] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut).
+- [x] Per-NotificationChannel toggle (actually routes to system Settings → App → Notifications on Android 8+; app shows inline shortcut). (session 2026-04-27 — `NotificationChannelPreviewScreen.kt` added: lists all 24 registered channels grouped by group (Operational/Customer/Admin/System/Staff/Diagnostics); shows OS-reported importance label, badge, vibration, sound per channel; per-channel "Configure" button deep-links into `Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS`; pre-O fallback banner; "View notification channels" row wired into `NotificationSettingsScreen` via `onChannelPreview` callback; `Screen.NotificationChannelPreview` route added in `AppNavGraph.kt`)
 - [x] Quiet hours (start / end / days-of-week).
 - [x] Per-event override matrix (§73). (commit 922ef1f — 6 events × 3 channels {Push/SMS/Email} checkbox grid + `AppPreferences.getNotifMatrixEnabled/setNotifMatrixEnabled`)
 - [x] Sound picker per channel — opens `RingtoneManager.ACTION_RINGTONE_PICKER`. (commit 922ef1f — per-channel RingtoneManager intent + `getNotifSoundUri/setNotifSoundUri`)

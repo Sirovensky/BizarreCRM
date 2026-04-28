@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -409,6 +410,8 @@ class NotificationSettingsViewModel @Inject constructor(
 @Composable
 fun NotificationSettingsScreen(
     onBack: () -> Unit,
+    // §19.3 — navigate to the in-app channel preview (importance / sound / badge per channel).
+    onChannelPreview: (() -> Unit)? = null,
     viewModel: NotificationSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -514,6 +517,47 @@ fun NotificationSettingsScreen(
                                 "Force a fresh push token registration with the server.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    // §19.3 — Channel preview row: tap to open per-channel importance/sound/badge inspector.
+                    if (onChannelPreview != null) {
+                        NotificationToggleDivider()
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onChannelPreview() }
+                                .padding(vertical = 10.dp)
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription =
+                                        "View notification channels. Tap to inspect and configure each push channel."
+                                    role = Role.Button
+                                },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Default.Notifications,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "View notification channels",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                                Text(
+                                    "Inspect importance, sound, badge and vibration per channel.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
