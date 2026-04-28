@@ -21,6 +21,7 @@ import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material3.*
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.*
@@ -827,6 +828,7 @@ private fun CatalogTab(
                     selected = selectedCategory == null,
                     onClick = { selectedCategory = null },
                     label = { Text("All") },
+                    colors = FilterChipDefaults.brandColors(),
                 )
             }
             items(CATALOG_CATEGORIES, key = { it }) { category ->
@@ -836,6 +838,7 @@ private fun CatalogTab(
                         selectedCategory = if (selectedCategory == category) null else category
                     },
                     label = { Text(category) },
+                    colors = FilterChipDefaults.brandColors(),
                 )
             }
         }
@@ -1094,6 +1097,7 @@ private fun TipDialog(
                                 if (selectedPct != null) customInput = ""
                             },
                             label = { Text("$pct%") },
+                            colors = FilterChipDefaults.brandColors(),
                         )
                     }
                     // Custom % chip
@@ -1101,6 +1105,7 @@ private fun TipDialog(
                         selected = selectedPct == null && customInput.isNotBlank(),
                         onClick = { selectedPct = null },
                         label = { Text("Custom") },
+                        colors = FilterChipDefaults.brandColors(),
                     )
                 }
                 if (selectedPct != null) {
