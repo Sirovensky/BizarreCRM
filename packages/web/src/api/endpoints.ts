@@ -885,7 +885,12 @@ export type OnboardingPatchBody = Partial<Record<OnboardingPatchableFlag, boolea
 export const onboardingApi = {
   getState: () => api.get('/onboarding/state'),
   patchState: (body: OnboardingPatchBody) => api.patch('/onboarding/state', body),
-  loadSampleData: () => api.post('/onboarding/sample-data'),
+  // Empty {} body is required so axios attaches the application/json
+  // Content-Type — the global CSRF middleware in
+  // packages/server/src/index.ts:1263 rejects state-changing requests
+  // without it (returns 403 ERR_CONTENT_TYPE). A bare api.post() with
+  // no second arg sends no body and no Content-Type → 403 every time.
+  loadSampleData: () => api.post('/onboarding/sample-data', {}),
   removeSampleData: () => api.delete('/onboarding/sample-data'),
   setShopType: (shop_type: OnboardingShopType) =>
     api.post('/onboarding/set-shop-type', { shop_type }),
