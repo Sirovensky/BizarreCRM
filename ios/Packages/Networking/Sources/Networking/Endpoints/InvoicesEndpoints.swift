@@ -8,11 +8,20 @@ public struct InvoicesListResponse: Decodable, Sendable {
     public let invoices: [InvoiceSummary]
     public let pagination: Pagination?
 
+    public init(invoices: [InvoiceSummary], pagination: Pagination?) {
+        self.invoices = invoices
+        self.pagination = pagination
+    }
+
     public struct Pagination: Decodable, Sendable {
         public let page: Int?
         public let perPage: Int?
         public let total: Int?
         public let totalPages: Int?
+
+        public init(page: Int?, perPage: Int?, total: Int?, totalPages: Int?) {
+            self.page = page; self.perPage = perPage; self.total = total; self.totalPages = totalPages
+        }
 
         enum CodingKeys: String, CodingKey {
             case page, total

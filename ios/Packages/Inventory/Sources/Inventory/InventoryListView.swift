@@ -382,47 +382,40 @@ public struct InventoryListView: View {
             }
             .accessibilityLabel("Sort inventory list")
         }
-        ToolbarItem(placement: .secondaryAction) {
+        ToolbarItemGroup(placement: .secondaryAction) {
             Button { showingLowStock = true } label: {
                 Label("Low stock", systemImage: "exclamationmark.triangle")
             }
             .keyboardShortcut("L", modifiers: [.command, .shift])
             .accessibilityLabel("View low stock items")
             .disabled(api == nil)
-        }
-        ToolbarItem(placement: .secondaryAction) {
+
             Button { showingReceiving = true } label: {
                 Label("Receiving", systemImage: "shippingbox.and.arrow.backward")
             }
             .keyboardShortcut("R", modifiers: [.command, .shift])
             .accessibilityLabel("Open receiving orders")
             .disabled(api == nil)
-        }
-        // §6.1 Receive items quick modal (scan/manual, no PO required)
-        ToolbarItem(placement: .secondaryAction) {
+
             Button { showingReceiveItems = true } label: {
                 Label("Receive items", systemImage: "arrow.down.circle")
             }
             .accessibilityLabel("Receive items into stock")
             .disabled(api == nil)
-        }
-        // §6.1 Import CSV
-        ToolbarItem(placement: .secondaryAction) {
+
             Button { showingImport = true } label: {
                 Label("Import CSV", systemImage: "doc.badge.plus")
             }
             .accessibilityLabel("Import inventory from CSV file")
             .disabled(api == nil)
-        }
-        ToolbarItem(placement: .secondaryAction) {
+
             Button { showingStocktake = true } label: {
                 Label("Stocktake", systemImage: "checklist")
             }
             .keyboardShortcut("T", modifiers: [.command, .shift])
             .accessibilityLabel("Start stocktake")
             .disabled(api == nil)
-        }
-        ToolbarItem(placement: .secondaryAction) {
+
             Button {
                 isBatchSelectMode.toggle()
                 if !isBatchSelectMode { multiSelection = [] }

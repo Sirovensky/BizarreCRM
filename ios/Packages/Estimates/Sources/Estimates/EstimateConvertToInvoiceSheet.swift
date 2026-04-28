@@ -50,7 +50,7 @@ final class EstimateConvertToInvoiceViewModel {
                 as: ConvertToInvoiceResponse.self
             )
             convertedInvoiceId = resp.invoiceId
-            AppLog.ui.info("Estimate \(estimateId) converted to invoice \(resp.invoiceId).")
+            AppLog.ui.info("Estimate \(self.estimateId) converted to invoice \(resp.invoiceId).")
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate convert-to-invoice failed: \(error.localizedDescription, privacy: .public)")

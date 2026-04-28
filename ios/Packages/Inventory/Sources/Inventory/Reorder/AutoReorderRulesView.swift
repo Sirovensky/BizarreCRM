@@ -40,7 +40,7 @@ public final class AutoReorderRulesViewModel {
     public private(set) var isLoading = false
     public private(set) var isRunningNow = false
     public private(set) var errorMessage: String?
-    public private(set) var successMessage: String?
+    public internal(set) var successMessage: String?
     public var editingRule: ReorderRule?
     public var editThreshold: String = ""
     public var editReorderQty: String = ""
@@ -277,7 +277,7 @@ public struct AutoReorderRulesView: View {
             Text(msg)
                 .font(.bizarreBody)
                 .padding(12)
-                .background(.brandGlass)
+                .background(.ultraThinMaterial)
                 .clipShape(Capsule())
                 .padding(.bottom, 32)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -293,7 +293,7 @@ public struct AutoReorderRulesView: View {
                 .font(.bizarreBody)
                 .foregroundStyle(Color.bizarreError)
                 .padding(12)
-                .background(.brandGlass)
+                .background(.ultraThinMaterial)
                 .clipShape(Capsule())
                 .padding(.bottom, 32)
         }

@@ -367,6 +367,6 @@ private struct AdjustCardBackground: ViewModifier {
 }
 
 private extension View {
-    func cardBackground() -> some View { modifier(AdjustCardBackground()) }
+    func adjustCardBackground() -> some View { modifier(AdjustCardBackground()) }
 }
 #endif

@@ -11,15 +11,15 @@ import Networking
 //
 // Server endpoint:
 //   GET /api/v1/estimates/:id/versions
-//   Response: { success, data: [EstimateVersion] }
+//   Response: { success, data: [EstimateLegacyVersion] }
 //
 // The view loads versions lazily and shows a numbered list with created_at
 // and status. Tapping a version shows a read-only snapshot (line items, total,
 // status at that version). The "approved version" is highlighted.
 
-// MARK: - EstimateVersion DTO
+// MARK: - EstimateLegacyVersion DTO
 
-public struct EstimateVersion: Decodable, Sendable, Identifiable {
+public struct EstimateLegacyVersion: Decodable, Sendable, Identifiable {
     public let id: Int64
     public let versionNumber: Int
     public let status: String?
@@ -42,7 +42,7 @@ public struct EstimateVersion: Decodable, Sendable, Identifiable {
 @MainActor
 @Observable
 final class EstimateVersioningViewModel {
-    var versions: [EstimateVersion] = []
+    var versions: [EstimateLegacyVersion] = []
     var isLoading: Bool = false
     var errorMessage: String?
 
@@ -59,7 +59,7 @@ final class EstimateVersioningViewModel {
         errorMessage = nil
         defer { isLoading = false }
         do {
-            struct VersionsResponse: Decodable { let versions: [EstimateVersion]? }
+            struct VersionsResponse: Decodable { let versions: [EstimateLegacyVersion]? }
             let resp = try await api.get(
                 "/api/v1/estimates/\(estimateId)/versions",
                 as: VersionsResponse.self
@@ -135,7 +135,7 @@ public struct EstimateVersioningView: View {
     }
 
     @ViewBuilder
-    private func versionRow(_ version: EstimateVersion) -> some View {
+    private func versionRow(_ version: EstimateLegacyVersion) -> some View {
         HStack(alignment: .center, spacing: BrandSpacing.md) {
             // Version badge
             ZStack {
@@ -229,7 +229,7 @@ public struct EstimateVersioningView: View {
         return f.string(from: NSNumber(value: v)) ?? "$\(v)"
     }
 
-    private func versionA11y(_ v: EstimateVersion) -> String {
+    private func versionA11y(_ v: EstimateLegacyVersion) -> String {
         var parts = ["Version \(v.versionNumber)"]
         if v.isApproved == true { parts.append("Approved") }
         if let s = v.status { parts.append(s.capitalized) }

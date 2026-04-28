@@ -50,7 +50,7 @@ public struct InventoryFilterDrawer: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        .animation(BrandMotion.spring, value: isExpanded)
+        .animation(BrandMotion.sheet, value: isExpanded)
         .onAppear(perform: syncFromBinding)
         .onChange(of: filter) { _, _ in syncFromBinding() }
     }

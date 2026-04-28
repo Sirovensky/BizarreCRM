@@ -327,7 +327,7 @@ public struct AgeReportView: View {
                 .font(.bizarreHeadline)
             Text(message).font(.bizarreBody).foregroundStyle(Color.bizarreTextSecondary)
             Button("Retry") { Task { await vm.load() } }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -337,10 +337,7 @@ public struct AgeReportView: View {
 
 extension APIClient {
     func ageReport() async throws -> [AgedItem] {
-        let resp: APIResponse<[AgedItem]> = try await get(
-            "/api/v1/inventory/reports/aging"
-        )
-        return resp.data ?? []
+        try await get("/api/v1/inventory/reports/aging", as: [AgedItem].self)
     }
 }
 #endif

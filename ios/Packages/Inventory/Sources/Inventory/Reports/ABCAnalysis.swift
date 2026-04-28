@@ -263,7 +263,7 @@ public struct ABCAnalysisView: View {
                 .font(.bizarreBody)
                 .foregroundStyle(Color.bizarreTextSecondary)
             Button("Retry") { Task { await vm.load() } }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -287,10 +287,8 @@ public struct ABCItemResponse: Decodable, Sendable {
 
 extension APIClient {
     func abcAnalysis() async throws -> [ABCItem] {
-        let resp: APIResponse<[ABCItemResponse]> = try await get(
-            "/api/v1/inventory/reports/abc"
-        )
-        return (resp.data ?? []).map { r in
+        let resp = try await get("/api/v1/inventory/reports/abc", as: [ABCItemResponse].self)
+        return resp.map { r in
             ABCItem(
                 id: r.id,
                 sku: r.sku ?? "",

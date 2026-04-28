@@ -34,6 +34,7 @@ public struct EstimateDetailView: View {
     @State private var showRejectSheet: Bool = false
     @State private var showConvertToInvoiceSheet: Bool = false
     @State private var showVersioningView: Bool = false
+    @State private var showPdfPreview: Bool = false
     #if canImport(UIKit)
     @State private var showSignSheet: Bool = false      // existing sign-url sheet
     @State private var showSendSheet: Bool = false      // §8.2 send
@@ -552,7 +553,7 @@ public struct EstimateDetailView: View {
             .keyboardShortcut("i", modifiers: [.command, .option])
 
             // §8.2 Versions
-            Button { showVersionsSheet = true } label: {
+            Button { showVersioningView = true } label: {
                 Label("Version History", systemImage: "clock.arrow.circlepath")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -747,7 +748,7 @@ public struct EstimateDetailView: View {
             .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to a service ticket")
         }
         ToolbarItem(placement: .primaryAction) {
-            Button { showVersionsSheet = true } label: {
+            Button { showVersioningView = true } label: {
                 Label("Versions", systemImage: "clock.arrow.circlepath")
             }
             .keyboardShortcut("v", modifiers: [.command, .option])

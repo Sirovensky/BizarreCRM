@@ -365,22 +365,21 @@ public struct MoveToScrapSheet: View {
 
 extension APIClient {
     func listScrapBin() async throws -> [ScrapEntry] {
-        let resp: APIResponse<[ScrapEntry]> = try await get("/api/v1/inventory/scrap-bin")
-        return resp.data ?? []
+        try await get("/api/v1/inventory/scrap-bin", as: [ScrapEntry].self)
     }
 
     func moveToScrap(_ request: MoveToScrapRequest) async throws {
-        let _: APIResponse<EmptyScrapBody> = try await post(
-            "/api/v1/inventory/scrap-bin", body: request
+        _ = try await post(
+            "/api/v1/inventory/scrap-bin", body: request, as: EmptyScrapBody.self
         )
     }
 
     func disposeScrap(_ request: ScrapDisposalRequest) async throws {
-        let _: APIResponse<EmptyScrapBody> = try await post(
-            "/api/v1/inventory/scrap-bin/dispose", body: request
+        _ = try await post(
+            "/api/v1/inventory/scrap-bin/dispose", body: request, as: EmptyScrapBody.self
         )
     }
 }
 
-private struct EmptyScrapBody: Decodable {}
+private struct EmptyScrapBody: Decodable, Sendable {}
 #endif

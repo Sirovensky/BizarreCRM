@@ -386,3 +386,34 @@ public extension APIClient {
 }
 
 private struct ConvertEstimateToInvoiceEmptyBody: Encodable, Sendable {}
+
+public extension APIClient {
+    /// GET /api/v1/estimates/:id/versions — version history.
+    func estimateVersions(estimateId: Int64) async throws -> [EstimateVersion] {
+        let resp = try await get("/api/v1/estimates/\(estimateId)/versions", as: EstimateVersionsResponse.self)
+        return resp.versions
+    }
+
+    /// GET /api/v1/estimates/:id/versions/:versionId — fetch one version snapshot.
+    func estimateVersion(estimateId: Int64, versionId: Int64) async throws -> Estimate {
+        try await get("/api/v1/estimates/\(estimateId)/versions/\(versionId)", as: Estimate.self)
+    }
+}
+
+public extension APIClient {
+    /// PUT /api/v1/estimates/:id with status="expired" — manual expiry override.
+    func expireEstimate(estimateId: Int64) async throws -> Estimate {
+        try await put("/api/v1/estimates/\(estimateId)", body: EstimateExpireBody(), as: Estimate.self)
+    }
+}
+
+public extension APIClient {
+    /// POST /api/v1/estimates/:id/send — kicks off SMS/email notification flow.
+    func sendEstimate(estimateId: Int64, sendSms: Bool? = nil, sendEmail: Bool? = nil) async throws -> EstimateSendResponse {
+        try await post(
+            "/api/v1/estimates/\(estimateId)/send",
+            body: EstimateSendRequest(sendSms: sendSms, sendEmail: sendEmail),
+            as: EstimateSendResponse.self
+        )
+    }
+}

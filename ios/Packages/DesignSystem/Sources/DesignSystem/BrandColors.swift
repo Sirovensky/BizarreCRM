@@ -47,6 +47,10 @@ public extension Color {
     static let bizarreTextOnBrand       = Color("OnBrandOrange",        bundle: .main)
     /// Placeholder / inactive muted text.
     static let bizarreTextMuted         = Color("OnSurfaceMuted",       bundle: .main)
+    /// Elevated surface — alias of bizarreSurface2.
+    static let bizarreSurfaceElevated   = Color("Surface2",             bundle: .main)
+    /// Primary text — alias of bizarreOnSurface.
+    static let bizarreTextPrimary       = Color("OnSurface",            bundle: .main)
 
     // MARK: - POS primary / on-primary aliases
     // Used by the repair-flow and tender CTAs to express colour intent without

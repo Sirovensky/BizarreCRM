@@ -762,7 +762,7 @@ private struct KeyVal: View {
     }
 }
 
-private struct CardBackgroundModifier: ViewModifier {
+struct CardBackgroundModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -772,7 +772,7 @@ private struct CardBackgroundModifier: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     func cardBackground() -> some View { modifier(CardBackgroundModifier()) }
 }
 

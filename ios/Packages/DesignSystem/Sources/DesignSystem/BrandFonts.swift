@@ -157,4 +157,14 @@ public extension Font {
     static func brandLabelMedium() -> Font { brandFootnote() }
     /// @deprecated Use `brandFootnote()`.
     static func brandBodySmall() -> Font { brandFootnote() }
+
+    // Legacy `bizarre*` aliases — used as property (`.bizarreBody`) by some
+    // older call sites. Static vars so the dot-syntax works without parens.
+    static var bizarreBody: Font     { brandBody() }
+    static var bizarreCaption: Font  { brandCaption1() }
+    static var bizarreHeadline: Font { brandHeadline() }
+    static var bizarreTitle: Font    { brandTitle1() }
+    static var bizarreFootnote: Font { brandFootnote() }
+    static var bizarreTitle2: Font   { brandTitle2() }
+    static var bizarreTitle3: Font   { brandTitle3() }
 }

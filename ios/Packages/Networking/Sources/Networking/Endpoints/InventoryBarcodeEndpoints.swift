@@ -7,7 +7,7 @@ import Foundation
 /// Server: packages/server/src/routes/inventory.routes.ts:548.
 /// Matches the full `inventory_items` row for a single item.
 /// `404` when not found — caller catches `APITransportError.httpStatus(404, _)`.
-public struct InventoryBarcodeItem: Decodable, Sendable, Identifiable {
+public struct InventoryBarcodeItem: Decodable, Sendable, Identifiable, Hashable {
     public let id: Int64
     public let name: String?
     public let sku: String?

@@ -56,7 +56,7 @@ public final class MoveToLocationViewModel {
 
     private let itemId: Int64
     private let itemName: String
-    private let currentStock: Int
+    public let currentStock: Int
     private let api: APIClient
 
     public init(itemId: Int64, itemName: String, currentStock: Int, api: APIClient) {

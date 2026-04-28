@@ -268,7 +268,7 @@ public struct ShrinkageReportView: View {
                 .font(.bizarreBody)
                 .foregroundStyle(Color.bizarreTextSecondary)
             Button("Retry") { Task { await vm.load() } }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -297,10 +297,7 @@ public struct ShrinkageReportView: View {
 
 extension APIClient {
     func shrinkageReport(months: Int) async throws -> [ShrinkagePoint] {
-        let resp: APIResponse<[ShrinkagePoint]> = try await get(
-            "/api/v1/inventory/reports/shrinkage?months=\(months)"
-        )
-        return resp.data ?? []
+        try await get("/api/v1/inventory/reports/shrinkage?months=\(months)", as: [ShrinkagePoint].self)
     }
 }
 #endif

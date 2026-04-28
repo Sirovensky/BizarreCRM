@@ -114,7 +114,7 @@ public struct InventoryQuickScanSheet: View {
             // Navigate to item detail when user taps on found card
             .navigationDestination(item: $foundItem) { item in
                 InventoryDetailView(
-                    repo: LiveInventoryDetailRepository(api: api),
+                    repo: InventoryDetailRepositoryImpl(api: api),
                     itemId: item.id,
                     api: api
                 )
@@ -155,7 +155,7 @@ public struct InventoryQuickScanSheet: View {
             notFoundBanner(code: code)
 
         case .error(let msg):
-            errorBanner(msg: msg)
+            errorBanner(msg)
         }
     }
 

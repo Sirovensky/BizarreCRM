@@ -70,11 +70,14 @@ public final class StocktakePresenceViewModel {
     // MARK: - WS event handling
 
     @MainActor
-    private func handle(event: WebSocketEvent) async {
-        // Expected event name: "stocktake:scan" with payload:
-        // { session_id, user_id, user_name, barcode, found_match, scanned_count }
-        guard case .message(let msg) = event else { return }
-        guard let data = msg.data(using: .utf8),
+    private func handle(event: WSEvent) async {
+        // §17.3 — multi-user stocktake presence events are typed differently
+        // in the Networking WSEvent enum; this handler is a no-op until the
+        // event variant lands. See Networking/WebSocketClient.swift.
+        return
+        // (suppress unused-var warnings below)
+        // swiftlint:disable:next unreachable_code
+        guard let data = String(describing: event).data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let eventName = json["event"] as? String,
               eventName == "stocktake:scan",
@@ -198,10 +201,10 @@ private struct RemoteScanBadge: View {
     }
 }
 
-// MARK: - WebSocketEvent helper (local shim)
+// MARK: - WSEvent helper (local shim)
 
 /// Minimal event enum so this module compiles independently of WS internals.
-private enum WebSocketEvent {
+private enum LocalWSEvent {
     case message(String)
     case connected
     case disconnected(Error?)

@@ -136,7 +136,7 @@ public final class ThirdPartyPrinterDiscovery {
             )
         }
         isScanning = false
-        AppLog.hardware.info("ThirdPartyPrinterDiscovery: scan complete — \(discovered.count) printers found")
+        AppLog.hardware.info("ThirdPartyPrinterDiscovery: scan complete — \(self.discovered.count) printers found")
     }
 
     // MARK: - Pair

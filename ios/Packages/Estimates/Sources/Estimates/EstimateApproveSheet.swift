@@ -65,7 +65,7 @@ final class EstimateApproveSheetViewModel {
                 as: Estimate.self
             )
             didApprove = true
-            AppLog.ui.info("Estimate \(estimateId) approved by staff.")
+            AppLog.ui.info("Estimate \(self.estimateId) approved by staff.")
         } catch {
             errorMessage = AppError.from(error).errorDescription ?? error.localizedDescription
             AppLog.ui.error("Estimate approve failed: \(error.localizedDescription, privacy: .public)")
