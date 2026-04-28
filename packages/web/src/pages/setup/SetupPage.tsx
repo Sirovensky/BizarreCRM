@@ -217,8 +217,14 @@ export function SetupPage() {
         /* ignore */
       }
 
-      setPhase('done');
-      navigate('/dashboard', { replace: true });
+      // Render the StepDone screen with its non-duplicate Settings deep-link
+      // cards instead of jumping straight to /dashboard. The user navigates
+      // to /dashboard from the StepDone CTA. Skip path still goes direct.
+      if (mode === 'complete') {
+        setPhase('done');
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     } catch (err: any) {
       setError(err?.response?.data?.message || 'Failed to save setup. Please try again.');
     } finally {
@@ -244,7 +250,15 @@ export function SetupPage() {
       </div>
     );
   }
-  if (wizardCompleted === 'true' || wizardCompleted === 'skipped' || wizardCompleted === 'grandfathered') {
+  // If the wizard is already complete, redirect — UNLESS the user is currently
+  // on the 'done' phase, which means flushAndExit just transitioned them here
+  // intentionally to show the StepDone screen with its deep-link cards before
+  // they leave. Without this exception the gate fires immediately after
+  // setPhase('done') and the user never sees the Done UI.
+  if (
+    phase !== 'done' &&
+    (wizardCompleted === 'true' || wizardCompleted === 'skipped' || wizardCompleted === 'grandfathered')
+  ) {
     return <Navigate to="/" replace />;
   }
   // setupCompleted=false case is handled by App.tsx gate; we let the wizard run anyway.

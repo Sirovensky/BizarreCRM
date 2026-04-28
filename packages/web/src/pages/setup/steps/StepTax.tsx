@@ -216,8 +216,8 @@ export function StepTax({
               disabled={!allValid}
               className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <ArrowRight className="h-4 w-4" />
               Continue
+              <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         </div>
