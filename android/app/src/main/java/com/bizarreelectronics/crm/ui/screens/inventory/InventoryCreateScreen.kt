@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
@@ -22,7 +23,11 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
+import com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
+import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
+import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,15 +51,46 @@ data class InventoryCreateUiState(
     val createdId: Long? = null,
     /** Set to true after a "Save & add another" submit so the screen resets instead of navigating. */
     val savedAndAddAnother: Boolean = false,
+    // §6.3: supplier picker
+    val suppliers: List<SupplierRow> = emptyList(),
+    val selectedSupplierId: Long? = null,
+    val selectedSupplierName: String = "",
+    // §6.3: tax class picker + tax-inclusive toggle
+    val taxClasses: List<TaxClassOption> = emptyList(),
+    val selectedTaxClassId: Long? = null,
+    val selectedTaxClassName: String = "",
+    val taxInclusive: Boolean = false,
 )
 
 @HiltViewModel
 class InventoryCreateViewModel @Inject constructor(
     private val inventoryRepository: InventoryRepository,
+    private val purchaseOrderApi: PurchaseOrderApi,
+    private val inventoryApi: InventoryApi,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(InventoryCreateUiState())
     val state = _state.asStateFlow()
+
+    init {
+        // §6.3: prefetch supplier and tax-class lists for pickers.
+        viewModelScope.launch {
+            try {
+                val suppliersResponse = purchaseOrderApi.listSuppliers()
+                if (suppliersResponse.success) {
+                    _state.value = _state.value.copy(suppliers = suppliersResponse.data ?: emptyList())
+                }
+            } catch (_: Exception) { /* list remains empty — pickers still operable as free text */ }
+        }
+        viewModelScope.launch {
+            try {
+                val taxResponse = inventoryApi.getTaxClasses()
+                if (taxResponse.success) {
+                    _state.value = _state.value.copy(taxClasses = taxResponse.data ?: emptyList())
+                }
+            } catch (_: Exception) { /* list remains empty */ }
+        }
+    }
 
     fun updateName(value: String) { _state.value = _state.value.copy(name = value) }
     fun updateSku(value: String) { _state.value = _state.value.copy(sku = value) }
@@ -81,6 +117,27 @@ class InventoryCreateViewModel @Inject constructor(
         }
     }
     fun updateDescription(value: String) { _state.value = _state.value.copy(description = value) }
+
+    // §6.3: supplier picker selection
+    fun selectSupplier(supplier: SupplierRow?) {
+        _state.value = _state.value.copy(
+            selectedSupplierId = supplier?.id,
+            selectedSupplierName = supplier?.name ?: "",
+        )
+    }
+
+    // §6.3: tax class picker selection
+    fun selectTaxClass(taxClass: TaxClassOption?) {
+        _state.value = _state.value.copy(
+            selectedTaxClassId = taxClass?.id,
+            selectedTaxClassName = taxClass?.name ?: "",
+        )
+    }
+
+    // §6.3: tax-inclusive toggle
+    fun toggleTaxInclusive() {
+        _state.value = _state.value.copy(taxInclusive = !_state.value.taxInclusive)
+    }
 
     /** Called from the Scanner screen result (savedStateHandle "scanned_barcode"). */
     fun applyScannedBarcode(code: String) {
@@ -133,14 +190,20 @@ class InventoryCreateViewModel @Inject constructor(
                     costPrice = current.costPrice.toDoubleOrNull(),
                     price = retail,
                     reorderLevel = current.reorderLevel.toIntOrNull(),
+                    // §6.3: supplier, tax class, tax-inclusive
+                    supplierId = current.selectedSupplierId,
+                    taxClassId = current.selectedTaxClassId,
+                    taxInclusive = if (current.taxInclusive) 1 else 0,
                 )
                 val createdId = inventoryRepository.createItem(request)
                 if (addAnother) {
-                    // Reset form fields; keep itemType as convenience for the user.
+                    // Reset form fields; keep itemType and loaded picker lists as convenience for the user.
                     _state.value = InventoryCreateUiState(
                         itemType = current.itemType,
                         isSubmitting = false,
                         savedAndAddAnother = true,
+                        suppliers = current.suppliers,
+                        taxClasses = current.taxClasses,
                     )
                 } else {
                     _state.value = _state.value.copy(
@@ -273,6 +336,16 @@ fun InventoryCreateScreen(
             // §6.3: "Save & add another" secondary CTA shown at the bottom.
             onSaveAndAddAnother = { if (canSave) viewModel.save(addAnother = true) },
             canSave = canSave,
+            // §6.3: supplier picker
+            suppliers = state.suppliers,
+            selectedSupplierName = state.selectedSupplierName,
+            onSupplierSelected = viewModel::selectSupplier,
+            // §6.3: tax class picker + toggle
+            taxClasses = state.taxClasses,
+            selectedTaxClassName = state.selectedTaxClassName,
+            onTaxClassSelected = viewModel::selectTaxClass,
+            taxInclusive = state.taxInclusive,
+            onTaxInclusiveToggle = viewModel::toggleTaxInclusive,
         )
     }
 }
@@ -310,6 +383,16 @@ internal fun InventoryFormContent(
     /** §6.3: "Save & add another" secondary CTA. Null = not shown (Edit screen). */
     onSaveAndAddAnother: (() -> Unit)? = null,
     canSave: Boolean = true,
+    // §6.3: supplier picker — empty list = picker not shown (e.g. Edit screen before wiring)
+    suppliers: List<SupplierRow> = emptyList(),
+    selectedSupplierName: String = "",
+    onSupplierSelected: (SupplierRow?) -> Unit = {},
+    // §6.3: tax class picker + tax-inclusive toggle
+    taxClasses: List<TaxClassOption> = emptyList(),
+    selectedTaxClassName: String = "",
+    onTaxClassSelected: (TaxClassOption?) -> Unit = {},
+    taxInclusive: Boolean = false,
+    onTaxInclusiveToggle: () -> Unit = {},
 ) {
     // D5-6: IME Next advances focus, Done clears focus and invokes onSubmit.
     val focusManager = LocalFocusManager.current
@@ -454,6 +537,40 @@ internal fun InventoryFormContent(
             keyboardActions = onDoneSubmit,
         )
 
+        // §6.3: Supplier picker — shown only when the list has loaded.
+        if (suppliers.isNotEmpty()) {
+            InventoryDropdownPicker(
+                label = "Supplier",
+                selectedLabel = selectedSupplierName.ifBlank { "None" },
+                options = listOf(null to "None") + suppliers.map { it to it.name },
+                onOptionSelected = { onSupplierSelected(it) },
+            )
+        }
+
+        // §6.3: Tax class picker + tax-inclusive toggle.
+        if (taxClasses.isNotEmpty()) {
+            InventoryDropdownPicker(
+                label = "Tax Class",
+                selectedLabel = selectedTaxClassName.ifBlank { "None" },
+                options = listOf(null to "None") + taxClasses.map { it to "${it.name} (${it.rate}%)" },
+                onOptionSelected = { onTaxClassSelected(it) },
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    "Price is tax-inclusive",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Switch(
+                    checked = taxInclusive,
+                    onCheckedChange = { onTaxInclusiveToggle() },
+                )
+            }
+        }
+
         // §6.3: "Save & add another" secondary CTA — only shown on the Create screen.
         if (onSaveAndAddAnother != null) {
             androidx.compose.material3.OutlinedButton(
@@ -462,6 +579,52 @@ internal fun InventoryFormContent(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text("Save & add another")
+            }
+        }
+    }
+}
+
+/**
+ * Generic single-select dropdown picker used for Supplier and Tax Class in §6.3.
+ * [options] is a list of (value, displayLabel) pairs; null value = "None" sentinel.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> InventoryDropdownPicker(
+    label: String,
+    selectedLabel: String,
+    options: List<Pair<T?, String>>,
+    onOptionSelected: (T?) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+    ) {
+        OutlinedTextField(
+            value = selectedLabel,
+            onValueChange = { },
+            readOnly = true,
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
+            label = { Text(label) },
+            trailingIcon = {
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            },
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            options.forEach { (value, display) ->
+                DropdownMenuItem(
+                    text = { Text(display) },
+                    onClick = {
+                        onOptionSelected(value)
+                        expanded = false
+                    },
+                )
             }
         }
     }

@@ -1378,7 +1378,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Edit / Deactivate / Delete** buttons. (commit 2e6b486 — Deactivate with confirm dialog completes earlier partial)
 
 ### 6.3 Create
-- [~] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag.
+- [x] **Form**: Name (required), SKU, UPC / barcode, item type (product / part), category, cost price, retail price, tax class, stock qty, reorder threshold, reorder qty, supplier, bin, manufacturer, description, photos, tags, taxable flag. (session 2026-04-27 — `InventoryCreateScreen.kt`: supplier picker via `PurchaseOrderApi.listSuppliers()`; tax class picker via `InventoryApi.getTaxClasses()`; tax-inclusive `Switch` toggle; all wired to `CreateInventoryRequest.supplierId/taxClassId/taxInclusive`; pickers hidden until data loads, no crash if offline)
 - [x] **Inline barcode scan** — scanner icon in top bar → shared BarcodeScanScreen → fills UPC/SKU fields via savedStateHandle. Auto-lookup via `GET /inventory-enrich/barcode-lookup` deferred (external enrichment DB). (`InventoryCreateScreen.kt` `onScanBarcode` + `applyScannedBarcode()`)
 - [ ] **Photo capture** up to 4 per item; first = primary. <!-- NOTE-defer: requires CameraX capture + multipart upload plumbing; deferred to dedicated photo-attach pass -->
 - [x] **Validation** — decimal for prices (2 places via regex + toDoubleOrNull), integer for stock/reorder; unified `validateForm()` in `InventoryCreateViewModel`.
