@@ -3213,25 +3213,14 @@ private fun CredentialsStep(
     // §2.20 L449 — SSO hybrid: swap password field for SSO CTA when domain matches.
     // While check is in flight (domainSsoChecking), show a small spinner below the
     // username field instead of the password field, preventing flicker.
+    // 2026-04-27 user-flagged: previously the in-flight branch pulled the
+    // password field out of the tree to render a "Checking sign-in method..."
+    // spinner. Removing the focused password TextField mid-typing dropped
+    // focus and dismissed the IME on every keystroke after `@`. The check
+    // now runs silently; the password field stays in place during the
+    // request and only morphs to the SSO button when SSO is actually
+    // detected (rare case). Non-SSO users never see any UI noise.
     when {
-        state.domainSsoChecking -> {
-            Box(
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                contentAlignment = Alignment.CenterStart,
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    Text(
-                        "Checking sign-in method\u2026",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
         state.domainSsoDetected -> {
             // Replace password field with "Continue with SSO" primary button.
             BrandPrimaryButton(
