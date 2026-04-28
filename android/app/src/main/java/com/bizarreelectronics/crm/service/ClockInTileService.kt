@@ -1,6 +1,8 @@
 package com.bizarreelectronics.crm.service
 
 import android.app.PendingIntent
+import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.service.quicksettings.Tile
@@ -36,14 +38,18 @@ class ClockInTileService : TileService() {
 
     override fun onStartListening() {
         super.onStartListening()
-        val isClockedIn = readClockedInPref()
+        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        val isLoggedIn = prefs.getBoolean(PREFS_LOGGED_IN, false)
+        val isClockedIn = prefs.getBoolean(PREFS_CLOCK_STATE, false)
         qsTile?.apply {
             label = "Clock In/Out"
-            contentDescription = if (isClockedIn) "Currently clocked in — tap to open clock screen"
-                                  else "Currently clocked out — tap to open clock screen"
-            state = when (isClockedIn) {
-                true  -> Tile.STATE_ACTIVE
-                false -> Tile.STATE_INACTIVE
+            if (!isLoggedIn) {
+                contentDescription = "Not signed in — open app to log in"
+                state = Tile.STATE_UNAVAILABLE
+            } else {
+                contentDescription = if (isClockedIn) "Currently clocked in — tap to open clock screen"
+                                     else "Currently clocked out — tap to open clock screen"
+                state = if (isClockedIn) Tile.STATE_ACTIVE else Tile.STATE_INACTIVE
             }
             updateTile()
         }
@@ -79,32 +85,55 @@ class ClockInTileService : TileService() {
         startActivityAndCollapse(pending)
     }
 
-    /**
-     * Reads the clock-in flag written by [publishClockState] into the Glance
-     * DataStore's mirrored SharedPreferences file.
-     *
-     * Glance's [PreferencesGlanceStateDefinition] stores data in a DataStore
-     * file per widget instance.  Because the tile cannot await a suspend
-     * function in [onStartListening], we read the last-known value from a
-     * lightweight SharedPreferences key that [publishClockState] also writes.
-     *
-     * TODO(§24.4): wire [PREFS_CLOCK_STATE] write into [publishClockState]
-     * once the ViewModel call site is established.  For now the tile falls
-     * back to INACTIVE (safe default — never shows a "clocked in" state that
-     * is actually false).
-     */
-    private fun readClockedInPref(): Boolean {
-        val prefs = applicationContext.getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
-        return prefs.getBoolean(PREFS_CLOCK_STATE, false)
-    }
-
     companion object {
         const val ACTION_CLOCK_IN_FROM_TILE =
             "com.bizarreelectronics.crm.action.CLOCK_IN_FROM_TILE"
 
-        /** Shared prefs file + key mirrored from publishClockState for tile state reads. */
+        /** Shared prefs file and keys read by [onStartListening]. */
         const val PREFS_NAME = "clock_in_tile_prefs"
         const val PREFS_CLOCK_STATE = "is_clocked_in"
+
+        /**
+         * Whether the user is currently logged in; determines [Tile.STATE_UNAVAILABLE]
+         * vs the normal active/inactive states.
+         */
+        const val PREFS_LOGGED_IN = "is_logged_in"
+
         private const val REQUEST_CODE = 101
+
+        /**
+         * §14.10 — Persists the employee's current clock state to the
+         * SharedPreferences file read by [onStartListening] and notifies the
+         * OS to call [onStartListening] again so the tile UI refreshes
+         * immediately without requiring the shade to be re-opened.
+         *
+         * Call this after every successful clock-in or clock-out:
+         * ```kotlin
+         * ClockInTileService.persistClockState(appContext, isClockedIn = true)
+         * ```
+         *
+         * @param context       Application context (not Activity context).
+         * @param isClockedIn   True when the employee just clocked in; false on clock-out.
+         * @param isLoggedIn    Whether a valid session exists; drives [Tile.STATE_UNAVAILABLE].
+         *                      Defaults to true because this is only called from authenticated paths.
+         */
+        fun persistClockState(
+            context: Context,
+            isClockedIn: Boolean,
+            isLoggedIn: Boolean = true,
+        ) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREFS_CLOCK_STATE, isClockedIn)
+                .putBoolean(PREFS_LOGGED_IN, isLoggedIn)
+                .apply()
+
+            // Ask the OS to call onStartListening() on the next bound tile instance.
+            // Safe to call even when no tile is added to the shade — a no-op then.
+            TileService.requestListeningState(
+                context,
+                ComponentName(context, ClockInTileService::class.java),
+            )
+        }
     }
 }

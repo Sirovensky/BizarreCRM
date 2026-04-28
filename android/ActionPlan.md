@@ -2402,8 +2402,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
   - **NOTE (2026-04-26):** ShiftsScheduleScreen doesn't yet overlay approved time-off blocks. Deferred as enhancement.
 
 ### 14.10 Shortcuts / Assistant
-- [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app.
-  - **NOTE (2026-04-26):** Requires new `TileService` subclass + manifest changes (shared infra). `QuickTicketTileService` exists as a pattern. Defer to dedicated Shortcuts pass.
+- [x] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. (session 2026-04-27 — `ClockInTileService.persistClockState()` state bridge wired; `ClockInOutViewModel` + `ClockInTileViewModel` both call `broadcastClockState()` after toggle; Glance widget updated via `publishClockState()`; tile icon refreshes immediately via `TileService.requestListeningState()`)
 - [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon.
   - **NOTE (2026-04-26):** Requires `shortcuts.xml` manifest addition (shared infra). Defer.
 - [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`.
