@@ -1354,6 +1354,37 @@ class AppPreferences @Inject constructor(
             _tabNavOrderFlow.value = value
         }
 
+    // --- §71.5 — Post-upgrade "What's New" last-seen versionCode --------------
+    //
+    // Stores the versionCode of the build the user last launched.  On every
+    // cold start MainActivity compares BuildConfig.VERSION_CODE against this
+    // value; when the current code is strictly greater than the stored value
+    // the app has been upgraded and [WhatsNewDialog] is presented.  After the
+    // user dismisses the dialog MainActivity writes the new versionCode here
+    // so the dialog is not shown again for the same build.
+    //
+    // Default 0 so a fresh install always triggers the dialog on first launch,
+    // giving new users a brief orientation to the app's key features.
+
+    /**
+     * §71.5 — versionCode of the last build the user acknowledged in the
+     * "What's New" dialog.  0 on a fresh install.
+     *
+     * Write via [markWhatsNewSeen]. Read by MainActivity to decide whether to
+     * show [WhatsNewDialog].
+     */
+    var lastSeenVersionCode: Int
+        get() = prefs.getInt("last_seen_version_code", 0)
+        set(value) = prefs.edit().putInt("last_seen_version_code", value).apply()
+
+    /**
+     * §71.5 — Record that the user has seen the "What's New" dialog for
+     * [versionCode].  Idempotent — calling with the same code twice is safe.
+     */
+    fun markWhatsNewSeen(versionCode: Int) {
+        lastSeenVersionCode = versionCode
+    }
+
     // --- §74.3 — Analytics / telemetry opt-out --------------------------------
     //
     // Default: true (enabled).  User can disable via Settings → Privacy →

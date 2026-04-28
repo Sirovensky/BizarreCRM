@@ -5507,8 +5507,8 @@ Android `HapticFeedbackConstants` mapping + `Vibrator` + `VibratorManager` (Andr
 - [ ] Privacy disclosure sheet. <!-- NOTE-defer: depends on first-launch flow above -->
 
 ### 71.5 Post-upgrade
-- [ ] "What's new" modal shown once on new `versionCode`. <!-- NOTE-defer: requires DataStore key tracking last-seen versionCode + WhatsNew composable + nav trigger in AppNavGraph — multi-file feature, defer to a dedicated release-notes sprint -->
-- [ ] Dismissible; auto-dismiss after interaction. <!-- NOTE-defer: depends on What's new modal above -->
+- [x] "What's new" modal shown once on new `versionCode`. (commit gracious-goodall — `WhatsNewDialog.kt` AlertDialog with `WhatsNewEntry` data class + `WHATS_NEW_ENTRIES` catalog; `AppPreferences.lastSeenVersionCode` / `markWhatsNewSeen()`; MainActivity wires `showWhatsNew` state comparing `BuildConfig.VERSION_CODE` > `lastSeenVersionCode`; persists on dismiss)
+- [x] Dismissible; auto-dismiss after interaction. (commit gracious-goodall — "Got it" TextButton sets `showWhatsNew = false` + calls `markWhatsNewSeen(versionCode)`; `onDismissRequest` handles outside-tap)
 
 ---
 ## 72. In-App Help

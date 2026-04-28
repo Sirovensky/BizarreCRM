@@ -45,6 +45,7 @@ import com.bizarreelectronics.crm.util.SessionTimeoutCore
 import com.bizarreelectronics.crm.util.rememberNotificationPermission
 import com.bizarreelectronics.crm.util.LanguageManager
 import com.bizarreelectronics.crm.ui.components.ForceUpgradeBlocker
+import com.bizarreelectronics.crm.ui.components.WhatsNewDialog
 import com.bizarreelectronics.crm.util.LockScreenBlurHelper
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -388,6 +389,28 @@ class MainActivity : FragmentActivity() {
                     if (isAuthenticated) {
                         rememberNotificationPermission(autoRequest = true)
                     }
+
+                    // §71.5 — "What's New" dialog: shown once per versionCode upgrade.
+                    // We compare the running versionCode against the last-acknowledged
+                    // value in AppPreferences.  The dialog only surfaces when the user
+                    // is not behind the lock screen, so they see it in full context.
+                    val currentVersionCode = BuildConfig.VERSION_CODE
+                    val prevVersionCode = appPreferences.lastSeenVersionCode
+                    var showWhatsNew by remember {
+                        mutableStateOf(currentVersionCode > prevVersionCode)
+                    }
+                    if (showWhatsNew) {
+                        WhatsNewDialog(
+                            versionName = BuildConfig.VERSION_NAME,
+                            versionCode = currentVersionCode,
+                            prevVersionCode = prevVersionCode,
+                            onDismiss = {
+                                showWhatsNew = false
+                                appPreferences.markWhatsNewSeen(currentVersionCode)
+                            },
+                        )
+                    }
+
                     AppNavGraph(
                         authPreferences = authPreferences,
                         serverReachabilityMonitor = serverReachabilityMonitor,
