@@ -123,6 +123,59 @@ trackInterval(() => {
   }
 }, 5 * 60 * 1000);
 
+// ─── Effective base-domain resolver ───────────────────────────────
+//
+// Hardcoding `config.baseDomain` ("bizarrecrm.com") into every tenant URL
+// breaks local dev: a developer hitting https://localhost/signup gets a
+// success response pointing at https://viztest.bizarrecrm.com — which
+// resolves to whatever's at that real DNS in production, NOT localhost.
+//
+// Derive the effective base domain from the incoming Host header instead.
+// Strip the first label if the request looks like `<slug>.<domain>`.
+// Allowlist suffix matching against TRUSTED_BASE_HOSTS prevents an
+// attacker from sending a forged Host header that redirects users to
+// `evil.com` after signup.
+//
+// Allowlist:
+//   - whatever's configured (`config.baseDomain`)
+//   - `localhost` (always allowed — local dev runs on bare or *.localhost)
+//   - `127.0.0.1` (less common but supported for hosts-file workarounds)
+const TRUSTED_BASE_HOSTS = new Set<string>([
+  config.baseDomain,
+  'localhost',
+  '127.0.0.1',
+]);
+
+function effectiveBaseDomain(req: Request): string {
+  const rawHost = (req.headers.host || '').toLowerCase().trim();
+  if (!rawHost) return config.baseDomain;
+  // Strip port for matching (port preserved in returned value when used in
+  // URL template — caller must include req.headers.host exact for that).
+  // For our purposes we want the base DOMAIN only; ports are baked into
+  // the slug subdomain hostname via Host header at request time.
+  const hostNoPort = rawHost.replace(/:\d+$/, '');
+
+  // Already a base host (no subdomain prefix) — return as-is if trusted.
+  if (TRUSTED_BASE_HOSTS.has(hostNoPort)) return rawHost; // keep port suffix for dev
+
+  // Try stripping the first label and matching trusted suffix.
+  const dotIdx = hostNoPort.indexOf('.');
+  if (dotIdx > 0) {
+    const remainder = hostNoPort.slice(dotIdx + 1);
+    if (TRUSTED_BASE_HOSTS.has(remainder)) {
+      // Reconstruct with port suffix from the original Host header so e.g.
+      // `viztest.localhost:443` → `localhost:443` (preserving the port).
+      const portSuffix = rawHost.slice(hostNoPort.length); // e.g. ':443' or ''
+      return remainder + portSuffix;
+    }
+  }
+
+  // Host looks suspicious (forged or unrecognized) — fall back to the
+  // configured canonical domain. Never propagate an untrusted host back
+  // into a redirect target.
+  return config.baseDomain;
+}
+
 // ─── SQLite-backed rate limiters ──────────────────────────────────
 
 // Signup creation: per-IP hourly ceiling (R5).
@@ -436,13 +489,14 @@ async function issueSignupTokens(
 // creds inside platform_config; we read those via the same sendEmail
 // helper that the rest of the app uses.
 async function sendVerificationEmail(
+  req: Request,
   db: any,
   toEmail: string,
   token: string,
   slug: string,
   shopName: string,
 ): Promise<boolean> {
-  const verifyUrl = `https://${config.baseDomain}/api/v1/signup/verify/${encodeURIComponent(token)}`;
+  const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(token)}`;
   const html = `
     <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#0f172a">
       <h2 style="margin-top:0">Confirm your shop</h2>
@@ -589,7 +643,7 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
       data: {
         tenant_id: result.tenantId,
         slug: result.slug,
-        url: `https://${result.slug}.${config.baseDomain}`,
+        url: `https://${result.slug}.${effectiveBaseDomain(req)}`,
         message: 'Shop created successfully (dev mode — email verification bypassed).',
         ...(tokenResult && {
           accessToken: tokenResult.accessToken,
@@ -634,7 +688,7 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     process.env.WIZARD_DEV_SKIP_EMAIL === '1';
 
   if (devSkipEmail) {
-    const verifyUrl = `https://${config.baseDomain}/api/v1/signup/verify/${encodeURIComponent(verifyToken)}`;
+    const verifyUrl = `https://${effectiveBaseDomain(req)}/api/v1/signup/verify/${encodeURIComponent(verifyToken)}`;
     logger.warn('[WIZARD-EMAIL-1] dev-skip mode — verification email NOT sent', {
       slug: normalizedSlug,
       email: normalizedEmail,
@@ -651,7 +705,7 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
     return;
   }
 
-  const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
+  const emailSent = await sendVerificationEmail(req, req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
   if (!emailSent) {
     // Remove the pending entry so this attempt doesn't occupy the email quota
     // slot without the user being able to complete it.
@@ -700,7 +754,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: 'Invalid or expired verification link. Please sign up again.' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=invalid_link`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=invalid_link`);
     }
     return;
   }
@@ -716,7 +770,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: 'This verification link has expired. Please sign up again.' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=link_expired`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=link_expired`);
     }
     return;
   }
@@ -737,7 +791,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
     if (wantsJson) {
       res.status(400).json({ success: false, message: result.error || 'Failed to create shop' });
     } else {
-      res.redirect(`https://${config.baseDomain}/signup?error=provisioning_failed`);
+      res.redirect(`https://${effectiveBaseDomain(req)}/signup?error=provisioning_failed`);
     }
     return;
   }
@@ -749,7 +803,7 @@ router.get('/verify/:token', asyncHandler(async (req: Request, res: Response) =>
   // a signup flow — the POST handler above never provisions in prod.
   const tokenResult = await issueSignupTokens(result.slug!, req, res);
 
-  const tenantUrl = `https://${result.slug}.${config.baseDomain}`;
+  const tenantUrl = `https://${result.slug}.${effectiveBaseDomain(req)}`;
 
   // Determine response mode:
   //   ?format=json  — explicit API request (iOS/Android fetch)
@@ -867,7 +921,7 @@ router.post('/verify/dev-skip', asyncHandler(async (req: Request, res: Response)
 
   // Issue tokens just like the real /verify path does.
   const tokenResult = await issueSignupTokens(result.slug!, req, res);
-  const tenantUrl = `https://${result.slug}.${config.baseDomain}`;
+  const tenantUrl = `https://${result.slug}.${effectiveBaseDomain(req)}`;
 
   res.status(201).json({
     success: true,
