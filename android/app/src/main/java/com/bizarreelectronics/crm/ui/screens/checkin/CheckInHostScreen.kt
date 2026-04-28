@@ -17,9 +17,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -82,11 +80,17 @@ fun CheckInHostScreen(
     } else {
         ButtonDefaults.buttonColors()
     }
+    val stepLabel = stepTitles.getOrElse(state.currentStep) { "" }
+    val globalStepIndex = state.currentStep + 3   // host 0 = global 4 (POS=1, Customer=2, Device=3)
     com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
-        title = "Check-in · ${stepTitles.getOrElse(state.currentStep) { "" }}",
-        subtitle = "$customerName · $deviceName",
-        // Host step 0 (Symptoms) = global step 4 (POS=1, Customer=2, Device=3).
-        stepIndex = state.currentStep + 3,
+        // Title slot owns just the screen name to match the sibling
+        // PosFlowScaffold callers ("POS", "Check-in", "Cart", "Tender").
+        // Step counter + label + customer context all live in the subtitle
+        // — same visual hierarchy as PosEntryScreen + CheckInEntryScreen so
+        // the cashier's eye doesn't re-anchor between flow steps.
+        title = "Check-in",
+        subtitle = "Step ${globalStepIndex + 1} of 8 · $stepLabel · $customerName",
+        stepIndex = globalStepIndex,
         totalSteps = 8,
         onBack = {
             if (state.currentStep == 0) onBack() else viewModel.goBack()

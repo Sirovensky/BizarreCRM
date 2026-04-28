@@ -44,6 +44,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 private val ACCESSORY_OPTIONS = listOf("SIM tray", "Case", "Tempered glass", "Charger", "Cable")
 
@@ -310,12 +311,16 @@ private fun LdiCard(
     onStatusChange: (LdiStatus) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val ext = LocalExtendedColors.current
     Card(
         modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
+            // CLEAN paints success green (semantic), TRIPPED stays red. Was
+            // `secondaryContainer` (teal) which read as a brand-level state
+            // rather than "no liquid damage detected" indicator.
             containerColor = when (status) {
                 LdiStatus.TRIPPED -> MaterialTheme.colorScheme.errorContainer
-                LdiStatus.CLEAN -> MaterialTheme.colorScheme.secondaryContainer
+                LdiStatus.CLEAN -> ext.successContainer
                 LdiStatus.NOT_TESTED -> MaterialTheme.colorScheme.surfaceVariant
             },
         ),

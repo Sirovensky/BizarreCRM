@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
 @Composable
 fun CheckInStep4Diagnostic(
@@ -113,16 +114,22 @@ private fun TriStateToggle(
     onSelect: (TriState) -> Unit,
     testLabel: String,
 ) {
+    val ext = LocalExtendedColors.current
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TriState.entries.forEach { state ->
             val isSelected = current == state
-            val color = when {
+            // PASS = success green (semantic, not brand secondary). FAIL = error
+            // red. Audit found PASS painting `secondaryContainer` (teal) which
+            // visually competed with the cream brand CTAs on the same screen
+            // and read as "another action" rather than "test passed".
+            val containerColor = when {
                 !isSelected -> MaterialTheme.colorScheme.surfaceVariant
-                state == TriState.PASS -> MaterialTheme.colorScheme.secondaryContainer
+                state == TriState.PASS -> ext.successContainer
                 state == TriState.FAIL -> MaterialTheme.colorScheme.errorContainer
                 else -> MaterialTheme.colorScheme.surfaceVariant
             }
             Card(
+                colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = containerColor),
                 modifier = Modifier
                     .clickable { onSelect(state) }
                     .semantics {
@@ -135,7 +142,7 @@ private fun TriStateToggle(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     color = when {
                         !isSelected -> MaterialTheme.colorScheme.onSurfaceVariant
-                        state == TriState.PASS -> MaterialTheme.colorScheme.onSecondaryContainer
+                        state == TriState.PASS -> ext.success
                         state == TriState.FAIL -> MaterialTheme.colorScheme.onErrorContainer
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
