@@ -97,28 +97,42 @@ public struct SettingsView: View {
     }
 
     private var iPadSections: [SettingsSection] {
+        // §19.0 role gating: non-admins see only Account, Integrations (Notifications only),
+        // Display, Help, App. Admin sections (Organization, Locations, Payments, Admin) hidden.
         var sections: [SettingsSection] = [
             SettingsSection(id: "account", title: "Account", pages: [
                 SettingsPageEntry(id: "settings.profile",       title: "Profile",           icon: "person.circle"),
                 SettingsPageEntry(id: "settings.preferences",   title: "Preferences",       icon: "slider.horizontal.3"),
             ]),
-            SettingsSection(id: "organization", title: "Organization", pages: [
-                SettingsPageEntry(id: "settings.businessProfile", title: "Business Profile", icon: "building"),
-                SettingsPageEntry(id: "settings.companyInfo",   title: "Company Info",      icon: "building.2"),
-                SettingsPageEntry(id: "settings.tax",           title: "Tax Settings",      icon: "percent"),
-                SettingsPageEntry(id: "settings.hours",         title: "Business Hours",    icon: "clock"),
-                SettingsPageEntry(id: "settings.languageRegion", title: "Language & Region", icon: "globe"),
-            ]),
-            SettingsSection(id: "locations", title: "Locations", pages: [
-                SettingsPageEntry(id: "settings.locations",     title: "Locations",         icon: "mappin.and.ellipse"),
-            ]),
-            SettingsSection(id: "payments", title: "Payments", pages: [
-                SettingsPageEntry(id: "settings.paymentMethods", title: "Payment Methods",  icon: "creditcard"),
-            ]),
-            SettingsSection(id: "integrations", title: "Integrations", pages: [
-                SettingsPageEntry(id: "settings.notifications", title: "Notifications",     icon: "bell"),
-                SettingsPageEntry(id: "settings.smsProvider",   title: "SMS Provider",      icon: "message"),
-            ]),
+        ]
+        if isAdmin {
+            sections += [
+                SettingsSection(id: "organization", title: "Organization", pages: [
+                    SettingsPageEntry(id: "settings.businessProfile", title: "Business Profile", icon: "building"),
+                    SettingsPageEntry(id: "settings.companyInfo",   title: "Company Info",      icon: "building.2"),
+                    SettingsPageEntry(id: "settings.tax",           title: "Tax Settings",      icon: "percent"),
+                    SettingsPageEntry(id: "settings.hours",         title: "Business Hours",    icon: "clock"),
+                    SettingsPageEntry(id: "settings.languageRegion", title: "Language & Region", icon: "globe"),
+                ]),
+                SettingsSection(id: "locations", title: "Locations", pages: [
+                    SettingsPageEntry(id: "settings.locations",     title: "Locations",         icon: "mappin.and.ellipse"),
+                ]),
+                SettingsSection(id: "payments", title: "Payments", pages: [
+                    SettingsPageEntry(id: "settings.paymentMethods", title: "Payment Methods",  icon: "creditcard"),
+                ]),
+            ]
+        }
+        // Integrations: Notifications always visible; SMS + printer only for admins
+        var integrationPages: [SettingsPageEntry] = [
+            SettingsPageEntry(id: "settings.notifications", title: "Notifications", icon: "bell"),
+        ]
+        if isAdmin {
+            integrationPages += [
+                SettingsPageEntry(id: "settings.smsProvider", title: "SMS Provider", icon: "message"),
+            ]
+        }
+        sections.append(SettingsSection(id: "integrations", title: "Integrations", pages: integrationPages))
+        sections += [
             SettingsSection(id: "display", title: "Display", pages: [
                 SettingsPageEntry(id: "settings.appearance",    title: "Appearance",        icon: "paintbrush"),
             ]),
@@ -272,45 +286,48 @@ public struct SettingsView: View {
                 .accessibilityIdentifier("settings.preferences")
             }
 
-            // §19.5 Organization
-            Section("Organization") {
-                NavigationLink {
-                    BusinessProfilePage(api: APIClientHolder.current)
-                } label: {
-                    Label("Business Profile", systemImage: "building")
-                }
-                .accessibilityIdentifier("settings.businessProfile")
+            // §19.5 Organization — admin-only
+            // §19.0: non-admins see only Profile / Security / Notifications / Appearance / About
+            if isAdmin {
+                Section("Organization") {
+                    NavigationLink {
+                        BusinessProfilePage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Business Profile", systemImage: "building")
+                    }
+                    .accessibilityIdentifier("settings.businessProfile")
 
-                NavigationLink {
-                    CompanyInfoPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Company Info", systemImage: "building.2")
-                }
-                .accessibilityIdentifier("settings.companyInfo")
+                    NavigationLink {
+                        CompanyInfoPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Company Info", systemImage: "building.2")
+                    }
+                    .accessibilityIdentifier("settings.companyInfo")
 
-                NavigationLink {
-                    TaxSettingsPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Tax Settings", systemImage: "percent")
-                }
-                .accessibilityIdentifier("settings.tax")
+                    NavigationLink {
+                        TaxSettingsPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Tax Settings", systemImage: "percent")
+                    }
+                    .accessibilityIdentifier("settings.tax")
 
-                NavigationLink {
-                    LanguageRegionPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Language & Region", systemImage: "globe")
+                    NavigationLink {
+                        LanguageRegionPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Language & Region", systemImage: "globe")
+                    }
+                    .accessibilityIdentifier("settings.languageRegion")
                 }
-                .accessibilityIdentifier("settings.languageRegion")
-            }
 
-            // §19.9 Payment methods
-            Section("Payments") {
-                NavigationLink {
-                    PaymentMethodsPage(api: APIClientHolder.current)
-                } label: {
-                    Label("Payment Methods", systemImage: "creditcard")
+                // §19.9 Payment methods — admin-only
+                Section("Payments") {
+                    NavigationLink {
+                        PaymentMethodsPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("Payment Methods", systemImage: "creditcard")
+                    }
+                    .accessibilityIdentifier("settings.paymentMethods")
                 }
-                .accessibilityIdentifier("settings.paymentMethods")
             }
 
             // §19.3 / §19.10 / hardware
@@ -322,14 +339,17 @@ public struct SettingsView: View {
                 }
                 .accessibilityIdentifier("settings.notifications")
 
-                NavigationLink {
-                    SmsProviderPage(api: APIClientHolder.current)
-                } label: {
-                    Label("SMS Provider", systemImage: "message")
-                }
-                .accessibilityIdentifier("settings.smsProvider")
+                // SMS provider config is admin-only; Notifications are user-facing
+                if isAdmin {
+                    NavigationLink {
+                        SmsProviderPage(api: APIClientHolder.current)
+                    } label: {
+                        Label("SMS Provider", systemImage: "message")
+                    }
+                    .accessibilityIdentifier("settings.smsProvider")
 
-                PrinterSettingsEntryPlaceholder()
+                    PrinterSettingsEntryPlaceholder()
+                }
             }
 
             // §19.4 Appearance

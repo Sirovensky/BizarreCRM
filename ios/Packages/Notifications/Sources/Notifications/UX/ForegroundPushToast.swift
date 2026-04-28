@@ -48,10 +48,31 @@ public final class ForegroundPushToastCoordinator {
     public private(set) var currentToast: ForegroundPushToastItem?
     private var dismissTask: Task<Void, Never>?
 
+    // MARK: §70.3 — source-screen suppression
+    //
+    // The app shell sets `activeScreenPath` to the current navigation path
+    // (e.g. "sms/456", "tickets/123"). When a toast arrives for the same path,
+    // we suppress it — the user is already looking at the source.
+    //
+    // Format: "<entityType>/<entityId>" — matches the `deepLinkPath` in the toast.
+    // Example: set to "sms/456" when the user opens SMS thread 456.
+    public var activeScreenPath: String? = nil
+
     public init() {}
 
     /// Present a foreground toast. Replaces any existing one.
+    ///
+    /// Suppressed when the `item.deepLinkPath` matches `activeScreenPath`
+    /// (§70.3 — user is already looking at the source screen).
     public func show(_ item: ForegroundPushToastItem) {
+        // §70.3 — suppress if user is already on the source screen.
+        if let deepLinkPath = item.deepLinkPath,
+           let activePath = activeScreenPath,
+           pathsMatch(deepLinkPath, activePath) {
+            AppLog.ui.debug("ForegroundPushToast: suppressed — user already on \(activePath, privacy: .public)")
+            return
+        }
+
         dismissTask?.cancel()
         withAnimation(BrandMotion.snappy) {
             currentToast = item
@@ -72,6 +93,22 @@ public final class ForegroundPushToastCoordinator {
             deepLinkPath: deepLinkPath
         )
         show(item)
+    }
+
+    // MARK: - Private
+
+    /// Normalise and compare two deep-link path strings for suppression.
+    /// Strips leading `bizarrecrm://` scheme if present, then compares the
+    /// entity-type+id suffix (e.g. `sms/456` == `bizarrecrm://sms/456`).
+    private func pathsMatch(_ a: String, _ b: String) -> Bool {
+        func normalise(_ s: String) -> String {
+            var result = s
+            if let url = URL(string: s), url.scheme == "bizarrecrm" {
+                result = (url.host ?? "") + url.path
+            }
+            return result.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        }
+        return normalise(a) == normalise(b)
     }
 
     public func dismiss() {

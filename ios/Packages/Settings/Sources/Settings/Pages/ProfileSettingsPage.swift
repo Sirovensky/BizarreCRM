@@ -120,6 +120,7 @@ public final class ProfileSettingsViewModel: Sendable {
 
 public struct ProfileSettingsPage: View {
     @State private var vm: ProfileSettingsViewModel
+    @State private var showAvatarPicker: Bool = false
 
     public init(api: APIClient? = nil) {
         _vm = State(initialValue: ProfileSettingsViewModel(api: api))
@@ -127,6 +128,36 @@ public struct ProfileSettingsPage: View {
 
     public var body: some View {
         Form {
+            // §19.1 Avatar — circular tap → sheet (Camera / Library / Remove)
+            Section {
+                HStack {
+                    Spacer()
+                    Button {
+                        showAvatarPicker = true
+                    } label: {
+                        Circle()
+                            .fill(Color.bizarreSurface1)
+                            .frame(width: 80, height: 80)
+                            .overlay {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.bizarreOrange)
+                                    .background(Color.bizarreSurfaceBase, in: Circle())
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Change profile photo")
+                    .accessibilityHint("Opens photo picker")
+                    Spacer()
+                }
+            }
+            .listRowBackground(Color.clear)
+
             Section("Identity") {
                 TextField("First name", text: $vm.firstName)
                     #if canImport(UIKit)
@@ -242,6 +273,11 @@ public struct ProfileSettingsPage: View {
             }
         }
         .task { await vm.load() }
+        .sheet(isPresented: $showAvatarPicker) {
+            AvatarPickerSheet(currentAvatarUrl: nil) { _ in
+                // Upload endpoint not yet available — sheet shows "coming soon" internally.
+            }
+        }
         .overlay {
             if vm.isLoading {
                 ProgressView()
