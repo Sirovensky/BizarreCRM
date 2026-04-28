@@ -6,13 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -94,19 +95,19 @@ private fun SymptomTileCard(
         MaterialTheme.colorScheme.outlineVariant
     }
 
+    // Geometry matches FlowTile (96dp fixed, surface bg, 10dp rounded, 1dp
+    // outline / 1.5dp primary border on select) so the cashier sees the same
+    // tile shape across device-type → make → model → symptoms steps.
     Surface(
-        shape = MaterialTheme.shapes.medium,
-        color = if (isSelected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceVariant
-        },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surface,
         modifier = Modifier
-            .aspectRatio(1f)
+            .fillMaxWidth()
+            .height(96.dp)
             .border(
-                width = if (isSelected) 2.dp else 1.dp,
+                width = if (isSelected) 1.5.dp else 1.dp,
                 color = borderColor,
-                shape = MaterialTheme.shapes.medium,
+                shape = RoundedCornerShape(10.dp),
             )
             .clickable(onClick = onClick)
             .semantics {
@@ -123,18 +124,18 @@ private fun SymptomTileCard(
             ) {
                 Text(
                     text = tile.emoji,
-                    fontSize = 32.sp,
+                    fontSize = 22.sp,
                 )
                 Text(
                     text = tile.label,
-                    style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontWeight = FontWeight.Bold,
                     ),
                     textAlign = TextAlign.Center,
                     color = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimaryContainer
+                        MaterialTheme.colorScheme.primary
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        MaterialTheme.colorScheme.onSurface
                     },
                 )
             }
