@@ -29,15 +29,20 @@ import type { StepProps, PendingWrites } from '../wizardTypes';
 type TemplateKey =
   | 'received'
   | 'ready'
-  | 'invoice_paid';
+  | 'invoice_paid'
+  | 'appt_reminder';
 
 interface TemplateDef {
   key: TemplateKey;
   title: string;
   description: string;
   Icon: typeof Inbox;
+  enabledKey: keyof PendingWrites;
   subjKey: keyof PendingWrites;
   bodyKey: keyof PendingWrites;
+  /** '1' → enabled by default; '0' → disabled by default. Owner can flip
+   *  the per-template toggle before flush. */
+  defaultEnabled: '1' | '0';
   defaultSubj: string;
   defaultBody: string;
 }
@@ -48,8 +53,10 @@ const TEMPLATES: ReadonlyArray<TemplateDef> = [
     title: 'Ticket received',
     description: 'Auto-ack when a new repair ticket is created.',
     Icon: Inbox,
+    enabledKey: 'notif_tpl_received_enabled',
     subjKey: 'notif_tpl_received_subj',
     bodyKey: 'notif_tpl_received_body',
+    defaultEnabled: '1',
     defaultSubj: 'We got your repair ticket #{ticket_id}',
     defaultBody:
       "Hi {customer_name}, we received your {device} for repair. We'll update you when there's news.\n\n{shop_name}",
@@ -59,8 +66,10 @@ const TEMPLATES: ReadonlyArray<TemplateDef> = [
     title: 'Ticket ready for pickup',
     description: 'Sent when a ticket flips to ready-for-pickup.',
     Icon: PackageCheck,
+    enabledKey: 'notif_tpl_ready_enabled',
     subjKey: 'notif_tpl_ready_subj',
     bodyKey: 'notif_tpl_ready_body',
+    defaultEnabled: '1',
     defaultSubj: 'Your repair is ready — ticket #{ticket_id}',
     defaultBody:
       'Hi {customer_name}, your {device} is ready for pickup. Total: {total}.\n\n{shop_name}\n{shop_address}',
@@ -70,11 +79,26 @@ const TEMPLATES: ReadonlyArray<TemplateDef> = [
     title: 'Invoice paid',
     description: 'Receipt confirmation after a successful payment.',
     Icon: Receipt,
+    enabledKey: 'notif_tpl_invoice_paid_enabled',
     subjKey: 'notif_tpl_invoice_paid_subj',
     bodyKey: 'notif_tpl_invoice_paid_body',
+    defaultEnabled: '1',
     defaultSubj: 'Receipt from {shop_name} — invoice #{invoice_id}',
     defaultBody:
       'Thanks {customer_name}! Payment of {total} received. Receipt: {receipt_link}.\n\n{shop_name}',
+  },
+  {
+    key: 'appt_reminder',
+    title: 'Appointment reminder',
+    description: '24h before a booked appointment. Off by default — turn on if you take bookings.',
+    Icon: PackageCheck,
+    enabledKey: 'notif_tpl_appt_reminder_enabled',
+    subjKey: 'notif_tpl_appt_reminder_subj',
+    bodyKey: 'notif_tpl_appt_reminder_body',
+    defaultEnabled: '0',
+    defaultSubj: 'Reminder: {service} appointment tomorrow at {shop_name}',
+    defaultBody:
+      'Hi {customer_name}, reminder: {service} appt at {shop_name} tomorrow at {time}. Reply C to cancel.\n\n{shop_address}',
   },
 ];
 
@@ -102,6 +126,7 @@ export function StepNotificationTemplates({
     received: null,
     ready: null,
     invoice_paid: null,
+    appt_reminder: null,
   });
 
   // Per-card cheatsheet expanded state — defaults to collapsed to keep the
@@ -110,6 +135,7 @@ export function StepNotificationTemplates({
     received: false,
     ready: false,
     invoice_paid: false,
+    appt_reminder: false,
   });
 
   const getValue = (key: keyof PendingWrites, fallback: string): string => {
@@ -178,7 +204,7 @@ export function StepNotificationTemplates({
           Customer notifications
         </h1>
         <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
-          3 templates active by default. Tweak the copy now or leave the defaults — variables in
+          4 events covered. Toggle off any you don't want firing. Variables in
           {' '}
           <span className="font-mono text-xs">{'{curly_braces}'}</span>
           {' '}
@@ -191,11 +217,21 @@ export function StepNotificationTemplates({
         const bodyValue = getValue(tpl.bodyKey, tpl.defaultBody);
         const isExpanded = expandedCheatsheet[tpl.key];
         const Icon = tpl.Icon;
+        // Per-template enabled state. If the owner hasn't touched it yet,
+        // fall back to the template's `defaultEnabled` (most lifecycle
+        // events default '1', appt-reminder defaults '0' since not every
+        // shop takes bookings).
+        const enabledRaw = pending[tpl.enabledKey] as '1' | '0' | undefined;
+        const enabled = (enabledRaw ?? tpl.defaultEnabled) === '1';
 
         return (
           <div
             key={tpl.key}
-            className="bg-white dark:bg-surface-800 rounded-xl border border-surface-200 dark:border-surface-700 p-6 mb-4"
+            className={`bg-white dark:bg-surface-800 rounded-xl border p-6 mb-4 transition-opacity ${
+              enabled
+                ? 'border-surface-200 dark:border-surface-700'
+                : 'border-surface-200 dark:border-surface-700 opacity-60'
+            }`}
           >
             <div className="mb-4 flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300">
@@ -207,6 +243,38 @@ export function StepNotificationTemplates({
                 </h3>
                 <p className="text-xs text-surface-500 dark:text-surface-400">{tpl.description}</p>
               </div>
+              {/* Enabled toggle — pill switch identical to other steps. When
+                  off, the template is dimmed so the owner sees its content
+                  but knows the system won't fire it. */}
+              <label className="flex shrink-0 cursor-pointer items-center gap-2">
+                <span className="text-xs font-medium text-surface-600 dark:text-surface-300">
+                  {enabled ? 'Enabled' : 'Disabled'}
+                </span>
+                <span
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    enabled ? 'bg-primary-500' : 'bg-surface-300 dark:bg-surface-600'
+                  }`}
+                  role="switch"
+                  aria-checked={enabled}
+                  onClick={() =>
+                    onUpdate({ [tpl.enabledKey]: enabled ? '0' : '1' } as Partial<PendingWrites>)
+                  }
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                      enabled ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </span>
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  checked={enabled}
+                  onChange={(e) =>
+                    onUpdate({ [tpl.enabledKey]: e.target.checked ? '1' : '0' } as Partial<PendingWrites>)
+                  }
+                />
+              </label>
             </div>
 
             <div className="space-y-3">

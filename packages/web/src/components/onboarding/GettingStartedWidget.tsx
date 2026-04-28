@@ -86,18 +86,16 @@ export function GettingStartedWidget({ preloadedState }: GettingStartedWidgetPro
     return stateResponse?.data?.data ?? null;
   }, [preloadedState, stateResponse]);
 
-  // Three-step onboarding: finish advanced store configuration, create a ticket
-  // from POS, then run a full checkout (edit + add part + pay). Routes use the
-  // actual first-step key so SpotlightCoach's string-key lookup works correctly.
+  // Onboarding checklist focuses on REAL day-1 actions a shop owner must
+  // perform AFTER the setup wizard finishes — taking a ticket, running a
+  // checkout, optionally exercising sandbox mode.
+  //
+  // The previous first item ("Finish store setup → Tour advanced settings —
+  // tax, labels, notifications, printers") was removed in 2026-04-28 because
+  // it duplicated the setup wizard the shop owner just walked through. Tax,
+  // notifications, and printers are all wizard steps; surfacing them again
+  // on the dashboard with no new content was just visual noise.
   const STEPS = useMemo((): ReadonlyArray<ChecklistStep> => [
-    {
-      id: 'settings',
-      title: 'Finish store setup',
-      description: 'Tour advanced settings — tax, labels, notifications, printers.',
-      icon: Settings,
-      route: `/settings?tutorial=settings&step=${firstStepKey('settings')}`,
-      doneKey: 'advanced_settings_unlocked',
-    },
     {
       id: 'ticket',
       title: 'Create a ticket in POS',

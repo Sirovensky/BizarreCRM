@@ -284,10 +284,13 @@ const ALLOWED_CONFIG_KEYS = new Set([
   // Step 14 — Payment terminal pairing (Agent 16). blockchyp_* base keys already
   // listed above; only the IP-pairing key is new here.
   'blockchyp_terminal_ip',
-  // Step 18 — Notification templates (Agent 20)
-  'notif_tpl_received_subj', 'notif_tpl_received_body',
-  'notif_tpl_ready_subj', 'notif_tpl_ready_body',
-  'notif_tpl_invoice_paid_subj', 'notif_tpl_invoice_paid_body',
+  // Step 18 — Notification templates (Agent 20). Per-template enabled flags
+  // and the new appointment-reminder template added 2026-04-28 to match
+  // docs/setup-wizard-preview.html#screen-18 mockup.
+  'notif_tpl_received_enabled', 'notif_tpl_received_subj', 'notif_tpl_received_body',
+  'notif_tpl_ready_enabled', 'notif_tpl_ready_subj', 'notif_tpl_ready_body',
+  'notif_tpl_invoice_paid_enabled', 'notif_tpl_invoice_paid_subj', 'notif_tpl_invoice_paid_body',
+  'notif_tpl_appt_reminder_enabled', 'notif_tpl_appt_reminder_subj', 'notif_tpl_appt_reminder_body',
   // Step 19 — Receipt printer (Agent 21)
   'receipt_printer_driver', 'receipt_printer_connection', 'receipt_printer_address',
   // Step 20 — Cash drawer (Agent 22)

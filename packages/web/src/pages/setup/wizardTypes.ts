@@ -235,12 +235,21 @@ export interface PendingWrites {
   smtp_from?: string;
 
   // ─── Notification templates (NEW) ────────────────────────────────
+  // Per-template enabled flags ('1' | '0'). Three lifecycle events default
+  // to enabled; appointment reminder defaults disabled because not every
+  // shop takes bookings.
+  notif_tpl_received_enabled?: '1' | '0';
   notif_tpl_received_subj?: string;
   notif_tpl_received_body?: string;
+  notif_tpl_ready_enabled?: '1' | '0';
   notif_tpl_ready_subj?: string;
   notif_tpl_ready_body?: string;
+  notif_tpl_invoice_paid_enabled?: '1' | '0';
   notif_tpl_invoice_paid_subj?: string;
   notif_tpl_invoice_paid_body?: string;
+  notif_tpl_appt_reminder_enabled?: '1' | '0';
+  notif_tpl_appt_reminder_subj?: string;
+  notif_tpl_appt_reminder_body?: string;
 
   // ─── Receipt printer (NEW) ───────────────────────────────────────
   receipt_printer_driver?: string;
