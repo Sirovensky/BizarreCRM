@@ -2312,8 +2312,10 @@ fun LoginScreen(
                     // smoothly when transitioning between steps of different heights,
                     // preventing a jarring snap to the new height mid-slide.
                     // LOGIN-MOCK-153: animDuration 0 collapses to instant snap with Reduce Motion.
+                    // LOGIN-MOCK-274: horizontal 20dp → 24dp so field leading-icon left edge aligns
+                    // with the card's 20dp corner-radius visual indent (mockup screens 01, 09).
                     Column(modifier = Modifier
-                        .padding(horizontal = 20.dp, vertical = 20.dp)
+                        .padding(horizontal = 24.dp, vertical = 20.dp)
                         .animateContentSize(animationSpec = tween(animDuration))) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
@@ -2707,7 +2709,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
     )
-    Spacer(Modifier.height(20.dp))
+    // LOGIN-MOCK-273: M3 supportingText already renders ~16dp bottom clearance; adding
+    // 20dp here produces a ~36dp compound gap that exceeds every other inter-field distance.
+    // Reduce to 4dp so the visual gap matches the 8dp shown in mockups screens 02–05.
+    Spacer(Modifier.height(4.dp))
 
     // Field 2: Shop Display Name
     OutlinedTextField(
@@ -2776,6 +2781,10 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
             else focusManager.clearFocus()
         }),
     )
+    // LOGIN-MOCK-273: password supportingText has built-in bottom clearance; without an
+    // explicit spacer the error text runs flush to the helper line. 4dp gives breathing room
+    // consistent with the 4dp clearance used after the Shop URL supportingText above.
+    Spacer(Modifier.height(4.dp))
 
     // Error shown between password helper and Create Shop button
     // LOGIN-MOCK-091: liveRegion=Polite so TalkBack announces this error on appearance.
@@ -2801,7 +2810,9 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         )
     }
 
-    Spacer(Modifier.height(16.dp)) // LOGIN-MOCK-113: 20→16dp to match ServerStep CTA rhythm
+    // LOGIN-MOCK-273: collapse to 8dp above the Create Shop button now that the error
+    // block has its own 4dp top spacer; avoids double-gap when error is visible.
+    Spacer(Modifier.height(8.dp)) // LOGIN-MOCK-113: 20→16dp; LOGIN-MOCK-273: 16→8dp
 
     val isFormValid = state.shopSlug.length >= 3
         && state.registerShopName.isNotBlank()
