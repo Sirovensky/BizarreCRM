@@ -77,6 +77,8 @@ fun InventoryListScreen(
     onImportCatalog: () -> Unit = {},
     /** §6.6 — navigate to the stocktake sessions list. */
     onStocktakeListClick: () -> Unit = {},
+    /** §6.8 — navigate to the ABC analysis screen. */
+    onAbcClick: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -270,6 +272,17 @@ fun InventoryListScreen(
                                     onClick = {
                                         showAdminOverflow = false
                                         onStocktakeListClick()
+                                    },
+                                )
+                                // §6.8 — ABC analysis screen
+                                DropdownMenuItem(
+                                    text = { Text("ABC analysis") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.BarChart, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onAbcClick()
                                     },
                                 )
                             }

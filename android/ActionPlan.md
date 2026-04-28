@@ -1416,7 +1416,7 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] **Auto-reorder rules** — per-item threshold + qty + supplier; "Run now" → draft POs. <!-- NOTE-defer: "Run now" server endpoint not implemented; per-item rule edit is in §6.2 Detail -->
 - [ ] **Serials** — assign serial to item; link to customer/ticket; serial lookup. <!-- NOTE-defer: serial assignment/lookup server endpoints not confirmed; serial list shown in §6.2 Detail -->
 - [ ] **Shrinkage report** — expected vs actual; variance trend chart. <!-- NOTE-defer: no shrinkage report server endpoint -->
-- [ ] **ABC analysis** — A/B/C classification; Vico bar chart. <!-- NOTE-defer: no server endpoint; client-side classification deferred -->
+- [x] **ABC analysis** — A/B/C classification; Vico bar chart. <!-- NOTE-defer: no server endpoint; client-side classification deferred -->
 - [ ] **Age report** — days-in-stock; markdown / clearance suggestions. <!-- NOTE-defer: no server endpoint -->
 - [ ] **Mass label print** — select items → label format → print (Mopria / MFi thermal). <!-- NOTE-defer: depends on §17 printer integration -->
 
@@ -1550,8 +1550,9 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
   - **NOTE (2026-04-26):** Serial list display already in detail screen (§6.2). Assign + lookup requires cross-entity search screen. Deferred.
 - [ ] **Shrinkage report** — expected vs actual; variance trend chart.
   - **NOTE (2026-04-26):** Requires server-side shrinkage aggregation endpoint. Deferred.
-- [ ] **ABC analysis** — A/B/C classification; Vico bar chart.
+- [x] **ABC analysis** — A/B/C classification; Vico bar chart.
   - **NOTE (2026-04-26):** Requires server-side ABC classification data or client-side computation from movement history. Deferred.
+  - **DONE (2026-04-27):** Implemented client-side classification using retailPriceCents × inStock as value metric; Pareto 70/90% thresholds; proportional stacked bar + tier summary tiles + ranked item list with TalkBack a11y. Pure Room-cache, fully offline.
 - [ ] **Age report** — days-in-stock; markdown / clearance suggestions.
   - **NOTE (2026-04-26):** Requires `created_at` vs last-sale date per item. Server aggregation endpoint needed. Deferred.
 - [ ] **Mass label print** — select items → label format → print (Mopria / MFi thermal).

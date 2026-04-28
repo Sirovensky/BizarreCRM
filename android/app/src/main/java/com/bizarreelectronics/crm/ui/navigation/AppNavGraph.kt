@@ -584,6 +584,11 @@ sealed class Screen(val route: String) {
     // red-zone first. Entry point: Tickets screen overflow menu (manager+).
     data object SlaHeatmap : Screen("tickets/sla-heatmap")
 
+    // §6.8 — Inventory ABC analysis: client-side A/B/C tier classification by
+    // inventory value (retailPrice × inStock). Entry via admin overflow in
+    // InventoryListScreen. Fully offline — reads from Room cache only.
+    data object InventoryAbc : Screen("inventory/abc-analysis")
+
     // §19.7 — Ticket settings (default due-date, IMEI required, photo required).
     data object TicketSettings : Screen("settings/tickets")
 
@@ -1976,6 +1981,8 @@ fun AppNavGraph(
                     onImportCatalog = { navController.navigate(Screen.DataImport.route) },
                     // §6.6 — admin overflow → Stocktake sessions list
                     onStocktakeListClick = { navController.navigate(Screen.StocktakeList.route) },
+                    // §6.8 — admin overflow → ABC analysis screen
+                    onAbcClick = { navController.navigate(Screen.InventoryAbc.route) },
                     scannedBarcode = scannedBarcode,
                     onBarcodeLookupResult = { id ->
                         backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
@@ -2920,6 +2927,13 @@ fun AppNavGraph(
                     onBarcodeConsumed = {
                         backStackEntry.savedStateHandle.remove<String>("stocktake_barcode")
                     },
+                )
+            }
+
+            // ─── §6.8 Inventory ABC analysis ─────────────────────────────────────
+            composable(Screen.InventoryAbc.route) {
+                com.bizarreelectronics.crm.ui.screens.inventory.InventoryAbcScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
 
