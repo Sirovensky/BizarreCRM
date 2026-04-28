@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -25,7 +27,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi
+import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
+import com.bizarreelectronics.crm.data.remote.dto.InventoryDetail
 import com.bizarreelectronics.crm.data.remote.dto.SupplierRow
 import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
@@ -35,6 +39,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+/**
+ * §6.3 — Barcode lookup state machine.
+ *
+ * Idle      → user scans → Lookup (spinner visible next to UPC field)
+ * Lookup    → 200 hit    → MatchFound(item)   — dialog shown
+ * Lookup    → 404/empty  → Idle               — raw code placed in UPC/SKU
+ * Lookup    → error      → Idle               — raw code placed in UPC/SKU (silent fallback)
+ * MatchFound→ user accepts→ Idle              — form fields filled from item
+ * MatchFound→ user rejects→ Idle              — raw code placed in UPC/SKU
+ */
+sealed interface BarcodeLookupState {
+    data object Idle : BarcodeLookupState
+    data class Lookup(val rawCode: String) : BarcodeLookupState
+    data class MatchFound(val rawCode: String, val item: InventoryDetail) : BarcodeLookupState
+}
 
 data class InventoryCreateUiState(
     val name: String = "",
@@ -60,6 +80,8 @@ data class InventoryCreateUiState(
     val selectedTaxClassId: Long? = null,
     val selectedTaxClassName: String = "",
     val taxInclusive: Boolean = false,
+    // §6.3: barcode lookup autofill
+    val barcodeLookup: BarcodeLookupState = BarcodeLookupState.Idle,
 )
 
 @HiltViewModel
@@ -139,15 +161,67 @@ class InventoryCreateViewModel @Inject constructor(
         _state.value = _state.value.copy(taxInclusive = !_state.value.taxInclusive)
     }
 
-    /** Called from the Scanner screen result (savedStateHandle "scanned_barcode"). */
-    fun applyScannedBarcode(code: String) {
-        val current = _state.value
-        // Fill UPC if empty, otherwise fill SKU; prefer whichever is blank.
-        _state.value = when {
-            current.upcCode.isBlank() -> current.copy(upcCode = code)
-            current.sku.isBlank()     -> current.copy(sku = code)
-            else                      -> current.copy(upcCode = code)
+    /**
+     * §6.3 — Called when a barcode result arrives from the Scanner screen.
+     *
+     * Triggers [GET /inventory/barcode/{code}] to look up an existing inventory item.
+     * While the lookup is in-flight, [BarcodeLookupState.Lookup] is set so the screen
+     * can show a progress indicator next to the UPC field.  On success a match dialog
+     * is presented; on failure (404 / network error) the code is applied directly.
+     */
+    fun lookupAndApplyScannedBarcode(code: String) {
+        if (code.isBlank()) return
+        _state.value = _state.value.copy(barcodeLookup = BarcodeLookupState.Lookup(code))
+        viewModelScope.launch {
+            try {
+                val response = inventoryApi.lookupBarcode(code)
+                val item = if (response.success) response.data?.item else null
+                if (item != null) {
+                    _state.value = _state.value.copy(
+                        barcodeLookup = BarcodeLookupState.MatchFound(rawCode = code, item = item),
+                    )
+                } else {
+                    // No match in inventory — just fill the code fields.
+                    applyRawCode(code)
+                }
+            } catch (_: Exception) {
+                // Network error or server unavailable — fall back silently.
+                applyRawCode(code)
+            }
         }
+    }
+
+    /** User accepted the barcode-match autofill dialog. Fills all matching fields. */
+    fun acceptBarcodeMatch() {
+        val match = _state.value.barcodeLookup as? BarcodeLookupState.MatchFound ?: return
+        val item = match.item
+        _state.value = _state.value.copy(
+            barcodeLookup = BarcodeLookupState.Idle,
+            // Only overwrite fields that are currently blank to avoid clobbering user edits.
+            name = _state.value.name.ifBlank { item.name ?: "" },
+            sku = _state.value.sku.ifBlank { item.sku ?: "" },
+            upcCode = _state.value.upcCode.ifBlank { item.upcCode ?: match.rawCode },
+            itemType = if (_state.value.itemType == "product") item.itemType ?: "product" else _state.value.itemType,
+            costPrice = _state.value.costPrice.ifBlank { item.costPrice?.toBigDecimal()?.toPlainString() ?: "" },
+            retailPrice = _state.value.retailPrice.ifBlank { item.price?.toBigDecimal()?.toPlainString() ?: "" },
+            description = _state.value.description.ifBlank { item.description ?: "" },
+        )
+    }
+
+    /** User dismissed the barcode-match autofill dialog. Falls back to raw code fill. */
+    fun dismissBarcodeMatch() {
+        val match = _state.value.barcodeLookup as? BarcodeLookupState.MatchFound ?: return
+        applyRawCode(match.rawCode)
+    }
+
+    /** Places [code] into whichever of UPC / SKU is currently blank. */
+    private fun applyRawCode(code: String) {
+        val current = _state.value
+        _state.value = current.copy(
+            barcodeLookup = BarcodeLookupState.Idle,
+            upcCode = if (current.upcCode.isBlank()) code else current.upcCode,
+            sku = if (current.upcCode.isNotBlank() && current.sku.isBlank()) code else current.sku,
+        )
     }
 
     fun clearError() {
@@ -241,11 +315,22 @@ fun InventoryCreateScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Consume a scanned barcode delivered via savedStateHandle.
+    // §6.3: Consume a scanned barcode — trigger inventory lookup then autofill or dialog.
     LaunchedEffect(scannedBarcode) {
         val code = scannedBarcode ?: return@LaunchedEffect
-        viewModel.applyScannedBarcode(code)
+        viewModel.lookupAndApplyScannedBarcode(code)
         onBarcodeLookupConsumed()
+    }
+
+    // §6.3: Show the barcode-match dialog when a lookup finds an existing item.
+    val barcodeLookup = state.barcodeLookup
+    if (barcodeLookup is BarcodeLookupState.MatchFound) {
+        BarcodeMatchDialog(
+            itemName = barcodeLookup.item.name ?: barcodeLookup.rawCode,
+            rawCode = barcodeLookup.rawCode,
+            onAccept = viewModel::acceptBarcodeMatch,
+            onDismiss = viewModel::dismissBarcodeMatch,
+        )
     }
 
     // Navigate on successful creation.
@@ -287,12 +372,22 @@ fun InventoryCreateScreen(
                     }
                 },
                 actions = {
-                    // §6.3: inline barcode scan icon to fill UPC/SKU fields.
-                    IconButton(onClick = onScanBarcode) {
-                        Icon(
-                            Icons.Filled.QrCodeScanner,
-                            contentDescription = "Scan barcode to fill SKU / UPC",
+                    // §6.3: inline barcode scan icon; spinner while lookup is in-flight.
+                    if (barcodeLookup is BarcodeLookupState.Lookup) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp).padding(end = 4.dp),
+                            strokeWidth = 2.dp,
                         )
+                    } else {
+                        IconButton(
+                            onClick = onScanBarcode,
+                            enabled = barcodeLookup is BarcodeLookupState.Idle,
+                        ) {
+                            Icon(
+                                Icons.Filled.QrCodeScanner,
+                                contentDescription = stringResource(R.string.inventory_create_scan_cd),
+                            )
+                        }
                     }
                     if (state.isSubmitting) {
                         CircularProgressIndicator(
@@ -672,4 +767,55 @@ private fun ItemTypeDropdown(
             }
         }
     }
+}
+
+/**
+ * §6.3 — Barcode match dialog.
+ *
+ * Shown when [GET /inventory/barcode/{code}] returns an existing item.  The user
+ * can either accept (autofill all blank form fields from the match) or dismiss
+ * (which falls back to placing the raw code in the UPC/SKU field only).
+ *
+ * This keeps the user in control: a technician receiving a replacement part with
+ * the same UPC as an existing SKU can still enter a new name / price if desired.
+ */
+@Composable
+private fun BarcodeMatchDialog(
+    itemName: String,
+    rawCode: String,
+    onAccept: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        title = {
+            Text(stringResource(R.string.inventory_barcode_match_title))
+        },
+        text = {
+            Text(
+                stringResource(
+                    R.string.inventory_barcode_match_body,
+                    itemName,
+                    rawCode,
+                ),
+            )
+        },
+        confirmButton = {
+            Button(onClick = onAccept) {
+                Text(stringResource(R.string.inventory_barcode_match_autofill))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.inventory_barcode_match_skip))
+            }
+        },
+    )
 }

@@ -1498,8 +1498,8 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [ ] Seasonality: lead times may lengthen in holiday season; track per-month. <!-- NOTE-defer: server-blocked -->
 - [ ] Inventory item detail shows "Lead time 7d avg (p90 12d)". <!-- NOTE-defer: server-blocked -->
 - [ ] PO creation uses latest stats for ETA. <!-- NOTE-defer: server-blocked -->
-- [ ] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory-enrich/barcode-lookup` (external DB). Autofill name/manufacturer/UPC from result.
-  - **NOTE (2026-04-26):** `BarcodeScanScreen.kt` + `BarcodeAnalyzer` already exist. Needs scan button in `InventoryCreateScreen` that pushes `BarcodeScanScreen` and receives result, then calls `InventoryApi.lookupBarcode()` to prefill. Deferred — nav result callback wiring needed.
+- [x] **Inline barcode scan** — CameraX + ML Kit `BarcodeScanning.getClient()` to fill SKU/UPC; auto-lookup via `GET /inventory/barcode/{code}` (internal inventory DB). Autofill name/SKU/price/type/description from matched item.
+  - **DONE (2026-04-27):** `InventoryCreateScreen.kt` — `BarcodeLookupState` sealed interface (Idle/Lookup/MatchFound); `lookupAndApplyScannedBarcode()` calls `InventoryApi.lookupBarcode()`, sets Lookup spinner while in-flight, transitions to MatchFound on 200 hit; `acceptBarcodeMatch()` fills blank form fields from item; `dismissBarcodeMatch()` falls back to raw UPC/SKU fill; `applyRawCode()` private helper; `BarcodeMatchDialog` AlertDialog shown on MatchFound; scan icon disabled while lookup in-flight; spinner in TopAppBar during lookup; 5 new strings in strings.xml; build green.
 - [ ] **Photo capture** up to 4 per item; first = primary.
   - **NOTE (2026-04-26):** Requires `ActivityResultContracts.TakePicture` + compress + `POST /inventory/:id/image`. Deferred — post-create upload flow needed.
 - [x] **Validation** — decimal for prices (2 places), integer for stock. (session 2026-04-26 — already present in `InventoryCreateViewModel`: regex `^\d*\.?\d*$` for prices, `^\d*$` for stock; confirmed no gap)

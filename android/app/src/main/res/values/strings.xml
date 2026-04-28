@@ -1075,4 +1075,11 @@
     <string name="cd_location_icon">Location building icon</string>
     <string name="cd_location_default">Default location star</string>
     <string name="cd_edit_location">Edit location</string>
+
+    <!-- §6.3 Inventory create — barcode scan + lookup autofill -->
+    <string name="inventory_create_scan_cd">Scan barcode to fill SKU / UPC</string>
+    <string name="inventory_barcode_match_title">Item found in inventory</string>
+    <string name="inventory_barcode_match_body">Barcode "%2$s" matches "%1$s". Autofill the form with this item\'s details?</string>
+    <string name="inventory_barcode_match_autofill">Autofill</string>
+    <string name="inventory_barcode_match_skip">Enter manually</string>
 </resources>
