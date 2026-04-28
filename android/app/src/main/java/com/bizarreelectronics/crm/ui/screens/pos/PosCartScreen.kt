@@ -611,7 +611,7 @@ private fun TotalsAndTenderBar(state: PosCartUiState, onTender: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             TotalsRow("Subtotal", subtotal.toDollarString())
             if (discount > 0) TotalsRow("Discount", "− ${discount.toDollarString()}", highlight = true)
             // TASK-5: multi-jurisdiction tax breakdown. When breakdown has

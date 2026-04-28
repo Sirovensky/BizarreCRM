@@ -222,7 +222,8 @@ fun PosTenderScreen(
             pendingSaleCount = state.pendingSaleCount,
         )
         LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 14.dp),
+            // 16dp gutter unifies POS + CheckIn flow (audit H1).
+            modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(vertical = 14.dp),
         ) {
@@ -796,7 +797,7 @@ private fun TenderActionBar(state: PosTenderUiState, onFinalize: () -> Unit) {
         color = MaterialTheme.colorScheme.surface,
         tonalElevation = 2.dp,
     ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
             Button(
                 onClick = onFinalize,
                 enabled = state.isFullyPaid && !state.isProcessing,

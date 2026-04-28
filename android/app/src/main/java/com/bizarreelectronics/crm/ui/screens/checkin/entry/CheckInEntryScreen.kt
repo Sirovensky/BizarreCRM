@@ -42,7 +42,9 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -252,6 +254,12 @@ private fun Step1CustomerContent(
                             selected = false,
                             onClick = { onAttachRecent(c) },
                             label = { Text(c.name) },
+                            // Defensive brand colors so if the selected
+                            // state is ever surfaced, the chip stays cream
+                            // like every other FilterChip in the flow
+                            // instead of falling back to the M3 default
+                            // teal `secondaryContainer`.
+                            colors = FilterChipDefaults.brandColors(),
                             modifier = Modifier.semantics { contentDescription = "Select recent customer ${c.name}" },
                         )
                     }

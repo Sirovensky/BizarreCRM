@@ -224,7 +224,7 @@ fun PosEntryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(if (searchExpanded) Alignment.TopCenter else Alignment.BottomCenter)
-                .padding(horizontal = 14.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
+                .padding(horizontal = 16.dp, vertical = if (searchExpanded) 0.dp else 14.dp)
                 .focusRequester(searchFocusRequester)
                 .onPreviewKeyEvent { event ->
                     // HID scanner buffer: accumulate chars arriving < 50ms apart.
@@ -328,7 +328,10 @@ private fun EntryContent(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 14.dp)
+                // 16dp gutter unifies POS + CheckIn flow screens (audit H1).
+                // CheckIn steps already use 16dp; POS used 14dp so the cashier
+                // saw the content margin shift on every POS→CheckIn boundary.
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 88.dp),
         ) {
             run {
@@ -432,7 +435,8 @@ private fun PreAttachContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp)
+            // 16dp gutter unifies POS + CheckIn flow screens (audit H1).
+            .padding(horizontal = 16.dp)
             // Reserve room at the bottom for the docked SearchBar (~72dp + padding).
             .padding(bottom = 88.dp),
     ) {
