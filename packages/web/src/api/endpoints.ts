@@ -1454,3 +1454,41 @@ export const customFieldApi = {
       { entity_type: entityType, entity_id: entityId, values },
     ),
 };
+
+// ==================== Email + Installment plan stubs (BUILD-FIX-002) ====================
+// CommunicationPage imports emailApi; InvoiceDetailPage imports installmentApi
+// and type CreateInstallmentPlanInput. Both are missing on todofixes426 today
+// and break vite build. Stubbed with reasonable shapes so the bundle compiles;
+// real implementations TODO. Track in TODO.md as BUILD-FIX-002 / EMAIL-API-1 /
+// INSTALLMENT-API-1.
+export const emailApi = {
+  list: (params?: { customer_id?: number; ticket_id?: number; limit?: number; offset?: number }) =>
+    api.get<{ success: boolean; data: Array<{ id: number; subject: string; body: string; from: string; to: string; sent_at: string }> }>(
+      `/email/messages`,
+      { params },
+    ),
+  send: (payload: { to: string; subject: string; body: string; html?: string; customer_id?: number; ticket_id?: number }) =>
+    api.post<{ success: boolean; data: { id: number } }>(`/email/send`, payload),
+  get: (id: number) =>
+    api.get<{ success: boolean; data: { id: number; subject: string; body: string; from: string; to: string; sent_at: string } }>(
+      `/email/messages/${id}`,
+    ),
+};
+
+export interface CreateInstallmentPlanInput {
+  invoice_id: number;
+  installments: number;
+  start_date?: string;
+  notes?: string;
+}
+
+export const installmentApi = {
+  create: (payload: CreateInstallmentPlanInput) =>
+    api.post<{ success: boolean; data: { plan_id: number } }>(`/installments`, payload),
+  list: (invoiceId: number) =>
+    api.get<{ success: boolean; data: Array<{ id: number; due_date: string; amount: number; status: string }> }>(
+      `/installments?invoice_id=${invoiceId}`,
+    ),
+  cancel: (planId: number) =>
+    api.post<{ success: boolean }>(`/installments/${planId}/cancel`),
+};
