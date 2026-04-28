@@ -565,6 +565,10 @@ sealed class Screen(val route: String) {
     // §60 — Inventory Stocktake flow.
     data object Stocktake : Screen("inventory/stocktake")
 
+    // §6.6 — Stocktake sessions list (GET /stocktake). Entry point for the
+    // entire stocktake workflow; tapping an open session goes to Stocktake.
+    data object StocktakeList : Screen("inventory/stocktake-list")
+
     // §4.22 — Manager SLA heatmap: all-open tickets sorted by SLA health,
     // red-zone first. Entry point: Tickets screen overflow menu (manager+).
     data object SlaHeatmap : Screen("tickets/sla-heatmap")
@@ -1950,6 +1954,8 @@ fun AppNavGraph(
                     onScanClick = { navController.navigate(Screen.Scanner.route) },
                     onAddClick = { navController.navigate(Screen.InventoryCreate.route) },
                     onImportCatalog = { navController.navigate(Screen.DataImport.route) },
+                    // §6.6 — admin overflow → Stocktake sessions list
+                    onStocktakeListClick = { navController.navigate(Screen.StocktakeList.route) },
                     scannedBarcode = scannedBarcode,
                     onBarcodeLookupResult = { id ->
                         backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
@@ -2804,6 +2810,21 @@ fun AppNavGraph(
                         navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) {
                             popUpTo(Screen.PurchaseOrders.route)
                         }
+                    },
+                )
+            }
+
+            // ─── §6.6 Stocktake sessions list ───
+            composable(Screen.StocktakeList.route) {
+                com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeListScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenSession = { sessionId ->
+                        // Navigate to the active-count flow; store server id in
+                        // savedStateHandle so StocktakeViewModel can use it later.
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.set("server_stocktake_id", sessionId)
+                        navController.navigate(Screen.Stocktake.route)
                     },
                 )
             }

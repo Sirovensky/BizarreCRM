@@ -1521,10 +1521,8 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 - [x] **Vibrate** (`HapticFeedbackConstants.CONFIRM`) on successful scan.
 
 ### 6.6 Stocktake / audit
-- [ ] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary.
-  - **NOTE (2026-04-26):** Requires new `StocktakeListScreen` + `StocktakeViewModel` + `GET /stocktake` API endpoint wiring. Multi-screen feature; deferred.
-- [ ] **New session** — name, optional location, start.
-  - **NOTE (2026-04-26):** Depends on sessions list screen. Deferred.
+- [x] **Sessions list** (`GET /stocktake`) — open + recent sessions with item count, variance summary. (session 2026-04-27 — `StocktakeListScreen.kt` + `StocktakeListViewModel.kt`: `GET /stocktake` wired via new `listSessions()` in `StocktakeApi`; `LazyColumn` of `StocktakeSessionCard`s; status filter chips All/Open/Committed/Cancelled; `PullToRefreshBox`; cancel action via `POST /stocktake/:id/cancel`; server-unsupported 404 fallback state; `Screen.StocktakeList` + composable route added to `AppNavGraph`; entry from `InventoryListScreen` admin overflow menu "Stocktake sessions")
+- [x] **New session** — name, optional location, start. (session 2026-04-27 — `NewStocktakeSessionDialog` in `StocktakeListScreen.kt`; FAB opens dialog with name (required) + location + notes fields; `POST /stocktake` via new `createSession()` in `StocktakeApi`; `StocktakeCreateRequest` DTO added to `StocktakeDto.kt`; 403/404/400 error handling; on success navigates to active-count flow via `onOpenSession` callback)
 - [ ] **Session detail** — barcode scan loop → running count list with expected vs counted + variance dots. Manual entry fallback. Commit (`POST /stocktake/:id/items`) creates adjustments. Cancel discards.
   - **NOTE (2026-04-26):** Requires `BarcodeScanScreen` integration with a session-scoped count accumulator. Complex multi-step flow; deferred.
 - [ ] **Summary** — items counted / items-with-variance / total variance / surplus / shortage.

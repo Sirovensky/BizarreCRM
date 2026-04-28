@@ -2,7 +2,38 @@ package com.bizarreelectronics.crm.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
 
-// ─── §60 Inventory Stocktake DTOs ────────────────────────────────────────────
+// ─── §60 / §6.6 Inventory Stocktake DTOs ─────────────────────────────────────
+
+/**
+ * One row from GET /stocktake or POST /stocktake.
+ * Mirrors the `stocktakes` DB table returned by stocktake.routes.ts.
+ */
+data class StocktakeListItem(
+    val id: Int,
+    val name: String,
+    val location: String?,
+    /** "open" | "committed" | "cancelled" */
+    val status: String,
+    @SerializedName("opened_by_user_id")
+    val openedByUserId: Int?,
+    @SerializedName("opened_at")
+    val openedAt: String,
+    @SerializedName("committed_at")
+    val committedAt: String?,
+    val notes: String?,
+)
+
+/**
+ * Request body for POST /stocktake (open a new session).
+ * [name] required; [location] and [notes] optional.
+ */
+data class StocktakeCreateRequest(
+    val name: String,
+    val location: String? = null,
+    val notes: String? = null,
+)
+
+
 
 /**
  * Returned by POST /inventory/stocktake/start.

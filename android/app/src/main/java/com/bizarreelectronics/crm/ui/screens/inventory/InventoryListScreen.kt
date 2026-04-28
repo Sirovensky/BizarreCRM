@@ -75,6 +75,8 @@ fun InventoryListScreen(
     onScanClick: () -> Unit,
     onAddClick: () -> Unit = {},
     onImportCatalog: () -> Unit = {},
+    /** §6.6 — navigate to the stocktake sessions list. */
+    onStocktakeListClick: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -257,6 +259,17 @@ fun InventoryListScreen(
                                     onClick = {
                                         showAdminOverflow = false
                                         showAutoReorderDialog = true
+                                    },
+                                )
+                                // §6.6 — Stocktake sessions list
+                                DropdownMenuItem(
+                                    text = { Text("Stocktake sessions") },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Assignment, contentDescription = null)
+                                    },
+                                    onClick = {
+                                        showAdminOverflow = false
+                                        onStocktakeListClick()
                                     },
                                 )
                             }

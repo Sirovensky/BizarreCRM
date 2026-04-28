@@ -2,22 +2,55 @@ package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCommitRequest
+import com.bizarreelectronics.crm.data.remote.dto.StocktakeCreateRequest
+import com.bizarreelectronics.crm.data.remote.dto.StocktakeListItem
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeSessionData
 import retrofit2.http.Body
+import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
+import retrofit2.http.Query
 
 /**
  * §60 Inventory Stocktake — remote endpoints.
  *
- * Both endpoints are 404-tolerant: callers catch HttpException(404) and fall
- * back to the offline-only path. The server routes are:
- *   POST /api/v1/inventory/stocktake/start
- *   POST /api/v1/inventory/stocktake/commit
+ * Server routes (mounted at /api/v1/stocktake):
+ *   GET  /stocktake          — list sessions, most recent first
+ *   POST /stocktake          — open a new count session
+ *   GET  /stocktake/:id      — session + counts + variance summary
+ *   POST /stocktake/:id/counts   — UPSERT a single item count (scanner)
+ *   POST /stocktake/:id/commit   — apply variance + close session
+ *   POST /stocktake/:id/cancel   — abandon session (no stock change)
  *
- * These routes do not yet exist on the server (server-blocked, §60.1).
- * The client-side flow works fully offline; sync happens on commit when online.
+ * Legacy offline-only paths kept for backward compat:
+ *   POST /inventory/stocktake/start   — NOT on server; 404-tolerant
+ *   POST /inventory/stocktake/commit  — NOT on server; 404-tolerant
  */
 interface StocktakeApi {
+
+    // ── §6.6 Sessions list ────────────────────────────────────────────────────
+
+    /**
+     * List all stocktake sessions (open + recent), most recent first.
+     * Optional [status] filter: "open" | "committed" | "cancelled".
+     * Returns a list of [StocktakeListItem].
+     */
+    @GET("stocktake")
+    suspend fun listSessions(
+        @Query("status") status: String? = null,
+    ): ApiResponse<List<StocktakeListItem>>
+
+    /**
+     * Open a new count session.
+     * [name] is required (max 120 chars); [location] and [notes] optional.
+     * Returns the newly created [StocktakeListItem] with its server-assigned id.
+     */
+    @POST("stocktake")
+    suspend fun createSession(
+        @Body request: StocktakeCreateRequest,
+    ): ApiResponse<StocktakeListItem>
+
+    // ── Legacy offline paths (404-tolerant, used by StocktakeViewModel) ───────
 
     /**
      * Notify the server that a new stocktake session has started.
@@ -35,4 +68,19 @@ interface StocktakeApi {
      */
     @POST("inventory/stocktake/commit")
     suspend fun commitSession(@Body request: StocktakeCommitRequest): ApiResponse<Unit>
+
+    // ── Per-session actions ───────────────────────────────────────────────────
+
+    /**
+     * Commit a session by server id — apply all counted variances as stock
+     * movements and close the session.
+     */
+    @POST("stocktake/{id}/commit")
+    suspend fun commitById(@Path("id") id: Int): ApiResponse<Unit>
+
+    /**
+     * Cancel an open session — no stock changes applied.
+     */
+    @POST("stocktake/{id}/cancel")
+    suspend fun cancelById(@Path("id") id: Int): ApiResponse<Unit>
 }
