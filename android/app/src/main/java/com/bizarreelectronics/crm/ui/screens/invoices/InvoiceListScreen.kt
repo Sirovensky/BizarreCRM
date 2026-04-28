@@ -45,9 +45,12 @@ import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterSh
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceFilterState
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceSortDropdown
 import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusChip
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceStatusPieChart
+import com.bizarreelectronics.crm.ui.screens.invoices.components.buildInvoiceStatusSlices
 import com.bizarreelectronics.crm.ui.screens.invoices.components.invoiceChipStateFor
 import com.bizarreelectronics.crm.util.DateFormatter
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 import com.bizarreelectronics.crm.util.toDollars
 import java.io.OutputStreamWriter
 
@@ -230,10 +233,10 @@ fun InvoiceListScreen(
                 }
             }
 
-            // Stats header
+            // Stats header (shows financial pills; tablet also shows status donut chart)
             val stats = state.stats
-            if (stats != null) {
-                InvoiceStatsHeader(stats = stats)
+            if (stats != null || state.invoices.isNotEmpty()) {
+                InvoiceStatsHeader(stats = stats, invoices = state.invoices)
             }
 
             // Count pill
@@ -340,32 +343,92 @@ fun InvoiceListScreen(
 
 // ── Stats header ─────────────────────────────────────────────────────────────
 
+/**
+ * Stats header card for the invoice list.
+ *
+ * On **phone** (compact width): three financial pills (Unpaid / Paid / Overdue).
+ * On **tablet / ChromeOS** (medium or expanded width, §7.1 line 1715): pills column +
+ * [InvoiceStatusPieChart] donut side-by-side via a [Row].
+ *
+ * When [stats] is null (server returned 404 / offline) the pills column is omitted and
+ * only the donut chart is shown (if [invoices] is non-empty).
+ */
 @Composable
-private fun InvoiceStatsHeader(stats: com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData) {
-    BrandCard(modifier = Modifier
-        .fillMaxWidth()
-        .padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-        ) {
-            StatPill(
-                label = "Unpaid",
-                value = "$${"%.0f".format(stats.totalUnpaid)}",
-                color = MaterialTheme.colorScheme.error,
-            )
-            StatPill(
-                label = "Paid",
-                value = "$${"%.0f".format(stats.totalPaid)}",
-                color = com.bizarreelectronics.crm.ui.theme.SuccessGreen,
-            )
-            StatPill(
-                label = "Overdue",
-                value = "$${"%.0f".format(stats.totalOverdue)}",
-                color = com.bizarreelectronics.crm.ui.theme.WarningAmber,
-            )
+private fun InvoiceStatsHeader(
+    stats: com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData?,
+    invoices: List<InvoiceEntity>,
+) {
+    val isTablet = isMediumOrExpandedWidth()
+    val slices = remember(invoices) { buildInvoiceStatusSlices(invoices) }
+
+    BrandCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+    ) {
+        if (isTablet) {
+            // Tablet: pills column + donut side-by-side
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (stats != null) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        StatPill(
+                            label = "Unpaid",
+                            value = "$${"%.0f".format(stats.totalUnpaid)}",
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                        StatPill(
+                            label = "Paid",
+                            value = "$${"%.0f".format(stats.totalPaid)}",
+                            color = com.bizarreelectronics.crm.ui.theme.SuccessGreen,
+                        )
+                        StatPill(
+                            label = "Overdue",
+                            value = "$${"%.0f".format(stats.totalOverdue)}",
+                            color = com.bizarreelectronics.crm.ui.theme.WarningAmber,
+                        )
+                    }
+                }
+                InvoiceStatusPieChart(
+                    slices = slices,
+                    modifier = Modifier.weight(if (stats != null) 1.2f else 1f),
+                )
+            }
+        } else {
+            // Phone: financial pills row only
+            if (stats != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    StatPill(
+                        label = "Unpaid",
+                        value = "$${"%.0f".format(stats.totalUnpaid)}",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    StatPill(
+                        label = "Paid",
+                        value = "$${"%.0f".format(stats.totalPaid)}",
+                        color = com.bizarreelectronics.crm.ui.theme.SuccessGreen,
+                    )
+                    StatPill(
+                        label = "Overdue",
+                        value = "$${"%.0f".format(stats.totalOverdue)}",
+                        color = com.bizarreelectronics.crm.ui.theme.WarningAmber,
+                    )
+                }
+            }
         }
     }
 }
