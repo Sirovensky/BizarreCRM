@@ -160,69 +160,59 @@ fun PosTenderScreen(
         // Ctrl+F — no search field on tender screen. No-op.
         onFocusSearch = {},
     ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    // session 2026-04-26 — a11y: back button contentDescription
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
-                    ) {
-                        Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
-                    }
-                },
-                title = { Text("Tender") },
-                actions = {
-                    Surface(
-                        shape = RoundedCornerShape(99.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                    ) {
-                        Text(
-                            state.totalCents.toDollarString(),
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    // ── Task 5: Overflow menu — "Open cash drawer" ────────────
-                    // session 2026-04-26 — a11y: overflow button contentDescription
-                    Box {
-                        IconButton(
-                            onClick = { showOverflowMenu = true },
-                            modifier = Modifier.semantics { contentDescription = "More options" },
-                        ) {
-                            Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Open cash drawer") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showDrawerManualDialog = true
-                                },
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.width(4.dp))
-                },
-            )
-        },
-        bottomBar = {
-            TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
-        },
-        // session 2026-04-26 — a11y: liveRegion Assertive on tender snackbar
-        // (payment errors/success must interrupt speech per goal 4)
+    // §23.5 PosFlowScaffold: PosTender is the final flow step (POS-Cart→Tender
+    // →Receipt). Title is just "Tender" (cart screen owns the customer pill);
+    // actions slot keeps the running-total pill + overflow menu so the cashier
+    // sees the amount due in the same place across cart and tender.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "Tender",
+        stepIndex = null,
+        totalSteps = 8,
+        onBack = onBack,
         snackbarHost = {
             SnackbarHost(
                 snackbarHostState,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
             )
+        },
+        actions = {
+            Surface(
+                shape = RoundedCornerShape(99.dp),
+                color = MaterialTheme.colorScheme.primary,
+            ) {
+                Text(
+                    state.totalCents.toDollarString(),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary,
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier.semantics { contentDescription = "More options" },
+                ) {
+                    Text("⋮", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Open cash drawer") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showDrawerManualDialog = true
+                        },
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        },
+        bottomBar = {
+            TenderActionBar(state = state, onFinalize = viewModel::finalizeSale)
         },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {

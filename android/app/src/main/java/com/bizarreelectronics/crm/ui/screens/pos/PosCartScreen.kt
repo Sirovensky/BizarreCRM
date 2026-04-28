@@ -131,132 +131,120 @@ fun PosCartScreen(
         // Ctrl+F — catalog tab has tile grid, not a TextField. No-op.
         onFocusSearch = {},
     ) {
-    Scaffold(
-        // session 2026-04-26 — a11y: liveRegion Polite on cart snackbar host
-        // (cart-line additions = Polite per goal 4)
+    // §23.5 PosFlowScaffold: same chrome contract as PosEntry / CheckInEntry /
+    // CheckInHost. PosCart is logical step 6/8 in the POS-to-Ticket flow
+    // (POS Home → Customer → Device → Symptoms → Details → Cart → Tender →
+    // Receipt) but the cart is reached from POS Home + retail-sale path that
+    // bypasses the check-in steps, so the wave bar is hidden here (stepIndex
+    // = null) — showing 6/8 on a retail sale would be a lie. Title slot owns
+    // the customer pill + clickable-detach behavior; actions slot owns the
+    // scan barcode + overflow menu.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = if (state.customer == null) "Cart" else "",
+        stepIndex = null,
+        totalSteps = 8,
+        onBack = onBack,
         snackbarHost = {
             SnackbarHost(
                 snackbarHostState,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         },
-        topBar = {
-            TopAppBar(
-                navigationIcon = {
-                    // session 2026-04-26 — a11y: back button contentDescription
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.semantics { contentDescription = "Back" },
+        titleContent = state.customer?.let { c ->
+            {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
+                ) {
+                    Box(
+                        modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primary),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Text("‹", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Text(
+                            c.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                        )
                     }
-                },
-                title = {
-                    state.customer?.let { c ->
-                        // 2026-04-26 — chips moved to sub-bar below topbar so
-                        // the title slot has room for the customer name + a
-                        // single-line subtitle. Previously chips ate so much
-                        // width that the name wrapped one letter per row.
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(onClickLabel = "Detach customer") { showDetachConfirm = true },
-                        ) {
-                            Box(
-                                modifier = Modifier.size(28.dp).clip(CircleShape).background(MaterialTheme.colorScheme.secondary),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    c.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSecondary,
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    c.name,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
-                                val subtitle = when {
-                                    state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
-                                    state.lines.isEmpty() -> "Empty cart"
-                                    else -> "${state.lines.size} items"
-                                }
-                                Text(
-                                    subtitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1,
-                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                )
-                            }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            c.name,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                        val subtitle = when {
+                            state.linkedTicketId != null -> "Ticket draft #${state.linkedTicketId}"
+                            state.lines.isEmpty() -> "Empty cart"
+                            else -> "${state.lines.size} items"
                         }
-                    } ?: Text("Cart", style = MaterialTheme.typography.titleMedium)
-                },
-                actions = {
-                    // 2026-04-26 — location/shift/parked chips moved out of
-                    // actions slot into a sub-bar below the topbar. Keeping
-                    // them here was eating the title's width budget on phone
-                    // and forcing the customer name to wrap one letter per row.
-                    IconButton(onClick = onScanBarcode) {
-                        Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
                     }
-                    Box {
-                        IconButton(onClick = { showOverflowMenu = true }) {
-                            Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
-                        }
-                        DropdownMenu(
-                            expanded = showOverflowMenu,
-                            onDismissRequest = { showOverflowMenu = false },
-                        ) {
-                            // "Detach customer" only when a customer is attached
-                            if (state.customer != null) {
-                                DropdownMenuItem(
-                                    text = { Text("Detach customer") },
-                                    onClick = {
-                                        showOverflowMenu = false
-                                        showDetachConfirm = true
-                                    },
-                                )
-                            }
-                            DropdownMenuItem(
-                                text = { Text("Apply discount") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showDiscountDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Add note") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    showNoteDialog = true
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Park cart") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    // TODO: POS-PARK-001 — park cart implementation
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Split cart") },
-                                onClick = {
-                                    showOverflowMenu = false
-                                    onSplitCart()
-                                },
-                            )
-                        }
+                }
+            }
+        },
+        actions = {
+            IconButton(onClick = onScanBarcode) {
+                Icon(Icons.Outlined.PhotoCamera, contentDescription = "Scan barcode")
+            }
+            Box {
+                IconButton(onClick = { showOverflowMenu = true }) {
+                    Icon(Icons.Outlined.MoreVert, contentDescription = "More options")
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                ) {
+                    if (state.customer != null) {
+                        DropdownMenuItem(
+                            text = { Text("Detach customer") },
+                            onClick = {
+                                showOverflowMenu = false
+                                showDetachConfirm = true
+                            },
+                        )
                     }
-                },
-            )
+                    DropdownMenuItem(
+                        text = { Text("Apply discount") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showDiscountDialog = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Add note") },
+                        onClick = {
+                            showOverflowMenu = false
+                            showNoteDialog = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Park cart") },
+                        onClick = {
+                            showOverflowMenu = false
+                            // TODO: POS-PARK-001 — park cart implementation
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Split cart") },
+                        onClick = {
+                            showOverflowMenu = false
+                            onSplitCart()
+                        },
+                    )
+                }
+            }
         },
         bottomBar = {
             TotalsAndTenderBar(state = state, onTender = onNavigateToTender)
