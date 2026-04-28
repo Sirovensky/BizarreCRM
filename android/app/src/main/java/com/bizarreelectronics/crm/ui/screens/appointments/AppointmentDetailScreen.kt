@@ -9,13 +9,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -164,6 +170,19 @@ fun AppointmentDetailScreen(
                         }
                     }
 
+                    // §10.6 Check-in / check-out card
+                    item {
+                        CheckInCard(
+                            status = appt.status,
+                            checkedInAt = appt.checkedInAt,
+                            checkedOutAt = appt.checkedOutAt,
+                            linkedTicketId = appt.linkedTicketId,
+                            isSaving = state.isSaving,
+                            onCheckIn = viewModel::markCheckedIn,
+                            onCheckOut = viewModel::markCheckedOut,
+                        )
+                    }
+
                     // Customer card (10.2)
                     item {
                         CustomerCard(
@@ -283,6 +302,218 @@ fun AppointmentDetailScreen(
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// §10.6 Check-in / check-out card
+// ---------------------------------------------------------------------------
+
+/**
+ * Displays a contextual card allowing staff to stamp "Customer arrived" (check-in)
+ * and "Customer departed" (check-out) during the appointment lifecycle.
+ *
+ * State transitions:
+ *   scheduled | confirmed → show "Customer Arrived" button
+ *   checked_in            → show timestamp + "Customer Departed" button
+ *   completed             → show both timestamps as read-only confirmation
+ *   cancelled / no_show   → card hidden (nothing actionable)
+ *
+ * If the appointment is linked to a ticket, check-in also triggers a bench
+ * timer start on that ticket (see [AppointmentDetailViewModel.markCheckedIn]).
+ */
+@Composable
+private fun CheckInCard(
+    status: String?,
+    checkedInAt: String?,
+    checkedOutAt: String?,
+    linkedTicketId: Long?,
+    isSaving: Boolean,
+    onCheckIn: () -> Unit,
+    onCheckOut: () -> Unit,
+) {
+    // Hide card for terminal non-actionable statuses.
+    if (status in listOf("cancelled", "no_show")) return
+
+    val haptic = LocalHapticFeedback.current
+
+    // Derive display state from status and timestamps.
+    val isCheckedIn = status == "checked_in" || (!checkedInAt.isNullOrBlank() && checkedOutAt.isNullOrBlank())
+    val isCompleted = status == "completed" || !checkedOutAt.isNullOrBlank()
+    val canCheckIn  = !isCheckedIn && !isCompleted
+    val canCheckOut = isCheckedIn && !isCompleted
+
+    // Container color: green-ish when checked-in, secondary otherwise.
+    val containerColor = when {
+        isCompleted  -> MaterialTheme.colorScheme.secondaryContainer
+        isCheckedIn  -> MaterialTheme.colorScheme.tertiaryContainer
+        else         -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val onContainerColor = when {
+        isCompleted  -> MaterialTheme.colorScheme.onSecondaryContainer
+        isCheckedIn  -> MaterialTheme.colorScheme.onTertiaryContainer
+        else         -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .semantics { contentDescription = "Customer check-in status: ${status ?: "scheduled"}" },
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            // Header row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                val headerIcon = when {
+                    isCompleted -> Icons.Default.CheckCircle
+                    isCheckedIn -> Icons.Default.Person
+                    else        -> Icons.Default.PersonOutline
+                }
+                Icon(
+                    imageVector = headerIcon,
+                    contentDescription = null,
+                    tint = onContainerColor,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = when {
+                        isCompleted -> "Appointment complete"
+                        isCheckedIn -> "Customer is here"
+                        else        -> "Waiting for customer"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onContainerColor,
+                )
+            }
+
+            // Timestamp rows
+            if (!checkedInAt.isNullOrBlank()) {
+                TimestampRow(
+                    label = "Arrived",
+                    isoTimestamp = checkedInAt,
+                    tint = onContainerColor,
+                )
+            }
+            if (!checkedOutAt.isNullOrBlank()) {
+                TimestampRow(
+                    label = "Departed",
+                    isoTimestamp = checkedOutAt,
+                    tint = onContainerColor,
+                )
+            }
+
+            // Linked-ticket notice
+            if (linkedTicketId != null && canCheckIn) {
+                Text(
+                    text = "Check-in will start the bench timer on ticket #$linkedTicketId",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = onContainerColor.copy(alpha = 0.75f),
+                )
+            }
+
+            // Action buttons
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (canCheckIn) {
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onCheckIn()
+                        },
+                        enabled = !isSaving,
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Mark customer arrived" },
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.Login, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Customer Arrived")
+                        }
+                    }
+                }
+                if (canCheckOut) {
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onCheckOut()
+                        },
+                        enabled = !isSaving,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .semantics { contentDescription = "Mark customer departed" },
+                    ) {
+                        if (isSaving) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onSecondary,
+                            )
+                        } else {
+                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Customer Departed")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Renders a single labelled timestamp row (e.g. "Arrived · 2:34 PM").
+ * Formats the ISO-8601 string to a human-readable time; falls back to the raw
+ * string when parsing fails.
+ */
+@Composable
+private fun TimestampRow(
+    label: String,
+    isoTimestamp: String,
+    tint: androidx.compose.ui.graphics.Color,
+) {
+    val displayTime = remember(isoTimestamp) {
+        runCatching {
+            val dt = java.time.LocalDateTime.parse(
+                isoTimestamp,
+                java.time.format.DateTimeFormatter.ISO_DATE_TIME,
+            )
+            dt.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))
+        }.getOrElse { isoTimestamp }
+    }
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Default.Schedule,
+            contentDescription = null,
+            tint = tint.copy(alpha = 0.7f),
+            modifier = Modifier.size(14.dp),
+        )
+        Text(
+            text = "$label · $displayTime",
+            style = MaterialTheme.typography.bodySmall,
+            color = tint.copy(alpha = 0.85f),
+        )
     }
 }
 

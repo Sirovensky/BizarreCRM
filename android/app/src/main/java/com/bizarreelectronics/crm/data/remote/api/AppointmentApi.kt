@@ -36,4 +36,12 @@ interface AppointmentApi {
 
     @POST("api/v1/appointments/{id}/send-reminder")
     suspend fun sendReminder(@Path("id") id: Long): ApiResponse<Unit>
+
+    /** §10.6 — stamp check-in; server sets status="checked_in" + checked_in_at=now. */
+    @POST("api/v1/appointments/{id}/check-in")
+    suspend fun checkIn(@Path("id") id: Long): ApiResponse<AppointmentItem>
+
+    /** §10.6 — stamp check-out; server sets status="completed" + checked_out_at=now. */
+    @POST("api/v1/appointments/{id}/check-out")
+    suspend fun checkOut(@Path("id") id: Long): ApiResponse<AppointmentItem>
 }

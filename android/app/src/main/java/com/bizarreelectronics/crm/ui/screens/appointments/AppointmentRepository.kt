@@ -44,4 +44,24 @@ class AppointmentRepository @Inject constructor(
         val response = api.patchAppointment(id, body)
         return response.data ?: error("Reschedule returned no data")
     }
+
+    /**
+     * §10.6 Check-in: POST /appointments/{id}/check-in.
+     * Server sets status="checked_in" + checked_in_at=now.
+     * Returns 404 on older server versions — callers fall back to PATCH status.
+     */
+    suspend fun checkIn(id: Long): AppointmentItem {
+        val response = api.checkIn(id)
+        return response.data ?: error("Check-in returned no data")
+    }
+
+    /**
+     * §10.6 Check-out: POST /appointments/{id}/check-out.
+     * Server sets status="completed" + checked_out_at=now.
+     * Returns 404 on older server versions — callers fall back to PATCH status.
+     */
+    suspend fun checkOut(id: Long): AppointmentItem {
+        val response = api.checkOut(id)
+        return response.data ?: error("Check-out returned no data")
+    }
 }

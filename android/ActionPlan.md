@@ -2041,8 +2041,8 @@ _Server endpoints: `GET /appointments`, `POST /appointments`, `PUT /appointments
 - [ ] Live Update — "Next appt in 15 min" ongoing notification on Lock Screen. <!-- NOTE-defer: blocked on same server FCM cron; also requires Android POST_NOTIFICATIONS permission grant flow wired to appointment reminder settings -->
 
 ### 10.6 Check-in / check-out
-- [ ] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. <!-- NOTE-defer: server has no POST /appointments/{id}/check-in endpoint; `check_in_time` column does not exist in appointments table -->
-- [ ] "Customer departed" on completion. <!-- NOTE-defer: same — no POST /appointments/{id}/check-out endpoint on server -->
+- [x] At appt time, staff can tap "Customer arrived" → stamps check-in; starts ticket timer if linked to ticket. (session 2026-04-27 — `CheckInCard` composable in `AppointmentDetailScreen`; `markCheckedIn()` in VM calls `POST /appointments/:id/check-in` with 404-fallback to PATCH status="checked_in"; `TicketApi.startBenchTimer(linkedTicketId)` fired fail-open on check-in)
+- [x] "Customer departed" on completion. (session 2026-04-27 — `markCheckedOut()` calls `POST /appointments/:id/check-out` + 404-fallback PATCH status="completed"; `checked_in_at`/`checked_out_at` fields added to `AppointmentItem` DTO; `TimestampRow` composable formats ISO→"h:mm a"; haptic `LongPress` on both buttons; TalkBack `contentDescription` on card + buttons; status-aware card hides for cancelled/no_show)
 
 ### 10.7 Scheduling engine
 - [ ] Appointment types (Drop-off / pickup / consultation / on-site visit) with per-type default duration + resource requirement (tech / bay / specific tool). <!-- NOTE-defer: server has no appointment_types table or per-type config endpoint; requires new migration + routes -->
