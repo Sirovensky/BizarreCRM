@@ -479,5 +479,14 @@ private actor PreviewAPIClient: APIClient {
     func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
         throw APITransportError.noBaseURL
     }
+    func upload(
+        _ data: Data,
+        to path: String,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String]
+    ) async throws -> Data {
+        throw APITransportError.noBaseURL
+    }
 }
 #endif

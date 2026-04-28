@@ -22,11 +22,48 @@ public protocol APIClient: Sendable {
     /// + standard headers (`X-Origin`, gzip/br) + timeouts apply. Returns
     /// the response body and metadata. Throws on transport / non-2xx.
     func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse)
+
+    /// §1.1 — Multipart upload helper for photos, receipts, avatars.
+    ///
+    /// POSTs `data` as a `multipart/form-data` body to `path` (resolved
+    /// against `baseURL`). The implementation in `APIClientImpl` uses a
+    /// background `URLSession` so uploads survive app exit; the OS will
+    /// deliver completion to `application(_:handleEventsForBackgroundURLSession:…)`.
+    ///
+    /// - Parameters:
+    ///   - data: Raw bytes of the file part.
+    ///   - path: Relative path appended to `baseURL`, or absolute URL.
+    ///   - fileName: `Content-Disposition` filename for the file part.
+    ///   - mimeType: Content-Type for the file part (e.g. `image/jpeg`).
+    ///   - fields: Form fields appended before the file part.
+    /// - Returns: Raw response body data on 2xx.
+    /// - Throws: `APITransportError.httpStatus` on non-2xx; `.noBaseURL`
+    ///   if `baseURL` isn't set.
+    func upload(
+        _ data: Data,
+        to path: String,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String]
+    ) async throws -> Data
 }
 
 public extension APIClient {
     func get<T: Decodable & Sendable>(_ path: String, as type: T.Type) async throws -> T {
         try await get(path, query: nil, as: type)
+    }
+
+    /// Default implementation so existing test stubs (which conform to the
+    /// protocol but don't exercise upload) continue to compile. Real clients
+    /// (`APIClientImpl`) override this with a background-URLSession path.
+    func upload(
+        _ data: Data,
+        to path: String,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String]
+    ) async throws -> Data {
+        throw APITransportError.notImplemented
     }
 }
 
@@ -36,6 +73,15 @@ public actor APIClientImpl: APIClient {
     private var refresher: AuthSessionRefresher?
     private var refreshInFlight: Task<Bool, Error>?
     private let pinnedSPKIBase64: Set<String>
+
+    // §1.1 — Background URLSession for multipart uploads. Lazy + cached
+    // per-process: `URLSessionConfiguration.background(withIdentifier:)`
+    // throws if you create two sessions with the same identifier in one
+    // process. This survives app exit; the OS will deliver completion
+    // events via `application(_:handleEventsForBackgroundURLSession:…)`.
+    public static let backgroundUploadSessionIdentifier = "com.bizarrecrm.upload"
+    public static let backgroundUploadSharedContainerIdentifier = "group.com.bizarrecrm"
+    private var _uploadSession: URLSession?
 
     // Lazy — deferred until the first network call so app launch isn't
     // blocked by URLSession + delegate construction.
@@ -97,6 +143,96 @@ public actor APIClientImpl: APIClient {
     public func setBaseURL(_ url: URL?) { self.baseURL = url }
     public func currentBaseURL() -> URL? { baseURL }
     public func setRefresher(_ refresher: AuthSessionRefresher?) { self.refresher = refresher }
+
+    /// §1.1 — Multipart upload over a background URLSession. Builds a
+    /// multipart/form-data body (fields first, file part last with a
+    /// stable boundary), stamps Authorization from the actor's `authToken`,
+    /// resolves `path` against `baseURL`, and POSTs via a *background*
+    /// URLSession so the upload survives app exit.
+    ///
+    /// Background sessions don't accept `httpBody` directly — they require
+    /// a file upload — so the encoded body is staged to a temp file and
+    /// passed to `URLSession.upload(for:fromFile:)`. The temp file is
+    /// removed after the task completes (success or failure).
+    public func upload(
+        _ data: Data,
+        to path: String,
+        fileName: String,
+        mimeType: String,
+        fields: [String: String]
+    ) async throws -> Data {
+        guard let base = baseURL else { throw APITransportError.noBaseURL }
+        let url: URL
+        if path.hasPrefix("http") {
+            guard let u = URL(string: path) else { throw APITransportError.invalidResponse }
+            url = u
+        } else {
+            url = base.appendingPathComponent(path)
+        }
+
+        var form = MultipartFormData(boundary: UUID().uuidString)
+        for (key, value) in fields {
+            form.appendField(name: key, value: value)
+        }
+        // File part last per §1.1 contract.
+        form.appendFile(
+            name: "file",
+            filename: fileName,
+            mimeType: mimeType,
+            data: data
+        )
+        let (body, contentTypeValue) = form.encode()
+
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue(contentTypeValue, forHTTPHeaderField: "Content-Type")
+        req.setValue(String(body.count), forHTTPHeaderField: "Content-Length")
+        if let origin = Self.origin(for: url) {
+            req.setValue(origin, forHTTPHeaderField: "Origin")
+        }
+        if let token = authToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let tempURL = FileManager.default
+            .temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".multipart-upload")
+        try body.write(to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let s = uploadSession
+        let (responseData, response) = try await s.upload(for: req, fromFile: tempURL)
+        guard let http = response as? HTTPURLResponse else {
+            throw APITransportError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = String(data: responseData, encoding: .utf8)
+            throw APITransportError.httpStatus(http.statusCode, message: message)
+        }
+        return responseData
+    }
+
+    /// Lazy + cached background URLSession for multipart uploads.
+    /// `delegateQueue: nil` lets URLSession pick its own serial queue;
+    /// `sharedContainerIdentifier` makes the staged temp data accessible
+    /// to extensions in the same app group.
+    private var uploadSession: URLSession {
+        if let s = _uploadSession { return s }
+        let cfg = URLSessionConfiguration.background(
+            withIdentifier: APIClientImpl.backgroundUploadSessionIdentifier
+        )
+        cfg.sharedContainerIdentifier = APIClientImpl.backgroundUploadSharedContainerIdentifier
+        cfg.isDiscretionary = false
+        cfg.sessionSendsLaunchEvents = true
+        cfg.allowsCellularAccess = true
+        cfg.httpAdditionalHeaders = [
+            "X-Origin": "ios",
+            "Accept": "application/json"
+        ]
+        let s = URLSession(configuration: cfg, delegate: nil, delegateQueue: nil)
+        _uploadSession = s
+        return s
+    }
 
     public func authedDataRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {
         var req = request

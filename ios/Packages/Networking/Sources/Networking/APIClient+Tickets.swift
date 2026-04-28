@@ -78,7 +78,8 @@ public extension APIClient {
             throw APITransportError.noBaseURL
         }
 
-        let endpoint = baseURL.appendingPathComponent("/api/v1/tickets/\(ticketId)/photos")
+        let route = Endpoints.Tickets.photos(ticketId: ticketId)
+        let endpoint = baseURL.appendingPathComponent(route.path)
 
         var form = MultipartFormData()
         form.appendFile(name: "photos", filename: fileName, mimeType: "image/jpeg", data: imageData)
@@ -101,11 +102,8 @@ public extension APIClient {
     /// Returns an optional warranty record for the device. Any combination of identifiers may be provided.
     /// Route confirmed: tickets.routes.ts (GET /tickets/warranty-lookup).
     func warrantyLookup(imei: String? = nil, serial: String? = nil, phone: String? = nil) async throws -> TicketWarrantyRecord? {
-        var query: [URLQueryItem] = []
-        if let imei, !imei.isEmpty    { query.append(URLQueryItem(name: "imei",   value: imei)) }
-        if let serial, !serial.isEmpty { query.append(URLQueryItem(name: "serial", value: serial)) }
-        if let phone, !phone.isEmpty   { query.append(URLQueryItem(name: "phone",  value: phone)) }
-        return try? await get("/api/v1/tickets/warranty-lookup", query: query.isEmpty ? nil : query, as: TicketWarrantyRecord.self)
+        let route = Endpoints.Tickets.warrantyLookup(imei: imei, serial: serial, phone: phone)
+        return try? await get(route.path, query: route.query, as: TicketWarrantyRecord.self)
     }
 
     // MARK: - §4.5 Device history
@@ -114,10 +112,8 @@ public extension APIClient {
     /// Returns all past repair tickets for this device across any customer.
     /// Route confirmed: tickets.routes.ts (GET /tickets/device-history).
     func deviceHistory(imei: String? = nil, serial: String? = nil) async throws -> [TicketSummary] {
-        var query: [URLQueryItem] = []
-        if let imei, !imei.isEmpty    { query.append(URLQueryItem(name: "imei",   value: imei)) }
-        if let serial, !serial.isEmpty { query.append(URLQueryItem(name: "serial", value: serial)) }
-        return try await get("/api/v1/tickets/device-history", query: query.isEmpty ? nil : query, as: [TicketSummary].self)
+        let route = Endpoints.Tickets.deviceHistory(imei: imei, serial: serial)
+        return try await get(route.path, query: route.query, as: [TicketSummary].self)
     }
 
     // MARK: - §4.5 Star/pin ticket
@@ -125,7 +121,8 @@ public extension APIClient {
     /// `PATCH /api/v1/tickets/:id` with `{ pinned: true/false }` — pins or unpins a ticket on the dashboard.
     /// Route: tickets.routes.ts PATCH /tickets/:id (partial update).
     func setTicketPinned(ticketId: Int64, pinned: Bool) async throws {
-        _ = try? await patch("/api/v1/tickets/\(ticketId)", body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
+        let route = Endpoints.Tickets.patchTicket(ticketId: ticketId)
+        _ = try? await patch(route.path, body: TicketPinBody(pinned: pinned), as: TicketDetail.self)
     }
 
     // MARK: - §4.1 Export CSV
@@ -145,9 +142,10 @@ public extension APIClient {
         if let keyword, !keyword.isEmpty {
             items.append(URLQueryItem(name: "keyword", value: keyword))
         }
-        var comps = URLComponents(url: base.appendingPathComponent("/api/v1/tickets/export"),
+        let route = Endpoints.Tickets.export(query: items)
+        var comps = URLComponents(url: base.appendingPathComponent(route.path),
                                   resolvingAgainstBaseURL: false)
-        comps?.queryItems = items.isEmpty ? nil : items
+        comps?.queryItems = route.query
         return comps?.url
     }
 
@@ -183,8 +181,9 @@ public extension APIClient {
 
     /// `POST /api/v1/tickets/:id/attach-invoice` — attaches this ticket to an existing invoice.
     func attachTicketToInvoice(ticketId: Int64, invoiceId: Int64) async throws {
+        let route = Endpoints.Tickets.attachInvoice(ticketId: ticketId)
         _ = try? await post(
-            "/api/v1/tickets/\(ticketId)/attach-invoice",
+            route.path,
             body: TicketAttachInvoiceBody(invoiceId: invoiceId),
             as: CreatedResource.self
         )
@@ -194,8 +193,9 @@ public extension APIClient {
 
     /// `POST /api/v1/tickets/:id/transfer` — transfers ticket to another location.
     func transferTicket(ticketId: Int64, toLocationId: Int64, reason: String?) async throws {
+        let route = Endpoints.Tickets.transfer(ticketId: ticketId)
         _ = try? await post(
-            "/api/v1/tickets/\(ticketId)/transfer",
+            route.path,
             body: TicketTransferBody(locationId: toLocationId, reason: reason),
             as: CreatedResource.self
         )
@@ -273,8 +273,9 @@ public extension APIClient {
     /// POST /api/v1/tickets/:id/finalize — transitions checkin draft to open.
     @discardableResult
     func finalizeCheckinTicket(id: Int64) async throws -> EmptyResponse {
-        try await post(
-            "/api/v1/tickets/\(id)/finalize",
+        let route = Endpoints.Tickets.finalize(ticketId: id)
+        return try await post(
+            route.path,
             body: CheckinFinalizeEmptyBody(),
             as: EmptyResponse.self
         )

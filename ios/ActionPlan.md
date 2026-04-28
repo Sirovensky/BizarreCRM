@@ -131,8 +131,8 @@ Baseline infra the rest of the app depends on. All of it ships before anything d
 - [x] `{ success, data, message }` envelope decoder — shipped.
 - [x] Bearer-token injection from Keychain — shipped.
 - [x] **Token refresh on 401 with retry-of-original-request.** (`Networking/APIClient.swift` `performOnce` + `refreshSessionOnce()` single-flight `Task<Bool,Error>`; concurrent 401s queue behind same task; `AuthSessionRefresher` protocol wired via `AuthRefresher.swift`; failure posts `SessionEvents.sessionRevoked`.)
-- [ ] **Typed endpoint namespaces** — migrate each repository to an `Endpoint` enum (`Endpoints.Tickets.list(page:filter:)`) so path strings are not scattered across files.
-- [ ] **Multipart upload helper** (`APIClient.upload(_:to:fields:)`) for photos, receipts, avatars. Must use a background `URLSession` configuration so uploads survive app exit.
+- [~] **Typed endpoint namespaces** — Tickets domain migrated to `Endpoints.Tickets.<name>(...)` returning `(path, query)`. Other domains keep inline paths until follow-up passes. <!-- partial: actionplan agent — Tickets only -->
+- [x] **Multipart upload helper** (`APIClient.upload(_:to:fields:)`) for photos, receipts, avatars. Background `URLSessionConfiguration` with `com.bizarrecrm.upload` identifier + `group.com.bizarrecrm` shared container so uploads survive app exit. (`APIClient.swift` `upload(_:to:fileName:mimeType:fields:)`; protocol default throws `.notImplemented` for stub clients.) <!-- actionplan agent §1.1 -->
 - [x] **Retries with jitter** on transient network failures (5xx, URLError `.timedOut`, `.networkConnectionLost`). Respect `Retry-After` on 429. <!-- shipped bcbccaa8 [actionplan agent-10] -->
 - [x] **Offline detection banner** driven by `NWPathMonitor` — sticky `.brandGlass` banner at the top of `NavigationStack`s with "Offline — changes will sync when connected" copy. (`Networking/Reachability.swift` + `DesignSystem/OfflineBanner.swift`. Retry button deferred.)
 
@@ -151,7 +151,7 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 - [x] **`sync_queue` table** (§20.2) — optimistic-write log feeding the drain loop. (`Persistence/SyncQueueStore.swift`; migration `002_sync_state_and_queue.sql`; `SyncFlusher` drain loop wired.)
 - [x] **Migrations registry** — numbered migrations, each one idempotent. (`Persistence/Migrator.swift` loads sorted `.sql` files from bundle; migrations 001–005 shipped.)
 - [x] **`updated_at` bookkeeping** — every table records `updated_at` + `_synced_at`, so delta sync can ask `?since=<last_synced>`. (Migration `003_synced_at_columns.sql` adds `_synced_at` + partial indexes on customer/ticket/inventory. feat(§1.3): ab976382)
-- [ ] **Encryption passphrase** — 32-byte random on first run, stored in Keychain with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
+- [x] **Encryption passphrase** — 32-byte random on first run via `SecRandomCopyBytes`, hex-encoded (64 chars) for direct SQLCipher `PRAGMA key = "x'<hex>'"` consumption, stored in Keychain (`kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`). Replaces legacy `KeychainStore.dbPassphrase()` call from `Database.open()`. SQLCipher PRAGMA wiring deferred until `grdb-sqlcipher` SPM dep lands. (`Persistence/DatabasePassphrase.swift` + tests.) <!-- actionplan agent §1.3 -->
 - [ ] **Export / backup** — developer-only for now: `Settings → Diagnostics → Export DB` writes a zipped snapshot (without passphrase) to the share sheet.
 
 ### 1.4 Design System & Liquid Glass
