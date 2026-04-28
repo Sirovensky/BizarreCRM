@@ -8,6 +8,8 @@ import com.bizarreelectronics.crm.data.local.db.entities.SyncQueueEntity
 import com.bizarreelectronics.crm.data.local.prefs.OfflineIdGenerator
 import com.bizarreelectronics.crm.data.remote.api.ExpenseApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreateMileageExpenseRequest
+import com.bizarreelectronics.crm.data.remote.dto.CreatePerDiemExpenseRequest
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseDetail
 import com.bizarreelectronics.crm.data.remote.dto.ExpenseListItem
 import com.bizarreelectronics.crm.data.remote.dto.UpdateExpenseRequest
@@ -122,6 +124,100 @@ class ExpenseRepository @Inject constructor(
         syncQueueDao.insert(
             SyncQueueEntity(
                 entityType = "expense",
+                entityId = tempId,
+                operation = "create",
+                payload = gson.toJson(request),
+            )
+        )
+        return tempId
+    }
+
+    /**
+     * Create a mileage expense. Online: calls POST /expenses/mileage; amount is server-computed.
+     * Offline: falls back to a general-expense offline insert so the trip is not lost.
+     * Returns the server-assigned id (positive) or a temp id (negative, offline path).
+     */
+    suspend fun createMileageExpense(request: CreateMileageExpenseRequest): Long {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = expenseApi.createMileageExpense(request)
+                val detail = response.data ?: throw Exception(response.message ?: "Mileage create failed")
+                val entity = detail.toEntity()
+                expenseDao.insert(entity)
+                return entity.id
+            } catch (e: Exception) {
+                Log.w(TAG, "Online mileage create failed, falling back to offline queue: ${e.message}")
+            }
+        }
+
+        // Offline: queue as a 'mileage' payload so SyncManager can call the right endpoint later.
+        val tempId = offlineIdGenerator.nextTempId()
+        val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+        val computedCents = (request.miles * request.rateCents).toLong().coerceAtLeast(0L)
+        val entity = ExpenseEntity(
+            id = tempId,
+            category = request.category,
+            amount = computedCents,
+            description = buildString {
+                if (!request.vendor.isNullOrBlank()) append(request.vendor)
+                if (!request.description.isNullOrBlank()) {
+                    if (isNotEmpty()) append(" — ")
+                    append(request.description)
+                }
+            }.ifBlank { null },
+            date = request.incurredAt ?: now.take(10),
+            createdAt = now,
+            updatedAt = now,
+            locallyModified = true,
+        )
+        expenseDao.insert(entity)
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "expense_mileage",
+                entityId = tempId,
+                operation = "create",
+                payload = gson.toJson(request),
+            )
+        )
+        return tempId
+    }
+
+    /**
+     * Create a per-diem expense. Online: calls POST /expenses/perdiem; amount is server-computed.
+     * Offline: falls back to a local insert + sync queue with per-diem payload.
+     * Returns the server-assigned id (positive) or a temp id (negative, offline path).
+     */
+    suspend fun createPerDiemExpense(request: CreatePerDiemExpenseRequest): Long {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = expenseApi.createPerDiemExpense(request)
+                val detail = response.data ?: throw Exception(response.message ?: "Per-diem create failed")
+                val entity = detail.toEntity()
+                expenseDao.insert(entity)
+                return entity.id
+            } catch (e: Exception) {
+                Log.w(TAG, "Online per-diem create failed, falling back to offline queue: ${e.message}")
+            }
+        }
+
+        // Offline: compute amount locally so the list screen can display a useful figure.
+        val tempId = offlineIdGenerator.nextTempId()
+        val now = java.time.Instant.now().toString().take(19).replace("T", " ")
+        val computedCents = (request.days.toLong() * request.rateCents.toLong()).coerceAtLeast(0L)
+        val entity = ExpenseEntity(
+            id = tempId,
+            category = request.category,
+            amount = computedCents,
+            description = request.description,
+            date = request.incurredAt ?: now.take(10),
+            createdAt = now,
+            updatedAt = now,
+            locallyModified = true,
+        )
+        expenseDao.insert(entity)
+        syncQueueDao.insert(
+            SyncQueueEntity(
+                entityType = "expense_perdiem",
                 entityId = tempId,
                 operation = "create",
                 payload = gson.toJson(request),

@@ -76,6 +76,48 @@ data class CreateExpenseRequest(
     val approvalStatus: String? = null,
 )
 
+/**
+ * Request body for POST /api/v1/expenses/mileage.
+ * Server computes amount as round(miles * rate_cents) and stores expense_subtype = 'mileage'.
+ * Constraints: miles 0–1000, rate_cents 1–50000.
+ */
+data class CreateMileageExpenseRequest(
+    /** Optional vendor / business purpose label. */
+    val vendor: String? = null,
+    val description: String? = null,
+    /** ISO date string (YYYY-MM-DD) of when the mileage was incurred. */
+    @SerializedName("incurred_at")
+    val incurredAt: String? = null,
+    /** Distance in miles (0–1000). */
+    val miles: Double,
+    /** Reimbursement rate in cents per mile (1–50000). */
+    @SerializedName("rate_cents")
+    val rateCents: Int,
+    /** Expense category; defaults to "Travel" if omitted. */
+    val category: String = "Travel",
+    @SerializedName("customer_id")
+    val customerId: Long? = null,
+)
+
+/**
+ * Request body for POST /api/v1/expenses/perdiem.
+ * Server computes amount as days * rate_cents and stores expense_subtype = 'perdiem'.
+ * Constraints: days 1–90, rate_cents 1–50000.
+ */
+data class CreatePerDiemExpenseRequest(
+    val description: String? = null,
+    /** ISO date string (YYYY-MM-DD) of the first day. */
+    @SerializedName("incurred_at")
+    val incurredAt: String? = null,
+    /** Number of days (1–90). */
+    val days: Int,
+    /** Per-diem rate in cents per day (1–50000). */
+    @SerializedName("rate_cents")
+    val rateCents: Int,
+    /** Expense category; defaults to "Per Diem" if omitted. */
+    val category: String = "Per Diem",
+)
+
 data class UpdateExpenseRequest(
     val category: String? = null,
     val amount: Double? = null,

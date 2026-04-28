@@ -5947,8 +5947,8 @@ After existing `bench` mount, authenticated routes registered in this order:
 ### Android client binding — Wave 1
 
 - [x] `GET /api/v1/expenses` with `status` + `expense_subtype` filters — `ExpenseApi.getExpenses(@QueryMap)` accepts arbitrary filters; callers pass `status`/`expense_subtype` keys.
-- [ ] `POST /api/v1/expenses/mileage` — no dedicated method in `ExpenseApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/expenses/perdiem` — no dedicated method in `ExpenseApi`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
+- [x] `POST /api/v1/expenses/mileage` — `ExpenseApi.createMileageExpense` + `ExpenseRepository.createMileageExpense`; offline-queue via `expense_mileage` entity type; UI segmented button in `ExpenseCreateScreen`.
+- [x] `POST /api/v1/expenses/perdiem` — `ExpenseApi.createPerDiemExpense` + `ExpenseRepository.createPerDiemExpense`; offline-queue via `expense_perdiem` entity type; UI segmented button in `ExpenseCreateScreen`.
 - [x] `POST /api/v1/expenses/:id/approve` — `ExpenseApi.approveExpense(@Path id)` wired; 404-tolerant.
 - [ ] `POST /api/v1/expenses/:id/deny` — `ExpenseApi` has `rejectExpense` at `.../reject`; server contract path is `.../deny`. <!-- NOTE-defer: server-side path differs from existing reject endpoint — needs dedicated deny method or path realignment -->
 - [x] `GET /api/v1/schedule/shifts` — `ShiftsApi.getShifts(userId, fromDate, toDate)` wired.
