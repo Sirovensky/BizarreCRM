@@ -2871,32 +2871,25 @@ private fun CredentialsStep(
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
     // 2026-04-27 user-flagged regression: tapping Connect on Server step
-    // landed here without auto-focusing the Username field. Three things
-    // have to happen in order for this to work after the AnimatedContent
-    // step transition:
-    //   1. Wait past the 300ms slide so the new card is fully measured and
-    //      its FocusRequester modifier is attached.
-    //   2. requestFocus() on the username field.
-    //   3. Explicitly call keyboardController.show() — the Connect button
-    //      caused IME to dismiss; programmatic focus alone won't re-show it.
-    // We retry the show() call once after another frame because some Android
-    // IME state machines drop the request while the previous field is still
-    // releasing focus. Guard on blank username so returns from 2FA/setup
+    // landed here without auto-focusing the Username field, AND there was
+    // a brief flicker where the IME hid (during the AnimatedContent
+    // transition) before re-appearing. Race the IME hide-timer:
+    // request focus on the very first frame after CredentialsStep
+    // composes, so Android's IME policy never sees the gap where no
+    // TextField has focus and never decides to dismiss the keyboard.
+    // withFrameNanos waits for the next render frame — that's enough
+    // time for Modifier.focusRequester to bind, and short enough that
+    // the IME state machine treats it as a focus transfer instead of a
+    // dismiss-then-reopen. Guard on blank username so 2FA returns
     // don't re-pop the keyboard.
     val usernameFocusRequester = remember { FocusRequester() }
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
         if (state.username.isBlank()) {
-            timber.log.Timber.tag("LoginVM").i("auto-focus: waiting for slide…")
-            // 380ms = 300ms AnimatedContent slide + 80ms layout buffer.
-            kotlinx.coroutines.delay(380)
-            val focused = runCatching { usernameFocusRequester.requestFocus() }
-            timber.log.Timber.tag("LoginVM").i("auto-focus: requestFocus result=$focused")
+            // One frame of layout settle so focusRequester is bound.
+            androidx.compose.runtime.withFrameNanos { }
+            runCatching { usernameFocusRequester.requestFocus() }
             keyboardController?.show()
-            // Retry after one frame in case IME state machine ate the first call.
-            kotlinx.coroutines.delay(120)
-            keyboardController?.show()
-            timber.log.Timber.tag("LoginVM").i("auto-focus: keyboard.show() x2 fired")
         }
     }
 
