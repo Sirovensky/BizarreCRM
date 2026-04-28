@@ -2877,6 +2877,20 @@ private fun CredentialsStep(
     // LOGIN-MOCK-187: rememberSaveable survives rotation / config changes.
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
+    // 2026-04-27 user-flagged regression: tapping Connect on Server step
+    // landed here without auto-focusing the Username field. Use a one-shot
+    // LaunchedEffect keyed to "first composition AND username blank" so we
+    // (a) auto-pop keyboard for fresh entry,
+    // (b) DON'T re-pop when user returns from a 2FA / setup step with a
+    //     non-blank username already filled,
+    // (c) DON'T re-focus on rotation (state.username survives → guard skips).
+    val usernameFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) {
+        if (state.username.isBlank()) {
+            usernameFocusRequester.requestFocus()
+        }
+    }
+
     // LOGIN-MOCK-177: per-field validation (only shown after the field is touched)
     val usernameError = state.username.isNotBlank() && state.username.trim().length < 2
     val credPasswordError = state.password.isNotBlank() && state.password.length < 1
@@ -3118,7 +3132,7 @@ private fun CredentialsStep(
         onValueChange = viewModel::updateUsername,
         label = { Text("Username") },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth().textFieldHover(),
+        modifier = Modifier.fillMaxWidth().focusRequester(usernameFocusRequester).textFieldHover(),
         isError = usernameError,
         leadingIcon = { Icon(Icons.Default.Person, null) },
         // LOGIN-MOCK-177: inline username validation
