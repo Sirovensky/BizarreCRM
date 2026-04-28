@@ -868,12 +868,20 @@ public struct PosView: View {
             repository: PosDevicePickerRepositoryImpl(api: api)
         )
         VStack(spacing: 0) {
-            // Mockup spec — thin progress bar fills 25/50/75/100% per step.
-            ProgressView(value: coordinator.currentStep.progressPercent, total: 100)
-                .progressViewStyle(.linear)
-                .tint(Color.bizarrePrimary)
-                .frame(height: 2)
-                .accessibilityLabel(coordinator.currentStep.accessibilityDescription)
+            // Numbered-circle step indicator — easier to track at-a-glance
+            // than a progress bar + caption alone. Past steps fill cream
+            // with a checkmark and are tappable; current is the cream-filled
+            // current index; future steps render hollow.
+            RepairStepIndicator(
+                current: coordinator.currentStep,
+                onTapPastStep: { step in
+                    coordinator.jump(to: step)
+                }
+            )
+            .padding(.horizontal, BrandSpacing.xl)
+            .padding(.top, BrandSpacing.sm)
+            .padding(.bottom, BrandSpacing.xl) // room for the labels under each circle
+
             PosRegisterLayout(
                 catalogFraction: 0.65,
                 inspectorActive: true
