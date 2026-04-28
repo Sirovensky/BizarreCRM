@@ -2267,7 +2267,7 @@ fun LoginScreen(
             // Tab strip — Server | Sign In | 2FA
             // LOGIN-MOCK-153: pass animDuration so tab indicator respects Reduce Motion.
             LoginTabBar(currentStep = state.step, animDuration = animDuration)
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp)) // LOGIN-MOCK-272: 24→12dp to match mockup
 
             // Step content with animation
             AnimatedContent(
@@ -2608,6 +2608,7 @@ private fun ServerStep(state: LoginUiState, viewModel: LoginViewModel) {
             }
         }
     }
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 // ─── Step 1b: Register New Shop (single form) ───────────────────────
@@ -2813,6 +2814,7 @@ private fun RegisterStep(state: LoginUiState, viewModel: LoginViewModel, onLogin
         isLoading = state.isLoading,
         label = "Create Shop",
     )
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 // ─── Step 2: Credentials ────────────────────────────────────────────
@@ -3060,7 +3062,7 @@ private fun CredentialsStep(
             }
         }
     }
-    Spacer(Modifier.height(16.dp))
+    Spacer(Modifier.height(20.dp)) // LOGIN-MOCK-275: 16→20dp header-to-username gap
 
     OutlinedTextField(
         value = state.username,
@@ -3309,6 +3311,7 @@ private fun CredentialsStep(
             )
         }
     }
+    Spacer(Modifier.height(4.dp)) // LOGIN-MOCK-278: bottom card clearance
 }
 
 /**
@@ -3758,7 +3761,7 @@ private fun TwoFaSetupStep(state: LoginUiState, viewModel: LoginViewModel, onSuc
                             fontFamily = BrandMono.fontFamily,
                             letterSpacing = 2.sp,
                         ),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp), // LOGIN-MOCK-279: 12/10→16/12dp
                     )
                 }
             }
