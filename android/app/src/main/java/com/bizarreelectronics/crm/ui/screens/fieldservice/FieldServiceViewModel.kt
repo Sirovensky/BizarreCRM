@@ -3,7 +3,7 @@ package com.bizarreelectronics.crm.ui.screens.fieldservice
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.FieldServiceApi
-import com.bizarreelectronics.crm.data.remote.dto.DispatchJobListData
+import com.bizarreelectronics.crm.data.remote.dto.FieldServiceJobListData
 import com.bizarreelectronics.crm.data.remote.dto.UpdateDispatchJobRequest
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -211,7 +211,7 @@ class FieldServiceViewModel @Inject constructor(
  * @param snackMessage  Transient snackbar message (status updates, optimization).
  */
 data class FieldServiceUiState(
-    val jobs: List<DispatchJobListData.DispatchJob> = emptyList(),
+    val jobs: List<FieldServiceJobListData.DispatchJob> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null,
     val offline: Boolean = false,

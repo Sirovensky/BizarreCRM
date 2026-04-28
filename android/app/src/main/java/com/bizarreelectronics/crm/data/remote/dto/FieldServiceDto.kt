@@ -10,7 +10,7 @@ import com.google.gson.annotations.SerializedName
  * Server: packages/server/src/routes/dispatch.ts (not yet deployed).
  * Shape: { success: true, data: { jobs: [...] } }
  */
-data class DispatchJobListData(
+data class FieldServiceJobListData(
     val jobs: List<DispatchJob>,
 ) {
     /**

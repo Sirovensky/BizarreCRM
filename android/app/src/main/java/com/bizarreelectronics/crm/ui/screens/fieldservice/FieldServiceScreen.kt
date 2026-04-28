@@ -63,7 +63,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
-import com.bizarreelectronics.crm.data.remote.dto.DispatchJobListData
+import com.bizarreelectronics.crm.data.remote.dto.FieldServiceJobListData
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.components.shared.ConfirmDialog
 import com.bizarreelectronics.crm.ui.components.shared.EmptyState
@@ -334,7 +334,7 @@ private fun MapViewStub(jobCount: Int) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DispatchJobCard(
-    job: DispatchJobListData.DispatchJob,
+    job: FieldServiceJobListData.DispatchJob,
     onEnRoute: () -> Unit,
     onMarkOnSite: () -> Unit,
     onMarkComplete: () -> Unit,

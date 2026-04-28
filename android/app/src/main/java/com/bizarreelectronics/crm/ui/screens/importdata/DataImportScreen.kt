@@ -180,8 +180,9 @@ fun DataImportScreen(
                     onReset = viewModel::reset,
                     onContinueToFile = { viewModel.goToStep(ImportStep.FILE) },
                     onContinueToScope = {
-                        if (state.fileUri != null) viewModel.loadPreview()
-                        else viewModel.goToStep(ImportStep.SCOPE)
+                        // loadPreview() not yet on VM — fall through to SCOPE step
+                        // and let the user trigger preview via startDryRun.
+                        viewModel.goToStep(ImportStep.SCOPE)
                     },
                 )
             }
@@ -350,6 +351,16 @@ private fun ImportWizardContent(
                     Button(onClick = onReset) { Text("Start Over") }
                 }
             }
+
+            ImportStep.CREDENTIALS -> {
+                Text(
+                    "Credentials step not yet implemented for this source.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedButton(onClick = onContinueToFile, modifier = Modifier.fillMaxWidth()) {
+                    Text("Skip to file picker")
+                }
+            }
         }
     }
 }
@@ -464,12 +475,13 @@ private fun ErrorText(message: String) {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 private fun importStepTitle(step: ImportStep): String = when (step) {
-    ImportStep.SOURCE     -> "Import — Choose Source"
-    ImportStep.FILE       -> "Import — Select File"
-    ImportStep.SCOPE      -> "Import — Select Scope"
-    ImportStep.COLUMN_MAP -> "Import — Map Columns"
-    ImportStep.PREVIEW    -> "Import — Preview"
-    ImportStep.PROGRESS   -> "Import — In Progress"
-    ImportStep.DONE       -> "Import — Done"
-    ImportStep.ERROR      -> "Import — Error"
+    ImportStep.SOURCE      -> "Import — Choose Source"
+    ImportStep.CREDENTIALS -> "Import — Credentials"
+    ImportStep.FILE        -> "Import — Select File"
+    ImportStep.SCOPE       -> "Import — Select Scope"
+    ImportStep.COLUMN_MAP  -> "Import — Map Columns"
+    ImportStep.PREVIEW     -> "Import — Preview"
+    ImportStep.PROGRESS    -> "Import — In Progress"
+    ImportStep.DONE        -> "Import — Done"
+    ImportStep.ERROR       -> "Import — Error"
 }

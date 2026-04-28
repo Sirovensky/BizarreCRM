@@ -622,10 +622,13 @@ class TicketDetailViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = _state.value.copy(warrantyLoading = true, warrantyError = null, warrantyResult = null)
             try {
-                val response = ticketApi.warrantyLookup(mapOf("query" to query))
-                val result = response.data
-                _state.value = if (result != null) {
-                    _state.value.copy(warrantyLoading = false, warrantyResult = result)
+                // Server lookup accepts imei/serial/phone as named query args.
+                // Caller's `query` is opaque — try imei (most common), fall back
+                // to serial if no result. Take the first match (server returns list).
+                val response = ticketApi.warrantyLookup(imei = query)
+                val first = response.data?.firstOrNull()
+                _state.value = if (first != null) {
+                    _state.value.copy(warrantyLoading = false, warrantyResult = first)
                 } else {
                     _state.value.copy(warrantyLoading = false, warrantyError = "No warranty record found.")
                 }
@@ -664,7 +667,7 @@ class TicketDetailViewModel @Inject constructor(
             _state.value = _state.value.copy(deviceHistoryLoading = true)
             try {
                 val response = ticketApi.getDeviceHistory(imei = imei?.ifBlank { null }, serial = serial?.ifBlank { null })
-                val entries = response.data?.history ?: emptyList()
+                val entries = response.data ?: emptyList()
                 _state.value = _state.value.copy(
                     deviceHistoryLoading = false,
                     deviceHistoryEntries = entries,

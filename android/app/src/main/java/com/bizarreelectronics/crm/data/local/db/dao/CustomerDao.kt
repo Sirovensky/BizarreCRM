@@ -89,4 +89,10 @@ interface CustomerDao {
      */
     @Query("SELECT id FROM customers WHERE is_deleted = 0")
     suspend fun getAllIds(): List<Long>
+
+    @Query("SELECT COUNT(*) FROM customers")
+    suspend fun countAll(): Int
+
+    @Query("DELETE FROM customers WHERE id IN (SELECT id FROM customers ORDER BY id ASC LIMIT :excess)")
+    suspend fun evictOldest(excess: Int)
 }

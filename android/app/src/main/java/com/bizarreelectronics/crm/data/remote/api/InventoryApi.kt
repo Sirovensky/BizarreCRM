@@ -12,12 +12,6 @@ import com.bizarreelectronics.crm.data.remote.dto.PhotoListData
 import com.bizarreelectronics.crm.data.remote.dto.PriceHistoryData
 import com.bizarreelectronics.crm.data.remote.dto.SalesHistoryData
 import com.bizarreelectronics.crm.data.remote.dto.SupplierDetailData
-import com.bizarreelectronics.crm.data.remote.dto.SupplierListItem
-import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderListData
-import com.bizarreelectronics.crm.data.remote.dto.PurchaseOrderDetailData
-import com.bizarreelectronics.crm.data.remote.dto.CreatePurchaseOrderRequest
-import com.bizarreelectronics.crm.data.remote.dto.UpdatePurchaseOrderRequest
-import com.bizarreelectronics.crm.data.remote.dto.ReceivePurchaseOrderRequest
 import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.remote.dto.TicketUsageData
 import retrofit2.http.Body
@@ -109,32 +103,6 @@ interface InventoryApi {
     @retrofit2.http.DELETE("inventory/{id}")
     suspend fun deleteItem(@Path("id") id: Long): ApiResponse<Unit>
 
-    // ── §6.7: Purchase Orders ────────────────────────────────────────────────
-    @GET("inventory/purchase-orders/list")
-    suspend fun getPurchaseOrders(
-        @Query("page") page: Int = 1,
-        @Query("pagesize") pageSize: Int = 20,
-        @Query("status") status: String? = null,
-    ): ApiResponse<PurchaseOrderListData>
-
-    @GET("inventory/purchase-orders/{id}")
-    suspend fun getPurchaseOrder(@Path("id") id: Long): ApiResponse<PurchaseOrderDetailData>
-
-    @POST("inventory/purchase-orders")
-    suspend fun createPurchaseOrder(@Body request: CreatePurchaseOrderRequest): ApiResponse<PurchaseOrderDetailData>
-
-    @retrofit2.http.PUT("inventory/purchase-orders/{id}")
-    suspend fun updatePurchaseOrder(
-        @Path("id") id: Long,
-        @Body request: UpdatePurchaseOrderRequest,
-    ): ApiResponse<PurchaseOrderDetailData>
-
-    @POST("inventory/purchase-orders/{id}/receive")
-    suspend fun receivePurchaseOrder(
-        @Path("id") id: Long,
-        @Body request: ReceivePurchaseOrderRequest,
-    ): ApiResponse<PurchaseOrderDetailData>
-
-    @GET("inventory/suppliers/list")
-    suspend fun getSuppliers(@Query("active_only") activeOnly: Boolean = true): ApiResponse<List<SupplierListItem>>
+    // §6.7 Purchase Orders + supplier list moved to dedicated PurchaseOrderApi.kt
+    // (cb7e0472). Don't duplicate here.
 }

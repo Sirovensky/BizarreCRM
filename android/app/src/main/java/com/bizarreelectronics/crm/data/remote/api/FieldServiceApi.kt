@@ -1,7 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
-import com.bizarreelectronics.crm.data.remote.dto.DispatchJobListData
+import com.bizarreelectronics.crm.data.remote.dto.FieldServiceJobListData
 import com.bizarreelectronics.crm.data.remote.dto.OptimizeRouteResponse
 import com.bizarreelectronics.crm.data.remote.dto.UpdateDispatchJobRequest
 import retrofit2.http.Body
@@ -27,25 +27,25 @@ interface FieldServiceApi {
     /**
      * Fetch the technician's current dispatch job list.
      *
-     * @return [ApiResponse] wrapping [DispatchJobListData] with `jobs` list.
+     * @return [ApiResponse] wrapping [FieldServiceJobListData] with `jobs` list.
      *         Returns 404 when the server build pre-dates this endpoint;
      *         callers fall back to an empty list.
      */
     @GET("dispatch/jobs")
-    suspend fun getJobs(): ApiResponse<DispatchJobListData>
+    suspend fun getJobs(): ApiResponse<FieldServiceJobListData>
 
     /**
      * Update a dispatch job's status or technician notes.
      *
      * @param jobId  The dispatch job ID to update.
      * @param body   [UpdateDispatchJobRequest] with status and/or notes fields.
-     * @return [ApiResponse] wrapping the updated [DispatchJobListData.DispatchJob].
+     * @return [ApiResponse] wrapping the updated [FieldServiceJobListData.DispatchJob].
      */
     @PATCH("dispatch/jobs/{id}")
     suspend fun updateJob(
         @Path("id") jobId: Long,
         @Body body: UpdateDispatchJobRequest,
-    ): ApiResponse<DispatchJobListData.DispatchJob>
+    ): ApiResponse<FieldServiceJobListData.DispatchJob>
 
     /**
      * Request a route-optimized ordering of today's jobs for this technician.

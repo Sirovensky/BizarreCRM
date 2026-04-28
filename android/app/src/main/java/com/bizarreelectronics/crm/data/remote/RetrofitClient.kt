@@ -766,6 +766,14 @@ object RetrofitClient {
     @Provides @Singleton fun provideFieldServiceApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.FieldServiceApi =
         retrofit.create(com.bizarreelectronics.crm.data.remote.api.FieldServiceApi::class.java)
 
+    // §43 — Dispatch (parallel to FieldService — different shape).
+    @Provides @Singleton fun provideDispatchApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.DispatchApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.DispatchApi::class.java)
+
+    // §6.7 — Purchase Orders (canonical PurchaseOrderApi — separate from InventoryApi).
+    @Provides @Singleton fun providePurchaseOrderApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi::class.java)
+
     // §55 — Public tracking portal; unauthenticated — AuthInterceptor skips /track/ paths.
     // Uses the same Retrofit instance; caller supplies tracking token via @Header("Authorization").
     @Provides @Singleton fun providePublicTrackingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PublicTrackingApi =

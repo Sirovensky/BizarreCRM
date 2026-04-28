@@ -120,7 +120,7 @@ class RepairPricingViewModel @Inject constructor(
             _state.value = _state.value.copy(isSaving = true, saveError = null)
             val body = UpsertRepairServiceRequest(
                 name = name.trim(),
-                slug = if (id == null) UpsertRepairServiceRequest.slugify(name) else null,
+                slug = if (id == null) name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-') else null,
                 category = category?.trim()?.takeIf { it.isNotBlank() },
                 laborPrice = laborPrice,
                 description = description?.trim()?.takeIf { it.isNotBlank() },

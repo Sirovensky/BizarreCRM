@@ -159,10 +159,11 @@ class InventoryRepository @Inject constructor(
      * Throws on network failure — callers should show an error snackbar.
      */
     suspend fun deleteItem(id: Long): String? {
-        val resp = inventoryApi.deleteItem(id)
-        // Remove from local cache regardless of warning
+        inventoryApi.deleteItem(id)
         inventoryDao.deleteById(id)
-        return resp.data?.warning
+        // Server's optional warning string is not exposed via ApiResponse<Unit>;
+        // return null until the API returns a typed warning payload.
+        return null
     }
 
     /** Update an inventory item. Online: API call. Offline: local update + sync queue. */
