@@ -842,6 +842,10 @@
     <string name="public_tracking_not_found_subtitle">The tracking link may have expired or is invalid. Contact the shop for help.</string>
     <string name="public_tracking_share_label">Share tracking link</string>
     <string name="public_tracking_share_chooser_title">Share repair status link</string>
+    <!-- §55.3 — tracking QR label print action -->
+    <string name="tracking_label_print_action">Print tracking label</string>
+    <string name="tracking_label_print_error">Could not open print dialog</string>
+    <string name="a11y_tracking_label_qr">QR code for repair status — ticket %1$s. Scan to check status.</string>
     <string name="cd_ticket_status">Ticket status</string>
     <string name="cd_device_icon">Device</string>
     <string name="cd_store_info">Store information</string>

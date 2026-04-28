@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -31,7 +32,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
@@ -55,6 +58,8 @@ import java.io.FileOutputStream
  * @param customerName   Customer display name for the work order header.
  * @param deviceName     First device name for the work order body.
  * @param serverUrl      Base server URL for the public tracking link stub.
+ * @param trackingUrl    Full customer-facing tracking URL (§55.1); when non-null a
+ *                       "Print tracking label" QR-label action is shown (§55.3).
  * @param snackbarHost   Snackbar host for error feedback.
  */
 @Composable
@@ -64,6 +69,7 @@ fun TicketPrintActions(
     customerName: String,
     deviceName: String?,
     serverUrl: String,
+    trackingUrl: String? = null,
     snackbarHost: SnackbarHostState,
 ) {
     val context = LocalContext.current
@@ -254,6 +260,35 @@ fun TicketPrintActions(
                     }
                     runCatching { context.startActivity(Intent.createChooser(intent, "Email work order")) }
                         .onFailure { snackbarHost.showSnackbar("No email app found") }
+                }
+            },
+        )
+
+        // §55.3 — Print tracking QR label for customer's repair bag.
+        // Visible whenever trackingUrl is available (requires tracking_token on ticket).
+        // Falls back to printing an orderId-only QR if trackingUrl is null but item is
+        // still shown so staff can always produce a label.
+        DropdownMenuItem(
+            text = { Text("Print tracking label") },
+            leadingIcon = {
+                Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(18.dp))
+            },
+            onClick = {
+                menuExpanded = false
+                scope.launch {
+                    // PDF generation touches the bitmap encoder — run off the main thread.
+                    val opened = withContext(Dispatchers.IO) {
+                        printTicketTrackingLabel(
+                            context = context,
+                            ticketId = ticketId,
+                            orderId = orderId,
+                            customerName = customerName.ifBlank { null },
+                            trackingUrl = trackingUrl,
+                        )
+                    }
+                    if (!opened) {
+                        snackbarHost.showSnackbar("Could not open print dialog")
+                    }
                 }
             },
         )

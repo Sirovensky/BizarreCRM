@@ -4968,7 +4968,7 @@ _Web-served; Android provides deep link + share only._
 - [ ] SLA promise visible.
 
 ### 55.3 QR print
-- [ ] Android prints QR label with tracking link for customer's repair bag. <!-- NOTE-defer: `TicketPrintActions.kt` prints a text-based work-order PDF only; no QR code generation or label-sized print layout exists; requires ZXing/MLKit QR encode + PrintManager label-format PDF -->
+- [x] Android prints QR label with tracking link for customer's repair bag. (session 2026-04-27 — `TicketTrackingLabelPrinter.kt` (new): `printTicketTrackingLabel()` generates a 4×3 in label PDF via `PdfDocument` + `QrCodeGenerator.generateQrBitmap(trackingUrl)`; label renders QR on the left + shop name / orderId / customerName / "Scan for repair status" on the right; sent to `PrintManager` via `TrackingLabelPrintAdapter` with `NA_INDEX_4X6` media size + no margins + monochrome; `TicketPrintActions.kt`: added `trackingUrl: String? = null` param + "Print tracking label" `DropdownMenuItem` with `Icons.Default.QrCode`; PDF encode runs off-main via `Dispatchers.IO`; `TicketDetailScreen.kt`: `trackingUrl = state.ticketDetail?.trackingUrl()` wired at call site; strings.xml: 3 new strings added; build green)
 
 ### 55.4 Privacy
 - [ ] Short-links are non-guessable (random 10 chars). <!-- NOTE-defer: server uses 32-char hex tracking_token (crypto.randomBytes(16)) which is non-guessable but is NOT a short-link; the "10 chars" design was never implemented; depends on §55.1 short-link redesign -->

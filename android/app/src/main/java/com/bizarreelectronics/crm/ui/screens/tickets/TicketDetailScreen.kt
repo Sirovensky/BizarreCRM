@@ -1581,6 +1581,8 @@ fun TicketDetailScreen(
                             customerName = customerName,
                             deviceName = deviceName,
                             serverUrl = viewModel.serverUrl,
+                            // §55.3 — pass tracking URL so the label action can encode it in the QR
+                            trackingUrl = state.ticketDetail?.trackingUrl(),
                             snackbarHost = snackbarHostState,
                         )
                         // Overflow menu — Copy Link + permission-gated destructive actions
