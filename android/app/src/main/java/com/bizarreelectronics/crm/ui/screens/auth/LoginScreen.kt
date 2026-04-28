@@ -2310,22 +2310,19 @@ fun LoginScreen(
             AnimatedContent(
                 targetState = state.step,
                 transitionSpec = {
-                    // LOGIN-MOCK-141: explicit tween specs eliminate the transparent-frame
-                    // artifact caused by default 300ms simultaneous fade+slide. The 100ms
-                    // delay on fadeIn ensures the incoming card begins appearing only after
-                    // the outgoing card is nearly gone.
-                    // LOGIN-MOCK-153: animDuration is 0 when Reduce Motion is enabled.
-                    val isForward = targetState.ordinal > initialState.ordinal
-                    val direction = if (isForward) 1 else -1
-                    (slideInHorizontally(animationSpec = tween(animDuration)) { it * direction } +
-                        fadeIn(animationSpec = tween(animDuration, delayMillis = if (animDuration == 0) 0 else 100))) togetherWith
-                    (slideOutHorizontally(animationSpec = tween(animDuration)) { -it * direction } +
-                        fadeOut(animationSpec = tween(if (animDuration == 0) 0 else 150)))
+                    // 2026-04-27 perf: shortened to a single 180ms cross-fade
+                    // (was 300ms slide + delayed fadeIn + 150ms fadeOut). The
+                    // earlier triple-animation spec triggered ~5 simultaneous
+                    // animations on overlapping subtrees + animateContentSize
+                    // remeasures, eating frame budget on 90Hz devices and
+                    // causing visible jitter (~15fps perceived). Plain fade is
+                    // cheaper and the user lands on the new step faster.
+                    // Reduce Motion: animDuration=0 collapses to instant swap.
+                    fadeIn(animationSpec = tween(animDuration)) togetherWith
+                        fadeOut(animationSpec = tween(animDuration))
                 },
                 // AND-038: contentKey ensures AnimatedContent remeasures correctly
                 // when transitioning between enum values with the same ordinal index.
-                // Using ordinal (Int) rather than the enum itself avoids an extra
-                // Any-equality check per frame.
                 contentKey = { it.ordinal },
                 label = "step",
             ) { step ->
@@ -2339,19 +2336,15 @@ fun LoginScreen(
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainer,
                 ) {
-                    // LOGIN-MOCK-051: bump vertical padding to 24dp so card title doesn't
-                    // crowd the top edge; horizontal stays at 20dp for side gutters.
-                    // LOGIN-MOCK-107: reduce vertical from 24dp → 20dp; card bottom gap
-                    // was ~8dp over the mockup's ~16dp visual gap when card ends with a TextButton.
-                    // LOGIN-MOCK-142: animateContentSize lets the card height interpolate
-                    // smoothly when transitioning between steps of different heights,
-                    // preventing a jarring snap to the new height mid-slide.
-                    // LOGIN-MOCK-153: animDuration 0 collapses to instant snap with Reduce Motion.
-                    // LOGIN-MOCK-274: horizontal 20dp → 24dp so field leading-icon left edge aligns
-                    // with the card's 20dp corner-radius visual indent (mockup screens 01, 09).
-                    Column(modifier = Modifier
-                        .padding(horizontal = 24.dp, vertical = 20.dp)
-                        .animateContentSize(animationSpec = tween(animDuration))) {
+                    // LOGIN-MOCK-051/107: 24dp horizontal × 20dp vertical card
+                    // padding. animateContentSize was previously layered on top
+                    // of the AnimatedContent slide+fade — that combination
+                    // remeasured the entire form subtree every frame on step
+                    // transitions, causing ~15fps perceived jitter on 90Hz
+                    // devices (user-flagged 2026-04-27). Removed; the new
+                    // single-fade transition crossfades the cards in place,
+                    // and any height delta is masked by the fade itself.
+                    Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp)) {
                         when (step) {
                             SetupStep.SERVER -> ServerStep(state, viewModel)
                             SetupStep.REGISTER -> RegisterStep(state, viewModel, onLoginSuccess)
