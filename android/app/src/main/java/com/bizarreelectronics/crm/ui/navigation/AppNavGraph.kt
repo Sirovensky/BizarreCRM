@@ -1559,6 +1559,7 @@ fun AppNavGraph(
                     animatedContentScope = this@composable,
                     onTicketClick = { id -> navController.navigate(Screen.TicketDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.CheckInEntry.route) },
+                    onImportFromOldSystem = { navController.navigate(Screen.DataImport.route) },
                 )
             }
             // §68.2 — deep link: bizarrecrm://tickets/{id}

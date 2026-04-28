@@ -78,6 +78,12 @@ fun TicketListScreen(
     animatedContentScope: AnimatedContentScope,
     onTicketClick: (Long) -> Unit,
     onCreateClick: () -> Unit,
+    // §3.14 L586 — empty-state secondary CTA. When non-null and the list is
+    // empty (zero-data tenant), the EmptyStateIllustration shows a "Or
+    // import from old system" link in addition to "Create your first
+    // ticket". Default no-op so existing call-sites without the wiring
+    // still compile + the secondary link just doesn't render.
+    onImportFromOldSystem: () -> Unit = {},
     viewModel: TicketListViewModel = hiltViewModel(),
     networkMonitor: NetworkMonitor? = null,
 ) {
@@ -383,17 +389,30 @@ fun TicketListScreen(
                         modifier = Modifier.fillMaxSize(),
                     ) {
                         Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
-                            // §66.1: use string resources so copy is consistent across
-                            // all surfaces. Wave 4 can migrate remaining hardcoded strings.
-                            EmptyState(
-                                icon = Icons.Default.ConfirmationNumber,
-                                title = context.getString(R.string.tickets_empty_title),
-                                subtitle = if (state.searchQuery.isNotEmpty()) {
-                                    "Try a different search"
-                                } else {
-                                    context.getString(R.string.tickets_empty_subtitle)
-                                },
-                            )
+                            // §3.14 L586 — zero-data tenant gets the rich
+                            // EmptyStateIllustration (wrench emoji + "Create
+                            // your first ticket" + "Or import from old
+                            // system" link). Active search empty falls back
+                            // to the simpler EmptyState because the tenant
+                            // already has data — they just can't find a
+                            // match.
+                            if (state.searchQuery.isNotEmpty()) {
+                                EmptyState(
+                                    icon = Icons.Default.ConfirmationNumber,
+                                    title = context.getString(R.string.tickets_empty_title),
+                                    subtitle = "Try a different search",
+                                )
+                            } else {
+                                com.bizarreelectronics.crm.ui.components.EmptyStateIllustration(
+                                    emoji = "🔧",   // wrench
+                                    title = context.getString(R.string.tickets_empty_title),
+                                    subtitle = context.getString(R.string.tickets_empty_subtitle),
+                                    primaryCta = "Create your first ticket",
+                                    onPrimaryCta = onCreateClick,
+                                    secondaryCta = "Or import from old system",
+                                    onSecondaryCta = onImportFromOldSystem,
+                                )
+                            }
                         }
                     }
                 }
