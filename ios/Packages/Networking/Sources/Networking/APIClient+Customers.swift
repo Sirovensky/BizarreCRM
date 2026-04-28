@@ -103,6 +103,12 @@ public struct CustomerCursorPage: Decodable, Sendable {
     public let nextCursor: String?
     public let stats: CustomerListStats?
 
+    public init(customers: [CustomerSummary], nextCursor: String? = nil, stats: CustomerListStats? = nil) {
+        self.customers = customers
+        self.nextCursor = nextCursor
+        self.stats = stats
+    }
+
     enum CodingKeys: String, CodingKey {
         case customers
         case nextCursor = "next_cursor"
@@ -141,6 +147,11 @@ public struct BulkDeleteRequest: Encodable, Sendable {
 
 public struct BulkOperationResult: Decodable, Sendable {
     public let affected: Int?
+    public init(affected: Int? = nil) { self.affected = affected }
+    /// Convenience for previews — maps to `affected` (failed unused).
+    public init(processed: Int, failed: Int) {
+        self.affected = processed
+    }
 }
 
 // MARK: - APIClient extensions

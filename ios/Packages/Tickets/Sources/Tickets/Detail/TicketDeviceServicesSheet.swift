@@ -22,7 +22,7 @@ import Networking
 // MARK: - Models
 
 /// A service loaded from the repair-pricing catalog.
-private struct ServiceOption: Decodable, Sendable, Identifiable {
+struct ServiceOption: Decodable, Sendable, Identifiable {
     let id: Int64
     let name: String
     let price: Double?

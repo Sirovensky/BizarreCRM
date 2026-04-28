@@ -1745,6 +1745,9 @@ private struct CartPillCustomerChip: View {
 
 private struct PosDisabledRepository: InventoryRepository {
     func list(filter: InventoryFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
+
+    func listAdvanced(filter: InventoryFilter, sort: InventorySortOption,
+                      advanced: InventoryAdvancedFilter, keyword: String?) async throws -> [InventoryListItem] { [] }
 }
 
 // MARK: - Wave-5 null stubs (build-safe fallbacks when DI not fully wired)
@@ -1755,6 +1758,16 @@ private struct PosGateNullCustomerRepository: CustomerRepository {
     func list(keyword: String?) async throws -> [CustomerSummary] { [] }
     func update(id: Int64, _ req: UpdateCustomerRequest) async throws -> CustomerDetail {
         throw URLError(.unsupportedURL)
+    }
+    func listPage(cursor: String?, query: CustomerListQuery) async throws -> CustomerCursorPage {
+        CustomerCursorPage(customers: [], nextCursor: nil)
+    }
+    func createFromContact(_ req: ContactImportCreateRequest) async throws {}
+    func bulkTag(_ req: BulkTagRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
+    }
+    func bulkDelete(_ req: BulkDeleteRequest) async throws -> BulkOperationResult {
+        BulkOperationResult(processed: 0, failed: 0)
     }
 }
 

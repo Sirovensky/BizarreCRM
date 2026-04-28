@@ -19,7 +19,7 @@ import Networking
 @MainActor
 @Observable
 public final class TicketPhotoLibraryPickerViewModel {
-    public private(set) var selectedItems: [PhotosPickerItem] = []
+    public internal(set) var selectedItems: [PhotosPickerItem] = []
     public private(set) var loadedImages: [Data] = []
     public private(set) var isLoading: Bool = false
     public private(set) var errorMessage: String?

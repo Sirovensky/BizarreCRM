@@ -15,13 +15,25 @@ import Networking
 @MainActor
 @Observable
 public final class TicketTransferLocationViewModel {
-    public enum Phase: Sendable {
+    public enum Phase: Sendable, Equatable {
         case idle
         case loading
         case loaded([TenantLocation])
         case transferring
         case done
         case error(String)
+
+        public static func == (lhs: Self, rhs: Self) -> Bool {
+            switch (lhs, rhs) {
+            case (.idle, .idle), (.loading, .loading), (.transferring, .transferring), (.done, .done):
+                return true
+            case (.loaded(let a), .loaded(let b)):
+                return a.map(\.id) == b.map(\.id)
+            case (.error(let a), .error(let b)):
+                return a == b
+            default: return false
+            }
+        }
     }
 
     public var phase: Phase = .idle

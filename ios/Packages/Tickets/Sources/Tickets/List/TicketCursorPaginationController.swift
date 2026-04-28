@@ -94,10 +94,7 @@ public final class TicketCursorPaginationController {
         }
         pageStates[key] = updated
 
-        AppLog.ui.debug(
-            "Cursor page fetched: filter=\(filter.rawValue, privacy: .public) " +
-            "count=\(page.tickets.count) hasNext=\(page.nextCursor != nil, privacy: .public)"
-        )
+        AppLog.ui.debug("Cursor page fetched: filter=\(filter.rawValue, privacy: .public) count=\(page.tickets.count) hasNext=\(page.nextCursor != nil, privacy: .public)")
         return page.tickets
     }
 

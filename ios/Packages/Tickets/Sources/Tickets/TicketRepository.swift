@@ -11,15 +11,8 @@ public protocol TicketRepository: Sendable {
 }
 
 public extension TicketRepository {
-    /// Backwards-compatible default overload — filters/sort optional.
-    func list(filter: TicketListFilter = .all, keyword: String? = nil) async throws -> [TicketSummary] {
-        try await list(filter: filter, keyword: keyword, sort: .newest)
-    }
-}
-
-public extension TicketRepository {
     /// Backward-compat overload — callers that omit urgency continue to compile.
-    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+    func list(filter: TicketListFilter = .all, keyword: String? = nil) async throws -> [TicketSummary] {
         try await list(filter: filter, urgency: nil, keyword: keyword)
     }
 }

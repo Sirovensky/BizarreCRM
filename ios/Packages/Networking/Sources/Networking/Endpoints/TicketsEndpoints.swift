@@ -176,7 +176,7 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
 
 /// Client-side filter chips. Mapped to server query params in the repository.
 /// §4.1: All / Open / On hold / Closed / Cancelled / Active (mirrors server `status_group`).
-public enum TicketListFilter: String, CaseIterable, Sendable, Identifiable {
+public enum TicketListFilter: String, Codable, CaseIterable, Sendable, Identifiable {
     case all
     case myTickets
     case open

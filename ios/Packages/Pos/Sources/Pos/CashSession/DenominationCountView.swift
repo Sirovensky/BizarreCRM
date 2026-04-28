@@ -285,7 +285,7 @@ public struct DenominationCountView: View {
             HStack(spacing: BrandSpacing.sm) {
                 Button {
                     vm.decrement(denom)
-                    BrandHaptics.tapLight()
+                    BrandHaptics.lightImpact()
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.system(size: 22))
@@ -307,7 +307,7 @@ public struct DenominationCountView: View {
 
                 Button {
                     vm.increment(denom)
-                    BrandHaptics.tapLight()
+                    BrandHaptics.lightImpact()
                 } label: {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 22))

@@ -285,8 +285,8 @@ public protocol ReceiptPrinterProtocol: AnyObject {
 private enum Container {
     // Real resolution goes through the DI container registered in AppServices.
     // This shim returns nil until the Hardware printer is registered.
-    static func shared<T>() -> T? { nil }
-    static func shared<T>(_ type: T.Type) -> T? { nil }
+    static func resolveOptional<T>() -> T? { nil }
+    static func resolveOptional<T>(_ type: T.Type) -> T? { nil }
     static var shared: ContainerResolver { ContainerResolver() }
 }
 

@@ -2,6 +2,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 // MARK: - ScheduledPricingRulesView (§16)
 //
@@ -16,9 +17,9 @@ import DesignSystem
 // MARK: - ScheduledRuleEntry
 
 /// A rule with at least one validity boundary, used for calendar display.
-private struct ScheduledRuleEntry: Identifiable {
-    let rule: PricingRule
-    var id: String { rule.id }
+public struct ScheduledRuleEntry: Identifiable, Sendable {
+    public let rule: PricingRule
+    public var id: String { rule.id }
 
     var statusLabel: String {
         let now = Date.now

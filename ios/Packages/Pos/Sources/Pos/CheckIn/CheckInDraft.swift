@@ -105,7 +105,7 @@ public final class CheckInDraft {
     public var ldiStatus: LDIStatus = .notTested
 
     // MARK: - Step 4: Diagnostic
-    public var diagnosticResults: [DiagnosticResult] = Self.defaultDiagnosticItems()
+    public var diagnosticResults: [DiagnosticResult] = CheckInDraft.defaultDiagnosticItems()
 
     private static func defaultDiagnosticItems() -> [DiagnosticResult] {
         [

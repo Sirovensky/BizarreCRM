@@ -145,7 +145,7 @@ public struct CashOpeningPayload: Codable, Sendable {
 /// let posExecutor = PosSyncOpExecutor(api: apiClient)
 /// SyncManager.shared.executor = posExecutor
 /// ```
-public final class PosSyncOpExecutor: SyncOpExecutor {
+public final class PosSyncOpExecutor: SyncOpExecutor, @unchecked Sendable {
     private let api: APIClient
 
     /// §16.23 — handler for offline-queued card tenders.

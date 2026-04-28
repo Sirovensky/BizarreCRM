@@ -164,8 +164,7 @@ struct CheckInDetailsView: View {
                 .frame(height: 44)
                 .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
-
-                BrandHaptics.success()
+                .onAppear { BrandHaptics.success() }
             }
         }
         .padding(.horizontal, BrandSpacing.base)
@@ -202,7 +201,7 @@ struct CheckInDetailsView: View {
                             // CameraCaptureView integration — Agent 2 wires this
                         } label: {
                             RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
-                                .strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 1, dash: [4])
+                                .strokeBorder(Color.bizarreOutline.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4]))
                                 .frame(width: 72, height: 72)
                                 .overlay(
                                     Image(systemName: "plus")

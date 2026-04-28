@@ -81,7 +81,7 @@ public struct TicketEditDeepView: View {
                 .padding(.horizontal, BrandSpacing.base)
                 .padding(.bottom, BrandSpacing.xl)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(reduceMotion ? .none : BrandMotion.standard, value: vm.hasConcurrentEditConflict)
+                .animation(reduceMotion ? .none : BrandMotion.banner, value: vm.hasConcurrentEditConflict)
             }
         }
     }

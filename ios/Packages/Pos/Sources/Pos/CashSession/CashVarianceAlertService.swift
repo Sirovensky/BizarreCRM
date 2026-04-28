@@ -55,7 +55,12 @@ public actor CashVarianceAlertService {
         sessionId: Int64?,
         thresholdCents: Int? = nil
     ) async throws -> Bool {
-        let threshold = thresholdCents ?? (try? await loadThreshold()) ?? Self.defaultThresholdCents
+        let threshold: Int
+        if let override = thresholdCents {
+            threshold = override
+        } else {
+            threshold = (try? await loadThreshold()) ?? Self.defaultThresholdCents
+        }
         let absVariance = abs(varianceCents)
 
         guard absVariance >= threshold else {
@@ -120,35 +125,38 @@ extension APIClient {
         varianceCents: Int,
         message: String
     ) async throws {
-        struct Body: Encodable, Sendable {
-            let type: String
-            let sessionId: Int64?
-            let varianceCents: Int
-            let message: String
-
-            enum CodingKeys: String, CodingKey {
-                case type
-                case sessionId      = "session_id"
-                case varianceCents  = "variance_cents"
-                case message
-            }
-        }
-        struct Response: Decodable, Sendable { let success: Bool }
         _ = try await post(
             "/notifications/send",
-            body: Body(type: "cash_variance_alert", sessionId: sessionId,
-                       varianceCents: varianceCents, message: message),
-            as: Response.self
+            body: VarianceAlertBody(type: "cash_variance_alert", sessionId: sessionId,
+                                    varianceCents: varianceCents, message: message),
+            as: VarianceAlertResponse.self
         )
     }
 
     /// `GET /settings/pos` — loads variance threshold.
     fileprivate func getPosVarianceSettings() async throws -> PosVarianceSettings {
-        struct Envelope: Decodable, Sendable {
-            let success: Bool
-            let data: PosVarianceSettings?
-        }
-        let env = try await get("/settings/pos", as: Envelope.self)
+        let env = try await get("/settings/pos", as: PosVarianceEnvelope.self)
         return env.data ?? PosVarianceSettings(varianceAlertThresholdCents: nil)
     }
+}
+
+private struct VarianceAlertBody: Encodable, Sendable {
+    let type: String
+    let sessionId: Int64?
+    let varianceCents: Int
+    let message: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case sessionId      = "session_id"
+        case varianceCents  = "variance_cents"
+        case message
+    }
+}
+
+private struct VarianceAlertResponse: Decodable, Sendable { let success: Bool }
+
+private struct PosVarianceEnvelope: Decodable, Sendable {
+    let success: Bool
+    let data: PosVarianceSettings?
 }

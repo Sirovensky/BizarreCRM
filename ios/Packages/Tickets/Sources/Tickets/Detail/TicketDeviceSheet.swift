@@ -138,7 +138,7 @@ public struct TicketDeviceSheet: View {
 
                         TextField("Serial number", text: $vm.serial)
                             .autocorrectionDisabled()
-                            .textInputAutocapitalization(.allCharacters)
+                            .textInputAutocapitalization(.characters)
                             .accessibilityLabel("Serial number")
 
                         TextField("Security code / pattern", text: $vm.securityCode)

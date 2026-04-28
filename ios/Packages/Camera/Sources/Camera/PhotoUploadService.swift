@@ -3,7 +3,10 @@ import CoreImage
 import Foundation
 import ImageIO
 import UIKit
+import UniformTypeIdentifiers
 import Core
+
+nonisolated(unsafe) private let kJPEGUTI: CFString = "public.jpeg" as CFString
 
 // MARK: - PhotoUploadService
 //
@@ -181,7 +184,7 @@ public actor PhotoUploadService {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
             throw PhotoUploadError.decodeFailed
         }
-        let uti = CGImageSourceGetType(source) ?? kUTTypeJPEG
+        let uti = CGImageSourceGetType(source) ?? kJPEGUTI
 
         // Copy existing properties and strip privacy-sensitive keys.
         var props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
@@ -203,7 +206,7 @@ public actor PhotoUploadService {
 
         // Re-encode to JPEG with stripped metadata.
         let destData = NSMutableData()
-        let outputUTI: CFString = format == .jpeg ? kUTTypeJPEG : uti
+        let outputUTI: CFString = format == .jpeg ? kJPEGUTI : uti
         guard let dest = CGImageDestinationCreateWithData(destData, outputUTI, 1, nil) else {
             throw PhotoUploadError.encodeFailed
         }

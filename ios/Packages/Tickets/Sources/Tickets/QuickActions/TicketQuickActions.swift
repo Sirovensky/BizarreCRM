@@ -1,5 +1,6 @@
 import Foundation
 import Networking
+import Core
 
 // §22 + §4 — Reusable SwiftUI Menu + ContextMenu content for ticket rows.
 //

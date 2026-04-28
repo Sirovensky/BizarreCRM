@@ -67,7 +67,7 @@ public struct WorkOrderModel: Sendable {
         let fmt = NumberFormatter()
         fmt.numberStyle = .currency
         fmt.currencyCode = "USD"
-        let totalStr = fmt.string(from: NSNumber(value: detail.totalPrice ?? 0)) ?? "$0.00"
+        let totalStr = fmt.string(from: NSNumber(value: detail.total ?? 0)) ?? "$0.00"
 
         let customer = detail.customer
         let deviceLines = detail.devices.map { d in

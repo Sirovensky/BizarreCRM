@@ -102,22 +102,18 @@ public extension APIClient {
     ///
     /// Envelope response: `{ success: Bool, message: String? }` — no data body needed.
     func sendZReportEmail(payload: ZReportEmailPayload) async throws {
-        struct Body: Encodable, Sendable {
-            let type: String
-            let payload: ZReportEmailPayload
-
-            enum CodingKeys: String, CodingKey {
-                case type, payload
-            }
-        }
-        let body = Body(type: "z_report", payload: payload)
-        // Soft-absorbs the 404/501 body — the actor layer maps it to .unavailable.
+        let body = ZReportEmailBody(type: "z_report", payload: payload)
         _ = try await post(
             "/api/v1/notifications/send-z-report",
             body: body,
             as: APIPlaceholderResponse.self
         )
     }
+}
+
+private struct ZReportEmailBody: Encodable, Sendable {
+    let type: String
+    let payload: ZReportEmailPayload
 }
 
 /// Minimal placeholder for `{ success, message }` responses that carry no domain data.

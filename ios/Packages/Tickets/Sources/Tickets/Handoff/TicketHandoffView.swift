@@ -167,7 +167,7 @@ public struct TicketHandoffView: View {
 #Preview("Handoff Sheet") {
     Color.bizarreSurfaceBase
         .sheet(isPresented: .constant(true)) {
-            TicketHandoffView(ticketId: 1, api: APIClient())
+            TicketHandoffView(ticketId: 1, api: APIClientImpl())
         }
 }
 #endif

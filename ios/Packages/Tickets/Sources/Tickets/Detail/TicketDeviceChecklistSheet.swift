@@ -21,7 +21,7 @@ import Networking
 
 // MARK: - Item model
 
-private struct ChecklistEntry: Identifiable, Equatable {
+struct ChecklistEntry: Identifiable, Equatable {
     let id: String
     var label: String
     var checked: Bool
@@ -107,7 +107,7 @@ final class TicketDeviceChecklistViewModel {
             savedSuccessfully = true
         } catch {
             AppLog.ui.error(
-                "Device checklist save failed for device \(deviceId): \(error.localizedDescription, privacy: .public)"
+                "Device checklist save failed for device \(self.deviceId): \(error.localizedDescription, privacy: .public)"
             )
             errorMessage = error.localizedDescription
         }

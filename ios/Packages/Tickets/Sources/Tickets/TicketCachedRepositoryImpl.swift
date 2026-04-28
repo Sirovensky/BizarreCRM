@@ -82,6 +82,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
         try await remote.detail(id: id)
     }
 
+    public func delete(id: Int64) async throws {
+        try await remote.delete(id: id)
+        cache.removeAll()
+    }
+
+    public func duplicate(id: Int64) async throws -> DuplicateTicketResponse {
+        let result = try await remote.duplicate(id: id)
+        cache.removeAll()
+        return result
+    }
+
+    public func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse {
+        try await remote.convertToInvoice(id: id)
+    }
+
     // MARK: - Private
 
     private func cacheKey(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) -> String {

@@ -63,7 +63,7 @@ public struct TicketCreateFlowView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(BrandMotion.standard, value: vm.stepValidationError)
+        .animation(BrandMotion.banner, value: vm.stepValidationError)
     }
 
     // MARK: - iPhone: full-screen NavigationStack
@@ -213,10 +213,10 @@ public struct TicketCreateFlowView: View {
             haptic.notificationOccurred(.success)
             if vm.queuedOffline {
                 pendingBanner = "Saved — will sync when online"
-                generator.notificationOccurred(.success)
+                haptic.notificationOccurred(.success)
                 try? await Task.sleep(nanoseconds: 900_000_000)
             } else {
-                generator.notificationOccurred(.success)
+                haptic.notificationOccurred(.success)
             }
             // §4.3 — Post-create: pop to ticket detail + offer "Print label" if callback available
             onCreated(id)

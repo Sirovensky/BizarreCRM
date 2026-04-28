@@ -475,25 +475,19 @@ struct InvoiceDetailWithLines: Decodable, Sendable {
 // MARK: - PosTenantLimits extension (refund threshold)
 
 private extension PosTenantLimits {
-    static let shared = PosTenantLimits()
+    static let shared = PosTenantLimits(
+        maxCashierDiscountPercent: 0,
+        maxCashierDiscountCents: 0,
+        priceOverrideThresholdCents: 0,
+        voidRequiresManager: false,
+        noSaleRequiresManager: false
+    )
     /// Manager PIN required for refunds above this amount. Default $50 = 5,000 cents.
     var refundManagerPinThresholdCents: Int { 5_000 }
 }
 
 // MARK: - Preview
 
-#Preview("Return detail") {
-    PosReturnDetailView(
-        invoice: InvoiceSummary(
-            id: 42,
-            displayId: "#00042",
-            customerName: "Jane Doe",
-            customerId: 7,
-            total: 149.99,
-            status: "paid"
-        ),
-        api: nil
-    )
-    .preferredColorScheme(.dark)
-}
+// Preview disabled — InvoiceSummary has no public memberwise init
+// (Decodable-only). Restore via JSONDecoder + sample fixture if needed.
 #endif

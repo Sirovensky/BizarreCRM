@@ -33,8 +33,7 @@ public final class CallKitCoordinator: NSObject, CXProviderDelegate, Sendable {
     // MARK: - Init
 
     override private init() {
-        let config = CXProviderConfiguration()
-        config.localizedName = "BizarreCRM"
+        let config = CXProviderConfiguration(localizedName: "BizarreCRM")
         config.supportsVideo = false
         config.maximumCallsPerCallGroup = 1
         config.maximumCallGroups = 1
@@ -134,8 +133,9 @@ public final class CallKitCoordinator: NSObject, CXProviderDelegate, Sendable {
 
     public nonisolated func provider(_ provider: CXProvider, perform action: CXEndCallAction) {
         action.fulfill()
+        let callUUID = action.callUUID
         Task { @MainActor in
-            activeCalls.removeValue(forKey: action.callUUID)
+            activeCalls.removeValue(forKey: callUUID)
         }
     }
 

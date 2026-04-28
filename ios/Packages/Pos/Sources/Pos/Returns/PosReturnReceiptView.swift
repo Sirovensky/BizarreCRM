@@ -161,7 +161,7 @@ public struct PosReturnReceiptView: View {
                 .padding(.vertical, BrandSpacing.xs)
                 .background(
                     Capsule()
-                        .fill(BrandPalette.error)
+                        .fill(Color.bizarreError)
                 )
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("pos.returnReceipt.badge")
@@ -305,7 +305,7 @@ public struct PosReturnReceiptView: View {
 
 // MARK: - Convenience colour alias
 
-private extension BrandPalette {
-    static var error: Color { Color(hex: "#e2526c") }
+private extension DesignTokens.BrandPalette {
+    static var errorAlias: Color { Color.bizarreError }
 }
 #endif

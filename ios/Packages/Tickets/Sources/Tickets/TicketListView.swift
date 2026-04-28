@@ -324,29 +324,7 @@ public struct TicketListView: View {
         }
     }
 
-    /// §4.1: Sort dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
-    private var sortToolbarItem: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
-            Menu {
-                ForEach(TicketSortOrder.allCases) { order in
-                    Button {
-                        vm.applySort(order)
-                    } label: {
-                        HStack {
-                            Text(order.displayName)
-                            if vm.sortOrder == order {
-                                Image(systemName: "checkmark")
-                            }
-                        }
-                    }
-                    .accessibilityLabel("Sort by \(order.displayName)\(vm.sortOrder == order ? ", currently selected" : "")")
-                }
-            } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
-            }
-            .accessibilityLabel("Sort tickets. Current: \(vm.sortOrder.displayName)")
-        }
-    }
+    // (sortToolbarItem above — second copy removed.)
 
     @ViewBuilder
     private func listContent(onSelect: @escaping (Int64) -> Void) -> some View {
@@ -588,7 +566,7 @@ private struct TicketRow: View {
 
                 // §4.1 — Urgency chip with color dot
                 if let urgency = ticket.urgency, !urgency.isEmpty {
-                    UrgencyChip(urgency: urgency)
+                    UrgencyDot(urgency: urgency)
                 }
             }
 
@@ -663,9 +641,9 @@ private struct TicketRow: View {
     }
 }
 
-// MARK: - §4.1 Urgency chip
+// MARK: - §4.1 Urgency dot (string-keyed)
 
-private struct UrgencyChip: View {
+private struct UrgencyDot: View {
     let urgency: String
 
     var body: some View {
@@ -685,7 +663,7 @@ private struct UrgencyChip: View {
         switch urgency.lowercased() {
         case "critical": return Color.bizarreError
         case "high":     return Color.bizarreOrange
-        case "medium":   return Color(red: 0.93, green: 0.76, blue: 0.18) // amber
+        case "medium":   return Color(red: 0.93, green: 0.76, blue: 0.18)
         case "normal":   return Color.bizarreOnSurfaceMuted
         case "low":      return Color.bizarreTeal
         default:         return Color.bizarreOnSurfaceMuted

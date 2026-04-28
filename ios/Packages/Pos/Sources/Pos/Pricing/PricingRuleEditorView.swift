@@ -389,10 +389,9 @@ public struct PricingRuleEditorView: View {
     }
 }
 
-// MARK: - PricingRuleType display name
-
+// (PricingRuleType.displayName lives in PricingRulesListView.swift)
 private extension PricingRuleType {
-    var displayName: String {
+    var legacyEditorLabel: String {
         switch self {
         case .bulkBundle:       return "Bulk Bundle (N for $X)"
         case .bogo:             return "BOGO (Buy X Get Y Free)"
