@@ -94,27 +94,24 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               <Phone className="h-4 w-4 text-surface-400" />
               Phone <span className="text-red-500">*</span>
             </label>
+            {/* Phone input: ZERO formatting while typing — that was the source
+                of "delete replaces digit with 1" weirdness (controlled-input
+                cursor jumps + formatter re-inserting separators). Now we
+                accept whatever the user types verbatim, and format ONLY on
+                blur. While focused the user sees raw characters; on blur we
+                normalize to "+1 (555)-123-4567" if it's a US 10-digit. */}
             <input
               id="setup-store-phone"
               type="tel"
               value={phone}
-              onChange={(e) => {
-                // Detect separator-backspace: user pressed delete on a non-digit
-                // (")" / "-" / space). Without intervention the formatter would
-                // re-insert the separator on the next render, making the keystroke
-                // appear to do nothing. If the new value is shorter than the
-                // current state but the digit count is unchanged, the user deleted
-                // a separator — drop the trailing digit so the keystroke has effect.
-                const raw = e.target.value;
-                const prevDigits = phone.replace(/\D/g, '');
-                const nextDigits = raw.replace(/\D/g, '');
-                let digits = nextDigits;
-                if (raw.length < phone.length && nextDigits.length === prevDigits.length && nextDigits.length > 0) {
-                  digits = nextDigits.slice(0, -1);
+              onChange={(e) => onUpdate({ store_phone: e.target.value })}
+              onBlur={(e) => {
+                const formatted = formatStorePhoneAsYouType(e.target.value);
+                if (formatted !== e.target.value) {
+                  onUpdate({ store_phone: formatted });
                 }
-                onUpdate({ store_phone: formatStorePhoneAsYouType(digits) });
               }}
-              placeholder="+1 (555)-123-4567"
+              placeholder="+1 (555) 123-4567"
               inputMode="tel"
               autoComplete="tel"
               aria-invalid={!!errors.phone}
