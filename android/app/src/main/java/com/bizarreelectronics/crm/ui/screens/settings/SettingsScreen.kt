@@ -449,11 +449,11 @@ fun SettingsScreen(
             }
 
             // §19.8 — POS / payment settings (methods, tax, tips, cash drawer).
-            if (onPosSettings != null) {
+            if (onPaymentSettings != null) {
                 SettingsRow(
                     icon = Icons.Default.PointOfSale,
                     title = "POS & Payment",
-                    onClick = onPosSettings,
+                    onClick = onPaymentSettings,
                 )
             }
 

@@ -63,6 +63,7 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.BenchTimerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ConcurrentEditBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeletedBanner
 import com.bizarreelectronics.crm.ui.screens.tickets.components.DeviceHistorySheet
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailHeaderRow
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketDetailTabs
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPhotoGallery
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketPrintActions
@@ -2069,6 +2070,14 @@ private fun TicketDetailContent(
                     }
                 }
             }
+        }
+
+        // §4.2 — Status / urgency / due-date chip row (completes [~] header item)
+        item {
+            TicketDetailHeaderRow(
+                ticket = ticket,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
 
         // Info row
