@@ -2999,8 +2999,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ### 19.16 Ticket-status editor
 - [ ] Reorder statuses (drag).
   - **NOTE (2026-04-26):** Server PUT /settings/statuses/:id exists; `SettingsApi.putStatus()` wired. Drag-reorder Compose gesture UI (LazyColumn + drag handles) deferred.
-- [ ] Edit name, color, transition guards.
-  - **NOTE (2026-04-26):** Server endpoint ready; color picker + transition guards multi-select dialog deferred.
+- [x] Edit name, color, notify-customer, is_closed, is_cancelled flags. (session 2026-04-27 — `TicketStatusEditorScreen.kt` + `TicketStatusEditorViewModel`: loads `GET /settings/statuses` as `List<TicketStatusItem>`; `LazyColumn` status list with color-dot + tag line; Edit icon opens `StatusEditDialog` `AlertDialog` with name `OutlinedTextField`, 12-swatch `FlowRow` color picker, and 3 `Switch` toggles (notify/closed/cancelled); optimistic update + rollback on failure; persisted via `PUT /settings/statuses/:id` via new `SettingsApi.putStatus()`; `Screen.TicketStatusEditor` added to `AppNavGraph`; entry row wired in `TicketSettingsScreen` via `onStatusEditor` callback; TalkBack `contentDescription` on every interactive element.)
 - [ ] Mark statuses as `waiting_customer` / `awaiting_parts` (pauses SLA per §4.19).
   - **NOTE (2026-04-26):** DB column exists; server SLA pause reads it. Editor UI deferred with full status editor.
 

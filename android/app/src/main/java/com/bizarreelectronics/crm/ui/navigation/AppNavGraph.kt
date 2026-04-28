@@ -146,6 +146,7 @@ import com.bizarreelectronics.crm.ui.screens.settings.PaymentSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.SmsSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.TeamSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.TicketSettingsScreen
+import com.bizarreelectronics.crm.ui.screens.settings.TicketStatusEditorScreen
 import com.bizarreelectronics.crm.ui.screens.training.TrainingModeBanner
 import com.bizarreelectronics.crm.ui.screens.training.TrainingModeScreen
 import com.bizarreelectronics.crm.data.local.prefs.TrainingPreferences
@@ -560,6 +561,9 @@ sealed class Screen(val route: String) {
 
     // §19.7 — Ticket settings (default due-date, IMEI required, photo required).
     data object TicketSettings : Screen("settings/tickets")
+
+    // §19.16 — Ticket-status editor (name, color, notify-customer, closed/cancelled flags).
+    data object TicketStatusEditor : Screen("settings/ticket-statuses")
 
     // §19.8 — POS / payment settings (payment methods, BlockChyp, tips, cash drawer).
     data object PaymentSettings : Screen("settings/payment")
@@ -3192,7 +3196,15 @@ fun AppNavGraph(
 
             // ─── §19.7 Ticket settings ─────────────────────────────────────────
             composable(Screen.TicketSettings.route) {
-                TicketSettingsScreen(onBack = { navController.popBackStack() })
+                TicketSettingsScreen(
+                    onBack = { navController.popBackStack() },
+                    onStatusEditor = { navController.navigate(Screen.TicketStatusEditor.route) },
+                )
+            }
+
+            // ─── §19.16 Ticket-status editor ───────────────────────────────────
+            composable(Screen.TicketStatusEditor.route) {
+                TicketStatusEditorScreen(onBack = { navController.popBackStack() })
             }
 
             // ─── §19.8 POS / payment settings ─────────────────────────────────

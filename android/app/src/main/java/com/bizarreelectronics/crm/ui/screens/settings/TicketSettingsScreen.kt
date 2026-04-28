@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -20,6 +22,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
@@ -137,6 +140,8 @@ class TicketSettingsViewModel @Inject constructor(
 @Composable
 fun TicketSettingsScreen(
     onBack: () -> Unit,
+    /** Navigate to §19.16 Ticket-status editor. Null hides the entry row. */
+    onStatusEditor: (() -> Unit)? = null,
     viewModel: TicketSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -247,6 +252,28 @@ fun TicketSettingsScreen(
                                 onCheckedChange = { viewModel.update { copy(photoRequiredOnClose = it) } },
                             )
                         },
+                    )
+                }
+            }
+
+            // ── §19.16 Status taxonomy editor ─────────────────────────────
+            if (onStatusEditor != null) {
+                OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                    ListItem(
+                        headlineContent = { Text("Manage ticket statuses") },
+                        supportingContent = {
+                            Text("Edit status names, colors, and notification rules")
+                        },
+                        trailingContent = {
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                            )
+                        },
+                        colors = ListItemDefaults.colors(
+                            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                        ),
+                        modifier = androidx.compose.ui.Modifier.clickable { onStatusEditor() },
                     )
                 }
             }
