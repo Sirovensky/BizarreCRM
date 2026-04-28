@@ -618,6 +618,39 @@ router.post('/', signupLimiter, asyncHandler(async (req: Request, res: Response)
   // restarts between here and the user clicking the verification link.
   logger.info('pending signup created', { slug: normalizedSlug, email: normalizedEmail, tokenPrefix: verifyToken.slice(0, 8) });
 
+  // WIZARD-EMAIL-1 (TEMPORARY): when the dev-skip gate is on, do NOT attempt
+  // to send the verification email — outbound SMTP is not yet wired in this
+  // build, so any send fails and bricks the signup flow. Instead log the
+  // verify token URL so an operator can manually click it, and return success
+  // so the frontend lands on its "Check your email" screen where the
+  // dev-only "Skip email check" button can finish the provisioning.
+  //
+  // Triple-gated identical to the dev-skip endpoint itself:
+  //   NODE_ENV !== 'production'  AND  WIZARD_DEV_SKIP_EMAIL === '1'
+  //
+  // Removal: tracked in TODO.md as WIZARD-EMAIL-1.
+  const devSkipEmail =
+    process.env.NODE_ENV !== 'production' &&
+    process.env.WIZARD_DEV_SKIP_EMAIL === '1';
+
+  if (devSkipEmail) {
+    const verifyUrl = `https://${config.baseDomain}/api/v1/signup/verify/${encodeURIComponent(verifyToken)}`;
+    logger.warn('[WIZARD-EMAIL-1] dev-skip mode — verification email NOT sent', {
+      slug: normalizedSlug,
+      email: normalizedEmail,
+      verifyUrl,
+      tokenPrefix: verifyToken.slice(0, 8),
+    });
+    audit(req.db, 'signup_pending_dev_skip_email', null, ip, { slug: normalizedSlug, email: normalizedEmail });
+    res.status(202).json({
+      success: true,
+      data: {
+        message: 'Email sending is disabled in this dev build. Use the "Skip email check (dev only)" button to provision the shop.',
+      },
+    });
+    return;
+  }
+
   const emailSent = await sendVerificationEmail(req.db, normalizedEmail, verifyToken, normalizedSlug, String(shop_name).trim());
   if (!emailSent) {
     // Remove the pending entry so this attempt doesn't occupy the email quota
