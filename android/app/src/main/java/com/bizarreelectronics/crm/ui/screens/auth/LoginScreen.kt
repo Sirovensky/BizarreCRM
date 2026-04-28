@@ -50,6 +50,8 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -2213,28 +2215,10 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // Sanctioned WaveDivider placement — one branded moment under wordmark.
-            // AnimatedVisibility fades + height-collapses the wave band so the
-            // wordmark stays put on IME open/close and only the wave + its
-            // surrounding spacers participate in the transition.
-            androidx.compose.animation.AnimatedVisibility(
-                visible = !imeVisible,
-                enter = androidx.compose.animation.fadeIn(
-                    animationSpec = androidx.compose.animation.core.tween(animDuration),
-                ) + androidx.compose.animation.expandVertically(
-                    animationSpec = androidx.compose.animation.core.tween(animDuration),
-                ),
-                exit = androidx.compose.animation.fadeOut(
-                    animationSpec = androidx.compose.animation.core.tween(animDuration),
-                ) + androidx.compose.animation.shrinkVertically(
-                    animationSpec = androidx.compose.animation.core.tween(animDuration),
-                ),
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Spacer(Modifier.height(20.dp))
-                    WaveDivider()
-                }
-            }
+            // 2026-04-27 — WaveDivider under the wordmark removed; the new
+            // LinearWavyProgressIndicator step indicator on LoginTabBar is now
+            // the single brand wave on the screen ("only one wave at a time"
+            // rule from feedback_brand_color memory).
             Spacer(Modifier.height(waveSpacerBelow))
 
             // §28.6 — sticky banner shown when the user landed here because
@@ -2408,6 +2392,24 @@ fun LoginScreen(
  * Inactive tabs: muted onSurfaceVariant text + faint divider underline.
  * Container is transparent so it blends with the screen background.
  */
+/**
+ * 2026-04-27 — Replaced TabRow with a M3 Expressive
+ * [androidx.compose.material3.LinearWavyProgressIndicator] step indicator.
+ * The wave doubles as the brand wave (the WaveDivider under the wordmark
+ * was removed so there's exactly one wave on screen).
+ *
+ * Layout from top:
+ *   1. 3 caption labels (Server / Sign In / 2FA), each in its own equal
+ *      column. Past = onSurface (cream-tappable). Active = primary cream
+ *      bold. Future = onSurfaceVariant 0.45α + disabled().
+ *   2. LinearWavyProgressIndicator with progress = (currentIndex + 1) / 3.
+ *   3. "Step N of 3" caption row.
+ *
+ * Tappable behaviour mirrors the prior TabRow: past captions fire
+ * onTabClick → ViewModel.goToTab; future captions are inert and carry
+ * disabled() semantics for TalkBack.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun LoginTabBar(
     currentStep: SetupStep,
@@ -2422,76 +2424,85 @@ private fun LoginTabBar(
     }
 
     val activeColor = MaterialTheme.colorScheme.primary
+    val onSurface = MaterialTheme.colorScheme.onSurface
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val dividerColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
+    val trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
 
-    TabRow(
-        selectedTabIndex = selectedIndex,
-        modifier = Modifier.fillMaxWidth(),
-        containerColor = Color.Transparent,
-        indicator = { tabPositions ->
-            // LOGIN-MOCK-143: M3 Expressive removed Modifier.tabIndicatorOffset.
-            // Animate pos.left and pos.width via animateDpAsState so the indicator
-            // slides smoothly between tabs instead of hard-cutting.
-            val pos = tabPositions[selectedIndex]
-            // LOGIN-MOCK-153: animDuration respects Reduce Motion (0 = instant snap).
-            val animatedLeft by animateDpAsState(
-                targetValue = pos.left,
-                animationSpec = tween(durationMillis = animDuration),
-                label = "tab_indicator_left",
-            )
-            val animatedWidth by animateDpAsState(
-                targetValue = pos.width,
-                animationSpec = tween(durationMillis = animDuration),
-                label = "tab_indicator_width",
-            )
-            Box(Modifier.fillMaxSize()) {
-                TabRowDefaults.SecondaryIndicator(
+    // Progress fraction: animate to (selectedIndex + 1) / 3 so the wavy bar
+    // glides between steps instead of jumping. Reduce Motion (animDuration=0)
+    // collapses the tween to a snap.
+    val targetFraction = (selectedIndex + 1) / 3f
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = targetFraction,
+        animationSpec = tween(durationMillis = animDuration),
+        label = "login_step_progress",
+    )
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // ── Caption row: 3 equal columns, tappable for past steps ─────────
+        Row(modifier = Modifier.fillMaxWidth()) {
+            tabLabels.forEachIndexed { index, label ->
+                val isSelected = index == selectedIndex
+                val isFuture = index > selectedIndex
+                val isPast = index < selectedIndex
+
+                val labelColor = when {
+                    isSelected -> activeColor
+                    isFuture -> inactiveColor.copy(alpha = 0.45f)
+                    else -> onSurface
+                }
+
+                val tapModifier = if (isPast) {
+                    Modifier.clickable(
+                        onClickLabel = "Go back to $label step",
+                    ) { onTabClick(index) }
+                } else Modifier
+
+                Box(
                     modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .offset(x = animatedLeft)
-                        .width(animatedWidth),
-                    height = 3.dp, // LOGIN-MOCK-103: match mockup ~3dp indicator weight
-                    color = activeColor,
-                )
-            }
-        },
-        divider = {
-            HorizontalDivider(color = dividerColor, thickness = 1.dp)
-        },
-    ) {
-        tabLabels.forEachIndexed { index, label ->
-            val isSelected = index == selectedIndex
-            // 2026-04-27 — Tabs were previously display-only with disabled()
-            // semantics, but users tapped them expecting backward navigation.
-            // Behaviour: tapping a PRIOR tab navigates back (re-uses
-            // ViewModel.goToTab to scrub TOTP / register state). Tapping a
-            // future tab is rejected by goToTab; we still reflect that as
-            // disabled() in semantics so TalkBack doesn't promise an action
-            // that won't fire.
-            val isFuture = index > selectedIndex
-            Tab(
-                selected = isSelected,
-                onClick = { if (isFuture) Unit else onTabClick(index) },
-                enabled = !isFuture,
-                modifier = Modifier.semantics {
-                    role = Role.Tab
-                    selected = isSelected
-                    if (isSelected || isFuture) disabled()
-                },
-                text = {
+                        .weight(1f)
+                        .then(tapModifier)
+                        .padding(vertical = 8.dp)
+                        .semantics {
+                            role = Role.Tab
+                            selected = isSelected
+                            if (isSelected || isFuture) disabled()
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (isSelected) activeColor
-                                else if (isFuture) inactiveColor.copy(alpha = 0.45f)
-                                else inactiveColor,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = labelColor,
                     )
-                },
-                selectedContentColor = activeColor,
-                unselectedContentColor = inactiveColor,
-            )
+                }
+            }
         }
+
+        // ── Wavy progress indicator (M3 Expressive) ────────────────────────
+        androidx.compose.material3.LinearWavyProgressIndicator(
+            progress = { animatedProgress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 4.dp)
+                .semantics {
+                    contentDescription =
+                        "Step ${selectedIndex + 1} of ${tabLabels.size}, ${tabLabels[selectedIndex]}"
+                },
+            color = activeColor,
+            trackColor = trackColor,
+            waveSpeed = 5.dp,
+        )
+
+        // ── "Step N of 3" caption ──────────────────────────────────────────
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "Step ${selectedIndex + 1} of ${tabLabels.size}",
+            style = MaterialTheme.typography.labelSmall,
+            color = inactiveColor,
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+        )
     }
 }
 

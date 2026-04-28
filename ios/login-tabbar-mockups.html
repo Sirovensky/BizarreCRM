@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bizarre CRM — Login step indicator: M3 Expressive options</title>
+<style>
+  :root {
+    --bg: #1B1410;
+    --surface: #261D17;
+    --surface-2: #2E241D;
+    --surface-3: #3D2C14;
+    --on-surface: #F4E5D2;
+    --on-surface-variant: #B6A593;
+    --outline: #5A4A38;
+    --primary: #FDEED0;          /* brand cream */
+    --on-primary: #2B1B07;       /* dark brown text on cream */
+    --secondary: #4DB8C9;
+    --magenta: #BC398F;
+    --error: #FFB4A8;
+  }
+  * { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+  html, body { background: #0A0805; color: var(--on-surface); margin: 0;
+    font-family: 'Inter', system-ui, sans-serif; line-height: 1.4; }
+  body { padding: 32px 24px 64px; }
+  h1 { font-size: 28px; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h1 small { font-weight: 400; color: var(--on-surface-variant); font-size: 14px; }
+  h2 { font-size: 18px; margin: 36px 0 6px; color: var(--primary); letter-spacing: 0.02em; }
+  h2 small { color: var(--on-surface-variant); font-weight: 400; font-size: 13px; margin-left: 8px; }
+  p.note { color: var(--on-surface-variant); font-size: 13px; margin: 0 0 16px; max-width: 720px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 1200px; }
+  .frame { background: var(--bg); border-radius: 28px; padding: 18px 16px;
+    border: 1px solid #1f1611; box-shadow: 0 6px 20px rgba(0,0,0,0.35); }
+  .frame-label { color: var(--on-surface-variant); font-size: 11px; letter-spacing: 0.06em;
+    text-transform: uppercase; margin: 0 0 12px; padding-left: 4px; }
+
+  /* ───────── shared header context (wordmark + wave) ───────── */
+  .wordmark { color: var(--on-surface); font-size: 26px; font-weight: 700; padding: 8px 4px 2px; letter-spacing: -0.005em; }
+  .wordmark small { display:block; color: var(--on-surface-variant); font-size: 12px; font-weight: 400; margin-top: 2px; }
+  .wave-divider { height: 16px; margin: 8px 0; opacity: 0.7; }
+  .wave-divider svg { width: 100%; height: 100%; display: block; }
+
+  /* ───────── current TabRow (baseline) ───────── */
+  .tabrow {
+    display: flex; gap: 0; border-bottom: 1px solid rgba(90,74,56,0.4);
+    margin: 6px 0 12px;
+  }
+  .tab {
+    flex: 1; text-align: center; padding: 12px 0; font-size: 14px; font-weight: 600;
+    color: var(--on-surface-variant); border-bottom: 3px solid transparent;
+  }
+  .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab.future { opacity: 0.45; }
+
+  /* ───────── option A: LinearWavyProgressIndicator ───────── */
+  .wavy-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); margin-top: 6px;
+    text-align: center; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--on-surface-variant);
+  }
+  .wavy-row .lbl { padding: 8px 4px 6px; cursor: default; }
+  .wavy-row .lbl.active { color: var(--primary); font-weight: 700; }
+  .wavy-row .lbl.future { opacity: 0.4; }
+  .wavy-row .lbl.past { color: var(--on-surface); cursor: pointer; }
+  .wavy-progress { height: 14px; margin: 0 0 4px; }
+  .wavy-progress svg { width: 100%; height: 100%; display: block; }
+  .step-caption { display:flex; justify-content: space-between; padding: 2px 4px 0;
+    color: var(--on-surface-variant); font-size: 11px; }
+  .step-caption .num { color: var(--primary); font-weight: 700; }
+
+  /* ───────── option B: SegmentedButton ───────── */
+  .seg-row {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin: 6px 0 12px;
+    border: 1px solid var(--outline); border-radius: 999px; overflow: hidden;
+    background: var(--surface);
+  }
+  .seg {
+    padding: 11px 0; font-size: 13px; font-weight: 600; text-align: center;
+    color: var(--on-surface-variant); border-right: 1px solid var(--outline);
+  }
+  .seg:last-child { border-right: none; }
+  .seg.active { background: var(--primary); color: var(--on-primary); }
+  .seg.future { opacity: 0.45; }
+
+  /* ───────── option C: Pill chips (lighter weight) ───────── */
+  .chip-row {
+    display: flex; gap: 8px; margin: 6px 0 12px; padding: 0 4px;
+  }
+  .chip {
+    flex: 1; padding: 8px 0; font-size: 12px; font-weight: 600; text-align: center;
+    border-radius: 999px; border: 1px solid var(--outline);
+    color: var(--on-surface-variant); background: transparent;
+  }
+  .chip.active { background: var(--primary); color: var(--on-primary); border-color: var(--primary); }
+  .chip.future { opacity: 0.45; }
+  .chip.past { border-color: var(--primary); color: var(--primary); }
+
+  /* ───────── option D: Wavy progress + chevron labels ───────── */
+  .wavy-stack { display: flex; flex-direction: column; gap: 6px; }
+  .wavy-stack .num-row { display: flex; justify-content: space-between; align-items: center;
+    color: var(--primary); font-weight: 700; font-size: 12px; padding: 0 4px; }
+  .wavy-stack .num-row .right { color: var(--on-surface-variant); font-weight: 400; }
+
+  /* form-card filler so context is realistic */
+  .card {
+    margin-top: 8px; padding: 18px; background: var(--surface-2); border-radius: 20px;
+  }
+  .card h3 { margin: 0 0 12px; font-size: 18px; font-weight: 700; }
+  .field {
+    height: 56px; border: 1px solid var(--outline); border-radius: 10px;
+    margin-bottom: 12px; padding: 10px 14px; color: var(--on-surface-variant);
+    font-size: 13px; display:flex; flex-direction: column; justify-content:center;
+  }
+  .field b { color: var(--on-surface-variant); font-size: 11px; font-weight: 500; margin-bottom: 2px; }
+  .field span { color: var(--on-surface); font-size: 14px; }
+  .pill-btn {
+    height: 48px; background: var(--primary); color: var(--on-primary);
+    border-radius: 999px; display:flex; align-items:center; justify-content:center;
+    font-weight: 700; font-size: 14px; margin-top: 4px;
+  }
+
+  .legend { margin-top: 28px; padding: 16px 20px; background: var(--surface);
+    border-radius: 14px; max-width: 760px; font-size: 13px; color: var(--on-surface-variant); }
+  .legend ul { padding-left: 20px; margin: 6px 0 0; }
+  .legend code { background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    color: var(--primary); font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>Login step indicator — M3 Expressive options
+  <small>currently TabRow + back-tap nav (commit f6ed74d1)</small></h1>
+<p class="note">
+  Three layouts, each rendered in its three states (Server selected / Sign-In selected / 2FA selected).
+  Same brand-cream <code>#FDEED0</code> primary, same dark-amber background, same wordmark + wave header
+  stack so you can compare the indicator in context. Future-tab tap stays no-op in all options.
+</p>
+
+<!-- ─────────────────────── BASELINE: current TabRow ─────────────────────── -->
+<h2>Baseline (shipped) <small>TabRow + 3dp underline indicator</small></h2>
+<div class="grid">
+  <div class="frame">
+    <div class="frame-label">Server selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider">
+      <svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/><path d="M0 9 C 25 2, 75 16, 100 9" fill="none" stroke="#5A4A38" stroke-width="0.6" opacity="0.5"/></svg>
+    </div>
+    <div class="tabrow">
+      <div class="tab active">Server</div>
+      <div class="tab future">Sign In</div>
+      <div class="tab future">2FA</div>
+    </div>
+    <div class="card"><h3>Connect to your server</h3>
+      <div class="field"><b>Shop URL</b><span>shop.bizarrecrm.com</span></div>
+      <div class="pill-btn">Connect</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">Sign In selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/><path d="M0 9 C 25 2, 75 16, 100 9" fill="none" stroke="#5A4A38" stroke-width="0.6" opacity="0.5"/></svg></div>
+    <div class="tabrow">
+      <div class="tab">Server</div>
+      <div class="tab active">Sign In</div>
+      <div class="tab future">2FA</div>
+    </div>
+    <div class="card"><h3>Sign in</h3>
+      <div class="field"><b>Username</b><span>admin</span></div>
+      <div class="field"><b>Password</b><span>•••••••</span></div>
+      <div class="pill-btn">Sign In</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">2FA selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/><path d="M0 9 C 25 2, 75 16, 100 9" fill="none" stroke="#5A4A38" stroke-width="0.6" opacity="0.5"/></svg></div>
+    <div class="tabrow">
+      <div class="tab">Server</div>
+      <div class="tab">Sign In</div>
+      <div class="tab active">2FA</div>
+    </div>
+    <div class="card"><h3>Two-factor code</h3>
+      <div class="field"><b>6-digit code</b><span>1 2 3   4 5 6</span></div>
+      <div class="pill-btn">Verify</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────── A: LinearWavyProgressIndicator ─────────────────────── -->
+<h2>Option A — LinearWavyProgressIndicator <small>brand wave doubles as step progress; labels live above</small></h2>
+<p class="note">
+  M3 Expressive's <code>LinearWavyProgressIndicator</code> rendered as the chrome divider, fraction = step/3.
+  Labels above are tappable for backward nav (past = cream, active = bold, future = grey 0.45α). The same
+  wave motif as the existing <code>WaveDivider</code> under the wordmark — visually cohesive.
+</p>
+<div class="grid">
+  <div class="frame">
+    <div class="frame-label">Server (1 of 3)</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+
+    <div class="wavy-row">
+      <div class="lbl active">Server</div>
+      <div class="lbl future">Sign In</div>
+      <div class="lbl future">2FA</div>
+    </div>
+    <div class="wavy-progress">
+      <svg viewBox="0 0 100 14" preserveAspectRatio="none">
+        <!-- track -->
+        <path d="M0 7 C 16 0, 50 14, 100 7" fill="none" stroke="#5A4A38" stroke-width="1.6"/>
+        <!-- progress fill (33%) -->
+        <path d="M0 7 C 16 0, 33 14, 33 7" fill="none" stroke="#FDEED0" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="step-caption"><span class="num">Step 1 of 3</span><span>about 2 min</span></div>
+    <div class="card"><h3>Connect to your server</h3>
+      <div class="field"><b>Shop URL</b><span>shop.bizarrecrm.com</span></div>
+      <div class="pill-btn">Connect</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">Sign In (2 of 3)</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+
+    <div class="wavy-row">
+      <div class="lbl past">Server</div>
+      <div class="lbl active">Sign In</div>
+      <div class="lbl future">2FA</div>
+    </div>
+    <div class="wavy-progress">
+      <svg viewBox="0 0 100 14" preserveAspectRatio="none">
+        <path d="M0 7 C 16 0, 50 14, 100 7" fill="none" stroke="#5A4A38" stroke-width="1.6"/>
+        <path d="M0 7 C 16 0, 50 14, 67 7" fill="none" stroke="#FDEED0" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="step-caption"><span class="num">Step 2 of 3</span><span>about 1 min left</span></div>
+    <div class="card"><h3>Sign in</h3>
+      <div class="field"><b>Username</b><span>admin</span></div>
+      <div class="field"><b>Password</b><span>•••••••</span></div>
+      <div class="pill-btn">Sign In</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">2FA (3 of 3)</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+
+    <div class="wavy-row">
+      <div class="lbl past">Server</div>
+      <div class="lbl past">Sign In</div>
+      <div class="lbl active">2FA</div>
+    </div>
+    <div class="wavy-progress">
+      <svg viewBox="0 0 100 14" preserveAspectRatio="none">
+        <path d="M0 7 C 16 0, 50 14, 100 7" fill="none" stroke="#5A4A38" stroke-width="1.6"/>
+        <path d="M0 7 C 16 0, 50 14, 100 7" fill="none" stroke="#FDEED0" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="step-caption"><span class="num">Step 3 of 3</span><span>almost done</span></div>
+    <div class="card"><h3>Two-factor code</h3>
+      <div class="field"><b>6-digit code</b><span>1 2 3   4 5 6</span></div>
+      <div class="pill-btn">Verify</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────── B: SegmentedButton row ─────────────────────── -->
+<h2>Option B — SingleChoiceSegmentedButtonRow <small>cream-filled active segment, pill border</small></h2>
+<p class="note">
+  M3 Expressive's segmented button row. Active segment fills cream with dark text; past tabs render as
+  outlined segments (tappable); future tabs at 0.45α with disabled() semantics. Reads more like a hard
+  step picker than a progress bar — heavier visual weight than option A.
+</p>
+<div class="grid">
+  <div class="frame">
+    <div class="frame-label">Server selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="seg-row">
+      <div class="seg active">Server</div>
+      <div class="seg future">Sign In</div>
+      <div class="seg future">2FA</div>
+    </div>
+    <div class="card"><h3>Connect to your server</h3>
+      <div class="field"><b>Shop URL</b><span>shop.bizarrecrm.com</span></div>
+      <div class="pill-btn">Connect</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">Sign In selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="seg-row">
+      <div class="seg">Server</div>
+      <div class="seg active">Sign In</div>
+      <div class="seg future">2FA</div>
+    </div>
+    <div class="card"><h3>Sign in</h3>
+      <div class="field"><b>Username</b><span>admin</span></div>
+      <div class="field"><b>Password</b><span>•••••••</span></div>
+      <div class="pill-btn">Sign In</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">2FA selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="seg-row">
+      <div class="seg">Server</div>
+      <div class="seg">Sign In</div>
+      <div class="seg active">2FA</div>
+    </div>
+    <div class="card"><h3>Two-factor code</h3>
+      <div class="field"><b>6-digit code</b><span>1 2 3   4 5 6</span></div>
+      <div class="pill-btn">Verify</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─────────────────────── C: pill chips (lighter weight) ─────────────────────── -->
+<h2>Option C — Pill chip row <small>lighter weight; same M3 Expressive language as POS FilterChips</small></h2>
+<p class="note">
+  Three rounded pill chips reusing the same selected/idle treatment as the POS-to-Ticket FilterChips
+  (commit b55bde2c). Active = cream-filled pill. Past = cream-outlined (tappable). Future = grey outlined,
+  α=0.45, disabled. Visual weight is closer to the existing TabRow than option B but with a cleaner
+  brand-cream selected state.
+</p>
+<div class="grid">
+  <div class="frame">
+    <div class="frame-label">Server selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="chip-row">
+      <div class="chip active">Server</div>
+      <div class="chip future">Sign In</div>
+      <div class="chip future">2FA</div>
+    </div>
+    <div class="card"><h3>Connect to your server</h3>
+      <div class="field"><b>Shop URL</b><span>shop.bizarrecrm.com</span></div>
+      <div class="pill-btn">Connect</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">Sign In selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="chip-row">
+      <div class="chip past">Server</div>
+      <div class="chip active">Sign In</div>
+      <div class="chip future">2FA</div>
+    </div>
+    <div class="card"><h3>Sign in</h3>
+      <div class="field"><b>Username</b><span>admin</span></div>
+      <div class="field"><b>Password</b><span>•••••••</span></div>
+      <div class="pill-btn">Sign In</div>
+    </div>
+  </div>
+  <div class="frame">
+    <div class="frame-label">2FA selected</div>
+    <div class="wordmark">Bizarre CRM<small>Electronics Repair Management</small></div>
+    <div class="wave-divider"><svg viewBox="0 0 100 16" preserveAspectRatio="none"><path d="M0 8 C 25 1, 75 15, 100 8" fill="none" stroke="#FDEED0" stroke-width="0.5" opacity="0.4"/></svg></div>
+    <div class="chip-row">
+      <div class="chip past">Server</div>
+      <div class="chip past">Sign In</div>
+      <div class="chip active">2FA</div>
+    </div>
+    <div class="card"><h3>Two-factor code</h3>
+      <div class="field"><b>6-digit code</b><span>1 2 3   4 5 6</span></div>
+      <div class="pill-btn">Verify</div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <strong>Implementation effort, picking-the-final option</strong>
+  <ul>
+    <li><b>A — LinearWavyProgressIndicator:</b> ~80 lines. Replace TabRow with a Row of 3 captions over a
+      <code>LinearWavyProgressIndicator(progress = stepIndex / 3f)</code>. Tappable past captions wired to
+      existing <code>goToTab</code>. Pairs visually with the brand wave above the wordmark.</li>
+    <li><b>B — Segmented button row:</b> ~60 lines. <code>SingleChoiceSegmentedButtonRow</code> with 3
+      <code>SegmentedButton</code> children. Heaviest visual weight; reads like a settings toggle.</li>
+    <li><b>C — Pill chip row:</b> ~50 lines. Three <code>FilterChip</code>s with
+      <code>FilterChipDefaults.brandColors()</code> already shipped. Reuses existing brand contract; closest to current TabRow but with cleaner selected state.</li>
+  </ul>
+  <p style="margin-top:14px;">My read: <b>option A</b> reads as <em>progress through a multi-step
+    flow</em> (which is what this is) better than tabs — and reuses the brand wave language. Option B is
+    the most "M3 Expressive" but feels heavy on a login screen. Option C is the conservative pick —
+    minimum redesign, maximum brand consistency with the rest of the app.</p>
+</div>
+
+</body>
+</html>
