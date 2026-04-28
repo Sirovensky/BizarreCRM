@@ -118,7 +118,7 @@ public struct PosCashAmountView: View {
                     .shadow(color: theme.primary.opacity(0.22), radius: 5, x: 0, y: 4)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
-                            .strokeBorder(Color.white.opacity(0.6), lineWidth: 0.5)
+                            .strokeBorder(Color.bizarreOnSurface.opacity(0.6), lineWidth: 0.5)
                             .blendMode(.overlay)
                     )
                 Text("💵")
@@ -315,12 +315,12 @@ public struct PosCashAmountView: View {
                         .fill(
                             selected
                             ? AnyShapeStyle(theme.primary.opacity(0.06))
-                            : AnyShapeStyle(Color.white.opacity(0.04))
+                            : AnyShapeStyle(Color.bizarreOnSurface.opacity(0.04))
                         )
                 )
                 .overlay(
                     Capsule().strokeBorder(
-                        selected ? theme.primary.opacity(0.40) : Color.white.opacity(0.11),
+                        selected ? theme.primary.opacity(0.40) : Color.bizarreOnSurface.opacity(0.11),
                         lineWidth: 1
                     )
                 )
@@ -424,13 +424,13 @@ public struct PosCashAmountView: View {
 
     private var numKeyBackground: some View {
         RoundedRectangle(cornerRadius: 14)
-            .fill(Color.white.opacity(0.055))
+            .fill(Color.bizarreOnSurface.opacity(0.055))
             .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 4)
     }
 
     private var numKeyBorder: some View {
         RoundedRectangle(cornerRadius: 14)
-            .strokeBorder(Color.white.opacity(0.13), lineWidth: 1)
+            .strokeBorder(Color.bizarreOnSurface.opacity(0.13), lineWidth: 1)
     }
 
     // MARK: - Confirm footer
@@ -522,7 +522,7 @@ public struct PosCashAmountView: View {
 
     private var confirmBorder: some View {
         RoundedRectangle(cornerRadius: 18)
-            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1)
+            .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1)
     }
 
     // MARK: - Digit management

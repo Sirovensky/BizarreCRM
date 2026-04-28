@@ -229,14 +229,10 @@ public struct PosGateView: View {
                     .foregroundStyle(Color.bizarreOnSurface)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(Color(white: 1, opacity: 0.06))
+                            .fill(Color.bizarreOnSurface.opacity(0.05))
                             .overlay(
                                 RoundedRectangle(cornerRadius: cornerRadius)
-                                    .stroke(Color(white: 1, opacity: 0.12), lineWidth: 1)
-                            )
-                            .shadow(
-                                color: Color.white.opacity(0.08),
-                                radius: 0, x: 0, y: -1
+                                    .stroke(Color.bizarreOnSurface.opacity(0.14), lineWidth: 1)
                             )
                     )
             }
@@ -258,13 +254,13 @@ public struct PosGateView: View {
                     .foregroundStyle(Color.bizarreOnSurfaceMuted)
                     .background(
                         RoundedRectangle(cornerRadius: cornerRadius)
-                            .fill(Color(white: 1, opacity: 0.04))
+                            .fill(Color.bizarreOnSurface.opacity(0.02))
                             .overlay(
                                 RoundedRectangle(cornerRadius: cornerRadius)
                                     .strokeBorder(
+                                        Color.bizarreOnSurface.opacity(0.20),
                                         style: StrokeStyle(lineWidth: 1.5, dash: [6, 4])
                                     )
-                                    .foregroundStyle(Color(white: 1, opacity: 0.18))
                             )
                     )
             }

@@ -129,7 +129,7 @@ public struct CameraCaptureView: View {
                 p.move(to: CGPoint(x: 0, y: 2 * h / 3))
                 p.addLine(to: CGPoint(x: w, y: 2 * h / 3))
             }
-            .stroke(Color.white.opacity(0.4), lineWidth: 0.5)
+            .stroke(Color.bizarreOnSurface.opacity(0.4), lineWidth: 0.5)
         }
     }
 
@@ -164,7 +164,7 @@ public struct CameraCaptureView: View {
                     .font(.system(size: 20, weight: .medium))
                     .foregroundStyle(.white)
                     .frame(width: 48, height: 48)
-                    .background(Color.white.opacity(0.2), in: Circle())
+                    .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close camera")
@@ -181,7 +181,7 @@ public struct CameraCaptureView: View {
                         .strokeBorder(.white, lineWidth: 3)
                         .frame(width: 72, height: 72)
                     Circle()
-                        .fill(isCapturing ? Color.white.opacity(0.6) : Color.white)
+                        .fill(isCapturing ? Color.bizarreOnSurface.opacity(0.6) : Color.white)
                         .frame(width: 60, height: 60)
                         .scaleEffect(isCapturing && !reduceMotion ? 0.9 : 1.0)
                         .animation(
@@ -207,7 +207,7 @@ public struct CameraCaptureView: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(torchOn ? Color.bizarreOrange : .white)
                         .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.2), in: Circle())
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(isFrontCamera)  // front camera has no torch
@@ -223,7 +223,7 @@ public struct CameraCaptureView: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(showGrid ? Color.bizarreOrange : .white)
                         .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.2), in: Circle())
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(showGrid ? "Hide grid" : "Show grid")
@@ -238,7 +238,7 @@ public struct CameraCaptureView: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.2), in: Circle())
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFrontCamera ? "Switch to rear camera" : "Switch to front camera")

@@ -76,7 +76,7 @@ public struct PosAccessDeniedView: View {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
         .overlay(
             RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                .strokeBorder(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1)
         )
     }
 

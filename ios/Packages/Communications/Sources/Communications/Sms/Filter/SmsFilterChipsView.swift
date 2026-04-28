@@ -57,7 +57,7 @@ public struct SmsFilterChipsView: View {
                         Text("\(n)")
                             .font(.brandLabelSmall())
                             .padding(.horizontal, BrandSpacing.xs)
-                            .background(Color.white.opacity(0.25), in: Capsule())
+                            .background(Color.bizarreOnSurface.opacity(0.25), in: Capsule())
                     }
                 }
                 .padding(.horizontal, BrandSpacing.sm)

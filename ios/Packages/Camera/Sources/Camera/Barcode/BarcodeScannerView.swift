@@ -214,7 +214,7 @@ public struct BarcodeScannerView: View {
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.2), in: Circle())
+                        .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close scanner")
@@ -240,7 +240,7 @@ public struct BarcodeScannerView: View {
                             .font(.system(size: 18, weight: .medium))
                             .foregroundStyle(.white)
                             .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.2), in: Circle())
+                            .background(Color.bizarreOnSurface.opacity(0.2), in: Circle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Enter barcode manually")
@@ -285,7 +285,7 @@ public struct BarcodeScannerView: View {
                 .foregroundStyle(torchOn ? .yellow : .white)
                 .frame(width: 40, height: 40)
                 .background(
-                    torchOn ? Color.yellow.opacity(0.25) : Color.white.opacity(0.2),
+                    torchOn ? Color.yellow.opacity(0.25) : Color.bizarreOnSurface.opacity(0.2),
                     in: Circle()
                 )
         }
@@ -310,7 +310,7 @@ public struct BarcodeScannerView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, BrandSpacing.lg)
             .padding(.vertical, BrandSpacing.sm)
-            .background(Color.white.opacity(0.2), in: Capsule())
+            .background(Color.bizarreOnSurface.opacity(0.2), in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Stop scanning, \(scanCount) items scanned")

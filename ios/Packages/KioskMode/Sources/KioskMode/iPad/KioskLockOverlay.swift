@@ -140,7 +140,7 @@ public struct KioskLockOverlay: View {
             .font(.system(size: 72, weight: .semibold))
             .foregroundStyle(
                 config.mode == .blackout
-                    ? Color.white.opacity(0.3)
+                    ? Color.bizarreOnSurface.opacity(0.3)
                     : Color.orange
             )
             .burnInNudge(every: 30)
@@ -154,7 +154,7 @@ public struct KioskLockOverlay: View {
                 .font(.system(size: 48, weight: .bold, design: .default))
                 .foregroundStyle(
                     config.mode == .blackout
-                        ? Color.white.opacity(0.4)
+                        ? Color.bizarreOnSurface.opacity(0.4)
                         : Color.white
                 )
                 .multilineTextAlignment(.center)
@@ -163,7 +163,7 @@ public struct KioskLockOverlay: View {
             if let tagline = config.tagline {
                 Text(tagline)
                     .font(.title3)
-                    .foregroundStyle(Color.white.opacity(0.55))
+                    .foregroundStyle(Color.bizarreOnSurface.opacity(0.55))
                     .multilineTextAlignment(.center)
                     .burnInNudge(every: 30)
             }
@@ -173,7 +173,7 @@ public struct KioskLockOverlay: View {
     private var wakePrompt: some View {
         Text("Tap anywhere to wake")
             .font(.footnote.weight(.medium))
-            .foregroundStyle(Color.white.opacity(0.7))
+            .foregroundStyle(Color.bizarreOnSurface.opacity(0.7))
             .padding(.horizontal, DesignTokens.Spacing.lg)
             .padding(.vertical, DesignTokens.Spacing.sm)
             .brandGlass(.clear, tint: nil, interactive: false)

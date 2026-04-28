@@ -1224,7 +1224,7 @@ public struct PosView: View {
                                 .foregroundStyle(.bizarreOnSurface)
                                 .lineLimit(3, reservesSpace: true)
                                 .padding(BrandSpacing.sm)
-                                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
+                                .background(Color.bizarreOnSurface.opacity(0.04), in: RoundedRectangle(cornerRadius: 10))
                                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.bizarreOutline.opacity(0.5), lineWidth: 0.5))
                                 .accessibilityIdentifier("pos.inspector.note")
                         }

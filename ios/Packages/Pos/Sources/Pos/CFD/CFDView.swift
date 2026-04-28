@@ -418,7 +418,7 @@ private struct CFDThankYouView: View {
 private struct CFDConfettiView: View {
     @State private var particles: [ConfettiParticle] = []
 
-    private let colors: [Color] = [.bizarreOrange, .bizarreSuccess, .bizarreTeal, Color.white.opacity(0.8)]
+    private let colors: [Color] = [.bizarreOrange, .bizarreSuccess, .bizarreTeal, Color.bizarreOnSurface.opacity(0.8)]
     private let symbols = ["star.fill", "heart.fill", "circle.fill", "diamond.fill"]
 
     var body: some View {

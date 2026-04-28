@@ -54,7 +54,7 @@ public struct PosRepairDepositView: View {
             // Matches the 3pt custom strip used by steps 2 and 3 per mockup 1e.
             ZStack(alignment: .leading) {
                 Rectangle()
-                    .fill(Color(white: 1, opacity: 0.06))
+                    .fill(Color.bizarreOnSurface.opacity(0.06))
                 Rectangle()
                     .fill(
                         LinearGradient(
@@ -141,7 +141,7 @@ public struct PosRepairDepositView: View {
                     RoundedRectangle(cornerRadius: 10)
                         .strokeBorder(
                             LinearGradient(
-                                colors: [Color.white.opacity(0.6), Color.clear],
+                                colors: [Color.bizarreOnSurface.opacity(0.6), Color.clear],
                                 startPoint: .top, endPoint: .center
                             ),
                             lineWidth: 1

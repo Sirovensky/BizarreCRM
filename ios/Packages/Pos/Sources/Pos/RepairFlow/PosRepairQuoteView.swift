@@ -87,7 +87,7 @@ public struct PosRepairQuoteView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color(white: 1, opacity: 0.06))
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
                     Rectangle()
                         .fill(
                             LinearGradient(
@@ -169,7 +169,7 @@ public struct PosRepairQuoteView: View {
                 .font(.system(size: 13))
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(10)
-                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 12))
+                .background(Color.bizarreOnSurface.opacity(0.03), in: RoundedRectangle(cornerRadius: 12))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 1))
                 .padding(.horizontal, 16)
                 .accessibilityLabel("Diagnostic notes")
@@ -229,7 +229,7 @@ public struct PosRepairQuoteView: View {
                             .foregroundStyle(Color.black.opacity(0.7))
                     } else {
                         RoundedRectangle(cornerRadius: 6)
-                            .stroke(Color(white: 1, opacity: 0.2), lineWidth: 1.5)
+                            .stroke(Color.bizarreOnSurface.opacity(0.2), lineWidth: 1.5)
                             .frame(width: 22, height: 22)
                     }
                 }
@@ -267,7 +267,7 @@ public struct PosRepairQuoteView: View {
                         .stroke(
                             isIncluded
                                 ? Color.bizarreOrange.opacity(0.35)
-                                : Color(white: 1, opacity: 0.07),
+                                : Color.bizarreOnSurface.opacity(0.07),
                             lineWidth: isIncluded ? 1.5 : 1
                         )
                 )

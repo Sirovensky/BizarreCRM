@@ -292,7 +292,7 @@ private extension View {
         self
             .overlay(
                 LinearGradient(
-                    colors: [.clear, Color.white.opacity(0.08), .clear],
+                    colors: [.clear, Color.bizarreOnSurface.opacity(0.08), .clear],
                     startPoint: .leading,
                     endPoint: .trailing
                 )

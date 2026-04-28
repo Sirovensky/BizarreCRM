@@ -71,7 +71,7 @@ public struct PosRepairSymptomView: View {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color(white: 1, opacity: 0.06))
+                        .fill(Color.bizarreOnSurface.opacity(0.06))
                     Rectangle()
                         .fill(
                             LinearGradient(
@@ -149,7 +149,7 @@ public struct PosRepairSymptomView: View {
                 .lineSpacing(3) // line-height: 1.5 on 13px
                 .foregroundStyle(.bizarreOnSurface)
                 .padding(12)
-                .background(Color(white: 1, opacity: 0.03), in: RoundedRectangle(cornerRadius: 14))
+                .background(Color.bizarreOnSurface.opacity(0.03), in: RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(
                     symptomText.isEmpty
                         ? Color.bizarreOrange.opacity(0.35)
@@ -244,6 +244,12 @@ public struct PosRepairSymptomView: View {
 
     private func chipButton(_ chip: RepairSymptomChip) -> some View {
         let isSelected = selectedChips.contains(chip)
+        let bgFill: Color = isSelected
+            ? Color.bizarreOrange.opacity(0.14)
+            : Color.bizarreOnSurface.opacity(0.04)
+        let strokeFill: Color = isSelected
+            ? Color.bizarreOrange.opacity(0.45)
+            : Color.bizarreOnSurface.opacity(0.1)
         return Button {
             if isSelected {
                 selectedChips.remove(chip)
@@ -253,25 +259,14 @@ public struct PosRepairSymptomView: View {
             vm.selectedChips = selectedChips
             BrandHaptics.tap()
         } label: {
-            // Label text only (no system icon) to match mockup chip style
             Text(chip.displayLabel)
                 .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
                 .padding(.horizontal, 13)
                 .padding(.vertical, 7)
-                .background(
-                    isSelected
-                        ? Color.bizarreOrange.opacity(0.14)
-                        : Color(white: 1, opacity: 0.04),
-                    in: Capsule()
-                )
+                .background(bgFill, in: Capsule())
                 .foregroundStyle(isSelected ? Color.bizarreOrange : Color.bizarreOnSurfaceMuted)
                 .overlay(
-                    Capsule().strokeBorder(
-                        isSelected
-                            ? Color.bizarreOrange.opacity(0.45)
-                            : Color(white: 1, opacity: 0.1),
-                        lineWidth: isSelected ? 1.5 : 1
-                    )
+                    Capsule().strokeBorder(strokeFill, lineWidth: isSelected ? 1.5 : 1)
                 )
                 .dynamicTypeSize(...DynamicTypeSize.accessibility2)
         }

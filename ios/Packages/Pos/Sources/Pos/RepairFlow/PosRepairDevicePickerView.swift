@@ -210,10 +210,10 @@ public struct PosRepairDevicePickerView: View {
                 // Device icon tile 40×40
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(white: 1, opacity: 0.05))
+                        .fill(Color.bizarreOnSurface.opacity(0.05))
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
-                                .stroke(Color(white: 1, opacity: 0.08), lineWidth: 1)
+                                .stroke(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1)
                         )
                     Text(option.emojiIcon)
                         .font(.system(size: 20))
@@ -252,7 +252,7 @@ public struct PosRepairDevicePickerView: View {
                     }
                 } else {
                     Circle()
-                        .stroke(Color(white: 1, opacity: 0.2), lineWidth: 2)
+                        .stroke(Color.bizarreOnSurface.opacity(0.2), lineWidth: 2)
                         .frame(width: 18, height: 18)
                 }
             }
@@ -266,7 +266,7 @@ public struct PosRepairDevicePickerView: View {
                             .stroke(
                                 isSelected
                                     ? Color.bizarreOrange.opacity(0.38)
-                                    : Color(white: 1, opacity: 0.07),
+                                    : Color.bizarreOnSurface.opacity(0.07),
                                 lineWidth: isSelected ? 1.5 : 1
                             )
                     )
@@ -320,8 +320,8 @@ public struct PosRepairDevicePickerView: View {
                     Text("📷")
                         .font(.system(size: 16))
                         .frame(width: 36, height: 36)
-                        .background(Color(white: 1, opacity: 0.06), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 1, opacity: 0.1), lineWidth: 1))
+                        .background(Color.bizarreOnSurface.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.bizarreOnSurface.opacity(0.1), lineWidth: 1))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Scan device IMEI")
@@ -362,8 +362,8 @@ public struct PosRepairDevicePickerView: View {
             HStack(spacing: 12) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(Color(white: 1, opacity: 0.05))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 1, opacity: 0.08), lineWidth: 1))
+                        .fill(Color.bizarreOnSurface.opacity(0.05))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1))
                     Text(option.emojiIcon)
                         .font(.system(size: 18))
                 }
@@ -393,7 +393,7 @@ public struct PosRepairDevicePickerView: View {
                         Text("✓").font(.system(size: 11, weight: .black)).foregroundStyle(.white)
                     }
                 } else {
-                    Circle().stroke(Color(white: 1, opacity: 0.2), lineWidth: 1.5).frame(width: 18, height: 18)
+                    Circle().stroke(Color.bizarreOnSurface.opacity(0.2), lineWidth: 1.5).frame(width: 18, height: 18)
                 }
             }
             .padding(.horizontal, 18)
@@ -452,8 +452,8 @@ public struct PosRepairDevicePickerView: View {
                 Text("📷")
                     .font(.system(size: 16))
                     .frame(width: 36, height: 36)
-                    .background(Color(white: 1, opacity: 0.06), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(white: 1, opacity: 0.1), lineWidth: 1))
+                    .background(Color.bizarreOnSurface.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.bizarreOnSurface.opacity(0.1), lineWidth: 1))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Scan device IMEI")

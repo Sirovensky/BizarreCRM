@@ -246,7 +246,7 @@ private struct ShimmeringModifier: ViewModifier {
                 LinearGradient(
                     gradient: Gradient(colors: [
                         .clear,
-                        Color.white.opacity(0.4),
+                        Color.bizarreOnSurface.opacity(0.4),
                         .clear
                     ]),
                     startPoint: .leading,

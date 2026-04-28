@@ -46,7 +46,7 @@ public struct ScanHistoryInspector: View {
         VStack(spacing: 0) {
             header
             Divider()
-                .background(Color.white.opacity(0.2))
+                .background(Color.bizarreOnSurface.opacity(0.2))
             scrollContent
         }
         .background(Color.bizarreSurface1.opacity(0.96))
@@ -89,7 +89,7 @@ public struct ScanHistoryInspector: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .frame(width: 28, height: 28)
-                    .background(Color.white.opacity(0.1), in: Circle())
+                    .background(Color.bizarreOnSurface.opacity(0.1), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close scan history")
@@ -113,7 +113,7 @@ public struct ScanHistoryInspector: View {
                         EntryRow(entry: entry)
                         Divider()
                             .padding(.leading, DesignTokens.Spacing.lg)
-                            .background(Color.white.opacity(0.08))
+                            .background(Color.bizarreOnSurface.opacity(0.08))
                     }
                 }
                 .padding(.vertical, DesignTokens.Spacing.xs)

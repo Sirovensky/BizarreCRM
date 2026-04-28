@@ -21,8 +21,8 @@ private struct ShimmerModifier: ViewModifier {
                     LinearGradient(
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: 0),
-                            .init(color: Color.white.opacity(0.4), location: 0.4),
-                            .init(color: Color.white.opacity(0.4), location: 0.6),
+                            .init(color: Color.primary.opacity(0.4), location: 0.4),
+                            .init(color: Color.primary.opacity(0.4), location: 0.6),
                             .init(color: .clear, location: 1)
                         ]),
                         startPoint: .leading,

@@ -794,7 +794,7 @@ struct PosChargeButton: View {
             .overlay(
                 // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
                 RadialGradient(
-                    colors: [Color.white.opacity(0.42), Color.clear],
+                    colors: [Color.bizarreOnSurface.opacity(0.42), Color.clear],
                     center: UnitPoint(x: 0.5, y: 0),
                     startRadius: 0,
                     endRadius: 60
@@ -804,7 +804,7 @@ struct PosChargeButton: View {
             .overlay(
                 // Inset white-glow stroke (mockup: inset 0 1.5px 0 rgba(255,255,255,0.50) + border)
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+                    .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1.5)
             )
             .shadow(color: Color(hex: 0xFDEED0).opacity(0.12), radius: 20, y: 8)
         }

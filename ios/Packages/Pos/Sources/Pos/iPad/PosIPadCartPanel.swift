@@ -99,7 +99,7 @@ public struct PosIPadCartPanel: View {
                     )
                     .overlay(
                         Circle()
-                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .strokeBorder(Color.bizarreOnSurface.opacity(0.12), lineWidth: 1)
                     )
                 Text(customer.initials)
                     .font(.system(size: 14, weight: .bold))
@@ -390,7 +390,7 @@ public struct PosIPadCartPanel: View {
                     .overlay(
                         // Top specular highlight (mockup: radial-gradient ellipse at 50% 0%)
                         RadialGradient(
-                            colors: [Color.white.opacity(0.42), Color.clear],
+                            colors: [Color.bizarreOnSurface.opacity(0.42), Color.clear],
                             center: UnitPoint(x: 0.5, y: 0),
                             startRadius: 0,
                             endRadius: 60
@@ -399,7 +399,7 @@ public struct PosIPadCartPanel: View {
                     )
                     .overlay(
                         RoundedRectangle(cornerRadius: 18)
-                            .strokeBorder(Color.white.opacity(0.30), lineWidth: 1.5)
+                            .strokeBorder(Color.bizarreOnSurface.opacity(0.30), lineWidth: 1.5)
                     )
                 }
                 .buttonStyle(.plain)
