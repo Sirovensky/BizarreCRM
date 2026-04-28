@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.EmployeeDetailDto
 import com.bizarreelectronics.crm.data.remote.dto.ForgotPinTriggerRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -74,6 +75,23 @@ interface EmployeeApi {
         @Path("id") employeeId: Long,
         @Body body: ForgotPinTriggerRequest = ForgotPinTriggerRequest(),
     ): ApiResponse<@JvmSuppressWildcards Any>
+
+    // endregion
+
+    // region — employee detail
+
+    /**
+     * §3.11 — Fetch full employee detail including [current_clock_entry].
+     * Self-service: admin or self only; non-privileged callers receive a
+     * public-profile response without the clock array ([currentClockEntry]
+     * will be null in that case — tile stays in "Clocked in" state without
+     * a timestamp).
+     * 404 tolerated — callers guard with runCatching.
+     */
+    @GET("employees/{id}")
+    suspend fun getEmployee(
+        @Path("id") employeeId: Long,
+    ): ApiResponse<EmployeeDetailDto>
 
     // endregion
 

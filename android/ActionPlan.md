@@ -553,7 +553,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Tap → Settings → Data → Sync Issues.
 
 ### 3.11 Clock in/out tile
-- [~] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` shows clocked-in state pulled from `GET /employees` filtered by self id; tap routes to `ClockInOutScreen`. "Since X" timestamp pending — needs server-side clock-in started_at.)
+- [x] Visible when timeclock enabled — big tile "Clock in" / "Clock out (since 9:14 AM)". (`ui/screens/dashboard/ClockInTile.kt` — §3.11 "Since h:mm a" timestamp now populated: `ClockInTileViewModel.refresh()` calls `GET /employees/:id` (self) and reads `current_clock_entry.clock_in`; `ClockEntryDto` + `EmployeeDetailDto` added to `ApiResponse.kt`; `EmployeeApi.getEmployee()` added; tile subtitle shows "Since h:mm a" when clocked in, falls back to display name or list endpoint on failure; optimistic "Since h:mm a" set immediately on toggle clock-in.)
 - [x] One-tap toggle; PIN prompt if Settings requires it. (commit 422a911 — `ClockInTile.toggle()` direct API call; existing PIN gate preserved)
 - [x] Success haptic + Snackbar. (commit 422a911 — `HapticFeedbackType.LongPress` + `SnackbarHostState.showSnackbar("Clocked in at HH:MM")`)
 

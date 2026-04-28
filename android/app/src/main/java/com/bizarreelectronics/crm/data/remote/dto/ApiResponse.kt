@@ -326,3 +326,49 @@ data class EmployeeListItem(
     @SerializedName("updated_at")
     val updatedAt: String?
 )
+
+/**
+ * §3.11 — A single clock_entries row returned from GET /employees/:id.
+ * Only the fields needed by the dashboard tile are mapped here.
+ */
+data class ClockEntryDto(
+    val id: Long,
+    @SerializedName("user_id")
+    val userId: Long,
+    @SerializedName("clock_in")
+    val clockIn: String?,
+    @SerializedName("clock_out")
+    val clockOut: String? = null,
+    @SerializedName("total_hours")
+    val totalHours: Double? = null,
+)
+
+/**
+ * §3.11 — Self-detail response from GET /employees/:id.
+ * The list endpoint (GET /employees) omits [currentClockEntry]; we call
+ * this detail endpoint once per ClockInTile refresh to get the clock_in
+ * start time for "Since h:mm a" display.
+ */
+data class EmployeeDetailDto(
+    val id: Long,
+    val username: String?,
+    val email: String?,
+    @SerializedName("first_name")
+    val firstName: String?,
+    @SerializedName("last_name")
+    val lastName: String?,
+    val role: String?,
+    @SerializedName("avatar_url")
+    val avatarUrl: String?,
+    @SerializedName("is_active")
+    val isActive: Int,
+    @SerializedName("is_clocked_in")
+    val isClockedIn: Boolean? = null,
+    /** Non-null when the user is currently clocked in (clock_out IS NULL). */
+    @SerializedName("current_clock_entry")
+    val currentClockEntry: ClockEntryDto? = null,
+    @SerializedName("created_at")
+    val createdAt: String?,
+    @SerializedName("updated_at")
+    val updatedAt: String?,
+)
