@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import Charts
 import DesignSystem
 
@@ -210,8 +211,8 @@ private struct PaymentMethodPieDescriptor: AXChartDescriptorRepresentable {
             isContinuous: false,
             dataPoints: points.map { pt in
                 AXDataPoint(
-                    x: .categoryValue(pt.method),
-                    y: .number(pt.revenue),
+                    x: pt.method,
+                    y: pt.revenue,
                     label: String(format: "%.1f%%", total > 0 ? pt.revenue / total * 100 : 0)
                 )
             }

@@ -153,7 +153,7 @@ public struct TicketsTrendCard: View {
                     y: .value("Opened", pt.opened)
                 )
                 .foregroundStyle(by: .value("Type", "Opened"))
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
 
                 // Closed — stacked on top
                 BarMark(
@@ -161,7 +161,7 @@ public struct TicketsTrendCard: View {
                     y: .value("Closed", pt.closed)
                 )
                 .foregroundStyle(by: .value("Type", "Closed"))
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
             }
         }
         .chartForegroundStyleScale([

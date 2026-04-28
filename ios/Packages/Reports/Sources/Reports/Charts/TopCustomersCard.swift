@@ -181,7 +181,7 @@ public struct TopCustomersCard: View {
                 y: .value("Customer", row.name)
             )
             .foregroundStyle(Color.bizarreMagenta.opacity(0.8))
-            .cornerRadius(DesignTokens.Radius.xxs)
+            .cornerRadius(DesignTokens.Radius.xs)
         }
         .chartXAxisLabel("Revenue ($K)", alignment: .center)
         .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth),
@@ -224,15 +224,15 @@ private struct TopCustomersChartDescriptor: AXChartDescriptorRepresentable {
     let rows: [TopCustomerRow]
 
     func makeChartDescriptor() -> AXChartDescriptor {
-        let xAxis = AXNumericDataAxisDescriptor(
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Customer",
+            categoryOrder: rows.map(\.name)
+        )
+        let yAxis = AXNumericDataAxisDescriptor(
             title: "Revenue (USD)",
             range: 0...(rows.map(\.revenueDollars).max() ?? 1),
             gridlinePositions: []
         ) { String(format: "$%.0f", $0) }
-        let yAxis = AXCategoricalDataAxisDescriptor(
-            title: "Customer",
-            categoryOrder: rows.map(\.name)
-        )
         let series = AXDataSeriesDescriptor(
             name: "Top Customers", isContinuous: false,
             dataPoints: rows.map { AXDataPoint(x: $0.revenueDollars, y: 0, label: $0.name) }

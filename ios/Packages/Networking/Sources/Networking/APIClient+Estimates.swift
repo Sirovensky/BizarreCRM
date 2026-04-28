@@ -373,3 +373,16 @@ public extension APIClient {
         try await post("/api/v1/estimates", body: req, as: CreatedResource.self)
     }
 }
+
+public extension APIClient {
+    /// POST /api/v1/estimates/:id/convert-to-invoice — returns the new invoice id.
+    func convertEstimateToInvoice(estimateId: Int64) async throws -> ConvertEstimateToInvoiceResponse {
+        try await post(
+            "/api/v1/estimates/\(estimateId)/convert-to-invoice",
+            body: ConvertEstimateToInvoiceEmptyBody(),
+            as: ConvertEstimateToInvoiceResponse.self
+        )
+    }
+}
+
+private struct ConvertEstimateToInvoiceEmptyBody: Encodable, Sendable {}

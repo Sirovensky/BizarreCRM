@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import Charts
 import DesignSystem
 
@@ -333,7 +334,8 @@ private struct WarrantyClaimsChartAX: AXChartDescriptorRepresentable {
                                                                           categoryOrder: points.map(\.period)),
                                   yAxis: AXNumericDataAxisDescriptor(title: "Count",
                                                                       range: 0...Double(points.map(\.claimsCount).max() ?? 1),
-                                                                      gridlinePositions: []),
+                                                                      gridlinePositions: [],
+                                                                      valueDescriptionProvider: { String(format: "%.0f", $0) }),
                                   series: [series])
     }
 }
@@ -406,11 +408,12 @@ private struct DeviceModelsChartAX: AXChartDescriptorRepresentable {
             dataPoints: rows.map { AXDataPoint(x: $0.model, y: Double($0.repairCount)) })
         return AXChartDescriptor(title: "Device Models Repaired",
                                   summary: "\(rows.reduce(0) { $0 + $1.repairCount }) total repairs",
-                                  xAxis: AXNumericDataAxisDescriptor(title: "Count",
-                                                                      range: 0...Double(rows.map(\.repairCount).max() ?? 1),
-                                                                      gridlinePositions: []),
-                                  yAxis: AXCategoricalDataAxisDescriptor(title: "Model",
+                                  xAxis: AXCategoricalDataAxisDescriptor(title: "Model",
                                                                           categoryOrder: rows.map(\.model)),
+                                  yAxis: AXNumericDataAxisDescriptor(title: "Count",
+                                                                      range: 0...Double(rows.map(\.repairCount).max() ?? 1),
+                                                                      gridlinePositions: [],
+                                                                      valueDescriptionProvider: { String(format: "%.0f", $0) }),
                                   series: [series])
     }
 }
@@ -599,8 +602,11 @@ private struct TechHoursChartAX: AXChartDescriptorRepresentable {
         return AXChartDescriptor(
             title: "Technician Hours Worked",
             summary: "\(rows.reduce(0.0) { $0 + $1.totalHours }) total hours across \(rows.count) techs",
-            xAxis: AXNumericDataAxisDescriptor(title: "Hours", range: 0...maxHours, gridlinePositions: []),
-            yAxis: AXCategoricalDataAxisDescriptor(title: "Technician", categoryOrder: rows.map(\.techName)),
+            xAxis: AXCategoricalDataAxisDescriptor(title: "Technician", categoryOrder: rows.map(\.techName)),
+            yAxis: AXNumericDataAxisDescriptor(title: "Hours",
+                                               range: 0...maxHours,
+                                               gridlinePositions: [],
+                                               valueDescriptionProvider: { String(format: "%.1f", $0) }),
             series: [billable, nonBillable]
         )
     }

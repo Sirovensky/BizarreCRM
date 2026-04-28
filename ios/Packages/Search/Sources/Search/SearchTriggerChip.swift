@@ -48,7 +48,7 @@ public struct SearchTriggerChip: View {
             }
             .padding(.horizontal, BrandSpacing.sm)
             .padding(.vertical, BrandSpacing.xs)
-            .background(.brandGlassMaterial, in: Capsule())
+            .background(.ultraThinMaterial, in: Capsule())
             .overlay(
                 Capsule()
                     .stroke(.bizarreOnSurface.opacity(0.08), lineWidth: 0.5)

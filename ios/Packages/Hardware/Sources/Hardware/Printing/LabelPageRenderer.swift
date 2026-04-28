@@ -61,7 +61,13 @@ public final class LabelPageRenderer: UIPrintPageRenderer {
 
         // Render SwiftUI LabelView into the current graphics context via UIGraphicsImageRenderer
         let medium: PrintMedium = .label2x4  // label2x4 covers all compact stock; contentWidth adapts
-        let swiftUIView = LabelView(payload: payload)
+        let model = LabelModel(
+            productName: payload.deviceSummary,
+            sku: payload.ticketNumber,
+            retailPrice: 0,
+            barcode: payload.qrContent
+        )
+        let swiftUIView = LabelView(model: model)
             .environment(\.printMedium, medium)
         let renderer = UIGraphicsImageRenderer(size: printableRect.size)
         let image = renderer.image { _ in

@@ -117,7 +117,7 @@ private struct WSToastBanner: View {
             .padding(.vertical, BrandSpacing.sm)
         }
         .buttonStyle(.plain)
-        .background(.brandGlass(radius: 16))
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.bizarreOutline.opacity(0.3), lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)

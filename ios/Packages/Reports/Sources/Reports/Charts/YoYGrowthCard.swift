@@ -99,7 +99,7 @@ public struct YoYGrowthCard: View {
                 )
                 .foregroundStyle(Color.bizarreOnSurfaceMuted.opacity(0.55))
                 .position(by: .value("Year", "Prior Year"))
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
 
                 BarMark(
                     x: .value("Period", pt.period),
@@ -108,7 +108,7 @@ public struct YoYGrowthCard: View {
                 )
                 .foregroundStyle(Color.bizarreOrange)
                 .position(by: .value("Year", "Current"))
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
                 .annotation(position: .top) {
                     if let pct = pt.growthPct {
                         Text(String(format: "%+.0f%%", pct))

@@ -18,7 +18,7 @@ final class InvoiceAgingViewModel {
 
     private(set) var loadState: LoadState = .idle
     private(set) var isSendingReminder: Bool = false
-    private(set) var reminderMessage: String?
+    var reminderMessage: String?
 
     @ObservationIgnored private let api: APIClient
 
@@ -184,7 +184,7 @@ public struct InvoiceAgingView: View {
             }
             .width(min: 120, ideal: 150)
         }
-        .tableStyle(.inset(alternatesRowBackgrounds: true))
+        .tableStyle(.inset)
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase)
     }

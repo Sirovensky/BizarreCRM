@@ -13,7 +13,7 @@ import Networking
 @Observable
 public final class LeadStatusTransitionViewModel {
     public private(set) var isTransitioning = false
-    public private(set) var error: String?
+    public internal(set) var error: String?
 
     @ObservationIgnored private let api: APIClient
     let lead: LeadDetail
@@ -131,8 +131,7 @@ public struct LeadStatusTransitionSheet: View {
                 }
             }
             .sheet(isPresented: $showingLostReason) {
-                LostReasonSheet(api: api, leadId: lead.id) { updated in
-                    onTransitioned(updated)
+                LostReasonSheet(api: api, leadId: lead.id) {
                     dismiss()
                 }
             }

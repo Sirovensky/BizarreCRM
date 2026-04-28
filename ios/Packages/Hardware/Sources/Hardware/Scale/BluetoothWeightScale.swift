@@ -104,7 +104,7 @@ public actor BluetoothWeightScale: WeightScale {
         let netWeight = Weight(grams: netGrams, isStable: weight.isStable)
         latestWeight = netWeight
         for cont in continuations { cont.yield(netWeight) }
-        AppLog.hardware.info("BluetoothWeightScale: raw=\(weight.grams)g tare=\(tareOffsetGrams)g net=\(netGrams)g")
+        AppLog.hardware.info("BluetoothWeightScale: raw=\(weight.grams)g tare=\(self.tareOffsetGrams)g net=\(netGrams)g")
     }
 
     // MARK: - Parsing (internal for testability)

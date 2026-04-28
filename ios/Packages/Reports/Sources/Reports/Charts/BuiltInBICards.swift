@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import Charts
 import DesignSystem
 
@@ -320,10 +321,11 @@ private struct RevenueByCategoryAX: AXChartDescriptorRepresentable {
         return AXChartDescriptor(
             title: "Revenue by Category",
             summary: "\(rows.count) categories",
-            xAxis: AXNumericDataAxisDescriptor(title: "Revenue",
+            xAxis: AXCategoricalDataAxisDescriptor(title: "Category", categoryOrder: rows.map(\.category)),
+            yAxis: AXNumericDataAxisDescriptor(title: "Revenue",
                                                range: 0...max(1, rows.map(\.revenueDollars).max() ?? 1),
-                                               gridlinePositions: []),
-            yAxis: AXCategoricalDataAxisDescriptor(title: "Category", categoryOrder: rows.map(\.category)),
+                                               gridlinePositions: [],
+                                               valueDescriptionProvider: { String(format: "%.0f", $0) }),
             series: [series]
         )
     }
@@ -546,7 +548,8 @@ private struct AvgTicketTrendAX: AXChartDescriptorRepresentable {
             xAxis: AXCategoricalDataAxisDescriptor(title: "Period", categoryOrder: points.map(\.period)),
             yAxis: AXNumericDataAxisDescriptor(title: "Value ($)",
                                                range: 0...max(1, points.map(\.avgValueDollars).max() ?? 1),
-                                               gridlinePositions: []),
+                                               gridlinePositions: [],
+                                               valueDescriptionProvider: { String(format: "%.2f", $0) }),
             series: [series]
         )
     }
@@ -757,8 +760,11 @@ private struct LaborUtilizationAX: AXChartDescriptorRepresentable {
         return AXChartDescriptor(
             title: "Labor Utilization by Tech",
             summary: "Percentage of booked hours spent productively per technician",
-            xAxis: AXNumericDataAxisDescriptor(title: "Utilization %", range: 0...100, gridlinePositions: [25, 50, 75]),
-            yAxis: AXCategoricalDataAxisDescriptor(title: "Technician", categoryOrder: rows.map(\.techName)),
+            xAxis: AXCategoricalDataAxisDescriptor(title: "Technician", categoryOrder: rows.map(\.techName)),
+            yAxis: AXNumericDataAxisDescriptor(title: "Utilization %",
+                                               range: 0...100,
+                                               gridlinePositions: [25, 50, 75],
+                                               valueDescriptionProvider: { String(format: "%.0f%%", $0) }),
             series: [series]
         )
     }

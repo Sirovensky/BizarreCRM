@@ -1,5 +1,6 @@
 import SwiftUI
 import DesignSystem
+import Core
 
 // MARK: - §15.9 Breadcrumb Drill Trail + Chart Export + Save as Dashboard Tile
 //
@@ -133,7 +134,7 @@ public struct BreadcrumbTrailView: View {
             }
         }
         .brandGlass(.clear, in: Capsule())
-        .accessibilityLabel("Drill path: \(["All"] + breadcrumbs.map(\.label).joined(separator: " → "))")
+        .accessibilityLabel("Drill path: " + (["All"] + breadcrumbs.map(\.label)).joined(separator: " → "))
     }
 }
 
@@ -379,15 +380,16 @@ public struct BreadcrumbDrillView: View {
 
     private func exportDrillCSV() async {
         guard !drillState.records.isEmpty else { return }
-        let header = "ID,Label,Detail,Amount\n"
-        let rows = drillState.records.map { r in
+        let header: String = "ID,Label,Detail,Amount\n"
+        let rowsArray: [String] = drillState.records.map { r -> String in
             let amount = r.amountDollars.map { String(format: "%.2f", $0) } ?? ""
             return "\(r.id),\"\(r.label)\",\"\(r.detail ?? "")\",\(amount)"
-        }.joined(separator: "\n")
-        let csv = header + rows
+        }
+        let rows: String = rowsArray.joined(separator: "\n")
+        let csv: String = header + rows
         let fileName = "drill_export_\(Date().timeIntervalSince1970).csv"
         let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-        try? csv.write(to: tmpURL, atomically: true, encoding: .utf8)
+        try? csv.write(to: tmpURL, atomically: true, encoding: String.Encoding.utf8)
         exportURL = tmpURL
         showExportSheet = true
     }

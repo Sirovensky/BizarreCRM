@@ -229,7 +229,7 @@ public struct CohortRetentionCard: View {
                 RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
                     .fill(Color.bizarreSurface2)
                     .frame(height: 34)
-                    .shimmer()
+                    .redacted(reason: .placeholder)
             }
         }
     }

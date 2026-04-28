@@ -175,7 +175,7 @@ public actor BonjourPrinterBrowser: BonjourPrinterBrowserProtocol {
             )
         }
         emit()
-        AppLog.hardware.debug("BonjourPrinterBrowser: \(discovered.count) printer(s) discovered")
+        AppLog.hardware.debug("BonjourPrinterBrowser: \(self.discovered.count) printer(s) discovered")
     }
 
     private func emit() {

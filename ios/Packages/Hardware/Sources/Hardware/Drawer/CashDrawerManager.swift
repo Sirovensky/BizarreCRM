@@ -226,7 +226,7 @@ public final class CashDrawerManager {
         }
         let msg = "Alert: drawer opened \(opensSinceLastSale) times without a recorded sale. Possible unauthorized access."
         antiTheftAlert = msg
-        AppLog.hardware.error("CashDrawerManager: anti-theft threshold exceeded — \(opensSinceLastSale) no-sale opens")
+        AppLog.hardware.error("CashDrawerManager: anti-theft threshold exceeded — \(self.opensSinceLastSale) no-sale opens")
     }
 }
 

@@ -32,7 +32,7 @@ public final class ForegroundLifecycleHandler {
 
     // MARK: - Private state
 
-    private var observers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var blurWindow: BlurWindowWrapper?
 
     // MARK: - Init
@@ -89,7 +89,7 @@ public final class ForegroundLifecycleHandler {
         blurWindow?.remove()
         blurWindow = nil
         // Re-subscribe WebSocket (no-op if already connected)
-        wsManager.reconnectIfNeeded()
+        Task { await wsManager.connectAll() }
         // Lightweight sync trigger — full sync is owned by SyncOrchestrator (Agent 10);
         // we only fire a notifications badge refresh here (our domain).
         Task {

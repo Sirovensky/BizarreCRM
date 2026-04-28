@@ -97,7 +97,7 @@ public struct TicketsByTechCard: View {
                     y: .value("Tech", pt.techName)
                 )
                 .foregroundStyle(Color.bizarreOrange.opacity(0.35))
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
                 .annotation(position: .trailing) {
                     Text("\(pt.assigned)")
                         .font(.brandLabelSmall())
@@ -110,7 +110,7 @@ public struct TicketsByTechCard: View {
                     y: .value("Tech", pt.techName)
                 )
                 .foregroundStyle(Color.bizarreOrange)
-                .cornerRadius(DesignTokens.Radius.xxs)
+                .cornerRadius(DesignTokens.Radius.xs)
             }
         }
         .chartForegroundStyleScale([
@@ -300,15 +300,15 @@ private struct TicketsByTechDescriptor: AXChartDescriptorRepresentable {
     let points: [TicketsByTechPoint]
 
     func makeChartDescriptor() -> AXChartDescriptor {
-        let xAxis = AXNumericDataAxisDescriptor(
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Technician",
+            categoryOrder: points.map(\.techName)
+        )
+        let yAxis = AXNumericDataAxisDescriptor(
             title: "Tickets",
             range: 0...Double(points.map(\.assigned).max() ?? 1),
             gridlinePositions: []
         ) { "\(Int($0))" }
-        let yAxis = AXCategoricalDataAxisDescriptor(
-            title: "Technician",
-            categoryOrder: points.map(\.techName)
-        )
         let assigned = AXDataSeriesDescriptor(
             name: "Assigned", isContinuous: false,
             dataPoints: points.map { AXDataPoint(x: Double($0.assigned), y: 0, label: $0.techName) }

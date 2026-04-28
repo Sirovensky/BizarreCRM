@@ -156,8 +156,8 @@ public enum ReceiptRenderer {
         let pdfRenderer = UIGraphicsPDFRenderer(bounds: pageRect)
         let pdfData = pdfRenderer.pdfData { ctx in
             for page in 0..<pageCount {
-                let pageInfo = [kCGPDFContextMediaBox: pageRect] as [CFString: Any]
-                ctx.beginPage(withBounds: pageRect, pageInfo: pageInfo as [AnyHashable: Any])
+                let pageInfo: [String: Any] = [kCGPDFContextMediaBox as String: pageRect]
+                ctx.beginPage(withBounds: pageRect, pageInfo: pageInfo)
 
                 let context = UIGraphicsGetCurrentContext()
 

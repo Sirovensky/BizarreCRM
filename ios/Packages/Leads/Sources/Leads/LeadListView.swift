@@ -8,7 +8,7 @@ import Sync
 @MainActor
 @Observable
 public final class LeadListViewModel {
-    public private(set) var items: [Lead] = []
+    public internal(set) var items: [Lead] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""

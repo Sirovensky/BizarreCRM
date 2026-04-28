@@ -1,4 +1,5 @@
 import SwiftUI
+import Core
 import Charts
 import DesignSystem
 

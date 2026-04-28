@@ -50,7 +50,7 @@ public struct RevenueForecastCard: View {
             ForEach(historicalPoints) { p in
                 LineMark(
                     x: .value("Date", p.date),
-                    y: .value("Revenue", p.amountCents / 100)
+                    y: .value("Revenue", p.netCents / 100)
                 )
                 .foregroundStyle(Color.bizarreOrange)
                 .lineStyle(StrokeStyle(lineWidth: 2))
@@ -227,7 +227,7 @@ private struct ForecastChartDescriptor: AXChartDescriptorRepresentable {
     func makeChartDescriptor() -> AXChartDescriptor {
         let dataPoints = forecast.map { p in
             AXDataPoint(
-                x: .categoryValue(ISO8601DateFormatter().string(from: p.date)),
+                x: ISO8601DateFormatter().string(from: p.date),
                 y: Double(p.projectedCents / 100)
             )
         }

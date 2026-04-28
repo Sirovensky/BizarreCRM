@@ -178,7 +178,7 @@ public struct InventoryStockCard: View {
                 y: .value("Category", entry.itemType)
             )
             .foregroundStyle(Color.bizarreOrange.opacity(0.75))
-            .cornerRadius(DesignTokens.Radius.xxs)
+            .cornerRadius(DesignTokens.Radius.xs)
             .annotation(position: .trailing) {
                 Text(formatCurrencyCompact(entry.totalRetailValue))
                     .font(.brandLabelSmall())
