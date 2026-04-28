@@ -1832,8 +1832,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 ### 7.6 Aging report
 - [x] `GET /reports/aging` with bucket breakdown (0–30 / 31–60 / 61–90 / 90+ days). (session 2026-04-26 — `AgingReportData` / `AgingBucket` / `AgingInvoiceRow` DTOs; `InvoiceApi.getAgingReport()` at GET dunning/invoices/aging; `InvoiceAgingScreen.kt` + `InvoiceAgingViewModel` with bucket-filter chips, summary cards, pull-to-refresh; nav route hookup deferred to NavHost session)
 - [x] Tablet/ChromeOS: sortable table via custom Compose `LazyColumn` headers; phone: grouped list by bucket.
-- [ ] Row actions: Send reminder / Record payment / Write off.
-  - **NOTE (2026-04-26):** Send-reminder and write-off need server endpoints; Record-payment needs navigation into InvoiceDetailScreen from the aging screen (nav hookup deferred to NavHost session).
+- [x] Row actions: Send reminder / Record payment / Write off. (session 2026-04-27 — `SendReminderDialog` composable added to `InvoiceAgingScreen.kt`: editable pre-filled template + invoice summary card + in-flight loading state + TalkBack a11y; `requestSendReminder`/`dismissSendReminder`/`confirmSendReminder` in `InvoiceAgingViewModel`; `POST /invoices/bulk-action send_reminder` 404-tolerant; write-off via existing `voidInvoice` + `ConfirmDialog`; record-payment navigates to `InvoiceDetail` via nav callback; build green)
 
 ### 7.7 Returns & refunds
 - [ ] Two return paths: customer-return-of-sold-goods (from invoice detail) + tech-return-to-vendor (from PO / inventory). <!-- NOTE-defer: full returns flow requires BlockChyp refund SDK + server Return record + inventory restock endpoints not yet built -->
