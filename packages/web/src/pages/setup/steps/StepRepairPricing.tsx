@@ -245,30 +245,132 @@ export function StepRepairPricing({
       <div className="mt-5 space-y-3">
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-          <div className="space-y-1.5">
-            <p>
-              <span className="font-semibold">Tier defaults are just the starting line.</span>{' '}
-              These three buckets exist to get you out of this wizard fast — every shop tunes them later.
-            </p>
-            <p>
-              After setup you'll get two more powerful surfaces in <strong>Settings → Repair pricing</strong>:
-            </p>
-            <ul className="ml-1 list-inside list-disc space-y-0.5">
-              <li>
-                <strong>Full per-device matrix</strong> — a spreadsheet of every model × service. Override iPhone 15 Pro screen
-                without touching anything else. Bulk-edit, CSV roundtrip, profit heatmap.
-              </li>
-              <li>
-                <strong>Auto-margin rules</strong> — set a target (e.g. 60% margin or +$80 over parts cost) and the system
-                recalculates labor whenever the catalog scraper updates parts pricing. Keeps you priced right without manual upkeep.
-              </li>
-            </ul>
-            <p className="pt-1 text-xs">
-              See TODO items <code>DPI-1</code> through <code>DPI-15</code> for the full roadmap.
-            </p>
-          </div>
+          <p>
+            <span className="font-semibold">Tier defaults are just the starting line.</span>{' '}
+            Two more powerful surfaces are coming below — preview now, fully wired in a future build.
+          </p>
         </div>
       </div>
+
+      {/* ─── Placeholder #1: Full per-device matrix view ─────────────────
+          DPI-11. Real implementation will render a virtualized table of
+          ~200 device models × 5 services with bulk-edit + CSV roundtrip.
+          Today: visual stub so the wizard sets the expectation without
+          shipping a half-built table. */}
+      <div className="mt-6 rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
+            Placeholder
+          </span>
+          <span className="text-xs font-medium text-surface-500 dark:text-surface-400">DPI-11</span>
+        </div>
+        <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
+          Full per-device matrix
+        </h3>
+        <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
+          Spreadsheet of every model × service. Override the iPhone 15 Pro screen without touching anything else. Bulk-edit, CSV roundtrip, profit heatmap.
+        </p>
+        <div className="mt-4 overflow-hidden rounded-lg border border-surface-200 bg-white opacity-70 dark:border-surface-700 dark:bg-surface-800">
+          <table className="w-full text-xs">
+            <thead className="bg-surface-100 dark:bg-surface-900">
+              <tr>
+                <th className="px-3 py-2 text-left font-semibold text-surface-700 dark:text-surface-200">Device</th>
+                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Screen</th>
+                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Battery</th>
+                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Charge port</th>
+                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Back glass</th>
+                <th className="px-3 py-2 text-right font-semibold text-surface-700 dark:text-surface-200">Camera</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-100 dark:divide-surface-700">
+              {[
+                { d: 'iPhone 15 Pro', vals: [240, 95, 145, 220, 165] },
+                { d: 'iPhone 14', vals: [200, 80, 120, 180, 140] },
+                { d: 'iPhone 12', vals: [140, 70, 100, 130, 100] },
+                { d: 'Galaxy S24', vals: [220, 90, 130, 200, 150] },
+                { d: 'Galaxy S20', vals: [125, 65, 90, 110, 90] },
+              ].map((row) => (
+                <tr key={row.d}>
+                  <td className="px-3 py-2 font-medium text-surface-800 dark:text-surface-200">{row.d}</td>
+                  {row.vals.map((v, i) => (
+                    <td key={i} className="px-3 py-2 text-right text-surface-600 dark:text-surface-400">${v}</td>
+                  ))}
+                </tr>
+              ))}
+              <tr>
+                <td colSpan={6} className="px-3 py-2 text-center text-[11px] italic text-surface-400">
+                  …and ~195 more rows
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <button
+          type="button"
+          disabled
+          aria-disabled="true"
+          className="mt-4 cursor-not-allowed rounded-lg border border-surface-300 bg-white px-4 py-2 text-xs font-medium text-surface-400 dark:border-surface-600 dark:bg-surface-800"
+        >
+          Open full matrix (coming soon)
+        </button>
+      </div>
+
+      {/* ─── Placeholder #2: Auto-margin rules ─────────────────────────
+          DPI-7..DPI-9. Real implementation will let the shop pick a
+          target margin (% or $-over-parts-cost) and recompute labor
+          whenever the catalog scraper updates parts pricing. Today:
+          read-only preview of the rule UI so the wizard surfaces the
+          intent. */}
+      <div className="mt-6 rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
+        <div className="mb-3 flex items-center gap-2">
+          <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
+            Placeholder
+          </span>
+          <span className="text-xs font-medium text-surface-500 dark:text-surface-400">DPI-7 / 8 / 9</span>
+        </div>
+        <h3 className="text-base font-semibold text-surface-900 dark:text-surface-50">
+          Auto-margin rules
+        </h3>
+        <p className="mt-1 text-sm text-surface-600 dark:text-surface-400">
+          Set a target (margin % or $-over-parts-cost) and the system recalculates labor every time the catalog scraper updates parts pricing.
+        </p>
+        <div className="mt-4 grid grid-cols-1 gap-3 opacity-70 sm:grid-cols-2">
+          <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Mode</p>
+            <select disabled aria-disabled="true" className="mt-1.5 w-full cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900">
+              <option>Margin %</option>
+              <option>$ over parts cost</option>
+              <option>Off (manual labor)</option>
+            </select>
+          </div>
+          <div className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-700 dark:bg-surface-800">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-surface-500 dark:text-surface-400">Target</p>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="text"
+                value="60"
+                disabled
+                aria-disabled="true"
+                className="w-20 cursor-not-allowed rounded-md border border-surface-200 bg-surface-50 px-2 py-1.5 text-right text-sm text-surface-500 dark:border-surface-600 dark:bg-surface-900"
+              />
+              <span className="text-sm text-surface-500">%</span>
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <p className="text-[11px] text-surface-500 dark:text-surface-400">
+            Re-runs whenever the daily catalog scraper finds a parts-cost change.
+          </p>
+          <label className="flex items-center gap-2 text-xs font-medium text-surface-400">
+            <input type="checkbox" disabled aria-disabled="true" className="cursor-not-allowed" />
+            Enable auto-margin (coming soon)
+          </label>
+        </div>
+      </div>
+
+      <p className="mt-3 text-xs text-surface-400 dark:text-surface-500">
+        Both placeholders are tracked as <code>DPI-1</code> through <code>DPI-15</code> in TODO.md.
+      </p>
 
       <div className="mt-4 flex justify-center">
         <button
