@@ -116,14 +116,6 @@ public struct PosRegisterShortcutsExtended: ViewModifier {
         .accessibilityIdentifier("pos.kbd.\(label.lowercased().replacingOccurrences(of: " ", with: "."))")
     }
 
-    private func shortcutButton(
-        _ key: Character,
-        mods: EventModifiers,
-        label: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        shortcutButton(KeyEquivalent(key), mods: mods, label: label, action: action)
-    }
 }
 
 // MARK: - View extension

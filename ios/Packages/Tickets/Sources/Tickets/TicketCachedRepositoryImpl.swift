@@ -109,7 +109,7 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)
         latestSyncedAt = now
         // §4.1 — Persist to disk for cold-launch warm-up
-        TicketDiskCache.shared.write(tickets, key: key)
+        await TicketDiskCache.shared.write(tickets, key: key)
         return tickets
     }
 }

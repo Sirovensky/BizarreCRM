@@ -123,7 +123,7 @@ public struct PosGiftCardOfflineSheet: View {
                     Spacer()
                     Text(CartMath.formatCents(iouAmountCents))
                         .font(.brandTitleSmall())
-                        .foregroundStyle(BrandPalette.primary)
+                        .foregroundStyle(Color.bizarrePrimary)
                         .monospacedDigit()
                         .contentTransition(.numericText(value: Double(iouAmountCents)))
                         .animation(.spring(response: 0.25, dampingFraction: 0.8), value: iouAmountCents)
@@ -148,7 +148,7 @@ public struct PosGiftCardOfflineSheet: View {
                         .padding(.vertical, BrandSpacing.sm)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(BrandPalette.primary)
+                .tint(Color.bizarrePrimary)
                 .accessibilityIdentifier("pos.giftCardOffline.acceptIou")
                 .padding(.top, BrandSpacing.xs)
             }

@@ -63,7 +63,7 @@ public actor DocumentOCRService {
         }
 
         let full = pageTexts.joined(separator: "\n\n---\n\n")
-        AppLog.camera.info("DocumentOCRService: extracted \(full.count) chars from \(pages.count) page(s)")
+        AppLog.app.info("DocumentOCRService: extracted \(full.count) chars from \(pages.count) page(s)")
         return OCRResult(fullText: full, pageTexts: pageTexts, pageCount: pages.count)
     }
 

@@ -97,7 +97,7 @@ public actor AppointmentLocalNotificationHandler {
         )
 
         try? await UNUserNotificationCenter.current().add(request)
-        AppLog.notifications.info(
+        AppLog.app.info(
             "Queued local appointment reminder for appt \(apptId, privacy: .public)"
         )
         return apptId

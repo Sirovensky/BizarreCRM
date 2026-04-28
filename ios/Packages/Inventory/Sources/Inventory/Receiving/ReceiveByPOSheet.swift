@@ -19,7 +19,7 @@ public final class ReceiveByPOViewModel {
     public private(set) var isLoading = false
     public private(set) var isReceiving = false
     public private(set) var errorMessage: String?
-    public private(set) var completedPO: PurchaseOrder?
+    public internal(set) var completedPO: PurchaseOrder?
 
     @ObservationIgnored private let poRepo: PurchaseOrderRepository
     @ObservationIgnored private let receiveRepo: ReceivingRepositoryProtocol
@@ -124,7 +124,7 @@ public struct ReceiveByPOSheet: View {
     }
 
     private var poList: some View {
-        List(vm.openPOs) { po in
+        List(vm.openPOs, id: \.id) { po in
             Button {
                 vm.selectedPO = po
                 showReceiveDetail = true
@@ -135,13 +135,13 @@ public struct ReceiveByPOSheet: View {
                             .font(.bizarreBody)
                             .fontWeight(.medium)
                             .foregroundStyle(Color.bizarreTextPrimary)
-                        Text(po.supplierName)
+                        Text("Supplier #\(po.supplierId)")
                             .font(.bizarreCaption)
                             .foregroundStyle(Color.bizarreTextSecondary)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text(po.expectedDateFormatted ?? "No date")
+                        Text(po.expectedDate.map { String(describing: $0) } ?? "No date")
                             .font(.bizarreCaption)
                             .foregroundStyle(Color.bizarreTextSecondary)
                         Label("\(po.items.count) lines", systemImage: "list.bullet")
@@ -155,7 +155,7 @@ public struct ReceiveByPOSheet: View {
                 .padding(.vertical, 4)
             }
             .listRowBackground(Color.bizarreSurface1)
-            .accessibilityLabel("PO from \(po.supplierName), \(po.items.count) lines")
+            .accessibilityLabel("PO from \("Supplier #\(po.supplierId)"), \(po.items.count) lines")
         }
         .listStyle(.insetGrouped)
     }
@@ -185,7 +185,7 @@ public struct ReceiveByPOSheet: View {
                 .font(.bizarreHeadline)
             Text(message).font(.bizarreBody).foregroundStyle(Color.bizarreTextSecondary)
             Button("Retry") { Task { await vm.load() } }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
         .padding()
     }
@@ -204,7 +204,7 @@ struct POReceiveDetailSheet: View {
         self.onConfirm = onConfirm
         var q: [Int64: String] = [:]
         for line in po.items {
-            q[line.id] = String(line.qty - line.qtyReceived)
+            q[line.id] = String(line.qtyOrdered - line.qtyOrderedReceived)
         }
         _quantities = State(wrappedValue: q)
     }
@@ -212,13 +212,13 @@ struct POReceiveDetailSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Purchase Order from \(po.supplierName)") {
-                    ForEach(po.items) { line in
+                Section("Purchase Order from \("Supplier #\(po.supplierId)")") {
+                    ForEach(po.items, id: \.id) { line in
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(line.inventoryName)
+                                Text(line.name)
                                     .font(.bizarreBody)
-                                Text("Ordered: \(line.qty) · Received: \(line.qtyReceived)")
+                                Text("Ordered: \(line.qtyOrdered) · Received: \(line.qtyOrderedReceived)")
                                     .font(.bizarreCaption)
                                     .foregroundStyle(Color.bizarreTextSecondary)
                             }
@@ -230,7 +230,7 @@ struct POReceiveDetailSheet: View {
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
-                            .accessibilityLabel("Quantity to receive for \(line.inventoryName)")
+                            .accessibilityLabel("Quantity to receive for \(line.name)")
                         }
                     }
                 }

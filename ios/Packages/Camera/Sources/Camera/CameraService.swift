@@ -261,7 +261,7 @@ public actor CameraService: NSObject {
 
         currentDevice = newDevice
         _isFrontCamera = (newPosition == .front)
-        AppLog.ui.info("CameraService: switched to \(_isFrontCamera ? "front" : "rear") camera")
+        AppLog.ui.info("CameraService: switched to \(self._isFrontCamera ? "front" : "rear") camera")
     }
 
     // MARK: - Torch

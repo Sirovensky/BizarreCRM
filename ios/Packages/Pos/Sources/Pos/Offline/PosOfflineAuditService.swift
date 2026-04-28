@@ -70,7 +70,8 @@ public final class PosOfflineAuditService {
         currentOutage = nil
         persistRecords()
         let durationMinutes = ongoing.durationMinutes(to: date)
-        AppLog.pos.info("PosOfflineAuditService: outage ended — duration \(durationMinutes, privacy: .public) min, \(outageRecords[index].saleSyncs.count, privacy: .public) sales queued")
+        let saleCount = self.outageRecords[index].saleSyncs.count
+        AppLog.pos.info("PosOfflineAuditService: outage ended — duration \(durationMinutes, privacy: .public) min, \(saleCount, privacy: .public) sales queued")
     }
 
     /// Call from the sync drain loop when the server confirms an offline sale.

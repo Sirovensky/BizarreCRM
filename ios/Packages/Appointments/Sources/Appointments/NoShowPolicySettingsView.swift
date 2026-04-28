@@ -183,7 +183,7 @@ public struct CustomerNoShowBadge: View {
                 record.depositRequired
                     ? Color.bizarreError.opacity(0.1)
                     : Color.bizarreWarning.opacity(0.1),
-                in: RoundedRectangle(cornerRadius: BrandRadius.sm)
+                in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
             )
             .accessibilityElement(children: .combine)
             .accessibilityLabel(
