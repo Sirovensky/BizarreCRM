@@ -794,4 +794,8 @@ object RetrofitClient {
     // self-hosted installs). CRUD endpoints require admin role (server enforces 403 for non-admin).
     @Provides @Singleton fun provideLocationApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.LocationApi =
         retrofit.create(com.bizarreelectronics.crm.data.remote.api.LocationApi::class.java)
+
+    // §SCAN-478 — Recurring invoice templates; all endpoints 404-tolerant.
+    @Provides @Singleton fun provideRecurringInvoicesApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RecurringInvoicesApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.RecurringInvoicesApi::class.java)
 }

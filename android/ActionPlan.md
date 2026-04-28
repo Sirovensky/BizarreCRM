@@ -5973,11 +5973,11 @@ After existing `bench` mount, authenticated routes registered in this order:
 - [ ] `POST /api/v1/inventory-bundles` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
 - [ ] `PATCH /api/v1/inventory-bundles/:id` — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
 - [ ] `DELETE /api/v1/inventory-bundles/:id` (soft) — no `InventoryBundlesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/recurring-invoices` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `GET /api/v1/recurring-invoices/:id` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/recurring-invoices` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `PATCH /api/v1/recurring-invoices/:id` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
-- [ ] `POST /api/v1/recurring-invoices/:id/pause|resume|cancel` — no `RecurringInvoicesApi` exists. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
+- [x] `GET /api/v1/recurring-invoices` — `RecurringInvoicesApi.listTemplates` wired; 404-tolerant; `RecurringInvoicesScreen` list with status filter chips.
+- [x] `GET /api/v1/recurring-invoices/:id` — `RecurringInvoicesApi.getTemplate` declared; 404-tolerant.
+- [x] `POST /api/v1/recurring-invoices` — `RecurringInvoicesApi.createTemplate` + `CreateRecurringInvoiceRequest` DTO wired; 404-tolerant.
+- [x] `PATCH /api/v1/recurring-invoices/:id` — `RecurringInvoicesApi.patchTemplate` + `PatchRecurringInvoiceRequest` DTO wired; 404-tolerant.
+- [x] `POST /api/v1/recurring-invoices/:id/pause|resume|cancel` — `RecurringInvoicesApi.pauseTemplate` / `resumeTemplate` / `cancelTemplate` wired; lifecycle actions in `RecurringInvoicesScreen` row overflow menu; 404-tolerant.
 - [ ] `GET /api/v1/credit-notes` (list) — `InvoiceApi.createCreditNote` is at `invoices/{id}/credit-note` (create-only, different path). <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
 - [ ] `POST /api/v1/credit-notes` (standalone create) — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->
 - [ ] `POST /api/v1/credit-notes/:id/apply` — not declared in any `*Api.kt`. <!-- NOTE-defer: server-side contract — Android tracks via 404-tolerant call site -->

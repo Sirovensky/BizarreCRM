@@ -67,6 +67,7 @@ import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceAgingScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceListScreen
+import com.bizarreelectronics.crm.ui.screens.invoices.RecurringInvoicesScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.BarcodeScanScreen
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryDetailScreen
 import com.bizarreelectronics.crm.ui.screens.pos.PosEntryScreen
@@ -227,6 +228,8 @@ sealed class Screen(val route: String) {
     }
     data object InvoiceCreate : Screen("invoice-create")
     data object InvoiceAging : Screen("invoice-aging")
+    // §SCAN-478 — Recurring invoice templates list
+    data object RecurringInvoices : Screen("recurring-invoices")
     data object Pos : Screen("pos")
     data object PosCart : Screen("pos/cart")
     data object PosTender : Screen("pos/tender")
@@ -2013,6 +2016,7 @@ fun AppNavGraph(
                     onInvoiceClick = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.InvoiceCreate.route) },
                     onAgingClick = { navController.navigate(Screen.InvoiceAging.route) },
+                    onRecurringClick = { navController.navigate(Screen.RecurringInvoices.route) },
                 )
             }
             // §68.2 — deep link: bizarrecrm://invoices/{id}
@@ -2045,6 +2049,12 @@ fun AppNavGraph(
                 InvoiceAgingScreen(
                     onBack = { navController.popBackStack() },
                     onRecordPayment = { id -> navController.navigate(Screen.InvoiceDetail.createRoute(id)) },
+                )
+            }
+            // §SCAN-478 — Recurring Invoices templates list
+            composable(Screen.RecurringInvoices.route) {
+                RecurringInvoicesScreen(
+                    onBack = { navController.popBackStack() },
                 )
             }
             // §68.2 — deep link: bizarrecrm://inventory/{id}

@@ -62,6 +62,7 @@ fun InvoiceListScreen(
     onInvoiceClick: (Long) -> Unit,
     onCreateClick: (() -> Unit)? = null,
     onAgingClick: (() -> Unit)? = null,
+    onRecurringClick: (() -> Unit)? = null,
     viewModel: InvoiceListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -160,6 +161,14 @@ fun InvoiceListScreen(
                                     Icon(
                                         Icons.Default.Analytics,
                                         contentDescription = "View aging report",
+                                    )
+                                }
+                            }
+                            if (onRecurringClick != null) {
+                                IconButton(onClick = onRecurringClick) {
+                                    Icon(
+                                        Icons.Default.Autorenew,
+                                        contentDescription = "Recurring invoices",
                                     )
                                 }
                             }
