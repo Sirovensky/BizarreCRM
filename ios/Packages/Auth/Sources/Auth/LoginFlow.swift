@@ -243,20 +243,20 @@ public final class LoginFlow {
         // is an actor and we don't want to hold a cross-actor reference here.
         let hasSavedTenant = KeychainStore.shared.get(.activeTenantId) != nil
 
-        let probe = SetupStatusProbe(api: api, hasSavedTenant: hasSavedTenant)
+        _ = hasSavedTenant
+        let probe = SetupStatusProbe(api: api)
         let result = await probe.run()
         setupProbeResult = result
 
         switch result {
-        case .needsSetup:
-            // InitialSetupFlow handles itself — caller observes `setupProbeResult`
-            // and pushes the setup wizard view. We stay at `.server` step so
-            // the login shell doesn't flash credentials behind the wizard.
-            break
-        case .needsTenantPicker:
-            // TenantPickerSheet will be shown by the caller via `setupProbeResult`.
-            step = .credentials
-        case .proceedToLogin, .failed:
+        case .resolved(let status):
+            if status.needsSetup {
+                // InitialSetupFlow handles itself — stay on .server step.
+                break
+            } else {
+                step = .credentials
+            }
+        case .failure:
             step = .credentials
         }
     }

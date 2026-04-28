@@ -137,7 +137,7 @@ public struct PosCartTotalsView: View {
         .padding(.vertical, discountFlashing ? BrandSpacing.xxs : 0)
         .background(
             discountFlashing
-                ? RoundedRectangle(cornerRadius: DesignTokens.Radius.badge)
+                ? RoundedRectangle(cornerRadius: DesignTokens.Radius.sm)
                     .fill(Color.bizarrePrimary.opacity(0.10))
                     .transition(.opacity)
                 : nil

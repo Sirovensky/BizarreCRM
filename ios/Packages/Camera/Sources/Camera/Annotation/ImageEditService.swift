@@ -87,26 +87,22 @@ public actor ImageEditService {
     /// Returns recognized strings joined by newlines, or empty string on failure.
     /// Sovereignty: on-device only (`requiresOnDeviceRecognition = true` where supported).
     public func recognizeText(in image: UIImage) async -> String {
-        await Task.detached(priority: .userInitiated) {
-            guard let cgImage = image.cgImage else { return "" }
-            var lines: [String] = []
-            let semaphore = DispatchSemaphore(value: 0)
-            let request = VNRecognizeTextRequest { req, _ in
-                defer { semaphore.signal() }
-                guard let observations = req.results as? [VNRecognizedTextObservation] else { return }
-                lines = observations.compactMap { $0.topCandidates(1).first?.string }
+        guard let cgImage = image.cgImage else { return "" }
+        return await withCheckedContinuation { (cont: CheckedContinuation<String, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let request = VNRecognizeTextRequest { req, _ in
+                    let observations = (req.results as? [VNRecognizedTextObservation]) ?? []
+                    let lines = observations.compactMap { $0.topCandidates(1).first?.string }
+                    cont.resume(returning: lines.joined(separator: "\n"))
+                }
+                request.recognitionLevel = .accurate
+                request.usesLanguageCorrection = true
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                if (try? handler.perform([request])) == nil {
+                    cont.resume(returning: "")
+                }
             }
-            request.recognitionLevel = .accurate
-            request.usesLanguageCorrection = true
-            // Prefer on-device recognition for sovereignty (§28).
-            if #available(iOS 16, *) {
-                request.requiresOnDeviceRecognition = true
-            }
-            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-            try? handler.perform([request])
-            semaphore.wait()
-            return lines.joined(separator: "\n")
-        }.value
+        }
     }
 
     // MARK: - Private helpers

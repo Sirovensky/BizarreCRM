@@ -46,16 +46,18 @@ public struct ChangePasswordView: View {
                 secureField("Confirm new password", text: $viewModel.confirmPassword, systemImage: "lock.rotation")
                     .privacySensitive()
 
-                if viewModel.mismatch {
-                    HStack(spacing: BrandSpacing.xs) {
-                        Image(systemName: "exclamationmark.circle.fill")
-                            .foregroundStyle(.bizarreWarning)
-                            .imageScale(.small)
-                        Text("Passwords don't match yet.")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreWarning)
+                Group {
+                    if viewModel.mismatch {
+                        HStack(spacing: BrandSpacing.xs) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .foregroundStyle(.bizarreWarning)
+                                .imageScale(.small)
+                            Text("Passwords don't match yet.")
+                                .font(.brandLabelSmall())
+                                .foregroundStyle(.bizarreWarning)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .animation(BrandMotion.snappy, value: viewModel.mismatch)
 

@@ -63,7 +63,7 @@ private struct RecentServerChip: View {
             .padding(.vertical, BrandSpacing.xs)
             .frame(minHeight: 36)
         }
-        .brandGlass(.thin, in: Capsule(), interactive: true)
+        .brandGlass(.regular, in: Capsule(), interactive: true)
         .accessibilityLabel("Open \(server.chipLabel)")
         .accessibilityHint("Switches to this shop")
     }

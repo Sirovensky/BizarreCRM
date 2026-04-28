@@ -127,10 +127,15 @@ public struct GiftCardVoidSheet: View {
                 }
             }
             .sheet(isPresented: $showManagerPin) {
-                ManagerPinSheet { managerId in
-                    approvedManagerId = managerId
-                    commitVoid(managerId: managerId)
-                }
+                ManagerPinSheet(
+                    reason: "Approve gift card void",
+                    onApproved: { managerId in
+                        let mid = String(managerId)
+                        approvedManagerId = mid
+                        commitVoid(managerId: mid)
+                    },
+                    onCancelled: {}
+                )
             }
         }
     }

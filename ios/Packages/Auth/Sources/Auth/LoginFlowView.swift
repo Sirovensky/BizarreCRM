@@ -832,7 +832,7 @@ private struct BrandTextField: View {
     }
 }
 
-private struct BrandSecureField: View {
+struct BrandSecureField: View {
     let label: String
     @Binding var text: String
     let placeholder: String

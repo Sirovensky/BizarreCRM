@@ -308,7 +308,7 @@ final class IssuedStoreCreditViewModel {
         )
         do {
             _ = try await api.refundCustomerCredit(customerId: customerId, request: request)
-            AppLog.pos.info("Store credit issued: customerId=\(customerId) amount=\(amountCents)c reason=\(reason, privacy: .public)")
+            AppLog.pos.info("Store credit issued: customerId=\(self.customerId) amount=\(self.amountCents)c reason=\(reason, privacy: .public)")
             BrandHaptics.success()
             state = .issued(amountCents)
         } catch let APITransportError.httpStatus(code, message) {

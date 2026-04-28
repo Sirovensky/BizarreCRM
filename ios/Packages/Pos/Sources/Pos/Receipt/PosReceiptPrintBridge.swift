@@ -274,7 +274,7 @@ public final class PosReceiptPrintBridge {
 
 /// Defines the print contract that Agent 2 / Hardware implements.
 /// Pos package imports this protocol; never imports Hardware directly.
-public protocol ReceiptPrinterProtocol: AnyObject {
+public protocol ReceiptPrinterProtocol: AnyObject, Sendable {
     /// Send a pre-rendered bitmap to the paired MFi printer via ESC/POS.
     func printBitmap(_ image: UIImage, jobName: String) async throws
 }

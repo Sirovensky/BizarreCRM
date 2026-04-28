@@ -58,7 +58,6 @@ public final class RememberMePolicy: @unchecked Sendable {
         #if canImport(UIKit)
         return UIAccessibility.isAssistiveTouchRunning
             || UIAccessibility.isSwitchControlRunning
-            || UIAccessibility.isKeyboardNavigationRunning
         #else
         return false
         #endif

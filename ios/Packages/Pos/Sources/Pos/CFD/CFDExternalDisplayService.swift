@@ -36,7 +36,7 @@ public final class CFDExternalDisplayService {
 
     // MARK: - Private
 
-    private var observers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
     private var isMonitoring = false
 
     public init() {}

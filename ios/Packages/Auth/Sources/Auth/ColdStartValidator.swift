@@ -40,7 +40,7 @@ public actor ColdStartValidator {
     /// On `.revoked`, this method also clears the local token store so
     /// downstream callers don't need to handle that themselves.
     public func validate() async -> ColdStartValidationResult {
-        guard TokenStore.shared.accessToken != nil else {
+        guard await TokenStore.shared.accessToken != nil else {
             // No token stored — caller should route to login directly.
             return .revoked
         }

@@ -34,7 +34,7 @@ public struct RecentServersChipRow: View {
             }
         }
         .task {
-            servers = await RecentServersStore.shared.all
+            servers = RecentServersStore.all()
         }
     }
 
@@ -74,7 +74,7 @@ public struct RecentServersChipRow: View {
                     .foregroundStyle(Color.bizarreOrange)
                     .accessibilityHidden(true)
 
-                Text(server.displayName)
+                Text(server.displayName ?? server.url.host ?? "Server")
                     .font(.brandLabelLarge())
                     .foregroundStyle(Color.bizarreOnSurface)
                     .lineLimit(1)

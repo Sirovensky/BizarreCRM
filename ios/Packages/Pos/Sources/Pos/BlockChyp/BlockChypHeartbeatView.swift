@@ -59,7 +59,7 @@ public struct BlockChypHeartbeatView: View {
             }
             .padding(.horizontal, BrandSpacing.sm)
             .padding(.vertical, BrandSpacing.xs)
-            .brandGlass(.subtle, in: Capsule())
+            .brandGlass(.regular, in: Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Terminal: \(heartbeatLabel). Tap to refresh.")
@@ -108,11 +108,11 @@ public struct BlockChypHeartbeatView: View {
     private func startPolling() async {
         pollingTask?.cancel()
         await ping()
-        pollingTask = Task { [weak self] in
+        pollingTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 10_000_000_000)
                 guard !Task.isCancelled else { return }
-                await self?.ping()
+                await ping()
             }
         }
     }
