@@ -7,6 +7,22 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## BizarreSMS hosted-tier provider (HOSTED-SMS-1)
+
+- [ ] HOSTED-SMS-1. **Build BizarreSMS as a hosted-tier convenience SMS provider — Twilio-API-compatible relay through Bizarre's own upstream account.** Per memory `project_communications.md`: self-host shops bring their own Twilio creds; hosted-tier shops can opt into BizarreSMS as a "skip the Twilio setup" extra. Today the wizard SMS provider list excludes BizarreSMS because zero server code exists for it — picking it would silently no-op. Build sequence:
+  - **Backend service:** `packages/server/src/services/sms/providers/BizarreSmsProvider.ts` implementing the same `SmsProvider` interface as `TwilioSmsProvider`. Internally relays send-message calls to Bizarre's upstream Twilio (or BulkVS / Bandwidth — pick whichever has best A2P 10DLC pricing) account.
+  - **Per-tenant sender ID:** memory mandates per-tenant DKIM-equivalent. For SMS that means a per-tenant 10DLC brand+campaign registration OR a per-tenant short code. Cheap path: alphanumeric sender ID per tenant where carriers allow; fall back to a shared shortcode with `From: <shop_name>:` header prefix.
+  - **Per-tenant rate limits:** prevent one shop's spam from polluting the shared 10DLC reputation. Track sends/day per tenant; cap at tier limits (Free trial 50/day, Pro 500/day, Pro+ 2k/day).
+  - **Billing integration:** charge tenants per outbound segment. Settle through whatever payment processor SaaS billing uses.
+  - **Inbound:** Tailscale Funnel doesn't apply here (BizarreSMS is hosted). Inbound webhooks land on Bizarre's central server, route to the right tenant by destination number, then push via WebSocket to the tenant's CRM.
+  - **Wizard:** ALREADY surfaces `BizarreSMS` first in `StepSmsProvider.tsx` with three visibility states gated by isMultiTenant + tier:
+    - hosted + paid (trial/pro/pro_plus) → enabled, default-selected, "Default" pill
+    - hosted + free → tease (disabled card with "Pro" pill, click → /settings?tab=billing)
+    - self-host → hidden entirely
+    UI is wired ahead of the backend adapter so the moment HOSTED-SMS-1 lands, no frontend change is required.
+  - **Failure path:** if BizarreSMS upstream is down, queue + retry with exponential backoff. Surface `Last send failed` indicator in tenant Settings → SMS → Status.
+  - **Effort estimate:** 2-4 weeks dev + an actual upstream SMS account ($75/mo minimum, +per-message) + spam-reputation management. Not a launch blocker — Twilio-BYO covers the canonical self-host path.
+
 ## Wizard dev-skip cleanup (must remove before SaaS launch)
 
 - [ ] WIZARD-EMAIL-1. **Remove the temporary dev-skip email-verify path before SaaS launch.** Currently `POST /api/v1/auth/verify-email/dev-skip` (in `packages/server/src/routes/auth.verifyEmail.routes.ts`) is gated behind `NODE_ENV !== 'production'` + `WIZARD_DEV_SKIP_EMAIL=1`. The matching UI is the "Skip email check (dev only)" button in `packages/web/src/pages/setup/steps/StepVerifyEmail.tsx`, shown only when `import.meta.env.DEV`.

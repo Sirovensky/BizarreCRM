@@ -37,11 +37,17 @@ interface EmployeeInvite {
   name: string;
   email: string;
   role: EmployeeRole;
+  /** Self-host PIN for clock-in/out + register access. Optional 4-digit string.
+   *  Mockup explicitly includes this field per docs/setup-wizard-preview.html
+   *  #screen-15. SaaS shops can ignore — backend drops the value if PIN-auth
+   *  isn't enabled for the tenant. */
+  pin?: string;
 }
 
 interface RowError {
   name?: string;
   email?: string;
+  pin?: string;
 }
 
 /** Generate a stable client-only id used as the React key for each row. */
@@ -53,7 +59,7 @@ function makeRowId(): string {
 }
 
 function emptyRow(): EmployeeInvite {
-  return { id: makeRowId(), name: '', email: '', role: 'tech' };
+  return { id: makeRowId(), name: '', email: '', role: 'tech', pin: '' };
 }
 
 /** A row is "empty" if both name and email are blank — treated as skipped. */
@@ -158,6 +164,11 @@ export function StepFirstEmployees({
           email: row.email.trim(),
           role: row.role,
           send_invite: true,
+          // PIN is optional. 4-digit numeric used by self-host shops for
+          // clock-in/out + register access. Server is expected to ignore the
+          // field for SaaS tenants where PIN-auth isn't enabled. Empty string
+          // is sent as undefined so backend doesn't try to hash an empty PIN.
+          pin: row.pin && row.pin.length === 4 ? row.pin : undefined,
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -333,6 +344,31 @@ export function StepFirstEmployees({
                       ))}
                     </select>
                   </div>
+                </div>
+
+                {/* PIN — clock-in/register access. 4-digit numeric, optional. */}
+                <div className="w-24">
+                  <label
+                    htmlFor={`${row.id}-pin`}
+                    className="mb-1 block text-xs font-medium text-surface-600 dark:text-surface-400"
+                  >
+                    PIN <span className="text-surface-400">(opt.)</span>
+                  </label>
+                  <input
+                    id={`${row.id}-pin`}
+                    type="text"
+                    inputMode="numeric"
+                    pattern="\d{4}"
+                    maxLength={4}
+                    placeholder="0000"
+                    value={row.pin ?? ''}
+                    onChange={(e) =>
+                      updateRow(row.id, {
+                        pin: e.target.value.replace(/\D/g, '').slice(0, 4),
+                      })
+                    }
+                    className="w-full rounded-lg border border-surface-300 bg-surface-50 px-2 py-2 text-center font-mono text-sm tracking-widest text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  />
                 </div>
 
                 {/* Status badge */}

@@ -17,6 +17,7 @@
  */
 import { useState } from 'react';
 import type { JSX } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   ArrowLeft,
   ArrowRight,
@@ -28,10 +29,55 @@ import {
 import type { PendingWrites, StepProps } from '../wizardTypes';
 import { api } from '@/api/client';
 
-type ProviderId = 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';
+type ProviderId = 'bizarresms' | 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';
 type Choice = ProviderId | 'none';
 
-const PROVIDERS: ReadonlyArray<{ id: Choice; label: string }> = [
+type ProviderVisibility = 'enabled' | 'tease' | 'hidden';
+
+interface ProviderEntry {
+  id: Choice;
+  label: string;
+  /** Resolves visibility per (isMultiTenant, tier) context.
+   *    enabled — selectable, normal rendering
+   *    tease   — visible but disabled, "Upgrade to Pro" pill, click opens billing
+   *    hidden  — not rendered at all
+   *  Defaults to always-`enabled`. Used to gate bizarresms.
+   */
+  visibility?: (ctx: { isMultiTenant: boolean; tier: string | null }) => ProviderVisibility;
+  /** When true the entry gets a "Recommended" pill + becomes the default
+   *  selection if the user hasn't picked something else. Only meaningful
+   *  when the entry is currently `enabled`. */
+  recommended?: boolean;
+}
+
+// PROVIDER VISIBILITY RULES (per memory project_communications.md):
+//
+//   - bizarresms — DEFAULT recommended for hosted-tier paid shops (Pro,
+//     Pro+, or active 14-day trial). Hosted-tier free shops see it as a
+//     TEASE — disabled card with "Upgrade to Pro" CTA — so they discover
+//     the value-add without being able to silently opt into a non-billed
+//     relay. Self-host shops never see it at all (irrelevant; their
+//     traffic doesn't route through Bizarre's infrastructure).
+//
+//   - twilio — fallback default for self-host shops + any hosted shop
+//     who wants BYO creds. Always enabled.
+//
+//   - telnyx / bandwidth / plivo / vonage — alternative BYO creds
+//     for shops with existing vendor relationships. Always enabled.
+//     Don't expand this list further without adoption evidence — each
+//     adapter's webhook auth differs and is real maintenance cost.
+//
+//   - none — sentinel; clears sms_provider_type so SMS stays disabled
+//     until the shop comes back to Settings.
+const PAID_TIERS = new Set(['trial', 'pro', 'pro_plus']);
+function bizarresmsVisibility(ctx: { isMultiTenant: boolean; tier: string | null }): ProviderVisibility {
+  if (!ctx.isMultiTenant) return 'hidden';
+  if (ctx.tier && PAID_TIERS.has(ctx.tier)) return 'enabled';
+  return 'tease';
+}
+
+const PROVIDERS: ReadonlyArray<ProviderEntry> = [
+  { id: 'bizarresms', label: 'BizarreSMS', recommended: true, visibility: bizarresmsVisibility },
   { id: 'twilio', label: 'Twilio' },
   { id: 'telnyx', label: 'Telnyx' },
   { id: 'bandwidth', label: 'Bandwidth' },
@@ -46,6 +92,11 @@ function buildCredentials(
   pending: PendingWrites,
 ): Record<string, string> {
   switch (provider) {
+    case 'bizarresms':
+      // No credentials — relay through hosted infrastructure. Auth uses the
+      // tenant's existing JWT; the upstream Bizarre Twilio account is
+      // platform-owned. Empty payload is intentional.
+      return {};
     case 'twilio':
       return {
         account_sid: pending.sms_twilio_account_sid || '',
@@ -87,8 +138,43 @@ export function StepSmsProvider({
   onBack,
   onSkip,
 }: StepProps): JSX.Element {
-  const initial: Choice =
-    (pending.sms_provider_type as ProviderId | undefined) ?? 'none';
+  // Tenancy + tier context for provider visibility rules. isMultiTenant
+  // comes from authApi.setupStatus(); tier comes from store_config — Agent
+  // 31's signup route writes 'trial' on tenant creation, billing flow
+  // updates it later. Both queries use react-query so this component just
+  // reads cached values without spawning new requests on every render.
+  const setupStatus = useQuery({
+    queryKey: ['auth-setup-status'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
+        '/auth/setup-status',
+      );
+      return res.data;
+    },
+    staleTime: 60_000,
+  });
+  const isMultiTenant = Boolean(setupStatus.data?.data?.isMultiTenant);
+  const tier = (pending.tier as string | undefined) ?? null;
+  const visibilityCtx = { isMultiTenant, tier };
+
+  // Resolve each PROVIDERS entry to one of: enabled / tease / hidden, then
+  // drop hidden ones. This is the rendering source-of-truth.
+  const visibleProviders = PROVIDERS.map((p) => ({
+    ...p,
+    visState: (p.visibility ?? (() => 'enabled' as ProviderVisibility))(visibilityCtx),
+  })).filter((p) => p.visState !== 'hidden');
+
+  // Pick the default selection: persisted value if any → first 'enabled'
+  // entry marked recommended → 'none'.
+  const initial: Choice = (() => {
+    const persisted = pending.sms_provider_type as Choice | undefined;
+    if (persisted) return persisted;
+    const recommendedEnabled = visibleProviders.find(
+      (p) => p.recommended && p.visState === 'enabled',
+    );
+    if (recommendedEnabled) return recommendedEnabled.id;
+    return 'none';
+  })();
   const [choice, setChoice] = useState<Choice>(initial);
   const [testPhone, setTestPhone] = useState('');
   const [testing, setTesting] = useState(false);
@@ -184,9 +270,32 @@ export function StepSmsProvider({
           <label className="mb-2 block text-sm font-medium text-surface-700 dark:text-surface-300">
             Provider
           </label>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
-            {PROVIDERS.map(({ id, label }) => {
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-7">
+            {visibleProviders.map(({ id, label, visState, recommended }) => {
               const selected = choice === id;
+              const teasing = visState === 'tease';
+              if (teasing) {
+                // Free-tier hosted shop: BizarreSMS is locked. Render as a
+                // disabled card with an "Upgrade to Pro" pill so the user
+                // discovers the value-add. Click routes to billing.
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => {
+                      window.location.href = '/settings?tab=billing';
+                    }}
+                    aria-disabled="true"
+                    title="Upgrade to a paid plan to use BizarreSMS"
+                    className="relative cursor-pointer rounded-xl border-2 border-dashed border-surface-300 bg-surface-50 px-3 py-3 text-xs font-medium text-surface-500 transition-colors hover:border-primary-400 hover:bg-primary-50/40 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-400 dark:hover:border-primary-500/40 dark:hover:bg-primary-500/5"
+                  >
+                    <span className="opacity-70">{label}</span>
+                    <span className="ml-1 inline-flex rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">
+                      Pro
+                    </span>
+                  </button>
+                );
+              }
               return (
                 <button
                   key={id}
@@ -195,11 +304,16 @@ export function StepSmsProvider({
                   aria-pressed={selected}
                   className={
                     selected
-                      ? 'rounded-xl border-2 border-primary-500 bg-primary-50 px-3 py-3 text-xs font-semibold text-primary-700 transition-colors dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
-                      : 'rounded-xl border-2 border-surface-200 px-3 py-3 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 dark:border-surface-700 dark:text-surface-300 dark:hover:border-surface-600'
+                      ? 'relative rounded-xl border-2 border-primary-500 bg-primary-50 px-3 py-3 text-xs font-semibold text-primary-700 transition-colors dark:border-primary-400 dark:bg-primary-500/10 dark:text-primary-300'
+                      : 'relative rounded-xl border-2 border-surface-200 px-3 py-3 text-xs font-medium text-surface-700 transition-colors hover:border-surface-300 dark:border-surface-700 dark:text-surface-300 dark:hover:border-surface-600'
                   }
                 >
                   {label}
+                  {recommended && (
+                    <span className="ml-1 inline-flex rounded-full bg-primary-500 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary-950">
+                      Default
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -207,6 +321,17 @@ export function StepSmsProvider({
         </div>
 
         {/* Per-provider credential fields */}
+        {choice === 'bizarresms' && (
+          <div className="rounded-xl border border-primary-300 bg-primary-50 p-4 text-sm text-primary-900 dark:border-primary-500/30 dark:bg-primary-900/20 dark:text-primary-200">
+            <p className="font-semibold">No credentials needed.</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              BizarreSMS routes through your hosted plan's SMS allotment.
+              Outbound segments count against your monthly cap; inbound is
+              free. Per-tenant sender ID + spam-reputation isolation are
+              handled platform-side. View usage in Settings → Billing.
+            </p>
+          </div>
+        )}
         {choice === 'twilio' && (
           <div className="space-y-4">
             <p className="text-xs text-surface-500 dark:text-surface-400">

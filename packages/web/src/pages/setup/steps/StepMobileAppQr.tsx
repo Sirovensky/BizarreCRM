@@ -46,8 +46,13 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
       setLoading(true);
       setError('');
       try {
-        const res = await fetch('/api/v1/info');
-        const json = await res.json();
+        // /api/v1/info requires auth in multi-tenant mode (infoAuthGate in
+        // index.ts). Native fetch doesn't include the JWT bearer header that
+        // axios attaches via interceptor, so the call returned 401 and the
+        // QR was empty. Use the shared api client which threads auth through.
+        const { api } = await import('@/api/client');
+        const res = await api.get('/info');
+        const json = res.data;
         if (cancelled) return;
         const info = unwrapInfo(json);
         // Prefer explicit server_url; fall back to building from lan_ip + port.
