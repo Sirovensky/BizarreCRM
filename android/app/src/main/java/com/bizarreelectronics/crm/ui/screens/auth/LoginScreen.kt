@@ -2878,16 +2878,24 @@ private fun CredentialsStep(
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
     // 2026-04-27 user-flagged regression: tapping Connect on Server step
-    // landed here without auto-focusing the Username field. Use a one-shot
-    // LaunchedEffect keyed to "first composition AND username blank" so we
-    // (a) auto-pop keyboard for fresh entry,
-    // (b) DON'T re-pop when user returns from a 2FA / setup step with a
-    //     non-blank username already filled,
-    // (c) DON'T re-focus on rotation (state.username survives → guard skips).
+    // landed here without auto-focusing the Username field. The Connect
+    // button explicitly dismisses the IME, so requestFocus() alone is not
+    // enough — we have to ALSO call keyboardController.show() and wait one
+    // frame for the field to be laid out before requesting focus. Guards:
+    // (a) only when username is blank (don't pop keyboard when returning
+    //     from a 2FA/setup branch with the field already filled),
+    // (b) Unit key + state-survives-rotation means no re-fire on rotation.
     val usernameFocusRequester = remember { FocusRequester() }
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
         if (state.username.isBlank()) {
-            usernameFocusRequester.requestFocus()
+            // Wait one frame for the Modifier.focusRequester to attach.
+            // 80ms is empirically enough on a Pixel 6 Pro at 120Hz; on
+            // Reduce Motion phones the value is still well under the user's
+            // perceptual threshold.
+            kotlinx.coroutines.delay(80)
+            runCatching { usernameFocusRequester.requestFocus() }
+            keyboardController?.show()
         }
     }
 
