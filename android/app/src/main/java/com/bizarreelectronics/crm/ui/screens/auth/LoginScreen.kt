@@ -2878,24 +2878,32 @@ private fun CredentialsStep(
     var showPassword by rememberSaveable { mutableStateOf(false) }
 
     // 2026-04-27 user-flagged regression: tapping Connect on Server step
-    // landed here without auto-focusing the Username field. The Connect
-    // button explicitly dismisses the IME, so requestFocus() alone is not
-    // enough — we have to ALSO call keyboardController.show() and wait one
-    // frame for the field to be laid out before requesting focus. Guards:
-    // (a) only when username is blank (don't pop keyboard when returning
-    //     from a 2FA/setup branch with the field already filled),
-    // (b) Unit key + state-survives-rotation means no re-fire on rotation.
+    // landed here without auto-focusing the Username field. Three things
+    // have to happen in order for this to work after the AnimatedContent
+    // step transition:
+    //   1. Wait past the 300ms slide so the new card is fully measured and
+    //      its FocusRequester modifier is attached.
+    //   2. requestFocus() on the username field.
+    //   3. Explicitly call keyboardController.show() — the Connect button
+    //      caused IME to dismiss; programmatic focus alone won't re-show it.
+    // We retry the show() call once after another frame because some Android
+    // IME state machines drop the request while the previous field is still
+    // releasing focus. Guard on blank username so returns from 2FA/setup
+    // don't re-pop the keyboard.
     val usernameFocusRequester = remember { FocusRequester() }
     val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     LaunchedEffect(Unit) {
         if (state.username.isBlank()) {
-            // Wait one frame for the Modifier.focusRequester to attach.
-            // 80ms is empirically enough on a Pixel 6 Pro at 120Hz; on
-            // Reduce Motion phones the value is still well under the user's
-            // perceptual threshold.
-            kotlinx.coroutines.delay(80)
-            runCatching { usernameFocusRequester.requestFocus() }
+            timber.log.Timber.tag("LoginVM").i("auto-focus: waiting for slide…")
+            // 380ms = 300ms AnimatedContent slide + 80ms layout buffer.
+            kotlinx.coroutines.delay(380)
+            val focused = runCatching { usernameFocusRequester.requestFocus() }
+            timber.log.Timber.tag("LoginVM").i("auto-focus: requestFocus result=$focused")
             keyboardController?.show()
+            // Retry after one frame in case IME state machine ate the first call.
+            kotlinx.coroutines.delay(120)
+            keyboardController?.show()
+            timber.log.Timber.tag("LoginVM").i("auto-focus: keyboard.show() x2 fired")
         }
     }
 
