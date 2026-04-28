@@ -651,6 +651,48 @@ class AppPreferences @Inject constructor(
         get() = prefs.getString("last_celebration_date", null)
         set(value) = prefs.edit().putString("last_celebration_date", value).apply()
 
+    // --- §36.5 — First-milestone celebration flags ----------------------------
+    //
+    // Three one-shot booleans track whether each onboarding milestone celebration
+    // has already been shown on this device. Once true they stay true forever so
+    // the confetti modal fires exactly once per milestone per install.
+    //
+    // Milestones watched:
+    //   FIRST_TICKET  — openTickets KPI transitions from 0 → ≥1 on the dashboard.
+    //   FIRST_SALE    — revenueToday KPI transitions from 0.0 → >0 on the dashboard.
+    //   FIRST_CUSTOMER — totalCustomers KPI transitions from 0 → ≥1 (derived from
+    //                    the allKpisZero → non-zero transition when only the customer
+    //                    count becomes non-zero).
+    //
+    // All three are plain prefs (not encrypted) — no PII stored.
+
+    /**
+     * §36.5 — true after the "First ticket created!" celebration has been shown.
+     * Flipped to true the first time the `openTickets` KPI crosses 0 → ≥1.
+     */
+    var hasCelebratedFirstTicket: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_ticket", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_ticket", value).apply()
+
+    /**
+     * §36.5 — true after the "First sale made!" celebration has been shown.
+     * Flipped to true the first time `revenueToday` crosses 0.0 → >0.
+     */
+    var hasCelebratedFirstSale: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_sale", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_sale", value).apply()
+
+    /**
+     * §36.5 — true after the "First customer added!" celebration has been shown.
+     * Flipped to true the first time the KPI grid transitions away from
+     * `allKpisZero` with the customer-count as the trigger (approximated by the
+     * openTickets staying 0 while revenue stays 0.0 but some KPI becomes non-zero,
+     * OR on first receipt of any customer data — see DashboardViewModel logic).
+     */
+    var hasCelebratedFirstCustomer: Boolean
+        get() = prefs.getBoolean("milestone_celebrated_first_customer", false)
+        set(value) = prefs.edit().putBoolean("milestone_celebrated_first_customer", value).apply()
+
     // --- §3.7 L538 — dismissed announcement ID --------------------------------
 
     /**

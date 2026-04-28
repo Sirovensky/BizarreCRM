@@ -83,6 +83,8 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.ActivityFeedCa
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AnnouncementBanner
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.AvatarLongPressMenu
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.CelebratoryModal
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MilestoneCelebration
+import com.bizarreelectronics.crm.ui.screens.dashboard.components.MilestoneCelebrationModal
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardCustomizationSheet
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.DashboardTabletActions
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.MyQueueSection
@@ -358,6 +360,102 @@ class DashboardViewModel @Inject constructor(
         _showCelebratoryModal.value = false
         val today = java.time.LocalDate.now().toString()
         appPreferences.lastCelebrationDate = today
+    }
+
+    // -------------------------------------------------------------------------
+    // §36.5 — First-milestone celebrations (first ticket / first sale / first customer)
+    // -------------------------------------------------------------------------
+
+    /**
+     * §36.5 — The pending one-shot onboarding milestone, or null when no
+     * celebration is due. Emits exactly once per [MilestoneCelebration] value
+     * on this device; gated by [AppPreferences.hasCelebrated*] booleans so the
+     * modal never repeats after a reinstall restores the prefs backup.
+     *
+     * Milestones are checked in [checkMilestoneCelebrations] immediately after
+     * the KPI stats load completes in [loadDashboard].
+     */
+    private val _pendingMilestone =
+        MutableStateFlow<MilestoneCelebration?>(null)
+    val pendingMilestone: StateFlow<MilestoneCelebration?> =
+        _pendingMilestone.asStateFlow()
+
+    /** Previous KPI values — used to detect 0 → non-zero transitions. */
+    private var _prevOpenTickets: Int = -1      // -1 = not yet observed
+    private var _prevRevenueToday: Double = -1.0 // -1.0 = not yet observed
+
+    /**
+     * §36.5 — Check whether a first-milestone celebration should fire after
+     * the KPI stats have loaded.  Each milestone fires at most once per device
+     * install.  Priority order (only one modal per load cycle):
+     *   1. FIRST_SALE      (revenueToday: 0.0 → >0)
+     *   2. FIRST_TICKET    (openTickets:  0   → ≥1)
+     *   3. FIRST_CUSTOMER  (any KPI non-zero while revenue+tickets still 0 →
+     *                       proxy for customer added but no ticket/sale yet)
+     *
+     * Called from [loadDashboard] after a successful stats fetch, passing the
+     * freshly-loaded KPI values.
+     *
+     * @param openTickets   Latest open-ticket count from the server.
+     * @param revenueToday  Latest today revenue value from the server.
+     */
+    private fun checkMilestoneCelebrations(openTickets: Int, revenueToday: Double) {
+        // Only evaluate after we have observed at least one prior value.
+        val prevTickets = _prevOpenTickets
+        val prevRevenue = _prevRevenueToday
+
+        _prevOpenTickets = openTickets
+        _prevRevenueToday = revenueToday
+
+        if (prevTickets == -1 && prevRevenue == -1.0) {
+            // Very first load — record baseline values without triggering a modal
+            // so we don't celebrate existing data on reinstall.
+            return
+        }
+
+        // FIRST_SALE — revenue transitions from ≤0 to >0 for the first time.
+        if (revenueToday > 0.0 && (prevRevenue <= 0.0) &&
+            !appPreferences.hasCelebratedFirstSale
+        ) {
+            appPreferences.hasCelebratedFirstSale = true
+            _pendingMilestone.value = MilestoneCelebration.FIRST_SALE
+            return
+        }
+
+        // FIRST_TICKET — openTickets transitions from 0 to ≥1 for the first time.
+        if (openTickets >= 1 && prevTickets == 0 &&
+            !appPreferences.hasCelebratedFirstTicket
+        ) {
+            appPreferences.hasCelebratedFirstTicket = true
+            _pendingMilestone.value = MilestoneCelebration.FIRST_TICKET
+            return
+        }
+
+        // FIRST_CUSTOMER — proxy: KPI data becomes available (non-zero) but
+        // neither tickets nor revenue triggered above. This covers the common
+        // "added a customer but haven't created a ticket yet" onboarding path.
+        if (openTickets == 0 && revenueToday <= 0.0 &&
+            prevTickets == 0 && prevRevenue <= 0.0 &&
+            !appPreferences.hasCelebratedFirstCustomer
+        ) {
+            // We can't directly observe the customer count from the KPI grid, so
+            // we use the "first time the dashboard loads successfully for a shop
+            // that has data elsewhere" heuristic: if the server returned 200 with
+            // all-zero KPIs on the previous poll and now the appointment count or
+            // low-stock count is non-zero, something was added.  We treat that as
+            // the first-customer signal since customers are typically added first.
+            val appointments = _state.value.appointmentsToday
+            val lowStock = _state.value.lowStockCount
+            if (appointments > 0 || lowStock > 0) {
+                appPreferences.hasCelebratedFirstCustomer = true
+                _pendingMilestone.value = MilestoneCelebration.FIRST_CUSTOMER
+            }
+        }
+    }
+
+    /** §36.5 — Clears the pending milestone and prevents repeat display. */
+    fun dismissMilestoneCelebration() {
+        _pendingMilestone.value = null
     }
 
     // -------------------------------------------------------------------------
@@ -772,6 +870,11 @@ class DashboardViewModel @Inject constructor(
                     hasNetworkError = false,
                     hasCachedData = true,
                 )
+                // §36.5 — check whether this load triggers a first-milestone celebration.
+                checkMilestoneCelebrations(
+                    openTickets = stats.openTickets,
+                    revenueToday = stats.revenueToday,
+                )
             } catch (e: Exception) {
                 android.util.Log.w("Dashboard", "Failed to load stats: ${e.message}")
                 _state.value = _state.value.copy(
@@ -1012,6 +1115,8 @@ fun DashboardScreen(
     val recentActivity by viewModel.recentActivity.collectAsState()
     val announcement by viewModel.announcement.collectAsState()
     val showCelebratoryModal by viewModel.showCelebratoryModal.collectAsState()
+    // §36.5 — first-milestone celebration (first ticket / first sale / first customer)
+    val pendingMilestone by viewModel.pendingMilestone.collectAsState()
     val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     // §3.12 — SMS unread + team inbox counts.
@@ -1679,6 +1784,29 @@ fun DashboardScreen(
         onDismiss = { viewModel.dismissCelebratoryModal() },
         reduceMotion = reduceMotion,
     )
+
+    // §36.5 — First-milestone celebration modal (first ticket / sale / customer).
+    // Only shown when no queue-clear modal is already visible so the two modals
+    // never stack on top of each other.
+    //
+    // Navigation CTAs re-use existing DashboardScreen nav callbacks:
+    //   FIRST_TICKET  → onNavigateToTickets (tickets list)
+    //   FIRST_SALE    → onNavigateToTickets (tickets list; invoices nav not wired here)
+    //   FIRST_CUSTOMER → no CTA (customers nav not wired into DashboardScreen params)
+    val activeMilestone = pendingMilestone
+    if (activeMilestone != null && !showCelebratoryModal) {
+        MilestoneCelebrationModal(
+            milestone = activeMilestone,
+            visible = true,
+            onDismiss = { viewModel.dismissMilestoneCelebration() },
+            onNavigate = when (activeMilestone) {
+                MilestoneCelebration.FIRST_TICKET -> { { onNavigateToTickets() } }
+                MilestoneCelebration.FIRST_SALE -> { { onNavigateToTickets() } }
+                MilestoneCelebration.FIRST_CUSTOMER -> null
+            },
+            reduceMotion = reduceMotion,
+        )
+    }
 
     // §3.17 L496 — Customization sheet: opened by long-press on any tile.
     if (showCustomizationSheet) {

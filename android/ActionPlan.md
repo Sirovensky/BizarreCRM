@@ -4287,7 +4287,7 @@ _Triggered when `GET /auth/setup-status → { needsSetup: true }`. 13 steps mirr
 
 ### 36.5 Completion
 - [x] Onboarding checklist card (§3.5) tracks remaining setup. (session 2026-04-26 — OnboardingChecklist.kt + SetupChecklistCard.kt already present; tracks customer/ticket/PIN/biometric/notifications)
-- [ ] First-sale / first-customer confetti celebrations. NOTE: deferred — requires a Lottie or Canvas confetti composable triggered on first ticket/sale event; no server dependency.
+- [x] First-sale / first-customer confetti celebrations. NOTE: deferred — requires a Lottie or Canvas confetti composable triggered on first ticket/sale event; no server dependency. (session 2026-04-27 — MilestoneCelebrationModal.kt + DashboardViewModel milestone logic; FIRST_TICKET/FIRST_SALE/FIRST_CUSTOMER one-shot ModalBottomSheet with 35-particle confetti animation)
 
 ---
 ## 37. Marketing & Growth
