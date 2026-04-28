@@ -2,6 +2,41 @@ package com.bizarreelectronics.crm.data.remote.dto
 
 import com.google.gson.annotations.SerializedName
 
+// ─── §59.2 Route optimisation request / response ────────────────────────────
+
+/**
+ * Request body for POST /api/v1/field-service/routes/optimize.
+ *
+ * [technicianId] must be a positive integer user ID.
+ * [routeDate]    must be YYYY-MM-DD.
+ * [jobIds]       ordered list of job IDs to include in the optimisation run.
+ *                The server will reorder these and return the proposed sequence.
+ */
+data class RouteOptimizeRequest(
+    @SerializedName("technician_id") val technicianId: Long,
+    @SerializedName("route_date")    val routeDate: String,
+    @SerializedName("job_ids")       val jobIds: List<Long>,
+)
+
+/**
+ * Response data for POST /api/v1/field-service/routes/optimize.
+ *
+ * Wrapped inside [ApiResponse.data] as usual.
+ *
+ * [proposedOrder]     job IDs in optimised visit order.
+ * [totalDistanceKm]   estimated driving distance for this route (greedy heuristic).
+ * [algorithm]         always "greedy-nearest-neighbor" from current server.
+ * [note]              human-readable caveat from server.
+ * [startFromHome]     true if tech home coords were used as route origin.
+ */
+data class RouteOptimizeResult(
+    @SerializedName("proposed_order")     val proposedOrder: List<Long>,
+    @SerializedName("total_distance_km")  val totalDistanceKm: Double,
+    @SerializedName("algorithm")          val algorithm: String,
+    @SerializedName("note")               val note: String,
+    @SerializedName("start_from_home")    val startFromHome: Boolean,
+)
+
 // ─── List wrapper matching server { data: { jobs: [...], pagination } } ───────
 
 data class DispatchJobListData(

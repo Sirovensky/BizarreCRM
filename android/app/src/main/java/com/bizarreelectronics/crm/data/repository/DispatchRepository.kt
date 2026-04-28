@@ -3,6 +3,8 @@ package com.bizarreelectronics.crm.data.repository
 import android.util.Log
 import com.bizarreelectronics.crm.data.remote.api.DispatchApi
 import com.bizarreelectronics.crm.data.remote.dto.DispatchJobDetail
+import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeRequest
+import com.bizarreelectronics.crm.data.remote.dto.RouteOptimizeResult
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -80,6 +82,50 @@ class DispatchRepository @Inject constructor(
         }
         // Re-fetch the job so the caller gets a fresh DispatchJobDetail.
         return getJob(id)
+    }
+
+    /**
+     * §59.2 Route Optimization.
+     *
+     * Calls POST /api/v1/field-service/routes/optimize with the supplied job list
+     * and returns the server's greedy nearest-neighbor reordering.
+     *
+     * Manager / admin only — server returns 403 for other roles; the caller
+     * should surface a permission-denied message.
+     *
+     * Does NOT persist the new order — caller must reorder the local list and
+     * optionally POST /routes to save it.
+     *
+     * @param technicianId  user ID of the technician whose route to optimise.
+     * @param routeDate     date in YYYY-MM-DD format.
+     * @param jobs          current job list; only non-terminal jobs with valid
+     *                      (lat, lng) are included (others are appended at end).
+     * @return              [RouteOptimizeResult] with proposed_order + distance.
+     * @throws Exception    on network error, 403 (not manager), 429 (rate limit),
+     *                      or if no eligible jobs remain after filtering.
+     */
+    suspend fun optimizeRoute(
+        technicianId: Long,
+        routeDate: String,
+        jobs: List<DispatchJobDetail>,
+    ): RouteOptimizeResult {
+        // Only include open jobs that have coordinates — server rejects jobs with
+        // null lat/lng and we want the call to succeed even in mixed lists.
+        val terminalStatuses = setOf("completed", "canceled", "deferred")
+        val eligible = jobs.filter { it.status !in terminalStatuses && it.lat != null && it.lng != null }
+        if (eligible.isEmpty()) {
+            throw IllegalStateException("No open jobs with coordinates to optimise")
+        }
+        val request = RouteOptimizeRequest(
+            technicianId = technicianId,
+            routeDate    = routeDate,
+            jobIds       = eligible.map { it.id },
+        )
+        val response = api.optimizeRoute(request)
+        if (!response.success || response.data == null) {
+            throw Exception(response.message ?: "Route optimisation failed")
+        }
+        return response.data
     }
 
     /**

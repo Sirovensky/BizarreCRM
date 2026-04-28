@@ -5100,7 +5100,7 @@ _Web-served via public page; Android links to it and receives pushes._
 - [x] List view: jobs ranked by ETA + priority. (session 2026-04-26 — DispatchListScreen wired to GET /api/v1/field-service/jobs; sorted by scheduled_window_start on server; priority badge shown in card)
 
 ### 59.2 Route optimization
-- [ ] `POST /dispatch/optimize` → returns ordered job list for tech's day. NOTE: server endpoint POST /api/v1/field-service/routes/optimize exists (greedy nearest-neighbor); Android UI not wired yet — manager-only feature deferred.
+- [x] `POST /dispatch/optimize` → returns ordered job list for tech's day. (session 2026-04-27 — `RouteOptimizeRequest`/`RouteOptimizeResult` DTOs added to `DispatchDto.kt`; `DispatchApi.optimizeRoute()` Retrofit `@POST` added; `DispatchRepository.optimizeRoute()` filters terminal/no-coord jobs, calls server, returns `RouteOptimizeResult`; `OptimizationBanner` data class + `isOptimizing: Boolean` fields added to `DispatchUiState`; `DispatchViewModel.optimizeRoute(technicianId)` reorders list by `proposed_order` + appends remainder, sets banner; `clearOptimizationBanner()` dismisses it; `DispatchListScreen` gains Route icon button in TopAppBar (spinner while in-flight, disabled when no jobs), `AnimatedVisibility` `OptimizationResultBanner` composable below TopAppBar showing distance km + home-start label + dismiss X; `currentUserId: Long` param wired through; manager-only enforced server-side with 403 surfaced as snackbar; build green)
 
 ### 59.3 On-my-way notification
 - [ ] Tech taps "On my way" → auto-SMS to customer with ETA + live-location link (opt-in). NOTE: server-blocked; no SMS-with-location endpoint; deferred.
