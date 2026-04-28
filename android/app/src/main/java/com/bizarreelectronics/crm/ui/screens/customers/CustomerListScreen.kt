@@ -11,6 +11,7 @@ import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ripple
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,6 +90,7 @@ import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSort
 import com.bizarreelectronics.crm.ui.screens.customers.components.CustomerSortDropdown
 import com.bizarreelectronics.crm.ui.screens.customers.components.ImportedContact
 import com.bizarreelectronics.crm.ui.screens.customers.components.rememberCustomerContactImport
+import com.bizarreelectronics.crm.ui.screens.tickets.components.CustomerPreviewPopover
 import com.bizarreelectronics.crm.util.formatPhoneDisplay
 import kotlinx.coroutines.launch
 
@@ -433,6 +436,15 @@ private fun CustomerPagingList(
     onAddFirstCustomer: () -> Unit = {},
     onImportFromContacts: () -> Unit = {},
 ) {
+    // §5.1 tablet preview popover — avatar tap on tablet shows quick-stats card
+    var previewCustomer by remember { mutableStateOf<CustomerEntity?>(null) }
+    if (previewCustomer != null) {
+        CustomerPreviewPopover(
+            customer = previewCustomer,
+            onDismiss = { previewCustomer = null },
+        )
+    }
+
     when (lazyPagingItems.loadState.refresh) {
         is LoadState.Loading -> {
             Box(
@@ -530,6 +542,9 @@ private fun CustomerPagingList(
                         },
                         onLongPress = { onLongPress(customer.id) },
                         onCreateTicket = { onCreateTicket(customer.id) },
+                        onAvatarClick = if (isTablet) {
+                            { previewCustomer = customer }
+                        } else null,
                     )
                 }
                 BrandListItemDivider()
@@ -636,6 +651,8 @@ private fun CustomerContextMenuRow(
     onClick: () -> Unit,
     onLongPress: () -> Unit,
     onCreateTicket: () -> Unit,
+    /** §5.1 tablet preview popover: non-null on tablet; tapping avatar fires it. */
+    onAvatarClick: (() -> Unit)? = null,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -673,7 +690,17 @@ private fun CustomerContextMenuRow(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    CustomerAvatar(name = fullName)
+                    // §5.1 tablet: avatar tap opens preview popover
+                    val avatarMod = if (onAvatarClick != null) {
+                        Modifier
+                            .semantics { contentDescription = "Preview $fullName" }
+                            .clickable(
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                indication = ripple(bounded = false, radius = 20.dp),
+                                onClick = onAvatarClick,
+                            )
+                    } else Modifier
+                    CustomerAvatar(name = fullName, modifier = avatarMod)
                 }
             },
             headline = {

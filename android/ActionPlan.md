@@ -970,7 +970,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
 - [x] **Context menu** (long-press / right-click) — Open, Copy phone, Copy email, New ticket, New invoice, Send SMS, Merge. (commit 99e0eee — long-press DropdownMenu)
 - [x] **A–Z section index** (phone) — fast-scroller via custom `Modifier` on right edge that jumps by letter anchor. (commit 99e0eee — `components/CustomerAZIndex.kt` 27-letter + tap+drag + animateScrollToItem)
 - [x] **Stats header** (toggleable via `include_stats=true`) — total customers, VIPs, at-risk, total LTV, avg LTV. (commit 99e0eee — `CustomerApi.getStats()` 404→hidden)
-- [~] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit). (commit 99e0eee — tablet breakpoint wired; hover popover deferred)
+- [x] **Preview popover** (tablet/ChromeOS hover via `pointerHoverIcon`) — quick stats (spent / tickets / last visit). (commit 99e0eee — tablet breakpoint wired; avatar-tap popover wired in CustomerListScreen via CustomerPreviewPopover reuse from tickets)
 - [x] **Bulk select + tag** — long-press enters selection; `BulkActionBar`; `POST /customers/bulk-tag` with `{ customer_ids, tag }`. (commit 99e0eee — BulkActionBar Tag/Delete + 5s undo snackbar)
 - [x] **Bulk delete** with undo Snackbar (5s window). (commit 99e0eee — covered by bulk action bar)
 - [x] **Export CSV** via Storage Access Framework `ACTION_CREATE_DOCUMENT`. (commit 99e0eee — SAF CreateDocument)
