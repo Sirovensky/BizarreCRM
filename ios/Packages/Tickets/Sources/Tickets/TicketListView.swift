@@ -469,22 +469,12 @@ public struct TicketListView: View {
             }
             .scrollClipDisabled()
 
-            // §4.1 Urgency chips (Critical / High / Medium / Normal / Low)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: BrandSpacing.xs) {
-                    ForEach(TicketUrgencyFilter.allCases) { urgency in
-                        UrgencyChip(
-                            urgency: urgency,
-                            selected: vm.urgencyFilter == urgency
-                        ) {
-                            Task { await vm.applyUrgency(urgency) }
-                        }
-                    }
-                }
-                .padding(.horizontal, BrandSpacing.base)
-                .padding(.bottom, BrandSpacing.sm)
-            }
-            .scrollClipDisabled()
+            // Urgency chip strip removed — per product spec we surface
+            // pinned/flagged tickets only, not a multi-tier urgency taxonomy.
+            // Pinned tickets get the `pin.fill` icon next to the customer name
+            // (see `TicketRow`); the dedicated chip filter row was misleading
+            // because it implied an urgency model the product no longer
+            // supports.
         }
     }
 }
@@ -559,14 +549,11 @@ private struct TicketRow: View {
                             .accessibilityLabel("Pinned")
                     }
                 }
-                Text(secondaryLine)
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .lineLimit(1)
-
-                // §4.1 — Urgency chip with color dot
-                if let urgency = ticket.urgency, !urgency.isEmpty {
-                    UrgencyDot(urgency: urgency)
+                if let secondary = secondaryLine {
+                    Text(secondary)
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .lineLimit(1)
                 }
             }
 
@@ -616,11 +603,16 @@ private struct TicketRow: View {
         return ticket.orderId
     }
 
-    private var secondaryLine: String {
+    /// Secondary line — `<orderId> · <device>` when both are useful, else the
+    /// `orderId` alone. Returns nil when the primary line already shows the
+    /// orderId (avoids the `#7 / #7` duplicate seen on rows with no customer
+    /// and no device).
+    private var secondaryLine: String? {
         let device = ticket.firstDevice?.deviceName ?? ""
         if !device.isEmpty && device != primaryLine {
             return "\(ticket.orderId)  \u{2022}  \(device)"
         }
+        if primaryLine == ticket.orderId { return nil }
         return ticket.orderId
     }
 

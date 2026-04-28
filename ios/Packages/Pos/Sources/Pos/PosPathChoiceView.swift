@@ -151,6 +151,7 @@ struct PosPathChoiceView: View {
             }
             .padding(20)
             .frame(maxWidth: .infinity, minHeight: sizeClass == .regular ? 180 : 132, alignment: .topLeading)
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(accent == .primary
