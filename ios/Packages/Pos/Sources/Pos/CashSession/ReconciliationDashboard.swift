@@ -78,7 +78,7 @@ public struct MonthlyReconciliation: Sendable, Equatable, Identifiable {
     public let month: Date           // first day of month
     public let revenueCents: Int
     public let cogsCents: Int        // cost of goods
-    public let grossProfitCents: Int { revenueCents - cogsCents }
+    public var grossProfitCents: Int { revenueCents - cogsCents }
     public let adjustmentsCents: Int
     public let arAgingCents: Int     // accounts-receivable aging
     public let apAgingCents: Int     // accounts-payable aging

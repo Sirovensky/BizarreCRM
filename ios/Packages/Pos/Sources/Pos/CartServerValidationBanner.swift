@@ -51,7 +51,7 @@ public struct ServerValidationMismatch: Equatable, Sendable {
         case .taxRecomputed:
             return "Tax recomputed (\(direction)\(amount))"
         case .discountInvalidated(let name):
-            return "Discount "\(name)" removed (\(direction)\(amount))"
+            return "Discount \"\(name)\" removed (\(direction)\(amount))"
         case .priceAdjusted(let item):
             return "Price adjusted for \(item) (\(direction)\(amount))"
         case .unknown:

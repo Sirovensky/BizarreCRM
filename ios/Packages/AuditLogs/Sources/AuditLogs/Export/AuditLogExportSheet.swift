@@ -238,7 +238,7 @@ public struct AuditLogExportSheet: View {
         let format = exportFormat
 
         do {
-            let url: URL = try await Task.detached(priority: .userInitiated) {
+            let url: URL = try await {
                 switch format {
                 case .csv:
                     let csv = AuditLogCSVComposer.compose(
@@ -254,7 +254,7 @@ public struct AuditLogExportSheet: View {
                         until: untilFilter
                     )
                 }
-            }.value
+            }()
             exportURL = url
         } catch {
             errorMessage = error.localizedDescription

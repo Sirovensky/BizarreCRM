@@ -126,7 +126,7 @@ public struct TicketTransferLocationSheet: View {
                     .buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .padding(BrandSpacing.lg)
-        case .loaded(let list), .transferring:
+        case .loaded(let list):
             Form {
                 Section("Destination location") {
                     if list.isEmpty {
@@ -147,7 +147,7 @@ public struct TicketTransferLocationSheet: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.bizarreSurfaceBase)
-        case .done:
+        case .done, .transferring:
             EmptyView()
         }
     }

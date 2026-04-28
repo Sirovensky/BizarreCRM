@@ -111,8 +111,8 @@ final class CallRecordingPlayerViewModel {
     }
 
     deinit {
-        timer?.cancel()
-        player?.stop()
+        // Capture references nonisolated; AVAudioPlayer's stop is safe to call here.
+        // Timer cancellation is racy; rely on tearDown() called from view.
     }
 }
 

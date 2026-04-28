@@ -142,7 +142,7 @@ public struct TicketAttachInvoiceSheet: View {
                     .buttonStyle(.borderedProminent).tint(.bizarreOrange)
             }
             .padding(BrandSpacing.lg)
-        case .loaded(let list), .attaching:
+        case .loaded(let list):
             if list.isEmpty {
                 Text("No open invoices found")
                     .font(.brandBodyMedium())
@@ -156,7 +156,7 @@ public struct TicketAttachInvoiceSheet: View {
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
-        case .done:
+        case .done, .attaching:
             EmptyView()
         }
     }

@@ -26,7 +26,7 @@ public final class BulkCampaignViewModel {
         case failed(String)
     }
 
-    public private(set) var step: Step = .compose
+    public internal(set) var step: Step = .compose
 
     // MARK: - Compose fields
 
