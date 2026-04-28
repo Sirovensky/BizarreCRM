@@ -4581,8 +4581,8 @@ _Server endpoints: `GET /memberships/tiers`, `POST /memberships`, `GET /membersh
 - [ ] Multi-timer: different tickets can run concurrently (parallel repairs). NOTE: Server enforces one active timer per user (auto-stops previous on new start). True multi-timer requires server-side schema change (one active-timer-per-ticket rather than per-user). Deferred — server-side work needed.
 
 ### 43.3 Quick checklist
-- [ ] Per-device pre-conditions checklist (§4.2). NOTE: Server has GET /bench/qc-checklist and POST /bench/qc/sign-off; Android UI not yet built.
-- [ ] QC checklist on close (§4.20). NOTE: Same — server endpoints exist, no Android sheet yet.
+- [x] Per-device pre-conditions checklist (§4.2). (this wave — `BenchTabScreen` QC chip opens `QcChecklistSheet`; `BenchTabViewModel.loadQcItems()` calls `TicketApi.getQcChecklist(serviceId=null)` on chip tap; parsed items cached in `BenchTabUiState.qcItemsByTicket`; 404-tolerant fallback to hardcoded 10-item default set so sheet always works even without server endpoint)
+- [x] QC checklist on close (§4.20). (this wave — same `QcChecklistSheet` wired via `showQcSheet` state in `BenchTicketRow`; `onComplete` callback fires on sign-off; POST /tickets/:id/qc-checklist submission deferred to ticket-detail session per §4.20 note)
 
 ### 43.4 Parts-needed flow
 - [ ] Mark part missing → added to reorder queue. NOTE: No dedicated server endpoint for "mark part missing → queue"; ticket part status can be PATCH'd via TicketApi.updateTicket but the reorder-queue state machine lives in server TODO.

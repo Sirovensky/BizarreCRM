@@ -201,6 +201,7 @@ fun BenchTabScreen(
                         BenchTicketRow(
                             ticket = ticket,
                             isTimerRunning = ticket.id in state.runningTimers,
+                            serverQcItems = state.qcItemsByTicket[ticket.id],
                             employees = state.employees.map { emp ->
                                 HandoffEmployee(
                                     id = emp.id,
@@ -221,6 +222,7 @@ fun BenchTabScreen(
                                 viewModel.handoffTicket(ticket.id, employeeId, reason)
                             },
                             onHandoffDialogOpen = { viewModel.loadEmployees() },
+                            onQcSheetOpen = { viewModel.loadQcItems(ticket.id) },
                         )
                     }
                 }
@@ -242,6 +244,8 @@ fun BenchTabScreen(
 private fun BenchTicketRow(
     ticket: TicketListItem,
     isTimerRunning: Boolean,
+    /** §43.3 — server-loaded QC items for this ticket; null = not yet fetched. */
+    serverQcItems: List<QcChecklistItem>?,
     employees: List<HandoffEmployee>,
     onRowClick: () -> Unit,
     onTemplatesClick: () -> Unit,
@@ -250,6 +254,8 @@ private fun BenchTicketRow(
     onMarkPartMissing: (deviceId: Long, partId: Long, partName: String) -> Unit,
     onHandoff: (employeeId: Long, reason: String) -> Unit,
     onHandoffDialogOpen: () -> Unit,
+    /** §43.3 — triggered when the QC chip is tapped to pre-fetch server items. */
+    onQcSheetOpen: () -> Unit = {},
 ) {
     // §43.3 — QC checklist sheet state
     var showQcSheet by rememberSaveable { mutableStateOf(false) }
@@ -346,7 +352,10 @@ private fun BenchTicketRow(
                 // §43.3 — QC checklist chip
                 FilterChip(
                     selected = false,
-                    onClick = { showQcSheet = true },
+                    onClick = {
+                        onQcSheetOpen()
+                        showQcSheet = true
+                    },
                     label = { Text("QC Check", style = MaterialTheme.typography.labelSmall) },
                     leadingIcon = {
                         Icon(
@@ -393,9 +402,9 @@ private fun BenchTicketRow(
 
     // ── §43.3 QC checklist bottom sheet ──────────────────────────────────────
     if (showQcSheet) {
-        // Starter QC items — in production these come from
-        // GET /qc-checklists?service_id= (404-tolerant). Here we provide a
-        // sensible default set so the sheet is always functional.
+        // Use server-provided items when available (loaded via loadQcItems on chip tap).
+        // Falls back to a sensible hardcoded set so QC is always functional even when
+        // the server endpoint is 404 or the network is unavailable.
         val defaultQcItems = remember {
             listOf(
                 QcChecklistItem(1L, "Power on / boot test"),
@@ -411,7 +420,7 @@ private fun BenchTicketRow(
             )
         }
         QcChecklistSheet(
-            items = defaultQcItems,
+            items = serverQcItems ?: defaultQcItems,
             requireSecondSignoff = false,
             onComplete = { _ ->
                 // QC payload would be submitted via TicketApi.qcSignOff in a

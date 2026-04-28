@@ -7,6 +7,7 @@ import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.data.remote.api.TicketApi
 import com.bizarreelectronics.crm.data.remote.dto.EmployeeListItem
 import com.bizarreelectronics.crm.data.remote.dto.TicketListItem
+import com.bizarreelectronics.crm.ui.screens.tickets.components.QcChecklistItem
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -205,21 +206,63 @@ class BenchTabViewModel @Inject constructor(
     }
 
     fun clearHandoffMessage() = _state.update { it.copy(handoffMessage = null) }
+
+    // ─── §43.3 QC checklist ───────────────────────────────────────────────────
+
+    /**
+     * Load QC checklist items for [ticketId] from the server (§43.3).
+     *
+     * Calls [TicketApi.getQcChecklist] with `service_id = null` to fetch the
+     * generic checklist.  On success the items are cached in
+     * [BenchTabUiState.qcItemsByTicket] keyed by [ticketId].
+     *
+     * 404-tolerant: if the server doesn't expose the endpoint yet (or returns an
+     * empty/malformed response), the bench sheet falls back to a hardcoded default
+     * set so QC is always functional.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun loadQcItems(ticketId: Long) {
+        // Skip if already loaded for this ticket.
+        if (_state.value.qcItemsByTicket.containsKey(ticketId)) return
+        viewModelScope.launch {
+            try {
+                val resp = ticketApi.getQcChecklist(serviceId = null)
+                val raw = resp.data ?: return@launch
+                // Server shape: { "items": [ { "id": Long, "label": String, "required": Boolean } ] }
+                val itemsList = raw["items"] as? List<*> ?: return@launch
+                val parsed = itemsList.mapIndexedNotNull { idx, entry ->
+                    val map = entry as? Map<*, *> ?: return@mapIndexedNotNull null
+                    val id = (map["id"] as? Number)?.toLong() ?: (idx + 1L)
+                    val label = map["label"] as? String ?: return@mapIndexedNotNull null
+                    val required = map["required"] as? Boolean ?: true
+                    QcChecklistItem(id = id, label = label, required = required)
+                }
+                if (parsed.isNotEmpty()) {
+                    _state.update { it.copy(qcItemsByTicket = it.qcItemsByTicket + (ticketId to parsed)) }
+                }
+            } catch (_: Exception) {
+                // 404 or network error — caller falls back to hardcoded defaults.
+            }
+        }
+    }
 }
 
 /**
  * UI state for [BenchTabScreen].
  *
- * @param tickets         List of in-repair tickets assigned to the current technician.
- * @param isLoading       True while the initial or refresh fetch is in flight.
- * @param error           Non-null when a recoverable fetch error occurred.
- * @param offline         True when the server is unreachable; tickets list may be stale.
- * @param runningTimers   Set of ticket IDs whose bench timers are currently running (§43.2).
- * @param timerError      Non-null when a timer start/stop API call failed.
+ * @param tickets            List of in-repair tickets assigned to the current technician.
+ * @param isLoading          True while the initial or refresh fetch is in flight.
+ * @param error              Non-null when a recoverable fetch error occurred.
+ * @param offline            True when the server is unreachable; tickets list may be stale.
+ * @param runningTimers      Set of ticket IDs whose bench timers are currently running (§43.2).
+ * @param timerError         Non-null when a timer start/stop API call failed.
  * @param partsMarkedMissing Set of part IDs the tech has marked as missing this session (§43.4).
- * @param partsMessage    Transient toast message for parts-needed outcome.
- * @param employees       Employee list for the handoff dialog (§43.5). Empty until loaded.
- * @param handoffMessage  Transient toast message for handoff outcome.
+ * @param partsMessage       Transient toast message for parts-needed outcome.
+ * @param employees          Employee list for the handoff dialog (§43.5). Empty until loaded.
+ * @param handoffMessage     Transient toast message for handoff outcome.
+ * @param qcItemsByTicket    §43.3 — server-loaded QC checklist items keyed by ticket ID.
+ *                           Empty map until [BenchTabViewModel.loadQcItems] is called.
+ *                           Falls back to hardcoded defaults in the UI when the key is absent.
  */
 data class BenchTabUiState(
     val tickets: List<TicketListItem> = emptyList(),
@@ -235,4 +278,6 @@ data class BenchTabUiState(
     // §43.5 — handoff
     val employees: List<EmployeeListItem> = emptyList(),
     val handoffMessage: String? = null,
+    // §43.3 — QC checklist items loaded from server (404-tolerant; screen falls back to defaults)
+    val qcItemsByTicket: Map<Long, List<QcChecklistItem>> = emptyMap(),
 )
