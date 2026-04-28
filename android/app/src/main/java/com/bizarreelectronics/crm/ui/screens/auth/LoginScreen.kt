@@ -644,6 +644,40 @@ class LoginViewModel @Inject constructor(
         }
     }
 
+    /**
+     * 2026-04-27 — User-driven backward nav from the LoginTabBar. Tab indexes:
+     * 0 = Server (or Register), 1 = Credentials (or SetPassword), 2 = TWO_FA_*.
+     * Forward jumps are rejected since later steps require valid intermediate
+     * data (URL probed, credentials authenticated). Backward jumps re-use the
+     * same state cleanup goBack() does so we don't leak TOTP secrets / 2FA
+     * setup data when a user backs all the way to Server from TWO_FA_SETUP.
+     */
+    fun goToTab(targetIndex: Int) {
+        val current = _state.value
+        val currentIndex = when (current.step) {
+            SetupStep.SERVER, SetupStep.REGISTER -> 0
+            SetupStep.CREDENTIALS, SetupStep.SET_PASSWORD -> 1
+            SetupStep.TWO_FA_SETUP, SetupStep.TWO_FA_VERIFY -> 2
+        }
+        if (targetIndex >= currentIndex) return  // forward / same — no-op.
+        val targetStep = when (targetIndex) {
+            0 -> SetupStep.SERVER
+            1 -> SetupStep.CREDENTIALS
+            else -> return  // unreachable in practice
+        }
+        _state.value = current.copy(
+            error = null,
+            step = targetStep,
+            // Same scrub rules as goBack(): clear TOTP secret + register form
+            // when leaving those steps, so backing out from a tab tap doesn't
+            // leave sensitive in-flight data live.
+            registerSubStep = if (current.step == SetupStep.REGISTER) RegisterSubStep.Company else current.registerSubStep,
+            twoFaSecret = if (currentIndex == 2) "" else current.twoFaSecret,
+            twoFaManualEntry = if (currentIndex == 2) "" else current.twoFaManualEntry,
+            qrCodeDataUrl = if (currentIndex == 2) "" else current.qrCodeDataUrl,
+        )
+    }
+
     fun goBack() {
         val current = _state.value
         _state.value = current.copy(
@@ -2303,7 +2337,11 @@ fun LoginScreen(
 
             // Tab strip — Server | Sign In | 2FA
             // LOGIN-MOCK-153: pass animDuration so tab indicator respects Reduce Motion.
-            LoginTabBar(currentStep = state.step, animDuration = animDuration)
+            LoginTabBar(
+                currentStep = state.step,
+                animDuration = animDuration,
+                onTabClick = viewModel::goToTab,
+            )
             Spacer(Modifier.height(12.dp)) // LOGIN-MOCK-272: 24→12dp to match mockup
 
             // Step content with animation
@@ -2371,7 +2409,11 @@ fun LoginScreen(
  * Container is transparent so it blends with the screen background.
  */
 @Composable
-private fun LoginTabBar(currentStep: SetupStep, animDuration: Int = 300) {
+private fun LoginTabBar(
+    currentStep: SetupStep,
+    animDuration: Int = 300,
+    onTabClick: (Int) -> Unit = {},
+) {
     val tabLabels = listOf("Server", "Sign In", "2FA")
     val selectedIndex = when (currentStep) {
         SetupStep.SERVER, SetupStep.REGISTER -> 0
@@ -2420,22 +2462,30 @@ private fun LoginTabBar(currentStep: SetupStep, animDuration: Int = 300) {
     ) {
         tabLabels.forEachIndexed { index, label ->
             val isSelected = index == selectedIndex
-            // LOGIN-MOCK-053: tabs are display-only progress indicators; marking them
-            // disabled() removes the "double-tap to activate" TalkBack hint while
-            // role=Tab + selected communicates the current step to screen readers.
+            // 2026-04-27 — Tabs were previously display-only with disabled()
+            // semantics, but users tapped them expecting backward navigation.
+            // Behaviour: tapping a PRIOR tab navigates back (re-uses
+            // ViewModel.goToTab to scrub TOTP / register state). Tapping a
+            // future tab is rejected by goToTab; we still reflect that as
+            // disabled() in semantics so TalkBack doesn't promise an action
+            // that won't fire.
+            val isFuture = index > selectedIndex
             Tab(
                 selected = isSelected,
-                onClick = { /* tabs are display-only; step advances via ViewModel */ },
+                onClick = { if (isFuture) Unit else onTabClick(index) },
+                enabled = !isFuture,
                 modifier = Modifier.semantics {
                     role = Role.Tab
                     selected = isSelected
-                    disabled()
+                    if (isSelected || isFuture) disabled()
                 },
                 text = {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.titleSmall,
-                        color = if (isSelected) activeColor else inactiveColor,
+                        color = if (isSelected) activeColor
+                                else if (isFuture) inactiveColor.copy(alpha = 0.45f)
+                                else inactiveColor,
                     )
                 },
                 selectedContentColor = activeColor,
