@@ -163,6 +163,41 @@ data class SaleTransaction(
 )
 
 /**
+ * Summary totals for the Tickets report (§15.3).
+ *
+ * @property totalCreated          Total tickets opened in the period.
+ * @property totalClosed           Total tickets closed / resolved in the period.
+ * @property avgTurnaroundHours    Average hours from create → close across all closed tickets.
+ * @property slaBreaches           Number of tickets that breached their SLA target.
+ * @property byTech                Per-technician breakdown rows.
+ */
+data class TicketsReport(
+    val totalCreated: Int = 0,
+    val totalClosed: Int = 0,
+    val avgTurnaroundHours: Double = 0.0,
+    val slaBreaches: Int = 0,
+    val byTech: List<TechTicketsRow> = emptyList(),
+)
+
+/**
+ * One row in the Tickets report per-tech table (§15.3 SLA compliance % per tech).
+ *
+ * @property name               Technician display name.
+ * @property ticketsAssigned    Tickets assigned in the period.
+ * @property ticketsClosed      Tickets closed in the period.
+ * @property avgTurnaroundHours Average hours per closed ticket for this tech.
+ * @property slaCompliancePct   0–100 % of assigned tickets completed within SLA.
+ */
+data class TechTicketsRow(
+    val id: String,
+    val name: String,
+    val ticketsAssigned: Int = 0,
+    val ticketsClosed: Int = 0,
+    val avgTurnaroundHours: Double = 0.0,
+    val slaCompliancePct: Double? = null,
+)
+
+/**
  * One row in the employee performance leaderboard (§15.4).
  * All numeric fields default to zero so the UI can gracefully handle partial server responses.
  */
@@ -219,6 +254,10 @@ data class ReportsUiState(
     val busyHoursData: Array<IntArray> = emptyArray(),
     val isBusyHoursLoading: Boolean = false,
     val busyHoursError: String? = null,
+    // §15.3 — Tickets report
+    val ticketsReport: TicketsReport = TicketsReport(),
+    val isTicketsReportLoading: Boolean = false,
+    val ticketsReportError: String? = null,
 )
 
 // ─── ViewModel ───────────────────────────────────────────────────────────────
@@ -346,6 +385,7 @@ class ReportsViewModel @Inject constructor(
         _state.update { it.copy(selectedReportType = type) }
         when (type) {
             ReportType.SALES -> loadSalesReport()
+            ReportType.TICKETS -> loadTicketsReport()
             ReportType.EMPLOYEES -> loadEmployeesReport()
             ReportType.INSIGHTS -> loadBusyHoursHeatmap()
             else -> Unit
@@ -480,6 +520,76 @@ class ReportsViewModel @Inject constructor(
                 avgTicketValue = (map["avg_ticket_value"] as? Number)?.toDouble() ?: 0.0,
             )
         }.sortedByDescending { it.revenueGenerated }
+    }
+
+    // ── §15.3 — Tickets report ────────────────────────────────────────────────
+
+    /**
+     * Loads `GET /reports/tickets` for the current date range.
+     *
+     * Expected server shape:
+     * ```json
+     * { "summary": { "total_created": 42, "total_closed": 38,
+     *                "avg_turnaround_hours": 6.4, "sla_breaches": 3 },
+     *   "by_tech": [{ "id": "1", "name": "Alice",
+     *                 "tickets_assigned": 15, "tickets_closed": 13,
+     *                 "avg_turnaround_hours": 5.1, "sla_compliance_pct": 92.3 }] }
+     * ```
+     * 404 is tolerated — caller shows an empty / zero-fill state.
+     */
+    fun loadTicketsReport() {
+        viewModelScope.launch {
+            _state.update { it.copy(isTicketsReportLoading = true, ticketsReportError = null) }
+            val current = _state.value
+            val filters = mapOf(
+                "from_date" to formatServerDate(current.fromDate),
+                "to_date"   to formatServerDate(current.toDate),
+            )
+            runCatching { reportApi.getTicketsReport(filters) }
+                .onSuccess { resp ->
+                    val report = parseTicketsResponse(resp.data)
+                    _state.update { it.copy(isTicketsReportLoading = false, ticketsReport = report) }
+                }
+                .onFailure { e ->
+                    val isNotFound = e.message?.contains("404") == true
+                        || e.message?.contains("Not Found") == true
+                    _state.update {
+                        it.copy(
+                            isTicketsReportLoading = false,
+                            ticketsReport = TicketsReport(),
+                            ticketsReportError = if (isNotFound) null else e.message,
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun parseTicketsResponse(data: Map<String, Any>?): TicketsReport {
+        if (data == null) return TicketsReport()
+        val summary = data["summary"] as? Map<*, *>
+        val totalCreated = (summary?.get("total_created") as? Number)?.toInt() ?: 0
+        val totalClosed  = (summary?.get("total_closed")  as? Number)?.toInt() ?: 0
+        val avgTurnaround = (summary?.get("avg_turnaround_hours") as? Number)?.toDouble() ?: 0.0
+        val slaBreaches  = (summary?.get("sla_breaches")  as? Number)?.toInt() ?: 0
+        val byTechRaw = data["by_tech"] as? List<*> ?: emptyList<Any>()
+        val byTech = byTechRaw.mapNotNull { row ->
+            val map = row as? Map<*, *> ?: return@mapNotNull null
+            TechTicketsRow(
+                id             = (map["id"] as? String) ?: return@mapNotNull null,
+                name           = (map["name"] as? String) ?: "Unknown",
+                ticketsAssigned = (map["tickets_assigned"] as? Number)?.toInt() ?: 0,
+                ticketsClosed   = (map["tickets_closed"]   as? Number)?.toInt() ?: 0,
+                avgTurnaroundHours = (map["avg_turnaround_hours"] as? Number)?.toDouble() ?: 0.0,
+                slaCompliancePct   = (map["sla_compliance_pct"]   as? Number)?.toDouble(),
+            )
+        }.sortedByDescending { it.ticketsClosed }
+        return TicketsReport(
+            totalCreated      = totalCreated,
+            totalClosed       = totalClosed,
+            avgTurnaroundHours = avgTurnaround,
+            slaBreaches       = slaBreaches,
+            byTech            = byTech,
+        )
     }
 
     // ── §15.7 — Busy hours heatmap ────────────────────────────────────────────
