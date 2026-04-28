@@ -339,6 +339,10 @@ sealed class Screen(val route: String) {
     }
     data object PurchaseOrderCreate : Screen("purchase-order-create")
 
+    // §61.5 Vendor Returns (RMA)
+    data object RmaList : Screen("rma")
+    data object RmaCreate : Screen("rma-create")
+
     // Settings children
     data object SmsTemplates : Screen("settings/sms-templates")
     data object Profile : Screen("settings/profile")
@@ -1074,7 +1078,10 @@ fun AppNavGraph(
             !currentRoute.startsWith("warranty/") &&
             // §5.3 — barcode lookup is a standalone screen; CustomerNotes is under customers/{id}/…
             // which is already excluded by the !startsWith("customers/") clause above.
-            currentRoute != Screen.CustomerBarcodeLookup.route
+            currentRoute != Screen.CustomerBarcodeLookup.route &&
+            // §61.5 — RMA list and create are detail/modal flows; hide bottom bar.
+            currentRoute != Screen.RmaList.route &&
+            currentRoute != Screen.RmaCreate.route
 
     // §1.5 line 202 — observe persisted tab order. Falls back to the canonical
     // default when appPreferences is null (previews / tests) or when no order
@@ -2033,6 +2040,8 @@ fun AppNavGraph(
                     onEditItem = { id ->
                         navController.navigate(Screen.InventoryEdit.createRoute(id))
                     },
+                    // §61.5 — "Log Return" button in supplier panel navigates to RMA create.
+                    onNavigateToRma = { navController.navigate(Screen.RmaCreate.route) },
                 )
             }
             composable(Screen.Messages.route) {
@@ -2819,6 +2828,25 @@ fun AppNavGraph(
                     onCreated = { id ->
                         navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) {
                             popUpTo(Screen.PurchaseOrders.route)
+                        }
+                    },
+                )
+            }
+
+            // ─── §61.5 Vendor Returns (RMA) ───
+            composable(Screen.RmaList.route) {
+                com.bizarreelectronics.crm.ui.screens.inventory.RmaListScreen(
+                    onRmaClick = { /* detail screen — future */ },
+                    onCreateClick = { navController.navigate(Screen.RmaCreate.route) },
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable(Screen.RmaCreate.route) {
+                com.bizarreelectronics.crm.ui.screens.inventory.RmaCreateScreen(
+                    onBack = { navController.popBackStack() },
+                    onCreated = { _ ->
+                        navController.navigate(Screen.RmaList.route) {
+                            popUpTo(Screen.RmaList.route) { inclusive = true }
                         }
                     },
                 )

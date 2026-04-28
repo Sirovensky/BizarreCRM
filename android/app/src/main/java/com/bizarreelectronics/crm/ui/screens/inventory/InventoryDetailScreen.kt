@@ -507,6 +507,7 @@ fun InventoryDetailScreen(
     itemId: Long,
     onBack: () -> Unit,
     onEditItem: ((Long) -> Unit)? = null,
+    onNavigateToRma: (() -> Unit)? = null,
     viewModel: InventoryDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -843,6 +844,7 @@ fun InventoryDetailScreen(
                     onUploadPhoto = { /* TODO: launch image picker → MultipartUpload */ },
                     onDeactivate = { viewModel.setShowDeactivateDialog(true) },
                     onTicketClick = { /* deep-link to ticket — caller wires nav */ },
+                    onNavigateToRma = onNavigateToRma,
                 )
             }
         }
@@ -861,6 +863,7 @@ private fun InventoryDetailContent(
     onUploadPhoto: () -> Unit,
     onDeactivate: () -> Unit,
     onTicketClick: (Long) -> Unit,
+    onNavigateToRma: (() -> Unit)? = null,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -1079,6 +1082,7 @@ private fun InventoryDetailContent(
                 supplierId = item.supplierId,
                 lastCostLabel = "$${"%.2f".format(item.costPriceCents / 100.0)}",
                 onPlacePo = { /* stub */ },
+                onLogReturn = onNavigateToRma,
             )
         }
 

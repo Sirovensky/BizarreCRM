@@ -774,6 +774,11 @@ object RetrofitClient {
     @Provides @Singleton fun providePurchaseOrderApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi =
         retrofit.create(com.bizarreelectronics.crm.data.remote.api.PurchaseOrderApi::class.java)
 
+    // §61.5 — Vendor Returns (RMA). Gate: inventory.adjust (read) / inventory.edit (write).
+    // On 'received' transition the server atomically restores stock for linked inventory items.
+    @Provides @Singleton fun provideRmaApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RmaApi =
+        retrofit.create(com.bizarreelectronics.crm.data.remote.api.RmaApi::class.java)
+
     // §55 — Public tracking portal; unauthenticated — AuthInterceptor skips /track/ paths.
     // Uses the same Retrofit instance; caller supplies tracking token via @Header("Authorization").
     @Provides @Singleton fun providePublicTrackingApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.PublicTrackingApi =
