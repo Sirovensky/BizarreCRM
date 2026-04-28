@@ -125,10 +125,11 @@ public struct PosGateView: View {
     // MARK: - iPad layout
 
     private var iPadLayout: some View {
-        NavigationSplitView(columnVisibility: .constant(.detailOnly)) {
-            // Primary column hidden — .detailOnly suppresses it.
-            EmptyView()
-        } detail: {
+        // The iPad shell (ShellLayout) already supplies the outer rail/detail
+        // split. Wrapping the gate in another NavigationSplitView produced two
+        // empty toggleable sidebar columns over the customer-picker. Use a
+        // plain NavigationStack so the gate just owns its detail surface.
+        NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
                     heroHeader
@@ -172,7 +173,6 @@ public struct PosGateView: View {
                 )
             }
         }
-        .navigationSplitViewStyle(.prominentDetail)
         .task { await vm.loadPickups() }
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: createNewTapTrigger)
         .sensoryFeedback(.impact(flexibility: .soft, intensity: 0.7), trigger: walkInTapTrigger)
