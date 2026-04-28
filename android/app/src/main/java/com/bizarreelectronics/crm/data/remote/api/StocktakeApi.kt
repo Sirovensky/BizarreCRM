@@ -5,6 +5,9 @@ import com.bizarreelectronics.crm.data.remote.dto.StocktakeCommitRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeCreateRequest
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeListItem
 import com.bizarreelectronics.crm.data.remote.dto.StocktakeSessionData
+import com.bizarreelectronics.crm.data.remote.dto.StocktakeCount
+import com.bizarreelectronics.crm.data.remote.dto.StocktakeSessionDetail
+import com.bizarreelectronics.crm.data.remote.dto.StocktakeUpsertCountRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
@@ -68,6 +71,28 @@ interface StocktakeApi {
      */
     @POST("inventory/stocktake/commit")
     suspend fun commitSession(@Body request: StocktakeCommitRequest): ApiResponse<Unit>
+
+    // ── §6.6 Per-session detail + count entry ────────────────────────────────
+
+    /**
+     * Fetch a session's full detail: the session row, all count lines so far,
+     * and a pre-computed variance summary.
+     * Returns [StocktakeSessionDetail].
+     */
+    @GET("stocktake/{id}")
+    suspend fun getSession(@Path("id") id: Int): ApiResponse<StocktakeSessionDetail>
+
+    /**
+     * UPSERT one item count into an open session (replace prior count for the
+     * same [inventoryItemId] if it already exists).
+     * Server recomputes expected_qty from current in_stock and returns the
+     * updated count row.
+     */
+    @POST("stocktake/{id}/counts")
+    suspend fun upsertCount(
+        @Path("id") id: Int,
+        @Body request: StocktakeUpsertCountRequest,
+    ): ApiResponse<StocktakeCount>
 
     // ── Per-session actions ───────────────────────────────────────────────────
 

@@ -78,3 +78,66 @@ data class StocktakeCommitRequest(
     val lines: List<StocktakeCountLine>,
     val note: String?,
 )
+
+// ─── §6.6 Session detail DTOs (GET /stocktake/:id) ───────────────────────────
+
+/**
+ * One count row returned inside [StocktakeSessionDetail.counts].
+ * Mirrors `stocktake_counts` JOIN `inventory_items` from stocktake.routes.ts.
+ */
+data class StocktakeCount(
+    val id: Int,
+    @SerializedName("stocktake_id")
+    val stocktakeId: Int,
+    @SerializedName("inventory_item_id")
+    val inventoryItemId: Long,
+    @SerializedName("expected_qty")
+    val expectedQty: Int,
+    @SerializedName("counted_qty")
+    val countedQty: Int,
+    val variance: Int,
+    val notes: String?,
+    @SerializedName("counted_at")
+    val countedAt: String,
+    /** Item name from the JOIN. */
+    val name: String?,
+    val sku: String?,
+)
+
+/**
+ * Variance summary returned alongside counts in GET /stocktake/:id.
+ */
+data class StocktakeSummary(
+    @SerializedName("items_counted")
+    val itemsCounted: Int,
+    @SerializedName("items_with_variance")
+    val itemsWithVariance: Int,
+    @SerializedName("total_variance")
+    val totalVariance: Int,
+    val surplus: Int,
+    val shortage: Int,
+)
+
+/**
+ * Full session response from GET /stocktake/:id.
+ * [session] mirrors [StocktakeListItem]; [counts] is the live count sheet;
+ * [summary] is the pre-computed variance roll-up.
+ */
+data class StocktakeSessionDetail(
+    val session: StocktakeListItem,
+    val counts: List<StocktakeCount>,
+    val summary: StocktakeSummary,
+)
+
+/**
+ * Request body for POST /stocktake/:id/counts — UPSERT one scanned item.
+ * The server reads [inventoryItemId]'s current in_stock and recomputes variance,
+ * so the client does not need to send expected_qty.
+ */
+data class StocktakeUpsertCountRequest(
+    @SerializedName("inventory_item_id")
+    val inventoryItemId: Long,
+    @SerializedName("counted_qty")
+    val countedQty: Int,
+    val notes: String? = null,
+)

@@ -566,8 +566,14 @@ sealed class Screen(val route: String) {
     data object Stocktake : Screen("inventory/stocktake")
 
     // §6.6 — Stocktake sessions list (GET /stocktake). Entry point for the
-    // entire stocktake workflow; tapping an open session goes to Stocktake.
+    // entire stocktake workflow; tapping an open session goes to StocktakeSessionDetail.
     data object StocktakeList : Screen("inventory/stocktake-list")
+
+    // §6.6 — Stocktake session detail: barcode scan loop + count sheet for a
+    // server-backed open session. [sessionId] is the server-assigned integer id.
+    data object StocktakeSessionDetail : Screen("inventory/stocktake/{sessionId}") {
+        fun route(sessionId: Int) = "inventory/stocktake/$sessionId"
+    }
 
     // §4.22 — Manager SLA heatmap: all-open tickets sorted by SLA health,
     // red-zone first. Entry point: Tickets screen overflow menu (manager+).
@@ -2819,17 +2825,33 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeListScreen(
                     onBack = { navController.popBackStack() },
                     onOpenSession = { sessionId ->
-                        // Navigate to the active-count flow; store server id in
-                        // savedStateHandle so StocktakeViewModel can use it later.
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.set("server_stocktake_id", sessionId)
-                        navController.navigate(Screen.Stocktake.route)
+                        // §6.6 — Navigate to the server-backed session detail screen.
+                        navController.navigate(Screen.StocktakeSessionDetail.route(sessionId))
                     },
                 )
             }
 
-            // ─── §60 Inventory Stocktake ───
+            // ─── §6.6 Stocktake session detail ───
+            composable(
+                route = Screen.StocktakeSessionDetail.route,
+                arguments = listOf(navArgument("sessionId") { type = NavType.IntType }),
+            ) { backStackEntry ->
+                val scannedBarcode by backStackEntry.savedStateHandle
+                    .getStateFlow<String?>("stocktake_barcode", null)
+                    .collectAsState()
+
+                com.bizarreelectronics.crm.ui.screens.stocktake.StocktakeSessionDetailScreen(
+                    onBack = { navController.popBackStack() },
+                    onScanClick = { navController.navigate(Screen.Scanner.route) },
+                    onCommitted = { navController.popBackStack() },
+                    scannedBarcode = scannedBarcode,
+                    onBarcodeConsumed = {
+                        backStackEntry.savedStateHandle.remove<String>("stocktake_barcode")
+                    },
+                )
+            }
+
+            // ─── §60 Inventory Stocktake (legacy local-only flow) ───
             composable(Screen.Stocktake.route) { backStackEntry ->
                 // Barcode delivered from BarcodeScanScreen via savedStateHandle.
                 val scannedBarcode by backStackEntry.savedStateHandle
