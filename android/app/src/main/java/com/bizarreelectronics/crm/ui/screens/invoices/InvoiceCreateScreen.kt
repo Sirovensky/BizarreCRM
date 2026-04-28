@@ -10,6 +10,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,11 +26,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.draft.DraftStore
 import com.bizarreelectronics.crm.data.remote.api.CustomerApi
+import com.bizarreelectronics.crm.data.remote.api.InventoryApi
 import com.bizarreelectronics.crm.data.remote.api.InvoiceApi
 import com.bizarreelectronics.crm.data.remote.dto.CreateInvoiceRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateLineItemDto
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.InventoryListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
+import com.bizarreelectronics.crm.ui.screens.invoices.components.InvoiceCatalogLineItemPicker
 import com.bizarreelectronics.crm.util.formatAsMoney
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -61,6 +65,11 @@ data class InvoiceCreateUiState(
     val error: String? = null,
     val created: Long? = null,           // non-null after successful creation
     val draftRestoredBanner: Boolean = false, // true when a draft was loaded on screen entry
+    // §7.3 Catalog picker state
+    val catalogPickerLineIndex: Int? = null,  // which line row is requesting a catalog pick; null = sheet closed
+    val catalogQuery: String = "",
+    val catalogResults: List<InventoryListItem> = emptyList(),
+    val catalogLoading: Boolean = false,
 )
 
 private fun InvoiceCreateUiState.subtotalCents(): Long =
@@ -81,6 +90,7 @@ private fun InvoiceCreateUiState.isSubmittable(): Boolean =
 class InvoiceCreateViewModel @Inject constructor(
     private val invoiceApi: InvoiceApi,
     private val customerApi: CustomerApi,
+    private val inventoryApi: InventoryApi,
     private val draftStore: DraftStore,
 ) : ViewModel() {
 
@@ -89,6 +99,7 @@ class InvoiceCreateViewModel @Inject constructor(
 
     private var searchJob: Job? = null
     private var autosaveJob: Job? = null
+    private var catalogSearchJob: Job? = null
 
     init {
         restoreDraftIfAvailable()
@@ -146,6 +157,80 @@ class InvoiceCreateViewModel @Inject constructor(
 
     fun discardDraft() {
         viewModelScope.launch { runCatching { draftStore.discard(DraftStore.DraftType.INVOICE) } }
+    }
+
+    // ── Catalog line-item picker (§7.3) ──────────────────────────────────────
+
+    /** Opens the catalog picker targeting [lineIndex]. */
+    fun openCatalogPicker(lineIndex: Int) {
+        _state.value = _state.value.copy(
+            catalogPickerLineIndex = lineIndex,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+    }
+
+    fun closeCatalogPicker() {
+        catalogSearchJob?.cancel()
+        _state.value = _state.value.copy(
+            catalogPickerLineIndex = null,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+    }
+
+    /** Debounced search against GET /inventory?keyword=. */
+    fun onCatalogQueryChanged(query: String) {
+        catalogSearchJob?.cancel()
+        _state.value = _state.value.copy(catalogQuery = query, catalogResults = emptyList())
+        if (query.isBlank()) {
+            _state.value = _state.value.copy(catalogLoading = false)
+            return
+        }
+        _state.value = _state.value.copy(catalogLoading = true)
+        catalogSearchJob = viewModelScope.launch {
+            delay(300)
+            runCatching {
+                inventoryApi.getItems(mapOf("keyword" to query, "limit" to "20"))
+            }.onSuccess { resp ->
+                _state.value = _state.value.copy(
+                    catalogResults = resp.data?.items ?: emptyList(),
+                    catalogLoading = false,
+                )
+            }.onFailure {
+                _state.value = _state.value.copy(
+                    catalogResults = emptyList(),
+                    catalogLoading = false,
+                )
+            }
+        }
+    }
+
+    /**
+     * Applies the selected inventory item to the line at [catalogPickerLineIndex],
+     * then closes the picker.
+     */
+    fun onCatalogItemSelected(item: InventoryListItem) {
+        val idx = _state.value.catalogPickerLineIndex ?: return
+        val name = item.name ?: item.sku ?: ""
+        val price = item.price ?: item.costPrice ?: 0.0
+        _state.value = _state.value.copy(
+            lineItems = _state.value.lineItems.mapIndexed { i, row ->
+                if (i == idx) {
+                    row.copy(
+                        description = name,
+                        unitPrice = if (price > 0) "%.2f".format(price) else row.unitPrice,
+                    )
+                } else row
+            },
+            catalogPickerLineIndex = null,
+            catalogQuery = "",
+            catalogResults = emptyList(),
+            catalogLoading = false,
+        )
+        scheduleDraftSave()
     }
 
     fun onCustomerQueryChanged(query: String) {
@@ -337,6 +422,18 @@ fun InvoiceCreateScreen(
         }
     }
 
+    // §7.3 catalog picker sheet
+    if (state.catalogPickerLineIndex != null) {
+        InvoiceCatalogLineItemPicker(
+            query = state.catalogQuery,
+            results = state.catalogResults,
+            isLoading = state.catalogLoading,
+            onQueryChanged = viewModel::onCatalogQueryChanged,
+            onItemSelected = viewModel::onCatalogItemSelected,
+            onDismiss = viewModel::closeCatalogPicker,
+        )
+    }
+
     Scaffold(
         topBar = {
             BrandTopAppBar(
@@ -392,6 +489,7 @@ fun InvoiceCreateScreen(
                     onQtyChanged = { viewModel.onLineQtyChanged(index, it) },
                     onUnitPriceChanged = { viewModel.onLineUnitPriceChanged(index, it) },
                     onDelete = { viewModel.removeLineItem(index) },
+                    onOpenCatalogPicker = { viewModel.openCatalogPicker(index) },
                 )
             }
 
@@ -602,6 +700,7 @@ private fun LineItemRowCard(
     onQtyChanged: (String) -> Unit,
     onUnitPriceChanged: (String) -> Unit,
     onDelete: () -> Unit,
+    onOpenCatalogPicker: () -> Unit,
 ) {
     val rowLabel = "Line item ${index + 1}"
     Card(
@@ -625,6 +724,19 @@ private fun LineItemRowCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
+                // §7.3 Catalog picker button
+                IconButton(
+                    onClick = onOpenCatalogPicker,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Search inventory catalog for $rowLabel"
+                    },
+                ) {
+                    Icon(
+                        Icons.Default.Inventory2,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 if (canDelete) {
                     IconButton(
                         onClick = onDelete,

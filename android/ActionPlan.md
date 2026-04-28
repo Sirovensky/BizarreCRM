@@ -1787,8 +1787,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 
 ### 7.3 Create
 - [x] **Customer picker** (or pre-seeded from ticket). (session 2026-04-26 — `ExposedDropdownMenuBox` + debounced `CustomerApi.searchCustomers()` already in `InvoiceCreateScreen.kt`)
-- [ ] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount.
-  - **NOTE (2026-04-26):** Free-form items already implemented; barcode-scan + inventory catalog search + tax-class picker deferred (need CameraX + catalog endpoint wiring).
+- [x] **Line items** — add from inventory catalog (with barcode scan) or free-form; qty, unit price, tax class, line-level discount. (session 2026-04-27 — `InvoiceCatalogLineItemPicker.kt` ModalBottomSheet: debounced search via `GET /inventory?keyword=` + `InventoryApi.getItems()`; `CatalogResultRow` shows name/SKU/manufacturer + retail price; selecting an item pre-fills line description + unit price (`"%.2f".format(price)`); `InvoiceCreateViewModel.openCatalogPicker/closeCatalogPicker/onCatalogQueryChanged/onCatalogItemSelected` + `catalogSearchJob` debounce 300ms; `Inventory2` icon button per line-item row opens picker; `catalogPickerLineIndex/catalogQuery/catalogResults/catalogLoading` state fields added to `InvoiceCreateUiState`; barcode-scan + tax-class picker still deferred)
 - [ ] **Cart-level discount** (% or $), tax, fees, tip.
   - **NOTE (2026-04-26):** Design decision needed on discount model before implementation; tax class recomputed server-side.
 - [x] **Notes**, due date, payment terms, footer text. (session 2026-04-26 — notes `OutlinedTextField` + `DatePickerDialog` due-date field already in `InvoiceCreateScreen.kt`; payment terms + footer deferred)
