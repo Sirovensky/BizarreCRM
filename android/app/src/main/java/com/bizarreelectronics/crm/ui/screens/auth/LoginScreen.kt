@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
@@ -2129,15 +2130,39 @@ fun LoginScreen(
                 scrollState.animateScrollTo(scrollState.maxValue)
             }
         }
+        // 2026-04-27 user-flagged jitter: when IME closed (back press), wordmark
+        // would visually leap because three independent dp/visibility flips ran
+        // in one frame — outer Column vertical padding, top spacer, and the
+        // WaveDivider band. Animate the dp values + fade the wave so the
+        // wordmark never appears to teleport. Reduce Motion (ANIMATOR_DURATION_SCALE=0)
+        // collapses to 0ms — instant swap with no trail, matching the rest of
+        // the screen's reduce-motion contract.
+        val tween = androidx.compose.animation.core.tween<Dp>(durationMillis = animDuration)
+        val outerVertical by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 8.dp else 24.dp,
+            animationSpec = tween,
+            label = "login_outer_vpad",
+        )
+        val topSpacer by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 0.dp else 32.dp,
+            animationSpec = tween,
+            label = "login_top_spacer",
+        )
+        val waveSpacerBelow by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (imeVisible) 8.dp else 12.dp,
+            animationSpec = tween,
+            label = "login_wave_below",
+        )
         Column(
             modifier = Modifier
                 .widthIn(max = 420.dp)
-                .padding(horizontal = 16.dp, vertical = if (imeVisible) 8.dp else 24.dp)
+                .padding(horizontal = 16.dp)
+                .padding(vertical = outerVertical)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Logo / App name — small top breathing room replaces the old 80dp pin.
-            Spacer(Modifier.height(if (imeVisible) 0.dp else 32.dp))
+            Spacer(Modifier.height(topSpacer))
             // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
             Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
                 Text(
@@ -2154,19 +2179,29 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            // Sanctioned WaveDivider placement — one branded moment under wordmark
-            // LOGIN-MOCK-010: bump spacer above from 12dp → 20dp to match mockup gap.
-            // LOGIN-MOCK-085: reduce WaveDivider height to 16dp (in WaveDivider.kt) and
-            //   spacer below from 24dp → 12dp. NET = 20 + 16 + 12 = 48dp ≈ target ~40-48dp.
-            // 2026-04-27: collapse spacers + hide wave when IME up to give back ~36dp
-            // so footer Row inside the form card stays above the keyboard.
-            if (!imeVisible) {
-                Spacer(Modifier.height(20.dp))
-                WaveDivider()
-                Spacer(Modifier.height(12.dp))
-            } else {
-                Spacer(Modifier.height(8.dp))
+            // Sanctioned WaveDivider placement — one branded moment under wordmark.
+            // AnimatedVisibility fades + height-collapses the wave band so the
+            // wordmark stays put on IME open/close and only the wave + its
+            // surrounding spacers participate in the transition.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !imeVisible,
+                enter = androidx.compose.animation.fadeIn(
+                    animationSpec = androidx.compose.animation.core.tween(animDuration),
+                ) + androidx.compose.animation.expandVertically(
+                    animationSpec = androidx.compose.animation.core.tween(animDuration),
+                ),
+                exit = androidx.compose.animation.fadeOut(
+                    animationSpec = androidx.compose.animation.core.tween(animDuration),
+                ) + androidx.compose.animation.shrinkVertically(
+                    animationSpec = androidx.compose.animation.core.tween(animDuration),
+                ),
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(Modifier.height(20.dp))
+                    WaveDivider()
+                }
             }
+            Spacer(Modifier.height(waveSpacerBelow))
 
             // §28.6 — sticky banner shown when the user landed here because
             // the server killed their session (refresh-failed / revoked).
