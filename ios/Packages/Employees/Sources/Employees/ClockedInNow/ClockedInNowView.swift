@@ -17,19 +17,19 @@ import Networking
 
 /// Slim struct for the presence poll — decodes `is_clocked_in` from the
 /// employees list endpoint. Field is optional to handle older server builds.
-struct EmployeePresence: Decodable, Sendable, Identifiable, Hashable {
-    let id: Int64
-    let firstName: String?
-    let lastName: String?
-    let username: String?
-    let role: String?
-    let isClockedIn: Bool
+public struct EmployeePresence: Decodable, Sendable, Identifiable, Hashable {
+    public let id: Int64
+    public let firstName: String?
+    public let lastName: String?
+    public let username: String?
+    public let role: String?
+    public let isClockedIn: Bool
 
-    var displayName: String {
+    public var displayName: String {
         let parts = [firstName, lastName].compactMap { $0?.isEmpty == false ? $0 : nil }
         return parts.isEmpty ? (username ?? "User #\(id)") : parts.joined(separator: " ")
     }
-    var initials: String {
+    public var initials: String {
         let f = firstName?.prefix(1).uppercased() ?? ""
         let l = lastName?.prefix(1).uppercased() ?? ""
         let c = f + l
@@ -43,7 +43,7 @@ struct EmployeePresence: Decodable, Sendable, Identifiable, Hashable {
         case isClockedIn = "is_clocked_in"
     }
 
-    init(from decoder: Decoder) throws {
+    public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(Int64.self, forKey: .id)
         firstName = try? c.decode(String.self, forKey: .firstName)

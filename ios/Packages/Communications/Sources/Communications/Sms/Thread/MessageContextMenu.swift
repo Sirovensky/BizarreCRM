@@ -1,6 +1,7 @@
 import SwiftUI
 import Core
 import DesignSystem
+import Networking
 
 // MARK: - MessageContextMenu
 //

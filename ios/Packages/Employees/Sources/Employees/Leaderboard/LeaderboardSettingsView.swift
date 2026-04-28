@@ -251,19 +251,26 @@ public extension APIClient {
     }
 
     func getLeaderboardOptOut(employeeId: Int64) async throws -> Bool {
-        struct Response: Decodable { let optOut: Bool; enum CodingKeys: String, CodingKey { case optOut = "opt_out" } }
-        let r = try await get("/api/v1/employees/\(employeeId)/leaderboard-opt-out", as: Response.self)
+        let r = try await get("/api/v1/employees/\(employeeId)/leaderboard-opt-out", as: LeaderboardOptOutResponse.self)
         return r.optOut
     }
 
     func setLeaderboardOptOut(employeeId: Int64, optOut: Bool) async throws -> Bool {
-        struct Body: Encodable, Sendable { let optOut: Bool; enum CodingKeys: String, CodingKey { case optOut = "opt_out" } }
-        struct Response: Decodable { let optOut: Bool; enum CodingKeys: String, CodingKey { case optOut = "opt_out" } }
         let r = try await patch(
             "/api/v1/employees/\(employeeId)/leaderboard-opt-out",
-            body: Body(optOut: optOut),
-            as: Response.self
+            body: LeaderboardOptOutBody(optOut: optOut),
+            as: LeaderboardOptOutResponse.self
         )
         return r.optOut
     }
+}
+
+private struct LeaderboardOptOutBody: Encodable, Sendable {
+    let optOut: Bool
+    enum CodingKeys: String, CodingKey { case optOut = "opt_out" }
+}
+
+private struct LeaderboardOptOutResponse: Decodable, Sendable {
+    let optOut: Bool
+    enum CodingKeys: String, CodingKey { case optOut = "opt_out" }
 }

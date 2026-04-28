@@ -80,7 +80,7 @@ public struct BulkCampaignRequest: Encodable, Sendable {
 // MARK: - BulkCampaignPreview
 
 /// GET /api/v1/sms/campaigns/preview — returns estimated recipient count and cost.
-public struct BulkCampaignPreview: Decodable, Sendable {
+public struct BulkCampaignPreview: Decodable, Sendable, Equatable, Hashable {
     public let recipientCount: Int
     public let optedOutCount: Int
     public let estimatedSegments: Int
@@ -97,7 +97,7 @@ public struct BulkCampaignPreview: Decodable, Sendable {
 // MARK: - BulkCampaignAck
 
 /// Response from POST /api/v1/sms/campaigns.
-public struct BulkCampaignAck: Decodable, Sendable {
+public struct BulkCampaignAck: Decodable, Sendable, Equatable, Hashable {
     public let campaignId: Int64
     public let recipientCount: Int
     public let status: String      // "queued" | "scheduled"

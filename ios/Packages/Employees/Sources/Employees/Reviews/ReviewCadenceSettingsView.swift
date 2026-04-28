@@ -95,15 +95,18 @@ public struct ReviewCadenceSettingsView: View {
 
 extension APIClient {
     func getReviewCadence() async throws -> ReviewCadence {
-        struct Resp: Decodable, Sendable {
-            let cadence: ReviewCadence
-        }
-        return try await get("/api/v1/settings/review-cadence", as: Resp.self).cadence
+        return try await get("/api/v1/settings/review-cadence", as: ReviewCadenceResp.self).cadence
     }
 
     func updateReviewCadence(_ cadence: ReviewCadence) async throws {
-        struct Body: Encodable, Sendable { let cadence: ReviewCadence }
-        struct Resp: Decodable, Sendable { let cadence: ReviewCadence }
-        _ = try await patch("/api/v1/settings/review-cadence", body: Body(cadence: cadence), as: Resp.self)
+        _ = try await patch("/api/v1/settings/review-cadence", body: ReviewCadenceBody(cadence: cadence), as: ReviewCadenceResp.self)
     }
+}
+
+private struct ReviewCadenceResp: Decodable, Sendable {
+    let cadence: ReviewCadence
+}
+
+private struct ReviewCadenceBody: Encodable, Sendable {
+    let cadence: ReviewCadence
 }

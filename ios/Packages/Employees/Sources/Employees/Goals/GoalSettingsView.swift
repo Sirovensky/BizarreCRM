@@ -206,10 +206,11 @@ public extension APIClient {
     }
 
     func updateGoalSettings(enabled: Bool) async throws {
-        struct Body: Encodable, Sendable {
-            let goalsEnabled: Bool
-            enum CodingKeys: String, CodingKey { case goalsEnabled = "goals_enabled" }
-        }
-        _ = try await patch("/api/v1/settings/goals", body: Body(goalsEnabled: enabled), as: GoalSettingsResponse.self)
+        _ = try await patch("/api/v1/settings/goals", body: GoalSettingsBody(goalsEnabled: enabled), as: GoalSettingsResponse.self)
     }
+}
+
+private struct GoalSettingsBody: Encodable, Sendable {
+    let goalsEnabled: Bool
+    enum CodingKeys: String, CodingKey { case goalsEnabled = "goals_enabled" }
 }

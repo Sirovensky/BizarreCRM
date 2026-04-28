@@ -381,22 +381,9 @@ public extension APIClient {
         ticketId: Int64?,
         isTeamVisible: Bool
     ) async throws -> RecognitionShoutout {
-        struct Body: Encodable, Sendable {
-            let toEmployeeId: String
-            let category: ShoutoutCategory
-            let message: String
-            let ticketId: Int64?
-            let isTeamVisible: Bool
-            enum CodingKeys: String, CodingKey {
-                case category, message
-                case toEmployeeId  = "to_employee_id"
-                case ticketId      = "ticket_id"
-                case isTeamVisible = "is_team_visible"
-            }
-        }
         return try await post(
             "/api/v1/recognition/shoutouts",
-            body: Body(
+            body: ShoutoutBody(
                 toEmployeeId: toEmployeeId,
                 category: category,
                 message: message,
@@ -413,5 +400,19 @@ public extension APIClient {
             query: [URLQueryItem(name: "employee_id", value: employeeId)],
             as: [RecognitionShoutout].self
         )
+    }
+}
+
+private struct ShoutoutBody: Encodable, Sendable {
+    let toEmployeeId: String
+    let category: ShoutoutCategory
+    let message: String
+    let ticketId: Int64?
+    let isTeamVisible: Bool
+    enum CodingKeys: String, CodingKey {
+        case category, message
+        case toEmployeeId  = "to_employee_id"
+        case ticketId      = "ticket_id"
+        case isTeamVisible = "is_team_visible"
     }
 }

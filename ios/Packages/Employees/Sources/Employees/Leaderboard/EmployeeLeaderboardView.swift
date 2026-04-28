@@ -54,7 +54,7 @@ public enum LeaderboardPeriod: String, CaseIterable, Sendable {
     }
 }
 
-public struct LeaderboardEntry: Identifiable, Sendable {
+public struct LeaderboardDisplayEntry: Identifiable, Sendable {
     public let id: Int64
     public let displayName: String
     public let initials: String
@@ -66,7 +66,7 @@ public struct LeaderboardEntry: Identifiable, Sendable {
 @MainActor
 @Observable
 public final class EmployeeLeaderboardViewModel {
-    public private(set) var entries: [LeaderboardEntry] = []
+    public private(set) var entries: [LeaderboardDisplayEntry] = []
     public private(set) var isLoading = false
     public private(set) var errorMessage: String?
 
@@ -94,7 +94,7 @@ public final class EmployeeLeaderboardViewModel {
             }
             let sorted = raw.sorted { $0.value > $1.value }
             entries = sorted.enumerated().map { idx, pair in
-                LeaderboardEntry(
+                LeaderboardDisplayEntry(
                     id: pair.emp.id,
                     displayName: pair.emp.displayName,
                     initials: pair.emp.initials,
@@ -176,7 +176,7 @@ public struct EmployeeLeaderboardView: View {
 // MARK: - LeaderboardRow
 
 private struct LeaderboardRow: View {
-    let entry: LeaderboardEntry
+    let entry: LeaderboardDisplayEntry
     let metric: LeaderboardMetric
 
     var body: some View {
