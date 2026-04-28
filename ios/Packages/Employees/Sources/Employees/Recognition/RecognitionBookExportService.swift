@@ -66,15 +66,15 @@ public enum RecognitionBookExportService {
             .foregroundColor: UIColor.secondaryLabel
         ]
 
-        NSString("Recognition Book").draw(
+        NSString(string: "Recognition Book").draw(
             at: CGPoint(x: 60, y: 120),
             withAttributes: titleAttrs
         )
-        NSString("\(employeeName) — \(year)").draw(
+        NSString(string: "\(employeeName) — \(year)").draw(
             at: CGPoint(x: 60, y: 168),
             withAttributes: subtitleAttrs
         )
-        NSString("\(count) shoutout\(count == 1 ? "" : "s") received this year").draw(
+        NSString(string: "\(count) shoutout\(count == 1 ? "" : "s") received this year").draw(
             at: CGPoint(x: 60, y: 210),
             withAttributes: metaAttrs
         )
@@ -120,7 +120,7 @@ public enum RecognitionBookExportService {
                     .font: UIFont.systemFont(ofSize: 11, weight: .regular),
                     .foregroundColor: UIColor.secondaryLabel
                 ]
-                NSString("from \(from)").draw(
+                NSString(string: "from \(from)").draw(
                     at: CGPoint(x: margin + 16, y: y + 36),
                     withAttributes: fromAttrs
                 )

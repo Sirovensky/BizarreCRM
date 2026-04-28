@@ -101,9 +101,9 @@ public final class EstimateListViewModel {
         defer { isLoadingMore = false }
         do {
             let page = try await repo.listPage(
-                status: statusFilter,
+                cursor: cursor,
                 keyword: searchQuery.isEmpty ? nil : searchQuery,
-                cursor: cursor
+                status: statusFilter.rawValue
             )
             items.append(contentsOf: page.estimates)
             nextCursor = page.nextCursor
@@ -206,6 +206,33 @@ public struct EstimateListView: View {
     // §8.1 Bulk-action selection
     @State private var selectedIds: Set<Int64> = []
     @State private var editMode: EditMode = .inactive
+    @State private var selected: Int64?
+
+    @ViewBuilder
+    private var contentView: some View {
+        if vm.isLoading && vm.items.isEmpty {
+            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let err = vm.errorMessage, vm.items.isEmpty {
+            Text(err).foregroundStyle(.bizarreError).padding()
+        } else {
+            List(vm.items) { est in
+                Row(estimate: est, isSelected: selectedIds.contains(est.id), isSelecting: editMode.isEditing) {
+                    if editMode.isEditing {
+                        if selectedIds.contains(est.id) { selectedIds.remove(est.id) } else { selectedIds.insert(est.id) }
+                    } else {
+                        selected = est.id
+                    }
+                }
+                .listRowBackground(Color.bizarreSurface1)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+        }
+    }
+
+    private func formatMoney(_ v: Double) -> String {
+        formatMoneyShared(v)
+    }
 
     public init(repo: EstimateRepository) { _vm = State(wrappedValue: EstimateListViewModel(repo: repo)) }
 
@@ -394,7 +421,9 @@ public struct EstimateListView: View {
             } else {
                 List(selection: $selectedIds) {
                     ForEach(vm.items) { est in
-                        Row(estimate: est)
+                        Row(estimate: est, isSelected: selectedIds.contains(est.id), isSelecting: editMode.isEditing) {
+                            selected = est.id
+                        }
                             .listRowBackground(Color.bizarreSurface1)
                             .tag(est.id)
                             // §8.1: load-more trigger on last row
@@ -554,6 +583,8 @@ private struct Row: View {
     let isSelected: Bool
     let isSelecting: Bool
     let onTap: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulsing: Bool = false
 
     var body: some View {
         Button(action: onTap) {
@@ -594,7 +625,7 @@ private struct Row: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: BrandSpacing.xxs) {
-                    Text(formatMoney(estimate.total ?? 0))
+                    Text(formatMoneyShared(estimate.total ?? 0))
                         .font(.brandTitleMedium())
                         .foregroundStyle(.bizarreOnSurface)
                         .monospacedDigit()
@@ -607,7 +638,7 @@ private struct Row: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(EstimateListView.Row.a11y(for: estimate))
+        .accessibilityLabel(Row.a11y(for: estimate))
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 
@@ -644,7 +675,7 @@ private struct Row: View {
 
     static func a11y(for est: Estimate) -> String {
         var parts: [String] = [est.orderId ?? "EST-?", est.customerName]
-        parts.append(formatMoney(est.total ?? 0))
+        parts.append(formatMoneyShared(est.total ?? 0))
         if let status = est.status, !status.isEmpty { parts.append("Status \(status.capitalized)") }
         if est.isExpiring == true, let days = est.daysUntilExpiry {
             parts.append("Expires in \(days) days")
@@ -707,4 +738,46 @@ private struct EstimateStatusChip: View {
         .accessibilityLabel(label)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
+}
+
+// MARK: - StatusTabChip + PulseModifier helpers
+
+private struct StatusTabChip: View {
+    let label: String
+    let selected: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(label)
+                .font(.brandLabelLarge())
+                .foregroundStyle(selected ? Color.white : Color.bizarreOnSurfaceMuted)
+                .padding(.horizontal, BrandSpacing.md)
+                .padding(.vertical, BrandSpacing.xs)
+                .background(selected ? Color.bizarreOrange : Color.bizarreSurface1, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
+    }
+}
+
+private struct PulseModifier: ViewModifier {
+    @State private var pulsing: Bool = false
+    func body(content: Content) -> some View {
+        content
+            .opacity(pulsing ? 0.5 : 1.0)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
+    }
+}
+
+private func formatMoneyShared(_ v: Double) -> String {
+    let f = NumberFormatter()
+    f.numberStyle = .currency
+    f.currencyCode = "USD"
+    return f.string(from: NSNumber(value: v)) ?? "$\(v)"
 }

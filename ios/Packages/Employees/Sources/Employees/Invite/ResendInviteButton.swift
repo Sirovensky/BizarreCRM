@@ -18,7 +18,7 @@ import Networking
 public final class ResendInviteViewModel {
     public private(set) var isSending: Bool = false
     public private(set) var result: ResendResult?
-    public private(set) var errorMessage: String?
+    public internal(set) var errorMessage: String?
 
     public enum ResendResult { case sent, noEmail }
 

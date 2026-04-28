@@ -198,7 +198,7 @@ public struct BinLocationManagerView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button("Add bin location") { vm.showCreateSheet = true }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
         .accessibilityElement(children: .combine)
     }
@@ -346,30 +346,25 @@ public struct BinPickListView: View {
 
 extension APIClient {
     func listBinLocations() async throws -> [BinLocation] {
-        let resp: APIResponse<[BinLocation]> = try await get("/api/v1/inventory/bin-locations")
-        return resp.data ?? []
+        try await get("/api/v1/inventory/bin-locations", as: [BinLocation].self)
     }
 
     func createBinLocation(_ request: BinLocationCreateRequest) async throws -> BinLocation {
-        let resp: APIResponse<BinLocation> = try await post(
-            "/api/v1/inventory/bin-locations", body: request
-        )
-        guard let bin = resp.data else { throw AppError.serverError("No bin returned") }
-        return bin
+        try await post("/api/v1/inventory/bin-locations", body: request, as: BinLocation.self)
     }
 
     func deleteBinLocation(id: Int64) async throws {
-        let _: APIResponse<EmptyBinBody> = try await delete(
-            "/api/v1/inventory/bin-locations/\(id)"
-        )
+        try await delete("/api/v1/inventory/bin-locations/\(id)")
     }
 
     func batchAssignBinLocation(_ request: BinAssignRequest) async throws {
-        let _: APIResponse<EmptyBinBody> = try await post(
-            "/api/v1/inventory/bin-locations/batch-assign", body: request
+        _ = try await post(
+            "/api/v1/inventory/bin-locations/batch-assign",
+            body: request,
+            as: EmptyBinBody.self
         )
     }
 }
 
-private struct EmptyBinBody: Decodable {}
+private struct EmptyBinBody: Decodable, Sendable {}
 #endif

@@ -29,7 +29,7 @@ public final class OffboardingViewModel {
         case failed(String)
     }
 
-    public private(set) var phase: Phase = .confirm
+    public internal(set) var phase: Phase = .confirm
     public var transferToEmployeeId: Int64? = nil
     public var exportShiftHistory: Bool = true
     public private(set) var availableManagers: [EmployeePickerItem] = []

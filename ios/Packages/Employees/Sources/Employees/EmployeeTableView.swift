@@ -18,6 +18,7 @@ struct EmployeeTableView: View {
 
     let employees: [Employee]
     @Binding var selection: Employee?
+    @State private var pickedID: Employee.ID?
 
     // Sort state
     @State private var sortOrder: [KeyPathComparator<Employee>] = [
@@ -27,7 +28,7 @@ struct EmployeeTableView: View {
     // MARK: - Body
 
     var body: some View {
-        Table(sortedEmployees, selection: $selection, sortOrder: $sortOrder) {
+        Table(sortedEmployees, selection: $pickedID, sortOrder: $sortOrder) {
             // Name column
             TableColumn("Name", value: \.displayName) { emp in
                 HStack(spacing: BrandSpacing.sm) {
@@ -101,6 +102,9 @@ struct EmployeeTableView: View {
             }
         }
         .tableStyle(.inset)
+        .onChange(of: pickedID) { _, newID in
+            selection = employees.first { $0.id == newID }
+        }
     }
 
     // MARK: - Sorting

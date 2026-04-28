@@ -34,10 +34,11 @@ public final class UnreadSMSViewModel {
             do { return try await api.smsUnreadCount() }
             catch { AppLog.ui.error("SMS unread count failed: \(error.localizedDescription, privacy: .public)"); return 0 }
         }()
-        async let inboxTask: Int? = api.teamInboxCount()
-        let (sms, inbox) = await (smsTask, inboxTask)
+        async let inboxTask: Int? = (try? await api.teamInboxCount())
+        let sms = await smsTask
+        let inbox = await inboxTask
         unreadCount = sms
-        inboxCount = inbox
+        inboxCount = inbox ?? nil
     }
 
     /// Auto-refresh every 60s while the dashboard is foregrounded.

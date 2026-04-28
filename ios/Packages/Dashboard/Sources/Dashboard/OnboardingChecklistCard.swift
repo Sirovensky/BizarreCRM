@@ -177,7 +177,7 @@ public struct OnboardingChecklistCard: View {
                 stepsBody
             }
         }
-        .background(.brandGlass(radius: 20))
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5))
         .animation(.spring(duration: 0.28), value: isExpanded)
@@ -328,7 +328,7 @@ private struct CelebratoryModal: View {
                 .font(.brandTitleSmall())
                 .padding(.bottom, BrandSpacing.xl)
         }
-        .background(.brandGlass(radius: 0))
+        .background(.ultraThinMaterial)
         .presentationDetents([.medium])
         .onAppear { animationPhase = true }
         .accessibilityLabel("\(reason). Your shop is all set.")

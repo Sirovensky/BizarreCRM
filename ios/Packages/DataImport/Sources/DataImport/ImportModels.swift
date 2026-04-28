@@ -30,10 +30,12 @@ public enum ImportSource: String, Codable, Sendable, CaseIterable {
 // MARK: - ImportEntityType
 
 /// The CRM entity that will be populated by the import.
-public enum ImportEntityType: String, Codable, Sendable, CaseIterable {
+public enum ImportEntityType: String, Codable, Sendable, CaseIterable, Identifiable {
     case customers  = "customers"
     case inventory  = "inventory"
     case tickets    = "tickets"
+
+    public var id: String { rawValue }
 
     public var displayName: String {
         switch self {

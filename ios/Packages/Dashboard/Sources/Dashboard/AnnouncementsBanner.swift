@@ -127,7 +127,7 @@ public struct AnnouncementsBanner: View {
             .padding(.vertical, BrandSpacing.sm)
         }
         .buttonStyle(.plain)
-        .background(.brandGlass(), in: RoundedRectangle(cornerRadius: 14))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14)
                 .strokeBorder(Color.bizarreOrange.opacity(0.25), lineWidth: 0.5)

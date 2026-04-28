@@ -257,10 +257,6 @@ private struct LoadedBody: View {
     var onTileTap: (@MainActor (DashboardTileDestination) -> Void)?
     var onCreateTicket: (() -> Void)?
     var onImportData: (() -> Void)?
-    // §3.9 Greeting tap → Settings → Profile
-    var onTapGreeting: (() -> Void)?
-    // §3.3 Dismiss attention item (server-backed)
-    var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
     // §3.4 My Queue callbacks
     var onMyQueueTicketTap: ((Int64) -> Void)?
     var onMyQueueStartWork: ((Int64) -> Void)?
@@ -269,6 +265,10 @@ private struct LoadedBody: View {
     // §3.12 SMS tab callback + Team Inbox tab callback
     var onTapSMSTab: (() -> Void)?
     var onTapTeamInbox: (() -> Void)?
+    // §3.9 Greeting tap → Settings → Profile
+    var onTapGreeting: (() -> Void)?
+    // §3.3 Dismiss attention item (server-backed)
+    var onDismissAttentionItem: ((AttentionRowKind) -> Void)?
 
     /// §3.1: 3-column at regular width; 4-column when iPad ≥1100pt or Mac.
     @Environment(\.horizontalSizeClass) private var hSizeClass
@@ -495,22 +495,28 @@ private struct StatTile: Identifiable {
     /// Custom scheme deep-link URL (bizarrecrm://…) — nil = no deep link.
     let deepLinkURL: URL?
 
-    init(label: String, value: String, icon: String, deepLink: String? = nil) {
+    let destination: DashboardTileDestination?
+
+    init(label: String, value: String, icon: String, deepLink: String? = nil, destination: DashboardTileDestination? = nil) {
         self.label = label
         self.value = value
         self.icon = icon
         self.deepLinkURL = deepLink.flatMap { URL(string: $0) }
+        self.destination = destination
     }
 }
 
 private struct StatTileCard: View {
     let tile: StatTile
+    var onTap: (@MainActor () -> Void)? = nil
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button {
-            if let url = tile.deepLinkURL {
+            if let onTap {
+                onTap()
+            } else if let url = tile.deepLinkURL {
                 BrandHaptics.selection()
                 openURL(url)
             }

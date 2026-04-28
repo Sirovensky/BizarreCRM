@@ -132,7 +132,7 @@ public struct NeedsAttentionCard: View {
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
         .overlay(
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+                .strokeBorder(Color.bizarreOutline.opacity(Double(0.4)), lineWidth: 0.5)
         )
     }
 

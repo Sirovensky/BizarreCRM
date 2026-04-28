@@ -62,7 +62,7 @@ public struct RepeatCustomersWidget: View, BIWidgetView {
             case .loaded(let payload):
                 loadedContent(payload: payload)
             case .failed(let msg):
-                BIWidgetErrorState(message: msg, onRetry: { Task { await vm.reload() } })
+                BIWidgetErrorState(message: msg, retry: { Task { await vm.reload() } })
             }
         }
         .task { await vm.load() }

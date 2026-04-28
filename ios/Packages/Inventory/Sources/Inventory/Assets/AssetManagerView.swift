@@ -18,7 +18,7 @@ public final class AssetManagerViewModel {
 
     public private(set) var assets: [InventoryAsset] = []
     public private(set) var isLoading = false
-    public private(set) var errorMessage: String?
+    public internal(set) var errorMessage: String?
     public var showCreate = false
     public var editingAsset: InventoryAsset?
     public var deletingAsset: InventoryAsset?
@@ -155,7 +155,7 @@ public struct AssetManagerView: View {
                 HStack(spacing: BrandSpacing.xs) {
                     if let serial = asset.serial {
                         Text(serial)
-                            .font(.bizarreMono(size: 12))
+                            .font(.brandMono(size: 12))
                             .foregroundStyle(Color.bizarreTextSecondary)
                     }
                     if let condition = asset.condition {
@@ -267,7 +267,7 @@ public struct AssetEditorSheet: View {
                     TextField("IMEI (admin only)", text: $imei)
                         .textInputAutocapitalization(.never)
                         .disableAutocorrection(true)
-                        .font(.bizarreMono(size: 15))
+                        .font(.brandMono(size: 15))
                 }
 
                 Section("Condition & Status") {

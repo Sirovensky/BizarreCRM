@@ -339,7 +339,7 @@ public struct TransferListView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button("New Transfer") { vm.showCreateSheet = true }
-                .buttonStyle(.brandPrimary)
+                .buttonStyle(.borderedProminent)
         }
     }
 }

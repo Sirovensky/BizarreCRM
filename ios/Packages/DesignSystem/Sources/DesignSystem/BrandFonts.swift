@@ -167,4 +167,5 @@ public extension Font {
     static var bizarreFootnote: Font { brandFootnote() }
     static var bizarreTitle2: Font   { brandTitle2() }
     static var bizarreTitle3: Font   { brandTitle3() }
+    static var bizarreMono: Font     { brandMono() }
 }

@@ -54,16 +54,19 @@ public struct ContactImportResult: Sendable {
     public let total: Int
     public let errors: [String]
 
-    public init(imported: Int, skipped: Int, errors: [String]) {
-        self.imported = imported
+    public init(created: Int, updated: Int, skipped: Int, total: Int, errors: [String]) {
+        self.created = created
+        self.updated = updated
         self.skipped = skipped
+        self.total = total
         self.errors = errors
     }
 }
 
 extension ContactImportResult: Equatable {
     public static func == (lhs: ContactImportResult, rhs: ContactImportResult) -> Bool {
-        lhs.imported == rhs.imported && lhs.skipped == rhs.skipped && lhs.errors == rhs.errors
+        lhs.created == rhs.created && lhs.updated == rhs.updated &&
+            lhs.skipped == rhs.skipped && lhs.total == rhs.total && lhs.errors == rhs.errors
     }
 }
 
@@ -209,7 +212,7 @@ public struct ContactsBulkImportSheet: View {
                     importingView
 
                 case .done(let result):
-                    summaryView(result: result)
+                    summaryView(result)
 
                 case .permissionDenied:
                     permissionDeniedView
@@ -522,7 +525,7 @@ private struct MultiContactPickerRepresentable: UIViewControllerRepresentable {
 extension CustomerDuplicateChecker {
     /// Returns true if a customer with a matching phone or email already exists.
     func hasExistingMatch(phone: String?, email: String?) async -> Bool {
-        await check(phone: phone ?? "", email: email ?? "")
+        await findDuplicate(phone: phone ?? "", email: email ?? "") != nil
     }
 }
 

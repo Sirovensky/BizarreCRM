@@ -357,19 +357,12 @@ public struct LotTrackingView: View {
 extension APIClient {
     func listLots(sku: String) async throws -> [InventoryLot] {
         let encoded = sku.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sku
-        let resp: APIResponse<[InventoryLot]> = try await get(
-            "/api/v1/inventory/lots?parent_sku=\(encoded)"
-        )
-        return resp.data ?? []
+        return try await get("/api/v1/inventory/lots?parent_sku=\(encoded)", as: [InventoryLot].self)
     }
 
     func lotRecall(lotId: String) async throws -> LotRecallResult {
         let encoded = lotId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? lotId
-        let resp: APIResponse<LotRecallResult> = try await get(
-            "/api/v1/inventory/lots/recall?lot_id=\(encoded)"
-        )
-        guard let result = resp.data else { throw AppError.serverError("No recall data") }
-        return result
+        return try await get("/api/v1/inventory/lots/recall?lot_id=\(encoded)", as: LotRecallResult.self)
     }
 }
 #endif

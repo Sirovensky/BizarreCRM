@@ -100,7 +100,7 @@ public struct SyncStatusBadge: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 5)
-        .background(.brandGlass(), in: Capsule())
+        .background(.ultraThinMaterial, in: Capsule())
         .accessibilityLabel(accessibilityLabel)
     }
 
