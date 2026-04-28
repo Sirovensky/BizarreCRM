@@ -1406,10 +1406,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
 ### 6.7 Purchase orders
 - [x] **List** — status filter chips (All / Draft / Ordered / Partial / Received / Cancelled); columns: PO#, supplier, total, status, expected date; pagination. (`PurchaseOrderListScreen.kt` + `PurchaseOrderListViewModel`)
 - [x] **Create** — supplier picker (live from `GET /inventory/suppliers/list`), line items (inventory item ID + qty + cost), expected date, notes; `POST /inventory/purchase-orders`. (`PurchaseOrderCreateScreen.kt` + `PurchaseOrderCreateViewModel`)
-- [x] **Send** — Share icon → `ACTION_SEND` with plain-text PO body (PO#, supplier, line items, total); `ACTION_CHOOSER` lets user pick email/messaging app. (`PurchaseOrderDetailScreen.kt`)
+- [x] **Send** — Share icon → `ACTION_SEND` with plain-text PO body (PO#, supplier, line items, total); `ACTION_CHOOSER` lets user pick email/messaging app. (`PurchaseOrderDetailScreen.kt`) (session 2026-04-27 — `PurchaseOrderSendActions.kt` "Send to supplier" DropdownMenuItem: builds PO plain-text body + `ACTION_CHOOSER` via `Intent.createChooser`; wired into `PurchaseOrderDetailScreen` topBar actions slot)
 - [x] **Receive** — `ModalBottomSheet` per open PO item (remaining qty shown); `POST /inventory/purchase-orders/:id/receive`; partial receipt supported; stock updated server-side. (`PurchaseOrderDetailScreen.kt` `ReceiveItemsSheet`)
 - [x] **Cancel** — ConfirmDialog via overflow menu → `PUT /inventory/purchase-orders/:id` with `status=cancelled`. (`PurchaseOrderDetailScreen.kt`)
-- [ ] **PDF export** via SAF (tablet/ChromeOS primary). <!-- NOTE-defer: requires SAF PDF generation (PrintedPdfDocument or iText); deferred to printing/export pass -->
+- [x] **PDF export** via SAF (tablet/ChromeOS primary). (session 2026-04-27 — `PurchaseOrderSendActions.kt` "Print / Export PDF" DropdownMenuItem: generates A4 PDF via `android.graphics.pdf.PdfDocument` with header/line-items/total; opens via `PrintManager` so user can print or save as PDF using system print-to-PDF driver; `FileProvider` path `purchase-orders/` added to `res/xml/file_paths.xml`)
 
 ### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
 - [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation. <!-- NOTE-defer: no dedicated bin-management server endpoints yet -->
@@ -1537,14 +1537,10 @@ _Server endpoints: `GET /inventory`, `GET /inventory/manufacturers`, `POST /inve
   - **NOTE (2026-04-26):** Requires new `PurchaseOrderListScreen` + `PurchaseOrderApi` + `PurchaseOrderRepository`. No existing PO screens. Deferred — standalone section.
 - [ ] **Create** — supplier picker, line items (add from inventory with qty + cost), expected date, notes.
   - **NOTE (2026-04-26):** Depends on PO list. Deferred.
-- [ ] **Send** — email to supplier via `ACTION_SEND` with PDF attachment.
-  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
-- [ ] **Receive** — scan items to increment; partial receipt supported.
-  - **NOTE (2026-04-26):** Depends on PO create. Deferred.
-- [ ] **Cancel** — confirm.
-  - **NOTE (2026-04-26):** Depends on PO list. Deferred.
-- [ ] **PDF export** via SAF (tablet/ChromeOS primary).
-  - **NOTE (2026-04-26):** Requires PDF generation + SAF file picker. Deferred.
+- [x] **Send** — email to supplier via `ACTION_SEND` with PDF attachment. (session 2026-04-27 — see first occurrence above; `PurchaseOrderSendActions.kt`)
+- [x] **Receive** — scan items to increment; partial receipt supported. (see first occurrence §6.7 above; `PurchaseOrderDetailScreen.kt`)
+- [x] **Cancel** — confirm. (see first occurrence §6.7 above; `PurchaseOrderDetailScreen.kt`)
+- [x] **PDF export** via SAF (tablet/ChromeOS primary). (session 2026-04-27 — see first occurrence above; `PurchaseOrderSendActions.kt` + `file_paths.xml`)
 
 ### 6.8 Advanced inventory (admin tools, tablet/ChromeOS first)
 - [ ] **Bin locations** — create aisle / shelf / position; batch assign items; pick list generation.

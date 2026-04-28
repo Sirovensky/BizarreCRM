@@ -44,4 +44,13 @@
     <cache-path
         name="photos"
         path="photos/" />
+
+    <!--
+      §6.7 — exposes cacheDir/purchase-orders/ via FileProvider so
+      PurchaseOrderSendActions can share generated PO PDFs via PrintManager
+      / ACTION_SEND without world-readable storage.
+    -->
+    <cache-path
+        name="purchase-orders"
+        path="purchase-orders/" />
 </paths>
