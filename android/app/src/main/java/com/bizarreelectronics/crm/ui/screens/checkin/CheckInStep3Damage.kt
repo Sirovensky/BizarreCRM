@@ -21,6 +21,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Tab
@@ -157,6 +159,7 @@ fun CheckInStep3Damage(
                             selected = item in includes,
                             onClick = { onToggleAccessory(item) },
                             label = { Text(item) },
+                            colors = FilterChipDefaults.brandColors(),
                             modifier = Modifier.semantics {
                                 contentDescription = "Accessory included: $item"
                             },
@@ -189,6 +192,7 @@ private fun DamageTypeSelector(
                 selected = active == type,
                 onClick = { onSelect(type) },
                 label = { Text("${type.symbol} ${type.name.lowercase().replaceFirstChar { it.uppercase() }}") },
+                colors = FilterChipDefaults.brandColors(),
                 modifier = Modifier.semantics {
                     contentDescription = "Damage type: ${type.name}"
                 },
@@ -327,6 +331,7 @@ private fun LdiCard(
                         selected = status == s,
                         onClick = { onStatusChange(s) },
                         label = { Text(s.label) },
+                        colors = FilterChipDefaults.brandColors(),
                         modifier = Modifier.semantics {
                             contentDescription = "LDI status: ${s.label}"
                         },

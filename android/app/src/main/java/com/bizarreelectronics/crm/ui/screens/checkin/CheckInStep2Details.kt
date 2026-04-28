@@ -22,6 +22,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import com.bizarreelectronics.crm.ui.components.shared.brandColors
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -146,6 +148,7 @@ private fun PasscodeSection(
                     selected = format == f,
                     onClick = { onFormatChange(f) },
                     label = { Text(f.label) },
+                    colors = FilterChipDefaults.brandColors(),
                     modifier = Modifier.semantics {
                         contentDescription = "Passcode format: ${f.label}"
                     },
