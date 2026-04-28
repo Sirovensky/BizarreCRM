@@ -256,6 +256,17 @@ type: project
   - Audit log entry with before/after thresholds + projected revenue delta.
   - Email all admin users on change.
 
+- [ ] DPI-16. **Auto-rounding of computed labor totals to psychological prices.** When auto-margin (DPI-7/8/9) computes a labor price like `$147.62` from `parts_cost + target_profit`, owners typically want a rounded retail price, not a fractional one. Add a per-shop `repair_pricing_rounding_mode` config:
+  - `off` — emit raw computed value (`$147.62`).
+  - `nearest_dollar` — round to nearest whole ($148).
+  - `nearest_5` / `nearest_10` — round up to nearest $5 / $10 ($150).
+  - `psychological_99` — round up and subtract $0.01 ($149.99). Many shops sell on charm-pricing — `$149.99` reads cheaper than `$150` to customers.
+  - `psychological_95` — round up to nearest $5 then subtract $0.05 ($149.95).
+  - Configurable in **Settings → Repair pricing → Rounding** with a live preview ("Sample: parts $45 + 60% margin = $112.50 → rounded to $114.99"). Applies to all auto-computed labor prices; manual overrides bypass rounding entirely.
+  - Schema: add `repair_pricing_rounding_mode` to ALLOWED_CONFIG_KEYS in `settings.routes.ts`. Default `off` for new shops to avoid surprising migrations.
+  - Wire in the same recompute pass as DPI-7 auto-margin so a parts-cost change triggers (recompute → round → write `repair_prices.labor_price`).
+  - Tests: pure unit tests on the rounding helper (`roundForRetail(amount, mode)`); end-to-end fixture with auto-margin enabled + each rounding mode.
+
 ## Web Audit Wave-WEB-2026-04-24 — secondary surfaces (search agent A3)
 
 ### P2 (cosmetic / missing UI)
