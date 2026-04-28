@@ -1,5 +1,6 @@
 import { Database, Clock, Sparkles, ArrowUpRight } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
+import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 const OPTIONS = [
   {
@@ -39,7 +40,8 @@ export function StepImportHandoff({ pending, onUpdate, onNext }: StepProps) {
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-3xl font-semibold tracking-tight text-surface-900 dark:text-surface-50">
+      <WizardBreadcrumb prevLabel="Step 6 · Store info" currentLabel="Step 7 · Import" nextLabel="Step 8 · Repair pricing" />
+      <h2 className="mt-6 text-3xl font-semibold tracking-tight text-surface-900 dark:text-surface-50">
         Existing data?
       </h2>
       <p className="mt-2 text-base text-surface-600 dark:text-surface-400">

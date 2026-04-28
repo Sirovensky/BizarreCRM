@@ -30,6 +30,7 @@ import toast from 'react-hot-toast';
 import type { StepProps } from '../wizardTypes';
 import { onboardingApi, type OnboardingShopType } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
+import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 interface ShopTypeOption {
   id: OnboardingShopType;
@@ -96,7 +97,8 @@ export function StepShopType({ onNext, onBack }: StepProps) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 text-center">
+      <WizardBreadcrumb prevLabel="Step 4 · Welcome" currentLabel="Step 5 · Shop type" nextLabel="Step 6 · Store info" />
+      <div className="mb-6 mt-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
           <Smartphone className="h-7 w-7 text-primary-600 dark:text-primary-400" />
         </div>

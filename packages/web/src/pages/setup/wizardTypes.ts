@@ -71,6 +71,26 @@ export const WIZARD_ORDER_SAAS: WizardPhase[] = [
   'review', 'done',
 ];
 
+/**
+ * Post-auth wizard body order (welcome → done). SetupPage runs behind
+ * ProtectedRoute so the user is ALWAYS authenticated by the time it
+ * mounts; the pre-auth phases (firstLogin/forcePassword/signup/
+ * verifyEmail/twoFactorSetup) live in the SELF/SAAS orders only for
+ * forward-compat in case we later route /signup itself through the
+ * wizard shell. Today they are dead within SetupPage and the Back
+ * button must NOT walk into them — so SetupPage uses this body order
+ * exclusively. Both modes share the same body sequence.
+ */
+export const WIZARD_BODY_ORDER: WizardPhase[] = [
+  'welcome', 'shopType', 'store', 'importHandoff', 'repairPricing',
+  'defaultStatuses', 'businessHours', 'tax', 'receipts', 'logo',
+  'paymentTerminal', 'firstEmployees',
+  'smsProvider', 'emailSmtp', 'notificationTemplates',
+  'receiptPrinter', 'cashDrawer', 'bookingPolicy',
+  'warrantyDefaults', 'backupDestination', 'mobileAppQr',
+  'review', 'done',
+];
+
 /** Human-readable label per phase (used by WizardBreadcrumb). */
 export const WIZARD_PHASE_LABELS: Record<WizardPhase, string> = {
   firstLogin: 'First login',

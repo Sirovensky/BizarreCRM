@@ -5,7 +5,7 @@ import { Loader2 } from 'lucide-react';
 import { settingsApi, authApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
 import type { PendingWrites, WizardPhase } from './wizardTypes';
-import { WIZARD_ORDER_SELF, WIZARD_ORDER_SAAS, WIZARD_PHASE_LABELS } from './wizardTypes';
+import { WIZARD_BODY_ORDER, WIZARD_PHASE_LABELS } from './wizardTypes';
 import { StepWelcome } from './steps/StepWelcome';
 import { StepStoreInfo } from './steps/StepStoreInfo';
 import { StepImportHandoff } from './steps/StepImportHandoff';
@@ -100,11 +100,13 @@ export function SetupPage() {
     staleTime: 10_000,
   });
 
-  const isMultiTenant = authSetupData?.data?.data?.isMultiTenant ?? false;
-  const orderedPhases = useMemo<WizardPhase[]>(
-    () => (isMultiTenant ? WIZARD_ORDER_SAAS : WIZARD_ORDER_SELF),
-    [isMultiTenant],
-  );
+  // SetupPage runs behind ProtectedRoute → user is already authenticated
+  // when this component mounts. Use the body-only order so the Back button
+  // from 'welcome' is correctly disabled (no auth phase to walk back into).
+  // The full SELF/SAAS orders remain exported for forward-compat if we ever
+  // route the pre-auth screens through this shell.
+  // authSetupData is read in flushAndExit() below for skip-count bumping.
+  const orderedPhases = useMemo<WizardPhase[]>(() => WIZARD_BODY_ORDER, []);
 
   // The wizard body starts at 'welcome' for already-authenticated users.
   // Pre-wizard auth (firstLogin/signup/forcePassword/verifyEmail/twoFactorSetup)

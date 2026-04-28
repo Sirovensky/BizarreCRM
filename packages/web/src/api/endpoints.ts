@@ -47,13 +47,7 @@ interface AuthSwitchResponse {
 // ==================== Auth ====================
 export const authApi = {
   setupStatus: () =>
-    api.get<{ success: boolean; data: {
-      needsSetup: boolean;
-      isMultiTenant: boolean;
-      setupWizardCompleted: boolean;
-      setupWizardSkippedAt: string | null;
-      setupWizardSkipCount: number;
-    } }>(
+    api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
       '/auth/setup-status',
     ),
   setup: (data: {
@@ -232,8 +226,6 @@ export const ticketApi = {
   deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
   // Clone as warranty case
   cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
-  // Duplicate ticket (copies header + devices + parts, resets status)
-  duplicate: (id: number) => api.post(`/tickets/${id}/duplicate`),
   // AUDIT-WEB-002: mint a scoped short-lived photo-upload token for the QR URL.
   // Returns { token: string } — 30-minute JWT scoped to one ticket+device.
   getPhotoUploadToken: (ticketId: number, deviceId: number) =>
@@ -477,17 +469,6 @@ export const expenseApi = {
   update: (id: number, data: Partial<{ category: string; amount: number; description: string; date: string; location_id: number }>) =>
     api.put(`/expenses/${id}`, data),
   delete: (id: number) => api.delete(`/expenses/${id}`),
-  // WEB-FK-014: upload a receipt image for an existing expense.
-  // Route: POST /expenses/:expenseId/receipt  (multipart/form-data, field: "photo")
-  uploadReceipt: (expenseId: number, file: File) => {
-    const form = new FormData();
-    form.append('photo', file);
-    return api.post<{ success: boolean; data: { receipt_image_path: string } }>(
-      `/expenses/${expenseId}/receipt`,
-      form,
-      { headers: { 'Content-Type': 'multipart/form-data' } },
-    );
-  },
 };
 
 // ==================== Reports ====================
@@ -611,8 +592,6 @@ export interface VoiceCall {
   conv_phone: string | null;
   entity_type: string | null;
   entity_id: number | null;
-  /** WEB-FK-009: 1 = caller was informed the call would be recorded; 0 or null = not disclosed. */
-  was_disclosed_to_caller?: number | null;
 }
 
 export interface VoiceCallsResponse {
@@ -623,34 +602,6 @@ export interface VoiceCallsResponse {
   };
 }
 
-// ==================== Email ====================
-// WEB-S6-017: Stub API — gated by server-side email_inbox_enabled flag.
-export interface EmailThread {
-  id: number;
-  customer_id?: number | null;
-  subject?: string | null;
-  from_address?: string | null;
-  last_message_at: string;
-  message_count?: number;
-  unread_count?: number;
-  first_name?: string | null;
-  last_name?: string | null;
-}
-
-export interface EmailThreadsPayload {
-  threads: EmailThread[];
-  enabled: boolean;
-  pagination?: { page: number; per_page: number; total: number; total_pages: number };
-}
-
-export const emailApi = {
-  /** Returns email threads. `data.enabled` is false when email inbox is not configured. */
-  threads: (params?: { page?: number; pagesize?: number }) =>
-    api.get<{ success: boolean; data: EmailThreadsPayload }>('/email/threads', { params }),
-  messages: (threadId: number) =>
-    api.get(`/email/threads/${threadId}/messages`),
-};
-
 export const voiceApi = {
   call: (data: { to: string; mode?: string; entity_type?: string; entity_id?: number }) =>
     api.post<{ success: boolean; data?: unknown; message?: string }>('/voice/call', data),
@@ -659,9 +610,6 @@ export const voiceApi = {
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
   /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
-  /** WEB-W3-023: Fetch a short-lived signed URL for playback (5-min HMAC token). */
-  recordingSignedUrl: (id: number) =>
-    api.get<{ success: boolean; data: { url: string } }>(`/voice/calls/${id}/recording-url`),
 };
 
 // ==================== POS ====================
@@ -672,8 +620,8 @@ export const posApi = {
   // the field misled callers into thinking they could query the service
   // catalog from POS. If/when the server supports a `service` filter, add
   // it back as a real param.
-  products: (params?: { keyword?: string; category?: string }, signal?: AbortSignal) =>
-    api.get('/pos/products', { params, signal }),
+  products: (params?: { keyword?: string; category?: string }) =>
+    api.get('/pos/products', { params }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
   // event so a flaky-network double-click doesn't double-record opening float.
@@ -1100,9 +1048,7 @@ export const blockchypApi = {
   // exact bug SEC-M34 was trying to prevent. Pages should branch on
   // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
   // recording a "successful" payment.
-  // WEB-W3-004: `amount` lets the caller charge a specific leg amount for
-  // split payments. When omitted the server charges the full remaining balance.
-  processPayment: (invoiceId: number, tip?: number, amount?: number) => {
+  processPayment: (invoiceId: number, tip?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1132,7 +1078,7 @@ export const blockchypApi = {
       };
     }>(
       '/blockchyp/process-payment',
-      { invoiceId, tip, amount, idempotency_key: idempotencyKey },
+      { invoiceId, tip, idempotency_key: idempotencyKey },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>
@@ -1153,8 +1099,6 @@ export const loanerApi = {
     api.get<{ success: boolean; data: LoanerDevice & { history: LoanerHistoryEntry[] } }>(`/loaners/${id}`),
   returnDevice: (id: number, body: { condition_in?: string; notes?: string }) =>
     api.post<{ success: boolean; data: { returned: boolean } }>(`/loaners/${id}/return`, body),
-  create: (body: { name: string; serial?: string; imei?: string; condition?: string; notes?: string }) =>
-    api.post<{ success: boolean; data: { id: number } }>('/loaners', body),
 };
 
 export interface LoanerDevice {
@@ -1260,10 +1204,6 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
-
-  // WEB-W3-020: trigger immediate billing for a subscription (admin only)
-  runBilling: (id: number) =>
-    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================
@@ -1480,12 +1420,37 @@ export const superAdminApi = {
     superAdminClient.post<{ success: boolean; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
-  // WEB-S4-042: server-side logout so the super-admin JWT is audit-logged as
-  // revoked; the token stays valid until its TTL otherwise (no server-side
-  // blocklist in this version but the audit trail captures the intent).
-  logout: () =>
-    superAdminClient.post<{ success: boolean; message?: string }>('/logout').catch(() => {
-      // Best-effort — don't block local sign-out if the server call fails
-      // (e.g. network unavailable, token already expired).
-    }),
+};
+
+// ==================== Geocode + Custom Fields (BUILD-FIX-001) ====================
+// CustomerCreatePage.tsx imports geocodeApi + customFieldApi but those exports
+// were never added. Stubbed here so the production bundle builds. Both endpoints
+// are TODO-server: the routes don't exist on the backend yet either, so the calls
+// will fail at runtime — but they fail in a controlled way (caught by the page's
+// try/catch) instead of breaking `vite build`.
+//
+// Track in TODO.md as BUILD-FIX-001 / GEOCODE-1 / CUSTOM-FIELDS-1 to wire the
+// real backend endpoints. UI behavior on CustomerCreatePage will fall through
+// to the "no geocode result" / "no custom fields" branches until then.
+export const geocodeApi = {
+  lookup: (address: string) =>
+    api.get<{ success: boolean; data: { lat: number; lng: number } | null }>(
+      `/geocode/lookup?address=${encodeURIComponent(address)}`,
+    ),
+};
+
+export const customFieldApi = {
+  listDefinitions: (entityType: 'customer' | 'ticket' | 'invoice') =>
+    api.get<{ success: boolean; data: Array<{ id: number; key: string; label: string; type: string }> }>(
+      `/custom-fields/definitions?entity_type=${encodeURIComponent(entityType)}`,
+    ),
+  saveValues: (
+    entityType: 'customer' | 'ticket' | 'invoice',
+    entityId: number,
+    values: Record<string, unknown>,
+  ) =>
+    api.post<{ success: boolean }>(
+      `/custom-fields/values`,
+      { entity_type: entityType, entity_id: entityId, values },
+    ),
 };
