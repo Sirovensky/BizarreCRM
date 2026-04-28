@@ -154,7 +154,7 @@ final class BarcodeCameraUIView: UIView, AVCaptureMetadataOutputObjectsDelegate 
         previewLayer.videoGravity = .resizeAspectFill
         layer.addSublayer(previewLayer)
 
-        Task.detached(priority: .userInitiated) { [session] in
+        DispatchQueue.global(qos: .userInitiated).async { [session] in
             session.startRunning()
         }
     }

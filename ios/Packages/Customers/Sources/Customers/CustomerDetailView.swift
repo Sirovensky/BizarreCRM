@@ -424,7 +424,7 @@ private struct NotesTimeline: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             Text("Timeline").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
-                ForEach(notes.prefix(25)) { note in
+                ForEach(Array(notes.prefix(25))) { note in
                     VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
                         HStack {
                             Text(note.authorUsername ?? "Staff")

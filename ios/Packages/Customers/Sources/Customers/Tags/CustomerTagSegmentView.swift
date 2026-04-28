@@ -484,8 +484,12 @@ public struct CustomerTagSegmentEditorSheet: View {
 
     // MARK: - Tag tree node (drill-down, §5.4)
 
+    private func tagNodeRow(_ node: CustomerTagNode, binding: Binding<[String]>) -> AnyView {
+        AnyView(tagNodeRowImpl(node, binding: binding))
+    }
+
     @ViewBuilder
-    private func tagNodeRow(_ node: CustomerTagNode, binding: Binding<[String]>) -> some View {
+    private func tagNodeRowImpl(_ node: CustomerTagNode, binding: Binding<[String]>) -> some View {
         let isSelected = binding.wrappedValue.contains(node.id)
         let hasChildren = !node.children.isEmpty
         let isExpanded = vm.expandedNodes.contains(node.id)

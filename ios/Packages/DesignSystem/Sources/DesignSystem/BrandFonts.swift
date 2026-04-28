@@ -168,4 +168,7 @@ public extension Font {
     static var bizarreTitle2: Font   { brandTitle2() }
     static var bizarreTitle3: Font   { brandTitle3() }
     static var bizarreMono: Font     { brandMono() }
+
+    /// @deprecated Use `brandHeadline()` / `brandTitle3()`.
+    static func brandHeadlineSmall() -> Font { brandHeadline() }
 }

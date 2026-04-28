@@ -59,9 +59,15 @@ public struct DocumentScanPreviewView: View {
         .frame(idealWidth: 520)
         // §17: "Bulk append multiple scans to single file"
         .sheet(isPresented: $showScanMore) {
-            DocumentScannerView { additionalPages in
-                viewModel.appendPages(additionalPages)
-            }
+            DocumentScannerView(
+                onFinished: { result in
+                    Task { @MainActor in
+                        viewModel.appendPages(result.pages)
+                    }
+                },
+                onCanceled: {},
+                onError: { _ in }
+            )
         }
     }
 

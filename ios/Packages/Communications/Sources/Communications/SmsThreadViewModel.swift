@@ -14,7 +14,7 @@ public final class SmsThreadViewModel {
 
     /// Set to the ID of a message that just arrived via WS so the view can
     /// scroll to bottom with a spring animation.
-    public private(set) var newMessageId: Int64?
+    public internal(set) var newMessageId: Int64?
 
     /// §12.2 Schedule send — date/time picker for future delivery.
     /// When set, `send()` includes `send_at` in the POST body.

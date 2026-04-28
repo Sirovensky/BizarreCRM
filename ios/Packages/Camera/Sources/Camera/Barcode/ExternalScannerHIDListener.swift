@@ -77,7 +77,7 @@ public final class ExternalScannerHIDListener {
         // If too long since last keystroke, flush stale buffer.
         if elapsed > burstWindowSeconds && !buffer.isEmpty {
             buffer = ""
-            AppLog.camera.debug("ExternalScannerHIDListener: burst timeout — buffer cleared")
+            AppLog.app.debug("ExternalScannerHIDListener: burst timeout — buffer cleared")
         }
         lastKeystroke = now
 
@@ -97,12 +97,12 @@ public final class ExternalScannerHIDListener {
         let trimmed = buffer.trimmingCharacters(in: .whitespacesAndNewlines)
         buffer = ""
         guard trimmed.count >= minimumLength else {
-            AppLog.camera.debug("ExternalScannerHIDListener: buffer too short (\(trimmed.count)) — discarded")
+            AppLog.app.debug("ExternalScannerHIDListener: buffer too short (\(trimmed.count)) — discarded")
             return
         }
         let barcode = Barcode(value: trimmed, symbology: "hid")
         subject.send(barcode)
-        AppLog.camera.info("ExternalScannerHIDListener: emitted HID barcode length=\(trimmed.count)")
+        AppLog.app.info("ExternalScannerHIDListener: emitted HID barcode length=\(trimmed.count)")
     }
 }
 

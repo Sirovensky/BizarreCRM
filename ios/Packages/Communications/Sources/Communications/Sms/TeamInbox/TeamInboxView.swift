@@ -2,6 +2,7 @@ import SwiftUI
 import Core
 import DesignSystem
 import Networking
+import Sync
 
 // MARK: - TeamInboxView
 //

@@ -152,7 +152,7 @@ public final class DocumentScanViewModel {
                 let (tag, confidence) = classifier.classify(text: text)
                 suggestedTag = tag != .other ? tag : nil
                 classificationConfidence = tag != .other ? confidence : nil
-                AppLog.camera.info("DocumentScanViewModel: auto-classified as \(tag.rawValue, privacy: .public) confidence=\(confidence)")
+                AppLog.app.info("DocumentScanViewModel: auto-classified as \(tag.rawValue, privacy: .public) confidence=\(confidence)")
             }
         } catch {
             ocrState = .failed(message: error.localizedDescription)
@@ -172,7 +172,7 @@ public final class DocumentScanViewModel {
         ocrState = .idle
         suggestedTag = nil
         classificationConfidence = nil
-        AppLog.camera.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(pages.count)")
+        AppLog.app.info("DocumentScanViewModel: appended \(newPages.count) page(s), total=\(pages.count)")
     }
 
     /// Accept the suggested tag (caller stores it in their model).

@@ -45,7 +45,7 @@ public struct NeedsAttentionCard: View {
             let visibleTickets = attention.staleTickets.filter { !dismissedTicketIds.contains($0.id) }
             if !visibleTickets.isEmpty {
                 VStack(spacing: 0) {
-                    ForEach(Array(visibleTickets.enumerated()), id: \.element.id) { idx, ticket in
+                    ForEach(visibleTickets, id: \.id) { ticket in
                         StaleTicketRow(
                             ticket: ticket,
                             onView: {
@@ -53,11 +53,11 @@ public struct NeedsAttentionCard: View {
                             },
                             onDismiss: {
                                 withAnimation(BrandMotion.snappy) {
-                                    dismissedTicketIds.insert(ticket.id)
+                                    _ = dismissedTicketIds.insert(ticket.id)
                                 }
                             }
                         )
-                        if idx < visibleTickets.count - 1 {
+                        if ticket.id != visibleTickets.last?.id {
                             Divider().overlay(Color.bizarreOutline.opacity(0.25))
                         }
                     }
@@ -71,7 +71,7 @@ public struct NeedsAttentionCard: View {
                     Divider().overlay(Color.bizarreOutline.opacity(0.25))
                 }
                 VStack(spacing: 0) {
-                    ForEach(Array(visibleInvoices.enumerated()), id: \.element.id) { idx, invoice in
+                    ForEach(visibleInvoices, id: \.id) { invoice in
                         OverdueInvoiceRow(
                             invoice: invoice,
                             onView: {
@@ -79,11 +79,11 @@ public struct NeedsAttentionCard: View {
                             },
                             onDismiss: {
                                 withAnimation(BrandMotion.snappy) {
-                                    dismissedInvoiceIds.insert(invoice.id)
+                                    _ = dismissedInvoiceIds.insert(invoice.id)
                                 }
                             }
                         )
-                        if idx < visibleInvoices.count - 1 {
+                        if invoice.id != visibleInvoices.last?.id {
                             Divider().overlay(Color.bizarreOutline.opacity(0.25))
                         }
                     }
@@ -129,11 +129,14 @@ public struct NeedsAttentionCard: View {
         }
         .padding(BrandSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(
+        .background {
+            RoundedRectangle(cornerRadius: 16).fill(Color.bizarreSurface1)
+        }
+        .overlay {
+            let outline: Color = .bizarreOutline
             RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(Color.bizarreOutline.opacity(Double(0.4)), lineWidth: 0.5)
-        )
+                .strokeBorder(outline.opacity(0.4), lineWidth: 0.5)
+        }
     }
 
     @ViewBuilder

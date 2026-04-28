@@ -96,7 +96,7 @@ public struct SmsLinkPickerSheet: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(items) { item in
+            List(items, id: \.id) { item in
                 Button {
                     onInsert(item.linkToken(baseURL: vm.baseURL))
                     dismiss()
@@ -129,9 +129,9 @@ public struct SmsLinkPickerSheet: View {
 
 // MARK: - Kind extension
 
-public enum SmsLinkKind: Hashable, Sendable {
-    case ticket, invoice, paymentLink
+public typealias SmsLinkKind = SmsLinkPickerItem.Kind
 
+extension SmsLinkPickerItem.Kind {
     var systemImage: String {
         switch self {
         case .ticket:      return "ticket"

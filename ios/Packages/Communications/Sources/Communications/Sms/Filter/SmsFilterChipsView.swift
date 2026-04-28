@@ -67,7 +67,7 @@ public struct SmsFilterChipsView: View {
             }
             .accessibilityLabel(accessibilityLabel)
             .accessibilityAddTraits(isSelected ? .isSelected : [])
-            .keyboardShortcut(tabShortcut, modifiers: [.command, .shift])
+            .keyboardShortcut(tabShortcut ?? "0", modifiers: [.command, .shift])
         }
 
         private var accessibilityLabel: String {
@@ -86,6 +86,7 @@ public struct SmsFilterChipsView: View {
             case .archived:   return "5"
             case .assignedMe: return "6"
             case .unassigned: return "7"
+            case .teamInbox:  return "8"
             }
         }
     }

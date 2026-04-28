@@ -12,7 +12,7 @@ import Networking
 
 // MARK: - Model
 
-public struct CustomerNote: Decodable, Identifiable, Sendable {
+public struct PinnedCustomerNote: Decodable, Identifiable, Sendable {
     public let id: Int64
     public let body: String
     public let isPinned: Bool
@@ -37,7 +37,7 @@ public struct CustomerPinnedNotesBanner: View {
     let customerId: Int64
     let api: APIClient
 
-    @State private var pinnedNotes: [CustomerNote] = []
+    @State private var pinnedNotes: [PinnedCustomerNote] = []
     @State private var isLoading = false
     @State private var expanded = true
 
@@ -90,7 +90,7 @@ public struct CustomerPinnedNotesBanner: View {
         )
     }
 
-    private func pinnedRow(_ note: CustomerNote) -> some View {
+    private func pinnedRow(_ note: PinnedCustomerNote) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.xs) {
             if note.isInternalOnly {
                 Image(systemName: "lock.fill")
@@ -127,7 +127,7 @@ public struct CustomerPinnedNotesBanner: View {
         }
     }
 
-    private func unpin(_ note: CustomerNote) async {
+    private func unpin(_ note: PinnedCustomerNote) async {
         do {
             try await api.setCustomerNotePinned(
                 customerId: customerId, noteId: note.id, pinned: false)
@@ -143,7 +143,7 @@ public struct CustomerNotesListView: View {
     let customerId: Int64
     let api: APIClient
 
-    @State private var notes: [CustomerNote] = []
+    @State private var notes: [PinnedCustomerNote] = []
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var showingAddSheet = false
@@ -204,7 +204,7 @@ public struct CustomerNotesListView: View {
             .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
     }
 
-    private func noteRow(_ note: CustomerNote) -> some View {
+    private func noteRow(_ note: PinnedCustomerNote) -> some View {
         HStack(alignment: .top, spacing: BrandSpacing.sm) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -279,7 +279,7 @@ public struct CustomerNotesListView: View {
         }
     }
 
-    private func togglePin(_ note: CustomerNote) async {
+    private func togglePin(_ note: PinnedCustomerNote) async {
         let newPinned = !note.isPinned
         do {
             try await api.setCustomerNotePinned(
@@ -292,7 +292,7 @@ public struct CustomerNotesListView: View {
         let body = draftBody.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         do {
-            try await api.createCustomerNote(customerId: customerId, body: body)
+            try await api.createPinnedCustomerNote(customerId: customerId, body: body)
             draftBody = ""
             showingAddSheet = false
             await load()
@@ -304,15 +304,15 @@ public struct CustomerNotesListView: View {
 
 extension APIClient {
     /// `GET /api/v1/customers/:id/notes` — all notes for a customer.
-    public func customerNotes(customerId: Int64) async throws -> [CustomerNote] {
-        try await get("/api/v1/customers/\(customerId)/notes", as: [CustomerNote].self)
+    public func customerNotes(customerId: Int64) async throws -> [PinnedCustomerNote] {
+        try await get("/api/v1/customers/\(customerId)/notes", as: [PinnedCustomerNote].self)
     }
 
     /// `GET /api/v1/customers/:id/notes?pinned=true` — pinned notes only.
-    public func customerPinnedNotes(customerId: Int64) async throws -> [CustomerNote] {
+    public func customerPinnedNotes(customerId: Int64) async throws -> [PinnedCustomerNote] {
         let q = [URLQueryItem(name: "pinned", value: "true")]
         return try await get("/api/v1/customers/\(customerId)/notes", query: q,
-                             as: [CustomerNote].self)
+                             as: [PinnedCustomerNote].self)
     }
 
     /// `PATCH /api/v1/customers/:id/notes/:noteId` — set pinned state.
@@ -325,7 +325,7 @@ extension APIClient {
     }
 
     /// `POST /api/v1/customers/:id/notes` — create a new note.
-    public func createCustomerNote(customerId: Int64, body: String) async throws {
+    public func createPinnedCustomerNote(customerId: Int64, body: String) async throws {
         _ = try await post(
             "/api/v1/customers/\(customerId)/notes",
             body: PinnedNoteCreateBody(body: body),

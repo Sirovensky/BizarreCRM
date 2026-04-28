@@ -51,7 +51,7 @@ public final class UnreadBadgeService {
     public func refresh() async {
         guard let api else { return }
         do {
-            let result = try await api.smsUnreadCount()
+            let result: SmsUnreadCountResponse = try await api.smsUnreadCount()
             setBadge(result.count)
         } catch {
             AppLog.ui.error("UnreadBadgeService refresh failed: \(error.localizedDescription, privacy: .public)")
