@@ -38,20 +38,24 @@ export function stripPhone(value: string): string {
  *   "13032611911" -> "+1 (303)-261-1911"  (strips leading 1)
  */
 export function formatStorePhoneAsYouType(value: string): string {
-  let digits = value.replace(/\D/g, '');
-  // Strip leading 1 if the user typed a full 11-digit US number
-  if (digits.length === 11 && digits.startsWith('1')) {
-    digits = digits.slice(1);
-  }
-  // More than 10 digits and doesn't fit the US pattern — don't try to format,
-  // let the user enter whatever they need (international, extensions, etc.)
-  // WEB-FD-024 (Fixer-C5 2026-04-25): require an explicit "+" prefix for
-  // non-US numbers so a paste of "447911123456" (UK without +) becomes
-  // "+447911123456" instead of being silently echoed without country-code
-  // semantics. If the user already typed a "+", preserve their input
-  // verbatim (we don't presume to reformat international patterns we don't
-  // own).
-  if (digits.length > 11) {
+  const digits = value.replace(/\D/g, '');
+
+  // BUGFIX (2026-04-28): the leading-1 strip used to live in this branch
+  // unconditionally. That broke as-you-type editing: a user typing the
+  // 11th digit "1" after a fully-formatted 10-digit number ("+1 (123)-
+  // 456-7890" → press "1") had the formatter strip the leading "1",
+  // shift "234567890" + "1" into a NEW 10-digit window, and re-render as
+  // "+1 (234)-567-8901". The whole number appeared to scramble, mimicking
+  // a "delete replaces digit with 1" bug. The strip is now off in this
+  // path; on-blur normalization (or formatStorePhoneOnBlur below) handles
+  // the country-code case after the user has finished typing.
+  //
+  // More than 10 digits → raw mode. WEB-FD-024 (Fixer-C5 2026-04-25):
+  // require an explicit "+" prefix for non-US numbers so a paste of
+  // "447911123456" (UK without +) becomes "+447911123456" instead of
+  // being silently echoed without country-code semantics. If the user
+  // already typed a "+", preserve their input verbatim.
+  if (digits.length > 10) {
     const trimmed = value.trim();
     if (trimmed.startsWith('+')) return trimmed;
     return `+${digits}`;
@@ -61,6 +65,24 @@ export function formatStorePhoneAsYouType(value: string): string {
   if (digits.length <= 3) return `+1 (${digits}`;
   if (digits.length <= 6) return `+1 (${digits.slice(0, 3)})-${digits.slice(3)}`;
   return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+}
+
+/**
+ * Blur-time normalization. Applies the country-code-strip heuristic ONLY
+ * when the user has finished typing — never mid-keystroke. If they
+ * finished on a US 11-digit number starting with 1, treat the leading 1
+ * as +1 and reformat the remaining 10 as the canonical US display.
+ *
+ * This is the safe place for the strip because the user cannot accidentally
+ * trigger it while typing the 11th digit — it only fires on focus loss.
+ */
+export function formatStorePhoneOnBlur(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) {
+    digits = digits.slice(1);
+    return `+1 (${digits.slice(0, 3)})-${digits.slice(3, 6)}-${digits.slice(6, 10)}`;
+  }
+  return formatStorePhoneAsYouType(value);
 }
 
 /**

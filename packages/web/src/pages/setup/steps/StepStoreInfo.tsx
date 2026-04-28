@@ -1,6 +1,6 @@
 import { MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { formatStorePhoneAsYouType } from '@/utils/phoneFormat';
+import { formatStorePhoneAsYouType, formatStorePhoneOnBlur } from '@/utils/phoneFormat';
 import {
   validateStoreAddress,
   validatePhoneInternational,
@@ -94,21 +94,19 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
               <Phone className="h-4 w-4 text-surface-400" />
               Phone <span className="text-red-500">*</span>
             </label>
-            {/* Phone input: ZERO formatting while typing — that was the source
-                of "delete replaces digit with 1" weirdness (controlled-input
-                cursor jumps + formatter re-inserting separators). Now we
-                accept whatever the user types verbatim, and format ONLY on
-                blur. While focused the user sees raw characters; on blur we
-                normalize to "+1 (555)-123-4567" if it's a US 10-digit. */}
+            {/* Phone input: as-you-type format. The leading-1 strip used to
+                fire here and made typing the 11th digit (a "1") shift the
+                whole number — see phoneFormat.ts comment. Strip moved to
+                formatStorePhoneOnBlur so it only runs after focus loss. */}
             <input
               id="setup-store-phone"
               type="tel"
               value={phone}
-              onChange={(e) => onUpdate({ store_phone: e.target.value })}
+              onChange={(e) => onUpdate({ store_phone: formatStorePhoneAsYouType(e.target.value) })}
               onBlur={(e) => {
-                const formatted = formatStorePhoneAsYouType(e.target.value);
-                if (formatted !== e.target.value) {
-                  onUpdate({ store_phone: formatted });
+                const normalized = formatStorePhoneOnBlur(e.target.value);
+                if (normalized !== e.target.value) {
+                  onUpdate({ store_phone: normalized });
                 }
               }}
               placeholder="+1 (555) 123-4567"

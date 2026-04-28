@@ -3,6 +3,8 @@ import { Smartphone, Wrench, Sparkles, Info, Calculator } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
+type PricingMode = 'tier' | 'matrix' | 'auto_margin';
+
 /**
  * Step 8 — Repair pricing (tier-based labor matrix).
  *
@@ -119,6 +121,11 @@ export function StepRepairPricing({
     return seed;
   });
 
+  // Active pricing mode (segmented control at top of card). Only 'tier' is
+  // wired; the other two render PLACEHOLDER content explaining the future
+  // surface. User can flip between them to preview what's coming.
+  const [mode, setMode] = useState<PricingMode>('tier');
+
   const handleChange = (tier: TierLetter, service: ServiceKey, raw: string) => {
     const k = pricingKey(tier, service);
     const clamped = clampDollars(raw);
@@ -158,11 +165,14 @@ export function StepRepairPricing({
     onNext();
   };
 
+  const MODES: Array<{ id: PricingMode; label: string; placeholder: boolean; ticket?: string }> = [
+    { id: 'tier', label: 'Tier by model age', placeholder: false },
+    { id: 'matrix', label: 'Per-device matrix', placeholder: true, ticket: 'DPI-11' },
+    { id: 'auto_margin', label: 'Auto-margin rules', placeholder: true, ticket: 'DPI-7/8/9' },
+  ];
+
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex justify-center">
-</div>
-
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
           <Wrench className="h-7 w-7 text-primary-600 dark:text-primary-400" />
@@ -171,11 +181,42 @@ export function StepRepairPricing({
           Repair pricing
         </h1>
         <p className="mx-auto mt-2 max-w-2xl text-sm text-surface-500 dark:text-surface-400">
-          Set labor by model age tier. Newer phones earn premium margins; legacy models stay
-          affordable as door-openers. Tweak per-device later in Settings.
+          Pick how you want to price labor. Tier-by-age is the fast default; Per-device matrix
+          and Auto-margin rules are previews of what's coming in Settings → Repair pricing.
         </p>
       </div>
 
+      {/* Segmented mode picker (matches docs/setup-wizard-preview.html#screen-8 mockup) */}
+      <div className="mb-6 flex justify-center">
+        <div className="inline-flex flex-wrap gap-1 rounded-full border border-surface-200 bg-surface-100 p-1 dark:border-surface-700 dark:bg-surface-800">
+          {MODES.map((m) => {
+            const active = mode === m.id;
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMode(m.id)}
+                className={[
+                  'inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors',
+                  active
+                    ? 'bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-50'
+                    : 'text-surface-500 hover:text-surface-700 dark:text-surface-400 dark:hover:text-surface-200',
+                ].join(' ')}
+              >
+                {m.label}
+                {m.placeholder && (
+                  <span className="rounded-full bg-amber-200 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
+                    Preview
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── Tier mode (the wired one) ─────────────────────────────── */}
+      {mode === 'tier' && (
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {TIERS.map((tier) => (
           <div
@@ -241,23 +282,25 @@ export function StepRepairPricing({
           </div>
         ))}
       </div>
+      )}
 
-      <div className="mt-5 space-y-3">
-        <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+      {/* ─── Tier-mode footer: skip-or-continue helper text ────────── */}
+      {mode === 'tier' && (
+        <div className="mt-5 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
           <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           <p>
-            <span className="font-semibold">Tier defaults are just the starting line.</span>{' '}
-            Two more powerful surfaces are coming below — preview now, fully wired in a future build.
+            <span className="font-semibold">These are starting defaults.</span>{' '}
+            Switch to "Per-device matrix" or "Auto-margin rules" tabs above to preview the more
+            powerful surfaces that ship later — both are placeholders today.
           </p>
         </div>
-      </div>
+      )}
 
-      {/* ─── Placeholder #1: Full per-device matrix view ─────────────────
+      {/* ─── Per-device matrix (PLACEHOLDER) ─────────────────────────
           DPI-11. Real implementation will render a virtualized table of
-          ~200 device models × 5 services with bulk-edit + CSV roundtrip.
-          Today: visual stub so the wizard sets the expectation without
-          shipping a half-built table. */}
-      <div className="mt-6 rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
+          ~200 device models × 5 services with bulk-edit + CSV roundtrip. */}
+      {mode === 'matrix' && (
+      <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
             Placeholder
@@ -314,14 +357,14 @@ export function StepRepairPricing({
           Open full matrix (coming soon)
         </button>
       </div>
+      )}
 
-      {/* ─── Placeholder #2: Auto-margin rules ─────────────────────────
+      {/* ─── Auto-margin rules (PLACEHOLDER) ─────────────────────────
           DPI-7..DPI-9. Real implementation will let the shop pick a
           target margin (% or $-over-parts-cost) and recompute labor
-          whenever the catalog scraper updates parts pricing. Today:
-          read-only preview of the rule UI so the wizard surfaces the
-          intent. */}
-      <div className="mt-6 rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
+          whenever the catalog scraper updates parts pricing. */}
+      {mode === 'auto_margin' && (
+      <div className="rounded-xl border-2 border-dashed border-surface-300 bg-surface-50/60 p-5 dark:border-surface-600 dark:bg-surface-900/40">
         <div className="mb-3 flex items-center gap-2">
           <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-900 dark:bg-amber-700 dark:text-amber-100">
             Placeholder
@@ -367,21 +410,25 @@ export function StepRepairPricing({
           </label>
         </div>
       </div>
+      )}
 
-      <p className="mt-3 text-xs text-surface-400 dark:text-surface-500">
-        Both placeholders are tracked as <code>DPI-1</code> through <code>DPI-15</code> in TODO.md.
+      {/* Tier-mode bonus action: Apply industry medians (stub) */}
+      {mode === 'tier' && (
+        <div className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={handleApplyMedians}
+            className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Apply industry medians
+          </button>
+        </div>
+      )}
+
+      <p className="mt-3 text-center text-xs text-surface-400 dark:text-surface-500">
+        Per-device matrix + Auto-margin tracked as <code>DPI-1</code>…<code>DPI-15</code> in TODO.md.
       </p>
-
-      <div className="mt-4 flex justify-center">
-        <button
-          type="button"
-          onClick={handleApplyMedians}
-          className="inline-flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
-        >
-          <Sparkles className="h-4 w-4" aria-hidden="true" />
-          Apply industry medians
-        </button>
-      </div>
 
       <div className="mt-8 flex flex-col items-start justify-between gap-3 border-t border-surface-200 pt-5 sm:flex-row sm:items-center dark:border-surface-700">
         <button
