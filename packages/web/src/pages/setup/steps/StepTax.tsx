@@ -1,52 +1,68 @@
 import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
-import { ArrowLeft, ArrowRight, Calculator } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Calculator, Info } from 'lucide-react';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 /**
- * Step 11 — Tax defaults.
+ * Step 8 — Tax defaults.
  *
- * Mirrors `#screen-11` in `docs/setup-wizard-preview.html`. The owner sets
- * three default tax rates — one per item category (parts, services,
- * accessories). These rates pre-fill the appropriate tax class when an
- * invoice line item is created. Owners can still override per-line in the
- * invoice editor and add additional tax classes later in Settings → Tax.
+ * Two tax categories — that's the canonical split for repair-shop sales tax
+ * across US jurisdictions:
  *
- * H1 (linear-flow rewrite): replaces the old `SubStepProps` hub-card form
- * (single name + rate posting to /settings/tax-classes) with the unified
- * `StepProps` contract. Persistence is now deferred — values flow into
- * `pending` via `onUpdate` and the wizard shell flushes them in a single
- * PUT /settings/config at completion. Three percentage inputs default to
- * 8.25% across the board, matching the existing California base rate that
- * the previous single-rate form used.
+ *   1. PARTS / PHYSICAL GOODS — taxable in nearly every sales-tax state as
+ *      tangible personal property. Includes screens, batteries, charge
+ *      ports, accessories (cases / cables / chargers), and any over-the-
+ *      counter inventory the shop sells.
+ *
+ *   2. LABOR / SERVICES — taxability VARIES by state:
+ *        • Most states (CA, ID, etc.): non-taxable when itemized separately
+ *          on the invoice.
+ *        • NY, HI, SD, NM, WV: labor on a repair sale IS taxable, often
+ *          when bundled with parts.
+ *      Owners default labor to 0% if their state doesn't tax labor.
+ *
+ * Accessories are NOT a separate tax category — they get the same physical-
+ * goods treatment as parts. Older revisions of this step exposed a third
+ * "Accessories" rate; collapsed into "Parts" here. Existing installs that
+ * had a non-default `tax_default_accessories` value get a one-time merge
+ * onto `tax_default_parts` via the helper below.
+ *
+ * Sources (researched 2026-04-28):
+ *   - Avalara state-by-state services taxability whitepaper
+ *   - NCDOR Repair / Maintenance / Installation guide
+ *   - CDTFA Pub 108 (CA non-taxable labor)
+ *   - NY Tax — Auto Repair (taxable bundle)
+ *   - Idaho State Tax Commission — Repair Shops
  */
 
-const DEFAULT_RATE = '8.25';
+const DEFAULT_GOODS_RATE = '8.25';
+// Most states don't tax labor — default 0% and the owner explicitly raises
+// it if they're in NY/HI/SD/NM/WV. Wrong default would silently overcharge
+// every customer until someone notices.
+const DEFAULT_LABOR_RATE = '0.00';
 
 interface CategoryRow {
-  key: keyof Pick<
-    PendingWrites,
-    'tax_default_parts' | 'tax_default_services' | 'tax_default_accessories'
-  >;
+  key: keyof Pick<PendingWrites, 'tax_default_parts' | 'tax_default_services'>;
   label: string;
   description: string;
+  defaultRate: string;
+  hint: string;
 }
 
 const CATEGORIES: ReadonlyArray<CategoryRow> = [
   {
     key: 'tax_default_parts',
-    label: 'Parts',
-    description: 'Screens, batteries, charge ports — physical replacement parts.',
+    label: 'Parts & physical goods',
+    description: 'Screens, batteries, charge ports, accessories, cases, cables — anything tangible the customer takes home.',
+    defaultRate: DEFAULT_GOODS_RATE,
+    hint: 'Taxable in nearly every US sales-tax state.',
   },
   {
     key: 'tax_default_services',
-    label: 'Services',
-    description: 'Labor, diagnostics, software fixes — non-physical work.',
-  },
-  {
-    key: 'tax_default_accessories',
-    label: 'Accessories',
-    description: 'Cases, cables, screen protectors — over-the-counter goods.',
+    label: 'Labor & services',
+    description: 'Repair labor, diagnostics, software fixes — work performed, no tangible item changes hands.',
+    defaultRate: DEFAULT_LABOR_RATE,
+    hint: 'Default 0%. Set higher only if your state taxes labor (NY, HI, SD, NM, WV).',
   },
 ];
 
@@ -63,28 +79,33 @@ export function StepTax({
   onBack,
   onSkip,
 }: StepProps): JSX.Element {
-  const [parts, setParts] = useState<string>(pending.tax_default_parts ?? DEFAULT_RATE);
-  const [services, setServices] = useState<string>(
-    pending.tax_default_services ?? DEFAULT_RATE,
-  );
-  const [accessories, setAccessories] = useState<string>(
-    pending.tax_default_accessories ?? DEFAULT_RATE,
-  );
+  // Fold any legacy `tax_default_accessories` value into the goods/parts seed
+  // — both buckets historically held the same rate, so we prefer the parts
+  // value if present, otherwise the accessories value, otherwise the default.
+  const initialParts =
+    pending.tax_default_parts ??
+    pending.tax_default_accessories ??
+    DEFAULT_GOODS_RATE;
+  const initialServices = pending.tax_default_services ?? DEFAULT_LABOR_RATE;
+
+  const [parts, setParts] = useState<string>(initialParts);
+  const [services, setServices] = useState<string>(initialServices);
 
   // Persist on every change so going Back/Next or hitting Skip carries the
-  // current values into the wizard's bulk PUT at completion.
+  // current values into the wizard's bulk PUT at completion. Mirror to the
+  // legacy accessories key so any other surface that still reads it sees
+  // the same rate (= goods/parts).
   useEffect(() => {
     onUpdate({
       tax_default_parts: parts,
       tax_default_services: services,
-      tax_default_accessories: accessories,
+      tax_default_accessories: parts,
     });
     // onUpdate identity may shift each render — value-driven sync only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [parts, services, accessories]);
+  }, [parts, services]);
 
-  const allValid =
-    isValidRate(parts) && isValidRate(services) && isValidRate(accessories);
+  const allValid = isValidRate(parts) && isValidRate(services);
 
   const handleSkip = () => {
     if (onSkip) {
@@ -94,23 +115,14 @@ export function StepTax({
     }
   };
 
-  const setterFor = (key: CategoryRow['key']): ((v: string) => void) => {
-    if (key === 'tax_default_parts') return setParts;
-    if (key === 'tax_default_services') return setServices;
-    return setAccessories;
-  };
+  const setterFor = (key: CategoryRow['key']): ((v: string) => void) =>
+    key === 'tax_default_parts' ? setParts : setServices;
 
-  const valueFor = (key: CategoryRow['key']): string => {
-    if (key === 'tax_default_parts') return parts;
-    if (key === 'tax_default_services') return services;
-    return accessories;
-  };
+  const valueFor = (key: CategoryRow['key']): string =>
+    key === 'tax_default_parts' ? parts : services;
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex justify-center">
-</div>
-
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
           <Calculator className="h-7 w-7 text-primary-600 dark:text-primary-400" />
@@ -119,13 +131,14 @@ export function StepTax({
           Sales tax
         </h1>
         <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
-          Default rates per category. Override per-line on any invoice. Add more
-          tax classes later in Settings &rarr; Tax.
+          Two categories cover every line a repair shop sells: physical goods (taxable
+          almost everywhere) and labor (state-dependent). Override per-line on any
+          invoice. Add more tax classes later in Settings &rarr; Tax.
         </p>
       </div>
 
       <div className="space-y-5 rounded-2xl border border-surface-200 bg-white p-8 shadow-xl dark:border-surface-700 dark:bg-surface-800">
-        {CATEGORIES.map(({ key, label, description }) => {
+        {CATEGORIES.map(({ key, label, description, defaultRate, hint }) => {
           const value = valueFor(key);
           const setValue = setterFor(key);
           const invalid = value !== '' && !isValidRate(value);
@@ -151,7 +164,7 @@ export function StepTax({
                   inputMode="decimal"
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
-                  placeholder={DEFAULT_RATE}
+                  placeholder={defaultRate}
                   aria-invalid={invalid}
                   className={
                     invalid
@@ -163,6 +176,10 @@ export function StepTax({
                   %
                 </span>
               </div>
+              <p className="mt-1 inline-flex items-start gap-1 text-[11px] text-surface-500 dark:text-surface-400">
+                <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                {hint}
+              </p>
               {invalid ? (
                 <p
                   className="mt-1 text-xs text-red-500"
