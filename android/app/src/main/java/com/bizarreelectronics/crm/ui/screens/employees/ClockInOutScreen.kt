@@ -31,6 +31,7 @@ import com.bizarreelectronics.crm.data.remote.api.EmployeeApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.service.ClockInTileService
 import com.bizarreelectronics.crm.service.LiveUpdateNotifier
+import com.bizarreelectronics.crm.util.ClockShortcutPublisher
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.widget.glance.publishClockState
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -317,6 +318,15 @@ class ClockInOutViewModel @Inject constructor(
                 isLoggedIn = true,
             )
         }.onFailure { android.util.Log.w("ClockInOutVM", "tile state update failed: ${it.message}") }
+
+        // §14.10 — Launcher App Shortcut: update dynamic shortcut to reflect new state
+        // (Clock in ↔ Clock out label + badge icon)
+        runCatching {
+            ClockShortcutPublisher.updateShortcut(
+                context = appContext,
+                isClockedIn = isClockedIn,
+            )
+        }.onFailure { android.util.Log.w("ClockInOutVM", "shortcut update failed: ${it.message}") }
 
         // 2. Glance widget (suspend; iterates active widget instances)
         val displayName = buildString {

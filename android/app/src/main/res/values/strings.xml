@@ -127,6 +127,9 @@
     <string name="shortcut_recent_customer_long">Open recent customer record</string>
     <string name="shortcut_clock_in_short">Clock in</string>
     <string name="shortcut_clock_in_long">Clock in or out of your shift</string>
+    <!-- §14.10 — dynamic clock-out variant shown when employee is already clocked in -->
+    <string name="shortcut_clock_out_short">Clock out</string>
+    <string name="shortcut_clock_out_long">End your current shift</string>
     <string name="shortcut_new_sms_short">New SMS</string>
     <string name="shortcut_new_sms_long">Send a new SMS to a customer</string>
     <string name="shortcut_create_ticket_voice">Create ticket</string>

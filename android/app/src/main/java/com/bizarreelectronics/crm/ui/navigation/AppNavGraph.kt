@@ -2205,7 +2205,15 @@ fun AppNavGraph(
                     },
                 )
             }
-            composable(Screen.ClockInOut.route) {
+            // §14.10 — deep link: bizarrecrm://clockin
+            // Handles both the static launcher shortcut and the dynamic one
+            // published by ClockShortcutPublisher when clock state changes.
+            composable(
+                route = Screen.ClockInOut.route,
+                deepLinks = listOf(
+                    navDeepLink { uriPattern = "bizarrecrm://clockin" },
+                ),
+            ) {
                 ClockInOutScreen(
                     onBack = { navController.popBackStack() },
                 )

@@ -2316,7 +2316,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.10 Shortcuts / Assistant
 - [ ] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. <!-- NOTE-defer: requires TileService + foreground service permissions review; no server blocker but scoped as separate OS integration task -->
-- [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. <!-- NOTE-defer: strings exist in strings.xml (shortcut_scan_short etc.); full ShortcutManager registration + deep-link handling deferred to launcher-integration pass -->
+- [x] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. (session 2026-04-27 — see §14.10 session note below)
 - [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`. <!-- NOTE-defer: requires Google App Actions BII registration + Google review; deferred to distribution polish phase -->
 
 ### 14.11 Shift close / Z-report
@@ -2403,8 +2403,7 @@ _Server endpoints: `GET /employees`, `GET /employees/{id}`, `POST /employees`, `
 
 ### 14.10 Shortcuts / Assistant
 - [x] Clock-in/out via Quick Settings Tile (`TileService`) — one-tap from pull-down shade without opening app. (session 2026-04-27 — `ClockInTileService.persistClockState()` state bridge wired; `ClockInOutViewModel` + `ClockInTileViewModel` both call `broadcastClockState()` after toggle; Glance widget updated via `publishClockState()`; tile icon refreshes immediately via `TileService.requestListeningState()`)
-- [ ] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon.
-  - **NOTE (2026-04-26):** Requires `shortcuts.xml` manifest addition (shared infra). Defer.
+- [x] Clock-in/out via App Shortcut (`ShortcutManager`) on long-press launcher icon. (session 2026-04-27 — `util/ClockShortcutPublisher.kt` (new): `updateShortcut(context, isClockedIn)` calls `ShortcutManagerCompat.pushDynamicShortcut` to upsert a context-aware dynamic shortcut rank 0; clocked-out state shows "Clock in" label + clock-with-play-badge icon; clocked-in state shows "Clock out" label + clock-with-stop-square icon; both deep-link to `bizarrecrm://clockin`; `clearShortcut()` removes on logout; `ClockInOutViewModel.broadcastClockState()` wired with runCatching guard; `AppNavGraph.kt`: `composable(Screen.ClockInOut.route)` now registers `navDeepLink { uriPattern = "bizarrecrm://clockin" }` so the shortcut tap navigates correctly; 2 new strings `shortcut_clock_out_short/long` added to strings.xml; build green)
 - [ ] Google Assistant App Actions ("Clock me in at BizarreCRM") via `shortcuts.xml` + `actions.xml`.
   - **NOTE (2026-04-26):** Requires `actions.xml` + BII registration; Google review process. Defer.
 
