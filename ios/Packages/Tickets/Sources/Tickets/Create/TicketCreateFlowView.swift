@@ -283,7 +283,7 @@ private struct CreateFlowProgressBar: View {
                 Capsule()
                     .fill(Color.bizarreOrange)
                     .frame(width: progress(geo.size.width), height: 4)
-                    .animation(BrandMotion.stepTransition, value: current)
+                    .animation(BrandMotion.snappy, value: current)
             }
         }
         .frame(height: 4)

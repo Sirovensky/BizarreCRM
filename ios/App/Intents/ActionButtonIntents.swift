@@ -24,15 +24,15 @@ import UIKit
 /// §24.7 — "Create Ticket" via Action Button.
 /// Opens the new-ticket flow directly from the hardware button.
 struct CreateTicketActionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Create New Ticket"
-    static var description: IntentDescription = IntentDescription(
+    static let title: LocalizedStringResource = "Create New Ticket"
+    static let description: IntentDescription = IntentDescription(
         "Open the new ticket form in Bizarre CRM.",
         categoryName: "Tickets"
     )
-    static var openAppWhenRun: Bool = true
+    static let openAppWhenRun: Bool = true
 
     // Surface to Action Button picker
-    static var isDiscoverable: Bool = true
+    static let isDiscoverable: Bool = true
 
     func perform() async throws -> some IntentResult {
         await openURL("bizarrecrm://tickets/new")
@@ -45,13 +45,13 @@ struct CreateTicketActionIntent: AppIntent {
 /// §24.7 — Alt mapping: "Clock In/Out" via Action Button.
 /// Toggles shift timer directly from the hardware button.
 struct ClockInOutActionIntent: AppIntent {
-    static var title: LocalizedStringResource = "Clock In / Clock Out"
-    static var description: IntentDescription = IntentDescription(
+    static let title: LocalizedStringResource = "Clock In / Clock Out"
+    static let description: IntentDescription = IntentDescription(
         "Toggle your shift clock in Bizarre CRM.",
         categoryName: "Timeclock"
     )
-    static var openAppWhenRun: Bool = true
-    static var isDiscoverable: Bool = true
+    static let openAppWhenRun: Bool = true
+    static let isDiscoverable: Bool = true
 
     func perform() async throws -> some IntentResult {
         await openURL("bizarrecrm://timeclock")
@@ -64,6 +64,7 @@ struct ClockInOutActionIntent: AppIntent {
 /// Exposes Action Button-compatible shortcuts.
 /// System presents these in Settings → Action Button → Shortcut when our app is installed.
 struct BizarreCRMActionButtonProvider: AppShortcutsProvider {
+    @AppShortcutsBuilder
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: CreateTicketActionIntent(),

@@ -260,7 +260,4 @@ public struct DashboardDateRangePicker: View {
 }
 
 // MARK: - Tests
-#if DEBUG
-import XCTest
-// Run via swift test in Package context.
-#endif
+// Tests live in Dashboard/Tests via XCTest — not imported here.

@@ -45,11 +45,12 @@ public final class AppointmentKanbanViewModel {
         defer { isLoading = false }
         do {
             let dateStr = iso(date)
-            let resp: APIResponse<AppointmentKanbanResponse> = try await api.get(
-                "/api/v1/appointments/kanban?date=\(dateStr)"
+            let resp = try await api.get(
+                "/api/v1/appointments/kanban?date=\(dateStr)",
+                as: AppointmentKanbanResponse.self
             )
-            appointments = resp.data?.appointments ?? []
-            staff = resp.data?.staff.map { KanbanStaffColumn(id: $0.id, name: $0.name) } ?? []
+            appointments = resp.appointments
+            staff = resp.staff.map { KanbanStaffColumn(id: $0.id, name: $0.name) }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -65,12 +66,15 @@ public final class AppointmentKanbanViewModel {
         // Optimistic update
         if let idx = appointments.firstIndex(where: { $0.id == appointmentId }) {
             let original = appointments[idx]
-            BrandHaptics.medium()
+            BrandHaptics.tapMedium()
+            _ = original
             // Confirm with server
             do {
                 let body = RescheduleRequest(assignedTo: toStaffId, startDate: iso(slot))
-                let _: APIResponse<EmptyKanbanBody> = try await api.patch(
-                    "/api/v1/appointments/\(appointmentId)", body: body
+                let _: EmptyKanbanBody = try await api.patch(
+                    "/api/v1/appointments/\(appointmentId)",
+                    body: body,
+                    as: EmptyKanbanBody.self
                 )
                 // Reload to get server state
                 await load()
@@ -175,7 +179,7 @@ public struct AppointmentKanbanView: View {
                     .background(Color.bizarreSurfaceElevated)
             }
         }
-        .background(.brandGlass)
+        .brandGlass(.regular)
     }
 
     // MARK: Slot row

@@ -39,7 +39,7 @@ public actor PosDrawerKickService {
     ///   - tenders:      The full set of applied tenders from the completed sale.
     ///   - cashierName:  Passed through to the audit log (defaults to "Cashier").
     public func kickIfNeeded(
-        tenders: [AppliedTender],
+        tenders: [AppliedTenderV2],
         cashierName: String = "Cashier"
     ) async {
         let drawerTenders: [DrawerTriggerTender] = tenders.compactMap { applied -> DrawerTriggerTender? in

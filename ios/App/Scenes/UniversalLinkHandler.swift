@@ -109,9 +109,9 @@ public enum UniversalLinkHandler {
         guard let first = pathComponents.first?.lowercased() else { return .dashboard }
         switch first {
         case "t", "tickets":
-            if pathComponents.count < 2 { return .ticketList(filter: "") }
+            if pathComponents.count < 2 { return .unknown(path: first) }
             if let id = Int64(pathComponents[1]) { return .ticketDetail(id: id) }
-            return .ticketList(filter: "")
+            return .unknown(path: first)
         case "c", "customers":
             if pathComponents.count < 2 { return .unknown(path: first) }
             if let id = Int64(pathComponents[1]) { return .customerDetail(id: id) }

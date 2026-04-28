@@ -640,7 +640,7 @@ public struct AppointmentFilterSheet: View {
                 // §10.8 Location filter — full picker placeholder until §60 LocationContext lands
                 Section("Location") {
                     Text("All locations")
-                        .foregroundStyle(.bizarreOnSurfaceSecondary)
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
                         .accessibilityLabel("Location filter: all locations. Full location selector available after multi-location setup.")
                 }
                 .listRowBackground(Color.bizarreSurface1)
@@ -716,7 +716,7 @@ public struct AppointmentMonthView: View {
 
     private func appointmentCount(for date: Date) -> Int {
         appointments.filter { appt in
-            guard let raw = appt.startTime, let d = Row.parse(raw) else { return false }
+            guard let raw = appt.startTime, let d = appointmentParse(raw) else { return false }
             return cal.isDate(d, inSameDayAs: date)
         }.count
     }
@@ -763,7 +763,7 @@ public struct AppointmentMonthView: View {
 
             // Day-of-week header row
             let symbols = cal.veryShortWeekdaySymbols
-            let ordered = Array((cal.firstWeekday - 1..<7) + (0..<cal.firstWeekday - 1))
+            let ordered: [String] = (Array(cal.firstWeekday - 1..<7) + Array(0..<cal.firstWeekday - 1))
                 .map { symbols[$0] }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 7), spacing: 0) {
                 ForEach(ordered, id: \.self) { sym in
@@ -798,7 +798,7 @@ public struct AppointmentMonthView: View {
             // Agenda for selected day (or all if no selection)
             let dayItems: [Appointment] = selectedDate.map { sel in
                 appointments.filter { appt in
-                    guard let raw = appt.startTime, let d = Row.parse(raw) else { return false }
+                    guard let raw = appt.startTime, let d = appointmentParse(raw) else { return false }
                     return cal.isDate(d, inSameDayAs: sel)
                 }
             } ?? appointments
@@ -812,7 +812,7 @@ public struct AppointmentMonthView: View {
             } else {
                 List {
                     ForEach(dayItems) { appt in
-                        Row(appointment: appt)
+                        AppointmentMonthRow(appointment: appt)
                             .listRowBackground(Color.bizarreSurface1)
                     }
                 }
@@ -821,6 +821,46 @@ public struct AppointmentMonthView: View {
             }
         }
         .background(Color.bizarreSurfaceBase)
+    }
+}
+
+// File-scope helpers reused by AppointmentMonthView (cannot reach AppointmentListView.Row).
+
+fileprivate func appointmentParse(_ raw: String) -> Date? {
+    let iso = ISO8601DateFormatter()
+    iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let d = iso.date(from: raw) { return d }
+    let iso2 = ISO8601DateFormatter()
+    if let d = iso2.date(from: raw) { return d }
+    let sql = DateFormatter()
+    sql.dateFormat = "yyyy-MM-dd HH:mm:ss"
+    sql.timeZone = TimeZone(identifier: "UTC")
+    sql.locale = Locale(identifier: "en_US_POSIX")
+    return sql.date(from: raw)
+}
+
+fileprivate struct AppointmentMonthRow: View {
+    let appointment: Appointment
+    var body: some View {
+        HStack(alignment: .top, spacing: BrandSpacing.md) {
+            VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                Text(appointment.title ?? "Appointment")
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                if let customer = appointment.customerName {
+                    Text(customer).font(.brandLabelLarge()).foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
+            Spacer()
+            if let status = appointment.status {
+                Text(status.capitalized)
+                    .font(.brandLabelSmall())
+                    .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
+                    .foregroundStyle(.bizarreOnSurface)
+                    .background(Color.bizarreSurface2, in: Capsule())
+            }
+        }
+        .padding(.vertical, BrandSpacing.xs)
     }
 }
 

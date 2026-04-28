@@ -87,29 +87,35 @@ public struct InventoryThreeColumnView: View {
 
     // MARK: - Column 1: Category sidebar
 
+    @ViewBuilder
+    private func filterRow(_ filter: InventoryFilter) -> some View {
+        let isSelected = selectedFilter == filter
+        Button {
+            selectedFilter = filter
+        } label: {
+            HStack {
+                Label(filter.displayName, systemImage: filterIcon(filter))
+                    .font(.brandBodyLarge())
+                    .foregroundStyle(isSelected ? Color.bizarreOrange : Color.bizarreOnSurface)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark").foregroundStyle(Color.bizarreOrange)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(isSelected ? Color.bizarreOrange.opacity(0.12) : Color.clear)
+        .hoverEffect(.highlight)
+        .accessibilityLabel(filter.displayName + " filter" + (isSelected ? ", selected" : ""))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private var categorySidebar: some View {
         ZStack(alignment: .top) {
             Color.bizarreSurfaceBase.ignoresSafeArea()
             List {
                 ForEach(InventoryFilter.allCases, id: \.self) { filter in
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        HStack {
-                            Label(filter.displayName, systemImage: filterIcon(filter))
-                                .font(.brandBodyLarge())
-                                .foregroundStyle(selectedFilter == filter ? Color.bizarreOrange : Color.bizarreOnSurface)
-                            Spacer()
-                            if selectedFilter == filter {
-                                Image(systemName: "checkmark").foregroundStyle(Color.bizarreOrange)
-                            }
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(selectedFilter == filter ? Color.bizarreOrange.opacity(0.12) : Color.clear)
-                    .hoverEffect(.highlight)
-                    .accessibilityLabel(filter.displayName + " filter" + (selectedFilter == filter ? ", selected" : ""))
-                    .accessibilityAddTraits(selectedFilter == filter ? .isSelected : [])
+                    filterRow(filter)
                 }
             }
             .listStyle(.sidebar)

@@ -2,6 +2,7 @@
 import SwiftUI
 import UIKit
 import Core
+import DesignSystem
 
 // MARK: - AuthPrivacyModifiers
 //

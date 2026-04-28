@@ -37,7 +37,7 @@ public struct PosCartTicketLinkChip: View {
                 if cart.linkedTicketId != nil {
                     Button {
                         cart.unlinkTicket()
-                        BrandHaptics.impact(.light)
+                        BrandHaptics.lightImpact()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 13))
@@ -118,7 +118,7 @@ public struct PosCartTicketLinkChip: View {
                 if cart.linkedTicketId != nil {
                     Button(role: .destructive) {
                         cart.unlinkTicket()
-                        BrandHaptics.impact(.light)
+                        BrandHaptics.lightImpact()
                         showSheet = false
                     } label: {
                         Label("Remove link", systemImage: "link.badge.minus")

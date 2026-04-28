@@ -13,7 +13,7 @@ import UIKit
 // NOTE: ControlWidget requires iOS 18 — gated at the call site.
 
 #if swift(>=5.10)
-import ControlCenter
+// ControlWidget lives in WidgetKit (iOS 18+); no separate ControlCenter module.
 
 // MARK: - Clock In/Out Toggle Control
 
@@ -130,9 +130,12 @@ private enum SMSBadgeProvider {
 import AppIntents
 
 @available(iOS 18.0, *)
-struct ClockInOutControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Toggle Clock In/Out"
-    static var openAppWhenRun: Bool = true
+struct ClockInOutControlIntent: SetValueIntent {
+    static let title: LocalizedStringResource = "Toggle Clock In/Out"
+    static let openAppWhenRun: Bool = true
+
+    @Parameter(title: "Clocked In")
+    var value: Bool
 
     func perform() async throws -> some IntentResult {
         // Navigate to timeclock tab; the Timeclock ViewModel handles the toggle.
@@ -143,8 +146,8 @@ struct ClockInOutControlIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct OpenScannerControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open Scanner"
-    static var openAppWhenRun: Bool = true
+    static let title: LocalizedStringResource = "Open Scanner"
+    static let openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         await openURL("bizarrecrm://scanner")
@@ -154,8 +157,8 @@ struct OpenScannerControlIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct OpenPosControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open POS"
-    static var openAppWhenRun: Bool = true
+    static let title: LocalizedStringResource = "Open POS"
+    static let openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         await openURL("bizarrecrm://pos")
@@ -165,8 +168,8 @@ struct OpenPosControlIntent: AppIntent {
 
 @available(iOS 16.0, *)
 struct OpenSMSControlIntent: AppIntent {
-    static var title: LocalizedStringResource = "Open SMS Inbox"
-    static var openAppWhenRun: Bool = true
+    static let title: LocalizedStringResource = "Open SMS Inbox"
+    static let openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         await openURL("bizarrecrm://sms")

@@ -20,17 +20,17 @@ import UIKit
 ///   - `pos` — add the scanned item directly to the active POS cart.
 ///   - `ticket` — attach the scanned device serial to an open ticket.
 @available(iOS 16.0, *)
-struct ScanBarcodeIntent: AppIntent {
+struct AppShellScanBarcodeIntent: AppIntent {
 
     // MARK: - AppIntent metadata
 
-    static var title: LocalizedStringResource = "Scan Barcode"
-    static var description: IntentDescription = IntentDescription(
+    static let title: LocalizedStringResource = "Scan Barcode"
+    static let description: IntentDescription = IntentDescription(
         "Open the BizarreCRM barcode scanner to look up inventory, add items to a sale, or link a device serial to a ticket.",
         categoryName: "Inventory"
     )
-    static var isDiscoverable: Bool = true
-    static var openAppWhenRun: Bool = true
+    static let isDiscoverable: Bool = true
+    static let openAppWhenRun: Bool = true
 
     // MARK: - Parameters
 
@@ -96,10 +96,11 @@ enum ScanDestination: String, AppEnum, Sendable {
 // MARK: - Shortcuts phrase registration
 
 @available(iOS 16.0, *)
-struct BizarreCRMScanBarcodeShortcutsProvider: AppShortcutsProvider {
-    static var appShortcuts: [AppShortcut] {
+enum BizarreCRMScanBarcodeShortcuts {
+    @AppShortcutsBuilder
+    static var shortcuts: [AppShortcut] {
         AppShortcut(
-            intent: ScanBarcodeIntent(),
+            intent: AppShellScanBarcodeIntent(),
             phrases: [
                 "Scan barcode in \(.applicationName)",
                 "Open scanner in \(.applicationName)",
@@ -111,7 +112,7 @@ struct BizarreCRMScanBarcodeShortcutsProvider: AppShortcutsProvider {
         )
         AppShortcut(
             intent: {
-                var i = ScanBarcodeIntent()
+                var i = AppShellScanBarcodeIntent()
                 i.destination = .pos
                 return i
             }(),

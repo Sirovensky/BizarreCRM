@@ -205,14 +205,13 @@ public struct BackupCodeRecoveryView: View {
 
             // Fields
             BrandTextField(
-                label: "Username",
+                "Username",
                 text: $vm.username,
-                placeholder: "your_username",
-                systemImage: "person.badge.key",
-                contentType: .username,
-                autocapitalize: .never,
-                autocorrect: false
+                hint: "your_username"
             )
+            .textContentType(.username)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
             .focused($focus, equals: .username)
             .submitLabel(.next)
             .onSubmit { focus = .password }
@@ -230,13 +229,12 @@ public struct BackupCodeRecoveryView: View {
 
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                 BrandTextField(
-                    label: "Backup code",
+                    "Backup code",
                     text: $vm.backupCode,
-                    placeholder: "XXXX-XXXXXXXX",
-                    systemImage: "shield.checkered",
-                    autocapitalize: .allCharacters,
-                    autocorrect: false
+                    hint: "XXXX-XXXXXXXX"
                 )
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled(true)
                 .focused($focus, equals: .backupCode)
                 .submitLabel(.go)
                 .onSubmit { Task { await vm.submit() } }

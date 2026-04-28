@@ -51,7 +51,7 @@ public final class LockTriggerMonitor {
     private let onLockRequired: @MainActor () -> Void
     private var timeout: LockTimeout
     private var backgroundedAt: Date? = nil
-    private var observers: [NSObjectProtocol] = []
+    nonisolated(unsafe) private var observers: [NSObjectProtocol] = []
 
     // MARK: - Init
 

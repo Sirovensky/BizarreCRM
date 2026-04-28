@@ -77,7 +77,7 @@ struct PosPostSaleView: View {
                 autoDismissCountdown -= 1
             }
             guard !Task.isCancelled, !userInteracted else { return }
-            BrandHaptics.impact(.light)
+            BrandHaptics.lightImpact()
             vm.triggerNextSale()
             dismiss()
         }

@@ -96,7 +96,7 @@ public final class DeepLinkRouter {
             handler(url)
             return
         }
-        let route = DeepLinkParser.parse(url)
+        let route = Core.DeepLinkParser.parse(url)
         pending = route
         onRoute?(route)
     }

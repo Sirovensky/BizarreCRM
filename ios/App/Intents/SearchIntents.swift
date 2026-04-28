@@ -1,4 +1,5 @@
 import AppIntents
+import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -9,13 +10,13 @@ import UIKit
 ///
 /// Usage: "Find ticket 1234 in Bizarre CRM"
 @available(iOS 16.0, *)
-struct LookupTicketIntent: AppIntent {
-    static var title: LocalizedStringResource = "Find Ticket"
-    static var description: IntentDescription = IntentDescription(
+struct AppShellLookupTicketIntent: AppIntent {
+    static let title: LocalizedStringResource = "Find Ticket"
+    static let description: IntentDescription = IntentDescription(
         "Look up a ticket by ID or order number in Bizarre CRM.",
         categoryName: "Tickets"
     )
-    static var isDiscoverable: Bool = true
+    static let isDiscoverable: Bool = true
 
     @Parameter(title: "Ticket number", description: "The ticket ID or order number")
     var ticketNumber: String
@@ -37,12 +38,12 @@ struct LookupTicketIntent: AppIntent {
 /// Usage: "Text John Smith a message in Bizarre CRM"
 @available(iOS 16.0, *)
 struct SendSMSToCustomerIntent: AppIntent {
-    static var title: LocalizedStringResource = "Send SMS to Customer"
-    static var description: IntentDescription = IntentDescription(
+    static let title: LocalizedStringResource = "Send SMS to Customer"
+    static let description: IntentDescription = IntentDescription(
         "Open an SMS compose window to a specific customer in Bizarre CRM.",
         categoryName: "Communications"
     )
-    static var isDiscoverable: Bool = true
+    static let isDiscoverable: Bool = true
 
     @Parameter(title: "Customer name or phone", description: "Customer name or phone number")
     var customerQuery: String
@@ -69,12 +70,12 @@ struct SendSMSToCustomerIntent: AppIntent {
 /// Usage: "Log a $42 lunch expense in Bizarre CRM"
 @available(iOS 16.0, *)
 struct RecordExpenseIntent: AppIntent {
-    static var title: LocalizedStringResource = "Record Expense"
-    static var description: IntentDescription = IntentDescription(
+    static let title: LocalizedStringResource = "Record Expense"
+    static let description: IntentDescription = IntentDescription(
         "Quickly log an expense in Bizarre CRM.",
         categoryName: "Expenses"
     )
-    static var isDiscoverable: Bool = true
+    static let isDiscoverable: Bool = true
 
     @Parameter(title: "Amount", description: "Expense amount in dollars")
     var amount: Double
@@ -100,10 +101,11 @@ struct RecordExpenseIntent: AppIntent {
 /// Extends the main BizarreCRMShortcutsProvider (from the existing §24 phase-6 file)
 /// with the new intents.
 @available(iOS 16.0, *)
-struct BizarreCRMSearchShortcutsProvider: AppShortcutsProvider {
-    static var appShortcuts: [AppShortcut] {
+enum BizarreCRMSearchShortcuts {
+    @AppShortcutsBuilder
+    static var shortcuts: [AppShortcut] {
         AppShortcut(
-            intent: LookupTicketIntent(),
+            intent: AppShellLookupTicketIntent(),
             phrases: [
                 "Find ticket \(\.$ticketNumber) in \(.applicationName)",
                 "Look up \(\.$ticketNumber) in \(.applicationName)",

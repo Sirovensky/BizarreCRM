@@ -64,7 +64,7 @@ public struct TicketDetailView: View {
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         // §4.13 — iPad Magic Keyboard shortcuts
-        .keyboardShortcut("d", modifiers: .command, comment: "Mark ticket done")  // ⌘D — mark done (advance to complete)
+        .keyboardShortcut("d", modifiers: .command)  // ⌘D — mark done (advance to complete)
         .simultaneousGesture(TapGesture().onEnded { })  // placeholder anchor for shortcut
         .background(
             // §4.13 — Register keyboard shortcuts via overlay so they appear in discoverability HUD
@@ -1420,7 +1420,7 @@ private struct BenchTimerToggleCard: View {
     var body: some View {
         VStack(spacing: 0) {
             Button {
-                withAnimation(BrandMotion.stepTransition) { isShowing.toggle() }
+                withAnimation(BrandMotion.snappy) { isShowing.toggle() }
             } label: {
                 HStack(spacing: BrandSpacing.sm) {
                     Image(systemName: "timer")

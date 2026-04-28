@@ -103,7 +103,7 @@ public struct ReceiveByPOSheet: View {
                 Button("Done") { dismiss() }
                 Button("Receive another", role: .cancel) { vm.completedPO = nil }
             } message: {
-                Text("PO \(vm.completedPO.map { "from \($0.supplierName)" } ?? "") has been closed and stock updated.")
+                Text("PO \(vm.completedPO.map { "from Supplier #\($0.supplierId)" } ?? "") has been closed and stock updated.")
             }
         }
     }
@@ -204,7 +204,7 @@ struct POReceiveDetailSheet: View {
         self.onConfirm = onConfirm
         var q: [Int64: String] = [:]
         for line in po.items {
-            q[line.id] = String(line.qtyOrdered - line.qtyOrderedReceived)
+            q[line.id] = String(line.qtyOrdered - line.qtyReceived)
         }
         _quantities = State(wrappedValue: q)
     }
@@ -218,7 +218,7 @@ struct POReceiveDetailSheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(line.name)
                                     .font(.bizarreBody)
-                                Text("Ordered: \(line.qtyOrdered) · Received: \(line.qtyOrderedReceived)")
+                                Text("Ordered: \(line.qtyOrdered) · Received: \(line.qtyReceived)")
                                     .font(.bizarreCaption)
                                     .foregroundStyle(Color.bizarreTextSecondary)
                             }
@@ -234,7 +234,7 @@ struct POReceiveDetailSheet: View {
                         }
                     }
                 }
-                if po.isPartiallyReceived {
+                if po.items.contains(where: { $0.qtyReceived > 0 && $0.qtyReceived < $0.qtyOrdered }) {
                     Section {
                         Label(
                             "Partial receipt: some items already received.",

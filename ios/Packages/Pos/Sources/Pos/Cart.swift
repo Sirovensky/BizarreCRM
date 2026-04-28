@@ -49,7 +49,7 @@ public struct PosCustomer: Equatable, Sendable {
 @MainActor
 @Observable
 public final class Cart {
-    public private(set) var items: [CartItem] = []
+    public internal(set) var items: [CartItem] = []
 
     /// Currently attached customer (nil = no customer chosen yet — the
     /// empty-state CTAs surface walk-in / find / create).

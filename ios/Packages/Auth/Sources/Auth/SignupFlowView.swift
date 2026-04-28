@@ -226,20 +226,18 @@ public struct SignupFlowView: View {
             sectionHeader(icon: "storefront", title: "Business info", subtitle: "Tell us about your shop.")
 
             BrandTextField(
-                label: "Shop name",
+                "Shop name",
                 text: $vm.storeName,
-                placeholder: "Main Street Repair",
-                systemImage: "signpost.right"
+                hint: "Main Street Repair"
             )
 
             BrandTextField(
-                label: "Phone (optional)",
+                "Phone (optional)",
                 text: $vm.storePhone,
-                placeholder: "555-123-4567",
-                systemImage: "phone",
-                contentType: .telephoneNumber,
-                keyboard: .phonePad
+                hint: "555-123-4567"
             )
+            .textContentType(.telephoneNumber)
+            .keyboardType(.phonePad)
 
             // Shop type picker
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -305,30 +303,28 @@ public struct SignupFlowView: View {
             sectionHeader(icon: "person.crop.circle", title: "Your account", subtitle: "Create the owner login.")
 
             HStack(spacing: BrandSpacing.sm) {
-                BrandTextField(label: "First name", text: $vm.firstName, placeholder: "Jane", systemImage: "person")
-                BrandTextField(label: "Last name", text: $vm.lastName, placeholder: "Smith", systemImage: "person")
+                BrandTextField("First name", text: $vm.firstName, hint: "Jane")
+                BrandTextField("Last name", text: $vm.lastName, hint: "Smith")
             }
 
             BrandTextField(
-                label: "Email",
+                "Email",
                 text: $vm.email,
-                placeholder: "jane@example.com",
-                systemImage: "envelope",
-                contentType: .emailAddress,
-                keyboard: .emailAddress,
-                autocapitalize: .never,
-                autocorrect: false
+                hint: "jane@example.com"
             )
+            .textContentType(.emailAddress)
+            .keyboardType(.emailAddress)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
 
             BrandTextField(
-                label: "Username",
+                "Username",
                 text: $vm.username,
-                placeholder: "janesmith",
-                systemImage: "person.badge.key",
-                contentType: .username,
-                autocapitalize: .never,
-                autocorrect: false
+                hint: "janesmith"
             )
+            .textContentType(.username)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
 
             BrandSecureField(
                 label: "Password",
@@ -374,15 +370,14 @@ public struct SignupFlowView: View {
 
             if vm.isSelfHosted {
                 BrandTextField(
-                    label: "Server URL",
+                    "Server URL",
                     text: $vm.serverURL,
-                    placeholder: "https://myserver.example.com",
-                    systemImage: "globe",
-                    contentType: .URL,
-                    keyboard: .URL,
-                    autocapitalize: .never,
-                    autocorrect: false
+                    hint: "https://myserver.example.com"
                 )
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
             } else {
                 HStack(spacing: BrandSpacing.sm) {
                     Image(systemName: "checkmark.circle.fill")

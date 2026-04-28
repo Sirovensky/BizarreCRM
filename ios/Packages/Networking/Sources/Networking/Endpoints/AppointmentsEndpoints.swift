@@ -27,6 +27,8 @@ public struct Appointment: Decodable, Sendable, Identifiable, Hashable {
     public let customerEmail: String?
     public let assignedFirstName: String?
     public let assignedLastName: String?
+    /// User id of the staff member this appointment is assigned to. Used by Kanban view.
+    public let assignedTo: Int64?
     public let createdAt: String?
     /// §10.2 — location the appointment is booked at (location_id join gives name via server).
     public let locationId: Int64?
@@ -64,6 +66,7 @@ public struct Appointment: Decodable, Sendable, Identifiable, Hashable {
         case customerEmail = "customer_email"
         case assignedFirstName = "assigned_first_name"
         case assignedLastName = "assigned_last_name"
+        case assignedTo = "assigned_to"
         case createdAt = "created_at"
         case locationId = "location_id"
         case appointmentType = "appointment_type"
