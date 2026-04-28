@@ -63,26 +63,36 @@ fun CheckInHostScreen(
         ) == 0f
     }
 
-    Scaffold(
-        topBar = {
-            CheckInTopBar(
-                step = state.currentStep,
-                customerName = customerName,
-                deviceName = deviceName,
-                hasDraft = state.hasDraft,
-                onBack = {
-                    if (state.currentStep == 0) onBack() else viewModel.goBack()
-                },
-                onDismissDraft = viewModel::dismissDraftChip,
-            )
+    val stepTitles = listOf("Symptoms", "Details", "Damage", "Diagnostic", "Quote", "Sign")
+    val isLastStep = state.currentStep == CheckInViewModel.TOTAL_STEPS - 1
+    val isQuoteStep = state.currentStep == 4
+    val ctaLabel = when {
+        state.isSubmitting -> "Creating ticket…"
+        isLastStep -> "Create ticket · print label"
+        isQuoteStep -> "Get signature & check in →"
+        else -> "Next"
+    }
+    val successGreen = com.bizarreelectronics.crm.ui.theme.LocalExtendedColors.current.success
+    val buttonColors = if (isLastStep) {
+        ButtonDefaults.buttonColors(
+            containerColor = successGreen,
+            contentColor = Color(0xFF002817),
+        )
+    } else {
+        ButtonDefaults.buttonColors()
+    }
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "Check-in · ${stepTitles.getOrElse(state.currentStep) { "" }}",
+        subtitle = "$customerName · $deviceName",
+        // Host step 0 (Symptoms) = global step 4 (POS=1, Customer=2, Device=3).
+        stepIndex = state.currentStep + 3,
+        totalSteps = 8,
+        onBack = {
+            if (state.currentStep == 0) onBack() else viewModel.goBack()
         },
         bottomBar = {
-            CheckInBottomBar(
-                step = state.currentStep,
-                canAdvance = viewModel.canAdvance(),
-                isSubmitting = state.isSubmitting,
-                depositCents = state.depositCents,
-                onAdvance = {
+            Button(
+                onClick = {
                     if (state.currentStep < CheckInViewModel.TOTAL_STEPS - 1) {
                         viewModel.advance()
                     } else {
@@ -92,7 +102,14 @@ fun CheckInHostScreen(
                         )
                     }
                 },
-            )
+                enabled = viewModel.canAdvance() && !state.isSubmitting,
+                colors = buttonColors,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = ctaLabel },
+            ) {
+                Text(ctaLabel)
+            }
         },
     ) { paddingValues ->
         Column(
@@ -100,22 +117,6 @@ fun CheckInHostScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
-            // M3 Expressive LinearWavyProgressIndicator with slowed motion.
-            // User feedback 2026-04-24: the default wave speed felt
-            // distracting; `waveSpeed = 5.dp` (≈8x slower than default 40dp/s)
-            // keeps the shape character while making the motion feel
-            // ambient rather than agitated.
-            @OptIn(ExperimentalMaterial3ExpressiveApi::class)
-            LinearWavyProgressIndicator(
-                progress = { state.progressFraction },
-                waveSpeed = 5.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics {
-                        contentDescription = "Step ${state.currentStep + 1} of ${CheckInViewModel.TOTAL_STEPS}"
-                    },
-            )
-
             // §30.4 — stepWizardTransition from Motion.kt: respects Reduce Motion
             // (instant cross-fade) and uses branded spring curves when motion is on.
             AnimatedContent(
@@ -201,90 +202,7 @@ fun CheckInHostScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CheckInTopBar(
-    step: Int,
-    customerName: String,
-    deviceName: String,
-    hasDraft: Boolean,
-    onBack: () -> Unit,
-    onDismissDraft: () -> Unit,
-) {
-    val stepTitles = listOf("Symptoms", "Details", "Damage", "Diagnostic", "Quote", "Sign")
-    TopAppBar(
-        title = {
-            Column {
-                Text(
-                    "Check-in · ${stepTitles.getOrElse(step) { "" }}",
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    "$customerName · $deviceName",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (hasDraft) {
-                    AssistChip(
-                        onClick = onDismissDraft,
-                        label = { Text("Draft restored — tap to dismiss") },
-                        modifier = Modifier.semantics {
-                            contentDescription = "Draft restored. Tap to dismiss notification."
-                        },
-                    )
-                }
-            }
-        },
-        navigationIcon = {
-            IconButton(
-                onClick = onBack,
-                modifier = Modifier.semantics { contentDescription = "Go back" },
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-            }
-        },
-    )
-}
-
-@Composable
-private fun CheckInBottomBar(
-    step: Int,
-    canAdvance: Boolean,
-    isSubmitting: Boolean,
-    depositCents: Long,
-    onAdvance: () -> Unit,
-) {
-    val isLastStep = step == CheckInViewModel.TOTAL_STEPS - 1
-    val isQuoteStep = step == 4
-    val ctaLabel = when {
-        isSubmitting -> "Creating ticket…"
-        isLastStep -> "Create ticket · print label"
-        isQuoteStep -> "Get signature & check in →"
-        else -> "Next"
-    }
-
-    // Mockup CI-6 pattern: the terminal CTA uses success (green) styling to
-    // signal finality. Intermediate-step CTAs stay on the default primary
-    // (cream) filled button.
-    val successGreen = com.bizarreelectronics.crm.ui.theme.LocalExtendedColors.current.success
-    val buttonColors = if (isLastStep) {
-        ButtonDefaults.buttonColors(
-            containerColor = successGreen,
-            contentColor = Color(0xFF002817),
-        )
-    } else {
-        ButtonDefaults.buttonColors()
-    }
-
-    Button(
-        onClick = onAdvance,
-        enabled = canAdvance && !isSubmitting,
-        colors = buttonColors,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-            .semantics { contentDescription = ctaLabel },
-    ) {
-        Text(ctaLabel)
-    }
-}
+// CheckInTopBar + CheckInBottomBar moved to PosFlowScaffold
+// (ui/components/shared/PosFlowScaffold.kt) — same chrome contract used by
+// CheckInEntryScreen + PosEntryScreen so the cashier's eye doesn't have to
+// re-anchor between flow screens.

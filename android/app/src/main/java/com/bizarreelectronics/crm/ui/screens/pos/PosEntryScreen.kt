@@ -125,21 +125,34 @@ fun PosEntryScreen(
             searchFocusRequester.requestFocus()
         },
     ) {
-    // §23.5 standaloneModal: PosEntryScreen is drawn full-window without a parent
-    // Scaffold, so we zero the Scaffold's own insets and let statusBarsPadding below
-    // own the status bar. See ScaffoldInsetsDefaults.standaloneModal KDoc.
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        contentWindowInsets = com.bizarreelectronics.crm.util.ScaffoldInsetsDefaults.standaloneModal,
+    // §23.5 PosFlowScaffold: unified chrome across POS-to-Ticket flow. POS Home
+    // is logical step 1/8 (POS Home → Customer → Device → Symptoms → Details →
+    // Damage → Diagnostic → Quote). Wave + top-bar + bottom-shelf shape matches
+    // CheckInEntry / CheckInHost so the cashier doesn't re-anchor between screens.
+    com.bizarreelectronics.crm.ui.components.shared.PosFlowScaffold(
+        title = "POS",
+        subtitle = if (state.attachedCustomer != null) "Step 1 of 8 · Pick path"
+                   else "Step 1 of 8 · Pick customer or path",
+        stepIndex = 0,
+        totalSteps = 8,
+        onBack = null,
+        bottomBar = null, // SearchBar lives in content layer because M3 SearchBar
+                          // owns its own expansion lifecycle (active=true full-screen
+                          // overlay). Stuffing it into the bottomBar slot would
+                          // collide with that overlay.
     ) { innerPadding ->
-    // statusBarsPadding pushes the entire POS-entry surface below the
-    // system status bar so the customer banner / clock no longer overlap.
-    Box(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(innerPadding)) {
+    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
         // TASK-4: offline banner defensive placement (top of entry screen)
         PosOfflineBanner(
             isOnline = state.isOnline,
             pendingSaleCount = state.pendingSaleCount,
             modifier = Modifier.align(Alignment.TopCenter).zIndex(1f),
+        )
+        // SnackbarHost was previously hosted by the inner Scaffold; keep the
+        // host inside the content layer so error messages still surface.
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter).zIndex(3f),
         )
         // ── Content layer ───────────────────────────────────────────────────
         AnimatedVisibility(
@@ -318,7 +331,17 @@ private fun EntryContent(
                 .padding(horizontal = 14.dp)
                 .padding(bottom = 88.dp),
         ) {
-            CustomerHeaderBanner(customer = state.attachedCustomer!!)
+            run {
+                val c = state.attachedCustomer!!
+                val sub = listOfNotNull(
+                    c.phone,
+                    "${c.ticketCount} ${if (c.ticketCount == 1) "ticket" else "tickets"}",
+                ).joinToString(" · ").ifBlank { null }
+                com.bizarreelectronics.crm.ui.components.shared.CustomerHeaderPill(
+                    name = c.name,
+                    subtitle = sub,
+                )
+            }
             Spacer(modifier = Modifier.height(6.dp))
             // AUDIT-023: compact cart summary strip between the customer banner
             // and the path tiles. Tapping navigates to PosCart.
@@ -482,7 +505,7 @@ private fun RecentTicketChip(repair: PastRepair, onClick: () -> Unit) {
 // ─── Cart summary strip (AUDIT-023) ─────────────────────────────────────────
 
 /**
- * Compact one-line strip shown between CustomerHeaderBanner and the path tiles
+ * Compact one-line strip shown between CustomerHeaderPill and the path tiles
  * in the post-attach state. Shows item count + subtotal (or "Cart · empty")
  * and navigates to PosCart on tap.
  */
@@ -518,43 +541,6 @@ private fun CartSummaryStrip(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-    }
-}
-
-@Composable
-private fun CustomerHeaderBanner(customer: PosAttachedCustomer) {
-    val bannerDescription = buildString {
-        append("Customer ${customer.name}")
-        customer.phone?.let { append(", $it") }
-        append(", ${customer.ticketCount} ${if (customer.ticketCount == 1) "ticket" else "tickets"}")
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) { contentDescription = bannerDescription },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondary),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                customer.name.split(" ").take(2).joinToString("") { it.take(1) }.uppercase(),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSecondary,
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(customer.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            customer.phone?.let { ph ->
-                Text("$ph · ${customer.ticketCount} tickets", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
     }
 }
 
