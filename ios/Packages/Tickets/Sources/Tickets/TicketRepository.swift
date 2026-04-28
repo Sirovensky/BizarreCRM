@@ -2,7 +2,8 @@ import Foundation
 import Networking
 
 public protocol TicketRepository: Sendable {
-    func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary]
+    /// §4.1: list with status-group + optional urgency filter.
+    func list(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary]
     func detail(id: Int64) async throws -> TicketDetail
     func delete(id: Int64) async throws
     func duplicate(id: Int64) async throws -> DuplicateTicketResponse
@@ -16,6 +17,13 @@ public extension TicketRepository {
     }
 }
 
+public extension TicketRepository {
+    /// Backward-compat overload — callers that omit urgency continue to compile.
+    func list(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+        try await list(filter: filter, urgency: nil, keyword: keyword)
+    }
+}
+
 public actor TicketRepositoryImpl: TicketRepository {
     private let api: APIClient
 
@@ -23,8 +31,8 @@ public actor TicketRepositoryImpl: TicketRepository {
         self.api = api
     }
 
-    public func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
-        try await api.listTickets(filter: filter, keyword: keyword, sort: sort).tickets
+    public func list(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        try await api.listTickets(filter: filter, urgency: urgency, keyword: keyword).tickets
     }
 
     public func detail(id: Int64) async throws -> TicketDetail {

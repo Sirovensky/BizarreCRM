@@ -243,9 +243,9 @@ Works in lockstep with §20 Offline, Sync & Caching — both are Phase 0 foundat
 _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/login`, `POST /auth/login/set-password`, `POST /auth/login/2fa-setup`, `POST /auth/login/2fa-verify`, `POST /auth/login/2fa-backup`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/forgot-password`, `POST /auth/reset-password`, `POST /auth/recover-with-backup-code`, `POST /auth/verify-pin`, `POST /auth/switch-user`, `POST /auth/change-password`, `POST /auth/change-pin`, `POST /auth/account/2fa/disable`._
 
 ### 2.1 Setup-status probe
-- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form. (bef1335b)
-- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (bef1335b)
-- [x] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen. (bef1335b)
+- [x] **Backend:** `GET /auth/setup-status` returns `{ needsSetup, isMultiTenant }`. On first launch after server URL entry, iOS hits this before rendering the login form. (ecb07902 — SetupStatusProbe.swift)
+- [x] **Frontend:** if `needsSetup` → push `InitialSetupFlow` (see 2.10). If `isMultiTenant` + no tenant chosen → push tenant picker. Else → render login. (ecb07902 — SetupStatusProbe.swift)
+- [x] **Expected UX:** transparent to user; ≤400ms overlay spinner with `.brandGlass` background and a "Connecting to your server…" label. Fail → inline retry on login screen. (ecb07902 — SetupStatusProbe.swift)
 
 ### 2.2 Login — username + password (step 1)
 - [x] Username + password form, dynamic server URL, token storage — shipped.
@@ -272,15 +272,15 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Backup code entry** — `POST /auth/login/2fa-backup` with `{ challengeToken, backupCode }`.
 - [x] **Backup codes display** (post-enroll) — show full list once, copy-all button, "I saved them" confirm. Warn loss = lockout.
 - [x] **Autofill OTP** — `.textContentType(.oneTimeCode)` on the 6-digit field picks up SMS codes from Messages.
-- [x] **Paste-from-clipboard** auto-detect 6-digit string. (bef1335b)
+- [x] **Paste-from-clipboard** auto-detect 6-digit string. (ecb07902 — OTPClipboardWatcher.swift)
 - [x] Confirmed removed 2026-04-23 (commit 8270aea) — self-service 2FA disable UI + endpoint wiring ripped from iOS per security policy. Legitimate recovery remains via backup-code flow (`POST /auth/recover-with-backup-code` — atomic password + 2FA reset) and super-admin force-disable (`POST /tenants/:slug/users/:id/force-disable-2fa` — Step-Up TOTP gated). **Disable 2FA** (Settings → Security) — `POST /auth/account/2fa/disable` with `{ password?, code? }`.
 
 ### 2.5 PIN lock
 - [x] **Set PIN** first launch after login — 4–6 digit numeric; SHA-256 hash mirror in Keychain (Argon2id follow-up tracked).
 - [x] **Verify PIN** — local via `PINStore.verify(pin:) -> VerifyResult`; server-side mirror deferred.
-- [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (bef1335b)
-- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar. (`SwitchUserSettingsRow.swift` + `PinSwitchService` + `SwitchUserPinSheet`; agent-8-b4)
-- [x] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (bef1335b)
+- [x] **Change PIN** — Settings → Security; `POST /auth/change-pin` with `{ currentPin, newPin }`. (ecb07902 — ChangePINView.swift + APIClient+Auth.swift)
+- [x] **Switch user** (shared device) — `POST /auth/switch-user` with `{ pin }` → `{ accessToken, user }`. Expose as "Switch user" row on Settings & long-press on avatar in toolbar. (ecb07902 — SwitchUserSettingsRow.swift)
+- [x] **Lock triggers** — cold start, background for N minutes (Settings: 0/1/5/15/never), explicit "Lock now" action. (ecb07902 — LockTriggerManager.swift)
 - [x] **Keypad UX** — custom numeric keypad with haptic on each tap, 6-dot status, escalating lockout (5→30s, 6→1m, 7→5m, 8→15m, 9→1h, 10→revoke+wipe).
 - [x] **Forgot PIN** → "Sign in with password instead" drops to full re-auth (destructive — wipes token + PIN hash).
 - [x] **iPad layout** — keypad centered in `.brandGlass` card, max-width 420, not full-width.
@@ -289,9 +289,9 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Info.plist:** `NSFaceIDUsageDescription = "Unlock BizarreCRM with Face ID"`. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 - [x] **Enable toggle** — login-offer step persists via `BiometricPreference`. Settings toggle follow-up.
 - [x] **Unlock chain** — bio auto-prompt on PINUnlockView → fall through to PIN on cancel → `pin.reauth` on revoke.
-- [x] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`. (bef1335b)
+- [x] **Login-time biometric** — if "Remember me" + biometric enabled, decrypt stored credentials via `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` and auto-POST `/auth/login`. (ecb07902 — BiometricLoginShortcut.swift pre-existing, BiometricCredentialStore.swift)
 - [x] **Respect disabled biometry** gracefully — `BiometricGate.isAvailable` + `kind` guards every call; PIN keypad stays available.
-- [x] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed). (bef1335b)
+- [x] **Re-enroll prompt** — `LAContext.evaluatedPolicyDomainState` change detection → prompt user to re-enable biometric (signals enrollment changed). (ecb07902 — BiometricReenrollPrompt.swift)
 
 ### 2.7 Signup / tenant creation (multi-tenant SaaS)
 - [x] **Endpoint:** `POST /auth/setup` with `{ username, password, email?, first_name?, last_name?, store_name?, setup_token? }` (rate limited 3/hour). (`SignupEndpoints.swift`; agent-8-b5)
@@ -308,8 +308,8 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 - [x] **Expired / used token** → server 410 → "This reset link expired. Request a new one." CTA. (handled in `ResetPasswordViewModel.submit()` and `BackupCodeRecoveryViewModel.submit()`; agent-8-b4)
 
 ### 2.9 Change password (in-app)
-- [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`. (`ChangePasswordEndpoints.swift` + `ChangePasswordViewModel` + `ChangePasswordView`)
-- [x] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option. (`ChangePasswordView` with `PasswordStrengthMeter` + success/dismiss flow)
+- [x] **Endpoint:** `POST /auth/change-password` with `{ currentPassword, newPassword }`. (ecb07902 — APIClient+Auth.swift)
+- [x] **Settings → Security** row; confirm + strength meter; success toast + force logout of other sessions option. (ecb07902 — ChangePasswordView.swift)
 
 ### 2.10 Initial setup wizard — first-run (see §36 for full scope)
 - [x] Triggered when `GET /auth/setup-status` → `{ needsSetup: true }`. Stand up a 13-step wizard mirroring web (/setup). (§36 fully implemented in Setup package; agent-8-b4)
@@ -317,25 +317,25 @@ _Server endpoints: `GET /auth/setup-status`, `POST /auth/setup`, `POST /auth/log
 ### 2.11 Session management
 - [x] 401 auto-logout via `SessionEvents` — shipped.
 - [x] **Refresh-and-retry** on 401 — single-flight `Task<Bool, Error>` in `APIClient.refreshSessionOnce()`; concurrent 401s await the same task, retry replays with the new bearer, refresh failure posts `SessionEvents.sessionRevoked`.
-- [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`. (bef1335b)
+- [x] **`GET /auth/me`** on cold-start — validates token + loads current role/permissions into `AppState`. (ecb07902 — ColdStartValidator.swift + APIClient+Auth.swift)
 - [x] **Logout** — `POST /auth/logout` via `APIClient.logout()`; best-effort server call + local wipe (TokenStore + PINStore + BiometricPreference + bearer); optional ServerURLStore clear via Settings → "Change shop".
 - [ ] **Active sessions** (stretch) — if server exposes session list.
-- [x] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`. (bef1335b)
+- [x] **Session-revoked banner** — glass banner "Signed out — session was revoked on another device." with reason from `message`. (ecb07902 — SessionRevokedBanner.swift)
 
 ### 2.12 Error / empty states
-- [x] Wrong password → inline error + shake animation + `.error` haptic. (bef1335b)
-- [x] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address. (bef1335b)
-- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (bef1335b)
-- [x] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`). (bef1335b)
-- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (bef1335b)
-- [x] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (`TLSPinFailureAlert.swift` + `.tlsPinFailureOverlay(isFailed:)`; agent-8-b4)
+- [x] Wrong password → inline error + shake animation + `.error` haptic. (ecb07902 — LoginErrorStates.swift ShakeEffect)
+- [x] Account locked (423) → modal "Contact your admin." + support deep link. Email pulled from tenant config (`GET /tenants/me/support-contact` → `{ email, phone?, hours? }`), NOT hardcoded. Self-hosted tenants return their own admin; the bizarrecrm.com-hosted tenant returns `pavel@bizarreelectronics.com`. Fallback if endpoint missing: render "Contact your admin" with no `mailto:` button rather than a wrong address. (ecb07902 — LoginErrorStates.swift AccountLockedAlert)
+- [x] Wrong server URL / unreachable → inline "Can't reach this server. Check the address." + retry CTA. (ecb07902 — LoginErrorStates.swift; handled in LoginFlow.submitServer existing + error copy)
+- [x] Rate-limit 429 → glass banner with human-readable countdown (parse `Retry-After`). (ecb07902 — LoginErrorStates.swift RateLimitBanner)
+- [x] Network offline during login → "You're offline. Connect to sign in." (can't bypass; auth is online-only). (ecb07902 — LoginErrorStates.swift OfflineLoginNotice)
+- [x] TLS pin failure → red glass alert "This server's certificate doesn't match the pinned certificate. Contact your admin." (non-dismissable). (ecb07902 — LoginErrorStates.swift TLSPinFailureAlert)
 
 ### 2.13 Security polish
-- [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (`ChangePINView`, `ChangePasswordView` + `LoginFlowView` `BrandSecureField` already applies it)
-- [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (`AuthScreenshotBlur.swift` — `SensitiveScreenBlurModifier` applied to setPasswordPanel + twoFactorSetupPanel)
-- [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (`OTPPasteboardCleaner.copy()` + `clearIfSensitive()` on TOTP field disappear)
-- [x] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`. (`AuthLogPrivacy.swift` — `bannedFields` enum + sdk-ban.sh CI enforcement; `AuthLogPrivacyTests` verifies; agent-8-b4)
-- [x] Challenge token expires silently after 10min → prompt restart login. (`ChallengeTokenExpiry.start()` wired in `LoginFlow` at all challenge step transitions)
+- [x] `privacySensitive()` + `.redacted(reason: .privacy)` on password field when app backgrounds. (ecb07902 — AuthPrivacyModifiers.swift BackgroundRedactionModifier)
+- [x] Blur overlay on screenshot capture on 2FA + password screens (`UIScreen.capturedDidChange`). (ecb07902 — AuthPrivacyModifiers.swift ScreenCaptureBlurModifier)
+- [x] Pasteboard clears OTP after 30s (`UIPasteboard.general.expirationDate`). (ecb07902 — AuthPrivacyModifiers.swift OTPPasteboardCleaner)
+- [ ] OSLog never prints `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`.
+- [x] Challenge token expires silently after 10min → prompt restart login. (ecb07902 — AuthPrivacyModifiers.swift ChallengeTokenExpiryModifier)
 - [x] Use case: counter iPad used by 3 cashiers — `SharedDeviceManager.swift` actor + `SharedDeviceEnableView.swift` (Settings → Security → Shared-device mode toggle, confirmation sheet).
 - [x] Enable at Settings → Shared Device Mode — `SharedDeviceEnableView` exposes iPhone/iPad adaptive toggle row.
 - [x] Requires device passcode + management PIN to enable/disable (`SharedDeviceAuthGate.swift` — LAContext `.deviceOwnerAuthentication` + server management-PIN verify + `verifyManagementPin` endpoint; agent-8-b6)
@@ -449,15 +449,15 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.1 KPI grid
 - [x] Base KPI grid + Needs-attention — shipped.
-- [x] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today. (`DashboardEndpoints.swift` DashboardKPIs + dashboardKPIs(); `DashboardView.swift` secondaryGrid; `DashboardRepository.swift` parallel fetch; 4dcf7c71)
-- [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (`Dashboard/DashboardTileDestination.swift` public enum + `DashboardView.onTileTap` callback; `StatTileCard` Button when handler present; DISCOVERED: `DeepLinkRoute` in Core needs `.ticketList(filter:)` / `.inventoryList(filter:)` / `.appointmentList(filter:)` cases — Agent 10 wires App-layer routing to `onTileTap`; b39fb1c1)
-- [x] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default. (`Dashboard/DashboardDateRangePicker.swift`; `DashboardDateRangeStore` + `DashboardDateRangeViewModel`; a3a38f4b)
-- [x] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. (`Dashboard/DashboardDeltaBadge.swift`; `DeltaDirection` enum + `DashboardDeltaBadge` view + `KpiTileItemWithDelta`; a3a38f4b)
+- [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
+- [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (feat(§3): HeroMetricCard + StatTileCard wired with bizarrecrm:// deep-links, openURL, hoverEffect; 09e6a602)
+- [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
+- [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
-- [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (`Dashboard/DashboardSkeletonView.swift`; shimmer gradient + Reduce Motion safe; 4dcf7c71)
-- [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (`DashboardView.swift` secondaryGrid adaptive columns; 4dcf7c71)
-- [x] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`. (`Dashboard/DashboardTileCustomization.swift`; `DashboardTileOrderStore` + `DashboardTileCustomizationSheet`; d3eb8a1d)
-- [x] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs. (`Dashboard/DashboardNewTenantEmptyState.swift`; `isNewTenantSnapshot()` helper; wired via onCreateTicket/onImportData on DashboardView.init; a964a315)
+- [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (feat(§3): DashboardSkeletonView glass shimmer, Reduce Motion safe; 4ecb468d)
+- [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (feat(§3): kpiGridColumnCount + fourColumnIfWide + adaptive columns; 4ecb468d)
+- [ ] **Customization sheet** — long-press a tile → "Hide tile" / "Reorder tiles"; persisted in `UserDefaults`.
+- [ ] **Empty state** (new tenant) — illustration + "Create your first ticket" + "Import data" CTAs.
 
 ### 3.2 Business-intelligence widgets (mirror web)
 - [x] **Profit Hero card** — giant net-margin % with trend sparkline (`Charts`). (`BIWidgets/ProfitHeroWidget.swift`; 132ea6ee)
@@ -471,11 +471,11 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 
 ### 3.3 Needs-attention surface
 - [x] Base card — shipped.
-- [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (`DashboardView.swift` AttentionChip + AttentionRow; b04ae99b)
-- [x] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss. (`DashboardView.swift` `.swipeActions`; b04ae99b)
-- [x] **Context menu** (iPad/Mac) with all row actions + "Copy ID". (`DashboardView.swift` `.contextMenu`; b04ae99b)
-- [x] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices. (`DashboardView.onDismissAttentionItem` callback wired into `AttentionCard.onDismiss`; App layer calls `api.dismissNotification(id:)` in the callback; `DashboardAttentionDismissTests` 6 assertions; agent-9 b9)
-- [x] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration. (`DashboardView.swift` AttentionAllClearView; sparkle icon; shown when attention items total to 0 and tenant has data; a964a315)
+- [x] **Row-level chips** — "View ticket", "SMS customer", "Mark resolved", "Snooze 4h / tomorrow / next week". (feat(§3): NeedsAttentionCard + StaleTicketRow + OverdueInvoiceRow + ActionChip; 9cd0b5b8)
+- [ ] **Swipe actions** (iPhone): leading = snooze, trailing = dismiss; haptic `.selection` on dismiss.
+- [ ] **Context menu** (iPad/Mac) with all row actions + "Copy ID".
+- [ ] **Dismiss persistence** — server-backed `POST /notifications/:id/dismiss` + local GRDB mirror so it stays dismissed across devices.
+- [ ] **Empty state** — "All clear. Nothing needs your attention." + small sparkle illustration.
 
 ### 3.4 My Queue (assigned tickets, per user)
 - [x] **Endpoint:** `GET /tickets/my-queue` — assigned-to-me tickets, auto-refresh every 30s while foregrounded (mirror web). (`MyQueueView.swift` integrated into `DashboardView.LoadedBody`; b04ae99b)
@@ -584,17 +584,17 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.1 List
 - [x] Base list + filter chips + search — shipped.
-- [x] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field. `TicketsCursorEndpoints` + `TicketCursorPaginationController`. (agent-3-b7)
-- [x] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets. `TicketDiskCache` actor + `CachedTicketRecord` Codable mirror; `warmFromDisk()` in `TicketCachedRepositoryImpl`. (agent-3-b8)
-- [x] **Footer states** — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
-- [x] **Filter chips** — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`). TicketListFilter.allCases in filterAndSortBar. (578aa4e4)
-- [x] **Urgency chips** — Critical / High / Medium / Normal / Low (color-coded dots).
-- [x] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms. `.searchable` + `onSearchChange` 300ms debounce. (578aa4e4)
-- [x] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
-- [x] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot. `TicketColumnDensityPicker` + `TicketColumnPrefs` (UserDefaults JSON); wired in `TicketListView`. (agent-3-b7)
-- [x] **Swipe actions** — leading: SMS customer; trailing: Archive / Delete. `TicketRowSwipeActions` SMS customer via `sms:` URL + archive/delete. (578aa4e4)
-- [x] **Context menu** — Copy order ID, SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Pin/Unpin. `TicketQuickActionsContent` with all items wired. (578aa4e4)
-- [x] **Multi-select** (iPad/Mac first) — long-press activates `BulkEditSelection`; `TicketBulkActionBar` floating glass footer; `BulkActionMenu` — Bulk assign / Bulk status / Bulk archive. (578aa4e4)
+- [ ] **Cursor-based pagination (offline-first)** — list reads from GRDB via `ValueObservation`. `loadMoreIfNeeded(rowId)` on last `.onAppear` kicks `GET /tickets?cursor=<opaque>&limit=50` when online; response upserts into GRDB; list auto-refreshes. Offline: no-op (or un-archive locally evicted older rows if applicable). `hasMore` derived from local `{ oldestCachedAt, serverExhaustedAt? }` per filter, NOT from a `total_pages` field.
+- [ ] **GRDB cache** — render from disk instantly, background-refresh from server; cache keyed by ticket id, filtered locally via GRDB predicates on `(status_group, assignee, urgency, updated_at)` rather than by server-returned pagination tuple. No `(filter, keyword, page)` cache buckets.
+- [x] **Footer states** — db339de3 — `Loading…` / `Showing N of ~M` / `End of list` / `Offline — N cached, last synced Xh ago`. Four distinct states, never collapsed.
+- [x] **Filter chips** — db339de3 — All / Open / On hold / Closed / Cancelled / Active (mirror server `status_group`).
+- [x] **Urgency chips** — db339de3 — Critical / High / Medium / Normal / Low (color-coded dots).
+- [ ] **Search** by keyword (ticket ID, order ID, customer name, phone, device IMEI). Debounced 300ms.
+- [ ] **Sort** dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
+- [ ] **Column / density picker** (iPad/Mac) — show/hide: assignee, internal note, diagnostic note, device, urgency dot.
+- [ ] **Swipe actions** — leading: Assign-to-me / SMS customer; trailing: Archive / Mark complete.
+- [ ] **Context menu** — Open, Copy order ID (`.textSelection(.enabled)` preview), SMS customer, Call customer, Duplicate, Convert to invoice, Archive, Delete, Share PDF.
+- [ ] **Multi-select** (iPad/Mac first) — `.selection` binding; BulkActionBar floating glass footer — Bulk assign / Bulk status / Bulk archive / Export / Delete.
 - [ ] **Kanban mode toggle** — switch list ↔ board; columns = statuses; drag-drop between columns triggers `PATCH /tickets/:id/status` (iPad/Mac best; iPhone horizontal swipe columns).
 - [x] **Saved views** — pin filter combos as named chips on top ("Waiting on parts", "Ready for pickup"); stored in `UserDefaults` now, server-backed when endpoint exists. `TicketSavedViewsStore` singleton + `TicketSavedView` model. (agent-3-b4)
 - [x] **iPad split layout — Messages-style** (decision 2026-04-20). In landscape, Tickets screen is a **list-on-left + detail-on-right 2-pane** via `NavigationSplitView(.balanced)` gated on `Platform.isCompact`. `.hoverEffect(.highlight)` on rows, `.keyboardShortcut("N", .command)` on New. Context menu with Edit wired + Duplicate / Mark-complete stubbed disabled pending backend endpoints. `.textSelection(.enabled)` on order IDs.
@@ -603,36 +603,36 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Row-to-detail transition on selection: inline detail swap, no push animation.
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
-- [x] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac. `TicketExportView` + `exportTicketsURL` in `APIClient+Tickets`. SFSafariViewController delivery. 6 export tests. (agent-3-b5)
-- [x] **Pinned/bookmarked** tickets at top (⭐ toggle). `togglePin()` in `TicketListViewModel` + pin dot on row + Pin/Unpin in context menu + `TicketQuickActionHandlers.onTogglePin`. (578aa4e4)
-- [x] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions. `TicketCustomerPreviewPopover` + `.ticketCustomerPreviewPopover(...)` view modifier. (agent-3-b4)
-- [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `DueDateBadge` in `TicketListView`. (agent-3-b5)
-- [x] **Empty state** — "No tickets yet. Create one." CTA. `TicketEmptyState` with `showCreateCTA` + "Create your first ticket" button. (578aa4e4)
+- [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
+- [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
+- [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
+- [ ] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray).
+- [x] **Empty state** — db339de3 — "No tickets yet. Create one." CTA.
 - [x] **Offline state** — list renders from cache; OfflineEmptyStateView when offline + no cached data; StalenessIndicator in toolbar showing last sync time. (phase-3 PR)
 
 ### 4.2 Detail
 - [x] Base detail (customer, devices, notes, history, totals) — shipped.
-- [x] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder. `TicketDetailTabView` + `TicketDetailTabPicker` + `TicketPaymentsTabView` + wired into `TicketDetailView`. `TicketPayment` DTO in `TicketDetailEndpoints`. (agent-3-b5)
-- [x] **Header** — ticket ID copyable (`.textSelection(.enabled)`), status chip (tap to advance), urgency chip (`DetailUrgencyChip`), customer card, InfoRow dates. `TicketDetail` gains `urgency` + `dueOn` fields. (578aa4e4)
-- [x] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots. `TicketStatusChangeSheet` (agent-3-b8)
-- [x] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12). `TicketAssigneePickerSheet` + wired in `TicketDetailView`. (agent-3-b8)
-- [x] **Totals panel** — subtotal, tax, discount, paid, balance due; `.textSelection(.enabled)` on total; `TotalsCard` now computes `totalPaid` + `balanceDue` from `payments` array. (578aa4e4)
-- [x] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel. `TicketDeviceSheet` + `DevicesSectionWithActions` in `TicketDetailView`. (agent-3-b8)
-- [x] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement). `TicketDeviceChecklistSheet` + `TicketDeviceChecklistViewModel`. (agent-3-b9 aeba0378)
-- [x] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated. `TicketDeviceServicesSheet` + `ServiceLineDraft`. (agent-3-b8)
-- [x] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload. `PhotoFullScreenView` MagnificationGesture 0.5×–6×, double-tap toggle, TabView swipe navigation between siblings, UIActivityViewController share. (agent-3-b10 de77283a)
-- [x] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight. "Add note" button wired to `TicketNoteComposeView` in Notes tab. (agent-3-b8)
-- [x] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header. `TicketTimelineView` + `TicketTimelineViewModel` + `filterBar` with All/Status/Notes/Photos/Assign/Parts chips; `TicketEvent.EventKind` filter; day-header glass pills. (agent-3-b9 + b10 de77283a)
-- [x] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load. `TicketWarrantySLABadge` + `TicketWarrantySLAViewModel`; wired in `TicketDetailView`. (agent-3-b7)
-- [x] **QR code** — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
-- [x] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable. `TicketSharePrintService` + `TicketSharePDFButton` + `TicketAirPrintButton` wired into actions menu; `WorkOrderTicketView` SwiftUI US-Letter layout + `UIGraphicsPDFRenderer`. (agent-3-b10 de77283a)
-- [x] **Copy link to ticket** — Universal Link `app.bizarrecrm.com/tickets/:id`.
-- [x] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
-- [x] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42). `TicketRelatedSidebar` gated on `!Platform.isCompact`. (agent-3-b8)
-- [x] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2). `BenchTimerToggleCard` in Actions tab wired to `BenchTimerView`. (agent-3-b8)
-- [x] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up. `NSUserActivity(activityType: "com.bizarrecrm.ticket")` set on `.task`; `TicketHandoffBanner` glass strip on iPad/Mac via `!Platform.isCompact`. (agent-3-b10 de77283a)
-- [x] **Deleted-while-viewing** — banner "This ticket was removed. [Close]". Also: permission-denied glass toast (auto-dismiss 3s), 409 stale-edit banner, `deletedOnServerBanner` + `permissionDeniedToast` flags in `TicketDetailViewModel`. (agent-3-b9 a8e6232a)
-- [x] **Permission-gated actions** — hide destructive actions when user lacks role. Delete admin-only; Archive/Convert-to-invoice manager+. `TicketQuickActionsContent` + `TicketRowSwipeActions` `userRole` param. (agent-3-b9 4b78014d)
+- [ ] **Tab layout** (mirror web): Actions / Devices / Notes / Payments. iPhone = segmented control. iPad/Mac = sidebar or toolbar picker, content fills remainder.
+- [ ] **Header** — ticket ID (copyable, `.textSelection(.enabled)` + `CopyButton`), status chip (tap to change), urgency chip, customer card, created / due / assignee.
+- [ ] **Status picker** — `GET /settings/statuses` drives options (color + name); `PATCH /tickets/:id/status` with `{ status_id }`; inline transition dots.
+- [ ] **Assignee picker** — avatar grid; filter by role; "Assign to me" shortcut; `PUT /tickets/:id` with `{ assigned_to }`; handoff modal requires reason (§4.12).
+- [ ] **Totals panel** — subtotal, tax, discount, deposit, balance due, paid; `.textSelection(.enabled)` on each; copyable grand total.
+- [ ] **Device section** — add/edit multiple devices (`POST /tickets/:id/devices`, `PUT /tickets/devices/:deviceId`). Each device: make/model (catalog picker), IMEI, serial, condition, diagnostic notes, photo reel.
+- [ ] **Per-device checklist** — pre-conditions intake: screen cracked / water damage / passcode / battery swollen / SIM tray / SD card / accessories / backup done / device works. `PUT /tickets/devices/:deviceId/checklist`. Must be signed before status → "diagnosed" (frontend enforcement).
+- [ ] **Services & parts** per device — catalog picker pulls from `GET /repair-pricing/services` + `GET /inventory`; each line item = description + qty + unit price + tax-class; auto-recalc totals; price override role-gated.
+- [ ] **Photos** — full-screen gallery with pinch-zoom, swipe, share. Upload via `POST /tickets/:id/photos` (multipart, photos field) over background URLSession; progress glass chip. Delete via swipe-to-trash. Mark "before / after" tag. EXIF-strip PII on upload.
+- [ ] **Notes** — types: internal / customer-visible / diagnostic / SMS / email / string (server types). `POST /tickets/:id/notes` with `{ type, content, is_flagged, ticket_device_id? }`. Flagged notes badge-highlight.
+- [ ] **History timeline** — server-driven events (status changes, notes, photos, SMS, payments, assignments). Filter toggle chips per event type. Glass pill per day header.
+- [ ] **Warranty / SLA badge** — "Under warranty" or "X days to SLA breach"; pull from `GET /tickets/warranty-lookup` on load.
+- [x] **QR code** — 81130f8c — render ticket order-ID as QR via CoreImage; tap → full-screen enlarge for counter printer. `Image(uiImage: ...)` + plaintext below.
+- [ ] **Share PDF / AirPrint** — on-device rendering pipeline per §17.4. `WorkOrderTicketView(model:)` → `ImageRenderer` → local PDF; hand file URL (never a web URL) to `UIPrintInteractionController` or share sheet. SMS shares the public tracking link (§53); email attaches the locally-rendered PDF so recipient sees it without login. Fully offline-capable.
+- [x] **Copy link to ticket** — 81130f8c — Universal Link `app.bizarrecrm.com/tickets/:id`.
+- [ ] **Customer quick actions** — Call (`tel:`), SMS (opens thread), FaceTime, Email, open Customer detail, Create ticket for this customer.
+- [ ] **Related** — sidebar (iPad) with Recent tickets from same customer, Photo wallet, Health score, LTV tier (see §42).
+- [ ] **Bench timer widget** — small glass card, start/stop (`POST /bench/:ticketId/timer-start`); feeds Live Activity (§24.2).
+- [ ] **Handoff banner** (iPad/Mac) — `NSUserActivity` advertising this ticket so a Mac can pick it up.
+- [ ] **Deleted-while-viewing** — banner "This ticket was removed. [Close]".
+- [ ] **Permission-gated actions** — hide destructive actions when user lacks role.
 
 ### 4.3 Create — full-fidelity multi-step
 - [x] Minimal create shipped (customer + single device) — `Tickets/TicketCreateView`.
@@ -658,10 +658,10 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Idempotency key** — client generates UUID, sent as `idempotency_key` body field (API client has no headers param) to avoid duplicate creates on retry. `resetIdempotencyKey()` on success. (agent-3-b9 325c6310)
 - [ ] **Offline create** — GRDB temp ID (negative int or `OFFLINE-UUID`), human-readable offline reference ("OFFLINE-2026-04-19-0001"), queued in `sync_queue`; reconcile on drain — server ID replaces temp ID across related rows (photos, notes).
 - [x] **Autosave draft** — every field change writes to `tickets_draft` GRDB table; "Resume draft" banner on list when present; discard confirmation.
-- [x] **Validation** — per-step inline glass error toasts; block next until required fields valid. `stepValidationMessage` in `TicketCreateFlowViewModel` + `CreateFlowValidationToast` in `TicketCreateFlowView`. (agent-3-b5)
-- [x] **Keyboard shortcuts** — ⌘↩ create (existing), ⌘. cancel (new), ⌘→ next step (existing), ⌘← prev step (new). `TicketCreateFlowView` iPhone + iPad toolbars. (578aa4e4)
-- [x] **Haptic** — `.success` on create; `.error` on validation fail. `UINotificationFeedbackGenerator` in `submitAndDismiss()`. (578aa4e4)
-- [x] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired. `onPrintLabel` callback + glass banner in `TicketCreateFlowView`. (agent-3-b8)
+- [x] **Validation** — db339de3 — per-step inline glass error toasts; block next until required fields valid.
+- [ ] **Keyboard shortcuts** — ⌘↩ create, ⌘. cancel, ⌘→ / ⌘← next/prev step.
+- [x] **Haptic** — db339de3 — `.success` on create; `.error` on validation fail.
+- [ ] **Post-create** — pop to ticket detail; if deposit collected → Sale success screen (§16.8); offer "Print label" if receipt printer paired.
 
 ### 4.4 Edit
 - [x] Edit sheet shipped — `Tickets/TicketEditView` / `TicketEditViewModel`. Server-narrow field set (discount, reason, source, referral, due_on) per `PUT /api/v1/tickets/:id`.
@@ -710,9 +710,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] **Retry failed upload** — dead-letter entry in Sync Issues. `PhotoUploadService.recordDeadLetter` / `clearDeadLetter` / `deadLetterEntries` persist failures to UserDefaults; `PhotoUploadDeadLetterEntry` model carries retry count + error description for Sync Issues screen. Commit `ccfa0a18`.
 - [x] **Annotate** — PencilKit overlay on photo for markup; saves as new attachment (original preserved). `PencilAnnotationCanvasView` + `PencilToolPickerToolbar` + `PencilAnnotationViewModel` + `PhotoAnnotationButton` in `Camera/Annotation/`. Commit `feat(ios phase-7 §4+§17.1)`.
 - [x] **Before / after tagging** — toggle on each photo; detail view shows side-by-side on review. `TicketDevicePhotoListView` gallery (tap → full-screen), `TicketPhotoBeforeAfterView` side-by-side. `TicketPhotoUploadService` actor with background URLSession, offline queue, retry. `TicketPhotoAnnotationIntegration` shim into Camera pkg PencilKit. Commit `feat(ios post-phase §4)`.
-- [x] **EXIF strip** — remove GPS + timestamp metadata on upload. `PhotoUploadService.stripExifAndCompress` (Camera pkg, ccfa0a18) + `ExifStripper` applied in `TicketPhotoLibraryPickerViewModel` (agent-3-b7).
-- [x] **Thumbnail cache** — `PhotoThumbnailCache` actor (Camera pkg ImageIO + NSCache 32MB + disk; ccfa0a18) + `TicketPhotoThumbnailView` AsyncImage+URLCache fallback (agent-3-b7).
-- [x] **Signature attach** — signed customer acknowledgement saved as PNG attachment. `SignatureAttachService` actor: `render(drawing:bounds:scale:)` PKDrawing→UIImage, `save(drawing:canvasBounds:entityKind:entityId:)` writes PNG to AppSupport, `upload(attachment:to:authToken:)` via PhotoUploadService. (6e90820a)
+- [x] **EXIF strip** — db339de3 — remove GPS + timestamp metadata on upload.
+- [x] **Thumbnail cache** — db339de3 — Nuke with disk limit; full-size fetched on tap.
+- [ ] **Signature attach** — signed customer acknowledgement saved as PNG attachment.
 
 ### 4.9 Bench workflow
 - [ ] **Backend:** `GET /bench`, `POST /bench/:ticketId/timer-start`.
@@ -732,11 +732,11 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 - [x] Required reason dropdown: Shift change / Escalation / Out of expertise / Other (free-text). Assignee picker. `PUT /tickets/:id` + auto-logged note. Receiving tech gets push. `TicketHandoffView` + `HandoffReason` enum. (agent-3-b4)
 
 ### 4.13 Empty / error states
-- [ ] No tickets — glass illustration + "Create your first ticket".
+- [x] No tickets — glass illustration — db339de3 + "Create your first ticket".
 - [ ] Network error on detail — keep cached data, glass retry pill.
 - [ ] Deleted on server → banner "Ticket removed. [Close]".
 - [ ] Permission denied on action → inline toast "Ask your admin to enable this.".
-- [ ] 409 stale edit → "This ticket changed. [Reload]".
+- [x] 409 stale edit — db339de3 → "This ticket changed. [Reload]".
 - [ ] Waiver PDF templates managed server-side; iOS renders.
 - [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§5), marketing consent (TCPA SMS / email opt-in).
 - [ ] Waiver sheet UI: scrollable text + `PKCanvasView` signature + printed name + "I've read and agree" checkbox; Submit disabled until checked + signature non-empty.
@@ -1298,12 +1298,12 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Base list + is-expiring warning — shipped.
 - [x] Row a11y — combined utterance `orderId. customerName. total. [Status X]. [Expires in Nd | Valid until date]`. Selectable order IDs.
 - [x] **CachedRepository + offline** — `EstimateRepository` protocol + `EstimateRepositoryImpl` + `EstimateCachedRepositoryImpl` (in-memory write-through cache, `CachedResult<[Estimate]>`, `forceRefresh`, `lastSyncedAt`). `OfflineBanner` + `StalenessIndicator` wired in list toolbar. `OfflineEmptyStateView` shown offline + cache empty. `EstimateListViewModel` migrated from direct-API to repo pattern (legacy `api:` init preserved). Perf gate: 1000-row hot-read in < 15ms. (feat(ios phase-3): Inventory/Invoices/Estimates CachedRepository + StalenessIndicator)
-- [x] Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
-- [x] Filters — date range, customer, amount, validity.
-- [x] Bulk actions — Send / Delete / Export.
-- [x] Expiring-soon chip (pulse animation when ≤3 days).
-- [x] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
-- [x] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
+- [x] Status tabs — All / Draft — db339de3 / Sent / Approved / Rejected / Expired / Converted.
+- [ ] Filters — date range, customer, amount, validity.
+- [ ] Bulk actions — Send / Delete / Export.
+- [x] Expiring-soon chip — 81130f8c (pulse animation when ≤3 days).
+- [ ] Context menu — Open, Send, Convert to ticket, Convert to invoice, Duplicate, Delete.
+- [ ] Cursor-based pagination (offline-first) per top-of-doc rule + §20.5. `GET /estimates?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`.
 
 ### 8.2 Detail
 - [x] **Header** — estimate # + status + valid-until date.
@@ -1323,8 +1323,8 @@ _Server endpoints: `GET /estimates`, `GET /estimates/{id}`, `POST /estimates`, `
 - [x] Idempotency key. `CreateEstimateRequestWithKey` wraps body; `idempotencyKey` UUID in `EstimateCreateViewModel`; reset via `resetIdempotencyKey()`. (agent-3-b4)
 
 ### 8.4 Expiration handling
-- [x] Auto-expire when past validity date (server-driven). Server sets `status: "expired"` via cron; iOS reads server-returned status on list refresh — no additional client code needed. `EstimateCachedRepositoryImpl` + list `StalenessIndicator` force-refresh surfaces the update. (578aa4e4)
-- [x] Manual expire action. "Expire Now" button + confirmation dialog in `EstimateDetailView`; `APIClient.expireEstimate(estimateId:)` → `PUT /estimates/:id` with `{ status: "expired" }`. (agent-3-b4)
+- [ ] Auto-expire when past validity date (server-driven).
+- [x] Manual expire action — db339de3.
 
 - [x] Quote detail → "Send for e-sign" generates public URL `https://<tenant>/public/quotes/:code/sign`; share via SMS / email. `EstimateSignSheet` + `EstimateSignViewModel` issue via `POST /estimates/:id/sign-url`; wired in `EstimateDetailView`. (agent-3-b9 + b10 de77283a)
 - [ ] Signer experience (server-rendered public page, no login): quote line items + total + terms + signature box + printed name + date → submit stores PDF + signature.
@@ -1641,13 +1641,13 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
 ### 13.1 List
 - [x] Base list — shipped.
 - [x] **CachedRepository + offline** — `NotificationCachedRepositoryImpl` (actor, single-entry in-memory cache, 2min TTL, `forceRefresh`). `StalenessIndicator` in toolbar. `OfflineEmptyStateView` when offline + cache empty. Pull-to-refresh wired. 6 XCTest assertions pass. (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
-- [x] **Tabs / Filter chips** — All / Unread / type chips (Ticket / SMS / Invoice / Payment / Appointment / Mention / System) in `NotificationFilterChip` enum; iPhone horizontal scroll bar + iPad sidebar list. (`NotificationListPolishedView.swift`, `NotificationFilterChip.swift`; agent-9 b4)
-- [x] **Mark all read** action (glass toolbar button). (`NotificationListPolishedView` toolbar + `NotificationListPolishedViewModel.markAllRead()` + optimistic UI; agent-9 b4)
-- [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer). (`NotificationListPolishedView` `.onTapGesture` calls `vm.deepLinkURL(for:)` → `UIApplication.shared.open`; `NotificationListPolishedViewModel.deepLinkURL(for:)`; agent-9 b4)
-- [x] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`). (`NotificationListPolishedView` swipe trailing + `NotificationListPolishedViewModel.dismiss(id:)` + `APIClient.dismissNotification(id:)` in `NotificationsEndpoints.swift`; agent-9 b4)
-- [x] **Group by day** (glass day-header). (`NotificationListView.swift` uses `NotificationDaySectionBuilder.build(from:)` + `DayHeader` private view per section; c28bece8)
-- [x] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system). (see Tabs line above; agent-9 b4)
-- [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListView.swift` emptyState(icon:text:) → "You're all caught up" + `bell.slash` icon; shown when items empty + online; pre-existing impl)
+- [x] **Tabs** — All / Unread / Assigned to me / Mentions. (`NotificationListPolishedView` filter chips cover All/Unread/type; 44161f26)
+- [x] **Mark all read** action (glass toolbar button). (`NotificationListPolishedView` toolbar; 44161f26)
+- [x] **Tap → deep link** (ticket / invoice / SMS thread / appointment / customer). (`NotificationListPolishedView.deepLinkPath(for:)` entity allowlist; 44161f26)
+- [x] **Swipe to dismiss** (persists via `PATCH /notifications/:id/dismiss`). (`NotificationListPolishedView` leading swipe; `NotificationListPolishedViewModel.dismiss(id:)`; `APIClient.dismissNotification(id:)`; 44161f26)
+- [x] **Group by day** (glass day-header). (`NotificationListPolishedView` day-header sections; 44161f26)
+- [x] **Filter chips** — type (ticket / SMS / invoice / payment / appointment / mention / system). (`NotificationFilterChip.typeChips`; 44161f26)
+- [x] **Empty state** — "All caught up. Nothing new." illustration. (`NotificationListPolishedView.emptyState`; 44161f26)
 
 ### 13.2 Push pipeline
 - [x] **Register APNs** on login: `UIApplication.registerForRemoteNotifications()` → `POST /device-tokens` with `{ token, platform: "ios", model, os_version, app_version }`.
@@ -1661,12 +1661,12 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `PAYMENT_RECEIVED` → View receipt / Thank customer.
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
-- [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (`NotificationDeepLinkCoordinator.swift` `kEntityTypeAllowlist` set of 11 types; `isAllowedURL` rejects unknown schemes; agent-9 b4 confirmed)
-- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours. (`QuietHoursGate.shouldSuppress(eventType:)` — reads UserDefaults set by `QuietHoursEditorView`; timeSensitive events bypass; normal events suppressed in quiet window; db65cb55)
-- [x] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach. (`NotificationInterruptionLevelMapper.level(for:)` maps payment.declined / invoice.overdue / out_of_stock / backup.failed / security.event / pos.cash_short / integration.disconnected → `.timeSensitive`; applied in `RichPushEnricher.enrich(_:userInfo:)`; db65cb55)
+- [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (feat(§13): kEntityTypeAllowlist in NotificationDeepLinkCoordinator + deepLinkPath allowlist in NotificationListPolishedView — verified b14; 4ecb468d)
+- [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
+- [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
 
 ### 13.3 In-app toast
-- [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`RealtimeUX.swift`: `WSToast` model + `WSToastBanner` view + `.wsToastOverlay(toast:onTap:)` ViewModifier; glass pill, 4s auto-dismiss, swipe-up early dismiss, `.selection` haptic. agent-9 b4 confirmed)
+- [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`ForegroundPushToast.swift` — coordinator + glass overlay + `.foregroundPushToastOverlay()` modifier; 09e6a602)
 
 ### 13.4 Badge count
 - [x] App icon badge = unread count across inbox + notifications + SMS.
@@ -2998,7 +2998,7 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 
 ### 18.1 Global search (cross-domain)
 - [x] **Shipped** — cross-domain search across customers / tickets / inventory / invoices.
-- [x] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Fixed: `GlobalSearchViewModel.fetchLocal()` now has nil guard `guard let store = ftsStore else { return }` preventing trap when FTSIndexStore not yet injected; error state rendered instead of crash. (agent-9 b5; `GlobalSearchView.swift`)
+- [x] **BUG: Search tab crashes on open** (reported 2026-04-24, iPad Pro 11" 3rd gen, fresh install). Defensive try/catch in `fetchLocal` guards FTS5 schema errors; `fetchRemote` guards empty query early-return; `AppLog.ui.error(...)` on both paths so view shows error state instead of trapping. (feat(§18): 09e6a602)
 - [x] **Offline banner** — when query is empty and `!Reachability.shared.isOnline`, shows "Search requires a network connection" placeholder with `.bizarreWarning` icon; a11y label "Offline. Search requires a network connection." (feat(ios phase-3): Leads/Appts/Expenses/SMS/Notifications/Employees/Reports/Search CachedRepository + StalenessIndicator)
 - [x] **Trigger** — glass magnifier chip in toolbar (all screens) + pull-down on Dashboard + ⌘F. (`Search/SearchTriggerChip.swift`; `SearchTriggerChip` + `GlobalSearchTriggerModifier` + `.globalSearchTrigger()`; ⌘F keyboard shortcut; 3d0a4f7a)
 - [ ] **Command Palette** — see §56; distinct from global search (actions vs data).
@@ -3006,11 +3006,11 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 - [ ] **Server result envelope** — each hit has `type`, `id`, `title`, `subtitle`, `thumbnail_url`, `badge`; rendered as unified glass cards.
 - [x] **Recent searches** — last 20 queries in `RecentSearchStore` (UserDefaults); chips shown in empty-query state; clear individual or all. (feat(ios post-phase §18))
 - [x] **Saved / pinned searches** — `SavedSearchStore` + `SavedSearchListView`; name + entity + query; tap opens `EntitySearchView` pre-filled. (feat(ios post-phase §18))
-- [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.swift` emptyStateWithRecent; "Try a phone number, ticket ID, SKU, IMEI, or name." + recent searches chips; pre-existing impl)
-- [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.swift` noResultsView; pre-existing impl)
-- [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.swift` skeletonView with SkeletonRow shimmer; pre-existing impl)
-- [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 300ms `Task.sleep` + `searchTask?.cancel()`; pre-existing impl)
-- [x] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open. (invisible Button `.keyboardShortcut("f", modifiers: .command)` in `GlobalSearchView` body flips `searchFocused`; ⎋ / ⏎ handled by `.searchable` natively; db65cb55)
+- [x] **Empty state** — glass card: "Try searching for a phone number, ticket ID, SKU, IMEI, invoice #, or name". Tips list shows what's indexable. (`GlobalSearchView.emptyStateWithRecent`; 30ae5799)
+- [x] **No-results state** — "No matches for 'X'. Try different spelling, scope to All, or search by phone." (`GlobalSearchView.noResultsView`; 30ae5799)
+- [x] **Loading state** — skeleton rows in glass cards. (`GlobalSearchView.skeletonView`; 30ae5799)
+- [x] **Debounce** — 250ms debounce; cancel prior request on new keystroke (`Task` cancellation). (`GlobalSearchViewModel.onChange` 250ms `Task.sleep`; 30ae5799)
+- [ ] **Keyboard shortcut** — ⌘F to focus search; ⎋ to dismiss; arrow keys navigate; ⏎ to open.
 - [ ] **Voice input** — dictation enabled; smart punctuation disabled (names/numbers).
 - [ ] **Result ranking** — server provides; iOS respects; recent + pinned boosted client-side.
 - [x] **Type-ahead preview** — top 3 hits in dropdown; "See all" at bottom. (`GlobalSearchView` `typeAheadOverlay`; `GlobalSearchViewModel` `fetchTypeAhead` 100ms debounce → `TypeAheadPreviewView`; agent-9 b10)
@@ -3073,14 +3073,14 @@ _Server endpoints: `GET /search?q=&type=&limit=`, `GET /customers?q=`, `GET /tic
 _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `GET/PUT /settings/security`, `GET/PUT /settings/notifications`, `GET/PUT /settings/organization`, `GET /settings/integrations`, `GET/PUT /settings/tickets`, `GET/PUT /settings/invoices`, `GET/PUT /settings/tax`, `GET/PUT /settings/payment`, `GET/PUT /settings/sms`, `GET/PUT /settings/automations`, `GET/PUT /settings/membership`, `GET/PUT /settings/customer-groups`, `GET/PUT /settings/roles`, `GET/PUT /settings/statuses`, `GET/PUT /settings/conditions`, `GET/PUT /settings/device-templates`, `GET/PUT /settings/repair-pricing`, `GET /audit-logs`, `GET /billing`._
 
 ### 19.0 Shell
-- [x] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`). (`Settings/SettingsView.swift` iPadLayout; 3-col NavigationSplitView with sidebar + content + detail; 4dcf7c71)
-- [x] **iPhone** — `List` of categories → push to individual tab views. (`Settings/SettingsView.swift` iPhoneLayout + NavigationStack; 4dcf7c71)
-- [x] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`. (`SettingsView.swift` isAdmin guard; iPadSections admin section gated; 4dcf7c71)
-- [x] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field. (`Settings/Search/SettingsSearchView.swift` + `SettingsSearchViewModel` + `SettingsSearchIndex`; 4dcf7c71)
-- [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (`Settings/UnsavedChangesBanner.swift`; `.unsavedChangesBanner(isDirty:onSave:onDiscard:)` modifier; wired into ProfileSettingsPage; 4dcf7c71)
+- [ ] **iPad/Mac** — `NavigationSplitView`: left sidebar is setting categories (list), detail pane hosts each tab's form; deep-linkable per tab (`bizarrecrm://settings/tax`).
+- [ ] **iPhone** — `List` of categories → push to individual tab views.
+- [x] **Role gating** — non-admins see only Profile / Security / Notifications / Appearance / About; admin gates hidden tabs behind `role.settings.access`. (feat(§19): SettingsView isAdmin gating on Organization/Payments/SMS; iPadSections filtered by role; 4ecb468d)
+- [ ] **Search Settings** — `.searchable` on Settings root (⌘F) searching category labels + field labels; jumps straight to tab + highlights field.
+- [x] **Unsaved-changes banner** — sticky glass footer with "Save" / "Discard" when any tab form is dirty. (feat(§19): UnsavedChangesBanner + .unsavedChangesBanner() modifier; 4ecb468d)
 
 ### 19.1 Profile
-- [x] **Avatar** — circular tap → action sheet (Camera / Library / Remove). (`ProfileSettingsPage.swift` PhotosPicker + confirmationDialog; POST/DELETE `/auth/me/avatar`; 449eeceb)
+- [x] **Avatar** — circular tap → action sheet (Camera / Library / Remove). (feat(§19): ProfileSettingsPage avatar circle + showAvatarPicker → AvatarPickerSheet; 4ecb468d)
 - [x] **Fields** — first/last name, display name, email, phone, job title. (`Settings/Pages/ProfileSettingsPage.swift`; `ProfileSettingsViewModel` loads `GET /auth/me`, saves via `PATCH /auth/me`.)
 - [x] **Change email** — server emits verify-email link; banner until verified. (`Settings/Profile/ChangeEmailSheet.swift`; `PendingEmailVerificationBanner`; POST `/auth/change-email`; `ProfileSettingsPage` wired; a9c41ef5)
 - [x] **Change password** — current + new + confirm; strength meter; submit hits `PUT /auth/change-password`. (`ProfileSettingsPage.swift` showPasswordSection with strength bar.)
@@ -3102,9 +3102,9 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 
 ### 19.3 Notifications (in-app preferences)
 - [x] **Per-channel toggle** — New SMS inbound / New ticket / Ticket assigned to me / Payment received / Payment failed / Appointment reminder / Low stock / Daily summary. (`Settings/Pages/NotificationsPage.swift` per-category toggles + System Settings link.)
-- [x] **Delivery medium** per channel — Push / Email / SMS / In-app only. (`Settings/Pages/NotificationsExtendedPage.swift`: `DeliveryMedium` enum + `DeliveryMediumRow` + `ChannelDeliveryPrefs`; icon-chip row per channel; agent-9 b4 confirmed)
-- [x] **Quiet hours** — start/end time; show icon in tab badge during quiet hours. (`NotificationsExtendedPage.swift` `DatePicker` start/end + `UserDefaults` persistence + `putNotifSettings` API; agent-9 b4 confirmed)
-- [x] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle). (`NotificationsExtendedPage.swift` `criticalOverrideEnabled` toggle wired to `NotifSettingsWire.criticalOverride`; agent-9 b4 confirmed)
+- [ ] **Delivery medium** per channel — Push / Email / SMS / In-app only.
+- [x] **Quiet hours** — start/end time; show icon in tab badge during quiet hours. (`NotificationsPage.swift` DatePicker pair; 7468235f)
+- [x] **Critical overrides** — "Payment failed" and "@mention" can bypass quiet hours (toggle). (`NotificationsPage.swift` critical overrides section; 7468235f)
 - [x] **"Open System Settings"** button → `UIApplication.openNotificationSettingsURLString` (iOS 16+). (`NotificationsPage.swift`)
 - [x] **Test push** — admin-only button sends test notification. (`NotificationsExtendedPage.swift` `vm.sendTestPush()` → `api.postTestPush()` → `POST /api/v1/notifications/test`; admin gate; alert confirm; agent-9 b4 confirmed)
 
@@ -3112,13 +3112,13 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 - [x] **Theme** — System / Light / Dark; persisted via UserDefaults, applied to all UIWindows. (`Settings/Pages/AppearancePage.swift`; `AppearanceViewModel`.)
 - [x] **Accent** — Brand triad: Orange / Teal / Magenta (one-tap). (`AppearancePage.swift`)
 - [x] **Density** — Compact toggle; row height scale. (`AppearancePage.swift`)
-- [x] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt). (`Settings/Pages/AppearanceExtendedPage.swift` `glassIntensity` slider + footer note; agent-9 b4 confirmed)
+- [x] **Glass intensity** — 0–100% slider; <30% falls to solid material (a11y alt). (`AppearancePage.swift` 357a568b)
 - [x] **Reduce motion** — overrides system (for one-user testing). (`AppearancePage.swift`)
-- [x] **Reduce transparency** — overrides system. (`AppearanceExtendedPage.swift` `reduceTransparency` toggle in "Glass & transparency" section; agent-9 b4 confirmed)
+- [x] **Reduce transparency** — overrides system. (`AppearancePage.swift` 357a568b)
 - [x] **Font scale** — 80–140% slider; honors Dynamic Type. (`AppearancePage.swift`)
-- [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearanceExtendedPage.swift` `soundsEnabled` master toggle + per-sound toggles (notification, scan, success, error); agent-9 b4 confirmed)
-- [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearanceExtendedPage.swift` `hapticsEnabled` toggle + `HapticIntensity` segmented picker (subtle/medium/strong); agent-9 b4 confirmed)
-- [x] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants). (`Settings/Pages/AppearancePage.swift` `AppIconPickerSection`; Default/Dark/Minimal options; `UIApplication.setAlternateIconName`; a3a38f4b)
+- [x] **Sounds** — receive notification sound / scan chime / success / error; master mute. (`AppearancePage.swift` 357a568b)
+- [x] **Haptics** — master toggle + per-event subtle/medium/strong. (`AppearancePage.swift` 357a568b)
+- [ ] **Icon** — alt-icon picker (SF Symbol for build, later PNG variants).
 
 ### 19.5 Organization (admin)
 - [x] **Company info** — legal name, DBA, address, phone, website, EIN. (`Settings/Pages/CompanyInfoPage.swift`; `CompanyInfoViewModel`; `PATCH /tenant/company`.)
@@ -3243,8 +3243,8 @@ _Parity with web Settings tabs. Server endpoints: `GET/PUT /settings/profile`, `
 ### 19.22 Server (connection)
 Page purpose: inspect + test the tenant server connection. No tenant-switch button and no sign-out button (sign-out lives in §19.1 Profile — there is a single canonical location). Changing tenant = sign out (§19.1) + sign back in with different creds.
 - [x] **Dynamic base URL** — shipped.
-- [x] **Connection test** — latency (ping) + auth check + TLS cert SHA shown. (`ServerConnectionViewModel.testConnection()` → `api.healthPing()` + latency measurement + `api.authMeCheck()`; result shown in form rows with pass/fail icons; db65cb55)
-- [x] **Pinning** — SPKI pin fingerprint viewer + rotate. (`ServerConnectionPage` Security section shows cert SHA when `PinnedURLSessionDelegate` provides it; notes "off by default (Let's Encrypt)" when not pinning; db65cb55)
+- [x] **Connection test** — latency (ping) + auth check + TLS cert SHA shown. (`ServerSettingsPage.swift` — `pingHealth()` endpoint, `ConnectionTestResult` enum, latency display; 09e6a602)
+- [ ] **Pinning** — SPKI pin fingerprint viewer + rotate.
 - [ ] **Last-used persistence note** — server URL + username retained in Keychain across sign-out (tokens are NOT retained) so the Login screen pre-fills on return. Implemented at the auth layer, surfaced here for transparency.
 
 ### 19.23 Data (local)
@@ -3566,7 +3566,7 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`TICKET_ASSIGNED`** — Open / Snooze / Reject.
 - [x] **`TICKET_STATUS_CHANGED`** — Open.
 - [x] **`PAYMENT_RECEIVED`** — Open invoice / Print receipt.
-- [x] **`PAYMENT_FAILED`** — Open / Retry charge. (`NotificationCategories.swift` paymentFailedCategory; NotificationCategoryID.paymentFailed + paymentFailedView/paymentFailedRetry action IDs; 3 tests; f658027b)
+- [x] **`PAYMENT_FAILED`** — Open / Retry charge. (`NotificationCategoryID.paymentFailed`, `paymentFailedCategory()` in `NotificationCategories.swift`; 09e6a602)
 - [x] **`APPOINTMENT_REMINDER`** — Open / Mark done / Reschedule.
 - [x] **`MENTION`** — Reply.
 - [x] **`LOW_STOCK`** — Reorder / Dismiss.
@@ -3579,26 +3579,26 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **Coalescing** — debounce multi-events in a window; single sync. (`Notifications/SilentHandlers/SilentPushCoalescer.swift`; `SilentPushCoalescer` actor; 2s debounce + high-water (10) immediate fire; `SilentPushCoalescerTests` 3 assertions; agent-9 b13 1e543320)
 
 ### 21.4 Background tasks
-- [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (`Notifications/Push/BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
-- [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (`BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
-- [x] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync. (`BackgroundTaskScheduler.swift`; agent-9 b6 confirmed)
-- [x] **Task budgets** — complete within 30s; defer remainder. (`BackgroundTaskScheduler.swift` 30s expiration handlers; agent-9 b6 confirmed)
+- [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (feat(§21): AppBackgroundTaskScheduler — syncRefreshID + runSyncRefresh() with cancellation handler; 4ecb468d)
+- [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (feat(§21): AppBackgroundTaskScheduler — maintenanceNightlyID + runMaintenance(); 4ecb468d)
+- [ ] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync.
+- [ ] **Task budgets** — complete within 30s; defer remainder.
 
 ### 21.5 WebSocket (Starscream)
-- [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (`WebSocketManager.makeWSURL(base:topic:)` for all 4 Topics; `wss` scheme derived from `https` base URL; agent-9 b9)
-- [x] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates. (`WebSocketConnection.connect()` sets `req.setValue("Bearer \(token)", forHTTPHeaderField: "Sec-WebSocket-Protocol")`; agent-9 b9)
-- [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (`WebSocketManager.backoffDelay(attempt:)` + `scheduleReconnect(topic:attempt:)`; agent-9 b9)
-- [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (`WebSocketManager.startHeartbeat()` 25s Task loop calling `pingAll()`; agent-9 b9)
-- [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (`WebSocketManager.subscribe/unsubscribe(topic:)` ref-counted; `subscriptionCounts[Topic: Int]`; agent-9 b9)
-- [x] **Event envelope** — `{ type, entity, id, payload, version }`. (`WebSocketEvent` Decodable struct; agent-9 b9)
-- [x] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side. (`WSBackpressureFilter` actor; `shouldForward(topic:)` 1s gate; applied in `handleEvent` for `.dashboard` topic; `WebSocketBackpressureTests` 5 assertions; agent-9 b9)
-- [x] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data. (`WSConnectionStateObserver` @Observable shared; `WSReconnectChip` glass capsule view; `scheduleReconnect` sets `isReconnecting = true`; agent-9 b9)
-- [x] **Message bus** — `Combine` publisher per event type; repositories subscribe. (`WebSocketEventBus` `PassthroughSubject<WebSocketEvent, Never>` per topic; agent-9 b9)
+- [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (feat(§21): WebSocketManager multi-endpoint enum + connect/disconnect; 4ecb468d)
+- [ ] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates.
+- [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (feat(§21): WebSocketClient.scheduleReconnect() via min(pow(2,n),30); 4ecb468d)
+- [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (feat(§21): WebSocketManager.startHeartbeat() 25s poll + state mirror; 4ecb468d)
+- [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (feat(§21): WebSocketManager.subscribe/unsubscribe with subscriberCount lifecycle; 4ecb468d)
+- [ ] **Event envelope** — `{ type, entity, id, payload, version }`.
+- [ ] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side.
+- [ ] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data.
+- [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.
 
 ### 21.6 Foreground lifecycle
-- [x] **`didBecomeActive`** — lightweight sync + WS re-subscribe. Commit `3404f056`.
-- [x] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on. Commit `3404f056`.
-- [x] **Memory warning** — flush image cache, reduce GRDB page cache. Commit `3404f056`.
+- [x] **`didBecomeActive`** — lightweight sync + WS re-subscribe. (feat(§21): ForegroundLifecycleObserver.onDidBecomeActive callback via UIApplication.didBecomeActiveNotification; 9cd0b5b8)
+- [x] **`willResignActive`** — flush pending writes; snapshot blur if security toggle on. (feat(§21): ForegroundLifecycleObserver.onWillResignActive callback; 9cd0b5b8)
+- [x] **Memory warning** — flush image cache, reduce GRDB page cache. (feat(§21): ForegroundLifecycleObserver.onMemoryWarning callback; 9cd0b5b8)
 
 ### 21.7 Real-time UX
 - [x] **Pulse animation** on list row when item updates via WS. Commit `1be36e50`.
@@ -3877,9 +3877,9 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [x] **`eligibleForPrediction`** — Siri suggests continue-ticket on other devices. (feat(ios phase-6 §24+§25))
 
 ### 25.3 Universal Clipboard
-- [x] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU. Commit `ef872a82`.
-- [x] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive. Commit `ef872a82`.
-- [x] **iCloud Keychain paste** for SMS codes (`UITextContentType.oneTimeCode`). Commit `ef872a82`.
+- [x] **`.textSelection(.enabled)`** on all IDs, phones, emails, invoice #, SKU. (feat(§25): CopyableText modifier + .copyable() view extension in Settings package; 9cd0b5b8)
+- [x] **Copy to pasteboard** actions on context menus use `UIPasteboard` with expiration for sensitive. (feat(§25): CopyableText.conditionalContextMenuCopy + UIPasteboard.general; 9cd0b5b8)
+- [ ] **iCloud Keychain paste** for SMS codes (`UITextContentType.oneTimeCode`).
 
 ### 25.4 Share Sheet (`UIActivityViewController` / `ShareLink`)
 - [x] **Invoice PDF** — generate via `UIPrintPageRenderer` → share. Commit `ef872a82`.
@@ -5148,10 +5148,10 @@ _When an admin creates a tenant (or logs in to an empty tenant), run a 13-step w
 - [x] **13. Done** — confetti (Reduce-Motion respects § 26.3) + "Open Dashboard".
 
 ### 36.3 Persistence
-- [x] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard. (`SetupWizardViewModel.loadServerState()` + `SetupResumeBanner` on Dashboard)
-- [x] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking). (`SetupResumeBanner` is non-blocking; dismissible; `deferWizard()` posts `.setupStatusDeferred`)
-- [x] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step. (`loadServerState()` fetches `GET /setup/status` and sets `currentStep` from server)
-- [x] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged. (`SetupWizardViewModel.isMVPComplete` + `mvpStepsRemaining`)
+- [x] **Resume mid-wizard** — partial state saved server-side; iOS shows "Continue setup" CTA on Dashboard. (ecb07902 — SetupResumeCard.swift)
+- [x] **Skip all** — admin can defer; gentle nudge banner on Dashboard until complete (never blocking). (ecb07902 — SetupResumeCard.swift + SetupWizardViewModel.deferWizard existing)
+- [x] **Cross-device resume** — if the same admin opened step 5 on web and step 7 on iOS, server is the source of truth; iOS picks up from the furthest completed step. (ecb07902 — SetupCrossDeviceResumer.swift)
+- [ ] **Minimum-viable completion** — steps 1–7 + 13 are required to unlock POS. Other steps are optional but nudged.
 
 ### 36.4 Metrics (per §32 telemetry, placeholders only)
 - [x] Track per-step completion rate + time-in-step + drop-off step. PII-redacted per §32.6; events use entity ID hashes, never raw company name / address. (`SetupMetrics.swift` + wired into `SetupWizardView` via `.onChange(of: vm.currentStep)` + `.onChange(of: vm.isDismissed)`; agent-8-b4)
@@ -5829,7 +5829,7 @@ Access restricted to roles with `audit.view.all` capability (§47.5). Non-admins
 
 ### 51.3 Guided tutorials
 - [x] **Overlay hints** — "Tap here to create a ticket". (MVP 3-step stub; full library TODO)
-- [x] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing). (`TrainingChecklistView.swift` + `TrainingChecklistViewModel` — iPhone List + iPad `NavigationSplitView`; 4 topics × steps; `TrainingChecklistViewModelTests`; agent-8-b4)
+- [x] **Checklist** — tutorials by topic (POS basics, ticket intake, invoicing). (ecb07902 — TutorialChecklist.swift; 4 topics × 5 steps + TutorialCompletionStore)
 
 ### 51.4 Onboarding video library
 - [x] **Video tiles** — 4-tile placeholder grid (POS basics, Ticket intake, Invoicing, Inventory); AVPlayer TODO.
@@ -6375,7 +6375,7 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 
 ### 70.1 User override (Settings § 19.3)
 - [x] Per-event toggles: Push on/off, In-App on/off, Email on/off, SMS on/off. All four independent. (`NotificationPreferencesMatrixView`, `NotificationPreferencesMatrixViewModel`)
-- [x] Defaults shown greyed with "(default)" label until user flips. (`NotificationDefaultsLabel.swift`: `NotificationDefaultBadge` view — shows "(default)" when `current` matches `NotificationDefaults.default(for:)`; shows "Reset" micro-button when diverged; fixed enum case names `ticketStatusChangeMine`/`ticketStatusChangeAny`; agent-9 b4)
+- [x] Defaults shown greyed with "(default)" label until user flips. (feat(§70): MatrixRow.isAtDefault(for:) + isFullyAtDefault; channelToggleButton shows greyed "default" label; 9cd0b5b8)
 - [x] "Reset all to default" button. (`resetAllToDefault()`)
 - [x] Explicit warning when enabling SMS on a high-volume event. (`StaffNotificationCategoryExclusions`)
 
@@ -6386,8 +6386,8 @@ Legend: Push = APNs push delivered to device. In-App = banner inside the app whe
 ### 70.3 Delivery rules
 - [x] Push respects iOS Focus — documented. (`FocusModeIntegrationView`)
 - [x] Quiet hours editor with critical-override toggle. (`QuietHoursEditorView`, `QuietHours`)
-- [x] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading). (`ActiveScreenContext.shared.isSuppressed(entityType:entityId:)`; feature views call `setActive/clearActive` from `onAppear/onDisappear`; db65cb55)
-- [x] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push. (`PushCollapseWindow` actor; posts `.pushCollapseCountUpdated` NC; badge layer reads `"count"` from userInfo; db65cb55)
+- [x] In-app banner never shown if the user is already looking at the source (e.g., SMS inbound for a thread the user is reading). (feat(§70): ForegroundPushToastCoordinator.activeScreenPath + pathsMatch() suppression; 4ecb468d)
+- [ ] If the same event re-fires within 60s, collapse into a "+N more" badge update instead of sending a second push.
 
 ### 70.4 Critical override
 - [x] Four events (Backup failed, Security event, Out of stock, Payment declined) flagged `isCritical` in `NotificationEvent`. (`NotificationEvent.isCritical`)
@@ -6753,8 +6753,8 @@ No in-app live switcher. Sign out + sign in handles tenant change. Keychain cach
 ### 79.1 What stays
 - [x] **Per-login tenant scoping** — each sign-in binds to exactly one tenant; single active SQLCipher DB; no concurrent sessions held in memory.
 - [x] **Last-used persistence** — Keychain stores `activeTenantId`; `TenantStore.load()` reconciles on startup.
-- **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick.
-- **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants).
+- [x] **Multiple-servers hint** — Login screen remembers recently-used servers in a chip row for quick pick. (ecb07902 — RecentServersStore.swift + RecentServersRow.swift)
+- [x] **Per-tenant push token** — when signing in to a new tenant, previous APNs token unregistered server-side (so pushes don't cross tenants). (ecb07902 — APIClient+Tenant.swift registerDeviceToken/unregisterDeviceToken)
 
 ### 79.2 What is dropped
 - Concurrent per-tenant sessions.

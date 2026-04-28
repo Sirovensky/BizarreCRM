@@ -64,9 +64,9 @@ public final class GlobalSearchViewModel {
             showTypeAhead = false
             return
         }
-        // §18.1 Type-ahead: 100ms fast debounce → top-3 local hits in dropdown.
-        typeAheadTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 100_000_000)
+        searchTask = Task { @MainActor in
+            // §18.1 250ms debounce — cancel prior request on each keystroke.
+            try? await Task.sleep(nanoseconds: 250_000_000)
             if Task.isCancelled { return }
             await fetchTypeAhead(new)
         }
@@ -113,42 +113,44 @@ public final class GlobalSearchViewModel {
     // MARK: - Private fetch
 
     private func fetchLocal() async {
-        // §18.1 BUG-FIX: Guard nil FTSIndexStore early — prevent crash when
-        // FTS5 schema migration hasn't run on first install.
-        guard let store = ftsStore else {
-            AppLog.ui.debug("GlobalSearchViewModel: no FTSIndexStore; local search skipped")
-            return
-        }
+        guard let store = ftsStore else { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
         do {
+            let filter: EntityFilter? = selectedFilter == .all ? nil : selectedFilter
             async let hitsResult = store.search(query: trimmed, entity: filter, limit: 50)
             async let countsResult = store.scopeCounts(query: trimmed)
             let (hits, counts) = try await (hitsResult, countsResult)
             localHits = hits
             scopeCounts = counts
-            updateMergedRows()
         } catch {
-            // FTS5 schema may be missing on first run; log and continue to remote.
-            AppLog.ui.error("GlobalSearchViewModel: fetchLocal failed: \(error.localizedDescription, privacy: .public)")
+            // FTS5 schema not yet migrated (first run) or store error — degrade gracefully.
+            AppLog.ui.error("FTS local search error: \(error.localizedDescription, privacy: .public)")
+            localHits = []
         }
+        updateMergedRows()
     }
 
     private func fetchRemote() async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            isLoading = false
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
         do {
-            let remote = try await api.globalSearch(query)
+            let remote = try await api.globalSearch(trimmed)
             results = remote
             // Merge scope counts with remote results.
             scopeCounts = scopeCounts.merged(with: remote)
             updateMergedRows()
         } catch {
-            AppLog.ui.error("Search failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
-            results = nil
+            AppLog.ui.error("Search remote failed: \(error.localizedDescription, privacy: .public)")
+            if results == nil {
+                errorMessage = error.localizedDescription
+            }
             updateMergedRows()
         }
     }

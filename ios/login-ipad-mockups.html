@@ -1,0 +1,2393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440, initial-scale=0.8">
+<title>Bizarre CRM — iPad login flow (iOS 26 Liquid Glass · NavigationSplitView)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Jost:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     BIZARRE CRM — iPad login flow mockups (iOS 26 Liquid Glass)
+     NavigationSplitView pattern: floating glass sidebar + detail pane.
+     iPad MUST look different from iPhone — multi-pane, hover, table.
+     5 frames × 2 themes (dark + light) = 10 frames.
+       1. Server pick      — sidebar = tenant history, detail = slug entry
+       2. Credentials      — sidebar = active tenant + alt sign-in, detail = creds
+       3. 2FA verify       — sidebar = trust toggle / backup / help, detail = OTP
+       4. Register multi   — sidebar = 4-step rail, detail = current sub-step
+       5. Done             — sidebar = success card, detail = shortcuts grid
+                             (one tile w/ Apple Pencil hover state)
+     ═════════════════════════════════════════════════════════════════════ */
+
+  /* ───── Tokens — DARK theme — Zinc neutral ramp aligned with bizarrecrm.com web ───── */
+  :root {
+    --bg-deep: #09090B;
+    --bg: #18181B;
+    --surface-solid: #18181B;
+    --surface-elev: #27272A;
+    --outline: rgba(250, 250, 250, 0.10);
+    --outline-bright: rgba(250, 250, 250, 0.18);
+    --primary: #fdeed0;
+    --primary-bright: #fff7e0;
+    --primary-soft: rgba(253, 238, 208, 0.14);
+    --on-primary: #2b1400;
+    --on: #FAFAFA;
+    --muted: #A1A1AA;
+    --muted-2: #71717A;
+    --brand-orange: #F58220;
+    --success: #34c47e;
+    --warning: #e8a33d;
+    --error: #e2526c;
+    --teal: #4db8c9;
+    --orange: #ff8c4a;
+    --magenta: #ff4da3;
+    /* Brand fonts — Bebas Neue (display) + Futura Medium (body, Jost fallback) + JetBrains Mono.
+       See TODO BRAND-FONTS-PARITY for Theme.kt + iOS DesignSystem + web alignment. */
+    --font-text: "Futura", "Futura Medium", "Jost", -apple-system, "SF Pro Text", Segoe UI, Roboto, Arial, sans-serif;
+    --font-display: "Bebas Neue", "Saved By Zero", "Impact", "SF Pro Display", -apple-system, sans-serif;
+    --font-mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background:
+      radial-gradient(ellipse 1600px 900px at 50% -10%, rgba(255,255,255,0.025), transparent 70%),
+      radial-gradient(ellipse 1400px 800px at 50% 110%, rgba(0,0,0,0.35), transparent 70%),
+      #08070b;
+    color: var(--on);
+    font-family: var(--font-text);
+    font-size: 13.5px;
+    min-height: 100vh;
+  }
+
+  h1 {
+    text-align: center;
+    padding: 36px 16px 8px; margin: 0;
+    font-size: 30px; font-weight: 700; letter-spacing: -0.022em;
+    background: linear-gradient(180deg, #fff, #d4cfc8);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .intro {
+    text-align: center; color: var(--muted);
+    padding: 0 24px 16px; font-size: 14px; line-height: 1.6;
+    max-width: 980px; margin: 0 auto;
+  }
+  .intro code {
+    background: rgba(255,255,255,0.05); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 12px; color: var(--primary);
+  }
+  .section-label {
+    text-align: center; color: var(--muted-2);
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    padding: 36px 16px 14px; font-weight: 600;
+  }
+  .section-label.light-label {
+    color: rgba(60, 50, 40, 0.55);
+  }
+  .frame-caption {
+    text-align: center; color: var(--muted);
+    font-size: 13px; padding: 12px 24px 4px;
+    letter-spacing: 0.02em; max-width: 1100px; margin: 0 auto;
+    line-height: 1.5;
+  }
+  .frame-caption code {
+    background: rgba(255,255,255,0.06); padding: 1px 6px; border-radius: 4px;
+    font-family: var(--font-mono); font-size: 11.5px; color: var(--primary);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(1200px, 1fr));
+    gap: 48px;
+    padding: 12px 24px 64px;
+    justify-items: center;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     iPad Pro 13" landscape — 1366×1024
+     ───────────────────────────────────────────────────────────── */
+  .ipad {
+    position: relative;
+    width: 1366px; height: 1024px;
+    background: var(--bg);
+    border: 12px solid #0a0807;
+    border-radius: 32px;
+    overflow: hidden;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 0 0 1px rgba(255,255,255,0.06) inset,
+      0 50px 110px rgba(0,0,0,0.55),
+      0 0 0 1px rgba(253,238,208,0.04);
+  }
+  .cam {
+    position: absolute;
+    top: -2px; left: 50%; transform: translate(-50%, -50%);
+    width: 9px; height: 9px; background: #050308; border-radius: 50%;
+    z-index: 100;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+  }
+
+  /* Per-iPad background — refined dark surface, subtle warm tint at top.
+     No animated orbs. Sophisticated, not 2008. */
+  .ipad-bg {
+    position: absolute; inset: 0;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 900px 600px at 50% -8%, rgba(253,238,208,0.05), transparent 65%),
+      linear-gradient(180deg, #14111c 0%, #0d0b14 55%, #07060a 100%);
+  }
+  /* Fine grain texture — modern depth without glow */
+  .ipad-bg::after {
+    content: ""; position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    background-size: 240px 240px;
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+    pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Status bar (tall iPad, no notch)
+     ───────────────────────────────────────────────────────────── */
+  .statusbar {
+    position: relative; z-index: 5;
+    height: 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 28px;
+    color: rgba(255,255,255,0.96);
+    font-size: 13px; font-weight: 600;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .statusbar .sb-left { display: flex; align-items: center; gap: 6px; }
+  .statusbar .sb-right { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .statusbar .sb-glyph { opacity: 0.92; }
+  .statusbar .sb-bat {
+    display: inline-flex; align-items: center; gap: 3px;
+  }
+  .statusbar .sb-bat .bat-shell {
+    width: 24px; height: 11px; border: 1px solid rgba(255,255,255,0.6);
+    border-radius: 3px; padding: 1.5px; position: relative;
+  }
+  .statusbar .sb-bat .bat-shell::after {
+    content: ""; position: absolute; top: 3px; right: -3px;
+    width: 2px; height: 4px; background: rgba(255,255,255,0.6); border-radius: 0 1px 1px 0;
+  }
+  .statusbar .sb-bat .bat-fill {
+    height: 100%; width: 80%; background: rgba(255,255,255,0.95); border-radius: 1px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Liquid Glass tokens — VERBATIM from research brief
+     ───────────────────────────────────────────────────────────── */
+  .lg-regular {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.45),
+      inset 0 -1px 0 0 rgba(255, 255, 255, 0.08),
+      inset 0 0 20px 0 rgba(255, 255, 255, 0.06),
+      0 8px 32px rgba(0, 0, 0, 0.18);
+    position: relative;
+  }
+  .lg-clear {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(14px) saturate(200%) brightness(1.05);
+    -webkit-backdrop-filter: blur(14px) saturate(200%) brightness(1.05);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.55),
+      0 4px 16px rgba(0, 0, 0, 0.25);
+    position: relative;
+  }
+  .lg-prominent {
+    background: linear-gradient(180deg,
+      rgba(255,255,255,0.22) 0%,
+      rgba(255,255,255,0.10) 100%);
+    backdrop-filter: blur(24px) saturate(200%);
+    -webkit-backdrop-filter: blur(24px) saturate(200%);
+    border: 1px solid rgba(255,255,255,0.28);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.60),
+      inset 0 -6px 14px rgba(255,255,255,0.08),
+      0 10px 28px rgba(0,0,0,0.22);
+    position: relative;
+  }
+  /* Specular sheen border — gradient ring */
+  .lg-sheen::before {
+    content: "";
+    position: absolute; inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg,
+      rgba(255,255,255,0.6) 0%,
+      rgba(255,255,255,0.1) 35%,
+      rgba(255,255,255,0.05) 65%,
+      rgba(255,255,255,0.5) 100%);
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     NavigationSplitView body — sidebar + detail
+     ───────────────────────────────────────────────────────────── */
+  .splitview {
+    position: relative; z-index: 4;
+    width: 100%; height: calc(100% - 28px);
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 12px;
+    padding: 12px;
+  }
+  /* Floating sidebar (320pt min, 20px corner, inset 12pt) */
+  .sidebar {
+    border-radius: 20px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  /* gradient overlay top -> down (subtle) */
+  .sidebar::after {
+    content: ""; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(180deg, rgba(253,238,208,0.07), transparent 35%);
+    pointer-events: none;
+  }
+  .sidebar-head {
+    padding: 22px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    position: relative; z-index: 2;
+  }
+  .sidebar-head .sh-eyebrow {
+    font-size: 10.5px; font-weight: 700;
+    color: var(--muted-2);
+    letter-spacing: 0.18em; text-transform: uppercase;
+  }
+  .sidebar-head .sh-title {
+    font-family: var(--font-display);
+    font-size: 26px; font-weight: 700;
+    letter-spacing: -0.015em;
+    margin-top: 4px;
+  }
+  .sidebar-body {
+    flex: 1; overflow-y: auto;
+    padding: 8px 12px 14px;
+    position: relative; z-index: 2;
+  }
+  .sidebar-foot {
+    padding: 12px 16px 16px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    position: relative; z-index: 2;
+  }
+
+  /* Detail pane (form area) */
+  .detail {
+    position: relative;
+    border-radius: 20px;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .detail-bg {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(20,18,15,0.18), rgba(12,11,9,0.32));
+    pointer-events: none;
+  }
+
+  /* Floating top-trailing toolbar pill (search + settings) */
+  .toolbar {
+    position: absolute;
+    top: 18px; right: 22px; z-index: 6;
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px;
+    border-radius: 999px;
+  }
+  .toolbar .tb-pill {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 38px; height: 38px;
+    border-radius: 999px;
+    color: var(--on);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+    font-size: 16px;
+  }
+  .toolbar .tb-search {
+    width: auto;
+    padding: 0 14px 0 14px;
+    gap: 8px;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .toolbar .tb-search .kbd {
+    font-family: var(--font-mono); font-size: 10px;
+    padding: 2px 5px; border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.14);
+    color: var(--muted-2);
+  }
+
+  /* Floating brand bug (top-leading of detail) */
+  .brandbug {
+    position: absolute;
+    top: 18px; left: 22px; z-index: 6;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 6px;
+    border-radius: 999px;
+    color: var(--on);
+    font-size: 12.5px; font-weight: 600;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+  }
+  .brandbug .bb-mark {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: linear-gradient(140deg, var(--primary-bright), var(--primary) 60%);
+    color: var(--on-primary);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 11px;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.22), 0 4px 8px rgba(253,238,208,0.22);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Detail content — hero + form
+     ───────────────────────────────────────────────────────────── */
+  .detail-content {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 84px 32px 32px;
+    position: relative; z-index: 2;
+    overflow: hidden;
+  }
+  .detail-card {
+    width: 100%;
+    max-width: 640px;
+    border-radius: 28px;
+    padding: 38px 44px;
+    position: relative;
+    display: flex; flex-direction: column;
+    gap: 20px;
+  }
+  .detail-card .dc-eyebrow {
+    font-size: 11px; font-weight: 700;
+    color: var(--orange);
+    letter-spacing: 0.18em; text-transform: uppercase;
+    text-align: center;
+  }
+  .detail-card .dc-title {
+    font-family: var(--font-display);
+    font-size: 44px; font-weight: 700;
+    letter-spacing: -0.022em;
+    text-align: center;
+    line-height: 1.05;
+  }
+  .detail-card .dc-sub {
+    font-size: 14.5px; color: var(--muted);
+    text-align: center;
+    line-height: 1.55;
+    max-width: 480px;
+    margin: -8px auto 4px;
+  }
+  /* Wave divider under header */
+  .wave-divider {
+    width: 120px; height: 14px;
+    margin: -4px auto 6px;
+    opacity: 0.5;
+  }
+
+  /* Form field — NOT glass (per research brief #6) */
+  .field {
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .field-label {
+    font-size: 11px; font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+    padding-left: 2px;
+  }
+  .field-input {
+    display: flex; align-items: center; gap: 12px;
+    padding: 16px 18px;
+    background: rgba(120,120,128,0.16);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+    min-height: 56px;
+    position: relative;
+  }
+  .field-input.focused {
+    border-color: rgba(255,140,74,0.5);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 0 0 4px rgba(255,140,74,0.10);
+  }
+  .field-input .fi-glyph {
+    width: 20px; color: var(--muted);
+    font-size: 16px;
+    text-align: center;
+  }
+  .field-input .fi-text {
+    flex: 1;
+    font-size: 15px; color: var(--on);
+    font-weight: 500;
+  }
+  .field-input .fi-text.placeholder { color: var(--muted-2); font-weight: 400; }
+  .field-input .fi-suffix {
+    font-family: var(--font-mono); font-size: 13px; color: var(--muted);
+  }
+  .field-input .fi-eye {
+    width: 32px; height: 32px;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--muted); font-size: 15px;
+    border-radius: 8px;
+  }
+
+  /* Primary CTA — .lg-prominent + tinted orange */
+  .cta-prominent {
+    margin-top: 4px;
+    padding: 18px 22px;
+    border-radius: 14px;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.42), transparent 60%),
+      linear-gradient(180deg, #ff9c5e 0%, #ff7a35 100%);
+    border: 1px solid rgba(255,255,255,0.30);
+    color: #1a0a00;
+    font-size: 15.5px; font-weight: 800;
+    letter-spacing: -0.005em;
+    text-align: center;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      inset 0 -2px 8px rgba(120,40,0,0.18),
+      0 12px 28px rgba(255,140,74,0.22),
+      0 0 0 1px rgba(255,140,74,0.35);
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    min-height: 58px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cta-prominent::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.12), transparent 50%);
+    pointer-events: none;
+  }
+
+  .cta-ghost {
+    padding: 14px 20px;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: var(--muted);
+    font-size: 14px; font-weight: 600;
+    text-align: center;
+  }
+
+  /* Inline link row */
+  .link-row {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 4px;
+    font-size: 13px;
+  }
+  .link-text {
+    color: var(--teal);
+    font-weight: 600;
+  }
+  .link-text.muted { color: var(--muted-2); }
+
+  /* ─────────────────────────────────────────────────────────────
+     Sidebar elements
+     ───────────────────────────────────────────────────────────── */
+  /* Tenant history row */
+  .tenant-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 10px;
+    border-radius: 14px;
+    margin-bottom: 4px;
+    position: relative;
+  }
+  .tenant-row.active {
+    background: rgba(255,140,74,0.10);
+    box-shadow: inset 0 0 0 1px rgba(255,140,74,0.28);
+  }
+  .tenant-row .tr-cookie {
+    width: 38px; height: 38px;
+    border-radius: 12px;
+    background: linear-gradient(140deg, #ffb178, #ff7a35);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700; font-size: 18px;
+    color: #1a0a00;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      0 6px 14px rgba(255,140,74,0.30);
+    flex-shrink: 0;
+  }
+  .tenant-row .tr-cookie.teal {
+    background: linear-gradient(140deg, #6ed4e3, #4db8c9);
+    color: #002d35;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      0 6px 14px rgba(77,184,201,0.30);
+  }
+  .tenant-row .tr-cookie.magenta {
+    background: linear-gradient(140deg, #ff9bd0, #ff4da3);
+    color: #2a0014;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      0 6px 14px rgba(255,77,163,0.30);
+  }
+  .tenant-row .tr-body { flex: 1; min-width: 0; }
+  .tenant-row .tr-name {
+    font-size: 13.5px; font-weight: 700;
+    color: var(--on);
+    letter-spacing: -0.005em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tenant-row .tr-url {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tenant-row .tr-time {
+    font-size: 10.5px; color: var(--muted-2);
+    margin-top: 3px;
+  }
+  .tenant-row .tr-chev {
+    color: var(--muted-2); font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  /* "Add new shop" text button */
+  .text-btn {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 8px;
+    color: var(--teal);
+    font-size: 13px; font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .text-btn .tb-glyph {
+    font-size: 14px;
+  }
+
+  /* "Other ways" pill list */
+  .alt-list { display: flex; flex-direction: column; gap: 6px; }
+  .alt-pill {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+  }
+  .alt-pill .ap-glyph {
+    width: 32px; height: 32px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.08);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px;
+    color: var(--on);
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .alt-pill .ap-name {
+    flex: 1;
+    font-size: 13.5px; font-weight: 600;
+  }
+  .alt-pill .ap-chev {
+    color: var(--muted-2); font-size: 13px;
+  }
+
+  /* Toggle row (sidebar — 2FA Trust) */
+  .toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 14px;
+    border-radius: 14px;
+    margin-bottom: 6px;
+  }
+  .toggle-row .tr-label-stack { display: flex; flex-direction: column; gap: 2px; }
+  .toggle-row .tr-label {
+    font-size: 13.5px; font-weight: 600; color: var(--on);
+  }
+  .toggle-row .tr-sub {
+    font-size: 11px; color: var(--muted);
+  }
+  .toggle-pill {
+    width: 46px; height: 28px;
+    border-radius: 999px;
+    background: rgba(120,120,128,0.20);
+    position: relative;
+    border: 1px solid rgba(255,255,255,0.10);
+  }
+  .toggle-pill::after {
+    content: ""; position: absolute;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    background: #f0ece8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.32);
+  }
+  .toggle-pill.on {
+    background: linear-gradient(180deg, #45cc88, #2fb070);
+    border-color: rgba(255,255,255,0.22);
+  }
+  .toggle-pill.on::after { left: 21px; }
+
+  /* Wavy progress bar — for 2FA resend timer */
+  .wavy-progress {
+    height: 6px;
+    margin: 6px 14px 0;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.07);
+    overflow: hidden;
+    position: relative;
+  }
+  .wavy-progress::after {
+    content: ""; position: absolute; inset: 0;
+    width: 32%;
+    background: linear-gradient(90deg, var(--orange), var(--primary));
+    border-radius: 99px;
+  }
+  .wavy-progress-label {
+    margin: 8px 14px 0;
+    font-size: 11px; color: var(--muted);
+    display: flex; justify-content: space-between;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Step rail (Register multi-pane sidebar)
+     ───────────────────────────────────────────────────────────── */
+  .step-rail {
+    display: flex; flex-direction: column;
+    padding: 0 4px;
+  }
+  .step-row {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 12px;
+    border-radius: 14px;
+    position: relative;
+  }
+  .step-row.active {
+    background: rgba(253,238,208,0.10);
+    box-shadow: inset 0 0 0 1px rgba(253,238,208,0.30);
+  }
+  .step-row .sr-num {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700; font-size: 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: var(--muted);
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .step-row.done .sr-num {
+    background: linear-gradient(180deg, #45cc88, #2fb070);
+    color: #002817;
+    border-color: rgba(255,255,255,0.30);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.50), 0 4px 10px rgba(52,196,126,0.32);
+  }
+  .step-row.active .sr-num {
+    background: linear-gradient(180deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    border-color: rgba(255,255,255,0.40);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.65), 0 6px 14px rgba(253,238,208,0.30);
+  }
+  .step-row .sr-line {
+    position: absolute;
+    top: 44px; left: 27px;
+    width: 1px; height: calc(100% - 16px);
+    background: rgba(255,255,255,0.08);
+    z-index: 1;
+  }
+  .step-row.last .sr-line { display: none; }
+  .step-row.done .sr-line { background: rgba(52,196,126,0.30); }
+  .step-row .sr-body { flex: 1; padding-top: 1px; }
+  .step-row .sr-label {
+    font-size: 13.5px; font-weight: 700;
+    color: var(--on);
+    letter-spacing: -0.01em;
+  }
+  .step-row.active .sr-label { color: var(--primary); }
+  .step-row .sr-desc {
+    font-size: 11.5px; color: var(--muted);
+    margin-top: 3px;
+    line-height: 1.4;
+  }
+
+  /* Linear wavy progress at top of detail */
+  .top-wavy {
+    position: absolute;
+    top: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 5;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .top-wavy .tw-bar {
+    width: 220px; height: 6px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    position: relative;
+  }
+  .top-wavy .tw-bar::after {
+    content: ""; position: absolute; inset: 0;
+    width: 50%;
+    background: linear-gradient(90deg, var(--orange), var(--primary));
+    border-radius: 99px;
+  }
+  .top-wavy .tw-label {
+    font-size: 11.5px; font-weight: 600;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     OTP cells (2FA)
+     ───────────────────────────────────────────────────────────── */
+  .otp-row {
+    display: flex; gap: 14px;
+    justify-content: center;
+    margin: 8px 0;
+  }
+  .otp-cell {
+    width: 56px; height: 72px;
+    border-radius: 16px;
+    background: rgba(120,120,128,0.16);
+    border: 1px solid rgba(255,255,255,0.10);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 28px; font-weight: 500;
+    color: var(--on);
+    letter-spacing: -0.01em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+  }
+  .otp-cell.filled {
+    background: rgba(255,140,74,0.12);
+    border-color: rgba(255,140,74,0.35);
+    color: var(--orange);
+  }
+  .otp-cell.cursor {
+    border-color: rgba(255,140,74,0.65);
+    background: rgba(255,140,74,0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.10),
+      0 0 0 4px rgba(255,140,74,0.10);
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Active-tenant card (Credentials sidebar header)
+     ───────────────────────────────────────────────────────────── */
+  .active-tenant {
+    padding: 18px 16px;
+    border-radius: 18px;
+    background: rgba(255,140,74,0.08);
+    border: 1px solid rgba(255,140,74,0.22);
+    display: flex; flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+  }
+  .active-tenant .at-row { display: flex; align-items: center; gap: 12px; }
+  .active-tenant .at-cookie {
+    width: 48px; height: 48px;
+    border-radius: 14px;
+    background: linear-gradient(140deg, #ffb178, #ff7a35);
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 700; font-size: 22px;
+    color: #1a0a00;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.55),
+      0 8px 16px rgba(255,140,74,0.28);
+    flex-shrink: 0;
+  }
+  .active-tenant .at-name {
+    font-size: 15px; font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .active-tenant .at-url {
+    font-family: var(--font-mono);
+    font-size: 11px; color: var(--muted);
+    margin-top: 2px;
+  }
+  .sidebar-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 12px 4px 14px;
+  }
+  .sidebar-eyebrow {
+    font-size: 10.5px; font-weight: 700;
+    color: var(--muted-2);
+    letter-spacing: 0.16em; text-transform: uppercase;
+    padding: 4px 8px 8px;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     Password strength meter (Register)
+     ───────────────────────────────────────────────────────────── */
+  .strength-stack { display: flex; flex-direction: column; gap: 8px; }
+  .strength-bars { display: flex; gap: 6px; }
+  .strength-bars .sb {
+    flex: 1; height: 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.08);
+  }
+  .strength-bars .sb.on-1 { background: var(--error); }
+  .strength-bars .sb.on-2 { background: var(--warning); }
+  .strength-bars .sb.on-3 { background: var(--success); }
+  .strength-label {
+    font-size: 11px; color: var(--muted);
+    display: flex; gap: 6px; align-items: center;
+  }
+  .strength-label .sl-strong { color: var(--success); font-weight: 700; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Done — shortcuts grid
+     ───────────────────────────────────────────────────────────── */
+  .shortcuts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 280px);
+    gap: 24px;
+    margin: 24px auto 0;
+    width: max-content;
+  }
+  .shortcut-card {
+    width: 280px; height: 200px;
+    border-radius: 22px;
+    padding: 24px 22px;
+    display: flex; flex-direction: column;
+    gap: 14px;
+    position: relative;
+    overflow: hidden;
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .shortcut-card .sc-cookie {
+    width: 64px; height: 64px;
+    border-radius: 18px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      0 10px 20px rgba(0,0,0,0.22);
+  }
+  .shortcut-card .sc-cookie.orange {
+    background: linear-gradient(140deg, #ffb178, #ff7a35);
+    color: #1a0a00;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      0 10px 22px rgba(255,140,74,0.32);
+  }
+  .shortcut-card .sc-cookie.teal {
+    background: linear-gradient(140deg, #6ed4e3, #4db8c9);
+    color: #002d35;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      0 10px 22px rgba(77,184,201,0.32);
+  }
+  .shortcut-card .sc-cookie.magenta {
+    background: linear-gradient(140deg, #ff9bd0, #ff4da3);
+    color: #2a0014;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      0 10px 22px rgba(255,77,163,0.32);
+  }
+  .shortcut-card .sc-cookie.cream {
+    background: linear-gradient(140deg, var(--primary-bright), var(--primary));
+    color: var(--on-primary);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.65),
+      0 10px 22px rgba(253,238,208,0.32);
+  }
+  .shortcut-card .sc-title {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.012em;
+  }
+  .shortcut-card .sc-sub {
+    font-size: 12.5px; color: var(--muted);
+    line-height: 1.45;
+    margin-top: -8px;
+  }
+
+  /* Apple Pencil hover state — explicit override */
+  .shortcut-card.hovered {
+    transform: scale(1.02);
+    background: rgba(255,255,255,0.13) !important;
+    border-color: rgba(255,255,255,0.30) !important;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.65),
+      inset 0 -1px 0 rgba(255,255,255,0.10),
+      0 16px 40px rgba(0,0,0,0.32),
+      0 0 0 1px rgba(255,140,74,0.40),
+      0 0 24px rgba(255,140,74,0.18);
+  }
+  .shortcut-card.hovered::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: linear-gradient(140deg, rgba(255,255,255,0.18), transparent 50%);
+    pointer-events: none;
+  }
+  .pencil-tooltip {
+    position: absolute;
+    top: -32px; right: 16px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.78);
+    color: #fff;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.01em;
+    border: 1px solid rgba(255,255,255,0.14);
+  }
+
+  /* Done sidebar — success card */
+  .success-card {
+    padding: 20px;
+    border-radius: 18px;
+    background:
+      linear-gradient(180deg, rgba(52,196,126,0.16), rgba(52,196,126,0.04)),
+      rgba(255,255,255,0.04);
+    border: 1px solid rgba(52,196,126,0.32);
+    text-align: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10);
+  }
+  .success-card .sc-cookie-big {
+    width: 64px; height: 64px;
+    border-radius: 20px;
+    margin: 0 auto 14px;
+    background: linear-gradient(180deg, #4ad088, #34c47e);
+    color: #002817;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: 900;
+    box-shadow:
+      0 14px 30px rgba(52,196,126,0.42),
+      inset 0 1.5px 0 rgba(255,255,255,0.55);
+  }
+  .success-card .sc-title {
+    font-family: var(--font-display);
+    font-size: 22px; font-weight: 700;
+    letter-spacing: -0.015em;
+  }
+  .success-card .sc-sub {
+    font-size: 12.5px; color: var(--muted);
+    line-height: 1.45;
+    margin-top: 4px;
+  }
+
+  /* "Sign out" detail top-right text button */
+  .signout-btn {
+    position: absolute;
+    top: 28px; right: 110px; z-index: 7;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.10);
+    color: var(--muted);
+    font-size: 12.5px; font-weight: 600;
+  }
+
+  /* ─────────────────────────────────────────────────────────────
+     LIGHT-THEME OVERRIDES — applied on .ipad.light
+     ───────────────────────────────────────────────────────────── */
+  .ipad.light {
+    background: #fff6e5;
+    border-color: #d8c8a8;
+  }
+  .ipad.light .ipad-bg {
+    background:
+      radial-gradient(ellipse 900px 600px at 50% -8%, rgba(245,130,32,0.05), transparent 65%),
+      linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 65%, #F4F4F5 100%);
+  }
+  .ipad.light .ipad-bg::after {
+    mix-blend-mode: multiply;
+    opacity: 0.30;
+  }
+  .ipad.light .statusbar { color: rgba(20,12,4,0.92); }
+  .ipad.light .statusbar .sb-bat .bat-shell { border-color: rgba(20,12,4,0.55); }
+  .ipad.light .statusbar .sb-bat .bat-shell::after { background: rgba(20,12,4,0.55); }
+  .ipad.light .statusbar .sb-bat .bat-fill { background: rgba(20,12,4,0.85); }
+  .ipad.light .lg-regular {
+    background: rgba(255,255,255,0.45);
+    border-color: rgba(80,50,20,0.10);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,0.85),
+      inset 0 -1px 0 0 rgba(120,80,30,0.06),
+      inset 0 0 20px 0 rgba(255,255,255,0.30),
+      0 8px 32px rgba(80,50,20,0.10);
+  }
+  .ipad.light .lg-clear {
+    background: rgba(255,255,255,0.35);
+    border-color: rgba(80,50,20,0.12);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255,255,255,0.85),
+      0 4px 16px rgba(80,50,20,0.10);
+  }
+  .ipad.light .lg-prominent {
+    background: linear-gradient(180deg,
+      rgba(255,255,255,0.62) 0%,
+      rgba(255,255,255,0.42) 100%);
+    border-color: rgba(80,50,20,0.16);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.95),
+      inset 0 -6px 14px rgba(255,140,74,0.06),
+      0 10px 28px rgba(80,50,20,0.12);
+  }
+  .ipad.light .lg-sheen::before {
+    background: linear-gradient(135deg,
+      rgba(255,255,255,0.95) 0%,
+      rgba(255,255,255,0.30) 35%,
+      rgba(255,255,255,0.20) 65%,
+      rgba(255,255,255,0.85) 100%);
+  }
+  .ipad.light .sidebar::after {
+    background: linear-gradient(180deg, rgba(255,140,74,0.06), transparent 35%);
+  }
+  .ipad.light .sidebar-head {
+    border-bottom-color: rgba(80,50,20,0.10);
+  }
+  .ipad.light .sidebar-foot {
+    border-top-color: rgba(80,50,20,0.08);
+  }
+  .ipad.light .sidebar-head .sh-eyebrow { color: rgba(80,50,20,0.5); }
+  .ipad.light .sidebar-head .sh-title { color: #1a0e02; }
+  .ipad.light .sidebar-eyebrow { color: rgba(80,50,20,0.55); }
+  .ipad.light .sidebar-divider { background: rgba(80,50,20,0.10); }
+  .ipad.light .detail-bg {
+    background: linear-gradient(180deg, rgba(255,246,229,0.16), rgba(255,246,229,0.30));
+  }
+  .ipad.light .detail-card .dc-title { color: #1a0e02; }
+  .ipad.light .detail-card .dc-sub { color: rgba(80,50,20,0.62); }
+  .ipad.light .detail-card .dc-eyebrow { color: #d4651a; }
+  .ipad.light .field-label { color: rgba(80,50,20,0.62); }
+  .ipad.light .field-input {
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(80,50,20,0.10);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+  }
+  .ipad.light .field-input.focused {
+    border-color: rgba(255,122,53,0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 0 0 4px rgba(255,122,53,0.12);
+  }
+  .ipad.light .field-input .fi-text { color: #1a0e02; }
+  .ipad.light .field-input .fi-text.placeholder { color: rgba(80,50,20,0.40); }
+  .ipad.light .field-input .fi-glyph { color: rgba(80,50,20,0.55); }
+  .ipad.light .field-input .fi-suffix { color: rgba(80,50,20,0.55); }
+  .ipad.light .field-input .fi-eye { color: rgba(80,50,20,0.55); }
+  .ipad.light .cta-prominent {
+    color: #fff;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.42), transparent 60%),
+      linear-gradient(180deg, #ff9c5e 0%, #ee5a16 100%);
+    border-color: rgba(255,255,255,0.42);
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.55),
+      inset 0 -2px 8px rgba(120,40,0,0.18),
+      0 12px 28px rgba(255,140,74,0.30),
+      0 0 0 1px rgba(255,122,53,0.45);
+  }
+  .ipad.light .cta-ghost {
+    background: rgba(255,255,255,0.40);
+    border-color: rgba(80,50,20,0.10);
+    color: rgba(80,50,20,0.62);
+  }
+  .ipad.light .link-text { color: #1d8c9c; }
+  .ipad.light .link-text.muted { color: rgba(80,50,20,0.55); }
+  .ipad.light .toolbar .tb-pill {
+    color: rgba(20,12,4,0.85);
+    background: rgba(255,255,255,0.42);
+    border-color: rgba(80,50,20,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.65);
+  }
+  .ipad.light .toolbar .tb-search { color: rgba(80,50,20,0.62); }
+  .ipad.light .toolbar .tb-search .kbd {
+    border-color: rgba(80,50,20,0.20);
+    color: rgba(80,50,20,0.55);
+  }
+  .ipad.light .brandbug {
+    color: #1a0e02;
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(80,50,20,0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+  }
+  .ipad.light .tenant-row.active {
+    background: rgba(255,140,74,0.14);
+    box-shadow: inset 0 0 0 1px rgba(255,122,53,0.32);
+  }
+  .ipad.light .tenant-row .tr-name { color: #1a0e02; }
+  .ipad.light .tenant-row .tr-url { color: rgba(80,50,20,0.62); }
+  .ipad.light .tenant-row .tr-time { color: rgba(80,50,20,0.45); }
+  .ipad.light .tenant-row .tr-chev { color: rgba(80,50,20,0.40); }
+  .ipad.light .text-btn { color: #1d8c9c; }
+  .ipad.light .alt-pill .ap-name { color: #1a0e02; }
+  .ipad.light .alt-pill .ap-glyph {
+    color: #1a0e02;
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(80,50,20,0.12);
+  }
+  .ipad.light .alt-pill .ap-chev { color: rgba(80,50,20,0.40); }
+  .ipad.light .toggle-row .tr-label { color: #1a0e02; }
+  .ipad.light .toggle-row .tr-sub { color: rgba(80,50,20,0.55); }
+  .ipad.light .toggle-pill {
+    background: rgba(80,50,20,0.18);
+    border-color: rgba(80,50,20,0.16);
+  }
+  .ipad.light .toggle-pill::after { background: #fff; box-shadow: 0 1px 3px rgba(80,50,20,0.30); }
+  .ipad.light .wavy-progress { background: rgba(80,50,20,0.10); }
+  .ipad.light .wavy-progress-label { color: rgba(80,50,20,0.55); }
+  .ipad.light .step-row.active {
+    background: rgba(255,140,74,0.14);
+    box-shadow: inset 0 0 0 1px rgba(255,122,53,0.32);
+  }
+  .ipad.light .step-row .sr-num {
+    background: rgba(255,255,255,0.45);
+    border-color: rgba(80,50,20,0.16);
+    color: rgba(80,50,20,0.55);
+  }
+  .ipad.light .step-row.active .sr-num {
+    background: linear-gradient(180deg, #ff9c5e, #ff7a35);
+    color: #fff;
+    border-color: rgba(255,255,255,0.55);
+  }
+  .ipad.light .step-row.active .sr-label { color: #d4651a; }
+  .ipad.light .step-row .sr-label { color: #1a0e02; }
+  .ipad.light .step-row .sr-desc { color: rgba(80,50,20,0.55); }
+  .ipad.light .step-row .sr-line { background: rgba(80,50,20,0.15); }
+  .ipad.light .step-row.done .sr-line { background: rgba(52,196,126,0.40); }
+  .ipad.light .top-wavy .tw-bar { background: rgba(80,50,20,0.12); }
+  .ipad.light .top-wavy .tw-label { color: rgba(80,50,20,0.62); }
+  .ipad.light .otp-cell {
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(80,50,20,0.12);
+    color: #1a0e02;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.85);
+  }
+  .ipad.light .otp-cell.filled {
+    background: rgba(255,140,74,0.18);
+    border-color: rgba(255,122,53,0.42);
+    color: #d4651a;
+  }
+  .ipad.light .otp-cell.cursor {
+    border-color: rgba(255,122,53,0.62);
+    background: rgba(255,140,74,0.10);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.85),
+      0 0 0 4px rgba(255,122,53,0.16);
+  }
+  .ipad.light .active-tenant {
+    background: rgba(255,140,74,0.14);
+    border-color: rgba(255,122,53,0.30);
+  }
+  .ipad.light .active-tenant .at-name { color: #1a0e02; }
+  .ipad.light .active-tenant .at-url { color: rgba(80,50,20,0.55); }
+  .ipad.light .strength-bars .sb { background: rgba(80,50,20,0.10); }
+  .ipad.light .strength-label { color: rgba(80,50,20,0.62); }
+  .ipad.light .success-card .sc-title { color: #1a0e02; }
+  .ipad.light .success-card .sc-sub { color: rgba(80,50,20,0.55); }
+  .ipad.light .shortcut-card .sc-title { color: #1a0e02; }
+  .ipad.light .shortcut-card .sc-sub { color: rgba(80,50,20,0.55); }
+  .ipad.light .shortcut-card.hovered {
+    background: rgba(255,255,255,0.62) !important;
+    border-color: rgba(80,50,20,0.18) !important;
+    box-shadow:
+      inset 0 1.5px 0 rgba(255,255,255,0.90),
+      inset 0 -1px 0 rgba(80,50,20,0.06),
+      0 16px 40px rgba(80,50,20,0.18),
+      0 0 0 1px rgba(255,122,53,0.45),
+      0 0 24px rgba(255,140,74,0.20);
+  }
+  .ipad.light .signout-btn {
+    background: rgba(255,255,255,0.42);
+    border-color: rgba(80,50,20,0.12);
+    color: rgba(80,50,20,0.62);
+  }
+
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SVG refraction filter (hidden) — light-bending displacement map
+     ═══════════════════════════════════════════════════════════════════ -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <filter id="glass-refract">
+      <feTurbulence baseFrequency="0.05" numOctaves="2" seed="3" stitchTiles="stitch"/>
+      <feDisplacementMap in="SourceGraphic" scale="18"/>
+    </filter>
+    <!-- Wave divider path -->
+    <symbol id="wave" viewBox="0 0 120 14">
+      <path d="M0 7 Q 10 1, 20 7 T 40 7 T 60 7 T 80 7 T 100 7 T 120 7"
+            fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<h1>Bizarre CRM — iPad login flow (iOS 26 Liquid Glass · NavigationSplitView)</h1>
+<p class="intro">
+  iPad login flow rendered as a real <code>NavigationSplitView</code> — never an
+  upscaled iPhone layout. Floating glass sidebar (320pt, inset 12pt, 20px
+  corner) carries supporting state per step; the detail pane breathes around a
+  centered form (max-width 640px). Top-trailing pill toolbar holds search +
+  settings per iOS 26 conventions. Neutral dark surface with fine grain feeds
+  the <code>backdrop-filter</code> + SVG displacement refraction — modern depth,
+  no garish glow. Concentric corners
+  flow device 32 → sheet 28 → inner card 22 → button 14. Every frame ships in
+  both Dark and Light themes.
+</p>
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     DARK THEME
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-label">Dark · 5 frames</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 1 — Server pick (DARK)
+     Sidebar: tenant history. Detail: hero "Pick your shop." + slug field.
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">1 · Server pick · sidebar = tenant history, detail = slug entry · <code>NavigationSplitView</code> with floating glass sidebar 320pt</p>
+<div class="grid">
+  <div class="ipad">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:41</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <!-- Sidebar — tenant history -->
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Recent shops</div>
+          <div class="sh-title">Switch shop</div>
+        </div>
+        <div class="sidebar-body">
+          <!-- Tenant 1 — most recent -->
+          <div class="tenant-row active">
+            <div class="tr-cookie">M</div>
+            <div class="tr-body">
+              <div class="tr-name">Main Street Repair</div>
+              <div class="tr-url">mainstreet.bizarrecrm.com</div>
+              <div class="tr-time">10 minutes ago</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+          <!-- Tenant 2 -->
+          <div class="tenant-row">
+            <div class="tr-cookie teal">D</div>
+            <div class="tr-body">
+              <div class="tr-name">Downtown Motors</div>
+              <div class="tr-url">downtown.bizarrecrm.com</div>
+              <div class="tr-time">Yesterday · 14:22</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+          <!-- Tenant 3 -->
+          <div class="tenant-row">
+            <div class="tr-cookie magenta">W</div>
+            <div class="tr-body">
+              <div class="tr-name">West Side Auto</div>
+              <div class="tr-url">192.168.0.240 · self-hosted</div>
+              <div class="tr-time">7 days ago</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div class="text-btn">
+            <span class="tb-glyph">+</span>
+            <span>Add new shop</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Detail — Pick your shop -->
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search shops</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 1 of 4 · Server</div>
+            <div class="dc-title">Pick your shop.</div>
+            <svg class="wave-divider" style="color: var(--orange)"><use href="#wave"/></svg>
+            <div class="dc-sub">Enter your shop slug to continue, or tap a recent shop in the sidebar.</div>
+            <div class="field">
+              <div class="field-label">Shop name</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎏</span>
+                <span class="fi-text">paradise-repair</span>
+                <span class="fi-suffix">.bizarrecrm.com</span>
+              </div>
+            </div>
+            <div class="cta-prominent">Continue <span style="font-size:18px">→</span></div>
+            <div class="link-row">
+              <span class="link-text">Self-hosted?</span>
+              <span class="link-text">Create new shop</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 2 — Credentials (DARK)
+     Sidebar: active tenant card + alt sign-in.
+     Detail: "Sign in to Paradise Repair." username / password.
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">2 · Credentials · sidebar = active tenant + alt sign-in pills, detail = username + password + Sign in</p>
+<div class="grid">
+  <div class="ipad">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:42</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Signed in to</div>
+          <div class="sh-title">Paradise Repair</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="active-tenant">
+            <div class="at-row">
+              <div class="at-cookie">P</div>
+              <div>
+                <div class="at-name">Paradise Repair</div>
+                <div class="at-url">paradise.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="text-btn" style="padding:6px 0; color:var(--teal)">Switch shop</div>
+          </div>
+
+          <div class="sidebar-eyebrow">Other ways to sign in</div>
+
+          <div class="alt-list">
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀉆</div>
+              <div class="ap-name">Passkey</div>
+              <div class="ap-chev">›</div>
+            </div>
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀎽</div>
+              <div class="ap-name">Face ID</div>
+              <div class="ap-chev">›</div>
+            </div>
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀍖</div>
+              <div class="ap-name">Email link</div>
+              <div class="ap-chev">›</div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:var(--muted-2); line-height:1.5">
+            Locked out? <span class="link-text" style="font-size:11.5px">Contact your admin</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 2 of 4 · Credentials</div>
+            <div class="dc-title">Sign in to Paradise Repair.</div>
+            <svg class="wave-divider" style="color: var(--orange)"><use href="#wave"/></svg>
+
+            <div class="field">
+              <div class="field-label">Username or email</div>
+              <div class="field-input">
+                <span class="fi-glyph">􀉭</span>
+                <span class="fi-text">samira@paradiserepair.com</span>
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">Password</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎠</span>
+                <span class="fi-text" style="font-family:var(--font-mono); letter-spacing:4px">••••••••••</span>
+                <span class="fi-eye">􀋭</span>
+              </div>
+            </div>
+            <div class="cta-prominent">Sign in <span style="font-size:18px">→</span></div>
+            <div class="link-row">
+              <span class="link-text">Forgot password?</span>
+              <span class="link-text muted">Change server</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 3 — 2FA verify (DARK)
+     Sidebar: trust toggle + backup code link + help + resend timer.
+     Detail: "Enter your 6-digit code." + 6-cell OTP + Verify.
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">3 · Two-factor verify · sidebar = trust toggle / backup code / resend timer, detail = 6-cell OTP grid</p>
+<div class="grid">
+  <div class="ipad">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:43</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Two-factor</div>
+          <div class="sh-title">Verify it's you</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="toggle-row lg-clear">
+            <div class="tr-label-stack">
+              <div class="tr-label">Trust this device</div>
+              <div class="tr-sub">Skip 2FA for 30 days</div>
+            </div>
+            <div class="toggle-pill on"></div>
+          </div>
+
+          <div class="text-btn">
+            <span class="tb-glyph">􀎽</span>
+            <span>Use a backup code instead</span>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Need help?</div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀎮</span>
+            <span>Lost your device?</span>
+          </div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀉪</span>
+            <span>Authenticator setup guide</span>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Code expires</div>
+          <div class="wavy-progress"></div>
+          <div class="wavy-progress-label">
+            <span>Resend in</span>
+            <span style="font-family:var(--font-mono); color:var(--orange); font-weight:600">0:18</span>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:var(--muted-2); line-height:1.5">
+            Codes refresh every 30 seconds in your authenticator app.
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 3 of 4 · Two-factor</div>
+            <div class="dc-title">Enter your 6-digit code.</div>
+            <svg class="wave-divider" style="color: var(--orange)"><use href="#wave"/></svg>
+            <div class="dc-sub">Open Google Authenticator, 1Password, or Authy and type the current code for Paradise Repair.</div>
+
+            <div class="otp-row">
+              <div class="otp-cell filled">4</div>
+              <div class="otp-cell filled">8</div>
+              <div class="otp-cell filled">2</div>
+              <div class="otp-cell filled">1</div>
+              <div class="otp-cell cursor">|</div>
+              <div class="otp-cell"></div>
+            </div>
+
+            <div style="text-align:center; font-size:12px; color:var(--muted); margin-top:-4px">
+              Code refreshes in <span style="font-family:var(--font-mono); color:var(--orange)">12s</span>
+            </div>
+
+            <div class="cta-prominent">Verify <span style="font-size:18px">→</span></div>
+            <div class="link-row" style="justify-content:center; gap:16px">
+              <span class="link-text muted">Back</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 4 — Register · multi-pane (DARK)
+     Sidebar: 4-step rail (Company done, Owner active, Server, Confirm).
+     Top: LinearWavyProgress 2/4. Detail: Owner sub-step form.
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">4 · Register · multi-pane · sidebar = 4-step vertical rail with active highlight, top = LinearWavyProgress 2/4, detail = Owner sub-step</p>
+<div class="grid">
+  <div class="ipad">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:44</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">New shop · 2 of 4</div>
+          <div class="sh-title">Tell us about you</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="step-rail">
+            <div class="step-row done">
+              <div class="sr-num">✓</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Company</div>
+                <div class="sr-desc">Paradise Repair · paradise.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="step-row active">
+              <div class="sr-num">2</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Owner</div>
+                <div class="sr-desc">Your name, email, and a strong password</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="sr-num">3</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Server URL</div>
+                <div class="sr-desc">Cloud or self-host on your own box</div>
+              </div>
+            </div>
+            <div class="step-row last">
+              <div class="sr-num">4</div>
+              <div class="sr-body">
+                <div class="sr-label">Confirm</div>
+                <div class="sr-desc">Review &amp; create your shop</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:var(--muted-2); line-height:1.5">
+            Already have a shop?
+            <span class="link-text" style="font-size:11.5px">Sign in instead</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="top-wavy">
+          <span class="tw-label">Setup · 2 / 4</span>
+          <div class="tw-bar"></div>
+          <span class="tw-label" style="color:var(--orange)">Owner</span>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen" style="max-width:680px">
+            <div class="dc-eyebrow">Create a new shop · Step 2</div>
+            <div class="dc-title">Owner details.</div>
+            <svg class="wave-divider" style="color: var(--orange)"><use href="#wave"/></svg>
+
+            <!-- 2-col grid for first/last -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px">
+              <div class="field">
+                <div class="field-label">First name</div>
+                <div class="field-input">
+                  <span class="fi-glyph">􀉭</span>
+                  <span class="fi-text">Samira</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="field-label">Last name</div>
+                <div class="field-input">
+                  <span class="fi-glyph">􀉮</span>
+                  <span class="fi-text">Okonkwo</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-label">Admin email</div>
+              <div class="field-input">
+                <span class="fi-glyph">􀍖</span>
+                <span class="fi-text">samira@paradiserepair.com</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-label">Password</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎠</span>
+                <span class="fi-text" style="font-family:var(--font-mono); letter-spacing:4px">•••••••••••</span>
+                <span class="fi-eye">􀋭</span>
+              </div>
+              <div class="strength-stack" style="margin-top:6px">
+                <div class="strength-bars">
+                  <div class="sb on-3"></div>
+                  <div class="sb on-3"></div>
+                  <div class="sb on-3"></div>
+                  <div class="sb"></div>
+                </div>
+                <div class="strength-label">
+                  Password strength:
+                  <span class="sl-strong">Strong</span>
+                  · 11 characters · uppercase · digits · symbol
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-top:4px">
+              <div class="cta-ghost" style="flex:1">← Back</div>
+              <div class="cta-prominent" style="flex:2; margin-top:0">Next · Server URL <span style="font-size:18px">→</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 5 — Done / Next steps (DARK)
+     Sidebar: success card.
+     Detail: 4 shortcut cards. ONE has Apple Pencil hover state.
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">5 · You're in · sidebar = success card, detail = 4 shortcut cards · one tile shows <code>scale(1.02)</code> Apple Pencil hover state</p>
+<div class="grid">
+  <div class="ipad">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:45</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Welcome back</div>
+          <div class="sh-title">Samira</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="success-card">
+            <div class="sc-cookie-big">✓</div>
+            <div class="sc-title">You're in.</div>
+            <div class="sc-sub">Signed in to Paradise Repair · paradise.bizarrecrm.com</div>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Active tenant</div>
+          <div class="tenant-row active" style="margin-top:6px">
+            <div class="tr-cookie">P</div>
+            <div class="tr-body">
+              <div class="tr-name">Paradise Repair</div>
+              <div class="tr-url">paradise.bizarrecrm.com</div>
+              <div class="tr-time">Just now</div>
+            </div>
+          </div>
+
+          <div class="sidebar-eyebrow" style="margin-top:8px">Quick</div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀉪</span>
+            <span>What's new in Bizarre CRM</span>
+          </div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀊫</span>
+            <span>Set up your team</span>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:var(--muted-2); line-height:1.5">
+            v2.4.0 · Tap a shortcut to begin.
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Jump to anything</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="signout-btn">Sign out</div>
+
+        <div class="detail-content" style="padding-top:96px; align-items:flex-start">
+          <div style="width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center">
+            <div class="dc-eyebrow" style="color:var(--orange)">Setup complete</div>
+            <div class="dc-title" style="font-family:var(--font-display); font-size:44px; font-weight:700; letter-spacing:-0.022em; text-align:center; line-height:1.05">You're in.</div>
+            <svg class="wave-divider" style="color: var(--orange); margin:8px auto 4px"><use href="#wave"/></svg>
+            <div class="dc-sub" style="margin-bottom:8px">Pick a starting place — you can always switch from the sidebar.</div>
+
+            <div class="shortcuts-grid">
+              <!-- Card 1 — POS -->
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie orange">􀍰</div>
+                <div class="sc-title">Open POS</div>
+                <div class="sc-sub">Ring up sales · scan barcodes · take payment</div>
+              </div>
+              <!-- Card 2 — Tickets (HOVERED) -->
+              <div class="shortcut-card lg-regular lg-sheen hovered">
+                <div class="pencil-tooltip">􀟜  Apple Pencil hover state</div>
+                <div class="sc-cookie teal">􀋲</div>
+                <div class="sc-title">Tickets</div>
+                <div class="sc-sub">Customer drop-offs &amp; repair tracking</div>
+              </div>
+              <!-- Card 3 — Inventory -->
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie magenta">􀐚</div>
+                <div class="sc-title">Inventory</div>
+                <div class="sc-sub">Parts &amp; stock · low-quantity alerts</div>
+              </div>
+              <!-- Card 4 — Reports -->
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie cream">􀋯</div>
+                <div class="sc-title">Reports</div>
+                <div class="sc-sub">Sales · technician productivity · trends</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     LIGHT THEME — same five frames on Zinc neutral whites
+     ═══════════════════════════════════════════════════════════════════ -->
+<div class="section-label light-label" style="color: rgba(255,255,255,0.55); margin-top:24px">Light · 5 frames · Zinc neutral <code style="color:var(--primary); background:rgba(255,255,255,0.08); padding:1px 6px; border-radius:4px; font-family:var(--font-mono); font-size:12px">#FAFAFA</code></div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 1 — Server pick (LIGHT)
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">1 · Server pick · sidebar = tenant history, detail = slug entry · light cream theme</p>
+<div class="grid">
+  <div class="ipad light">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:41</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Recent shops</div>
+          <div class="sh-title">Switch shop</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="tenant-row active">
+            <div class="tr-cookie">M</div>
+            <div class="tr-body">
+              <div class="tr-name">Main Street Repair</div>
+              <div class="tr-url">mainstreet.bizarrecrm.com</div>
+              <div class="tr-time">10 minutes ago</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+          <div class="tenant-row">
+            <div class="tr-cookie teal">D</div>
+            <div class="tr-body">
+              <div class="tr-name">Downtown Motors</div>
+              <div class="tr-url">downtown.bizarrecrm.com</div>
+              <div class="tr-time">Yesterday · 14:22</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+          <div class="tenant-row">
+            <div class="tr-cookie magenta">W</div>
+            <div class="tr-body">
+              <div class="tr-name">West Side Auto</div>
+              <div class="tr-url">192.168.0.240 · self-hosted</div>
+              <div class="tr-time">7 days ago</div>
+            </div>
+            <div class="tr-chev">›</div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div class="text-btn">
+            <span class="tb-glyph">+</span>
+            <span>Add new shop</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search shops</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 1 of 4 · Server</div>
+            <div class="dc-title">Pick your shop.</div>
+            <svg class="wave-divider" style="color: #ff7a35"><use href="#wave"/></svg>
+            <div class="dc-sub">Enter your shop slug to continue, or tap a recent shop in the sidebar.</div>
+            <div class="field">
+              <div class="field-label">Shop name</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎏</span>
+                <span class="fi-text">paradise-repair</span>
+                <span class="fi-suffix">.bizarrecrm.com</span>
+              </div>
+            </div>
+            <div class="cta-prominent">Continue <span style="font-size:18px">→</span></div>
+            <div class="link-row">
+              <span class="link-text">Self-hosted?</span>
+              <span class="link-text">Create new shop</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 2 — Credentials (LIGHT)
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">2 · Credentials · sidebar = active tenant + alt sign-in pills, detail = username + password · light theme</p>
+<div class="grid">
+  <div class="ipad light">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:42</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Signed in to</div>
+          <div class="sh-title">Paradise Repair</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="active-tenant">
+            <div class="at-row">
+              <div class="at-cookie">P</div>
+              <div>
+                <div class="at-name">Paradise Repair</div>
+                <div class="at-url">paradise.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="text-btn" style="padding:6px 0">Switch shop</div>
+          </div>
+
+          <div class="sidebar-eyebrow">Other ways to sign in</div>
+
+          <div class="alt-list">
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀉆</div>
+              <div class="ap-name">Passkey</div>
+              <div class="ap-chev">›</div>
+            </div>
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀎽</div>
+              <div class="ap-name">Face ID</div>
+              <div class="ap-chev">›</div>
+            </div>
+            <div class="alt-pill lg-clear">
+              <div class="ap-glyph">􀍖</div>
+              <div class="ap-name">Email link</div>
+              <div class="ap-chev">›</div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:rgba(80,50,20,0.55); line-height:1.5">
+            Locked out? <span class="link-text" style="font-size:11.5px">Contact your admin</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 2 of 4 · Credentials</div>
+            <div class="dc-title">Sign in to Paradise Repair.</div>
+            <svg class="wave-divider" style="color: #ff7a35"><use href="#wave"/></svg>
+
+            <div class="field">
+              <div class="field-label">Username or email</div>
+              <div class="field-input">
+                <span class="fi-glyph">􀉭</span>
+                <span class="fi-text">samira@paradiserepair.com</span>
+              </div>
+            </div>
+            <div class="field">
+              <div class="field-label">Password</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎠</span>
+                <span class="fi-text" style="font-family:var(--font-mono); letter-spacing:4px">••••••••••</span>
+                <span class="fi-eye">􀋭</span>
+              </div>
+            </div>
+            <div class="cta-prominent">Sign in <span style="font-size:18px">→</span></div>
+            <div class="link-row">
+              <span class="link-text">Forgot password?</span>
+              <span class="link-text muted">Change server</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 3 — 2FA verify (LIGHT)
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">3 · Two-factor verify · sidebar = trust toggle / backup code / resend timer, detail = 6-cell OTP grid · light theme</p>
+<div class="grid">
+  <div class="ipad light">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:43</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Two-factor</div>
+          <div class="sh-title">Verify it's you</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="toggle-row lg-clear">
+            <div class="tr-label-stack">
+              <div class="tr-label">Trust this device</div>
+              <div class="tr-sub">Skip 2FA for 30 days</div>
+            </div>
+            <div class="toggle-pill on"></div>
+          </div>
+
+          <div class="text-btn">
+            <span class="tb-glyph">􀎽</span>
+            <span>Use a backup code instead</span>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Need help?</div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀎮</span>
+            <span>Lost your device?</span>
+          </div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀉪</span>
+            <span>Authenticator setup guide</span>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Code expires</div>
+          <div class="wavy-progress"></div>
+          <div class="wavy-progress-label">
+            <span>Resend in</span>
+            <span style="font-family:var(--font-mono); color:#d4651a; font-weight:600">0:18</span>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:rgba(80,50,20,0.55); line-height:1.5">
+            Codes refresh every 30 seconds in your authenticator app.
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen">
+            <div class="dc-eyebrow">Step 3 of 4 · Two-factor</div>
+            <div class="dc-title">Enter your 6-digit code.</div>
+            <svg class="wave-divider" style="color: #ff7a35"><use href="#wave"/></svg>
+            <div class="dc-sub">Open Google Authenticator, 1Password, or Authy and type the current code for Paradise Repair.</div>
+
+            <div class="otp-row">
+              <div class="otp-cell filled">4</div>
+              <div class="otp-cell filled">8</div>
+              <div class="otp-cell filled">2</div>
+              <div class="otp-cell filled">1</div>
+              <div class="otp-cell cursor">|</div>
+              <div class="otp-cell"></div>
+            </div>
+
+            <div style="text-align:center; font-size:12px; color:rgba(80,50,20,0.55); margin-top:-4px">
+              Code refreshes in <span style="font-family:var(--font-mono); color:#d4651a">12s</span>
+            </div>
+
+            <div class="cta-prominent">Verify <span style="font-size:18px">→</span></div>
+            <div class="link-row" style="justify-content:center; gap:16px">
+              <span class="link-text muted">Back</span>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 4 — Register · multi-pane (LIGHT)
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">4 · Register · multi-pane · sidebar = 4-step rail, top = LinearWavyProgress 2/4, detail = Owner sub-step · light theme</p>
+<div class="grid">
+  <div class="ipad light">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:44</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">New shop · 2 of 4</div>
+          <div class="sh-title">Tell us about you</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="step-rail">
+            <div class="step-row done">
+              <div class="sr-num">✓</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Company</div>
+                <div class="sr-desc">Paradise Repair · paradise.bizarrecrm.com</div>
+              </div>
+            </div>
+            <div class="step-row active">
+              <div class="sr-num">2</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Owner</div>
+                <div class="sr-desc">Your name, email, and a strong password</div>
+              </div>
+            </div>
+            <div class="step-row">
+              <div class="sr-num">3</div>
+              <div class="sr-line"></div>
+              <div class="sr-body">
+                <div class="sr-label">Server URL</div>
+                <div class="sr-desc">Cloud or self-host on your own box</div>
+              </div>
+            </div>
+            <div class="step-row last">
+              <div class="sr-num">4</div>
+              <div class="sr-body">
+                <div class="sr-label">Confirm</div>
+                <div class="sr-desc">Review &amp; create your shop</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:rgba(80,50,20,0.55); line-height:1.5">
+            Already have a shop?
+            <span class="link-text" style="font-size:11.5px">Sign in instead</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Search</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="top-wavy">
+          <span class="tw-label">Setup · 2 / 4</span>
+          <div class="tw-bar"></div>
+          <span class="tw-label" style="color:#d4651a">Owner</span>
+        </div>
+        <div class="detail-content">
+          <div class="detail-card lg-regular lg-sheen" style="max-width:680px">
+            <div class="dc-eyebrow">Create a new shop · Step 2</div>
+            <div class="dc-title">Owner details.</div>
+            <svg class="wave-divider" style="color: #ff7a35"><use href="#wave"/></svg>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px">
+              <div class="field">
+                <div class="field-label">First name</div>
+                <div class="field-input">
+                  <span class="fi-glyph">􀉭</span>
+                  <span class="fi-text">Samira</span>
+                </div>
+              </div>
+              <div class="field">
+                <div class="field-label">Last name</div>
+                <div class="field-input">
+                  <span class="fi-glyph">􀉮</span>
+                  <span class="fi-text">Okonkwo</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-label">Admin email</div>
+              <div class="field-input">
+                <span class="fi-glyph">􀍖</span>
+                <span class="fi-text">samira@paradiserepair.com</span>
+              </div>
+            </div>
+
+            <div class="field">
+              <div class="field-label">Password</div>
+              <div class="field-input focused">
+                <span class="fi-glyph">􀎠</span>
+                <span class="fi-text" style="font-family:var(--font-mono); letter-spacing:4px">•••••••••••</span>
+                <span class="fi-eye">􀋭</span>
+              </div>
+              <div class="strength-stack" style="margin-top:6px">
+                <div class="strength-bars">
+                  <div class="sb on-3"></div>
+                  <div class="sb on-3"></div>
+                  <div class="sb on-3"></div>
+                  <div class="sb"></div>
+                </div>
+                <div class="strength-label">
+                  Password strength:
+                  <span class="sl-strong">Strong</span>
+                  · 11 characters · uppercase · digits · symbol
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:12px; margin-top:4px">
+              <div class="cta-ghost" style="flex:1">← Back</div>
+              <div class="cta-prominent" style="flex:2; margin-top:0">Next · Server URL <span style="font-size:18px">→</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────────────────────────────────────────────────
+     FRAME 5 — Done / Next steps (LIGHT)
+     ─────────────────────────────────────────────────────────────────── -->
+<p class="frame-caption">5 · You're in · sidebar = success card, detail = 4 shortcut cards · one tile shows Apple Pencil hover state · light theme</p>
+<div class="grid">
+  <div class="ipad light">
+    <div class="cam"></div>
+    <div class="ipad-bg"></div>
+    <div class="statusbar">
+      <div class="sb-left"><span>9:45</span></div>
+      <div class="sb-right">
+        <span class="sb-glyph">●●●</span>
+        <span class="sb-glyph">􀙇</span>
+        <span class="sb-bat"><span class="bat-shell"><span class="bat-fill"></span></span></span>
+      </div>
+    </div>
+    <div class="splitview">
+      <aside class="sidebar lg-regular lg-sheen">
+        <div class="sidebar-head">
+          <div class="sh-eyebrow">Welcome back</div>
+          <div class="sh-title">Samira</div>
+        </div>
+        <div class="sidebar-body">
+          <div class="success-card">
+            <div class="sc-cookie-big">✓</div>
+            <div class="sc-title">You're in.</div>
+            <div class="sc-sub">Signed in to Paradise Repair · paradise.bizarrecrm.com</div>
+          </div>
+
+          <div class="sidebar-divider"></div>
+
+          <div class="sidebar-eyebrow">Active tenant</div>
+          <div class="tenant-row active" style="margin-top:6px">
+            <div class="tr-cookie">P</div>
+            <div class="tr-body">
+              <div class="tr-name">Paradise Repair</div>
+              <div class="tr-url">paradise.bizarrecrm.com</div>
+              <div class="tr-time">Just now</div>
+            </div>
+          </div>
+
+          <div class="sidebar-eyebrow" style="margin-top:8px">Quick</div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀉪</span>
+            <span>What's new in Bizarre CRM</span>
+          </div>
+          <div class="text-btn">
+            <span class="tb-glyph">􀊫</span>
+            <span>Set up your team</span>
+          </div>
+        </div>
+        <div class="sidebar-foot">
+          <div style="font-size:11px; color:rgba(80,50,20,0.55); line-height:1.5">
+            v2.4.0 · Tap a shortcut to begin.
+          </div>
+        </div>
+      </aside>
+
+      <main class="detail">
+        <div class="detail-bg"></div>
+        <div class="brandbug"><div class="bb-mark">B</div><span>Bizarre CRM</span></div>
+        <div class="toolbar">
+          <div class="tb-pill tb-search lg-clear">
+            <span>􀊫</span>
+            <span>Jump to anything</span>
+            <span class="kbd">⌘K</span>
+          </div>
+          <div class="tb-pill lg-clear">􀍟</div>
+        </div>
+        <div class="signout-btn">Sign out</div>
+
+        <div class="detail-content" style="padding-top:96px; align-items:flex-start">
+          <div style="width:100%; max-width:680px; display:flex; flex-direction:column; align-items:center">
+            <div class="dc-eyebrow" style="color:#d4651a">Setup complete</div>
+            <div class="dc-title" style="font-family:var(--font-display); font-size:44px; font-weight:700; letter-spacing:-0.022em; text-align:center; line-height:1.05; color:#1a0e02">You're in.</div>
+            <svg class="wave-divider" style="color: #ff7a35; margin:8px auto 4px"><use href="#wave"/></svg>
+            <div class="dc-sub" style="margin-bottom:8px">Pick a starting place — you can always switch from the sidebar.</div>
+
+            <div class="shortcuts-grid">
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie orange">􀍰</div>
+                <div class="sc-title">Open POS</div>
+                <div class="sc-sub">Ring up sales · scan barcodes · take payment</div>
+              </div>
+              <div class="shortcut-card lg-regular lg-sheen hovered">
+                <div class="pencil-tooltip">􀟜  Apple Pencil hover state</div>
+                <div class="sc-cookie teal">􀋲</div>
+                <div class="sc-title">Tickets</div>
+                <div class="sc-sub">Customer drop-offs &amp; repair tracking</div>
+              </div>
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie magenta">􀐚</div>
+                <div class="sc-title">Inventory</div>
+                <div class="sc-sub">Parts &amp; stock · low-quantity alerts</div>
+              </div>
+              <div class="shortcut-card lg-regular lg-sheen">
+                <div class="sc-cookie cream">􀋯</div>
+                <div class="sc-title">Reports</div>
+                <div class="sc-sub">Sales · technician productivity · trends</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -91,7 +91,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let profile = try await api.settingsMe()
+            let profile = try await api.fetchUserProfile()
             firstName = profile.firstName ?? ""
             lastName = profile.lastName ?? ""
             displayName = profile.displayName ?? ""
@@ -118,7 +118,7 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = UserProfileWire(
+            let body = UserProfileUpdateDTO(
                 firstName: firstName,
                 lastName: lastName,
                 displayName: displayName,
@@ -126,14 +126,7 @@ public final class ProfileSettingsViewModel: Sendable {
                 phone: phone,
                 jobTitle: jobTitle
             )
-            _ = try await api.settingsSaveMe(body)
-            // Update saved snapshot
-            savedFirstName = firstName
-            savedLastName = lastName
-            savedDisplayName = displayName
-            savedEmail = email
-            savedPhone = phone
-            savedJobTitle = jobTitle
+            _ = try await api.updateUserProfile(body)
             successMessage = "Profile saved."
             errorMessage = nil
         } catch {
@@ -160,7 +153,11 @@ public final class ProfileSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            try await api.settingsChangePassword(current: currentPassword, new: newPassword)
+            let body = ChangePasswordDTO(
+                currentPassword: currentPassword,
+                newPassword: newPassword
+            )
+            try await api.changePassword(body)
             successMessage = "Password updated."
             currentPassword = ""
             newPassword = ""
@@ -226,12 +223,11 @@ public final class ProfileSettingsViewModel: Sendable {
     }
 }
 
-// Note: Wire types (UserProfileWire, EmptyResponse) live in SettingsPageEndpoints.swift / Networking.
-
 // MARK: - View
 
 public struct ProfileSettingsPage: View {
     @State private var vm: ProfileSettingsViewModel
+    @State private var showAvatarPicker: Bool = false
 
     public init(api: APIClient? = nil) {
         _vm = State(initialValue: ProfileSettingsViewModel(api: api))
@@ -239,65 +235,35 @@ public struct ProfileSettingsPage: View {
 
     public var body: some View {
         Form {
-            // §19.1 Avatar
+            // §19.1 Avatar — circular tap → sheet (Camera / Library / Remove)
             Section {
                 HStack {
                     Spacer()
                     Button {
-                        vm.showAvatarActionSheet = true
+                        showAvatarPicker = true
                     } label: {
-                        ZStack(alignment: .bottomTrailing) {
-                            Group {
-                                if let img = vm.avatarImage {
-                                    img
-                                        .resizable()
-                                        .scaledToFill()
-                                } else {
-                                    Image(systemName: "person.circle.fill")
-                                        .resizable()
-                                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                                }
-                            }
+                        Circle()
+                            .fill(Color.bizarreSurface1)
                             .frame(width: 80, height: 80)
-                            .clipShape(Circle())
-
-                            Circle()
-                                .fill(Color.bizarreOrange)
-                                .frame(width: 24, height: 24)
-                                .overlay(
-                                    Image(systemName: "camera.fill")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(.white)
-                                )
-                                .offset(x: 2, y: 2)
-                        }
+                            .overlay {
+                                Image(systemName: "person.crop.circle.fill")
+                                    .font(.system(size: 48))
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .overlay(alignment: .bottomTrailing) {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.bizarreOrange)
+                                    .background(Color.bizarreSurfaceBase, in: Circle())
+                            }
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Change profile photo")
-                    .confirmationDialog("Profile Photo", isPresented: $vm.showAvatarActionSheet, titleVisibility: .visible) {
-                        Button("Take Photo") {
-                            vm.isCameraSource = true
-                            vm.showPhotoPicker = true
-                        }
-                        Button("Choose from Library") {
-                            vm.isCameraSource = false
-                            vm.showPhotoPicker = true
-                        }
-                        if vm.avatarURL != nil || vm.avatarImage != nil {
-                            Button("Remove Photo", role: .destructive) {
-                                Task { await vm.removeAvatar() }
-                            }
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    }
-                    .photosPicker(isPresented: $vm.showPhotoPicker, selection: $vm.selectedAvatarItem, matching: .images)
-                    .onChange(of: vm.selectedAvatarItem) { _, _ in
-                        Task { await vm.loadSelectedAvatar() }
-                    }
+                    .accessibilityHint("Opens photo picker")
                     Spacer()
                 }
-                .listRowBackground(Color.clear)
             }
+            .listRowBackground(Color.clear)
 
             Section("Identity") {
                 TextField("First name", text: $vm.firstName)
@@ -479,6 +445,11 @@ public struct ProfileSettingsPage: View {
             onDiscard: { vm.discardChanges() }
         )
         .task { await vm.load() }
+        .sheet(isPresented: $showAvatarPicker) {
+            AvatarPickerSheet(currentAvatarUrl: nil) { _ in
+                // Upload endpoint not yet available — sheet shows "coming soon" internally.
+            }
+        }
         .overlay {
             if vm.isLoading {
                 ProgressView()

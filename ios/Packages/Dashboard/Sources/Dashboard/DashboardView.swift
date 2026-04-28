@@ -201,7 +201,6 @@ public struct DashboardView: View {
     private var content: some View {
         switch vm.state {
         case .loading:
-            // §3.1 Skeleton loaders — glass shimmer ≤300ms
             DashboardSkeletonView()
                 .background(Color.bizarreSurfaceBase.ignoresSafeArea())
         case .failed:
@@ -270,6 +269,20 @@ private struct LoadedBody: View {
     // §3.12 SMS tab callback + Team Inbox tab callback
     var onTapSMSTab: (() -> Void)?
     var onTapTeamInbox: (() -> Void)?
+
+    /// §3.1: 3-column at regular width; 4-column when iPad ≥1100pt or Mac.
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var fourColumnIfWide: [GridItem] {
+        // On Mac (Designed for iPad) the full window is often >1100pt.
+        // We use GeometryReader in the parent ScrollView for finer control,
+        // but here we default to 4 if on a Mac, 3 otherwise.
+        // Live column adaptation via GeometryReader is done in DashboardKpiTileGrid (iPad target).
+        #if targetEnvironment(macCatalyst)
+        return Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 4)
+        #else
+        return Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 3)
+        #endif
+    }
 
     var body: some View {
         ScrollView {
@@ -348,64 +361,43 @@ private struct LoadedBody: View {
 
     // Hero = the one primary focus. On a repair-shop dashboard that's
     // "open tickets right now". Larger, more visual weight than the rest.
+    // §3.1: tap → Tickets filtered to open status.
     private var heroCard: some View {
         let s = snapshot.summary
         return HeroMetricCard(
             value: "\(s.openTickets)",
             label: "Open tickets",
-            supporting: "\(s.ticketsCreatedToday) new today"
+            supporting: "\(s.ticketsCreatedToday) new today",
+            deepLink: "bizarrecrm://tickets?status_group=open"
         )
     }
 
-    // §3.1 Compact stat tiles — mirroring the web tile set.
-    // iPhone: 2-column adaptive grid.
-    // iPad (regular-width): 3-column fixed. Mac: 4-column.
+    // Compact stat tiles — muted hierarchy.
+    // iPhone: 2-column grid (adaptive minimum 140 pt).
+    // iPad (regular-width): fixed 3-column grid per §3 spec.
+    // §3.1: each tile deep-links to the filtered list via bizarrecrm:// scheme.
     private var secondaryGrid: some View {
         let s = snapshot.summary
-        let k = snapshot.kpis
-
-        // Build the full tile set — only show KPI tiles when data is available.
-        // §3.1 Tile taps: each tile carries a destination; onTileTap fires when tapped.
-        var tiles: [StatTile] = [
-            .init(label: "Revenue today",   value: Self.money(s.revenueToday),   icon: "dollarsign.circle",              destination: .revenueToday),
-            .init(label: "Open tickets",    value: "\(s.openTickets)",           icon: "wrench.and.screwdriver",        destination: .ticketList(filter: "status_group=open")),
-            .init(label: "Closed today",    value: "\(s.closedToday)",           icon: "checkmark.seal",                destination: .ticketList(filter: "status_group=closed&closed_today=true")),
-            .init(label: "Appointments",    value: "\(s.appointmentsToday)",     icon: "calendar",                      destination: .appointmentList(filter: "date=today")),
+        let tiles: [StatTile] = [
+            .init(label: "Revenue",      value: Self.money(s.revenueToday),   icon: "dollarsign.circle",
+                  deepLink: "bizarrecrm://reports/revenue"),
+            .init(label: "Closed",       value: "\(s.closedToday)",           icon: "checkmark.seal",
+                  deepLink: "bizarrecrm://tickets?status_group=closed"),
+            .init(label: "Appointments", value: "\(s.appointmentsToday)",     icon: "calendar",
+                  deepLink: "bizarrecrm://appointments?date=today"),
+            .init(label: "Inventory",    value: Self.money(s.inventoryValue), icon: "shippingbox",
+                  deepLink: "bizarrecrm://inventory"),
         ]
-        if let low = s.lowStockCount {
-            tiles.append(.init(label: "Low stock",    value: "\(low)", icon: "exclamationmark.triangle",  destination: .inventoryList(filter: "low_stock=true")))
-        }
-        if let k {
-            tiles += [
-                .init(label: "Tax",           value: Self.money(k.tax),          icon: "percent",                        destination: .reports(name: "tax")),
-                .init(label: "Discounts",     value: Self.money(k.discounts),    icon: "tag",                            destination: .reports(name: "discounts")),
-                .init(label: "COGS",          value: Self.money(k.cogs),         icon: "shippingbox",                    destination: .reports(name: "cogs")),
-                .init(label: "Net profit",    value: Self.money(k.netProfit),    icon: "chart.line.uptrend.xyaxis",      destination: .reports(name: "net-profit")),
-                .init(label: "Refunds",       value: Self.money(k.refunds),      icon: "arrow.uturn.backward",           destination: .reports(name: "refunds")),
-                .init(label: "Expenses",      value: Self.money(k.expenses),     icon: "creditcard",                     destination: .reports(name: "expenses")),
-                .init(label: "Receivables",   value: Self.money(k.receivables),  icon: "clock.badge.exclamationmark",    destination: .reports(name: "receivables")),
-            ]
-        }
-        tiles.append(.init(label: "Inventory value", value: Self.money(s.inventoryValue), icon: "shippingbox.fill", destination: .inventoryList(filter: "")))
 
-        // Column count: iPhone = 2-col adaptive; iPad = 3-col; Mac = 4-col.
-        let columns: [GridItem]
-        #if os(macOS)
-        columns = [
-            GridItem(.flexible(), spacing: BrandSpacing.md),
-            GridItem(.flexible(), spacing: BrandSpacing.md),
-            GridItem(.flexible(), spacing: BrandSpacing.md),
-            GridItem(.flexible(), spacing: BrandSpacing.md),
-        ]
-        #else
-        columns = Platform.isCompact
-            ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
-            : [
-                GridItem(.flexible(), spacing: BrandSpacing.md),
-                GridItem(.flexible(), spacing: BrandSpacing.md),
-                GridItem(.flexible(), spacing: BrandSpacing.md),
+        // §3.1 column spec:
+        //   iPhone: 2-column adaptive (minimum 140 pt)
+        //   iPad ≥768 pt: 3 columns; iPad/Mac ≥1100 pt: 4 columns, max 1200 pt content width
+        let columns: [GridItem] = Platform.isCompact
+            ? [
+                GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
+                GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
               ]
-        #endif
+            : fourColumnIfWide
 
         return LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
             ForEach(tiles) { tile in
@@ -423,27 +415,11 @@ private struct LoadedBody: View {
     @ViewBuilder
     private var attentionCard: some View {
         let a = snapshot.attention
-        let total = a.staleTickets.count + a.overdueInvoices.count
-            + a.missingPartsCount + a.lowStockCount
+        let total = a.staleTickets.count + a.overdueInvoices.count + a.missingPartsCount + a.lowStockCount
 
         if total > 0 {
-            // §3.3 — Row-level chips, swipe, context menu, dismiss persistence.
-            // onDismiss fires the App-layer callback (`POST /notifications/:id/dismiss`)
-            // for server-backed persistence; the AttentionCard already handles
-            // local animation via its own `dismissedIds` state.
-            AttentionCard(
-                attention: a,
-                onViewTicket: nil,   // Agent 10 / App-layer wires navigation
-                onViewInvoice: nil,
-                onSMSCustomer: nil,
-                onMarkResolved: nil,
-                onSnooze: nil,
-                onDismiss: onDismissAttentionItem
-            )
-        } else if !isNewTenantSnapshot(snapshot) {
-            // §3.3 — "All clear" empty state: only shown when there's real
-            // data but nothing needs attention (not on a brand-new tenant).
-            AttentionAllClearView()
+            // §3.3 — row-level chips for stale tickets and overdue invoices
+            NeedsAttentionCard(attention: a)
         }
     }
 
@@ -462,35 +438,50 @@ private struct HeroMetricCard: View {
     let value: String
     let label: String
     let supporting: String
+    var deepLink: String? = nil
+
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Text(label.uppercased())
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .tracking(0.8)
-            Text(value)
-                .font(.brandDisplayMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .monospacedDigit()
-                .minimumScaleFactor(0.7)
-                .lineLimit(1)
-            Text(supporting)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .monospacedDigit()
+        Button {
+            if let link = deepLink, let url = URL(string: link) {
+                BrandHaptics.selection()
+                openURL(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Text(label.uppercased())
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .tracking(0.8)
+                Text(value)
+                    .font(.brandDisplayMedium())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.7)
+                    .lineLimit(1)
+                Text(supporting)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .monospacedDigit()
+            }
+            .padding(BrandSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
+            )
         }
-        .padding(BrandSpacing.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 20))
-        .overlay(
-            RoundedRectangle(cornerRadius: 20)
-                .strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
+        #if canImport(UIKit)
+        .hoverEffect(.highlight)
+        #endif
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
         .accessibilityValue("\(value). \(supporting).")
-        .accessibilityAddTraits(.isHeader)
+        .accessibilityAddTraits(deepLink != nil ? [.isHeader, .isButton] : .isHeader)
+        .accessibilityHint(deepLink != nil ? "Double tap to view open tickets" : "")
     }
 }
 
@@ -501,90 +492,61 @@ private struct StatTile: Identifiable {
     let label: String
     let value: String
     let icon: String
-    /// Navigation destination for tile taps. Nil = non-tappable tile.
-    let destination: DashboardTileDestination?
-    /// §3.14 Permission-gated: when `true`, tile is greyed with a lock glyph
-    /// and an "Ask your admin" overlay instead of real data.
-    var isPermissionGated: Bool = false
+    /// Custom scheme deep-link URL (bizarrecrm://…) — nil = no deep link.
+    let deepLinkURL: URL?
 
-    init(
-        label: String,
-        value: String,
-        icon: String,
-        destination: DashboardTileDestination? = nil,
-        isPermissionGated: Bool = false
-    ) {
+    init(label: String, value: String, icon: String, deepLink: String? = nil) {
         self.label = label
         self.value = value
         self.icon = icon
-        self.destination = destination
-        self.isPermissionGated = isPermissionGated
+        self.deepLinkURL = deepLink.flatMap { URL(string: $0) }
     }
 }
 
 private struct StatTileCard: View {
     let tile: StatTile
-    var onTap: (@MainActor () -> Void)?
+    @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if tile.isPermissionGated {
-            // §3.14 Permission-gated tile — greyed out with lock glyph + tooltip.
-            permissionGatedTile
-        } else if let onTap {
-            Button { onTap() } label: { tileContent }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint("Navigate to \(tile.label.lowercased())")
-        } else {
-            tileContent
-        }
-    }
-
-    private var permissionGatedTile: some View {
-        ZStack(alignment: .center) {
-            tileContent
-                .opacity(0.35)
-            VStack(spacing: 4) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 18, weight: .medium))
+        Button {
+            if let url = tile.deepLinkURL {
+                BrandHaptics.selection()
+                openURL(url)
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                Image(systemName: tile.icon)
+                    .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                Text("Ask your admin\nto enable Reports")
+                    .accessibilityHidden(true)
+                Text(tile.value)
+                    .font(.brandTitleLarge())
+                    .foregroundStyle(.bizarreOnSurface)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(tile.label)
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
             }
+            .padding(BrandSpacing.md)
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
+            )
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(tile.label), locked. Ask your admin to enable Reports for your role.")
-    }
-
-    private var tileContent: some View {
-        VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-            Image(systemName: tile.icon)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .accessibilityHidden(true)
-            Text(tile.value)
-                .font(.brandTitleLarge())
-                .foregroundStyle(.bizarreOnSurface)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-            Text(tile.label)
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-        }
-        .padding(BrandSpacing.md)
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(Color.bizarreOutline.opacity(0.35), lineWidth: 0.5)
-        )
+        .buttonStyle(.plain)
+        #if canImport(UIKit)
+        .hoverEffect(.highlight)
+        #endif
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(tile.label)
         .accessibilityValue(tile.value)
+        .accessibilityHint(tile.deepLinkURL != nil ? "Double tap to open" : "")
+        .accessibilityAddTraits(tile.deepLinkURL != nil ? .isButton : [])
     }
 }
 
@@ -921,11 +883,12 @@ private struct AttentionAllClearView: View {
 // MARK: - Layout helpers (internal for testability)
 
 /// Returns the number of KPI grid columns for the given compactness flag.
-/// - compact (iPhone): adaptive — 1 or 2 columns depending on available width.
-///   We return 1 here to signal "adaptive" mode; the real minimum is 140 pt.
-/// - regular (iPad): always 3 fixed columns.
-func kpiGridColumnCount(isCompact: Bool) -> Int {
-    isCompact ? 1 : 3
+/// - compact (iPhone): 2-column adaptive (minimum 140 pt).
+/// - regular (iPad ≥768 pt): 3 fixed columns; 4 on Mac.
+/// - Mac Catalyst: 4 columns.
+func kpiGridColumnCount(isCompact: Bool, isMac: Bool = false) -> Int {
+    if isCompact { return 2 }
+    return isMac ? 4 : 3
 }
 
 /// Returns the attention items from a `NeedsAttention` snapshot,
@@ -943,6 +906,80 @@ func attentionItems(from attention: NeedsAttention) -> [AttentionItemModel] {
 struct AttentionItemModel: Equatable {
     let label: String
     let count: Int
+}
+
+// MARK: - Skeleton loader (§3.1)
+
+/// Glass shimmer skeleton shown while dashboard data loads.
+/// Mirrors the real layout so there is no layout shift on reveal.
+/// Automatically respects Reduce Motion — static placeholder when on.
+struct DashboardSkeletonView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shimmerPhase: CGFloat = -1.0
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: BrandSpacing.lg) {
+                // Greeting placeholder
+                skeletonRect(width: 200, height: 28, cornerRadius: 8)
+
+                // Hero card placeholder
+                skeletonRect(width: nil, height: 110, cornerRadius: 20)
+
+                // Stat tile grid — same 2-col / 3-col rule as real grid
+                let columns: [GridItem] = Platform.isCompact
+                    ? [GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md),
+                       GridItem(.adaptive(minimum: 140), spacing: BrandSpacing.md)]
+                    : Array(repeating: GridItem(.flexible(), spacing: BrandSpacing.md), count: 3)
+                LazyVGrid(columns: columns, spacing: BrandSpacing.md) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        skeletonRect(width: nil, height: 92, cornerRadius: 14)
+                    }
+                }
+
+                // Attention card placeholder
+                skeletonRect(width: nil, height: 120, cornerRadius: 16)
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.top, BrandSpacing.sm)
+            .padding(.bottom, BrandSpacing.lg)
+        }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 1.2).repeatForever(autoreverses: false)) {
+                shimmerPhase = 1.0
+            }
+        }
+        .accessibilityLabel("Loading dashboard")
+    }
+
+    @ViewBuilder
+    private func skeletonRect(width: CGFloat?, height: CGFloat, cornerRadius: CGFloat) -> some View {
+        let shape = RoundedRectangle(cornerRadius: cornerRadius)
+        if reduceMotion {
+            shape
+                .fill(Color.bizarreSurface1)
+                .frame(width: width, height: height)
+                .frame(maxWidth: width == nil ? .infinity : width)
+        } else {
+            shape
+                .fill(shimmerGradient)
+                .frame(width: width, height: height)
+                .frame(maxWidth: width == nil ? .infinity : width)
+        }
+    }
+
+    private var shimmerGradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: Color.bizarreSurface1.opacity(0.6), location: 0.0),
+                .init(color: Color.bizarreSurface1.opacity(1.0), location: 0.3 + shimmerPhase * 0.5),
+                .init(color: Color.bizarreSurface1.opacity(0.6), location: 1.0),
+            ],
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
 }
 
 /// Returns the time-of-day greeting string for the given date.

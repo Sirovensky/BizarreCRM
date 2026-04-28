@@ -92,6 +92,14 @@ public actor EstimateCachedRepositoryImpl: EstimateRepository {
         )
     }
 
+    // MARK: - §8.1 Cursor-based pagination
+
+    /// Delegates directly to the underlying API — cursor pages are not cached
+    /// in-memory because each page is unique. GRDB caching is a Phase-4 followup.
+    public func listPage(cursor: String?, keyword: String?, status: String?) async throws -> EstimatesCursorPage {
+        try await underlying.listPage(cursor: cursor, keyword: keyword, status: status)
+    }
+
     // MARK: - lastSyncedAt accessor
 
     public var lastSyncedAt: Date? { _lastSyncedAt }

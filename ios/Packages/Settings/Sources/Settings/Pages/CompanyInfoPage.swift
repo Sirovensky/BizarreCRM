@@ -36,7 +36,7 @@ public final class CompanyInfoViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let info = try await api.settingsCompanyInfo()
+            let info = try await api.fetchCompanyInfo()
             legalName = info.legalName ?? ""
             dba = info.dba ?? ""
             address = info.address ?? ""
@@ -56,12 +56,12 @@ public final class CompanyInfoViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = CompanyInfoWire(
+            let body = CompanyInfoDTO(
                 legalName: legalName, dba: dba,
                 address: address, city: city, state: state, zip: zip,
                 phone: phone, website: website, ein: ein
             )
-            _ = try await api.settingsSaveCompanyInfo(body)
+            _ = try await api.saveCompanyInfo(body)
             successMessage = "Company info saved."
             errorMessage = nil
         } catch {
@@ -69,11 +69,6 @@ public final class CompanyInfoViewModel: Sendable {
         }
     }
 }
-
-// MARK: - Response models (re-exported from SettingsPageEndpoints.swift)
-
-// CompanyInfoWire is declared in SettingsPageEndpoints.swift and is visible
-// within the Settings module — no re-declaration needed here.
 
 // MARK: - View
 

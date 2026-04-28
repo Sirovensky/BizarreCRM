@@ -26,7 +26,7 @@ public struct TicketListView: View {
     private let api: APIClient?
     private let customerRepo: CustomerRepository?
 
-    // §22 quick-action handlers — no-op unless api is wired.
+    // §22 + §4.1 quick-action handlers — no-op unless api is wired.
     private var quickActionHandlers: TicketQuickActionHandlers {
         TicketQuickActionHandlers(
             onAdvanceStatus: { [weak vm] ticket, transition in
@@ -50,13 +50,46 @@ public struct TicketListView: View {
                 guard let vm else { return }
                 Task { await vm.delete(ticket: ticket) }
             },
-            onConvertToInvoice: { [weak vm] ticket in
-                guard let vm else { return }
-                Task { await vm.convertToInvoice(ticket: ticket) }
+            // §4.1: SMS customer — open Messages.app via sms: URL scheme
+            onSMSCustomer: { ticket in
+                let phone = ticket.customer?.mobile ?? ticket.customer?.phone ?? ""
+                let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                guard !cleaned.isEmpty, let url = URL(string: "sms:\(cleaned)") else { return }
+                Task { @MainActor in
+                    UIApplication.shared.open(url)
+                }
             },
-            onTogglePin: { [weak vm] ticket in
+            // §4.1: Call customer — open Phone.app via tel: URL scheme
+            onCallCustomer: { ticket in
+                let phone = ticket.customer?.mobile ?? ticket.customer?.phone ?? ""
+                let cleaned = phone.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()
+                guard !cleaned.isEmpty, let url = URL(string: "tel:\(cleaned)") else { return }
+                Task { @MainActor in
+                    UIApplication.shared.open(url)
+                }
+            },
+            // §4.1: Convert to invoice — endpoint wired in Phase-5 (§4.5)
+            onConvertToInvoice: { ticket in
+                AppLog.ui.debug("Convert to invoice requested: ticket=\(ticket.id)")
+                // TODO: POST /tickets/:id/convert-to-invoice — Phase 5
+            },
+            // §4.1: Copy order ID to pasteboard
+            onCopyOrderId: { ticket in
+                UIPasteboard.general.string = ticket.orderId
+            },
+            // §4.1: Mark complete — advance to last allowed transition
+            onMarkComplete: { [weak vm] ticket in
                 guard let vm else { return }
-                Task { await vm.togglePin(ticket: ticket) }
+                let status = TicketStatus(rawValue: ticket.status?.name.lowercased().replacingOccurrences(of: " ", with: "") ?? "")
+                if let status,
+                   let last = TicketStateMachine.allowedTransitions(from: status).last {
+                    Task { await vm.advanceStatus(ticket: ticket, transition: last) }
+                }
+            },
+            // §4.1: Assign to me — endpoint wired in Phase-4
+            onAssignToMe: { ticket in
+                AppLog.ui.debug("Assign-to-me requested: ticket=\(ticket.id)")
+                // TODO: POST /tickets/:id/assign { employee_id: currentUserId } — Phase 4
             }
         )
     }
@@ -291,52 +324,28 @@ public struct TicketListView: View {
         }
     }
 
-    /// §4.1 Column/density picker — iPad/Mac only.
-    private var columnPickerToolbarItem: some ToolbarContent {
+    /// §4.1: Sort dropdown — newest / oldest / status / urgency / assignee / due date / total DESC.
+    private var sortToolbarItem: some ToolbarContent {
         ToolbarItem(placement: .secondaryAction) {
-            Button {
-                showingColumnPicker = true
-            } label: {
-                Label("Columns", systemImage: "slider.horizontal.3")
-            }
-            .accessibilityLabel("Column and density settings")
-            .sheet(isPresented: $showingColumnPicker) {
-                TicketColumnDensityPicker(prefs: $columnPrefs)
-            }
-        }
-    }
-
-    /// §4.1 — Export CSV toolbar item.
-    private var exportToolbarItem: some ToolbarContent {
-        ToolbarItem(placement: .secondaryAction) {
-            Button {
-                showingExport = true
-            } label: {
-                Label("Export CSV", systemImage: "arrow.down.doc")
-            }
-            .disabled(api == nil)
-            .accessibilityLabel("Export tickets as CSV")
-        }
-    }
-
-    // MARK: - Filter + Sort bar
-
-    private var filterAndSortBar: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.xs) {
-                ForEach(TicketListFilter.allCases) { option in
-                    FilterChip(
-                        label: option.displayName,
-                        selected: vm.filter == option
-                    ) {
-                        Task { await vm.applyFilter(option) }
+            Menu {
+                ForEach(TicketSortOrder.allCases) { order in
+                    Button {
+                        vm.applySort(order)
+                    } label: {
+                        HStack {
+                            Text(order.displayName)
+                            if vm.sortOrder == order {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
+                    .accessibilityLabel("Sort by \(order.displayName)\(vm.sortOrder == order ? ", currently selected" : "")")
                 }
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
+            .accessibilityLabel("Sort tickets. Current: \(vm.sortOrder.displayName)")
         }
-        .scrollClipDisabled()
     }
 
     @ViewBuilder
@@ -345,33 +354,35 @@ public struct TicketListView: View {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityLabel("Loading tickets")
         } else if let err = vm.errorMessage {
+            // §4.13: Network error on list — keep cached data visible (handled above when tickets non-empty)
             TicketErrorState(message: err) { Task { await vm.load() } }
         } else if vm.tickets.isEmpty && !Reachability.shared.isOnline {
             OfflineEmptyStateView(entityName: "tickets")
         } else if vm.tickets.isEmpty {
-            TicketEmptyState(
-                hint: emptyHint,
-                showCreateCTA: api != nil && customerRepo != nil,
-                onCreate: { showingCreate = true }
-            )
+            // §4.13: No tickets empty glass illustration + "Create one." CTA
+            TicketEmptyState(hint: emptyHint, showCreate: vm.filter == .all && searchText.isEmpty) {
+                showingCreate = true
+            }
         } else {
-            VStack(spacing: 0) {
-                List(selection: Binding<Int64?>(
-                    get: { Platform.isCompact ? nil : selected },
-                    set: { if let id = $0 { selected = id } }
-                )) {
-                    ForEach(vm.tickets) { ticket in
-                        ticketRow(ticket: ticket, onSelect: onSelect)
-                            .listRowBackground(Color.bizarreSurface1)
-                            .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
-                            .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
-                    }
+            List(selection: Binding<Int64?>(
+                get: { Platform.isCompact ? nil : selected },
+                set: { if let id = $0 { selected = id } }
+            )) {
+                ForEach(vm.tickets) { ticket in
+                    ticketRow(ticket: ticket, onSelect: onSelect)
+                        .listRowBackground(Color.bizarreSurface1)
+                        .listRowInsets(EdgeInsets(top: BrandSpacing.sm, leading: BrandSpacing.base, bottom: BrandSpacing.sm, trailing: BrandSpacing.base))
+                        .listRowSeparatorTint(Color.bizarreOutline.opacity(0.2))
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-
-                // §4.1 Footer state
-                TicketListFooter(state: vm.footerState)
+                // §4.1 Footer state row
+                ListFooterRow(
+                    count: vm.tickets.count,
+                    isLoading: vm.isRefreshing,
+                    lastSyncedAt: vm.lastSyncedAt,
+                    isOffline: !Reachability.shared.isOnline
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
         }
     }
@@ -449,14 +460,103 @@ public struct TicketListView: View {
     private var emptyHint: String {
         if !searchText.isEmpty { return "No results for \"\(searchText)\"." }
         switch vm.filter {
-        case .all:       return "No tickets yet."
-        case .open:      return "Nothing open right now."
-        case .onHold:    return "Nothing on hold."
-        case .closed:    return "Nothing closed yet."
-        case .cancelled: return "No cancelled tickets."
-        case .active:    return "No active tickets in progress."
-        case .myTickets: return "No tickets are assigned to you."
+        case .all:        return "No tickets yet. Create one."
+        case .myTickets:  return "No tickets are assigned to you."
+        case .open:       return "Nothing open right now."
+        case .onHold:     return "Nothing on hold."
+        case .active:     return "No active tickets."
+        case .closed:     return "Nothing closed yet."
+        case .cancelled:  return "Nothing cancelled."
         }
+    }
+
+    // MARK: - §4.1 Filter chips (All / Open / On Hold / Active / Closed / Cancelled)
+
+    private var filterChips: some View {
+        VStack(spacing: 0) {
+            // Status group chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketListFilter.allCases) { option in
+                        FilterChip(
+                            label: option.displayName,
+                            selected: vm.filter == option
+                        ) {
+                            Task { await vm.applyFilter(option) }
+                        }
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.vertical, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
+
+            // §4.1 Urgency chips (Critical / High / Medium / Normal / Low)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: BrandSpacing.xs) {
+                    ForEach(TicketUrgencyFilter.allCases) { urgency in
+                        UrgencyChip(
+                            urgency: urgency,
+                            selected: vm.urgencyFilter == urgency
+                        ) {
+                            Task { await vm.applyUrgency(urgency) }
+                        }
+                    }
+                }
+                .padding(.horizontal, BrandSpacing.base)
+                .padding(.bottom, BrandSpacing.sm)
+            }
+            .scrollClipDisabled()
+        }
+    }
+}
+
+// MARK: - §4.1 Urgency chip
+
+private struct UrgencyChip: View {
+    let urgency: TicketUrgencyFilter
+    let selected: Bool
+    let action: () -> Void
+
+    /// Map the urgency level to a SwiftUI semantic color.
+    private var dotColor: Color {
+        switch urgency {
+        case .critical: return Color(UIColor.systemRed)
+        case .high:     return Color(UIColor.systemOrange)
+        case .medium:   return Color(UIColor.systemYellow)
+        case .normal:   return Color(UIColor.systemGreen)
+        case .low:      return Color(UIColor.systemGray)
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                Text(urgency.displayName)
+                    .font(.brandLabelLarge())
+            }
+            .padding(.horizontal, BrandSpacing.md)
+            .padding(.vertical, BrandSpacing.xs)
+            .foregroundStyle(selected ? Color.black : Color.bizarreOnSurface)
+            .background(
+                selected ? dotColor.opacity(0.25) : Color.bizarreSurface1,
+                in: Capsule()
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(
+                        selected ? dotColor : Color.bizarreOutline.opacity(0.4),
+                        lineWidth: selected ? 1.0 : 0.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(urgency.displayName)
+        .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
 }
 
@@ -809,38 +909,39 @@ private struct TicketErrorState: View {
     }
 }
 
-/// §4.13 — "No tickets yet. Create one." with optional CTA.
+/// §4.13: Glass illustration empty state with optional "Create one." CTA.
 private struct TicketEmptyState: View {
     let hint: String
-    var showCreateCTA: Bool = false
-    var onCreate: () -> Void = {}
+    var showCreate: Bool = false
+    var onCreate: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: BrandSpacing.md) {
             Image(systemName: "wrench.and.screwdriver")
-                .font(.system(size: 36, weight: .regular))
-                .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.6))
+                .font(.system(size: 42, weight: .light))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
                 .accessibilityHidden(true)
+                .padding(.bottom, BrandSpacing.xs)
             Text(hint)
                 .font(.brandBodyMedium())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, BrandSpacing.lg)
-            if showCreateCTA {
-                Button {
-                    onCreate()
-                } label: {
-                    Label("Create your first ticket", systemImage: "plus")
-                        .font(.brandBodyLarge())
+                .padding(.horizontal, BrandSpacing.xl)
+            if showCreate, let onCreate {
+                Button(action: onCreate) {
+                    Text("Create a Ticket")
+                        .font(.brandLabelLarge())
                         .padding(.horizontal, BrandSpacing.lg)
                         .padding(.vertical, BrandSpacing.sm)
+                        .foregroundStyle(.white)
+                        .background(Color.bizarreOrange, in: Capsule())
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
+                .buttonStyle(.plain)
                 .accessibilityLabel("Create your first ticket")
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -861,50 +962,56 @@ private struct EmptyTicketDetailPlaceholder: View {
     }
 }
 
-// MARK: - §4.5 Bulk action floating bar
-
-/// Floating glass bar shown at the bottom of the list when bulk-selection mode is active
-/// and at least one ticket is selected.
-private struct TicketBulkActionBar: View {
+/// §4.1 Footer states: Loading… / Showing N / End of list / Offline — N cached, last synced Xh ago.
+private struct ListFooterRow: View {
     let count: Int
-    let onAction: () -> Void
-    let onDeselect: () -> Void
+    let isLoading: Bool
+    let lastSyncedAt: Date?
+    let isOffline: Bool
 
     var body: some View {
-        HStack(spacing: BrandSpacing.base) {
-            Button(action: onDeselect) {
-                Label("Cancel", systemImage: "xmark.circle.fill")
-                    .font(.brandBodyMedium())
+        HStack(spacing: BrandSpacing.sm) {
+            Spacer()
+            content
+            Spacer()
+        }
+        .padding(.vertical, BrandSpacing.sm)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            HStack(spacing: BrandSpacing.xs) {
+                ProgressView().scaleEffect(0.7)
+                Text("Loading…")
+                    .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Cancel selection")
+        } else if isOffline {
+            Text(offlineLabel)
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreWarning)
+                .multilineTextAlignment(.center)
+        } else if count > 0 {
+            Text("Showing \(count) tickets")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+        }
+    }
 
-            Spacer()
-
-            Text("\(count) selected")
-                .font(.brandBodyMedium().bold())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityLabel("\(count) tickets selected")
-
-            Spacer()
-
-            Button(action: onAction) {
-                Label("Actions…", systemImage: "ellipsis.circle.fill")
-                    .font(.brandBodyMedium().bold())
-                    .foregroundStyle(.bizarreOrange)
+    private var offlineLabel: String {
+        var parts = ["\(count) cached"]
+        if let synced = lastSyncedAt {
+            let hrs = Int(Date().timeIntervalSince(synced) / 3600)
+            if hrs < 1 {
+                let mins = Int(Date().timeIntervalSince(synced) / 60)
+                parts.append("last synced \(max(mins, 1))m ago")
+            } else {
+                parts.append("last synced \(hrs)h ago")
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Show bulk actions for \(count) selected tickets")
         }
-        .padding(.horizontal, BrandSpacing.base)
-        .padding(.vertical, BrandSpacing.md)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) {
-            Divider()
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .animation(.spring(duration: 0.25), value: count)
+        return "Offline — " + parts.joined(separator: ", ")
     }
 }
 #endif

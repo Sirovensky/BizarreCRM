@@ -8,25 +8,12 @@ import Networking
 /// this protocol abstracts the data layer for testability and caching.
 public protocol EstimateRepository: Sendable {
     func list(keyword: String?) async throws -> [Estimate]
-    /// §8.1 — filter by status tab + cursor pagination.
-    func listPage(
-        status: EstimateStatusFilter,
-        keyword: String?,
-        cursor: String?
-    ) async throws -> EstimatePageResult
-}
 
-// MARK: - EstimatePageResult
-
-/// One page of estimates with cursor forwarding.
-public struct EstimatePageResult: Sendable {
-    public let estimates: [Estimate]
-    public let nextCursor: String?
-
-    public init(estimates: [Estimate], nextCursor: String?) {
-        self.estimates = estimates
-        self.nextCursor = nextCursor
-    }
+    // §8.1: Cursor-based pagination (offline-first).
+    // Fetches one page via `GET /estimates?cursor=<opaque>&limit=50`.
+    // When `cursor` is nil the first page is returned.
+    // Callers check `EstimatesCursorPage.hasMore` and advance with `nextCursor`.
+    func listPage(cursor: String?, keyword: String?, status: String?) async throws -> EstimatesCursorPage
 }
 
 // MARK: - EstimateRepositoryImpl
@@ -45,16 +32,11 @@ public actor EstimateRepositoryImpl: EstimateRepository {
         try await api.listEstimates(keyword: keyword)
     }
 
-    public func listPage(
-        status: EstimateStatusFilter,
-        keyword: String?,
-        cursor: String?
-    ) async throws -> EstimatePageResult {
-        let resp = try await api.listEstimatesCursor(
-            status: status,
-            keyword: keyword,
-            cursor: cursor
-        )
-        return EstimatePageResult(estimates: resp.estimates, nextCursor: resp.nextCursor)
+    // §8.1: Cursor-based pagination via the dedicated cursor endpoint.
+    // Graceful fallback: if the server does not yet support cursor pagination
+    // (returns a non-cursor shape), the error propagates and the caller
+    // can fall back to the non-cursor `list(keyword:)` path.
+    public func listPage(cursor: String?, keyword: String?, status: String?) async throws -> EstimatesCursorPage {
+        try await api.listEstimatesCursor(cursor: cursor, keyword: keyword, status: status)
     }
 }

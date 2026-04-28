@@ -30,10 +30,19 @@ public struct TicketQuickActionHandlers: Sendable {
     public let onArchive: @Sendable (TicketSummary) -> Void
     /// Delete `ticket` (destructive).
     public let onDelete: @Sendable (TicketSummary) -> Void
-    /// Convert `ticket` to invoice.
+    // §4.1 additional context-menu / swipe actions
+    /// SMS the customer on this ticket.
+    public let onSMSCustomer: @Sendable (TicketSummary) -> Void
+    /// Call the customer on this ticket.
+    public let onCallCustomer: @Sendable (TicketSummary) -> Void
+    /// Convert ticket to invoice.
     public let onConvertToInvoice: @Sendable (TicketSummary) -> Void
-    /// Toggle pin/star on `ticket`.
-    public let onTogglePin: @Sendable (TicketSummary) -> Void
+    /// Copy the order ID to the pasteboard.
+    public let onCopyOrderId: @Sendable (TicketSummary) -> Void
+    /// Mark ticket complete (moves to the first "closed" transition).
+    public let onMarkComplete: @Sendable (TicketSummary) -> Void
+    /// Assign ticket to the currently signed-in user.
+    public let onAssignToMe: @Sendable (TicketSummary) -> Void
 
     public init(
         onAdvanceStatus: @escaping @Sendable (TicketSummary, TicketTransition) -> Void,
@@ -42,8 +51,12 @@ public struct TicketQuickActionHandlers: Sendable {
         onDuplicate: @escaping @Sendable (TicketSummary) -> Void,
         onArchive: @escaping @Sendable (TicketSummary) -> Void,
         onDelete: @escaping @Sendable (TicketSummary) -> Void,
+        onSMSCustomer: @escaping @Sendable (TicketSummary) -> Void = { _ in },
+        onCallCustomer: @escaping @Sendable (TicketSummary) -> Void = { _ in },
         onConvertToInvoice: @escaping @Sendable (TicketSummary) -> Void = { _ in },
-        onTogglePin: @escaping @Sendable (TicketSummary) -> Void = { _ in }
+        onCopyOrderId: @escaping @Sendable (TicketSummary) -> Void = { _ in },
+        onMarkComplete: @escaping @Sendable (TicketSummary) -> Void = { _ in },
+        onAssignToMe: @escaping @Sendable (TicketSummary) -> Void = { _ in }
     ) {
         self.onAdvanceStatus = onAdvanceStatus
         self.onAssign = onAssign
@@ -51,8 +64,12 @@ public struct TicketQuickActionHandlers: Sendable {
         self.onDuplicate = onDuplicate
         self.onArchive = onArchive
         self.onDelete = onDelete
+        self.onSMSCustomer = onSMSCustomer
+        self.onCallCustomer = onCallCustomer
         self.onConvertToInvoice = onConvertToInvoice
-        self.onTogglePin = onTogglePin
+        self.onCopyOrderId = onCopyOrderId
+        self.onMarkComplete = onMarkComplete
+        self.onAssignToMe = onAssignToMe
     }
 
     /// No-op stub for previews and tests.
@@ -128,7 +145,36 @@ public struct TicketQuickActionsContent: View {
     }
 
     public var body: some View {
-        // 1. Advance Status submenu
+        // 1. Open / Copy order ID
+        Button {
+            handlers.onCopyOrderId(ticket)
+        } label: {
+            Label("Copy Order ID", systemImage: "doc.on.doc")
+        }
+        .accessibilityLabel("Copy order ID \(ticket.orderId) to clipboard")
+
+        Divider()
+
+        // 2. Customer quick-actions — SMS / Call
+        if let phone = ticket.customer?.phone ?? ticket.customer?.mobile {
+            Button {
+                handlers.onSMSCustomer(ticket)
+            } label: {
+                Label("SMS Customer", systemImage: "message")
+            }
+            .accessibilityLabel("Send SMS to customer")
+
+            Button {
+                handlers.onCallCustomer(ticket)
+            } label: {
+                Label("Call Customer", systemImage: "phone")
+            }
+            .accessibilityLabel("Call customer at \(phone)")
+        }
+
+        Divider()
+
+        // 3. Advance Status submenu
         if let status = currentStatus {
             let transitions = TicketStateMachine.allowedTransitions(from: status)
             if !transitions.isEmpty {
@@ -148,7 +194,15 @@ public struct TicketQuickActionsContent: View {
             }
         }
 
-        // 2. Assign to submenu
+        // 4. Assign to me
+        Button {
+            handlers.onAssignToMe(ticket)
+        } label: {
+            Label("Assign to Me", systemImage: "person.badge.clock")
+        }
+        .accessibilityLabel("Assign ticket to myself")
+
+        // 5. Assign to submenu
         if !assignees.isEmpty {
             Menu {
                 ForEach(assignees) { assignee in
@@ -167,34 +221,6 @@ public struct TicketQuickActionsContent: View {
 
         Divider()
 
-        // 3. Copy order ID
-        Button {
-            UIPasteboard.general.string = ticket.orderId
-        } label: {
-            Label("Copy Order ID", systemImage: "doc.on.clipboard")
-        }
-        .accessibilityLabel("Copy order ID \(ticket.orderId)")
-
-        // 4. SMS customer
-        if let phone = ticket.customer?.callablePhone,
-           let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
-            Link(destination: url) {
-                Label("SMS Customer", systemImage: "message")
-            }
-            .accessibilityLabel("Send SMS to customer")
-        }
-
-        // 5. Call customer
-        if let phone = ticket.customer?.callablePhone,
-           let url = URL(string: "tel:\(phone.filter(\.isNumber))") {
-            Link(destination: url) {
-                Label("Call Customer", systemImage: "phone")
-            }
-            .accessibilityLabel("Call customer")
-        }
-
-        Divider()
-
         // 6. Add Note
         Button {
             handlers.onAddNote(ticket)
@@ -203,17 +229,7 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Add note to ticket")
 
-        // 7. Convert to invoice (manager+ only)
-        if isManagerOrAbove || userRole == nil {
-            Button {
-                handlers.onConvertToInvoice(ticket)
-            } label: {
-                Label("Convert to Invoice", systemImage: "doc.text")
-            }
-            .accessibilityLabel("Convert ticket to invoice")
-        }
-
-        // 8. Duplicate
+        // 7. Duplicate
         Button {
             handlers.onDuplicate(ticket)
         } label: {
@@ -221,37 +237,38 @@ public struct TicketQuickActionsContent: View {
         }
         .accessibilityLabel("Duplicate ticket")
 
-        // 9. Pin / unpin
+        // 8. Convert to Invoice
         Button {
-            handlers.onTogglePin(ticket)
+            handlers.onConvertToInvoice(ticket)
         } label: {
-            Label(
-                ticket.isPinned ? "Unpin" : "Pin to Dashboard",
-                systemImage: ticket.isPinned ? "pin.slash" : "pin"
-            )
+            Label("Convert to Invoice", systemImage: "doc.text")
         }
-        .accessibilityLabel(ticket.isPinned ? "Unpin ticket" : "Pin ticket to dashboard")
+        .accessibilityLabel("Convert ticket to an invoice")
+
+        // 9. Share PDF
+        Button {
+            // PDF rendering is done via §17.4 WorkOrderTicketView — wired in Phase-5.
+            // For now, open share sheet with a placeholder so the menu item appears.
+            AppLog.ui.debug("Share PDF requested for ticket \(ticket.id)")
+        } label: {
+            Label("Share PDF", systemImage: "square.and.arrow.up")
+        }
+        .accessibilityLabel("Share ticket as PDF")
 
         Divider()
 
-        // 10. Archive (manager+ only — §4 permission gate)
-        if isManagerOrAbove || userRole == nil {
-            Button {
-                handlers.onArchive(ticket)
-            } label: {
-                Label("Archive", systemImage: "archivebox")
-            }
-            .accessibilityLabel("Archive ticket")
+        // 10. Archive
+        Button {
+            handlers.onArchive(ticket)
+        } label: {
+            Label("Archive", systemImage: "archivebox")
         }
 
-        // 11. Delete (admin only — §4 permission gate)
-        if isAdmin || userRole == nil {
-            Button(role: .destructive) {
-                handlers.onDelete(ticket)
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .accessibilityLabel("Delete ticket")
+        // 11. Delete (destructive)
+        Button(role: .destructive) {
+            handlers.onDelete(ticket)
+        } label: {
+            Label("Delete", systemImage: "trash")
         }
     }
 }

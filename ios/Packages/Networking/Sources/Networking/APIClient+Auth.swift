@@ -1,48 +1,39 @@
 import Foundation
 
-// MARK: - Auth API extensions
+// MARK: - APIClient+Auth
 //
-// §2 Authentication — networking counterparts for the Auth package.
-// Ground truth: packages/server/src/routes/auth.routes.ts
+// Auth-domain endpoints for Agent 8 (Auth / Setup / Kiosk / Command Palette).
 //
-// Envelope: { success: Bool, data: T?, message: String? } — see APIResponse.swift.
+// Server routes grounded from packages/server/src/routes/auth.routes.ts:
+//   GET  /api/v1/auth/me                        → { id, username, email, role, … }
+//   POST /api/v1/auth/change-password           → { message }
+//   POST /api/v1/auth/change-pin                → { message }
+//   POST /api/v1/auth/setup                     → { accessToken?, user? }
+//
+// Envelope: { success: Bool, data: T?, message: String? }
+// Change-password & change-PIN both return { success, message } with no data field.
 
-// MARK: - /auth/setup-status (§2.1)
+// MARK: - Models
 
-/// Response from GET /api/v1/auth/setup-status.
-/// Controls whether to show the initial setup wizard or tenant picker.
-public struct AuthSetupStatus: Decodable, Sendable {
-    /// True when first-run setup has not been completed.
-    public let needsSetup: Bool
-    /// True when this server hosts multiple tenants.
-    public let isMultiTenant: Bool
-
-    public init(needsSetup: Bool, isMultiTenant: Bool) {
-        self.needsSetup = needsSetup
-        self.isMultiTenant = isMultiTenant
-    }
-}
-
-// MARK: - /auth/me (§2.11)
-
-/// Current authenticated user, returned by GET /api/v1/auth/me.
-public struct AuthMe: Decodable, Sendable {
-    public let id: Int
+public struct MeResponse: Decodable, Sendable {
+    public let id: Int64
     public let username: String
     public let email: String?
     public let firstName: String?
     public let lastName: String?
     public let role: String
-    public let tenantId: Int?
+    public let tenantId: String?
+    public let permissions: [String]?
 
     public init(
-        id: Int,
+        id: Int64,
         username: String,
         email: String?,
         firstName: String?,
         lastName: String?,
         role: String,
-        tenantId: Int?
+        tenantId: String?,
+        permissions: [String]?
     ) {
         self.id = id
         self.username = username
@@ -51,37 +42,19 @@ public struct AuthMe: Decodable, Sendable {
         self.lastName = lastName
         self.role = role
         self.tenantId = tenantId
+        self.permissions = permissions
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, username, email, role
+        case id, username, email, role, permissions
         case firstName  = "first_name"
         case lastName   = "last_name"
         case tenantId   = "tenant_id"
     }
 }
 
-// MARK: - /auth/change-pin (§2.5)
+// MARK: - Change-password body / response
 
-/// Request body for POST /api/v1/auth/change-pin.
-public struct ChangePinBody: Encodable, Sendable {
-    public let currentPin: String
-    public let newPin: String
-
-    public init(currentPin: String, newPin: String) {
-        self.currentPin = currentPin
-        self.newPin = newPin
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case currentPin = "current_pin"
-        case newPin     = "new_pin"
-    }
-}
-
-// MARK: - /auth/change-password (§2.9)
-
-/// Request body for POST /api/v1/auth/change-password.
 public struct ChangePasswordBody: Encodable, Sendable {
     public let currentPassword: String
     public let newPassword: String
@@ -90,54 +63,107 @@ public struct ChangePasswordBody: Encodable, Sendable {
         self.currentPassword = currentPassword
         self.newPassword = newPassword
     }
+}
 
-    enum CodingKeys: String, CodingKey {
-        case currentPassword = "current_password"
-        case newPassword     = "new_password"
+public struct MessageOnlyResponse: Decodable, Sendable {
+    public let message: String?
+    public init(message: String?) { self.message = message }
+}
+
+// MARK: - Change-PIN body
+
+public struct ChangePinBody: Encodable, Sendable {
+    public let currentPin: String
+    public let newPin: String
+
+    public init(currentPin: String, newPin: String) {
+        self.currentPin = currentPin
+        self.newPin = newPin
     }
 }
 
-// MARK: - Generic success response
+// MARK: - Signup body / response (§2.7)
 
-/// A minimal response for endpoints that only return `{ success, message }`.
-public struct AuthAckResponse: Decodable, Sendable {
-    public let message: String?
-    public init(message: String? = nil) { self.message = message }
+/// POST /api/v1/auth/setup  — tenant creation (cloud signup).
+/// Rate-limited 3/hour server-side.
+public struct SignupSetupBody: Encodable, Sendable {
+    public let username: String
+    public let password: String
+    public let email: String?
+    public let firstName: String?
+    public let lastName: String?
+    public let storeName: String?
+    public let setupToken: String?
+
+    public init(
+        username: String,
+        password: String,
+        email: String? = nil,
+        firstName: String? = nil,
+        lastName: String? = nil,
+        storeName: String? = nil,
+        setupToken: String? = nil
+    ) {
+        self.username = username
+        self.password = password
+        self.email = email
+        self.firstName = firstName
+        self.lastName = lastName
+        self.storeName = storeName
+        self.setupToken = setupToken
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case username, password, email
+        case firstName  = "first_name"
+        case lastName   = "last_name"
+        case storeName  = "store_name"
+        case setupToken = "setup_token"
+    }
+}
+
+public struct SignupSetupResponse: Decodable, Sendable {
+    public let accessToken: String?
+    public let refreshToken: String?
+    public let user: MeResponse?
+
+    public init(accessToken: String?, refreshToken: String?, user: MeResponse?) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.user = user
+    }
 }
 
 // MARK: - APIClient extensions
 
 public extension APIClient {
 
-    // MARK: §2.1 Setup-status probe
+    // MARK: §2.11 — GET /auth/me
 
-    /// GET /api/v1/auth/setup-status
-    /// Called on first launch after the server URL is resolved to decide
-    /// whether to show the initial setup wizard or tenant picker.
-    func fetchAuthSetupStatus() async throws -> AuthSetupStatus {
-        try await get("/api/v1/auth/setup-status", as: AuthSetupStatus.self)
+    /// Returns the currently-authenticated user's profile and role.
+    /// Called on cold start to validate the stored token and populate `AppState`.
+    func fetchMe() async throws -> MeResponse {
+        try await get("/api/v1/auth/me", as: MeResponse.self)
     }
 
-    // MARK: §2.11 Current user
-
-    /// GET /api/v1/auth/me
-    /// Validates the stored token and loads the current role/permissions.
-    /// Call on cold start before rendering the main shell.
-    func fetchMe() async throws -> AuthMe {
-        try await get("/api/v1/auth/me", as: AuthMe.self)
-    }
-
-    // MARK: §2.5 Change PIN
-
-    /// POST /api/v1/auth/change-pin
-    func changePin(_ body: ChangePinBody) async throws -> AuthAckResponse {
-        try await post("/api/v1/auth/change-pin", body: body, as: AuthAckResponse.self)
-    }
-
-    // MARK: §2.9 Change password
+    // MARK: §2.9 — Change password
 
     /// POST /api/v1/auth/change-password
-    func changePassword(_ body: ChangePasswordBody) async throws -> AuthAckResponse {
-        try await post("/api/v1/auth/change-password", body: body, as: AuthAckResponse.self)
+    func changePassword(_ body: ChangePasswordBody) async throws -> MessageOnlyResponse {
+        try await post("/api/v1/auth/change-password", body: body, as: MessageOnlyResponse.self)
+    }
+
+    // MARK: §2.5 — Change PIN
+
+    /// POST /api/v1/auth/change-pin
+    func changePin(_ body: ChangePinBody) async throws -> MessageOnlyResponse {
+        try await post("/api/v1/auth/change-pin", body: body, as: MessageOnlyResponse.self)
+    }
+
+    // MARK: §2.7 — Tenant signup
+
+    /// POST /api/v1/auth/setup  — creates a new tenant + admin user.
+    func signup(_ body: SignupSetupBody) async throws -> SignupSetupResponse {
+        try await post("/api/v1/auth/setup", body: body, as: SignupSetupResponse.self)
     }
 }

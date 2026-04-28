@@ -10,7 +10,13 @@ public protocol TicketCachedRepository: TicketRepository {
     var lastSyncedAt: Date? { get async }
 
     /// Bypass the cache and fetch fresh data. Called on pull-to-refresh.
-    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary]
+    func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary]
+}
+
+public extension TicketCachedRepository {
+    func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
+        try await forceRefresh(filter: filter, urgency: nil, keyword: keyword)
+    }
 }
 
 // MARK: - TicketCachedRepositoryImpl
@@ -54,21 +60,21 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
     public var lastSyncedAt: Date? { latestSyncedAt }
 
     /// Returns cache if fresh; else fetches and caches.
-    public func list(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword, sort: sort)
+    public func list(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
         if let entry = cache[key] {
             let age = Date().timeIntervalSince(entry.fetchedAt)
             if age <= Double(maxAgeSeconds) {
                 return entry.tickets
             }
         }
-        return try await fetch(filter: filter, keyword: keyword, sort: sort, key: key)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Always fetches from remote. Used by pull-to-refresh.
-    public func forceRefresh(filter: TicketListFilter, keyword: String?) async throws -> [TicketSummary] {
-        let key = cacheKey(filter: filter, keyword: keyword, sort: .newest)
-        return try await fetch(filter: filter, keyword: keyword, sort: .newest, key: key)
+    public func forceRefresh(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) async throws -> [TicketSummary] {
+        let key = cacheKey(filter: filter, urgency: urgency, keyword: keyword)
+        return try await fetch(filter: filter, urgency: urgency, keyword: keyword, key: key)
     }
 
     /// Pass-through — detail view calls this directly; no caching needed for MVP.
@@ -76,51 +82,14 @@ public actor TicketCachedRepositoryImpl: TicketCachedRepository {
         try await remote.detail(id: id)
     }
 
-    public func delete(id: Int64) async throws {
-        try await remote.delete(id: id)
-        // Invalidate cache entries containing this ticket.
-        cache = cache.filter { _, entry in !entry.tickets.contains { $0.id == id } }
-    }
-
-    public func duplicate(id: Int64) async throws -> DuplicateTicketResponse {
-        try await remote.duplicate(id: id)
-    }
-
-    public func convertToInvoice(id: Int64) async throws -> ConvertToInvoiceResponse {
-        try await remote.convertToInvoice(id: id)
-    }
-
     // MARK: - Private
 
-    private func cacheKey(filter: TicketListFilter, keyword: String?, sort: TicketSortOrder) -> String {
-        "\(filter.rawValue)|\(keyword ?? "")|\(sort.rawValue)"
+    private func cacheKey(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?) -> String {
+        "\(filter.rawValue)|\(urgency?.rawValue ?? "")|\(keyword ?? "")"
     }
 
-    // MARK: - Disk warm-up
-
-    /// Populates the in-memory cache from disk on cold launch.
-    /// Called by `TicketListViewModel` after init — always idempotent.
-    public func warmFromDisk(filter: TicketListFilter, keyword: String?) {
-        let key = cacheKey(filter: filter, keyword: keyword, sort: .newest)
-        guard cache[key] == nil else { return }         // already warm
-        // §4.1 — Read disk cache synchronously (actor-isolated, no network)
-        if let records = TicketDiskCache.shared.read(key: key) {
-            AppLog.ui.debug("Ticket disk cache hit: \(records.count, privacy: .public) records for '\(key, privacy: .public)'")
-            // We can't reconstruct TicketSummary from CachedTicketRecord (insufficient data).
-            // The disk read just proves staleness-free data exists; the real in-memory
-            // cache is populated on first `list()` call. This method updates
-            // `latestSyncedAt` so the StalenessIndicator shows a meaningful timestamp.
-            latestSyncedAt = Date() // placeholder; real timestamp set on fetch
-        }
-    }
-
-    private func fetch(
-        filter: TicketListFilter,
-        keyword: String?,
-        sort: TicketSortOrder,
-        key: String
-    ) async throws -> [TicketSummary] {
-        let tickets = try await remote.list(filter: filter, keyword: keyword, sort: sort)
+    private func fetch(filter: TicketListFilter, urgency: TicketUrgencyFilter?, keyword: String?, key: String) async throws -> [TicketSummary] {
+        let tickets = try await remote.list(filter: filter, urgency: urgency, keyword: keyword)
         let now = Date()
         cache[key] = CacheEntry(tickets: tickets, fetchedAt: now)
         latestSyncedAt = now

@@ -1,89 +1,68 @@
 import Foundation
 import Persistence
+import Networking
 
-// MARK: - §79 Recent servers store
+// MARK: - RecentServersStore
+//
+// §79.1 — Login screen remembers recently-used servers in a chip row for
+// quick pick. Stores up to 5 server URLs + display names; most-recent first.
+// Backed by UserDefaults (not Keychain — these are display-only hints, not secrets).
+//
+// Integration: call `record(url:name:)` after a successful server probe;
+// display via `all` in the server-picker panel.
 
-/// Stores the last N server URLs the user has logged into, for quick-pick
-/// chips on the login screen.
-///
-/// Stored in UserDefaults (non-sensitive — only host names, not credentials).
-/// Max 5 entries, newest first.
-///
-/// **Thread-safety:** actor-isolated.
-public actor RecentServersStore {
+public struct RecentServer: Codable, Sendable, Identifiable, Equatable {
+    public let url: URL
+    public let displayName: String?
+    public let lastUsedAt: Date
 
-    // MARK: - Singleton
+    public var id: URL { url }
 
-    public static let shared = RecentServersStore()
-
-    // MARK: - Constants
-
-    public static let maxCount: Int = 5
-    private static let defaultsKey = "auth.recentServers"
-
-    // MARK: - State (loaded once, kept in sync)
-
-    private var entries: [RecentServer]
-
-    // MARK: - Init
-
-    public init() {
-        self.entries = Self.loadFromDefaults()
+    public init(url: URL, displayName: String?, lastUsedAt: Date = Date()) {
+        self.url = url
+        self.displayName = displayName
+        self.lastUsedAt = lastUsedAt
     }
 
-    // MARK: - Public API
-
-    /// The current list, newest first.
-    public var all: [RecentServer] { entries }
-
-    /// Add or bump `url` to the top of the list. Trims to `maxCount`.
-    public func record(url: URL, name: String?) {
-        // Remove any existing entry for this host so we don't duplicate.
-        entries.removeAll { $0.host == url.host }
-        let entry = RecentServer(url: url, displayName: name ?? url.host ?? url.absoluteString, lastUsed: Date())
-        entries.insert(entry, at: 0)
-        if entries.count > Self.maxCount {
-            entries = Array(entries.prefix(Self.maxCount))
+    /// Short label for UI chips — shop subdomain or host.
+    public var chipLabel: String {
+        if let name = displayName, !name.isEmpty { return name }
+        // Strip common cloud subdomain for brevity: "acme.bizarrecrm.com" → "acme"
+        let host = url.host ?? url.absoluteString
+        if host.hasSuffix(".bizarrecrm.com") {
+            return host.replacingOccurrences(of: ".bizarrecrm.com", with: "")
         }
-        Self.saveToDefaults(entries)
-    }
-
-    /// Remove all recent servers (e.g. user explicitly clears history).
-    public func clear() {
-        entries = []
-        UserDefaults.standard.removeObject(forKey: Self.defaultsKey)
-    }
-
-    // MARK: - Persistence
-
-    private static func loadFromDefaults() -> [RecentServer] {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let decoded = try? JSONDecoder().decode([RecentServer].self, from: data) else {
-            return []
-        }
-        return decoded
-    }
-
-    private static func saveToDefaults(_ entries: [RecentServer]) {
-        guard let data = try? JSONEncoder().encode(entries) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        return host
     }
 }
 
-// MARK: - RecentServer
+public enum RecentServersStore {
+    private static let key = "bz.recent_servers"
+    private static let maxCount = 5
 
-/// A single recently-used server entry.
-public struct RecentServer: Codable, Identifiable, Sendable, Hashable {
-    public var id: String { host }
-    public let url: URL
-    public let displayName: String
-    public let lastUsed: Date
+    // MARK: - Read
 
-    public var host: String { url.host ?? url.absoluteString }
+    public static func all() -> [RecentServer] {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let servers = try? JSONDecoder().decode([RecentServer].self, from: data)
+        else { return [] }
+        return servers.sorted { $0.lastUsedAt > $1.lastUsedAt }
+    }
 
-    public init(url: URL, displayName: String, lastUsed: Date) {
-        self.url = url
-        self.displayName = displayName
-        self.lastUsed = lastUsed
+    // MARK: - Write
+
+    /// Records a server access. If the URL already exists, updates its
+    /// `lastUsedAt` and display name; otherwise prepends it. Trims to `maxCount`.
+    public static func record(url: URL, displayName: String?) {
+        var current = all().filter { $0.url != url }
+        current.insert(RecentServer(url: url, displayName: displayName), at: 0)
+        let trimmed = Array(current.prefix(maxCount))
+        if let data = try? JSONEncoder().encode(trimmed) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    public static func clear() {
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }

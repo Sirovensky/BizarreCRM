@@ -13,6 +13,11 @@ import Networking
 // iPhone: vertical scroll + action menu in toolbar.
 // iPad: main scroll + actions sidebar (300pt).
 
+/// Detail view for a single estimate.
+/// §8.2: header, line items, totals, approve/reject actions, convert-to-ticket.
+/// §8.4: manual expire action (marks estimate as expired via PUT /estimates/:id).
+/// iPhone: vertical scroll + bottom-sheet actions.
+/// iPad: multi-column layout with actions sidebar.
 public struct EstimateDetailView: View {
     private let estimate: Estimate
     private let api: APIClient
@@ -21,8 +26,14 @@ public struct EstimateDetailView: View {
 
     // §8.2 sheet states
     @State private var showConvertSheet: Bool = false
-    @State private var showVersionsSheet: Bool = false
-    @State private var showPdfPreview: Bool = false
+    @State private var showExpireConfirm: Bool = false
+    @State private var isExpiring: Bool = false
+    @State private var expireErrorMessage: String?
+    // §8.2: Approve / Reject / Convert-to-invoice / Versioning
+    @State private var showApproveSheet: Bool = false
+    @State private var showRejectSheet: Bool = false
+    @State private var showConvertToInvoiceSheet: Bool = false
+    @State private var showVersioningView: Bool = false
     #if canImport(UIKit)
     @State private var showSignSheet: Bool = false      // existing sign-url sheet
     @State private var showSendSheet: Bool = false      // §8.2 send
@@ -77,8 +88,12 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { compactToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
-        .sheet(isPresented: $showVersionsSheet) { versionsSheet }
-        .sheet(isPresented: $showPdfPreview) { pdfPreviewSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
+        .sheet(isPresented: $showConvertToInvoiceSheet) { convertToInvoiceSheet }
+        .navigationDestination(isPresented: $showVersioningView) {
+            EstimateVersioningView(estimate: estimate, api: api)
+        }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
         .sheet(isPresented: $showSendSheet) { sendSheet }
@@ -126,8 +141,12 @@ public struct EstimateDetailView: View {
         #endif
         .toolbar { ipadToolbar }
         .sheet(isPresented: $showConvertSheet) { convertSheet }
-        .sheet(isPresented: $showVersionsSheet) { versionsSheet }
-        .sheet(isPresented: $showPdfPreview) { pdfPreviewSheet }
+        .sheet(isPresented: $showApproveSheet) { approveSheet }
+        .sheet(isPresented: $showRejectSheet) { rejectSheet }
+        .sheet(isPresented: $showConvertToInvoiceSheet) { convertToInvoiceSheet }
+        .navigationDestination(isPresented: $showVersioningView) {
+            EstimateVersioningView(estimate: estimate, api: api)
+        }
         #if canImport(UIKit)
         .sheet(isPresented: $showSignSheet) { signSheet }
         .sheet(isPresented: $showSendSheet) { sendSheet }
@@ -438,16 +457,40 @@ public struct EstimateDetailView: View {
                 .foregroundStyle(.bizarreOnSurface)
                 .accessibilityAddTraits(.isHeader)
 
-            // §8.2 Send
-            #if canImport(UIKit)
-            Button { showSendSheet = true } label: {
-                Label("Send to Customer", systemImage: "paperplane")
+            let status = estimate.status ?? ""
+            let isConverted = (status == "converted")
+            let isSigned = (status == "signed")
+            let isAlreadyExpired = (status == "expired")
+
+            // §8.2: Approve action
+            let isApproved = (status == "approved")
+            let isRejected = (status == "rejected")
+            Button {
+                showApproveSheet = true
+            } label: {
+                Label(isApproved ? "Approved" : "Approve",
+                      systemImage: isApproved ? "checkmark.seal.fill" : "checkmark.seal")
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.bordered)
-            .disabled(isConverted)
-            .accessibilityLabel(isConverted ? "Cannot send — already converted" : "Send estimate via SMS or email")
-            .keyboardShortcut("m", modifiers: [.command, .shift])
+            .tint(isApproved ? .green : .bizarreOrange)
+            .disabled(isApproved || isConverted || isAlreadyExpired)
+            .accessibilityLabel(isApproved ? "Estimate already approved" : "Approve this estimate")
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+
+            // §8.2: Reject action
+            Button(role: .destructive) {
+                showRejectSheet = true
+            } label: {
+                Label(isRejected ? "Rejected" : "Reject",
+                      systemImage: isRejected ? "xmark.seal.fill" : "xmark.seal")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isRejected || isConverted || isAlreadyExpired)
+            .accessibilityLabel(isRejected ? "Estimate already rejected" : "Reject this estimate")
+
+            Divider()
 
             // §8.2 Approve
             Button { showApproveSheet = true } label: {
@@ -480,7 +523,29 @@ public struct EstimateDetailView: View {
             .accessibilityLabel(isConverted ? "Already converted to ticket" : "Convert estimate to a service ticket")
             .keyboardShortcut("k", modifiers: [.command, .shift])
 
-            // §8.2 Convert to invoice
+            // §8.2: Convert to invoice
+            Button {
+                showConvertToInvoiceSheet = true
+            } label: {
+                Label("Convert to Invoice", systemImage: "doc.text")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isConverted)
+            .accessibilityLabel(isConverted ? "Already converted" : "Convert estimate to an invoice")
+            .keyboardShortcut("i", modifiers: [.command, .shift])
+
+            // §8.2: Version history
+            Button {
+                showVersioningView = true
+            } label: {
+                Label("Version History", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("View estimate version history")
+
+            #if canImport(UIKit)
             Button {
                 Task { await convertToInvoice() }
             } label: {
@@ -518,37 +583,63 @@ public struct EstimateDetailView: View {
             }
             .buttonStyle(.bordered)
             .disabled(isSigned)
-            .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate a signature link to send to customer")
+            .accessibilityLabel(isSigned ? "Estimate already signed by customer" : "Generate and share signature link")
             .keyboardShortcut("g", modifiers: [.command, .shift])
             #endif
 
-            // §8.4 Manual expire
-            let isExpired = (status == "expired")
-            Button {
-                showExpireConfirm = true
-            } label: {
-                Label(isExpiring ? "Expiring…" : "Expire Now", systemImage: "clock.badge.xmark")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .buttonStyle(.bordered)
-            .tint(.bizarreOnSurfaceMuted)
-            .disabled(isExpired || isConverted || isExpiring)
-            .accessibilityLabel(isExpired ? "Already expired" : "Manually expire this estimate")
-            .confirmationDialog(
-                "Expire this estimate?",
-                isPresented: $showExpireConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Expire", role: .destructive) {
-                    Task { await expireEstimate() }
+            // §8.4 Manual expire action
+            if !isAlreadyExpired && !isConverted {
+                Button(role: .destructive) {
+                    showExpireConfirm = true
+                } label: {
+                    Label(isExpiring ? "Expiring…" : "Expire Estimate",
+                          systemImage: "clock.badge.xmark")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The estimate will be marked expired and the customer will no longer be able to view it.")
+                .buttonStyle(.bordered)
+                .disabled(isExpiring)
+                .accessibilityLabel("Mark this estimate as expired")
+                .confirmationDialog("Expire this estimate?",
+                                    isPresented: $showExpireConfirm,
+                                    titleVisibility: .visible) {
+                    Button("Expire", role: .destructive) {
+                        Task { await manualExpire() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The estimate will be marked as expired and can no longer be approved.")
+                }
+            }
+
+            if let errMsg = expireErrorMessage {
+                Text(errMsg)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(.bizarreError)
             }
         }
         .padding(BrandSpacing.lg)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+    }
+
+    // MARK: - §8.4 Manual expire
+
+    private func manualExpire() async {
+        isExpiring = true
+        expireErrorMessage = nil
+        defer { isExpiring = false }
+        do {
+            // PUT /api/v1/estimates/:id with { status: "expired" }
+            struct ExpireBody: Encodable { let status: String }
+            _ = try await api.put(
+                "/api/v1/estimates/\(estimate.id)",
+                body: ExpireBody(status: "expired"),
+                as: Estimate.self
+            )
+            AppLog.ui.info("Estimate \(estimate.id) manually expired.")
+        } catch {
+            expireErrorMessage = "Could not expire: \(error.localizedDescription)"
+            AppLog.ui.error("Manual expire failed: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     // MARK: - Toolbars
@@ -558,48 +649,50 @@ public struct EstimateDetailView: View {
         ToolbarItem(placement: .primaryAction) {
             let status = estimate.status ?? ""
             let isConverted = (status == "converted")
-            let isSigned   = (status == "signed")
-            let isApproved = (status == "approved")
-            let isRejected = (status == "rejected")
-
+            let isSigned = (status == "signed")
+            let isAlreadyExpired = (status == "expired")
             Menu {
-                #if canImport(UIKit)
-                Button { showSendSheet = true } label: {
-                    Label("Send to Customer", systemImage: "paperplane")
+                // §8.2: Approve / Reject
+                let isApproved = (estimate.status == "approved")
+                let isRejected = (estimate.status == "rejected")
+                Button {
+                    showApproveSheet = true
+                } label: {
+                    Label(isApproved ? "Approved" : "Approve",
+                          systemImage: isApproved ? "checkmark.seal.fill" : "checkmark.seal")
                 }
-                .disabled(isConverted)
+                .disabled(isApproved || isConverted || isAlreadyExpired)
 
-                Button { showApproveSheet = true } label: {
-                    Label("Approve (Signature)", systemImage: "signature")
+                Button(role: .destructive) {
+                    showRejectSheet = true
+                } label: {
+                    Label(isRejected ? "Rejected" : "Reject",
+                          systemImage: isRejected ? "xmark.seal.fill" : "xmark.seal")
                 }
-                .disabled(isApproved || isConverted || isRejected)
-
-                Button { showRejectSheet = true } label: {
-                    Label("Reject", systemImage: "xmark.circle")
-                }
-                .disabled(isRejected || isConverted || isApproved)
+                .disabled(isRejected || isConverted || isAlreadyExpired)
 
                 Divider()
-                #endif
 
-                Button { showConvertSheet = true } label: {
+                Button {
+                    showConvertSheet = true
+                } label: {
                     Label("Convert to Ticket", systemImage: "wrench.and.screwdriver")
                 }
                 .disabled(isConverted)
 
-                Button { Task { await convertToInvoice() } } label: {
+                // §8.2: Convert to invoice
+                Button {
+                    showConvertToInvoiceSheet = true
+                } label: {
                     Label("Convert to Invoice", systemImage: "doc.text")
                 }
                 .disabled(isConverted)
 
-                Divider()
-
-                Button { showVersionsSheet = true } label: {
+                // §8.2: Version history
+                Button {
+                    showVersioningView = true
+                } label: {
                     Label("Version History", systemImage: "clock.arrow.circlepath")
-                }
-
-                Button { showPdfPreview = true } label: {
-                    Label("Customer Preview", systemImage: "doc.richtext")
                 }
 
                 #if canImport(UIKit)
@@ -620,19 +713,28 @@ public struct EstimateDetailView: View {
                 }
                 .disabled(isConverted || (status == "expired"))
                 #endif
+
+                // §8.4 Manual expire
+                if !isAlreadyExpired && !isConverted {
+                    Button(role: .destructive) {
+                        showExpireConfirm = true
+                    } label: {
+                        Label("Expire Estimate", systemImage: "clock.badge.xmark")
+                    }
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
             .accessibilityLabel("Estimate actions")
-            .confirmationDialog(
-                "Expire this estimate?",
-                isPresented: $showExpireConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Expire", role: .destructive) { Task { await expireEstimate() } }
+            .confirmationDialog("Expire this estimate?",
+                                isPresented: $showExpireConfirm,
+                                titleVisibility: .visible) {
+                Button("Expire", role: .destructive) {
+                    Task { await manualExpire() }
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("The estimate will be marked expired.")
+                Text("The estimate will be marked as expired.")
             }
         }
     }
@@ -683,41 +785,37 @@ public struct EstimateDetailView: View {
         )
     }
 
-    private var versionsSheet: some View {
-        NavigationStack {
-            EstimateVersionsView(
-                api: api,
-                estimateId: estimate.id,
-                currentVersionNumber: estimate.versionNumber
-            )
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { showVersionsSheet = false }
-                        .accessibilityLabel("Close version history")
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
+    // MARK: - §8.2 Approve sheet
+
+    private var approveSheet: some View {
+        EstimateApproveSheet(
+            estimate: estimate,
+            api: api,
+            onApproved: { showApproveSheet = false }
+        )
     }
 
-    private var pdfPreviewSheet: some View {
-        NavigationStack {
-            #if canImport(UIKit)
-            EstimatePdfPreviewView(estimate: estimate)
-            #else
-            Text("PDF preview not available on this platform")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-            #endif
-        }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Done") { showPdfPreview = false }
-                    .accessibilityLabel("Close PDF preview")
-            }
-        }
-        .presentationDetents([.large])
+    // MARK: - §8.2 Reject sheet
+
+    private var rejectSheet: some View {
+        EstimateRejectSheet(
+            estimate: estimate,
+            api: api,
+            onRejected: { showRejectSheet = false }
+        )
     }
+
+    // MARK: - §8.2 Convert to invoice sheet
+
+    private var convertToInvoiceSheet: some View {
+        EstimateConvertToInvoiceSheet(
+            estimate: estimate,
+            api: api,
+            onSuccess: { _ in showConvertToInvoiceSheet = false }
+        )
+    }
+
+    // MARK: - Sign sheet
 
     #if canImport(UIKit)
     private var signSheet: some View {

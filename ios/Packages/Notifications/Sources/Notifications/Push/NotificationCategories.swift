@@ -11,7 +11,6 @@ public enum NotificationCategoryID: String, Sendable, CaseIterable {
     case lowStock              = "bizarre.lowstock"
     case appointmentReminder   = "bizarre.appointment.reminder"
     case paymentReceived       = "bizarre.payment.received"
-    /// §21.2 — payment charge failed; actions: Open invoice + Retry charge.
     case paymentFailed         = "bizarre.payment.failed"
     case deadLetterAlert       = "bizarre.deadletter"
     case mention               = "bizarre.mention"
@@ -46,9 +45,9 @@ public enum NotificationActionID {
     public static let paymentView    = "bizarre.payment.view"
     public static let paymentPrint   = "bizarre.payment.print"
 
-    // payment.failed (§21.2)
-    public static let paymentFailedView  = "bizarre.payment.failed.view"
-    public static let paymentFailedRetry = "bizarre.payment.failed.retry"
+    // payment.failed
+    public static let paymentFailedOpen  = "bizarre.payment.failed.open"
+    public static let paymentRetry       = "bizarre.payment.failed.retry"
 
     // deadletter.alert
     public static let dlView         = "bizarre.dl.view"
@@ -218,26 +217,24 @@ public enum NotificationCategories {
         )
     }
 
-    /// §21.2 `bizarre.payment.failed` — open invoice + retry charge.
-    /// The "Retry" action is destructive-labelled (red) to signal a financial
-    /// re-attempt; foreground required so the user can confirm PIN / biometric.
+    /// `bizarre.payment.failed` — open invoice + retry charge.
     private static func paymentFailedCategory() -> UNNotificationCategory {
         let open = UNNotificationAction(
-            identifier: NotificationActionID.paymentFailedView,
+            identifier: NotificationActionID.paymentFailedOpen,
             title: "Open",
             options: [.foreground]
         )
         let retry = UNNotificationAction(
-            identifier: NotificationActionID.paymentFailedRetry,
+            identifier: NotificationActionID.paymentRetry,
             title: "Retry Charge",
-            options: [.foreground, .destructive]
+            options: [.foreground]
         )
         return UNNotificationCategory(
             identifier: NotificationCategoryID.paymentFailed.rawValue,
             actions: [open, retry],
             intentIdentifiers: [],
             hiddenPreviewsBodyPlaceholder: "Payment failed",
-            options: [.customDismissAction]
+            options: []
         )
     }
 

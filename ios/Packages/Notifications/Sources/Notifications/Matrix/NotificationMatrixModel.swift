@@ -166,6 +166,22 @@ public struct MatrixRow: Sendable, Identifiable, Equatable {
         }
     }
 
+    /// §70.1 — Returns true when the current channel state matches the
+    /// event's shipped default (from `NotificationEvent.defaultPush/Email/Sms`).
+    /// Used to show "(default)" label greyed next to unchanged toggles.
+    public func isAtDefault(for channel: MatrixChannel) -> Bool {
+        switch channel {
+        case .push:  return pushEnabled  == event.defaultPush
+        case .email: return emailEnabled == event.defaultEmail
+        case .sms:   return smsEnabled   == event.defaultSms
+        }
+    }
+
+    /// §70.1 — True if ALL channels are at their shipped defaults.
+    public var isFullyAtDefault: Bool {
+        MatrixChannel.allCases.allSatisfy { isAtDefault(for: $0) }
+    }
+
     // MARK: - Conversion back to NotificationPreference (for repository save)
 
     /// Convert back to a NotificationPreference for use with the existing repository.

@@ -49,7 +49,7 @@ public final class SmsProviderViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let resp = try await api.settingsSms()
+            let resp = try await api.fetchSmsSettings()
             selectedProvider = SmsProvider(rawValue: resp.provider ?? "") ?? .bizarreCRMManaged
             fromNumber = resp.fromNumber ?? ""
             twilioAccountSid = resp.twilioAccountSid ?? ""
@@ -65,7 +65,7 @@ public final class SmsProviderViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = SmsSettingsWire(
+            let body = SmsSettingsDTO(
                 provider: selectedProvider.rawValue,
                 fromNumber: fromNumber,
                 twilioAccountSid: twilioAccountSid,
@@ -74,7 +74,7 @@ public final class SmsProviderViewModel: Sendable {
                 bandwidthApplicationId: nil,
                 a2pStatus: nil
             )
-            _ = try await api.settingsSaveSms(body)
+            _ = try await api.saveSmsSettings(body)
             successMessage = "SMS settings saved."
             errorMessage = nil
         } catch {
@@ -87,7 +87,7 @@ public final class SmsProviderViewModel: Sendable {
         defer { isSendingTest = false }
         guard let api else { return }
         do {
-            try await api.settingsSmsTestSend()
+            try await api.sendTestSms()
             successMessage = "Test SMS sent to your number."
             errorMessage = nil
         } catch {

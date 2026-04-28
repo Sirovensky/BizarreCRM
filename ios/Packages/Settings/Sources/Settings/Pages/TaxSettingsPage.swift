@@ -60,7 +60,7 @@ public final class TaxSettingsViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let response = try await api.settingsTaxRates()
+            let response = try await api.fetchTaxRates()
             taxRates = response.map {
                 TaxRate(
                     id: $0.id, name: $0.name, rate: $0.rate,
@@ -98,16 +98,16 @@ public final class TaxSettingsViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
+            let body = TaxRateCreateDTO(
+                name: draftName,
+                rate: value,
+                applyToAll: draftApplyToAll,
+                isExempt: draftIsExempt
+            )
             if let existing = editingRate {
-                _ = try await api.settingsUpdateTaxRate(
-                    id: existing.id, name: draftName, rate: value,
-                    applyToAll: draftApplyToAll, isExempt: draftIsExempt
-                )
+                _ = try await api.updateTaxRate(id: existing.id, body)
             } else {
-                _ = try await api.settingsCreateTaxRate(
-                    name: draftName, rate: value,
-                    applyToAll: draftApplyToAll, isExempt: draftIsExempt
-                )
+                _ = try await api.createTaxRate(body)
             }
             showAddSheet = false
             await load()
@@ -119,10 +119,8 @@ public final class TaxSettingsViewModel: Sendable {
     func archiveRate(_ rate: TaxRate) async {
         guard let api else { return }
         do {
-            _ = try await api.settingsUpdateTaxRate(
-                id: rate.id, name: rate.name, rate: rate.rate,
-                applyToAll: rate.applyToAll, isExempt: true
-            )
+            let body = TaxRateCreateDTO(name: rate.name, rate: rate.rate, applyToAll: rate.applyToAll, isExempt: true)
+            _ = try await api.updateTaxRate(id: rate.id, body)
             await load()
         } catch {
             errorMessage = error.localizedDescription

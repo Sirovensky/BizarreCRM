@@ -38,7 +38,7 @@ final class SupportEmailViewModel {
         // Resolve support contact from server
         guard let api else { return }
         do {
-            let contact = try await api.settingsSupportContact()
+            let contact = try await api.fetchSupportContact()
             supportEmail = contact.email
         } catch {
             loadError = error.localizedDescription

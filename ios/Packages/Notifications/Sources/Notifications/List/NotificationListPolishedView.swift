@@ -189,17 +189,18 @@ public struct NotificationListPolishedView: View {
                         NotificationRowView(note: note)
                             .listRowBackground(Color.bizarreSurface1)
                             .contentShape(Rectangle())
-                            // §13.1 Tap → deep link
                             .onTapGesture {
-                                if let url = vm.deepLinkURL(for: note) {
+                                // §13.1 Tap → deep link
+                                if let path = deepLinkPath(for: note),
+                                   let url = URL(string: "bizarrecrm://\(path)") {
+                                    openURL(url)
+                                }
+                                if !note.read {
                                     Task { await vm.markRead(id: note.id) }
-                                    #if canImport(UIKit)
-                                    UIApplication.shared.open(url)
-                                    #endif
                                 }
                             }
-                            // §13.1 Swipe leading: mark read
-                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            // Trailing: mark read
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 if !note.read {
                                     Button {
                                         Task { await vm.markRead(id: note.id) }
@@ -210,12 +211,12 @@ public struct NotificationListPolishedView: View {
                                     .accessibilityIdentifier("notif.swipe.read.\(note.id)")
                                 }
                             }
-                            // §13.1 Swipe trailing: dismiss (persists via PATCH /dismiss)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            // Leading: dismiss (PATCH /dismiss)
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     Task { await vm.dismiss(id: note.id) }
                                 } label: {
-                                    Label("Dismiss", systemImage: "trash")
+                                    Label("Dismiss", systemImage: "xmark.circle")
                                 }
                                 .accessibilityIdentifier("notif.swipe.dismiss.\(note.id)")
                             }

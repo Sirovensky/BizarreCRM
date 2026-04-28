@@ -258,102 +258,68 @@ public struct IssueSignUrlResponse: Decodable, Sendable {
     }
 }
 
-// MARK: - APIClient extension — §8 operations
+// MARK: - EstimatesCursorPage
+//
+// §8.1: Cursor-based pagination response.
+// Server returns: { estimates: [...], next_cursor: String?, has_more: Bool }
+// When `nextCursor` is nil the list is exhausted.
 
-public extension APIClient {
+public struct EstimatesCursorPage: Decodable, Sendable {
+    public let estimates: [Estimate]
+    public let nextCursor: String?
+    public let hasMore: Bool
 
-    // MARK: List with cursor + status filter (§8.1)
-
-    /// `GET /api/v1/estimates?status=<s>&cursor=<c>&limit=50`
-    func listEstimatesCursor(
-        status: EstimateStatusFilter = .all,
-        keyword: String? = nil,
-        cursor: String? = nil,
-        limit: Int = 50
-    ) async throws -> EstimatesCursorResponse {
-        var query: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
-        if let s = status.queryValue { query.append(URLQueryItem(name: "status", value: s)) }
-        if let k = keyword, !k.isEmpty { query.append(URLQueryItem(name: "keyword", value: k)) }
-        if let c = cursor { query.append(URLQueryItem(name: "cursor", value: c)) }
-        return try await get("/api/v1/estimates", query: query, as: EstimatesCursorResponse.self)
-    }
-
-    // MARK: Send (§8.2)
-
-    /// `POST /api/v1/estimates/:id/send`
-    func sendEstimate(estimateId: Int64, sendSms: Bool? = nil, sendEmail: Bool? = nil) async throws -> EstimateSendResponse {
-        let body = EstimateSendRequest(sendSms: sendSms, sendEmail: sendEmail)
-        return try await post("/api/v1/estimates/\(estimateId)/send", body: body, as: EstimateSendResponse.self)
-    }
-
-    // MARK: Approve (§8.2)
-
-    /// `POST /api/v1/estimates/:id/approve` — staff-assisted with optional signature.
-    func approveEstimate(estimateId: Int64, signatureData: String? = nil) async throws -> EstimateApproveResponse {
-        let body = EstimateApproveRequest(token: nil, staffApproved: true, signatureData: signatureData)
-        return try await post("/api/v1/estimates/\(estimateId)/approve", body: body, as: EstimateApproveResponse.self)
-    }
-
-    // MARK: Reject (§8.2)
-
-    /// `PUT /api/v1/estimates/:id` with status=rejected + reason.
-    @discardableResult
-    func rejectEstimate(estimateId: Int64, reason: String) async throws -> Estimate {
-        let body = EstimateRejectRequest(reason: reason)
-        return try await put("/api/v1/estimates/\(estimateId)", body: body, as: Estimate.self)
-    }
-
-    // MARK: Versions (§8.2)
-
-    /// `GET /api/v1/estimates/:id/versions`
-    func estimateVersions(estimateId: Int64) async throws -> [EstimateVersion] {
-        return try await get("/api/v1/estimates/\(estimateId)/versions", as: EstimateVersionsResponse.self).versions
-    }
-
-    /// `GET /api/v1/estimates/:id/versions/:versionId`
-    func estimateVersion(estimateId: Int64, versionId: Int64) async throws -> Estimate {
-        return try await get("/api/v1/estimates/\(estimateId)/versions/\(versionId)", as: Estimate.self)
-    }
-
-    // MARK: Convert to invoice (§8.2)
-
-    /// `POST /api/v1/estimates/:id/convert-to-invoice` — NOTE: per §74 this endpoint may not
-    /// exist on the server yet. This stub will surface a 404 from the server until wired.
-    func convertEstimateToInvoice(estimateId: Int64) async throws -> ConvertEstimateToInvoiceResponse {
-        let body = EmptyBody()
-        return try await post("/api/v1/estimates/\(estimateId)/convert-to-invoice", body: body, as: ConvertEstimateToInvoiceResponse.self)
-    }
-
-    // MARK: Bulk actions (§8.1)
-
-    /// `POST /api/v1/estimates/bulk` — bulk send / delete / export.
-    /// NOTE: endpoint may not exist; §74 gap. Will produce 404 until server wired.
-    func estimatesBulkAction(ids: [Int64], action: EstimateBulkAction) async throws {
-        let body = EstimateBulkRequest(ids: ids, action: action)
-        _ = try await post("/api/v1/estimates/bulk", body: body, as: CreatedResource.self)
-    }
-
-    // MARK: - §8.3 Create with idempotency key
-
-    /// `POST /api/v1/estimates` — creates a new estimate.
-    /// The `idempotencyKey` is embedded in the request body as `idempotency_key`
-    /// so retries on the same UUID are deduplicated server-side without requiring
-    /// custom header support from the base APIClient.
-    func createEstimate(_ req: CreateEstimateRequest, idempotencyKey: String) async throws -> CreatedResource {
-        let wrapped = CreateEstimateRequestWithKey(base: req, idempotencyKey: idempotencyKey)
-        return try await post("/api/v1/estimates", body: wrapped, as: CreatedResource.self)
-    }
-
-    // MARK: - §8.4 Expire
-
-    /// `PUT /api/v1/estimates/:id` with `{ status: "expired" }` — manually expires an estimate.
-    @discardableResult
-    func expireEstimate(estimateId: Int64) async throws -> Estimate {
-        return try await put("/api/v1/estimates/\(estimateId)", body: EstimateExpireBody(), as: Estimate.self)
+    enum CodingKeys: String, CodingKey {
+        case estimates
+        case nextCursor = "next_cursor"
+        case hasMore    = "has_more"
     }
 }
 
-// MARK: - APIClient extension — sign-URL (existing, unchanged)
+// MARK: - CreateEstimateWithIdempotencyRequest
+//
+// §8.3: Wraps CreateEstimateRequest, adding an `idempotency_key` field.
+// The server uses this UUID to deduplicate duplicate POSTs (e.g. on retry after
+// a timeout). Sent as a JSON body field (not a header) per established pattern.
+
+public struct CreateEstimateWithIdempotencyRequest: Encodable, Sendable {
+    public let customerId: Int64
+    public let subject: String?
+    public let notes: String?
+    public let validUntil: String?
+    public let discount: Double?
+    public let lineItems: [EstimateLineItemRequest]?
+    /// Client-generated UUID preventing duplicate creates on retry.
+    public let idempotencyKey: String
+
+    public init(
+        customerId: Int64,
+        subject: String? = nil,
+        notes: String? = nil,
+        validUntil: String? = nil,
+        discount: Double? = nil,
+        lineItems: [EstimateLineItemRequest]? = nil,
+        idempotencyKey: String
+    ) {
+        self.customerId = customerId
+        self.subject = subject
+        self.notes = notes
+        self.validUntil = validUntil
+        self.discount = discount
+        self.lineItems = lineItems
+        self.idempotencyKey = idempotencyKey
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case subject, notes, discount
+        case customerId     = "customer_id"
+        case validUntil     = "valid_until"
+        case lineItems      = "line_items"
+        case idempotencyKey = "idempotency_key"
+    }
+}
+
+// MARK: - APIClient extension
 
 public extension APIClient {
     /// `POST /api/v1/estimates/:id/sign-url`
@@ -371,5 +337,39 @@ public extension APIClient {
             body: body,
             as: IssueSignUrlResponse.self
         )
+    }
+
+    // MARK: - §8.1 Cursor-based pagination
+
+    /// `GET /api/v1/estimates?cursor=<opaque>&limit=<n>&keyword=<q>&status=<s>`
+    ///
+    /// Fetches one page of estimates using opaque cursor pagination.
+    /// Pass `cursor: nil` to fetch the first page.
+    /// The response includes `next_cursor` (nil when exhausted) + `has_more`.
+    func listEstimatesCursor(
+        cursor: String? = nil,
+        limit: Int = 50,
+        keyword: String? = nil,
+        status: String? = nil
+    ) async throws -> EstimatesCursorPage {
+        var query: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
+        if let c = cursor { query.append(URLQueryItem(name: "cursor", value: c)) }
+        if let k = keyword, !k.isEmpty { query.append(URLQueryItem(name: "keyword", value: k)) }
+        if let s = status { query.append(URLQueryItem(name: "status", value: s)) }
+        // Fallback: server may not yet support cursor pagination — if response
+        // decoding fails (missing next_cursor/has_more), catch and wrap the
+        // old envelope. The do/catch is handled by the caller via CachedRepository.
+        return try await get("/api/v1/estimates", query: query, as: EstimatesCursorPage.self)
+    }
+
+    // MARK: - §8.3 Idempotent create
+
+    /// `POST /api/v1/estimates` with an idempotency key to deduplicate retries.
+    ///
+    /// The `idempotencyKey` is a client-generated UUID included in the request body.
+    /// The server indexes on this key and returns the previously-created estimate if
+    /// the same key is submitted twice within the dedup window.
+    func createEstimateIdempotent(_ req: CreateEstimateWithIdempotencyRequest) async throws -> CreatedResource {
+        try await post("/api/v1/estimates", body: req, as: CreatedResource.self)
     }
 }

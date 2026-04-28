@@ -54,16 +54,16 @@ public struct TicketCreateFlowView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
-        // §4.3 — Per-step inline validation toast (glass error pill at bottom)
+        // §4.3: inline validation error toast
         .overlay(alignment: .bottom) {
-            if let msg = vm.stepValidationMessage, !vm.canGoNext {
-                CreateFlowValidationToast(message: msg)
+            if let validationError = vm.stepValidationError {
+                StepValidationToast(message: validationError)
                     .padding(.horizontal, BrandSpacing.base)
-                    .padding(.bottom, BrandSpacing.lg)
+                    .padding(.bottom, BrandSpacing.xl)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(.spring(duration: 0.25), value: vm.stepValidationMessage)
+        .animation(BrandMotion.standard, value: vm.stepValidationError)
     }
 
     // MARK: - iPhone: full-screen NavigationStack
@@ -208,9 +208,9 @@ public struct TicketCreateFlowView: View {
     private func submitAndDismiss() async {
         await vm.submit()
         if let id = vm.createdTicketId {
-            // §4.3 — Haptic feedback: .success on create
-            let generator = UINotificationFeedbackGenerator()
-            generator.prepare()
+            // §4.3: .success haptic on create
+            let haptic = UINotificationFeedbackGenerator()
+            haptic.notificationOccurred(.success)
             if vm.queuedOffline {
                 pendingBanner = "Saved — will sync when online"
                 generator.notificationOccurred(.success)
@@ -227,11 +227,10 @@ public struct TicketCreateFlowView: View {
                 printLabel(id)
             }
             dismiss()
-        } else if vm.stepValidationMessage != nil {
-            // §4.3 — Haptic feedback: .error on validation fail
-            let generator = UINotificationFeedbackGenerator()
-            generator.prepare()
-            generator.notificationOccurred(.error)
+        } else if vm.errorMessage != nil {
+            // §4.3: .error haptic on validation fail / server error
+            let haptic = UINotificationFeedbackGenerator()
+            haptic.notificationOccurred(.error)
         }
     }
 
@@ -966,5 +965,38 @@ private extension Animation {
 
 private extension BrandMotion {
     static var stepTransition: Animation { .easeInOut(duration: DesignTokens.Motion.snappy) }
+}
+
+// MARK: - §4.3 Inline glass validation toast
+
+/// Glass pill that appears at the bottom of the create flow when a step
+/// validation fails. Auto-dismissed when the user corrects the field and
+/// the stepValidationError is cleared by the ViewModel.
+private struct StepValidationToast: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.bizarreError)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOnSurface)
+                .multilineTextAlignment(.leading)
+        }
+        .padding(.horizontal, BrandSpacing.lg)
+        .padding(.vertical, BrandSpacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Radius.lg)
+                .strokeBorder(Color.bizarreError.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Validation error: \(message)")
+        .accessibilityAddTraits(.isStaticText)
+    }
 }
 #endif

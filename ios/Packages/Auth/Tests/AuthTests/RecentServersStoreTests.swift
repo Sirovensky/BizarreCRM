@@ -1,69 +1,59 @@
 import XCTest
 @testable import Auth
 
-// MARK: - RecentServersStore tests
+// MARK: - RecentServersStoreTests
+// §79.1 — Verifies recent-servers persistence, ordering, and max-count trimming.
 
 final class RecentServersStoreTests: XCTestCase {
 
-    private var store: RecentServersStore!
-
-    override func setUp() async throws {
-        store = RecentServersStore()
-        await store.clear()
+    override func setUp() {
+        super.setUp()
+        RecentServersStore.clear()
     }
 
-    // MARK: - Empty state
-
-    func test_initial_isEmpty() async {
-        let servers = await store.all
-        XCTAssertTrue(servers.isEmpty)
+    func test_empty_onFirstLaunch() {
+        XCTAssertTrue(RecentServersStore.all().isEmpty)
     }
 
-    // MARK: - Record
-
-    func test_record_addsEntry() async {
-        let url = URL(string: "https://myshop.bizarrecrm.com")!
-        await store.record(url: url, name: "My Shop")
-        let all = await store.all
+    func test_record_storesServer() {
+        let url = URL(string: "https://acme.bizarrecrm.com")!
+        RecentServersStore.record(url: url, displayName: "Acme")
+        let all = RecentServersStore.all()
         XCTAssertEqual(all.count, 1)
-        XCTAssertEqual(all.first?.displayName, "My Shop")
         XCTAssertEqual(all.first?.url, url)
+        XCTAssertEqual(all.first?.displayName, "Acme")
     }
 
-    func test_record_sameDomain_deduplicates() async {
-        let url = URL(string: "https://myshop.bizarrecrm.com")!
-        await store.record(url: url, name: "First")
-        await store.record(url: url, name: "Updated")
-        let all = await store.all
-        XCTAssertEqual(all.count, 1)
-        XCTAssertEqual(all.first?.displayName, "Updated")
+    func test_record_deduplicates() {
+        let url = URL(string: "https://acme.bizarrecrm.com")!
+        RecentServersStore.record(url: url, displayName: "Acme")
+        RecentServersStore.record(url: url, displayName: "Acme v2")
+        XCTAssertEqual(RecentServersStore.all().count, 1)
     }
 
-    func test_record_newestFirst() async {
-        let url1 = URL(string: "https://shop1.bizarrecrm.com")!
-        let url2 = URL(string: "https://shop2.bizarrecrm.com")!
-        await store.record(url: url1, name: "Shop 1")
-        await store.record(url: url2, name: "Shop 2")
-        let all = await store.all
-        XCTAssertEqual(all.first?.displayName, "Shop 2")
+    func test_record_mostRecentFirst() {
+        let url1 = URL(string: "https://acme.bizarrecrm.com")!
+        let url2 = URL(string: "https://beta.bizarrecrm.com")!
+        RecentServersStore.record(url: url1, displayName: nil)
+        RecentServersStore.record(url: url2, displayName: nil)
+        XCTAssertEqual(RecentServersStore.all().first?.url, url2)
     }
 
-    func test_record_capsAtMaxCount() async {
+    func test_record_trimsToFive() {
         for i in 0..<7 {
             let url = URL(string: "https://shop\(i).bizarrecrm.com")!
-            await store.record(url: url, name: "Shop \(i)")
+            RecentServersStore.record(url: url, displayName: nil)
         }
-        let all = await store.all
-        XCTAssertLessThanOrEqual(all.count, RecentServersStore.maxCount)
+        XCTAssertEqual(RecentServersStore.all().count, 5)
     }
 
-    // MARK: - Clear
+    func test_chipLabel_stripsCloudDomain() {
+        let server = RecentServer(url: URL(string: "https://acme.bizarrecrm.com")!, displayName: nil)
+        XCTAssertEqual(server.chipLabel, "acme")
+    }
 
-    func test_clear_removesAll() async {
-        let url = URL(string: "https://myshop.bizarrecrm.com")!
-        await store.record(url: url, name: "My Shop")
-        await store.clear()
-        let all = await store.all
-        XCTAssertTrue(all.isEmpty)
+    func test_chipLabel_usesDisplayNameWhenAvailable() {
+        let server = RecentServer(url: URL(string: "https://acme.bizarrecrm.com")!, displayName: "Acme Shop")
+        XCTAssertEqual(server.chipLabel, "Acme Shop")
     }
 }

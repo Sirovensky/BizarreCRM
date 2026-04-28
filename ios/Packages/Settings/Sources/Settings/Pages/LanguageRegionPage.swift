@@ -52,7 +52,7 @@ public final class LanguageRegionViewModel: Sendable {
         defer { isLoading = false }
         guard let api else { return }
         do {
-            let resp = try await api.settingsOrganization()
+            let resp = try await api.fetchLanguageRegionSettings()
             locale = resp.locale ?? Locale.current.identifier
             timezone = resp.timezone ?? TimeZone.current.identifier
             currency = resp.currency ?? "USD"
@@ -68,11 +68,11 @@ public final class LanguageRegionViewModel: Sendable {
         defer { isSaving = false }
         guard let api else { return }
         do {
-            let body = LanguageRegionWire(
+            let body = LanguageRegionSettings(
                 locale: locale, timezone: timezone,
                 currency: currency, dateFormat: dateFormat, numberFormat: numberFormat
             )
-            _ = try await api.settingsSaveOrganization(body)
+            _ = try await api.saveLanguageRegionSettings(body)
             successMessage = "Language & Region saved."
             errorMessage = nil
         } catch {

@@ -37,7 +37,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isSigning = false }
         guard let api else { return }
         do {
-            try await api.settingsRevokeAllSessions()
+            try await api.revokeAllSessions()
             successMessage = "All other sessions signed out."
             errorMessage = nil
         } catch {
@@ -50,7 +50,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isResetting = false }
         guard let api else { return }
         do {
-            try await api.settingsResetDemo()
+            try await api.resetDemoData()
             successMessage = "Demo data reset."
             errorMessage = nil
         } catch {
@@ -67,7 +67,7 @@ public final class DangerZoneViewModel: Sendable {
         defer { isDeleting = false }
         guard let api else { return }
         do {
-            try await api.settingsDeleteTenant(pin: managerPIN)
+            try await api.deleteTenant(managerPin: managerPIN)
             successMessage = "Tenant deletion initiated."
             errorMessage = nil
             managerPIN = ""

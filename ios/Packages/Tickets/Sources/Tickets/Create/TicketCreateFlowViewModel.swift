@@ -159,14 +159,41 @@ public final class TicketCreateFlowViewModel {
 
     // MARK: - Navigation
 
+    /// §4.3: inline step validation error message (nil = no error).
+    public private(set) var stepValidationError: String?
+
+    /// Advances to the next step. If the current step is invalid, sets
+    /// `stepValidationError` for the view to render as a glass toast.
     public func next() {
-        guard stepValid, let next = nextStep else { return }
-        currentStep = next
+        if stepValid {
+            stepValidationError = nil
+            guard let next = nextStep else { return }
+            currentStep = next
+        } else {
+            stepValidationError = validationMessage(for: currentStep)
+        }
     }
 
     public func back() {
+        stepValidationError = nil
         guard let prev = prevStep else { return }
         currentStep = prev
+    }
+
+    /// Human-readable validation message for the current step failure.
+    private func validationMessage(for step: CreateFlowStep) -> String {
+        switch step {
+        case .customer: return "Please select a customer before continuing."
+        case .devices:  return "Please enter a device name for every device."
+        case .pricing:
+            if let raw = Double(discountText.replacingOccurrences(of: ",", with: ".")) {
+                if raw < 0 { return "Discount cannot be negative." }
+                if discountMode == .percent && raw > 100 { return "Percentage discount cannot exceed 100%." }
+            }
+            return "Please enter a valid discount amount."
+        case .schedule: return nil ?? ""
+        case .review:   return nil ?? ""
+        }
     }
 
     // MARK: - Device management (immutable updates per §coding-style)

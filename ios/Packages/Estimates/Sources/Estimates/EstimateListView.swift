@@ -5,6 +5,29 @@ import DesignSystem
 import Networking
 import Sync
 
+// MARK: - §8.1 Estimate status filter
+
+/// §8.1 Status tabs — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+public enum EstimateStatusFilter: String, CaseIterable, Sendable, Identifiable {
+    case all, draft, sent, approved, rejected, expired, converted
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .all:       return "All"
+        case .draft:     return "Draft"
+        case .sent:      return "Sent"
+        case .approved:  return "Approved"
+        case .rejected:  return "Rejected"
+        case .expired:   return "Expired"
+        case .converted: return "Converted"
+        }
+    }
+
+    public var serverValue: String? { self == .all ? nil : rawValue }
+}
+
 // MARK: - EstimateListViewModel
 
 @MainActor
@@ -15,11 +38,13 @@ public final class EstimateListViewModel {
     public private(set) var isLoadingMore = false
     public private(set) var errorMessage: String?
     public var searchQuery: String = ""
+    /// §8.1 Active status tab.
     public var statusFilter: EstimateStatusFilter = .all
-
-    // §8.1 cursor pagination
-    private var nextCursor: String?
-    public private(set) var hasMore: Bool = false
+    /// §8.1 Active list filters (date range, customer, amount, validity).
+    public var filters: EstimateListFilters = EstimateListFilters()
+    // §8.1: Cursor-based pagination state
+    private var nextCursor: String? = nil
+    private var hasMore: Bool = false
 
     // Phase-3: staleness + offline
     public private(set) var lastSyncedAt: Date?
@@ -37,6 +62,23 @@ public final class EstimateListViewModel {
 
     /// Legacy convenience init keeps existing call sites compiling.
     public init(api: APIClient) { self.repo = EstimateRepositoryImpl(api: api) }
+
+    // MARK: - §8.1 Cursor pagination
+
+    /// Load the next page of estimates. No-op if already loading or no more pages.
+    public func loadMoreIfNeeded() async {
+        guard !isLoadingMore, hasMore, let cursor = nextCursor else { return }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let page = try await repo.listPage(cursor: cursor, keyword: searchQuery.isEmpty ? nil : searchQuery, status: statusFilter.serverValue)
+            items.append(contentsOf: page.estimates)
+            nextCursor = page.nextCursor
+            hasMore = page.hasMore
+        } catch {
+            AppLog.ui.warning("Estimates loadMore failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
 
     public func load() async {
         if items.isEmpty { isLoading = true }
@@ -69,6 +111,11 @@ public final class EstimateListViewModel {
         } catch {
             AppLog.ui.error("Estimates load-more failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    public func applyStatusFilter(_ f: EstimateStatusFilter) async {
+        statusFilter = f
+        await fetch(forceRemote: false)
     }
 
     public func onSearchChange(_ q: String) {
@@ -104,32 +151,42 @@ public final class EstimateListViewModel {
 
     private func fetch(forceRemote: Bool, resetCursor: Bool) async {
         errorMessage = nil
-        if resetCursor { nextCursor = nil; hasMore = false }
+        // Reset cursor state on every fresh fetch.
+        nextCursor = nil
+        hasMore = false
+        let keyword = searchQuery.isEmpty ? nil : searchQuery
         do {
+            // §8.1: Try cursor-based pagination first page.
+            do {
+                let page = try await repo.listPage(cursor: nil, keyword: keyword, status: statusFilter.serverValue)
+                items = page.estimates
+                nextCursor = page.nextCursor
+                hasMore = page.hasMore
+                lastSyncedAt = Date()
+                return
+            } catch {
+                // Cursor endpoint not yet supported — fall through to legacy path.
+                AppLog.ui.warning("Cursor pagination unavailable, using legacy list: \(error.localizedDescription, privacy: .public)")
+            }
+            // Legacy path (in-memory cache or direct API)
+            var all: [Estimate]
             if let cached = repo as? EstimateCachedRepositoryImpl {
                 let result: CachedResult<[Estimate]>
                 if forceRemote {
-                    result = try await cached.forceRefresh(
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
-                    )
+                    result = try await cached.forceRefresh(keyword: keyword)
                 } else {
-                    result = try await cached.cachedList(
-                        keyword: searchQuery.isEmpty ? nil : searchQuery
-                    )
+                    result = try await cached.cachedList(keyword: keyword)
                 }
-                let raw = result.value
-                items = applyStatusFilter(raw)
+                all = result.value
                 lastSyncedAt = result.lastSyncedAt
             } else {
-                // Use cursor-aware path for status filtering
-                let page = try await repo.listPage(
-                    status: statusFilter,
-                    keyword: searchQuery.isEmpty ? nil : searchQuery,
-                    cursor: nil
-                )
-                items = page.estimates
-                nextCursor = page.nextCursor
-                hasMore = page.nextCursor != nil
+                all = try await repo.list(keyword: keyword)
+            }
+            // §8.1: client-side status tab filter
+            if let sv = statusFilter.serverValue {
+                items = all.filter { ($0.status ?? "").lowercased() == sv }
+            } else {
+                items = all
             }
         } catch {
             AppLog.ui.error("Estimates load failed: \(error.localizedDescription, privacy: .public)")
@@ -149,9 +206,11 @@ public final class EstimateListViewModel {
 public struct EstimateListView: View {
     @State private var vm: EstimateListViewModel
     @State private var searchText: String = ""
-    @State private var selected: Int64?
-    @State private var showBulkConfirm: Bool = false
-    @State private var pendingBulkAction: EstimateBulkAction?
+    // §8.1 Filters sheet
+    @State private var showFilters: Bool = false
+    // §8.1 Bulk-action selection
+    @State private var selectedIds: Set<Int64> = []
+    @State private var editMode: EditMode = .inactive
 
     public init(repo: EstimateRepository) { _vm = State(wrappedValue: EstimateListViewModel(repo: repo)) }
 
@@ -167,6 +226,12 @@ public struct EstimateListView: View {
             await vm.load()
         }
         .refreshable { await vm.refresh() }
+        .sheet(isPresented: $showFilters) {
+            EstimateListFiltersView(filters: $vm.filters)
+                .onChange(of: vm.filters) { _, _ in
+                    Task { await vm.load() }
+                }
+        }
     }
 
     // MARK: - iPhone layout
@@ -187,19 +252,30 @@ public struct EstimateListView: View {
             .navigationTitle("Estimates")
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
+            .environment(\.editMode, $editMode)
             .toolbar {
                 ToolbarItem(placement: .status) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
                 }
+                // §8.1: Filter button with active-count badge
+                ToolbarItem(placement: .topBarLeading) {
+                    filterButton
+                }
+                // §8.1: Bulk select toggle
                 ToolbarItem(placement: .primaryAction) {
-                    if vm.isSelecting {
-                        Button("Done") { vm.clearSelection() }
-                    } else {
-                        Button { withAnimation { vm.isSelecting = true } } label: {
-                            Image(systemName: "checkmark.circle")
+                    Button(editMode.isEditing ? "Done" : "Select") {
+                        withAnimation {
+                            editMode = editMode.isEditing ? .inactive : .active
+                            if !editMode.isEditing { selectedIds.removeAll() }
                         }
-                        .accessibilityLabel("Select estimates")
                     }
+                    .accessibilityLabel(editMode.isEditing ? "Exit selection mode" : "Enter selection mode for bulk actions")
+                }
+            }
+            // §8.1: Bulk-action bar shown when items are selected
+            .safeAreaInset(edge: .bottom) {
+                if editMode.isEditing && !selectedIds.isEmpty {
+                    estimateBulkActionBar
                 }
             }
         }
@@ -224,26 +300,26 @@ public struct EstimateListView: View {
             .searchable(text: $searchText, prompt: "Search estimates")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 520)
+            .environment(\.editMode, $editMode)
             .toolbar {
                 ToolbarItem(placement: .status) {
                     StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    filterButton
+                }
                 ToolbarItem(placement: .primaryAction) {
-                    if vm.isSelecting {
-                        Menu {
-                            Button("Select All") { vm.selectAll() }
-                            Button("Clear Selection") { vm.clearSelection() }
-                        } label: {
-                            Image(systemName: "checklist")
+                    Button(editMode.isEditing ? "Done" : "Select") {
+                        withAnimation {
+                            editMode = editMode.isEditing ? .inactive : .active
+                            if !editMode.isEditing { selectedIds.removeAll() }
                         }
-                        .accessibilityLabel("Selection options")
-                    } else {
-                        Button { withAnimation { vm.isSelecting = true } } label: {
-                            Image(systemName: "checkmark.circle")
-                        }
-                        .accessibilityLabel("Select estimates")
-                        .keyboardShortcut("e", modifiers: [.command, .shift])
                     }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                if editMode.isEditing && !selectedIds.isEmpty {
+                    estimateBulkActionBar
                 }
             }
         } detail: {
@@ -294,77 +370,144 @@ public struct EstimateListView: View {
     // MARK: - Content
 
     @ViewBuilder
-    private var contentView: some View {
-        if vm.isLoading {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let err = vm.errorMessage {
-            EstimateErrorState(message: err) { Task { await vm.load() } }
-        } else if vm.items.isEmpty && vm.isOffline {
-            OfflineEmptyStateView(entityName: "estimates")
-        } else if vm.items.isEmpty {
-            EstimateEmptyState(filter: vm.statusFilter, keyword: vm.searchQuery)
-        } else {
-            ZStack(alignment: .bottom) {
-                List {
-                    ForEach(vm.items) { est in
-                        Row(
-                            estimate: est,
-                            isSelected: vm.selectedIds.contains(est.id),
-                            isSelecting: vm.isSelecting
-                        ) {
-                            if vm.isSelecting {
-                                vm.toggleSelection(est.id)
-                            } else {
-                                selected = est.id
-                            }
-                        }
-                        .listRowBackground(Color.bizarreSurface1)
-                        .contextMenu { rowContextMenu(for: est) }
-                        .onAppear {
-                            if est.id == vm.items.last?.id {
-                                Task { await vm.loadMore() }
-                            }
-                        }
-                    }
+    private var content: some View {
+        VStack(spacing: 0) {
+            // §8.1 Status tabs chip row
+            statusTabChips
 
+            if vm.isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let err = vm.errorMessage {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 36)).foregroundStyle(.bizarreError)
+                        .accessibilityHidden(true)
+                    Text("Couldn't load estimates").font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                    Text(err).font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted).multilineTextAlignment(.center)
+                    Button("Try again") { Task { await vm.load() } }.buttonStyle(.borderedProminent).tint(.bizarreOrange)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if vm.items.isEmpty && vm.isOffline {
+                OfflineEmptyStateView(entityName: "estimates")
+            } else if vm.items.isEmpty {
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "list.clipboard").font(.system(size: 48)).foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text(searchText.isEmpty ? "No estimates" : "No results")
+                        .font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                List(selection: $selectedIds) {
+                    ForEach(vm.items) { est in
+                        Row(estimate: est)
+                            .listRowBackground(Color.bizarreSurface1)
+                            .tag(est.id)
+                            // §8.1: load-more trigger on last row
+                            .onAppear {
+                                if est.id == vm.items.last?.id {
+                                    Task { await vm.loadMoreIfNeeded() }
+                                }
+                            }
+                    }
+                    // Loading-more indicator
                     if vm.isLoadingMore {
                         HStack {
                             Spacer()
-                            ProgressView().padding(BrandSpacing.sm)
+                            ProgressView()
                             Spacer()
                         }
                         .listRowBackground(Color.clear)
-                    }
-
-                    if !vm.hasMore && !vm.items.isEmpty {
-                        Text("End of list")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                            .frame(maxWidth: .infinity)
-                            .padding(BrandSpacing.sm)
-                            .listRowBackground(Color.clear)
-                            .accessibilityLabel("End of estimates list")
+                        .listRowSeparator(.hidden)
+                        .accessibilityLabel("Loading more estimates")
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-
-                // §8.1 Bulk action bar
-                if vm.isSelecting && !vm.selectedIds.isEmpty {
-                    BulkActionBar(
-                        selectedCount: vm.selectedIds.count,
-                        onSend: { pendingBulkAction = .send; showBulkConfirm = true },
-                        onDelete: { pendingBulkAction = .delete; showBulkConfirm = true },
-                        onExport: { pendingBulkAction = .export; showBulkConfirm = true },
-                        onCancel: { vm.clearSelection() }
-                    )
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
             }
         }
     }
 
-    // MARK: - Context menu (§8.1)
+    // MARK: - Filter button
+
+    private var filterButton: some View {
+        Button {
+            showFilters = true
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .accessibilityHidden(true)
+                if vm.filters.activeCount > 0 {
+                    Text("\(vm.filters.activeCount)")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(3)
+                        .background(Color.bizarreOrange, in: Circle())
+                        .offset(x: 6, y: -6)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+        .accessibilityLabel(vm.filters.activeCount > 0 ? "Filters (\(vm.filters.activeCount) active)" : "Filters")
+        .accessibilityHint("Opens estimate filter options")
+    }
+
+    // MARK: - §8.1 Bulk action bar
+
+    private var estimateBulkActionBar: some View {
+        HStack(spacing: BrandSpacing.md) {
+            Text("\(selectedIds.count) selected")
+                .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurface)
+            Spacer()
+            Button {
+                // TODO: POST /api/v1/estimates/bulk-send when server endpoint ships
+                AppLog.ui.info("Bulk send \(selectedIds.count) estimates — endpoint pending")
+            } label: {
+                Label("Send", systemImage: "paperplane")
+            }
+            .buttonStyle(.bordered)
+            .disabled(selectedIds.isEmpty)
+            .accessibilityLabel("Send selected estimates")
+
+            Button(role: .destructive) {
+                // TODO: DELETE /api/v1/estimates/bulk-delete when server endpoint ships
+                AppLog.ui.info("Bulk delete \(selectedIds.count) estimates — endpoint pending")
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .disabled(selectedIds.isEmpty)
+            .accessibilityLabel("Delete selected estimates")
+        }
+        .padding(BrandSpacing.md)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
+        .padding(.horizontal, BrandSpacing.base)
+        .padding(.bottom, BrandSpacing.sm)
+    }
+
+    /// §8.1 Status tab chips — All / Draft / Sent / Approved / Rejected / Expired / Converted.
+    private var statusTabChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.xs) {
+                ForEach(EstimateStatusFilter.allCases) { tab in
+                    EstimateStatusChip(
+                        label: tab.displayName,
+                        selected: vm.statusFilter == tab
+                    ) {
+                        Task { await vm.applyStatusFilter(tab) }
+                    }
+                }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+            .padding(.vertical, BrandSpacing.sm)
+        }
+        .scrollClipDisabled()
+    }
+
+    private struct Row: View {
+        let estimate: Estimate
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        @State private var pulsing: Bool = false
 
     @ViewBuilder
     private func rowContextMenu(for est: Estimate) -> some View {
@@ -433,21 +576,25 @@ private struct Row: View {
                 }
 
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-                    // §8 — order ID + version badge inline
-                    HStack(spacing: BrandSpacing.xs) {
-                        Text(estimate.orderId ?? "EST-?")
-                            .font(.brandMono(size: 15))
-                            .foregroundStyle(.bizarreOnSurface)
-                            .textSelection(.enabled)
-                        if let vn = estimate.versionNumber, vn > 1 {
-                            Text("v\(vn)")
-                                .font(.brandLabelSmall())
-                                .foregroundStyle(.bizarreOnSurfaceMuted)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.bizarreSurface2, in: Capsule())
-                                .accessibilityLabel("Version \(vn)")
-                        }
+                    Text(estimate.orderId ?? "EST-?")
+                        .font(.brandMono(size: 15)).foregroundStyle(.bizarreOnSurface)
+                        .textSelection(.enabled)
+                    Text(estimate.customerName)
+                        .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurface).lineLimit(1)
+                    if estimate.isExpiring == true, let days = estimate.daysUntilExpiry {
+                        // §8.1: pulse animation for ≤3 days remaining (respect Reduce Motion)
+                        ExpiringChip(daysLeft: days, pulsing: pulsing)
+                            .onAppear {
+                                if days <= 3 && !reduceMotion {
+                                    withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                                        pulsing = true
+                                    }
+                                }
+                            }
+                    } else if let until = estimate.validUntil, !until.isEmpty {
+                        Text("Valid until \(String(until.prefix(10)))")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
                     }
                     Text(estimate.customerName)
                         .font(.brandBodyMedium())
@@ -518,9 +665,34 @@ private struct Row: View {
     }
 }
 
-// MARK: - StatusTabChip
+// MARK: - §8.1 Expiring-soon chip (pulse animation ≤3 days)
 
-private struct StatusTabChip: View {
+private struct ExpiringChip: View {
+    let daysLeft: Int
+    let pulsing: Bool
+
+    var body: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 10, weight: .semibold))
+                .accessibilityHidden(true)
+            Text("Expires in \(daysLeft)d")
+                .font(.brandLabelSmall())
+        }
+        .foregroundStyle(daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(
+            (daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning).opacity(pulsing ? 0.2 : 0.08),
+            in: Capsule()
+        )
+        .accessibilityLabel("Expires in \(daysLeft) day\(daysLeft == 1 ? "" : "s")")
+    }
+}
+
+// MARK: - EstimateStatusChip
+
+private struct EstimateStatusChip: View {
     let label: String
     let selected: Bool
     let action: () -> Void
@@ -545,135 +717,4 @@ private struct StatusTabChip: View {
         .accessibilityLabel(label)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
     }
-}
-
-// MARK: - BulkActionBar (§8.1)
-
-private struct BulkActionBar: View {
-    let selectedCount: Int
-    let onSend: () -> Void
-    let onDelete: () -> Void
-    let onExport: () -> Void
-    let onCancel: () -> Void
-
-    var body: some View {
-        HStack(spacing: BrandSpacing.md) {
-            Text("\(selectedCount) selected")
-                .font(.brandLabelLarge())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityLabel("\(selectedCount) estimates selected")
-
-            Spacer()
-
-            Button(action: onSend) {
-                Image(systemName: "paperplane")
-            }
-            .accessibilityLabel("Send selected estimates")
-
-            Button(action: onExport) {
-                Image(systemName: "square.and.arrow.up")
-            }
-            .accessibilityLabel("Export selected estimates")
-
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-            }
-            .accessibilityLabel("Delete selected estimates")
-
-            Button(action: onCancel) {
-                Image(systemName: "xmark")
-            }
-            .accessibilityLabel("Cancel selection")
-        }
-        .padding(.horizontal, BrandSpacing.lg)
-        .padding(.vertical, BrandSpacing.md)
-        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
-        .padding(.horizontal, BrandSpacing.lg)
-        .padding(.bottom, BrandSpacing.lg)
-    }
-}
-
-// MARK: - PulseModifier (§8.1 expiring-soon chip)
-
-private struct PulseModifier: ViewModifier {
-    @State private var pulsing = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(pulsing ? 0.4 : 1.0)
-            .animation(
-                .easeInOut(duration: 0.8).repeatForever(autoreverses: true),
-                value: pulsing
-            )
-            .onAppear { pulsing = true }
-    }
-}
-
-// MARK: - Empty / Error states
-
-private struct EstimateErrorState: View {
-    let message: String
-    let onRetry: () -> Void
-
-    var body: some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(.bizarreError)
-                .accessibilityHidden(true)
-            Text("Couldn't load estimates")
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-            Text(message)
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .multilineTextAlignment(.center)
-            Button("Try again", action: onRetry)
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-private struct EstimateEmptyState: View {
-    let filter: EstimateStatusFilter
-    let keyword: String
-
-    var body: some View {
-        VStack(spacing: BrandSpacing.md) {
-            Image(systemName: "list.clipboard")
-                .font(.system(size: 48))
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .accessibilityHidden(true)
-            Text(hint)
-                .font(.brandTitleMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, BrandSpacing.lg)
-    }
-
-    private var hint: String {
-        if !keyword.isEmpty { return "No results for \"\(keyword)\"." }
-        switch filter {
-        case .all:       return "No estimates yet."
-        case .draft:     return "No draft estimates."
-        case .sent:      return "No estimates have been sent."
-        case .approved:  return "No approved estimates."
-        case .rejected:  return "No rejected estimates."
-        case .expired:   return "No expired estimates."
-        case .converted: return "No converted estimates."
-        }
-    }
-}
-
-// MARK: - Shared helpers
-
-private func formatMoney(_ v: Double) -> String {
-    let f = NumberFormatter()
-    f.numberStyle = .currency
-    f.currencyCode = "USD"
-    return f.string(from: NSNumber(value: v)) ?? "$\(v)"
 }

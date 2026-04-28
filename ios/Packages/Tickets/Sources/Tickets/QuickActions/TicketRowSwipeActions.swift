@@ -47,58 +47,53 @@ public struct TicketRowSwipeActions: ViewModifier {
 
     public func body(content: Content) -> some View {
         content
-            // Trailing: Archive + Delete (permission-gated)
+            // Trailing: Mark complete + Archive
+            // §4.1 spec: trailing = Archive / Mark complete
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                if isAdmin || userRole == nil {
-                    Button(role: .destructive) {
-                        handlers.onDelete(ticket)
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    .accessibilityLabel("Delete ticket")
+                Button {
+                    handlers.onArchive(ticket)
+                } label: {
+                    Label("Archive", systemImage: "archivebox")
                 }
+                .tint(Color.bizarreWarning)
+                .accessibilityLabel("Archive ticket")
 
-                if isManagerOrAbove || userRole == nil {
-                    Button {
-                        handlers.onArchive(ticket)
-                    } label: {
-                        Label("Archive", systemImage: "archivebox")
+                // Mark complete: advance to the first "closed"-like transition if available.
+                if let status = currentStatus {
+                    let closingTransition = TicketStateMachine.allowedTransitions(from: status).first(where: {
+                        let n = $0.displayName.lowercased()
+                        return n.contains("complete") || n.contains("done") || n.contains("finish")
+                    }) ?? TicketStateMachine.allowedTransitions(from: status).last
+                    if let t = closingTransition {
+                        Button {
+                            handlers.onAdvanceStatus(ticket, t)
+                        } label: {
+                            Label("Mark Complete", systemImage: "checkmark.circle")
+                        }
+                        .tint(.green)
+                        .accessibilityLabel("Mark ticket as \(t.displayName)")
                     }
-                    .tint(Color.bizarreWarning)
-                    .accessibilityLabel("Archive ticket")
                 }
             }
-            // Leading: Advance Status + SMS customer
+            // Leading: Assign-to-me / SMS customer
+            // §4.1 spec: leading = Assign-to-me / SMS customer
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
-                if let status = currentStatus,
-                   let firstTransition = TicketStateMachine.allowedTransitions(from: status).first {
+                Button {
+                    handlers.onAssignToMe(ticket)
+                } label: {
+                    Label("Assign to Me", systemImage: "person.badge.clock")
+                }
+                .tint(Color.bizarreOrange)
+                .accessibilityLabel("Assign ticket to myself")
+
+                if ticket.customer?.phone != nil || ticket.customer?.mobile != nil {
                     Button {
-                        handlers.onAdvanceStatus(ticket, firstTransition)
+                        handlers.onSMSCustomer(ticket)
                     } label: {
-                        Label(firstTransition.displayName, systemImage: firstTransition.systemImage)
+                        Label("SMS", systemImage: "message")
                     }
                     .tint(Color.bizarreTeal)
-                    .accessibilityLabel("Advance status: \(firstTransition.displayName)")
-                }
-
-                // §4.1 — SMS customer leading swipe
-                if let phone = ticket.customer?.callablePhone,
-                   let url = URL(string: "sms:\(phone.filter(\.isNumber))") {
-                    Button {
-                        UIApplication.shared.open(url)
-                    } label: {
-                        Label("SMS", systemImage: "message.fill")
-                    }
-                    .tint(Color.bizarreOrange)
-                    .accessibilityLabel("SMS customer")
-                } else if let assignee = firstAssignee {
-                    Button {
-                        handlers.onAssign(ticket, assignee.id)
-                    } label: {
-                        Label("Assign", systemImage: "person.badge.plus")
-                    }
-                    .tint(Color.bizarreOrange)
-                    .accessibilityLabel("Assign to \(assignee.displayName)")
+                    .accessibilityLabel("Send SMS to customer")
                 }
             }
     }
