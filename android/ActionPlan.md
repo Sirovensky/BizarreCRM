@@ -3326,7 +3326,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Static `res/xml/shortcuts.xml`: New Ticket / Scan Barcode / New SMS / Clock In. (session 2026-04-26 — added `clock_in` → `bizarrecrm://clockin` and `new_sms` → `bizarrecrm://messages`; `shortcut_clock_in_short/long` strings added)
 - [x] Dynamic shortcuts via `ShortcutManager.setDynamicShortcuts(...)`: Recent customers (top 4 by last-interaction). (session 2026-04-26 — `DynamicShortcutsManager.refreshRecentCustomers()` uses `CustomerDao.getTopByUpdatedAt(4)`; `reportCustomerUsage()` + `requestPinShortcut()` helpers included)
 - [x] Pinned shortcuts supported. (session 2026-04-26 — `DynamicShortcutsManager.requestPinShortcut()` wraps `ShortcutManagerCompat.requestPinShortcut`; launchers that don't support it return false gracefully)
-- [ ] Icon per shortcut; theme-aware variant.
+- [x] Icon per shortcut; theme-aware variant. (this session — `drawable/ic_shortcut_new_ticket.xml` + `ic_shortcut_new_customer.xml` + `ic_shortcut_scan_barcode.xml` + `ic_shortcut_clock_in.xml` + `ic_shortcut_new_sms.xml`: brand dark (#121017) circle + cream (#FDEED0) action paths; `shortcuts.xml` updated to reference per-action drawables + added missing `clock_in` + `new_sms` static shortcuts; `DynamicShortcutManager.buildInitialsIcon()` renders customer initials on cream circle for dynamic/pinned shortcuts)
 
 ### 24.4 Quick Settings Tiles
 - [x] `TileService` subclasses: Clock in/out; Barcode scan; Lock-now. (session 2026-04-26 — `ClockInTileService` added; `QuickTicketTileService` pre-existing; Lock-now deferred to §33 security section)

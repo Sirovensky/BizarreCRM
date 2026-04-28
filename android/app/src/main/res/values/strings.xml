@@ -127,6 +127,8 @@
     <string name="shortcut_recent_customer_long">Open recent customer record</string>
     <string name="shortcut_clock_in_short">Clock in</string>
     <string name="shortcut_clock_in_long">Clock in or out of your shift</string>
+    <string name="shortcut_new_sms_short">New SMS</string>
+    <string name="shortcut_new_sms_long">Send a new SMS to a customer</string>
     <string name="shortcut_create_ticket_voice">Create ticket</string>
     <string name="shortcut_clock_in_voice">Clock me in</string>
 

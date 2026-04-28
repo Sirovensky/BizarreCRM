@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launcher shortcut icon — §24.3 New SMS message.
+
+    Speech bubble with plus sign.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Background circle -->
+    <path
+        android:fillColor="#121017"
+        android:pathData="M54,12 A42,42 0 1,1 54,96 A42,42 0 1,1 54,12 Z" />
+
+    <!-- Speech bubble body -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="
+            M36,30 L72,30
+            Q76,30 76,34
+            L76,62
+            Q76,66 72,66
+            L46,66
+            L36,76
+            L36,66
+            Q32,66 32,62
+            L32,34
+            Q32,30 36,30 Z
+            M36,34
+            L36,62
+            L40,62
+            L40,68
+            L46,62
+            L72,62
+            L72,34 Z" />
+
+    <!-- Plus sign inside bubble -->
+    <path
+        android:fillColor="#FDEED0"
+        android:pathData="M52,42 L52,58 L56,58 L56,42 Z
+                          M46,50 L62,50 L62,52 L46,52 Z" />
+
+</vector>
