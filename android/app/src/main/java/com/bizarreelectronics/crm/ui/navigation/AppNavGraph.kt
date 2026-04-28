@@ -1923,6 +1923,7 @@ fun AppNavGraph(
                     onItemClick = { id -> navController.navigate(Screen.InventoryDetail.createRoute(id)) },
                     onScanClick = { navController.navigate(Screen.Scanner.route) },
                     onAddClick = { navController.navigate(Screen.InventoryCreate.route) },
+                    onImportCatalog = { navController.navigate(Screen.DataImport.route) },
                     scannedBarcode = scannedBarcode,
                     onBarcodeLookupResult = { id ->
                         backStackEntry.savedStateHandle.remove<String>("scanned_barcode")
@@ -1995,6 +1996,7 @@ fun AppNavGraph(
             composable(Screen.Messages.route) {
                 SmsListScreen(
                     onConversationClick = { phone -> navController.navigate(Screen.SmsThread.createRoute(phone)) },
+                    onConnectSmsProvider = { navController.navigate(Screen.SmsSettings.route) },
                 )
             }
             // §68.2 — deep link: bizarrecrm://sms/{phone}
@@ -2074,7 +2076,10 @@ fun AppNavGraph(
                     navDeepLink { uriPattern = "bizarrecrm://reports/{slug}" },
                 ),
             ) {
-                ReportsScreen(navController = navController)
+                ReportsScreen(
+                    navController = navController,
+                    onOpenPos = { navController.navigate(Screen.Pos.route) },
+                )
             }
             // §15 L1722 — sub-report routes (deep-link targets from SegmentedButton)
             composable(Screen.ReportSales.route) {

@@ -73,6 +73,7 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
 import com.bizarreelectronics.crm.data.local.db.entities.CustomerEntity
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -100,6 +101,8 @@ fun CustomerListScreen(
     onCreateClickWithContact: ((ImportedContact) -> Unit)? = null,
     /** 5.8.2: pre-apply a tag filter when navigated from a TagChip tap. */
     initialTagFilter: String = "",
+    /** §3.14 L588: Secondary CTA callback for "Import from contacts" in empty state. */
+    onImportFromContacts: () -> Unit = {},
     viewModel: CustomerListViewModel = hiltViewModel(),
 ) {
     // Apply initial tag filter on first composition (5.8.2).
@@ -340,6 +343,8 @@ fun CustomerListScreen(
                         onMarkVip = viewModel::onMarkVip,
                         onArchive = viewModel::onArchive,
                         onCreateTicket = { /* navigate — future wiring */ },
+                        onAddFirstCustomer = onCreateClick,
+                        onImportFromContacts = { launchContactImport() },
                     )
 
                     // A-Z fast-scroller on the right edge (phone only, plan:L879)
@@ -422,6 +427,11 @@ private fun CustomerPagingList(
     onMarkVip: (Long) -> Unit,
     onArchive: (Long) -> Unit,
     onCreateTicket: (Long) -> Unit,
+    // §3.14 L588 empty-state CTAs (zero-data tenant). Defaults are no-ops
+    // so legacy callers compile; the screen-level scope wires real
+    // handlers (onCreateClick + launchContactImport).
+    onAddFirstCustomer: () -> Unit = {},
+    onImportFromContacts: () -> Unit = {},
 ) {
     when (lazyPagingItems.loadState.refresh) {
         is LoadState.Loading -> {
@@ -455,11 +465,32 @@ private fun CustomerPagingList(
         lazyPagingItems.loadState.refresh !is LoadState.Loading
     ) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            EmptyState(
-                icon = Icons.Default.Add,
-                title = "No customers yet.",
-                subtitle = "Tap + to create one, or import from Contacts.",
-            )
+            // §3.14 L588 — zero-data tenant gets the rich EmptyStateIllustration
+            // (👥 emoji + "No customers yet" + "Add first customer" + "Import from contacts").
+            // Active search empty falls back to the simpler EmptyState because the tenant
+            // already has data — they just can't find a match.
+            if (state.searchQuery.isNotEmpty()) {
+                EmptyState(
+                    icon = Icons.Default.Add,
+                    title = "No customers yet.",
+                    subtitle = "Try a different search",
+                )
+            } else {
+                EmptyStateIllustration(
+                    emoji = "👥",
+                    title = "No customers yet",
+                    subtitle = "Create and manage your customer base",
+                    primaryCta = "Add first customer",
+                    onPrimaryCta = onAddFirstCustomer,
+                    secondaryCta = "Import from contacts",
+                    // Reuses screen-level rememberCustomerContactImport via
+                    // the onImportFromContacts param threaded down from the
+                    // CustomerPagingList call site, so the empty-state
+                    // secondary CTA fires the same ContactsContract picker
+                    // as the toolbar import button.
+                    onSecondaryCta = onImportFromContacts,
+                )
+            }
         }
         return
     }

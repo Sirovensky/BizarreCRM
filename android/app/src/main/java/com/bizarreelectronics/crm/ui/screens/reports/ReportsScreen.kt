@@ -685,6 +685,10 @@ class ReportsViewModel @Inject constructor(
 fun ReportsScreen(
     navController: NavController = rememberNavController(),
     viewModel: ReportsViewModel = hiltViewModel(),
+    // §3.14 L591 — empty-state primary CTA when zero-data tenant. When non-null,
+    // the EmptyStateIllustration shows "Open POS" CTA to start first sale.
+    // Default no-op so existing call-sites without the wiring still compile.
+    onOpenPos: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     var selectedTabIndex by remember { mutableIntStateOf(0) }
@@ -776,22 +780,37 @@ fun ReportsScreen(
                 onRefresh = { viewModel.refresh() },
                 modifier = Modifier.fillMaxSize(),
             ) {
-                when (state.selectedReportType) {
-                    ReportType.SALES -> SalesTabContent(
-                        state = state,
-                        selectedTabIndex = selectedTabIndex,
-                        viewModel = viewModel,
-                        onDrillThroughDate = { date ->
-                            viewModel.rememberFilterForDrill()
-                            navController.navigate("tickets?date=$date")
-                        },
-                    )
-                    ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
-                    ReportType.EMPLOYEES -> EmployeesReportScreen(viewModel = viewModel)
-                    ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
-                    ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
-                    ReportType.INSIGHTS -> InsightsScreen(viewModel = viewModel)
-                    ReportType.CUSTOM -> CustomReportScreen()
+                // §3.14 L591 — Zero-data tenant empty state: if no sales have been
+                // recorded yet (totalRevenue == 0 and revenueToday == 0), show the
+                // rich EmptyStateIllustration with "Open POS" CTA instead of tabs.
+                if (!state.isLoading && state.salesReport.totalRevenue == 0.0 && state.revenueToday == 0.0) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        com.bizarreelectronics.crm.ui.components.EmptyStateIllustration(
+                            emoji = "📊",
+                            title = "No report data yet",
+                            subtitle = "Come back after your first sale.",
+                            primaryCta = "Open POS",
+                            onPrimaryCta = onOpenPos,
+                        )
+                    }
+                } else {
+                    when (state.selectedReportType) {
+                        ReportType.SALES -> SalesTabContent(
+                            state = state,
+                            selectedTabIndex = selectedTabIndex,
+                            viewModel = viewModel,
+                            onDrillThroughDate = { date ->
+                                viewModel.rememberFilterForDrill()
+                                navController.navigate("tickets?date=$date")
+                            },
+                        )
+                        ReportType.TICKETS -> TicketsReportScreen(viewModel = viewModel)
+                        ReportType.EMPLOYEES -> EmployeesReportScreen(viewModel = viewModel)
+                        ReportType.INVENTORY -> InventoryReportScreen(viewModel = viewModel)
+                        ReportType.TAX -> TaxReportScreen(viewModel = viewModel)
+                        ReportType.INSIGHTS -> InsightsScreen(viewModel = viewModel)
+                        ReportType.CUSTOM -> CustomReportScreen()
+                    }
                 }
             }
         }

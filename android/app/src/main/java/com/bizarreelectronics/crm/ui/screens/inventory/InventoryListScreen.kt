@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.delay
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItem
 import com.bizarreelectronics.crm.ui.components.shared.BrandListItemDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
@@ -72,6 +73,7 @@ fun InventoryListScreen(
     onItemClick: (Long) -> Unit,
     onScanClick: () -> Unit,
     onAddClick: () -> Unit = {},
+    onImportCatalog: () -> Unit = {},
     scannedBarcode: String? = null,
     onBarcodeLookupResult: (Long) -> Unit = {},
     onBarcodeLookupConsumed: () -> Unit = {},
@@ -324,7 +326,8 @@ fun InventoryListScreen(
                 }
 
                 state.items.isEmpty() -> {
-                    // §6.1 L1067 — filter-aware empty state
+                    // §3.14 L587 — filter-aware empty state: rich illustration for
+                    // zero-data tenant, simple state for active search/filter empty.
                     val hasActiveFilter = state.currentFilter != InventoryFilter.Empty ||
                         state.searchQuery.isNotEmpty()
                     Box(
@@ -346,17 +349,21 @@ fun InventoryListScreen(
                                                 viewModel.onSearchChanged("")
                                             },
                                         ) { Text("Clear filters") }
-                                        Button(onClick = { /* TODO: import CSV stub */ }) {
+                                        Button(onClick = onImportCatalog) {
                                             Text("Import CSV")
                                         }
                                     }
                                 },
                             )
                         } else {
-                            EmptyState(
-                                icon = Icons.Default.Inventory2,
-                                title = "No items found",
-                                subtitle = "Add inventory items to get started",
+                            EmptyStateIllustration(
+                                emoji = "📦",
+                                title = "No inventory yet",
+                                subtitle = "Add your first product to get started",
+                                primaryCta = "Add your first product",
+                                onPrimaryCta = onAddClick,
+                                secondaryCta = "Import catalog (CSV)",
+                                onSecondaryCta = onImportCatalog,
                             )
                         }
                     }

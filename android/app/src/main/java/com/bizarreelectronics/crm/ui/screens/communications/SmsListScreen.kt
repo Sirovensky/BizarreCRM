@@ -39,6 +39,7 @@ import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.remote.api.SmsApi
 import com.bizarreelectronics.crm.data.remote.dto.SmsConversationItem
 import com.bizarreelectronics.crm.data.repository.SmsRepository
+import com.bizarreelectronics.crm.ui.components.EmptyStateIllustration
 import com.bizarreelectronics.crm.ui.components.WaveDivider
 import com.bizarreelectronics.crm.ui.components.shared.BrandSkeleton
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -209,6 +210,7 @@ class SmsListViewModel @Inject constructor(
 @Composable
 fun SmsListScreen(
     onConversationClick: (String) -> Unit,
+    onConnectSmsProvider: () -> Unit = {},
     viewModel: SmsListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -336,12 +338,29 @@ fun SmsListScreen(
                 state.conversations.isEmpty() -> {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Box(modifier = Modifier.semantics(mergeDescendants = true) {}) {
-                            EmptyState(
-                                icon = Icons.Default.Forum,
-                                title = "No conversations",
-                                subtitle = "Tap the + button to start a new conversation",
-                                includeWave = false,
-                            )
+                            // §3.14 L589 — zero-data tenant gets the rich
+                            // EmptyStateIllustration (💬 emoji + "No messages yet" +
+                            // "Connect SMS provider" CTA). Active search empty falls
+                            // back to the simpler EmptyState because the tenant
+                            // already has data — they just can't find a match.
+                            if (state.searchQuery.isNotEmpty()) {
+                                EmptyState(
+                                    icon = Icons.Default.Forum,
+                                    title = "No conversations",
+                                    subtitle = "Try a different search",
+                                    includeWave = false,
+                                )
+                            } else {
+                                EmptyStateIllustration(
+                                    emoji = "💬",  // message/chat bubble
+                                    title = "No messages yet",
+                                    subtitle = "Conversations will appear here once SMS is connected.",
+                                    primaryCta = "Connect SMS provider",
+                                    onPrimaryCta = onConnectSmsProvider,
+                                    secondaryCta = null,
+                                    onSecondaryCta = null,
+                                )
+                            }
                         }
                     }
                 }
