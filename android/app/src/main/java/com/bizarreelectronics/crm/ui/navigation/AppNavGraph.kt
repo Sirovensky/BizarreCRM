@@ -126,7 +126,9 @@ import com.bizarreelectronics.crm.ui.components.shared.BrandCard
 import com.bizarreelectronics.crm.ui.components.shared.OfflineBanner
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.NetworkMonitor
+import com.bizarreelectronics.crm.util.ScrollToTopBus
 import com.bizarreelectronics.crm.util.RateLimiter
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
@@ -831,6 +833,9 @@ fun AppNavGraph(
     // AppPreferences.tabNavOrderFlow so the user's persisted tab order is applied
     // immediately without a restart. Nullable for previews / test hosts.
     appPreferences: com.bizarreelectronics.crm.data.local.prefs.AppPreferences? = null,
+    // §75.5 — optional; when provided re-selecting an already-active bottom-nav
+    // tab sends a scroll-to-top signal to the primary list screen.
+    scrollToTopBus: ScrollToTopBus? = null,
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -1182,6 +1187,11 @@ fun AppNavGraph(
                                     // (which is what restoreState=true did).
                                     showPosResetDialog = true
                                 } else {
+                                    // §75.5 — re-selecting an already-active tab
+                                    // signals list screens to scroll to the top.
+                                    if (isSelected) {
+                                        scrollToTopBus?.requestScrollToTop(item.screen.route)
+                                    }
                                     navController.navigate(item.screen.route) {
                                         popUpTo(navController.graph.findStartDestination().id) {
                                             saveState = true
@@ -1375,6 +1385,11 @@ fun AppNavGraph(
                 hasServerUrl && authPreferences?.isLoggedIn != true -> Screen.SetupStatusGate.route
                 else -> Screen.Login.route
             }
+            // §75.5 — make ScrollToTopBus available to any composable inside
+            // the NavHost without threading it through each call site.
+            androidx.compose.runtime.CompositionLocalProvider(
+                LocalScrollToTopBus provides scrollToTopBus,
+            ) {
             @OptIn(ExperimentalSharedTransitionApi::class)
             SharedTransitionLayout(modifier = Modifier.weight(1f)) {
             val sharedTransitionScope = this
@@ -3634,6 +3649,7 @@ fun AppNavGraph(
             }
         }
         } // close SharedTransitionLayout
+        } // close §75.5 CompositionLocalProvider(LocalScrollToTopBus)
         } // close §22.2 Row wrapper (NavigationRail + NavHost)
         } // close §17.10 KeyboardShortcutsHost wrapper
         }

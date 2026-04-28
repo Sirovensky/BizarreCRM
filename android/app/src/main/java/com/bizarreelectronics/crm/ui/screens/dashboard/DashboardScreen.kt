@@ -9,6 +9,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -91,6 +92,7 @@ import com.bizarreelectronics.crm.ui.screens.dashboard.components.BenchTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.SetupChecklistCard
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.TeamInboxTile
 import com.bizarreelectronics.crm.ui.screens.dashboard.components.UnreadSmsPill
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.rememberReduceMotion
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
@@ -1034,6 +1036,15 @@ fun DashboardScreen(
     // banner, checklist row, and clock tile.
     val kpiFocusRequester = remember { FocusRequester() }
 
+    // §75.5 — list state held here so the scroll-to-top bus can animate it.
+    val dashboardListState = rememberLazyListState()
+    val scrollToTopBus = LocalScrollToTopBus.current
+    LaunchedEffect(scrollToTopBus) {
+        scrollToTopBus?.events?.collect { route ->
+            if (route == "dashboard") dashboardListState.animateScrollToItem(0)
+        }
+    }
+
     // §3.9 — avatar initials: first char of each word in the name portion of the greeting.
     // The greeting format is "Good morning, Pavel Ivanov" — name is after the comma.
     val avatarInitials by remember(state.greeting) {
@@ -1263,6 +1274,7 @@ fun DashboardScreen(
         modifier = Modifier.fillMaxSize().padding(scaffoldPadding),
     ) {
     LazyColumn(
+        state = dashboardListState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),

@@ -49,7 +49,9 @@ import com.bizarreelectronics.crm.ui.components.shared.SearchBar
 import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilter
 import com.bizarreelectronics.crm.ui.screens.communications.components.SmsFilterChipRow
 import com.bizarreelectronics.crm.ui.screens.communications.components.applySmsFilter
+import androidx.compose.foundation.lazy.rememberLazyListState
 import com.bizarreelectronics.crm.util.DateFormatter
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -216,6 +218,15 @@ fun SmsListScreen(
     val state by viewModel.state.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     var showNewMsgDialog by rememberSaveable { mutableStateOf(false) }
+
+    // §75.5 — scroll to top when the user re-taps the Messages bottom-nav tab.
+    val smsListState = rememberLazyListState()
+    val scrollToTopBus = LocalScrollToTopBus.current
+    LaunchedEffect(scrollToTopBus) {
+        scrollToTopBus?.events?.collect { route ->
+            if (route == "messages") smsListState.animateScrollToItem(0)
+        }
+    }
     var newMsgPhone by rememberSaveable { mutableStateOf("") }
 
     if (showNewMsgDialog) {
@@ -370,6 +381,7 @@ fun SmsListScreen(
                         onRefresh = { viewModel.refresh() },
                     ) {
                         LazyColumn(
+                            state = smsListState,
                             contentPadding = PaddingValues(bottom = 80.dp),
                             modifier = Modifier.semantics {
                                 liveRegion = LiveRegionMode.Polite

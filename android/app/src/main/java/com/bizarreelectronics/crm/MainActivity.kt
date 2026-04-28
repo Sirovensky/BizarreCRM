@@ -39,6 +39,7 @@ import com.bizarreelectronics.crm.ui.theme.shouldDefaultDarkMode
 import com.bizarreelectronics.crm.util.ClockDrift
 import com.bizarreelectronics.crm.util.DeepLinkBus
 import com.bizarreelectronics.crm.util.RateLimiter
+import com.bizarreelectronics.crm.util.ScrollToTopBus
 import com.bizarreelectronics.crm.util.ServerReachabilityMonitor
 import com.bizarreelectronics.crm.util.SessionTimeout
 import com.bizarreelectronics.crm.util.SessionTimeoutCore
@@ -121,6 +122,10 @@ class MainActivity : FragmentActivity() {
      */
     @Inject
     lateinit var deepLinkBus: DeepLinkBus
+
+    /** §75.5 — Signals primary list screens to scroll to top on tab re-select. */
+    @Inject
+    lateinit var scrollToTopBus: ScrollToTopBus
 
     /** Pending deep-link route extracted from the launch intent, if any. */
     private var pendingDeepLink: String? = null
@@ -423,6 +428,9 @@ class MainActivity : FragmentActivity() {
                         sessionTimeout = sessionTimeout,
                         // §53.1 — drives the training-mode banner above the NavHost.
                         trainingPreferences = trainingPreferences,
+                        // §75.5 — re-selecting a bottom-nav tab signals the list
+                        // screens to animate their scroll position back to the top.
+                        scrollToTopBus = scrollToTopBus,
                     )
                 }
             }

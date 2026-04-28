@@ -5684,7 +5684,7 @@ All events target tenant server (§32).
 
 ### 75.5 Scroll behavior
 - [ ] Preserve scroll on back-nav via `rememberLazyListState` + `SavedStateHandle`. <!-- NOTE-defer: rememberLazyListState is used in several list screens but scroll position is not persisted into SavedStateHandle; back-nav scroll restoration not wired -->
-- [ ] Jump-to-top on bottom-nav re-select. <!-- NOTE-defer: NavigationBarItem onClick uses launchSingleTop+restoreState but no scroll-to-top coroutine is triggered when the same tab is re-selected -->
+- [x] Jump-to-top on bottom-nav re-select. (session 2026-04-27 — `ScrollToTopBus` (`@Singleton` + `MutableSharedFlow<String>`) in `util/ScrollToTopBus.kt`; `LocalScrollToTopBus` `compositionLocalOf` exposed for NavHost subtree; `AppNavGraph` gains `scrollToTopBus: ScrollToTopBus?` param + `CompositionLocalProvider(LocalScrollToTopBus)` around the NavHost; `NavigationBarItem.onClick` emits `requestScrollToTop(route)` when `isSelected` is already true; `DashboardScreen` / `TicketListScreen` / `SmsListScreen` each add `rememberLazyListState` + `LaunchedEffect(bus) { bus.events.collect { animateScrollToItem(0) } }`; `MainActivity` injects `ScrollToTopBus` and passes it to `AppNavGraph`; build green)
 
 ### 75.6 Pull-to-refresh
 - [x] Material 3 `PullToRefreshBox` on every list + Dashboard.

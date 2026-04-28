@@ -75,6 +75,7 @@ import com.bizarreelectronics.crm.util.draggableItem
 import com.bizarreelectronics.crm.util.dropTarget
 import com.bizarreelectronics.crm.util.textClipData
 import com.bizarreelectronics.crm.util.formatAsMoney
+import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalSharedTransitionApi::class)
@@ -139,6 +140,14 @@ fun TicketListScreen(
 
     // BackHandler: exit select mode on back press
     BackHandler(enabled = state.isSelecting) { viewModel.exitSelectMode() }
+
+    // §75.5 — animate to top when the user re-taps the Tickets bottom-nav tab.
+    val scrollToTopBus = LocalScrollToTopBus.current
+    LaunchedEffect(scrollToTopBus) {
+        scrollToTopBus?.events?.collect { route ->
+            if (route == "tickets") listState.animateScrollToItem(0)
+        }
+    }
 
     // Saved views sheet
     var showSavedViewSheet by remember { mutableStateOf(false) }
