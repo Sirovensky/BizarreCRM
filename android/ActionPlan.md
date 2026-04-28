@@ -1156,7 +1156,7 @@ _Server endpoints: `GET /customers`, `GET /customers/search`, `GET /customers/{i
   - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
 - [ ] Timeline filter chips and jump-to-date picker.
   - **NOTE (2026-04-26):** Blocked by missing server timeline endpoint.
-- [ ] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score.
+- [x] Metrics header: LTV, last visit, avg spend, repeat rate, preferred services, churn risk score. (session 2026-04-27 — `CustomerAnalyticsMetricsBar` composable added to `CustomerTabs.kt` `InfoTab`; 4-tile row: Total Tickets / LTV / Avg Ticket / Last Visit; uses already-fetched `CustomerAnalytics` from `GET /customers/:id/analytics`; null-safe — bar hidden when analytics is null; TalkBack `contentDescription` per tile; `AnalyticsMetricTile` private composable 100+ lines; repeat rate / preferred services / churn risk score deferred — not in current server payload)
   - **NOTE (2026-04-26):** LTV + last visit already in `GET /customers/:id/analytics`. Repeat rate, preferred services, churn risk score not in that payload — server change required.
 - [ ] Relationship graph: household / business links (family / coworker accounts).
   - **NOTE (2026-04-26):** Requires server schema and endpoint for account linking. Design decision needed.
