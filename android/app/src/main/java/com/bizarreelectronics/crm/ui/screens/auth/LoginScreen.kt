@@ -2164,6 +2164,13 @@ fun LoginScreen(
                 // tracks the IME-open animation.
                 kotlinx.coroutines.delay(50L)
                 scrollState.animateScrollTo(scrollState.maxValue)
+            } else {
+                // 2026-04-27 user-flagged: previously when the IME closed the
+                // scroll position stayed at maxValue, leaving the wordmark
+                // clipped above the viewport. Snap back to the top so the
+                // header always sits where it belongs when the keyboard is
+                // dismissed.
+                scrollState.animateScrollTo(0)
             }
         }
         // 2026-04-27 user-flagged jitter: when IME closed (back press), wordmark
