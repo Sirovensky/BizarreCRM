@@ -8,6 +8,7 @@ import com.bizarreelectronics.crm.data.remote.dto.CreditNoteRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreditNoteResponseData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceListData
+import com.bizarreelectronics.crm.data.remote.dto.InvoicePageResponse
 import com.bizarreelectronics.crm.data.remote.dto.InvoiceStatsData
 import com.bizarreelectronics.crm.data.remote.dto.IssueRefundRequest
 import com.bizarreelectronics.crm.data.remote.dto.RecordPaymentRequest
@@ -16,12 +17,31 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Query
 import retrofit2.http.QueryMap
 
 interface InvoiceApi {
 
     @GET("invoices")
     suspend fun getInvoices(@QueryMap filters: Map<String, String> = emptyMap()): ApiResponse<InvoiceListData>
+
+    /**
+     * Cursor-based page endpoint used by [InvoiceRemoteMediator] (§7.1).
+     *
+     * The server mirrors the ticket/customer cursor contract:
+     *   GET /invoices?cursor=<opaque>&limit=<n>&status=<x>
+     * Response shape: [InvoicePageResponse].
+     *
+     * When the server does not yet support `cursor` it returns the standard
+     * `{ invoices: [...] }` wrapper — [InvoicePageResponse.cursor] will be null,
+     * which [InvoiceRemoteMediator] treats as end-of-pagination.
+     */
+    @GET("invoices")
+    suspend fun getInvoicePage(
+        @Query("cursor") cursor: String?,
+        @Query("limit") limit: Int,
+        @QueryMap filters: Map<String, String> = emptyMap(),
+    ): ApiResponse<InvoicePageResponse>
 
     @GET("invoices/{id}")
     suspend fun getInvoice(@Path("id") id: Long): ApiResponse<InvoiceDetailData>

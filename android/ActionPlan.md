@@ -1713,7 +1713,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Bulk select** → bulk action (`POST /invoices/bulk-action`): Send reminder / Export / Void / Delete. (commit 2c17758 — long-press bulk mode + `BulkActionTopBar`+`BulkActionBar` {Remind/Export CSV/Void})
 - [x] **Export CSV** via SAF. (commit 2c17758 — `ACTION_CREATE_DOCUMENT` launcher + `VM.buildCsvContent()`)
 - [x] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void. (commit 2c17758 — DropdownMenu on `MoreVert`: Open/Copy number/Send reminder/Share PDF)
-- [ ] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator. <!-- NOTE-defer: server uses page/per_page offset pagination, not cursor; RemoteMediator + Paging3 wiring is a separate wave -->
+- [x] **Cursor-based pagination (offline-first)** per top-of-doc rule. `GET /invoices?cursor=&limit=50` online; list reads from Room via Paging3 + RemoteMediator. (session 2026-04-27 — `InvoiceRemoteMediator.kt` REFRESH/APPEND/PREPEND + 15-min staleness `initialize()`; `InvoiceDao.pagingSource/pagingSourceByStatus/pagingSourceByCustomer`; `InvoiceRepository.invoicesPaged(filterKey)` via Pager; `InvoiceListViewModel.invoicesPaged` Flow cached in viewModelScope; `InvoicePageResponse` DTO with cursor/serverExhausted/total fields)
 
 ### 7.2 Detail
 - [x] Line items / totals / payments.
