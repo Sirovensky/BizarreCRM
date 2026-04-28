@@ -421,6 +421,20 @@ class AppPreferences @Inject constructor(
         get() = prefs.getString("ticket_list_saved_view", "None") ?: "None"
         set(value) = prefs.edit().putString("ticket_list_saved_view", value).apply()
 
+    // --- §4.1 L660 — ticket list column visibility (tablet/ChromeOS) --------
+
+    /**
+     * §4.1 — Persisted column-visibility config for the ticket list.
+     * Stored as the encoded string produced by [TicketColumnVisibility.encode].
+     * Empty string means "use defaults" — decoded at read time so future default
+     * changes are picked up without a migration.
+     *
+     * Only surfaced on tablet / ChromeOS (`isMediumOrExpandedWidth()`).
+     */
+    var ticketColumnVisibility: String
+        get() = prefs.getString("ticket_column_visibility", "") ?: ""
+        set(value) = prefs.edit().putString("ticket_column_visibility", value).apply()
+
     // --- §3.13 L565–L567 — display / TV mode preferences --------------------
     //
     // [keepScreenOn] prevents the display from sleeping while the app is in the

@@ -15,6 +15,9 @@ import com.bizarreelectronics.crm.data.remote.dto.UpdateTicketRequest
 import com.bizarreelectronics.crm.data.repository.TicketRepository
 import com.bizarreelectronics.crm.ui.screens.tickets.TicketStateMachine
 import com.bizarreelectronics.crm.ui.screens.tickets.TransitionResult
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility.Companion.decode
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility.Companion.encode
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSort
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgency
 import com.bizarreelectronics.crm.ui.screens.tickets.components.ticketUrgencyFor
@@ -75,6 +78,9 @@ data class TicketListUiState(
     val bulkTransitionSummary: BulkTransitionSummary? = null,
     // §4.21 — Active label filter (null = show all)
     val activeLabelFilter: String? = null,
+    // §4.1 L660 — Which optional ticket-row columns are visible (tablet/ChromeOS).
+    // Loaded from AppPreferences on init; defaults applied automatically on empty pref.
+    val columnVisibility: TicketColumnVisibility = TicketColumnVisibility(),
 )
 
 /**
@@ -136,10 +142,14 @@ class TicketListViewModel @Inject constructor(
             TicketSavedView.valueOf(appPreferences.ticketListSavedView)
         }.getOrDefault(TicketSavedView.None)
 
+        // Restore persisted column visibility (§4.1 L660)
+        val persistedColumnVisibility = decode(appPreferences.ticketColumnVisibility)
+
         _state.value = _state.value.copy(
             viewMode = persistedMode,
             savedView = persistedSavedView,
             pinnedTicketIds = appPreferences.pinnedTicketIds,
+            columnVisibility = persistedColumnVisibility,
         )
 
         collectTickets()
@@ -498,6 +508,22 @@ class TicketListViewModel @Inject constructor(
     fun onViewModeChanged(mode: TicketViewMode) {
         _state.value = _state.value.copy(viewMode = mode)
         appPreferences.ticketListViewMode = if (mode == TicketViewMode.Kanban) "kanban" else "list"
+    }
+
+    // -----------------------------------------------------------------------
+    // Column visibility (§4.1 L660) — tablet/ChromeOS persisted preference
+    // -----------------------------------------------------------------------
+
+    /**
+     * Applies and persists an updated [TicketColumnVisibility] config.
+     *
+     * Called from [TicketListScreen] when the user taps Apply in the
+     * [TicketColumnDensityPicker] sheet. The new config is stored to
+     * [AppPreferences] so it survives process death and app restarts.
+     */
+    fun onColumnVisibilityChanged(visibility: TicketColumnVisibility) {
+        _state.value = _state.value.copy(columnVisibility = visibility)
+        appPreferences.ticketColumnVisibility = with(visibility) { encode() }
     }
 
     // -----------------------------------------------------------------------

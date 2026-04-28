@@ -53,6 +53,8 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.ExportCsvMenuIte
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinToggleMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaHeatmapMenuItem
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinnedTicketsHeader
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnDensityPicker
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketColumnVisibility
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips
@@ -142,6 +144,8 @@ fun TicketListScreen(
     var showSavedViewSheet by remember { mutableStateOf(false) }
     // Overflow menu (Export CSV etc.)
     var showOverflowMenu by remember { mutableStateOf(false) }
+    // §4.1 L660 — Column / density picker (tablet/ChromeOS only)
+    var showColumnPicker by remember { mutableStateOf(false) }
     // §4.21 — Bulk label picker dialog
     var showBulkLabelDialog by remember { mutableStateOf(false) }
     var bulkLabelInput by remember { mutableStateOf("") }
@@ -194,6 +198,22 @@ fun TicketListScreen(
                                         onDismiss = { showOverflowMenu = false },
                                         onClick = onSlaHeatmapClick,
                                     )
+                                    // §4.1 L660 — Column picker (tablet/ChromeOS only)
+                                    if (isExpandedWidth) {
+                                        DropdownMenuItem(
+                                            text = { Text("Columns") },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Default.ViewColumn,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            onClick = {
+                                                showOverflowMenu = false
+                                                showColumnPicker = true
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -543,6 +563,8 @@ fun TicketListScreen(
                                         isSelecting = state.isSelecting,
                                         isExpandedWidth = isExpandedWidth,
                                         isPinned = isPinned,
+                                        // §4.1 L660 — pass persisted column prefs; phone uses defaults (all on)
+                                        columnVisibility = if (isExpandedWidth) state.columnVisibility else TicketColumnVisibility(),
                                         onTicketClick = {
                                             if (state.isSelecting) {
                                                 viewModel.toggleSelection(ticket.id)
@@ -610,6 +632,18 @@ fun TicketListScreen(
         )
     }
 
+    // §4.1 L660 — Column / density picker sheet (tablet/ChromeOS)
+    if (showColumnPicker) {
+        TicketColumnDensityPicker(
+            current = state.columnVisibility,
+            onApply = { updated ->
+                viewModel.onColumnVisibilityChanged(updated)
+                showColumnPicker = false
+            },
+            onDismiss = { showColumnPicker = false },
+        )
+    }
+
     // §4.21 — Bulk label dialog: staff types a label name to apply to all selected tickets.
     if (showBulkLabelDialog) {
         AlertDialog(
@@ -668,6 +702,8 @@ private fun TicketListRow(
     isSelecting: Boolean,
     isExpandedWidth: Boolean,
     isPinned: Boolean,
+    // §4.1 L660 — Column / density prefs. Defaults show assignee + device + urgency dot.
+    columnVisibility: TicketColumnVisibility = TicketColumnVisibility(),
     onTicketClick: () -> Unit,
     onLongPress: () -> Unit,
     onContextMenuAction: (ContextMenuAction) -> Unit,
@@ -734,8 +770,10 @@ private fun TicketListRow(
                     )
                     } // with(sharedTransitionScope)
                     Spacer(modifier = Modifier.width(6.dp))
-                    // Urgency chip (L637)
-                    TicketUrgencyChip(urgency = urgency)
+                    // §4.1 L660 — Urgency chip gated on columnVisibility.showUrgencyDot
+                    if (columnVisibility.showUrgencyDot) {
+                        TicketUrgencyChip(urgency = urgency)
+                    }
                     // Pin indicator (L653)
                     if (isPinned) {
                         Spacer(modifier = Modifier.width(4.dp))
@@ -766,14 +804,27 @@ private fun TicketListRow(
                         ),
                 )
                 } // with(sharedTransitionScope)
+                // §4.1 L660 — Device name gated on columnVisibility.showDevice
                 val deviceName = ticket.firstDeviceName
-                if (!deviceName.isNullOrBlank()) {
+                if (!deviceName.isNullOrBlank() && columnVisibility.showDevice) {
                     Text(
                         deviceName,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // §4.1 L660 — Assignee ID badge gated on columnVisibility.showAssignee
+                // Shows "Assigned" indicator when a tech is assigned; full name deferred until
+                // TicketEntity is extended with an assignedToName denormalized column.
+                if (columnVisibility.showAssignee && ticket.assignedTo != null) {
+                    Text(
+                        "Assigned #${ticket.assignedTo}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
+                }
+                // §4.1 L660 — internalNote / diagnosticNote: columns reserved for future
+                // TicketEntity extension; flags stored in prefs already, no UI output yet.
                 // §4.21 — Label chips from comma-separated labels field
                 val labelList = remember(ticket.labels) {
                     ticket.labels?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
