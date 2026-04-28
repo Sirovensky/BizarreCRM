@@ -41,12 +41,13 @@ fun CheckInHostScreen(
     deviceId: Long,
     customerName: String,
     deviceName: String,
+    deviceModelId: Long? = null,
     onBack: () -> Unit,
     onTicketCreated: (Long) -> Unit,
     viewModel: CheckInViewModel = hiltViewModel(),
 ) {
-    LaunchedEffect(customerId, deviceId) {
-        viewModel.init(customerId, deviceId)
+    LaunchedEffect(customerId, deviceId, deviceModelId) {
+        viewModel.init(customerId, deviceId, deviceModelId)
     }
 
     val state by viewModel.uiState.collectAsState()

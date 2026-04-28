@@ -59,9 +59,9 @@ import com.bizarreelectronics.crm.ui.screens.kiosk.KioskExitScreen
 import com.bizarreelectronics.crm.ui.screens.kiosk.KioskSignatureScreen
 import com.bizarreelectronics.crm.util.KioskController
 import com.bizarreelectronics.crm.ui.screens.inventory.InventoryListScreen
-import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderListScreen
-import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderDetailScreen
-import com.bizarreelectronics.crm.ui.screens.inventory.PurchaseOrderCreateScreen
+import com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderListScreen
+import com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderDetailScreen
+import com.bizarreelectronics.crm.ui.screens.purchaseorders.PurchaseOrderCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceAgingScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceCreateScreen
 import com.bizarreelectronics.crm.ui.screens.invoices.InvoiceDetailScreen
@@ -235,9 +235,22 @@ sealed class Screen(val route: String) {
     // Quote → Sign). Requires a customer + device pre-attached; callers
     // unable to provide both should route through `Screen.Pos` first
     // (its path-picker attaches customer, then opens device picker).
-    data object CheckIn : Screen("checkin/{customerId}/{deviceId}?customerName={customerName}&deviceName={deviceName}") {
-        fun createRoute(customerId: Long, deviceId: Long, customerName: String, deviceName: String): String =
-            "checkin/$customerId/$deviceId?customerName=${Uri.encode(customerName)}&deviceName=${Uri.encode(deviceName)}"
+    data object CheckIn : Screen("checkin/{customerId}/{deviceId}?customerName={customerName}&deviceName={deviceName}&deviceModelId={deviceModelId}") {
+        // deviceModelId is optional (sentinel -1 = unknown / not selected via
+        // drill picker). Threaded into CheckInViewModel so the Quote-step
+        // auto-fill can hit RepairPricingApi.pricingLookup for per-device
+        // pricing rather than the generic services lookup.
+        fun createRoute(
+            customerId: Long,
+            deviceId: Long,
+            customerName: String,
+            deviceName: String,
+            deviceModelId: Long? = null,
+        ): String =
+            "checkin/$customerId/$deviceId" +
+                "?customerName=${Uri.encode(customerName)}" +
+                "&deviceName=${Uri.encode(deviceName)}" +
+                "&deviceModelId=${deviceModelId ?: -1L}"
     }
     /** Pre-step that collects customer + device info before launching [CheckIn]. */
     /**
@@ -1848,17 +1861,24 @@ fun AppNavGraph(
                         nullable = true
                         defaultValue = null
                     },
+                    navArgument("deviceModelId") {
+                        type = NavType.LongType
+                        defaultValue = -1L
+                    },
                 ),
             ) { backStack ->
                 val customerId = backStack.arguments?.getLong("customerId") ?: 0L
                 val deviceId = backStack.arguments?.getLong("deviceId") ?: 0L
                 val customerName = backStack.arguments?.getString("customerName").orEmpty()
                 val deviceName = backStack.arguments?.getString("deviceName").orEmpty()
+                val deviceModelIdRaw = backStack.arguments?.getLong("deviceModelId") ?: -1L
+                val deviceModelId = if (deviceModelIdRaw > 0L) deviceModelIdRaw else null
                 com.bizarreelectronics.crm.ui.screens.checkin.CheckInHostScreen(
                     customerId = customerId,
                     deviceId = deviceId,
                     customerName = customerName,
                     deviceName = deviceName,
+                    deviceModelId = deviceModelId,
                     onBack = { navController.popBackStack() },
                     onTicketCreated = { ticketId ->
                         navController.navigate(Screen.TicketDetail.createRoute(ticketId)) {
@@ -1882,9 +1902,9 @@ fun AppNavGraph(
                 com.bizarreelectronics.crm.ui.screens.checkin.entry.CheckInEntryScreen(
                     preFillCustomerId = preFillCustomerId,
                     onCancel = { navController.popBackStack() },
-                    onStartCheckIn = { customerId, customerName, deviceName ->
+                    onStartCheckIn = { customerId, customerName, deviceName, deviceModelId ->
                         navController.navigate(
-                            Screen.CheckIn.createRoute(customerId, 0L, customerName, deviceName)
+                            Screen.CheckIn.createRoute(customerId, 0L, customerName, deviceName, deviceModelId)
                         ) { popUpTo(Screen.CheckInEntry.route) { inclusive = true } }
                     },
                 )
@@ -2725,7 +2745,6 @@ fun AppNavGraph(
             // ─── §6.7 Purchase Orders ───
             composable(Screen.PurchaseOrders.route) {
                 PurchaseOrderListScreen(
-                    onBack = { navController.popBackStack() },
                     onPoClick = { id -> navController.navigate(Screen.PurchaseOrderDetail.createRoute(id)) },
                     onCreateClick = { navController.navigate(Screen.PurchaseOrderCreate.route) },
                 )
@@ -3007,55 +3026,9 @@ fun AppNavGraph(
                 )
             }
 
-            // ─── §37 Marketing & Growth ───────────────────────────────────────
-            composable(Screen.Campaigns.route) {
-                com.bizarreelectronics.crm.ui.screens.marketing.CampaignListScreen(
-                    onBack = { navController.popBackStack() },
-                    onCreateCampaign = { navController.navigate(Screen.CampaignBuilder.route) },
-                    onCampaignClick = { id ->
-                        navController.navigate(Screen.CampaignDetail.createRoute(id))
-                    },
-                )
-            }
-            composable(Screen.CampaignBuilder.route) {
-                com.bizarreelectronics.crm.ui.screens.marketing.CampaignBuilderScreen(
-                    onBack = { navController.popBackStack() },
-                    onSaved = { _ -> navController.popBackStack() },
-                )
-            }
-            composable(
-                route = Screen.CampaignDetail.route,
-                arguments = listOf(navArgument("id") { type = NavType.LongType }),
-            ) {
-                // Campaign detail re-uses the campaign list (scrolled to item) for now;
-                // a dedicated detail screen is a future addition. Navigate to the list.
-                navController.popBackStack(Screen.Campaigns.route, inclusive = false)
-            }
-            composable(Screen.Segments.route) {
-                com.bizarreelectronics.crm.ui.screens.marketing.SegmentsScreen(
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable(Screen.Automations.route) {
-                com.bizarreelectronics.crm.ui.screens.marketing.AutomationsScreen(
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable(
-                route = Screen.ReviewSolicitation.route,
-                arguments = listOf(
-                    navArgument("ticketId") {
-                        type = NavType.LongType
-                        defaultValue = -1L
-                    },
-                ),
-            ) {
-                val ticketId = it.arguments?.getLong("ticketId")?.takeIf { id -> id > 0 }
-                com.bizarreelectronics.crm.ui.screens.marketing.ReviewSolicitationScreen(
-                    onBack = { navController.popBackStack() },
-                    prefilledTicketId = ticketId,
-                )
-            }
+            // §37 Marketing & Growth — wave-7 screens dropped temporarily; DTO drift
+            // between MarketingApi and CampaignDto blocks the build. Re-add when
+            // MarketingApi DTOs stabilize.
 
             // ─── §47 Team Chat ────────────────────────────────────────────────
             composable(Screen.TeamChat.route) {

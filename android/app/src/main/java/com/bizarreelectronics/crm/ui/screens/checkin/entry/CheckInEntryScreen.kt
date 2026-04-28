@@ -90,7 +90,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 @Composable
 fun CheckInEntryScreen(
     onCancel: () -> Unit,
-    onStartCheckIn: (customerId: Long, customerName: String, deviceName: String) -> Unit,
+    onStartCheckIn: (customerId: Long, customerName: String, deviceName: String, deviceModelId: Long?) -> Unit,
     preFillCustomerId: Long = -1L,
     viewModel: CheckInEntryViewModel = hiltViewModel(),
 ) {
@@ -137,7 +137,7 @@ fun CheckInEntryScreen(
                     } else {
                         val customer = step1.attachedCustomer ?: return@Button
                         val deviceName = step2.deviceModel.trim()
-                        onStartCheckIn(customer.id, customer.name, deviceName)
+                        onStartCheckIn(customer.id, customer.name, deviceName, step2.selectedModelId)
                     }
                 },
                 enabled = canAdvance,

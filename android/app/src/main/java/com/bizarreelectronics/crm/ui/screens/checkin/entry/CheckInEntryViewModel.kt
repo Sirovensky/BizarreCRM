@@ -59,6 +59,10 @@ data class EntryStep2State(
     val selectedManufacturerId: Long? = null,
     /** Models available for the selected (category, manufacturer) pair. */
     val models: List<com.bizarreelectronics.crm.data.remote.dto.DeviceModelItem> = emptyList(),
+    /** Selected model id once the cashier picks a tile. Threads through to
+     *  CheckInHostScreen → CheckInViewModel so per-device pricing lookups
+     *  (RepairPricingApi.pricingLookup) can run on the Quote step. */
+    val selectedModelId: Long? = null,
     val drillLoading: Boolean = false,
     val drillError: String? = null,
 )
@@ -217,6 +221,7 @@ class CheckInEntryViewModel @Inject constructor(
             it.copy(
                 drillStep = DeviceDrillStep.DETAILS,
                 deviceModel = model.name,
+                selectedModelId = model.id,
             )
         }
     }

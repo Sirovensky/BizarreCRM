@@ -36,10 +36,12 @@ class CheckInViewModel @Inject constructor(
     private var autosaveJob: Job? = null
     private var customerId: Long = 0L
     private var deviceId: Long = 0L
+    private var deviceModelId: Long? = null
 
-    fun init(customerId: Long, deviceId: Long) {
+    fun init(customerId: Long, deviceId: Long, deviceModelId: Long? = null) {
         this.customerId = customerId
         this.deviceId = deviceId
+        this.deviceModelId = deviceModelId
         viewModelScope.launch { loadDraftIfPresent() }
     }
 
@@ -218,6 +220,7 @@ class CheckInViewModel @Inject constructor(
         val s = _uiState.value
         if (s.quoteSubtotalCents > 0L || s.subtotalAutoFilled) return
         if (s.symptoms.isEmpty()) return
+        val modelId = deviceModelId
         viewModelScope.launch {
             var totalCents = 0L
             var matched = false
@@ -225,9 +228,31 @@ class CheckInViewModel @Inject constructor(
                 for (symptom in s.symptoms) {
                     val query = symptomToServiceQuery[symptom] ?: continue
                     val response = repairPricingApi.getServices(query = query)
-                    val first = response.data?.firstOrNull { it.isActive == 1 }
-                    if (first != null && first.laborPrice > 0.0) {
-                        totalCents += (first.laborPrice * 100).toLong()
+                    val first = response.data?.firstOrNull { it.isActive == 1 } ?: continue
+                    // Two-tier lookup:
+                    //   1. If the cashier picked a model in the drill flow,
+                    //      hit the per-device pricingLookup endpoint —
+                    //      RepairPriceLookup.laborPrice carries the
+                    //      device-specific override (RepairDesk parity).
+                    //   2. Otherwise fall back to the service's default
+                    //      labor price.
+                    var priceDollars = first.laborPrice
+                    if (modelId != null && modelId > 0L) {
+                        runCatching {
+                            val lookup = repairPricingApi.pricingLookup(
+                                deviceModelId = modelId.toInt(),
+                                serviceId = first.id.toInt(),
+                            )
+                            val perDevice = lookup.data?.laborPrice
+                            if (perDevice != null && perDevice > 0.0) {
+                                priceDollars = perDevice
+                            }
+                        }
+                        // Quiet failure: per-device lookup is best-effort;
+                        // missing override means use the service default.
+                    }
+                    if (priceDollars > 0.0) {
+                        totalCents += (priceDollars * 100).toLong()
                         matched = true
                     }
                 }
