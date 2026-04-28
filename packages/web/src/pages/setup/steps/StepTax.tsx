@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { ArrowLeft, ArrowRight, Calculator } from 'lucide-react';
 import type { StepProps, PendingWrites } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 11 — Tax defaults.
@@ -110,12 +109,7 @@ export function StepTax({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 10 · Business hours"
-          currentLabel="Step 11 · Tax"
-          nextLabel="Step 12 · Receipts"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

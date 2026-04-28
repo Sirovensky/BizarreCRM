@@ -2,7 +2,6 @@ import type { JSX } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Globe, Grid3X3, Repeat } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 interface DeepLinkCard {
   title: string;
@@ -66,11 +65,7 @@ export function StepDone({ onNext }: StepProps): JSX.Element {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 25 · Review"
-          currentLabel="Step 26 · Done"
-        />
-      </div>
+</div>
 
       <div className="mb-8 text-center">
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-500/10">

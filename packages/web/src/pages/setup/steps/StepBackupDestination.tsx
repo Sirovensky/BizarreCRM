@@ -12,7 +12,6 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { StepProps, PendingWrites } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 23 — Backup destination.
@@ -142,12 +141,7 @@ export function StepBackupDestination({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 22 · Warranty defaults"
-          currentLabel="Step 23 · Backups"
-          nextLabel="Step 24 · Mobile app"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <h1 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">

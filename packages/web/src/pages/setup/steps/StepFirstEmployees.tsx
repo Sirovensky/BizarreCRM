@@ -27,7 +27,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import { validateEmail } from '@/services/validationService';
 
 type EmployeeRole = 'admin' | 'tech' | 'cashier';
@@ -214,12 +213,7 @@ export function StepFirstEmployees({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 14 · Payment terminal"
-          currentLabel="Step 15 · First employees"
-          nextLabel="Step 16 · SMS provider"
-        />
-      </div>
+</div>
 
       <div className="mx-auto max-w-3xl rounded-2xl border border-surface-200 bg-white p-6 dark:border-surface-700 dark:bg-surface-800">
         <h1 className="font-['League_Spartan'] text-2xl font-bold tracking-wide text-surface-900 dark:text-surface-50">

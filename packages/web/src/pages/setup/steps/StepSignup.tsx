@@ -24,7 +24,6 @@ import { Eye, EyeOff, Loader2, Check, X } from 'lucide-react';
 import { validateEmail, validateShopSlug } from '@/services/validationService';
 import { signupApi } from '@/api/endpoints';
 import { useAuthStore } from '@/stores/authStore';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import type { StepProps } from '../wizardTypes';
 
 type SlugStatus = 'idle' | 'invalid' | 'checking' | 'available' | 'taken';
@@ -212,8 +211,7 @@ export function StepSignup({ onUpdate, onNext }: StepProps): JSX.Element {
   return (
     <div className="space-y-6">
       <div className="flex justify-center">
-        <WizardBreadcrumb currentLabel="Step 1 · Signup" nextLabel="Step 2 · Verify email" />
-      </div>
+</div>
 
       <form
         onSubmit={handleSubmit}

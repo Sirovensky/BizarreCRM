@@ -26,7 +26,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { PendingWrites, StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import { api } from '@/api/client';
 
 type ProviderId = 'twilio' | 'telnyx' | 'bandwidth' | 'plivo' | 'vonage';
@@ -167,12 +166,7 @@ export function StepSmsProvider({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 15 · First employees"
-          currentLabel="Step 16 · SMS provider"
-          nextLabel="Step 17 · Email SMTP"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <h1 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">

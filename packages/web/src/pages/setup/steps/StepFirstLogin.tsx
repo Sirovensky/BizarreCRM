@@ -3,7 +3,6 @@ import type { JSX, FormEvent } from 'react';
 import { User, Lock, Loader2 } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
 import { authApi } from '@/api/endpoints';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 1 (self-host) — First login.
@@ -60,12 +59,7 @@ export function StepFirstLogin({ onNext }: StepProps): JSX.Element {
   return (
     <div className="mx-auto w-full max-w-md">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel={undefined}
-          currentLabel="Step 1 · First login"
-          nextLabel="Step 2 · Set password"
-        />
-      </div>
+</div>
 
       <div className="bg-white dark:bg-surface-800 rounded-2xl border border-surface-200 dark:border-surface-700 p-8 max-w-md mx-auto shadow-lg">
         {/* Avatar / step icon */}

@@ -1,7 +1,6 @@
 import { MapPin, Phone, Mail, Clock, DollarSign, ArrowRight, ArrowLeft } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
 import { formatStorePhoneAsYouType } from '@/utils/phoneFormat';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import {
   validateStoreAddress,
   validatePhoneInternational,
@@ -55,8 +54,7 @@ export function StepStoreInfo({ pending, onUpdate, onNext, onBack }: StepProps) 
 
   return (
     <div className="mx-auto max-w-2xl animate-in fade-in-0 slide-in-from-bottom-4 duration-300 motion-reduce:animate-none">
-      <WizardBreadcrumb prevLabel="Step 5 · Shop type" currentLabel="Step 6 · Store info" nextLabel="Step 7 · Import" />
-      <div className="mb-6 mt-6">
+<div className="mb-6 mt-6">
         <h2 className="text-3xl font-semibold tracking-tight text-surface-900 dark:text-surface-50">
           Store info
         </h2>

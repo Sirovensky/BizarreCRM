@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { Smartphone, Copy, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { authApi } from '@/api/endpoints';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -138,12 +137,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
     return (
       <div className="mx-auto max-w-2xl">
         <div className="mb-6 flex justify-center">
-          <WizardBreadcrumb
-            prevLabel={prevLabel}
-            currentLabel="Step 3 · 2FA setup"
-            nextLabel="Step 4 · Welcome"
-          />
-        </div>
+</div>
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 shadow-xl dark:border-amber-700 dark:bg-amber-900/20">
           <div className="mb-4 flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-6 w-6 flex-shrink-0 text-amber-600 dark:text-amber-400" />
@@ -216,12 +210,7 @@ export function StepTwoFactorSetup({ onNext, onBack, onSkip }: StepProps): JSX.E
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel={prevLabel}
-          currentLabel="Step 3 · 2FA setup"
-          nextLabel="Step 4 · Welcome"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

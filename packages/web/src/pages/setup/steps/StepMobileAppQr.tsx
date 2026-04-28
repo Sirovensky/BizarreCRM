@@ -2,7 +2,6 @@ import { useEffect, useState, type JSX } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Copy, Smartphone, Wifi, Loader2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import type { StepProps } from '../wizardTypes';
 
 /**
@@ -100,12 +99,7 @@ export function StepMobileAppQr({ onNext, onBack, onSkip }: StepProps): JSX.Elem
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 23 · Backups"
-          currentLabel="Step 24 · Mobile app"
-          nextLabel="Step 25 · Review"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

@@ -1,7 +1,6 @@
 import type { JSX } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 12 — Receipt Layout (linear flow rewrite).
@@ -39,12 +38,7 @@ export function StepReceipts({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 11 · Tax"
-          currentLabel="Step 12 · Receipts"
-          nextLabel="Step 13 · Logo"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <h1 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">

@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import type { JSX } from 'react';
 import { ArrowLeft, ArrowRight, Check, Clock } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /** Shape stored as JSON in store_config.business_hours */
 interface DayHours {
@@ -96,12 +95,7 @@ export function StepBusinessHours({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 9 · Default statuses"
-          currentLabel="Step 10 · Business hours"
-          nextLabel="Step 11 · Tax"
-        />
-      </div>
+</div>
 
       <SubStepHeader
         title="Business Hours"

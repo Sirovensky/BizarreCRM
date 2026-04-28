@@ -1,7 +1,6 @@
 import { Store, Sun, Moon, Monitor, ArrowRight } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
 import { useUiStore } from '@/stores/uiStore';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 type ThemeOption = 'light' | 'dark' | 'system';
 
@@ -31,8 +30,7 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <WizardBreadcrumb currentLabel="Step 4 · Welcome" nextLabel="Step 5 · Shop type" />
-      <div className="mb-6 mt-6 text-center">
+<div className="mb-6 mt-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
           <Store className="h-7 w-7 text-primary-600 dark:text-primary-400" />
         </div>

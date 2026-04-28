@@ -1,7 +1,6 @@
 import { useState, type JSX } from 'react';
 import { Smartphone, Wrench, Sparkles, Info, Calculator } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 /**
@@ -162,12 +161,7 @@ export function StepRepairPricing({
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 7 · Import"
-          currentLabel="Step 8 · Repair pricing"
-          nextLabel="Step 9 · Default statuses"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

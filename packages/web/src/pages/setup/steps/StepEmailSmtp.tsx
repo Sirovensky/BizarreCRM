@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { JSX } from 'react';
 import { Mail, CheckCircle, XCircle, Loader2, ArrowLeft, ArrowRight } from 'lucide-react';
 import type { StepProps, PendingWrites } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import { api } from '@/api/client';
 
 /**
@@ -94,12 +93,7 @@ export function StepEmailSmtp({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 16 · SMS provider"
-          currentLabel="Step 17 · Email SMTP"
-          nextLabel="Step 18 · Notification templates"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-500/10">

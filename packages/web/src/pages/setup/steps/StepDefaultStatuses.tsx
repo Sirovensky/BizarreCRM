@@ -10,7 +10,6 @@ import {
   MessageSquareText,
 } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import { settingsApi } from '@/api/endpoints';
 
 /**
@@ -242,12 +241,7 @@ export function StepDefaultStatuses({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 8 · Repair pricing"
-          currentLabel="Step 9 · Default statuses"
-          nextLabel="Step 10 · Business hours"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mb-2 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-100 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300">

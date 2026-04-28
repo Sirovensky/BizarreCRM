@@ -1,6 +1,5 @@
 import { useState, type JSX } from 'react';
 import { ShieldCheck, FileText } from 'lucide-react';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import type { StepProps, PendingWrites } from '../wizardTypes';
 
 /**
@@ -98,12 +97,7 @@ export function StepWarrantyDefaults({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 21 · Booking policy"
-          currentLabel="Step 22 · Warranty defaults"
-          nextLabel="Step 23 · Backups"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

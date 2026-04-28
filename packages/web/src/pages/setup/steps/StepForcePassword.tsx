@@ -4,7 +4,6 @@ import { Eye, EyeOff, Loader2, Lock } from 'lucide-react';
 import { authApi } from '@/api/endpoints';
 import { api } from '@/api/client';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Wizard Step 2 (self-host only) — Force password change.
@@ -103,12 +102,7 @@ export function StepForcePassword({ onNext, onBack }: StepProps): JSX.Element {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 1 · First login"
-          currentLabel="Step 2 · Set password"
-          nextLabel="Step 3 · 2FA setup"
-        />
-      </div>
+</div>
 
       <form
         onSubmit={handleSubmit}

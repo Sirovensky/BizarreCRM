@@ -3,7 +3,6 @@ import { Mail, AlertTriangle, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { JSX } from 'react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 2 (SaaS) — Verify email.
@@ -113,12 +112,7 @@ export function StepVerifyEmail({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-4 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 1 · Signup"
-          currentLabel="Step 2 · Verify email"
-          nextLabel="Step 3 · 2FA setup"
-        />
-      </div>
+</div>
 
       <div className="mx-auto max-w-md rounded-2xl border border-surface-200 bg-white p-8 text-center shadow-xl dark:border-surface-700 dark:bg-surface-800">
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

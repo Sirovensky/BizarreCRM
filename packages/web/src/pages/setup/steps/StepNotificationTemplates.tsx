@@ -3,7 +3,6 @@ import type { JSX } from 'react';
 import { Inbox, PackageCheck, Receipt, Send, Code, ArrowLeft, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import type { StepProps, PendingWrites } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 /**
  * Step 18 — Notification templates.
@@ -172,12 +171,7 @@ export function StepNotificationTemplates({
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 17 · Email SMTP"
-          currentLabel="Step 18 · Notification templates"
-          nextLabel="Step 19 · Receipt printer"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <h1 className="font-['League_Spartan'] text-3xl font-bold tracking-wide text-surface-900 dark:text-surface-50">

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import type { JSX } from 'react';
 import { Image as ImageIcon, Upload, ArrowLeft, ArrowRight } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 import { validateHexColor } from '@/services/validationService';
 import { api } from '@/api/client';
 
@@ -174,12 +173,7 @@ export function StepLogo({
   return (
     <div className="mx-auto max-w-xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 12 · Receipts"
-          currentLabel="Step 13 · Logo"
-          nextLabel="Step 14 · Payment terminal"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">

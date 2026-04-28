@@ -22,7 +22,6 @@ import { useState } from 'react';
 import type { JSX } from 'react';
 import { Calendar, Clock, UserCheck } from 'lucide-react';
 import type { StepProps } from '../wizardTypes';
-import { WizardBreadcrumb } from '../components/WizardBreadcrumb';
 
 const DEFAULT_LEAD_HOURS = 2;
 const DEFAULT_MAX_DAYS_AHEAD = 60;
@@ -143,12 +142,7 @@ export function StepBookingPolicy({
   return (
     <div className="mx-auto max-w-2xl">
       <div className="mb-6 flex justify-center">
-        <WizardBreadcrumb
-          prevLabel="Step 20 · Cash drawer"
-          currentLabel="Step 21 · Booking policy"
-          nextLabel="Step 22 · Warranty"
-        />
-      </div>
+</div>
 
       <div className="mb-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">

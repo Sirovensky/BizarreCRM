@@ -5,7 +5,8 @@ import { Loader2 } from 'lucide-react';
 import { settingsApi, authApi } from '@/api/endpoints';
 import { useUiStore } from '@/stores/uiStore';
 import type { PendingWrites, WizardPhase } from './wizardTypes';
-import { WIZARD_BODY_ORDER, WIZARD_PHASE_LABELS } from './wizardTypes';
+import { WIZARD_BODY_ORDER } from './wizardTypes';
+import { WizardBreadcrumb } from './components/WizardBreadcrumb';
 import { StepWelcome } from './steps/StepWelcome';
 import { StepStoreInfo } from './steps/StepStoreInfo';
 import { StepImportHandoff } from './steps/StepImportHandoff';
@@ -290,15 +291,14 @@ export function SetupPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-surface-50 to-surface-100 dark:from-surface-950 dark:to-surface-900">
-      {/* Top bar with linear progress + skip */}
+      {/* Top bar — brand + skip only. Step counter intentionally removed:
+          the per-step WizardBreadcrumb pill below already shows current
+          phase + prev/next neighbors with consistent body-order numbering. */}
       <div className="sticky top-0 z-10 border-b border-surface-200 bg-white/80 backdrop-blur dark:border-surface-700 dark:bg-surface-900/80">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-6 py-3">
-          <div className="flex items-center gap-4">
-            <span className="font-['League_Spartan'] text-lg font-bold tracking-wide text-primary-700 dark:text-primary-400">
-              BIZARRECRM SETUP
-            </span>
-            <LinearProgress phase={phase} orderedPhases={orderedPhases} />
-          </div>
+          <span className="font-['League_Spartan'] text-lg font-bold tracking-wide text-primary-700 dark:text-primary-400">
+            BIZARRECRM SETUP
+          </span>
           <SkipToDashboard onSkip={handleSkip} disabled={saving} />
         </div>
       </div>
@@ -310,33 +310,14 @@ export function SetupPage() {
             {error}
           </div>
         )}
+        {/* Single source of truth for breadcrumb. Step files no longer
+            render their own — the shell renders one above the active step
+            using phase-driven mode. */}
+        <div className="mb-6 flex justify-center">
+          <WizardBreadcrumb currentPhase={phase} />
+        </div>
         {renderStep()}
       </div>
-    </div>
-  );
-}
-
-/**
- * Linear progress indicator for the top bar. Shows current step number
- * out of total + the previous/current/next phase labels.
- */
-function LinearProgress({
-  phase,
-  orderedPhases,
-}: {
-  phase: WizardPhase;
-  orderedPhases: WizardPhase[];
-}) {
-  const idx = orderedPhases.indexOf(phase);
-  if (idx < 0) return null;
-  return (
-    <div className="hidden items-center gap-3 md:flex">
-      <span className="text-xs text-surface-500 dark:text-surface-400">
-        Step {idx + 1} / {orderedPhases.length}
-      </span>
-      <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">
-        {WIZARD_PHASE_LABELS[phase]}
-      </span>
     </div>
   );
 }
