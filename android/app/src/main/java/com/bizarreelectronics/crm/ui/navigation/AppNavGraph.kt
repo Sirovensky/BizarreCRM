@@ -140,6 +140,7 @@ import com.bizarreelectronics.crm.ui.screens.importdata.DataImportScreen
 import com.bizarreelectronics.crm.ui.screens.exportdata.DataExportScreen
 import com.bizarreelectronics.crm.ui.commandpalette.CommandPaletteScreen
 import com.bizarreelectronics.crm.ui.screens.settings.AppInfoScreen
+import com.bizarreelectronics.crm.ui.screens.settings.BusinessHoursEditorScreen
 import com.bizarreelectronics.crm.ui.screens.settings.BusinessInfoScreen
 import com.bizarreelectronics.crm.ui.screens.settings.DataSettingsScreen
 import com.bizarreelectronics.crm.ui.screens.settings.FullDiagnosticsScreen
@@ -608,6 +609,9 @@ sealed class Screen(val route: String) {
 
     // §19.19 — Business info (shop name, address, phone, email, tax ID, social links).
     data object BusinessInfo : Screen("settings/business-info")
+
+    // §19.19 — Business hours editor (day-of-week open/close time picker).
+    data object BusinessHoursEditor : Screen("settings/business-hours")
 
     // §45.1 — Customer health score ring + component breakdown screen.
     data object CustomerHealthScore : Screen("customers/{id}/health-score") {
@@ -3342,7 +3346,15 @@ fun AppNavGraph(
 
             // ─── §19.19 Business info ──────────────────────────────────────────
             composable(Screen.BusinessInfo.route) {
-                BusinessInfoScreen(onBack = { navController.popBackStack() })
+                BusinessInfoScreen(
+                    onBack = { navController.popBackStack() },
+                    onBusinessHours = { navController.navigate(Screen.BusinessHoursEditor.route) },
+                )
+            }
+
+            // ─── §19.19 Business hours editor ──────────────────────────────────
+            composable(Screen.BusinessHoursEditor.route) {
+                BusinessHoursEditorScreen(onBack = { navController.popBackStack() })
             }
 
             // ─── §46 Warranty Claim ────────────────────────────────────────────

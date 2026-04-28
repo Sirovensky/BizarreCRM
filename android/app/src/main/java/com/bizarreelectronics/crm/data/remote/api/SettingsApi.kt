@@ -127,4 +127,16 @@ interface SettingsApi {
     suspend fun putStoreConfig(
         @Body body: Map<String, String>,
     ): ApiResponse<Map<String, String>>
+
+    /**
+     * §19.19 Business hours — PUT /settings/store.
+     * Accepts a subset of allowed store keys; used to persist `business_hours` JSON.
+     * Allowed keys on server: store_name, address, phone, email, timezone, currency,
+     * tax_rate, receipt_header, receipt_footer, logo_url, sms_provider, business_hours, etc.
+     * Returns updated store config map.
+     */
+    @PUT("settings/store")
+    suspend fun putStore(
+        @Body body: Map<String, String>,
+    ): ApiResponse<Map<String, String>>
 }
