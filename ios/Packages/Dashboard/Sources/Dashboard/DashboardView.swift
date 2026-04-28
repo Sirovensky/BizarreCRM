@@ -418,8 +418,16 @@ private struct LoadedBody: View {
         let total = a.staleTickets.count + a.overdueInvoices.count + a.missingPartsCount + a.lowStockCount
 
         if total > 0 {
-            // §3.3 — row-level chips for stale tickets and overdue invoices
-            NeedsAttentionCard(attention: a)
+            // §3.3 — row-level chips for stale tickets and overdue invoices.
+            // Forward "View ticket" / "View invoice" taps to the dashboard's
+            // host (set by RootView/iPadShell) so the rail can switch to the
+            // right destination instead of relying on `openURL` deep links
+            // that the iPad shell does not subscribe to.
+            NeedsAttentionCard(
+                attention: a,
+                onViewTicket: { id in onMyQueueTicketTap?(id) },
+                onViewInvoice: { _ in /* TODO: invoice nav */ }
+            )
         }
     }
 

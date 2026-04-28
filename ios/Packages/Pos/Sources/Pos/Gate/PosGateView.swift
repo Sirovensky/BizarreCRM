@@ -211,7 +211,7 @@ public struct PosGateView: View {
                     Text("No customer")
                         .font(.brandBodyLarge())
                         .foregroundStyle(Color.bizarreOnSurface)
-                    Text("Search or pick an option on the left →")
+                    Text("Pick a customer to start the sale.")
                         .font(.brandLabelSmall())
                         .foregroundStyle(Color.bizarreOnSurfaceMuted)
                         .lineLimit(1)
@@ -223,11 +223,14 @@ public struct PosGateView: View {
 
             Divider().overlay(Color.bizarreOutline.opacity(0.2))
 
-            // Empty body — pointing emoji + caption per mockup
+            // Empty body — caption per mockup, no pointing-emoji (the cart
+            // panel sits on the right of the items column so a left-pointing
+            // emoji would aim at the cart itself, not the customer chooser).
             VStack(spacing: BrandSpacing.sm) {
-                Text("👈")
+                Image(systemName: "cart")
                     .font(.system(size: 40))
-                    .opacity(0.3)
+                    .opacity(0.25)
+                    .foregroundStyle(Color.bizarreOnSurface)
                     .accessibilityHidden(true)
                 Text("Every sale needs a customer attached.")
                     .font(.brandLabelLarge())

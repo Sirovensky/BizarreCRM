@@ -197,9 +197,29 @@ public struct ExpensesChartCard: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        ContentUnavailableView("No Expense Data",
-                               systemImage: "chart.bar.doc.horizontal",
-                               description: Text("No expense data for this period."))
+        // ContentUnavailableView wrapped per-character in narrow columns on
+        // landscape iPad (Bebas display font + tight container). Roll a small
+        // VStack with `lineLimit` + `minimumScaleFactor` so the labels stay
+        // legible at any width.
+        VStack(spacing: BrandSpacing.xs) {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.system(size: 28))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text("No expense data")
+                .font(.brandBodyLarge())
+                .foregroundStyle(.bizarreOnSurface)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text("No data for this period.")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .lineLimit(2)
+                .minimumScaleFactor(0.6)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(BrandSpacing.md)
     }
 
     // MARK: - Helpers

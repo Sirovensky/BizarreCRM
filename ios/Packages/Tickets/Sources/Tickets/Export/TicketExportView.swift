@@ -1,6 +1,6 @@
 #if canImport(UIKit)
 import SwiftUI
-import SafariServices
+import UIKit
 import Core
 import DesignSystem
 import Networking
@@ -17,10 +17,9 @@ import Networking
 
 public struct TicketExportView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var isBuilding: Bool = false
-    @State private var exportURL: URL?
+    @State private var isDownloading: Bool = false
+    @State private var downloadedFile: URL?
     @State private var errorMessage: String?
-    @State private var showingSafari: Bool = false
 
     private let api: APIClient
     private let filter: TicketListFilter
@@ -55,13 +54,6 @@ public struct TicketExportView: View {
             }
         }
         .presentationDetents([.medium])
-        .sheet(isPresented: $showingSafari) {
-            if let url = exportURL {
-                SafariView(url: url)
-                    .ignoresSafeArea()
-            }
-        }
-        .task { await buildExportURL() }
     }
 
     // MARK: - Content
@@ -96,17 +88,10 @@ public struct TicketExportView: View {
             }
 
             Button {
-                guard let url = exportURL else { return }
-                if Platform.isMac {
-                    // On Mac, open in external browser.
-                    UIApplication.shared.open(url)
-                    dismiss()
-                } else {
-                    showingSafari = true
-                }
+                Task { await downloadAndShare() }
             } label: {
                 Group {
-                    if isBuilding {
+                    if isDownloading {
                         ProgressView().scaleEffect(0.8)
                     } else {
                         Label("Download CSV", systemImage: "arrow.down.circle.fill")
@@ -118,7 +103,7 @@ public struct TicketExportView: View {
             }
             .buttonStyle(.borderedProminent)
             .tint(.bizarreOrange)
-            .disabled(isBuilding || exportURL == nil)
+            .disabled(isDownloading)
             .padding(.horizontal, BrandSpacing.lg)
             .accessibilityLabel("Download tickets as CSV")
         }
@@ -152,28 +137,34 @@ public struct TicketExportView: View {
 
     // MARK: - Helpers
 
-    private func buildExportURL() async {
-        isBuilding = true
-        defer { isBuilding = false }
-        if let url = await api.exportTicketsURL(filter: filter, keyword: keyword, sort: sort) {
-            exportURL = url
-        } else {
-            errorMessage = "Server address not configured. Please log in first."
+    private func downloadAndShare() async {
+        isDownloading = true
+        defer { isDownloading = false }
+        errorMessage = nil
+        guard let file = await api.downloadTicketsCSV(filter: filter, keyword: keyword, sort: sort) else {
+            errorMessage = "Could not download CSV. Make sure you're signed in and online."
+            return
         }
-    }
-}
-
-// MARK: - Safari bridge
-
-private struct SafariView: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> SFSafariViewController {
-        let cfg = SFSafariViewController.Configuration()
-        cfg.entersReaderIfAvailable = false
-        return SFSafariViewController(url: url, configuration: cfg)
+        downloadedFile = file
+        await MainActor.run { presentShareSheet(for: file) }
     }
 
-    func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
+    @MainActor
+    private func presentShareSheet(for file: URL) {
+        let activity = UIActivityViewController(activityItems: [file], applicationActivities: nil)
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+              let vc = window.rootViewController else { return }
+        if let popover = activity.popoverPresentationController {
+            popover.sourceView = window
+            let bounds = window.bounds
+            popover.sourceRect = CGRect(x: bounds.midX, y: bounds.midY, width: 1, height: 1)
+            popover.permittedArrowDirections = []
+        }
+        // Walk presentation chain to top-most VC.
+        var top: UIViewController = vc
+        while let presented = top.presentedViewController { top = presented }
+        top.present(activity, animated: true)
+    }
 }
 #endif

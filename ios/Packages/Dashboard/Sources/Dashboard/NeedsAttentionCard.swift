@@ -14,6 +14,8 @@ import Networking
 public struct NeedsAttentionCard: View {
 
     public let attention: NeedsAttention
+    public var onViewTicket: ((Int64) -> Void)?
+    public var onViewInvoice: ((Int64) -> Void)?
 
     @Environment(\.openURL) private var openURL
 
@@ -22,8 +24,12 @@ public struct NeedsAttentionCard: View {
     @State private var dismissedTicketIds: Set<Int64> = []
     @State private var dismissedInvoiceIds: Set<Int64> = []
 
-    public init(attention: NeedsAttention) {
+    public init(attention: NeedsAttention,
+                onViewTicket: ((Int64) -> Void)? = nil,
+                onViewInvoice: ((Int64) -> Void)? = nil) {
         self.attention = attention
+        self.onViewTicket = onViewTicket
+        self.onViewInvoice = onViewInvoice
     }
 
     public var body: some View {
@@ -49,7 +55,11 @@ public struct NeedsAttentionCard: View {
                         StaleTicketRow(
                             ticket: ticket,
                             onView: {
-                                openURL(URL(string: "bizarrecrm://tickets/\(ticket.id)")!)
+                                if let onViewTicket {
+                                    onViewTicket(ticket.id)
+                                } else if let url = URL(string: "bizarrecrm://tickets/\(ticket.id)") {
+                                    openURL(url)
+                                }
                             },
                             onDismiss: {
                                 withAnimation(BrandMotion.snappy) {
@@ -75,7 +85,11 @@ public struct NeedsAttentionCard: View {
                         OverdueInvoiceRow(
                             invoice: invoice,
                             onView: {
-                                openURL(URL(string: "bizarrecrm://invoices/\(invoice.id)")!)
+                                if let onViewInvoice {
+                                    onViewInvoice(invoice.id)
+                                } else if let url = URL(string: "bizarrecrm://invoices/\(invoice.id)") {
+                                    openURL(url)
+                                }
                             },
                             onDismiss: {
                                 withAnimation(BrandMotion.snappy) {

@@ -112,12 +112,17 @@ public struct StocktakeListView: View {
 
     private var emptyState: some View {
         ContentUnavailableView {
-            Label("No stocktakes", systemImage: "barcode.viewfinder")
+            Label("No stocktakes yet", systemImage: "barcode.viewfinder")
                 .accessibilityLabel("No stocktake sessions")
         } description: {
-            Text("Start a count session to track physical inventory.")
+            VStack(spacing: BrandSpacing.xs) {
+                Text("A stocktake is a physical inventory count.")
+                Text("Walk the shelves with the scanner, count what you have, and the app reconciles your books against the floor.")
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, BrandSpacing.md)
+            }
         } actions: {
-            Button("New session") { showNewSession = true }
+            Button("Start a count") { showNewSession = true }
                 .buttonStyle(.borderedProminent)
                 .tint(.bizarreOrange)
                 .accessibilityLabel("Start new stocktake session")

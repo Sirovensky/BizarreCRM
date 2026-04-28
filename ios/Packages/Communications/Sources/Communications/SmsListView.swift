@@ -65,22 +65,23 @@ public struct SmsListView: View {
         }
     }
 
-    // MARK: - iPad layout (NavigationSplitView handled by parent; this adds keyboard shortcuts + hover)
+    // MARK: - iPad layout — permanent left sidebar with conversation list,
+    // detail pane on right shows the selected thread or an empty-state.
+
+    @State private var selectedPhone: String?
 
     private var regularBody: some View {
-        NavigationStack(path: $path) {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
             ZStack {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 content
             }
             .navigationTitle("SMS")
+            .navigationSplitViewColumnWidth(min: 320, ideal: 380, max: 480)
             .searchable(text: $searchText, prompt: "Search by name or phone")
             .onChange(of: searchText) { _, new in vm.onSearchChange(new) }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
-            .navigationDestination(for: String.self) { phone in
-                SmsThreadView(repo: threadRepo, phoneNumber: phone)
-            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showTemplates = true } label: {
@@ -99,6 +100,35 @@ public struct SmsListView: View {
             .actionErrorBanner(isVisible: vm.actionError != nil, message: vm.actionError ?? "") {
                 vm.clearActionError()
             }
+        } detail: {
+            if let phone = selectedPhone {
+                NavigationStack {
+                    SmsThreadView(repo: threadRepo, phoneNumber: phone)
+                }
+            } else {
+                ZStack {
+                    Color.bizarreSurfaceBase.ignoresSafeArea()
+                    VStack(spacing: BrandSpacing.md) {
+                        Image(systemName: "message")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityHidden(true)
+                        Text("Select a conversation")
+                            .font(.brandTitleMedium())
+                            .foregroundStyle(.bizarreOnSurface)
+                        Text("Pick a thread on the left or start a new one.")
+                            .font(.brandBodyMedium())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: path) { _, new in
+            // SmsListView's existing rows still drive `path` for iPhone; mirror
+            // the latest pushed phone into `selectedPhone` so taps populate the
+            // detail column on iPad too.
+            selectedPhone = new.last
         }
     }
 

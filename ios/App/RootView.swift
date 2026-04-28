@@ -379,7 +379,13 @@ private struct iPadShell: View {
         case .dashboard:
             DashboardView(
                 repo: DashboardRepositoryImpl(api: AppServices.shared.apiClient),
-                api: AppServices.shared.apiClient
+                api: AppServices.shared.apiClient,
+                onMyQueueTicketTap: { _ in destination = .tickets },
+                onNewTicket: { destination = .tickets },
+                onNewCustomer: { destination = .customers },
+                onScanBarcode: { destination = .inventory },
+                onNewSMS: { destination = .sms },
+                onTapSyncSettings: { destination = .settings }
             )
 
         case .tickets:

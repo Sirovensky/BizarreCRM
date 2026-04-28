@@ -1,4 +1,5 @@
 import Foundation
+import Core
 
 // §4 — Ticket-domain convenience extensions on APIClient.
 //
@@ -148,6 +149,41 @@ public extension APIClient {
                                   resolvingAgainstBaseURL: false)
         comps?.queryItems = items.isEmpty ? nil : items
         return comps?.url
+    }
+
+    /// Authenticated CSV download. SafariView can't carry the bearer token
+    /// (the server returns 401 → "auth no token") — so download bytes via the
+    /// shared `URLSession` with an explicit `Authorization` header, write to
+    /// a temp file, and let the caller present a share sheet. Returns the
+    /// temp file URL on success or nil on failure.
+    func downloadTicketsCSV(
+        filter: TicketListFilter = .all,
+        keyword: String? = nil,
+        sort: TicketSortOrder = .newest
+    ) async -> URL? {
+        guard let url = await exportTicketsURL(filter: filter, keyword: keyword, sort: sort) else {
+            return nil
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("text/csv", forHTTPHeaderField: "Accept")
+        if let token = await currentAuthToken() {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                AppLog.networking.error("Ticket CSV export HTTP \(http.statusCode, privacy: .public)")
+                return nil
+            }
+            let tmp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("tickets-export-\(Int(Date().timeIntervalSince1970)).csv")
+            try data.write(to: tmp, options: .atomic)
+            return tmp
+        } catch {
+            AppLog.networking.error("Ticket CSV download failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
     }
 
     // MARK: - §4.5 Attach to existing invoice

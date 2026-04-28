@@ -68,10 +68,16 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
                 items: RailCatalog.primary,
                 selection: $selection
             )
+            // Keep the custom rail above the feature view's `NavigationSplitView`
+            // sidebar overlay so opening/closing the inner sidebar slides
+            // *behind* the rail instead of paving over the rail icons.
+            .zIndex(2)
 
             Divider()
+                .zIndex(2)
 
             content(selection)
+                .zIndex(0)
         }
         .ignoresSafeArea(.container, edges: .top)
     }

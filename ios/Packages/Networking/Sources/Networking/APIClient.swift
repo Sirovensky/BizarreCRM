@@ -14,6 +14,7 @@ public protocol APIClient: Sendable {
     func setAuthToken(_ token: String?) async
     func setBaseURL(_ url: URL?) async
     func currentBaseURL() async -> URL?
+    func currentAuthToken() async -> String?
     func setRefresher(_ refresher: AuthSessionRefresher?) async
 }
 
@@ -89,6 +90,7 @@ public actor APIClientImpl: APIClient {
     public func setAuthToken(_ token: String?) { self.authToken = token }
     public func setBaseURL(_ url: URL?) { self.baseURL = url }
     public func currentBaseURL() -> URL? { baseURL }
+    public func currentAuthToken() -> String? { authToken }
     public func setRefresher(_ refresher: AuthSessionRefresher?) { self.refresher = refresher }
 
     public func get<T: Decodable & Sendable>(_ path: String, query: [URLQueryItem]?, as type: T.Type) async throws -> T {

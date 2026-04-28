@@ -701,10 +701,20 @@ public struct CustomerListView: View {
         let tmpURL = FileManager.default.temporaryDirectory.appendingPathComponent("customers.csv")
         try? csv.write(to: tmpURL, atomically: true, encoding: .utf8)
         let activity = UIActivityViewController(activityItems: [tmpURL], applicationActivities: nil)
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let vc = scene.windows.first?.rootViewController {
-            vc.present(activity, animated: true)
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first,
+              let vc = window.rootViewController else { return }
+        // iPad presents UIActivityViewController as a popover and crashes if
+        // sourceView / sourceRect are not set. Anchor at the top-trailing
+        // toolbar area so the share sheet appears near the export button.
+        if let popover = activity.popoverPresentationController {
+            popover.sourceView = window
+            let bounds = window.bounds
+            popover.sourceRect = CGRect(x: bounds.maxX - 60, y: bounds.minY + 60,
+                                        width: 1, height: 1)
+            popover.permittedArrowDirections = [.up]
         }
+        vc.present(activity, animated: true)
     }
 
     // MARK: - Helpers

@@ -475,6 +475,7 @@ private actor PreviewAPIClient: APIClient {
     func setAuthToken(_ token: String?) async {}
     func setBaseURL(_ url: URL?) async {}
     func currentBaseURL() async -> URL? { nil }
+    func currentAuthToken() async -> String? { nil }
     func setRefresher(_ refresher: AuthSessionRefresher?) async {}
 }
 #endif

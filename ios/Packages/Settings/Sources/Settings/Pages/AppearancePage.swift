@@ -34,23 +34,17 @@ public enum AppTheme: String, CaseIterable, Sendable {
 }
 
 public enum AccentColor: String, CaseIterable, Sendable {
-    case orange  = "orange"
-    case teal    = "teal"
-    case magenta = "magenta"
+    case orange = "orange"
 
     public var displayName: String {
         switch self {
-        case .orange:  return "Orange"
-        case .teal:    return "Teal"
-        case .magenta: return "Magenta"
+        case .orange: return "Orange"
         }
     }
 
     public var color: Color {
         switch self {
-        case .orange:  return .bizarreOrange
-        case .teal:    return .bizarreTeal
-        case .magenta: return .bizarreMagenta
+        case .orange: return .bizarrePrimary
         }
     }
 }

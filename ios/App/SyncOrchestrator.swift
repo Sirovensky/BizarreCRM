@@ -65,6 +65,12 @@ final class SyncOrchestrator {
         lastFlushAt = Date()
         AppLog.sync.info("flush triggered by \(reason, privacy: .public)")
         await SyncFlusher.shared.flush()
+        // SyncStatusBadge + StalenessIndicator both poll
+        // `UserDefaults.standard.object(forKey: "sync.lastSyncedAt")` to
+        // render "Just synced / N min ago / Never synced". Without this
+        // write the badge stays "Never synced" forever even when we are
+        // happily syncing every minute.
+        UserDefaults.standard.set(Date(), forKey: "sync.lastSyncedAt")
     }
 
     // MARK: - Watchers
