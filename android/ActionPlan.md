@@ -1810,12 +1810,9 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
   - **NOTE (2026-04-26):** Requires BlockChyp SDK + store-credit/gift-card server endpoints; deferred to POS session.
 - [ ] **Amount entry** — default to balance due; support partial + overpayment (surplus → store credit prompt).
   - **NOTE (2026-04-26):** Overpayment → store credit requires server endpoint; deferred.
-- [ ] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal).
-  - **NOTE (2026-04-26):** BlockChyp terminal integration deferred.
-- [ ] **Notes** field.
-  - **NOTE (2026-04-26):** Notes param already on `RecordPaymentRequest` DTO; UI input field deferred to 7.4 full implementation.
-- [ ] **Cash** — change calculator.
-  - **NOTE (2026-04-26):** UI-only feature; deferred.
+- [x] **Reference** (check# / card last 4 / BlockChyp txn ID — auto-filled from terminal). (session 2026-04-27 — conditional `OutlinedTextField` shown for non-cash methods; placeholder adapts per method: check→"Check number", card→"Card last 4 digits", digital→"Transaction ID"; mapped to `transactionId` on `RecordPaymentRequest`; BlockChyp auto-fill deferred)
+- [x] **Notes** field. (session 2026-04-27 — `OutlinedTextField` wired to `paymentNotes` state + passed as `notes` to `recordPayment()`; cleared on success/dismiss)
+- [x] **Cash** — change calculator. (session 2026-04-27 — shown when cash amount > amountDue; `Surface(secondaryContainer)` row displays change owed; effective amount capped at amountDue on submit)
 - [ ] **Split tender** — chain multiple methods until balance = 0.
   - **NOTE (2026-04-26):** Requires idempotency-key chain + server coordination; deferred.
 - [ ] **BlockChyp card** — start terminal charge via BlockChyp Android SDK → poll status; surface ongoing Live Update notification for the txn.

@@ -144,14 +144,32 @@ class InvoiceDetailViewModel @Inject constructor(
         }
     }
 
-    fun recordPayment(amount: Double, method: String) {
+    /**
+     * §7.4 — Record a payment against this invoice.
+     *
+     * @param amount        Dollar amount to record (must be > 0 and ≤ amountDue).
+     * @param method        Payment method key (e.g. "cash", "credit_card", "check").
+     * @param notes         Optional free-text note attached to the payment record.
+     * @param reference     Optional reference string (check #, card last-4, txn ID).
+     */
+    fun recordPayment(
+        amount: Double,
+        method: String,
+        notes: String? = null,
+        reference: String? = null,
+    ) {
         // U1 fix: hard guard against re-entry so that a double-tap while the
         // coroutine is in flight can't enqueue a second POST /payments.
         if (_state.value.isActionInProgress) return
         viewModelScope.launch {
             _state.value = _state.value.copy(isActionInProgress = true)
             try {
-                val request = RecordPaymentRequest(amount = amount, method = method)
+                val request = RecordPaymentRequest(
+                    amount = amount,
+                    method = method,
+                    notes = notes?.takeIf { it.isNotBlank() },
+                    transactionId = reference?.takeIf { it.isNotBlank() },
+                )
                 invoiceApi.recordPayment(invoiceId, request)
                 _state.value = _state.value.copy(
                     isActionInProgress = false,
@@ -320,6 +338,9 @@ fun InvoiceDetailScreen(
     var showOverflowMenu by remember { mutableStateOf(false) }
     var paymentAmount by rememberSaveable { mutableStateOf("") }
     var paymentMethod by rememberSaveable { mutableStateOf("cash") }
+    // §7.4 — notes + reference fields added to payment dialog
+    var paymentNotes by rememberSaveable { mutableStateOf("") }
+    var paymentReference by rememberSaveable { mutableStateOf("") }
     var showMethodDropdown by remember { mutableStateOf(false) }
     var refundAmount by rememberSaveable { mutableStateOf("") }
     var refundReason by rememberSaveable { mutableStateOf("") }
@@ -346,6 +367,9 @@ fun InvoiceDetailScreen(
             showPaymentDialog = false
             paymentAmount = ""
             paymentMethod = "cash"
+            // §7.4 — clear new fields on payment success
+            paymentNotes = ""
+            paymentReference = ""
         }
     }
 
@@ -384,6 +408,9 @@ fun InvoiceDetailScreen(
                 showPaymentDialog = false
                 paymentAmount = ""
                 paymentMethod = "cash"
+                // §7.4 — clear new fields on dialog dismiss
+                paymentNotes = ""
+                paymentReference = ""
             },
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = { Text("Record Payment", style = MaterialTheme.typography.titleMedium) },
@@ -470,6 +497,78 @@ fun InvoiceDetailScreen(
                             }
                         }
                     }
+
+                    // §7.4 — Reference field: check number, card last-4, txn ID.
+                    // Shown for non-cash methods where a reference is meaningful.
+                    val showReferenceField = paymentMethod in listOf(
+                        "check", "credit_card", "debit_card", "zelle", "venmo", "paypal", "other",
+                    )
+                    if (showReferenceField) {
+                        val referencePlaceholder = when (paymentMethod) {
+                            "check"       -> "Check number"
+                            "credit_card",
+                            "debit_card"  -> "Card last 4 digits"
+                            "zelle",
+                            "venmo",
+                            "paypal"      -> "Transaction ID"
+                            else          -> "Reference / ID"
+                        }
+                        OutlinedTextField(
+                            value = paymentReference,
+                            onValueChange = { paymentReference = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Reference (optional)") },
+                            placeholder = { Text(referencePlaceholder) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        )
+                    }
+
+                    // §7.4 — Notes field: free-text annotation on the payment record.
+                    OutlinedTextField(
+                        value = paymentNotes,
+                        onValueChange = { paymentNotes = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Notes (optional)") },
+                        placeholder = { Text("e.g. \"Left in cash drawer\"") },
+                        singleLine = false,
+                        maxLines = 3,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                    )
+
+                    // §7.4 — Cash change calculator: shown when cash amount > balance due.
+                    // Allows staff to enter the tendered amount and see the change owed.
+                    if (paymentMethod == "cash") {
+                        val amountDueDollars = (invoice?.amountDue ?: 0L).toDollars()
+                        val parsedForChange = paymentAmount.toDoubleOrNull()
+                        if (parsedForChange != null && parsedForChange > amountDueDollars && amountDueDollars > 0.0) {
+                            val change = parsedForChange - amountDueDollars
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = MaterialTheme.shapes.small,
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "Change due",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                    Text(
+                                        text = "\$${String.format("%.2f", change)}",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold,
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -477,17 +576,29 @@ fun InvoiceDetailScreen(
                 // user-typed amount; see the matching comment in the dialog body.
                 val amountDue = (invoice?.amountDue ?: 0L).toDollars()
                 val parsedAmount = paymentAmount.toDoubleOrNull()
+                // §7.4 — cash payments allow amount > amountDue (change given back);
+                // other methods must not exceed the balance due.
                 val isAmountValid = parsedAmount != null &&
                     parsedAmount > 0.0 &&
-                    parsedAmount <= amountDue
+                    (paymentMethod == "cash" || parsedAmount <= amountDue)
+                // Effective amount credited = min(entered, amountDue) for cash.
+                val effectiveAmount = if (paymentMethod == "cash" && parsedAmount != null && parsedAmount > amountDue) {
+                    amountDue
+                } else {
+                    parsedAmount ?: 0.0
+                }
                 TextButton(
                     onClick = {
                         // U1 fix: we no longer close the dialog here. We call
                         // recordPayment, and a LaunchedEffect closes the dialog
                         // ONLY after the mutation succeeds.
-                        val amt = parsedAmount
-                        if (isAmountValid && amt != null && !state.isActionInProgress) {
-                            viewModel.recordPayment(amt, paymentMethod)
+                        if (isAmountValid && !state.isActionInProgress) {
+                            viewModel.recordPayment(
+                                amount = effectiveAmount,
+                                method = paymentMethod,
+                                notes = paymentNotes.takeIf { it.isNotBlank() },
+                                reference = paymentReference.takeIf { it.isNotBlank() },
+                            )
                         }
                     },
                     // U1 fix: disable while the mutation is in flight so a
@@ -513,6 +624,9 @@ fun InvoiceDetailScreen(
                         showPaymentDialog = false
                         paymentAmount = ""
                         paymentMethod = "cash"
+                        // §7.4 — clear new fields on cancel
+                        paymentNotes = ""
+                        paymentReference = ""
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.secondary, // teal
