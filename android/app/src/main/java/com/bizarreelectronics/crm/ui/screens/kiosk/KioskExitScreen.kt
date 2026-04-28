@@ -31,6 +31,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.bizarreelectronics.crm.R
 import com.bizarreelectronics.crm.ui.auth.PinDots
 import com.bizarreelectronics.crm.ui.auth.PinKeypad
+import com.bizarreelectronics.crm.util.rememberReduceMotion
 
 /**
  * §57.5 Manager-PIN exit gate.
@@ -51,6 +52,8 @@ fun KioskExitScreen(
     viewModel: KioskViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
+    // §26.4 — honour Reduce Motion for the PinDots shake animation.
+    val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     LaunchedEffect(state.exitAuthorised) {
         if (state.exitAuthorised) {
@@ -115,6 +118,8 @@ fun KioskExitScreen(
                     shakeTrigger = state.exitPinWrongShakes,
                     revealDigits = false,
                     enteredDigits = state.exitPinEntered,
+                    // §26.4: reduceMotion=true swaps shake for a static error border.
+                    reduceMotion = reduceMotion,
                 )
 
                 state.exitPinError?.let { errMsg ->

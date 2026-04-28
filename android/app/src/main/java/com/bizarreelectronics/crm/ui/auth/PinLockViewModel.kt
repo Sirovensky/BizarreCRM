@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.PinPreferences
 import com.bizarreelectronics.crm.data.repository.PinRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -21,6 +22,8 @@ import javax.inject.Inject
 class PinLockViewModel @Inject constructor(
     private val pinRepository: PinRepository,
     private val pinPrefs: PinPreferences,
+    /** Exposed for §26.4 ReduceMotion check in [PinLockScreen] / [PinSetupScreen]. */
+    val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     data class State(

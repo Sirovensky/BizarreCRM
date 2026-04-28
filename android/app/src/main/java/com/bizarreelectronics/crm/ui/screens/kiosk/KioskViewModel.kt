@@ -2,6 +2,7 @@ package com.bizarreelectronics.crm.ui.screens.kiosk
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bizarreelectronics.crm.data.local.prefs.AppPreferences
 import com.bizarreelectronics.crm.data.local.prefs.PinPreferences
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -27,6 +28,8 @@ import javax.inject.Inject
 @HiltViewModel
 class KioskViewModel @Inject constructor(
     private val pinPrefs: PinPreferences,
+    /** Exposed for §26.4 ReduceMotion check in [KioskExitScreen]. */
+    val appPreferences: AppPreferences,
 ) : ViewModel() {
 
     // -------------------------------------------------------------------------

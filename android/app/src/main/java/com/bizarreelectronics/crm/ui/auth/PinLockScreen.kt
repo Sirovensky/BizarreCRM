@@ -38,6 +38,7 @@ import com.bizarreelectronics.crm.util.HapticEvent
 import com.bizarreelectronics.crm.util.LocalAppHapticController
 import com.bizarreelectronics.crm.util.PinBlocklist
 import com.bizarreelectronics.crm.util.isMediumOrExpandedWidth
+import com.bizarreelectronics.crm.util.rememberReduceMotion
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -65,6 +66,8 @@ fun PinLockScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val hapticCtrl = LocalAppHapticController.current
+    // §26.4 — honour Reduce Motion for the PinDots shake animation.
+    val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     LaunchedEffect(Unit) {
         viewModel.startVerify()
@@ -96,6 +99,7 @@ fun PinLockScreen(
         onRevealStart = viewModel::onPinRevealStart,
         onRevealEnd = viewModel::onPinRevealEnd,
         rotationBanner = state.showRotationBanner,
+        reduceMotion = reduceMotion,
         footer = {
             if (state.hardLockout) {
                 // Hard lockout: self-service reset won't help (too many wrong tries).
@@ -136,6 +140,8 @@ fun PinSetupScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val blockedError = remember { mutableStateOf<String?>(null) }
+    // §26.4 — honour Reduce Motion for the PinDots shake animation.
+    val reduceMotion = rememberReduceMotion(viewModel.appPreferences)
 
     LaunchedEffect(Unit) {
         viewModel.startSetup()
@@ -185,6 +191,7 @@ fun PinSetupScreen(
         onRevealEnd = viewModel::onPinRevealEnd,
         rotationBanner = false,
         extraError = blockedError.value,
+        reduceMotion = reduceMotion,
         footer = {
             if (onCancel != null) {
                 TextButton(onClick = onCancel) { Text("Skip for now") }
@@ -218,6 +225,8 @@ private fun PinGateScaffold(
     onRevealEnd: () -> Unit,
     rotationBanner: Boolean,
     extraError: String? = null,
+    /** §26.4 — when true, PinDots shows a static red border instead of the shake animation. */
+    reduceMotion: Boolean = false,
     footer: @Composable () -> Unit,
 ) {
     val isTablet = isMediumOrExpandedWidth()
@@ -308,6 +317,7 @@ private fun PinGateScaffold(
                             shakeTrigger = state.wrongShakes,
                             revealDigits = state.pinsVisible,
                             enteredDigits = state.entered,
+                            reduceMotion = reduceMotion,
                             modifier = revealModifier,
                         )
                         val displayError = extraError ?: state.errorMessage
@@ -364,6 +374,7 @@ private fun PinGateScaffold(
                     shakeTrigger = state.wrongShakes,
                     revealDigits = state.pinsVisible,
                     enteredDigits = state.entered,
+                    reduceMotion = reduceMotion,
                     modifier = revealModifier,
                 )
                 val displayError = extraError ?: state.errorMessage
