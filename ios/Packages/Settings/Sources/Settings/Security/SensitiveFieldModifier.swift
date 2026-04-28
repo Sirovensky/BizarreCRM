@@ -1,4 +1,5 @@
 import SwiftUI
+import DesignSystem
 
 // MARK: - §19.2 Copy-paste gate for sensitive fields (SSN, tax ID, etc.)
 //

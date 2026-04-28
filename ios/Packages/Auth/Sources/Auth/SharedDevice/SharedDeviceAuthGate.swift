@@ -186,14 +186,15 @@ public extension APIClient {
     /// Verifies that the caller has management-level PIN authority.
     /// Used to gate sensitive operations like toggling shared-device mode.
     func verifyManagementPin(pin: String) async throws {
-        struct Body: Encodable, Sendable { let pin: String }
-        struct Empty: Decodable, Sendable {}
         _ = try await post(
             "/api/v1/auth/verify-management-pin",
-            body: Body(pin: pin),
-            as: Empty.self
+            body: VerifyManagementPinBody(pin: pin),
+            as: VerifyManagementPinEmpty.self
         )
     }
 }
+
+private struct VerifyManagementPinBody: Encodable, Sendable { let pin: String }
+private struct VerifyManagementPinEmpty: Decodable, Sendable {}
 
 #endif

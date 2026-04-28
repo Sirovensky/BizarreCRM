@@ -5,20 +5,18 @@ import Networking
 
 public extension APIClient {
     /// POST `/api/v1/auth/change-password`
-    ///
-    /// - Parameters:
-    ///   - currentPassword: The user's existing password.
-    ///   - newPassword: The replacement password (≥ 8 chars, strength validated client-side).
     func changePassword(currentPassword: String, newPassword: String) async throws {
-        struct Body: Encodable, Sendable {
-            let currentPassword: String
-            let newPassword: String
-        }
-        struct Empty: Decodable, Sendable {}
         _ = try await post(
             "/api/v1/auth/change-password",
-            body: Body(currentPassword: currentPassword, newPassword: newPassword),
-            as: Empty.self
+            body: ChangePasswordBody(currentPassword: currentPassword, newPassword: newPassword),
+            as: ChangePasswordEmpty.self
         )
     }
 }
+
+private struct ChangePasswordBody: Encodable, Sendable {
+    let currentPassword: String
+    let newPassword: String
+}
+
+private struct ChangePasswordEmpty: Decodable, Sendable {}

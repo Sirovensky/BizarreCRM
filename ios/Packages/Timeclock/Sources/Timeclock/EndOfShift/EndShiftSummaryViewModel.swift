@@ -60,10 +60,13 @@ public final class EndShiftSummaryViewModel {
     /// Returns the authenticated PDF URL for the Z-report, constructed from the
     /// tenant's `baseURL`.  Returns nil when `zReportId` is nil or baseURL is unset.
     public func zReportURL() -> URL? {
-        guard let id = zReportId,
-              let base = api.currentBaseURL() else { return nil }
+        guard let id = zReportId, let base = cachedBaseURL else { return nil }
         return base.appendingPathComponent("api/v1/cash-register/z-reports/\(id)/pdf")
     }
+
+    /// Cached server base URL — populated on `loadStats()` so the synchronous
+    /// `zReportURL()` getter can run inside the View body.
+    public private(set) var cachedBaseURL: URL?
 
     // MARK: - Init
 
@@ -77,6 +80,7 @@ public final class EndShiftSummaryViewModel {
     /// Fetches current shift summary from server. Call from `.task { }`.
     public func loadStats() async {
         step = .loadingStats
+        cachedBaseURL = await api.currentBaseURL()
         do {
             let dto = try await api.getCurrentShiftSummary(employeeId: employeeId)
             let stub = EndShiftSummary(

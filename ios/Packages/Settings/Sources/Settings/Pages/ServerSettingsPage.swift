@@ -27,14 +27,18 @@ public enum ConnectionTestResult: Sendable {
 @Observable
 public final class ServerSettingsViewModel: Sendable {
 
-    public private(set) var baseURL: String
+    public private(set) var baseURL: String = "Not configured"
     public private(set) var connectionResult: ConnectionTestResult = .idle
 
     private let api: APIClient?
 
     public init(api: APIClient? = nil) {
         self.api = api
-        self.baseURL = api?.currentBaseURL()?.absoluteString ?? "Not configured"
+    }
+
+    public func loadBaseURL() async {
+        guard let api else { return }
+        baseURL = await api.currentBaseURL()?.absoluteString ?? "Not configured"
     }
 
     public func testConnection() async {
@@ -63,7 +67,7 @@ public struct ServerSettingsPage: View {
 
     public var body: some View {
         Form {
-            Section("Server") {
+            Section {
                 LabeledContent("Base URL") {
                     Text(vm.baseURL)
                         .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -73,6 +77,8 @@ public struct ServerSettingsPage: View {
                         .multilineTextAlignment(.trailing)
                 }
                 .accessibilityLabel("Base URL: \(vm.baseURL)")
+            } header: {
+                Text("Server")
             } footer: {
                 Text("This is the URL of your BizarreCRM server. Set at login. Change it by signing out and logging in with a different server URL.")
             }
@@ -96,7 +102,7 @@ public struct ServerSettingsPage: View {
                 .accessibilityIdentifier("server.testConnection")
             }
 
-            Section("Sign-out") {
+            Section {
                 NavigationLink("Profile & sign-out") {
                     // Profile page owns sign-out per §19.1.
                     Text("Sign out from Settings → Profile.")
@@ -105,6 +111,8 @@ public struct ServerSettingsPage: View {
                         .navigationTitle("Sign out")
                 }
                 .accessibilityIdentifier("server.profileLink")
+            } header: {
+                Text("Sign-out")
             } footer: {
                 Text("To change server or tenant, sign out from the Profile page, then sign in with new credentials.")
             }
@@ -115,6 +123,7 @@ public struct ServerSettingsPage: View {
         #endif
         .scrollContentBackground(.hidden)
         .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .task { await vm.loadBaseURL() }
     }
 
     @ViewBuilder

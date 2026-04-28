@@ -307,7 +307,7 @@ public struct InventoryListView: View {
             appendPath(item.id)
         } catch {
             // Not found — surface briefly
-            hidScanErrorMessage = "No item found for code "\(code)""
+            hidScanErrorMessage = "No item found for code \"\(code)\""
             AppLog.ui.notice("HID scan no match: \(code, privacy: .public)")
         }
     }

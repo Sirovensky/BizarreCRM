@@ -70,8 +70,6 @@ public final class SmsProviderViewModel: Sendable {
                 fromNumber: fromNumber,
                 twilioAccountSid: twilioAccountSid,
                 twilioAuthToken: twilioAuthToken,
-                bandwidthAccountId: nil,
-                bandwidthApplicationId: nil,
                 a2pStatus: nil
             )
             _ = try await api.saveSmsSettings(body)

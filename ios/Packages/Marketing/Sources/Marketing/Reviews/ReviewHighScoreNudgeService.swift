@@ -200,7 +200,7 @@ public struct ReviewNudgeSheet: View {
                     .accessibilityHidden(true)
             }
             .padding(BrandSpacing.md)
-            .background(.brandGlass, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
         }
         .accessibilityLabel("Leave a review on \(destination.platform.displayName)")
         .accessibilityHint("Opens \(destination.platform.displayName) in Safari")

@@ -1,4 +1,5 @@
 import SwiftUI
+import DesignSystem
 import Networking
 import Core
 
@@ -172,7 +173,7 @@ private struct ScanQRStep: View {
                                 .frame(width: 200, height: 200)
                                 .accessibilityLabel("QR code to scan with your authenticator app")
                         default:
-                            RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.md)
+                            RoundedRectangle(cornerRadius: DesignTokens.Radius.md)
                                 .fill(Color.bizarreSurface1)
                                 .frame(width: 200, height: 200)
                                 .overlay(ProgressView())

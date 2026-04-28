@@ -143,7 +143,7 @@ public struct LogoUploadView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(height: 80)
-                        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.md))
+                        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
                         .accessibilityLabel("Current logo")
                 case .failure:
                     brokenLogoPlaceholder
@@ -173,7 +173,7 @@ public struct LogoUploadView: View {
             }
             .padding()
             .frame(height: 80)
-            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.CornerRadius.md))
+            .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.md))
             Spacer()
         }
     }

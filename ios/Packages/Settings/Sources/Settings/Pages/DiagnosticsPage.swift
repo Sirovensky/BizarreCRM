@@ -290,7 +290,7 @@ private enum DiagnosticsTab: String, CaseIterable, Identifiable {
 // MARK: - Log viewer
 
 private struct LogViewerSection: View {
-    var vm: DiagnosticsViewModel
+    @Bindable var vm: DiagnosticsViewModel
 
     var body: some View {
         VStack(spacing: 0) {

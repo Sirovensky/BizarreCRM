@@ -26,7 +26,7 @@ public struct AboutExtendedPage: View {
     public var body: some View {
         List {
             Section("App") {
-                row(label: "Name", value: "Bizarre CRM")
+                row(label: "Name", value: "Bizarre CRM", mono: false)
                 versionRow
                 row(label: "Build", value: Platform.buildNumber, mono: true)
             }

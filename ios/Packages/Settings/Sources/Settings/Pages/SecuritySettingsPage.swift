@@ -92,7 +92,7 @@ public final class SecuritySettingsViewModel {
         // The actual blur-on-background logic is in App/AppServices.swift
         // (Agent 10 territory — we just publish the preference here so that
         //  layer can read it from UserDefaults).
-        AppLog.ui.debug("SecuritySettingsViewModel: privacySnapshot=\(privacySnapshotEnabled, privacy: .public)")
+        AppLog.ui.debug("SecuritySettingsViewModel: privacySnapshot=\(self.privacySnapshotEnabled, privacy: .public)")
     }
 
     /// Called from AppDelegate when the app moves to background.

@@ -150,43 +150,7 @@ public struct AccountLockedAlert: View {
     }
 }
 
-// MARK: - TLS pin failure alert
-
-/// §2.12 — Non-dismissable red glass alert for TLS pin failures.
-public struct TLSPinFailureAlert: View {
-    public init() {}
-
-    public var body: some View {
-        VStack(spacing: BrandSpacing.lg) {
-            Image(systemName: "shield.slash.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.bizarreError)
-                .accessibilityHidden(true)
-
-            Text("Certificate mismatch")
-                .font(.brandHeadlineMedium())
-                .foregroundStyle(.bizarreOnSurface)
-                .accessibilityAddTraits(.isHeader)
-
-            Text("This server's certificate doesn't match the pinned certificate. Contact your admin. The app cannot connect until this is resolved.")
-                .font(.brandBodyMedium())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-                .multilineTextAlignment(.center)
-        }
-        .padding(BrandSpacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.bizarreError.opacity(0.12))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20)
-                        .strokeBorder(Color.bizarreError.opacity(0.5), lineWidth: 1)
-                )
-        )
-        .brandGlass(.regular, in: RoundedRectangle(cornerRadius: 20))
-        .padding(BrandSpacing.lg)
-        .accessibilityElement(children: .combine)
-    }
-}
+// (TLSPinFailureAlert lives in SecurityPolish/TLSPinFailureAlert.swift.)
 
 // MARK: - Offline login notice
 

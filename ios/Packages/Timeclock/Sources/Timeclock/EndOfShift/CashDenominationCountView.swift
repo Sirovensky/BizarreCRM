@@ -99,7 +99,7 @@ public struct CashDenominationCountView: View {
             if let expected = vm.summary?.cashExpectedCents {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("Expected")
-                        .font(.brandCaption())
+                        .font(.brandCaption1())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     Text(String(format: "$%.2f", Double(expected) / 100))
                         .font(.brandBodyLarge().monospacedDigit())

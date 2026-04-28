@@ -119,6 +119,8 @@ public struct UserProfileDTO: Codable, Sendable {
     public var email: String?
     public var phone: String?
     public var jobTitle: String?
+    public var username: String?
+    public var isAdmin: Bool?
 }
 
 public struct UserProfileUpdateDTO: Encodable, Sendable {

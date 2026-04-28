@@ -319,7 +319,7 @@ private struct KPITile: View {
                 .foregroundStyle(valueColor)
                 .minimumScaleFactor(0.7)
             Text(label)
-                .font(.brandCaption())
+                .font(.brandCaption1())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .frame(maxWidth: .infinity)

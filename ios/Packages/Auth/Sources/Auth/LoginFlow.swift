@@ -69,13 +69,13 @@ public final class LoginFlow {
 
     // §2.1 Setup probe
     public var isProbing: Bool = false
-    public var setupProbeResult: SetupStatusProbe.ProbeResult? = nil
+    public var setupProbeResult: SetupProbeResult? = nil
 
     // §2.2 Rate-limit countdown — seconds remaining when server returns 429
     public var rateLimitRetryAfter: TimeInterval? = nil
 
     // §2.11 Current user loaded from /auth/me on cold start
-    public var currentUser: AuthMe? = nil
+    public var currentUser: MeResponse? = nil
 
     // §2.11 Session revoked banner
     public var sessionRevokedMessage: String? = nil

@@ -34,18 +34,17 @@ public enum LoyaltyPassKind: String, Codable, Sendable, CaseIterable {
     /// Loyalty tier — `PKPassType.generic` linked to membership
     case loyaltyTier  = "loyalty_tier"
 
-    #if canImport(PassKit)
-    /// The Apple PassKit type for this pass kind.
-    public var passType: PKPassType {
+    /// String identifier for the corresponding PassKit pass style
+    /// (matches the `passTypeIdentifier` style names used in pass.json).
+    public var passStyle: String {
         switch self {
-        case .membership:  return .storeCard
-        case .giftCard:    return .storeCard
-        case .punchCard:   return .coupon
-        case .appointment: return .eventTicket
-        case .loyaltyTier: return .generic
+        case .membership:  return "storeCard"
+        case .giftCard:    return "storeCard"
+        case .punchCard:   return "coupon"
+        case .appointment: return "eventTicket"
+        case .loyaltyTier: return "generic"
         }
     }
-    #endif
 
     /// Human-readable label shown in settings and audit logs.
     public var displayName: String {

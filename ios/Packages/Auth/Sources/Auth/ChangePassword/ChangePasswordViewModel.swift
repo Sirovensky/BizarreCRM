@@ -20,7 +20,7 @@ public final class ChangePasswordViewModel {
 
     // MARK: Derived
 
-    public var evaluation: PasswordStrengthEvaluation {
+    public var evaluation: PasswordEvaluation {
         PasswordStrengthEvaluator.evaluate(newPassword)
     }
 

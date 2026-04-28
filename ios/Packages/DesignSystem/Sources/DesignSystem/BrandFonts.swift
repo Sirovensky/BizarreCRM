@@ -149,4 +149,12 @@ public extension Font {
     static func brandLabelLarge() -> Font { brandFootnote() }
     /// @deprecated Use `brandCaption1()`.
     static func brandLabelSmall() -> Font { brandCaption1() }
+    /// @deprecated Use `brandTitle3()` / `brandHeadline()`.
+    static func brandDisplaySmall() -> Font { brandTitle3() }
+    /// @deprecated Use `brandCaption1()`.
+    static func brandCaption() -> Font { brandCaption1() }
+    /// @deprecated Use `brandBody()` / `brandCallout()`.
+    static func brandLabelMedium() -> Font { brandFootnote() }
+    /// @deprecated Use `brandFootnote()`.
+    static func brandBodySmall() -> Font { brandFootnote() }
 }

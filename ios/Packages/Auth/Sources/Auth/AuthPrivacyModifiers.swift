@@ -68,47 +68,9 @@ public extension View {
     }
 }
 
-// MARK: - OTP pasteboard auto-clear
-
-/// After a 6-digit OTP is pasted, schedules a 30-second wipe of the
-/// system pasteboard so the code doesn't linger for other apps to read.
-///
-/// Usage:
-/// ```swift
-/// TextField("000 000", text: $code)
-///     .onChange(of: code) { _, new in
-///         if new.filter(\.isNumber).count == 6 {
-///             OTPPasteboardCleaner.scheduleWipe()
-///         }
-///     }
-/// ```
-public enum OTPPasteboardCleaner {
-    private static var wipeTask: Task<Void, Never>?
-
-    /// Schedules a one-shot wipe of `UIPasteboard.general` after 30 seconds.
-    /// If called again before 30s, the previous timer resets.
-    public static func scheduleWipe() {
-        wipeTask?.cancel()
-        wipeTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 30_000_000_000)
-            guard !Task.isCancelled else { return }
-            // Clear only if the current content looks like a bare OTP string
-            // (digits only, 6 chars) to avoid wiping unrelated clipboard content.
-            if let str = UIPasteboard.general.string,
-               str.filter(\.isNumber) == str,
-               str.count == 6 {
-                UIPasteboard.general.string = ""
-                AppLog.auth.debug("OTP cleared from pasteboard after 30s")
-            }
-        }
-    }
-
-    /// Cancels any pending wipe (call on view disappear / step change).
-    public static func cancelWipe() {
-        wipeTask?.cancel()
-        wipeTask = nil
-    }
-}
+// (OTPPasteboardCleaner lives in SecurityPolish/OTPPasteboardCleaner.swift —
+// uses UIPasteboard.expirationDate so the OS enforces the 30s timeout even
+// when the app is suspended.)
 
 // MARK: - Challenge-token expiry guard
 

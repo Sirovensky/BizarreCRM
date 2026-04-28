@@ -32,11 +32,18 @@ public enum OTPPasteboardCleaner {
     /// Immediately clear the pasteboard if it currently holds a known OTP value.
     /// Called when the 2FA screen disappears or the user completes auth.
     public static func clearIfSensitive() {
-        // We can't read the pasteboard content to compare (that would require
-        // user consent on iOS 14+), so we always clear on explicit dismiss —
-        // this is conservative and expected by the spec.
         UIPasteboard.general.items = []
         AppLog.auth.debug("Pasteboard cleared on auth screen dismiss")
+    }
+
+    /// Compatibility shim for callers that detected a pasted OTP and want a
+    /// 30-second auto-clear. The canonical path is `copy(_:)` which sets an
+    /// OS-enforced expiry; for paste-detection we schedule an async clear.
+    public static func scheduleWipe() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            UIPasteboard.general.items = []
+        }
     }
 }
 
