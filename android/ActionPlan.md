@@ -952,8 +952,7 @@ _Tickets are the largest surface. Parity means creating a ticket on phone in und
   - **NOTE (2026-04-26):** `SlaHeatmapScreen.kt` already exists; needs nav route + `SlaApi.getHeatmap` server endpoint deployment.
 - [ ] Projection: predict breach time at current pace ("At current rate, will breach at 14:32").
   - **NOTE (2026-04-26):** Requires server-side projection data or status history with cadence.
-- [ ] One-tap "Notify customer of delay" with template pre-filled.
-  - **NOTE (2026-04-26):** `NotifyDelayDialog` already exists in `SlaHeatmapScreen`; needs wiring to `SmsApi` from ticket detail. Deferred.
+- [x] One-tap "Notify customer of delay" with template pre-filled. (session 2026-04-27 — `NotifyDelayDialog` private composable added to `TicketDetailScreen.kt`; pre-fills editable SMS template with customer name + order ID; `TicketDetailViewModel.sendDelayNotificationSms(message)` calls `smsApi.sendSms`; 404-tolerant with Snackbar fallback; `showNotifyDelayDialog`/`isDelaySendInProgress` state fields added to `TicketDetailUiState`; `DropdownMenuItem "Notify customer of delay"` shown in overflow when customer phone is on file)
 - [x] Reduce Motion: gauge animates only when Reduce Motion off; else static value. (session 2026-04-26 — `SlaProgress(reduceMotion=...)` passes through from `TicketDetailContent`)
 
 ---

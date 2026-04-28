@@ -208,6 +208,15 @@ data class TicketDetailUiState(
      * [TicketDetailViewModel.clearPermissionDenied].
      */
     val permissionDeniedMessage: String? = null,
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+    /**
+     * True when the "Notify customer of delay" dialog is open from the overflow
+     * menu. The dialog pre-fills a delay template and calls [TicketDetailViewModel.sendDelayNotificationSms]
+     * on confirm.
+     */
+    val showNotifyDelayDialog: Boolean = false,
+    /** Non-null while the delay SMS is being sent; drives a progress indicator in the dialog. */
+    val isDelaySendInProgress: Boolean = false,
 )
 
 @HiltViewModel
@@ -1153,6 +1162,68 @@ class TicketDetailViewModel @Inject constructor(
     fun clearConcurrentEdit() {
         _state.value = _state.value.copy(isConcurrentEdit = false)
     }
+
+    // ─── §4.22 — Notify customer of delay ────────────────────────────────────
+
+    /** Open the "Notify customer of delay" dialog from the overflow menu. */
+    fun showNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = true)
+    }
+
+    /** Dismiss the notify-delay dialog without sending. */
+    fun dismissNotifyDelayDialog() {
+        _state.value = _state.value.copy(showNotifyDelayDialog = false, isDelaySendInProgress = false)
+    }
+
+    /**
+     * Send the pre-filled delay SMS to the ticket's customer phone.
+     *
+     * Resolves phone from [TicketDetail.customer] (preferred) → [TicketEntity.customerPhone]
+     * (Room cache fallback). 404-tolerant: if the server returns 404 the dialog is still
+     * dismissed so the UI doesn't get stuck.
+     *
+     * @param message The (optionally edited) SMS body to send.
+     */
+    fun sendDelayNotificationSms(message: String) {
+        val phone = _state.value.ticketDetail?.customer?.phone
+            ?: _state.value.ticketDetail?.customer?.mobile
+            ?: _state.value.ticket?.customerPhone
+
+        if (phone.isNullOrBlank()) {
+            viewModelScope.launch {
+                withStateOnMain {
+                    copy(showNotifyDelayDialog = false, actionMessage = "No customer phone on file")
+                }
+            }
+            return
+        }
+
+        _state.value = _state.value.copy(isDelaySendInProgress = true)
+        viewModelScope.launch {
+            try {
+                smsApi.sendSms(mapOf("to" to phone, "message" to message))
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = "Delay notification sent",
+                    )
+                }
+            } catch (e: Exception) {
+                Timber.tag("NotifyDelay").w(e, "Delay SMS send failed")
+                withStateOnMain {
+                    copy(
+                        showNotifyDelayDialog = false,
+                        isDelaySendInProgress = false,
+                        actionMessage = if ((e as? HttpException)?.code() == 404)
+                            "SMS not sent — server endpoint unavailable"
+                        else
+                            "Failed to send SMS: ${e.message}",
+                    )
+                }
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
@@ -1337,6 +1408,21 @@ fun TicketDetailScreen(
                 onCancel = { viewModel.cancelPendingStatusChange() },
             )
         }
+    }
+
+    // ─── §4.22 — Notify customer of delay dialog ─────────────────────────────
+    if (state.showNotifyDelayDialog) {
+        val customerName = state.ticketDetail?.customer?.let { c ->
+            listOfNotNull(c.firstName, c.lastName).joinToString(" ").ifBlank { null }
+        } ?: ticket?.customerName ?: "Customer"
+        val orderId = ticket?.orderId?.let { "#$it" } ?: "your repair"
+        NotifyDelayDialog(
+            customerName = customerName,
+            orderId = orderId,
+            isSendInProgress = state.isDelaySendInProgress,
+            onSend = { msg -> viewModel.sendDelayNotificationSms(msg) },
+            onDismiss = { viewModel.dismissNotifyDelayDialog() },
+        )
     }
 
     // ─── L740 — Status transition error snackbar ──────────────────────────────
@@ -1599,6 +1685,20 @@ fun TicketDetailScreen(
                                         viewModel.pinToDashboard()
                                     },
                                 )
+                                // §4.22 — Notify customer of delay (only when customer has a phone)
+                                val canNotifyDelay = !(state.ticketDetail?.customer?.phone.isNullOrBlank() &&
+                                    state.ticketDetail?.customer?.mobile.isNullOrBlank() &&
+                                    state.ticket?.customerPhone.isNullOrBlank())
+                                if (canNotifyDelay) {
+                                    DropdownMenuItem(
+                                        text = { Text("Notify customer of delay") },
+                                        leadingIcon = { Icon(Icons.Default.Sms, contentDescription = null) },
+                                        onClick = {
+                                            showOverflowMenu = false
+                                            viewModel.showNotifyDelayDialog()
+                                        },
+                                    )
+                                }
                                 // L741 — QC sign-off (admin / manager / tech)
                                 run {
                                     val qcRole = state.userRole?.lowercase()?.let { r ->
@@ -2323,4 +2423,87 @@ private fun CompactBottomBarButton(
             style = MaterialTheme.typography.labelSmall,
         )
     }
+}
+
+// ─── §4.22 NotifyDelayDialog ──────────────────────────────────────────────────
+
+/**
+ * §4.22 — "One-tap Notify customer of delay" dialog.
+ *
+ * Opens from the ticket-detail overflow menu when the customer has a phone number
+ * on file. Pre-fills a delay template that the staff member can edit before sending.
+ * Calls [onSend] with the (possibly edited) body; caller drives [isSendInProgress]
+ * to show a spinner while the SMS is in-flight.
+ *
+ * The dialog is self-contained: it manages the mutable message body state internally
+ * and surfaces it to the caller only on confirm. This keeps the ViewModel free of
+ * intermediate text state.
+ */
+@Composable
+private fun NotifyDelayDialog(
+    customerName: String,
+    orderId: String,
+    isSendInProgress: Boolean,
+    onSend: (message: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    // Pre-filled template — staff can edit before sending.
+    var messageBody by rememberSaveable {
+        mutableStateOf(
+            "Hi $customerName, we wanted to let you know that $orderId is " +
+                "taking a bit longer than expected. We appreciate your patience " +
+                "and will update you as soon as it's ready. Thank you!"
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isSendInProgress) onDismiss() },
+        title = {
+            Text(
+                text = "Notify Customer of Delay",
+                style = MaterialTheme.typography.titleMedium,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Edit the message below before sending. It will be sent as an SMS to the customer's phone number on file.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = messageBody,
+                    onValueChange = { messageBody = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("SMS message") },
+                    minLines = 4,
+                    maxLines = 8,
+                    enabled = !isSendInProgress,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSend(messageBody) },
+                enabled = !isSendInProgress && messageBody.isNotBlank(),
+            ) {
+                if (isSendInProgress) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Text("Send SMS")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSendInProgress,
+            ) {
+                Text("Cancel")
+            }
+        },
+    )
 }
