@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Article
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
@@ -72,6 +73,7 @@ import java.util.Locale
 @Composable
 fun DiagnosticsScreen(
     onBack: () -> Unit,
+    onViewReleaseLogs: () -> Unit = {},
     viewModel: DiagnosticsViewModel = hiltViewModel(),
 ) {
     val exportState by viewModel.exportState.collectAsStateWithLifecycle()
@@ -209,6 +211,26 @@ fun DiagnosticsScreen(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            // §32.4 — Release log viewer (Error + Warn ring buffer with search + filter)
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Release logs", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        text = "Error and Warn entries captured in release builds. Searchable, filterable, shareable.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(
+                        onClick = onViewReleaseLogs,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Article, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.size(8.dp))
+                        Text("View release logs")
                     }
                 }
             }

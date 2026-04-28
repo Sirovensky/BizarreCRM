@@ -3901,7 +3901,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Timber with `RedactorTree` filtering PII. (`BizarreCrmApp` plants `RedactorTree(DebugTree)` in debug and `RedactorTree(ReleaseTree)` in release.)
 - [x] Log levels: Error / Warn / Info / Debug / Verbose. (Timber covers all levels; `ReleaseTree.isLoggable` gates Error+Warn in production.)
 - [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (`ReleaseTree`, `MAX_ENTRIES=500`, `flushToDisk` writes to `filesDir/diagnostics-logs/`.)
-- [x] Settings → Diagnostics → View logs. (`LogViewerScreen` + `LogViewerViewModel` wired via `Screen.LogViewer` route.)
+- [x] Settings → Diagnostics → View logs. (`LogViewerScreen` + `LogViewerViewModel` wired via `Screen.LogViewer` route; keyword search + Error/Warn level filter chips added 2026-04-27.)
 - [x] Share logs → generates redacted bundle + share sheet. (`LogViewerViewModel.prepareShare` calls `ReleaseTree.flushToDisk`, surfaces via FileProvider + `Intent.ACTION_SEND`.)
 - [ ] Upload on next launch via `POST /telemetry/crashes`. NOTE 2026-04-26: server-side `/telemetry/crashes` endpoint not yet implemented; client-side upload deferred until endpoint exists. Local crash files available via `filesDir/crash-reports/`.
 - [ ] Opt-in per user (Settings → Diagnostics). NOTE 2026-04-26: Settings UI not touched this session; wire toggle → `DiagnosticsPreferences` datastore key when Settings screen is extended.
@@ -3911,8 +3911,8 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Timber with `RedactorTree` filtering PII. (session 2026-04-26 — `RedactorTree` wraps both `DebugTree` (debug) and `ReleaseTree` (release) in `BizarreCrmApp.onCreate`; all Timber calls pass through PII redaction before any output.)
 - [x] Log levels: Error / Warn / Info / Debug / Verbose. (session 2026-04-26 — `ReleaseTree.isLoggable` gates on `Log.WARN+`; `DebugTree` passes all levels in debug. Level semantics enforced via Timber priority constants.)
 - [x] Production: Error + Warn only; kept in ring buffer (last 500 entries) on disk. (session 2026-04-26 — `util/ReleaseTree.kt`: `ConcurrentLinkedDeque` capped at 500 entries, `flushToDisk(dir)` writes to `diagnostics-logs/release-<date>.log`, rotates to last 7 daily files.)
-- [x] Settings → Diagnostics → View logs. (session 2026-04-27 — duplicate of §32.4 first occurrence L3909 [x]; `LogViewerScreen.kt` + `LogViewerViewModel` fully implemented; VM calls `releaseTree.snapshot()` in `load()`, renders monospace `LogLine` composable per entry in `LazyColumn`; route wired via `Screen.LogViewer`)
-- [x] Share logs → generates redacted bundle + share sheet. (session 2026-04-27 — duplicate of §32.4 first occurrence L3910 [x]; `LogViewerViewModel.prepareShare()` calls `releaseTree.flushToDisk(logDir)` on `Dispatchers.IO`; `LogViewerScreen` `LaunchedEffect(state.shareFile)` fires `shareLogs()` which uses `FileProvider.getUriForFile + Intent.ACTION_SEND`)
+- [x] Settings → Diagnostics → View logs. (session 2026-04-27 — `LogViewerScreen.kt` + `LogViewerViewModel` fully implemented with **keyword search** (`OutlinedTextField` + `setQuery()` + in-memory `applyFilters()`) and **level filter chips** (`LogLevel` enum ERROR/WARN, `FilterChip` row, `toggleLevel()` with min-1 guard); `DiagnosticsScreen` "View release logs" button navigates via `Screen.LogViewer` route)
+- [x] Share logs → generates redacted bundle + share sheet. (session 2026-04-27 — `LogViewerViewModel.prepareShare()` calls `releaseTree.flushToDisk(logDir)` on `Dispatchers.IO`; `LogViewerScreen` `LaunchedEffect(state.shareFile)` fires `shareLogs()` which uses `FileProvider.getUriForFile + Intent.ACTION_SEND`)
 
 ### 32.5 Breadcrumbs
 - [x] Screen view / nav events / mutation start-end recorded in ring buffer.
