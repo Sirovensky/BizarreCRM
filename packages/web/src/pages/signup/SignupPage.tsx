@@ -322,7 +322,18 @@ export function SignupPage() {
           </h2>
           <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
             {success.provisioned
-              ? `Your shop ${success.slug}.bizarrecrm.com is live and you're signed in. Click below to start setting it up.`
+              ? (() => {
+                  // Display the host portion of the actual server-provided URL
+                  // so localhost dev shows "vizcompare.localhost" not the
+                  // hardcoded ".bizarrecrm.com" production string.
+                  let host = '';
+                  try {
+                    host = new URL(success.tenantUrl ?? fallbackUrl).host;
+                  } catch {
+                    host = `${success.slug}.${resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}`;
+                  }
+                  return `Your shop ${host} is live and you're signed in. Click below to start setting it up.`;
+                })()
               : (success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`)}
           </p>
 
