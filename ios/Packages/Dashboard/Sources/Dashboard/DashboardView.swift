@@ -169,16 +169,11 @@ private struct LoadedBody: View {
     @ViewBuilder
     private var attentionCard: some View {
         let a = snapshot.attention
-        let items: [AttentionItem] = [
-            .init(label: "Stale tickets",    count: a.staleTickets.count),
-            .init(label: "Overdue invoices", count: a.overdueInvoices.count),
-            .init(label: "Missing parts",    count: a.missingPartsCount),
-            .init(label: "Low stock",        count: a.lowStockCount),
-        ]
-        let total = items.reduce(0) { $0 + $1.count }
+        let total = a.staleTickets.count + a.overdueInvoices.count + a.missingPartsCount + a.lowStockCount
 
         if total > 0 {
-            AttentionCard(items: items)
+            // §3.3 — row-level chips for stale tickets and overdue invoices
+            NeedsAttentionCard(attention: a)
         }
     }
 
