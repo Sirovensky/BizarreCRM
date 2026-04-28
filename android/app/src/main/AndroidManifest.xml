@@ -487,6 +487,18 @@
                 android:resource="@xml/glance_low_stock_info" />
         </receiver>
 
+        <!-- §24.1 — Glance Today's Revenue home-screen widget. -->
+        <receiver
+            android:name=".widget.glance.TodayRevenueGlanceReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/glance_today_revenue_info" />
+        </receiver>
+
         <!-- §24.4 — Quick Settings tile: Clock In/Out.
              BIND_QUICK_SETTINGS_TILE is the system-owned permission protecting
              the binding — apps never declare it, only the OS grants it. -->

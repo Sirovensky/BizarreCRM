@@ -123,6 +123,7 @@
     <string name="widget_clock_in_description">Clock in or out directly from the home screen</string>
     <string name="widget_low_stock_description">See how many inventory items are below reorder level</string>
     <string name="widget_unread_sms_description">Count of unread SMS conversations</string>
+    <string name="widget_today_revenue_description">Today\'s revenue and open ticket count at a glance</string>
     <string name="shortcut_recent_customer_short">Recent customer</string>
     <string name="shortcut_recent_customer_long">Open recent customer record</string>
     <string name="shortcut_clock_in_short">Clock in</string>

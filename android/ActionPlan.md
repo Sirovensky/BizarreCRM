@@ -3265,7 +3265,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 ## 24. Widgets, Live Updates, App Shortcuts, Assistant
 
 ### 24.1 Glance widgets
-- [blocked: deps — `androidx.glance:glance-appwidget` absent from version catalog; classic `DashboardWidgetProvider` (RemoteViews) ships today. Unblock by adding `androidx.glance:glance-appwidget:1.1.0` to `gradle/libs.versions.toml` + `app/build.gradle.kts` (note: must be done under policy review — Glance adds ~200KB + another artifact).] Today's revenue / counts widget (1x1, 2x1, 2x2, 4x2 sizes via `SizeMode.Exact`).
+- [x] Today's revenue / counts widget (2×2 minimum, resizable; shows revenue + open tickets via `TodayRevenueGlanceWidget`; push via `publishTodayRevenue()`).
 - [blocked: same — glance dep] My Queue widget — shows 3 next tickets; tap → ticket detail.
 - [x] Unread SMS widget.
 - [x] Clock-in/out toggle widget.
