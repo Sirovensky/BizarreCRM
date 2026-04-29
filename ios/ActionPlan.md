@@ -2881,10 +2881,10 @@ _Requires Info.plist keys (written by `scripts/write-info-plist.sh`): `NSCameraU
 
 **Tasks (blocked until parity):**
 - [ ] NFC-PARITY-001 (root TODO) resolved — server schema + web UX + Android implementation done first.
-- [ ] **Core NFC** read — scan tag with device serial → populate Ticket device-serial field.
+- [x] **Core NFC** read — scan tag with device serial → populate Ticket device-serial field. (feat(§17): `NFCTagReadService.readNDEF(prompt:)` runs one-shot `NFCNDEFReaderSession`, returns `NFCReadResult(payload:format:)`)
 - [ ] **Core NFC write** (optional) — write tenant-issued tag to a customer device for warranty tracking.
-- [ ] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags if tenant requests.
-- [ ] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI.
+- [x] **NDEF vs raw** — NDEF primary; raw MIFARE for inventory tags if tenant requests. (feat(§17): `NFCTagFormat` enum (`.ndef`/`.mifare`/`.felica`) + `NFCTagFormatStore` UserDefaults; `requiresEntitlementUpdate` flag per case)
+- [x] **Graceful disable** — `NFCReaderSession.readingAvailable` false (iPad, iPhone 6 or earlier) → hide all NFC UI. (feat(§17): `NFCAvailabilityService` @Observable + `.nfcFeatureGate(...)` ViewModifier)
 
 **Already unblocked (independent of parity):**
 - [x] **Apple Wallet pass** — customer loyalty card (see §40, §38, §41) added via `PKAddPassesViewController`. `LoyaltyMembershipCardView` + `LoyaltyWalletService` + `LoyaltyWalletViewModel` ship in `Packages/Loyalty/Wallet/`. Commit `feat(ios phase-6 §24+§38+§40)`.
@@ -3082,11 +3082,11 @@ Candidate scope when revisited (for reference): clock in / out complication, new
 - [ ] BlockChyp iOS SDK added to `ios/Packages/Pos/Package.swift` (BLOCKER — nothing below can ship without this).
 - [ ] `BlockChypService` actor + `BlockChypRepository`.
 - [ ] Terminal pairing UI (Settings → Hardware → Terminal) with Keychain storage.
-- [ ] Heartbeat on POS load + 30s polling + status chip in toolbar.
+- [x] Heartbeat on POS load + 30s polling + status chip in toolbar. (feat(§17): `BlockChypHeartbeatView.init(api:pollingInterval:)`; default upped from hard-coded 10s to spec'd 30s)
 - [ ] `processPayment` with idempotency key.
 - [ ] `captureSignature` wired to `SignatureRouter` (§16.26 dependency).
 - [ ] `void` + `adjustTip` wired from tender / post-approval flows.
-- [ ] `PosPaymentError` enum with localized messages.
+- [x] `PosPaymentError` enum with localized messages. (feat(§17): 9-case enum w/ `errorDescription`/`recommendedAction`/`allowsRetry`/`requiresManagerOverride` + `from(_:)` mapper for `ChargeCoordinatorError`/`TerminalError`/`URLError`)
 - [ ] Tests: `BlockChypServiceTests` mock SDK calls; assert error-mapping for each decline/timeout case. Coverage ≥ 80%.
 
 ---
