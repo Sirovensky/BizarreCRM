@@ -148,8 +148,28 @@ public struct TicketWarrantySLABadge: View {
                 foreground: config.foreground,
                 background: config.background
             )
-            .accessibilityLabel("SLA status: \(sla)")
+            // §4.1 a11y: expose urgency tier explicitly so VoiceOver users
+            // don't just hear the raw server string (e.g. "breached") but a
+            // human-readable sentence with the severity.
+            .accessibilityLabel(slaAccessibilityLabel(for: sla))
+            .accessibilityAddTraits(slaIsUrgent(sla) ? [.updatesFrequently] : [])
         }
+    }
+
+    private func slaAccessibilityLabel(for status: String) -> String {
+        let lower = status.lowercased()
+        if lower.contains("breach") || lower.contains("overdue") || lower.contains("red") {
+            return "SLA breached. Immediate action required."
+        }
+        if lower.contains("warn") || lower.contains("amber") || lower.contains("due soon") {
+            return "SLA warning. Due soon."
+        }
+        return "SLA on track."
+    }
+
+    private func slaIsUrgent(_ status: String) -> Bool {
+        let lower = status.lowercased()
+        return lower.contains("breach") || lower.contains("overdue") || lower.contains("warn") || lower.contains("amber")
     }
 
     // MARK: - Badge helper

@@ -50,6 +50,20 @@ public struct TicketEvent: Decodable, Sendable, Identifiable, Hashable {
             case .unknown:      return "circle.fill"
             }
         }
+
+        /// §4.4 audit-log a11y: short human-readable description for VoiceOver.
+        public var accessibilityLabel: String {
+            switch self {
+            case .statusChange: return "Status changed"
+            case .noteAdded:    return "Note added"
+            case .photoAdded:   return "Photo added"
+            case .assigned:     return "Assigned"
+            case .partOrdered:  return "Part ordered"
+            case .created:      return "Ticket created"
+            case .invoiced:     return "Converted to invoice"
+            case .unknown:      return "Event"
+            }
+        }
     }
 
     // MARK: — Diff entry
