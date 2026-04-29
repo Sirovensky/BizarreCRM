@@ -3635,7 +3635,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.1 Layout
 - [ ] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column.
 - [ ] **Dashboard 3-column KPI grid** on wide screens; 2-column on 11"; responsive `GridItem(.adaptive(...))`.
-- [ ] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded.
+- [x] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded. (feat(ios §22-batch-9f3a): max content width + tab order + menu bar + slide-over + safe-area keyboard)
 - [ ] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`.
 - [ ] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail.
 - [ ] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13".
@@ -3651,15 +3651,15 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 ### 22.3 Keyboard-first
 - [ ] **Shortcuts**: ⌘N / ⌘F / ⌘R / ⌘, / ⌘D / ⌘1–⌘9 / ⌘⇧F / ⌘⇧N / ⌘K (command palette) / ⌘P (print) / ⌘/ (help) / ⎋ (dismiss sheet) / ⌥↑↓ (row move) / Space (preview).
 - [ ] **Focus ring** — visible keyboard focus on buttons/links; `.focusable()`.
-- [ ] **Tab order** — forms tabbable in logical order.
-- [ ] **Menu bar** — iPad-specific `.commands` with grouped menu items (File / Edit / View / Actions / Window / Help).
+- [x] **Tab order** — forms tabbable in logical order. (feat(ios §22-batch-9f3a): max content width + tab order + menu bar + slide-over + safe-area keyboard)
+- [x] **Menu bar** — iPad-specific `.commands` with grouped menu items (File / Edit / View / Actions / Window / Help). (feat(ios §22-batch-9f3a): max content width + tab order + menu bar + slide-over + safe-area keyboard)
 
 ### 22.4 Multi-window / Stage Manager
 - [x] **Multiple scenes** — `UISceneConfiguration` supports N windows. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [ ] **Scene state** restored per-window on relaunch.
 - [x] **Open in new window** from context menu. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [x] **Scene activities** — detail views become independent activities. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
-- [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
+- [x] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits. (feat(ios §22-batch-9f3a): max content width + tab order + menu bar + slide-over + safe-area keyboard)
 
 ### 22.5 Data presentation
 - [ ] **`Table`** (sortable columns) on Reports, Inventory dumps, Audit Logs.
@@ -3706,7 +3706,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Pencil Pro: squeeze opens tool picker in annotation (§4); barrel roll rotates shape/text; haptic on Pencil tip (iOS 17.5+ API)
 - [ ] M4 performance: gate larger-dataset UI (e.g. live charts 10k points) on A17+ detection
 - [ ] External storage: USB-C direct photo import; file picker recognizes external drives
-- [ ] Safe area: use `.ignoresSafeArea(.keyboard)` carefully; default behavior is scroll.
+- [x] Safe area: use `.ignoresSafeArea(.keyboard)` carefully; default behavior is scroll. (feat(ios §22-batch-9f3a): max content width + tab order + menu bar + slide-over + safe-area keyboard)
 - [ ] Accessory toolbar for numeric fields: `$`, `%`, next, prev, done (done closes keyboard, next moves focus).
 - [ ] SMS/email inputs show QuickType; custom template suggestions via replacement assistant.
 - [ ] External hardware keyboard: hide onscreen keyboard automatically.

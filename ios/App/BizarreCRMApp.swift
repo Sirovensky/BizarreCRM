@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 import Core
 import DesignSystem
 import Networking
@@ -31,6 +34,8 @@ struct BizarreCRMApp: App {
                 }
         }
         .commands {
+            // §22.3 — Menu bar: iPad-specific .commands with grouped menu items
+            // File group — replaces system "New Item" with BizarreCRM-specific actions
             CommandGroup(replacing: .newItem) {
                 Button("New Ticket") {
                     DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://ticket/new")!)
@@ -41,6 +46,81 @@ struct BizarreCRMApp: App {
                     Task { @MainActor in await SyncManager.shared.syncNow() }
                 }
                 .keyboardShortcut("r", modifiers: .command)
+            }
+
+            // Edit group — Find shortcut
+            CommandGroup(after: .pasteboard) {
+                Divider()
+                Button("Find…") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://search")!)
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
+
+            // View menu — navigation shortcuts
+            CommandMenu("View") {
+                Button("Dashboard") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://dashboard")!)
+                }
+                .keyboardShortcut("1", modifiers: .command)
+
+                Button("Tickets") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://tickets")!)
+                }
+                .keyboardShortcut("2", modifiers: .command)
+
+                Button("Customers") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://customers")!)
+                }
+                .keyboardShortcut("3", modifiers: .command)
+
+                Button("POS Register") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://pos")!)
+                }
+                .keyboardShortcut("4", modifiers: .command)
+
+                Divider()
+
+                Button("Command Palette") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://command-palette")!)
+                }
+                .keyboardShortcut("k", modifiers: .command)
+
+                Button("Keyboard Shortcuts") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://shortcuts")!)
+                }
+                .keyboardShortcut("/", modifiers: .command)
+            }
+
+            // Actions menu — quick actions
+            CommandMenu("Actions") {
+                Button("New Customer") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://customer/new")!)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Button("New Invoice") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://invoice/new")!)
+                }
+
+                Divider()
+
+                Button("Print…") {
+                    DeepLinkRouter.shared.handle(URL(string: "bizarrecrm://print")!)
+                }
+                .keyboardShortcut("p", modifiers: .command)
+            }
+
+            // Help menu — supplement system help
+            CommandGroup(after: .help) {
+                Button("BizarreCRM Help") {
+                    if let url = URL(string: "https://help.bizarrecrm.com") {
+                        #if canImport(UIKit)
+                        UIApplication.shared.open(url)
+                        #endif
+                    }
+                }
+                .keyboardShortcut("?", modifiers: .command)
             }
         }
 

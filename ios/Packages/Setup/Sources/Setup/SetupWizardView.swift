@@ -64,9 +64,15 @@ public struct SetupWizardView: View {
     // MARK: - iPhone layout
 
     private var iPhoneLayout: some View {
+        // §22.7 — Safe area: use .keyboardSafeBottomAction to keep the
+        // navigation bar (Next / Back) pinned above the software keyboard
+        // when a form field is focused in a step. Without this the navBar
+        // would hide behind the keyboard frame on iPhone.
         VStack(spacing: 0) {
             indicatorBar
             stepBody
+        }
+        .keyboardSafeBottomAction {
             navBar
         }
     }

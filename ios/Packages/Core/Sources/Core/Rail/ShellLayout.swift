@@ -46,10 +46,18 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
     }
 
     public var body: some View {
-        if horizontalSizeClass == .regular {
-            regularLayout
-        } else {
-            compactContent()
+        // §22.4 — Slide Over / Split View: gate on actual container width
+        // in addition to horizontalSizeClass. At 1/3 split or Slide Over
+        // (~320–400 pt) the size class stays .regular on iPad but the
+        // available width is too narrow for the 64 pt rail plus content.
+        // Threshold 500 pt: at 1/2 split on 11" (~551 pt) we show rail;
+        // at 1/3 split on 13" (~430 pt) we fall through to compact layout.
+        GeometryReader { geo in
+            if horizontalSizeClass == .regular && geo.size.width >= 500 {
+                regularLayout
+            } else {
+                compactContent()
+            }
         }
     }
 

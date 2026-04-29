@@ -727,6 +727,8 @@ public struct TicketDetailView: View {
                     }
                 }
                 .padding(BrandSpacing.base)
+                // §22.1 — detail panes cap at 720 pt on wide iPad screens
+                .maxContentWidth()
             }
         }
     }
