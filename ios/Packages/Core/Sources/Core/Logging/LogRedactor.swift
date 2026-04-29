@@ -48,6 +48,14 @@ public enum LogRedactor {
             #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#,
             "*CUSTOMER_EMAIL*"
         ),
+        // §32.6 Credit-card BIN (first 6 digits of a PAN that appears in
+        // structured log fields labelled "bin:" / "card_bin:" / "issuer_bin:").
+        // Must run before the full-PAN rule so "bin:412345" → "*CARD_BIN*",
+        // not left as a prefix of a larger *PAN* match.
+        Rule(
+            #"(?i)(?:bin|card_bin|issuer_bin)[:\s]*(\d{6})\b"#,
+            "*CARD_BIN*"
+        ),
         // Card PANs — 13–19 contiguous or space/dash-separated digits
         // Matches Visa/MC/Amex/Discover card number shapes.
         Rule(
@@ -85,6 +93,19 @@ public enum LogRedactor {
             #"(?i)(?:passcode|pin|code)[:\s]*\d{4,8}\b"#,
             "*DEVICE_PASSCODE*"
         ),
+        // §32.6 Auth / OTP codes — labelled "otp:", "auth_code:", "2fa_code:" etc.
+        // 4–8 digit codes that appear alongside an explicit label.
+        Rule(
+            #"(?i)(?:otp|auth_code|2fa_code|verification_code|one.time)[:\s]*(\d{4,8})\b"#,
+            "*AUTH_CODE*"
+        ),
+        // §32.6 Street addresses — "123 Main St", "42 Elm Avenue", etc.
+        // Heuristic: leading number + word(s) + street-type abbreviation.
+        Rule(
+            #"\b\d{1,5}\s+[A-Za-z0-9\s]{2,30}\s+(?:st|ave|blvd|rd|dr|ln|ct|pl|way|cir|ter|hwy|pkwy|suite|ste|apt|unit)\.?\b"#,
+            "*ADDRESS*",
+            options: [.caseInsensitive]
+        ),
         // Bearer / API tokens — "Bearer <long token>"
         Rule(
             #"Bearer\s+[A-Za-z0-9\-._~+/]+=*"#,
@@ -118,5 +139,17 @@ public enum LogRedactor {
     /// Replace an SMS / email message body with the §32.6 placeholder.
     public static func redactMessageBody(_ input: String) -> String {
         input.isEmpty ? input : "*SMS_BODY*"
+    }
+
+    /// Replace an email body with the §32.6 placeholder.
+    public static func redactEmailBody(_ input: String) -> String {
+        input.isEmpty ? input : "*EMAIL_BODY*"
+    }
+
+    /// Replace a free-form address field with the §32.6 placeholder.
+    /// Use when you know the string is a postal address — regex coverage is
+    /// intentionally broad but misses many international formats.
+    public static func redactAddress(_ input: String) -> String {
+        input.isEmpty ? input : "*ADDRESS*"
     }
 }

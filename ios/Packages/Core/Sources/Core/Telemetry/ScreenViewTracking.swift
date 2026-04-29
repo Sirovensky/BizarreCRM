@@ -172,4 +172,63 @@ public extension Analytics {
     static func trackFirstPaint(durationMs: Int) {
         track(.firstPaintMs, properties: ["duration_ms": .int(durationMs)])
     }
+
+    // MARK: — §32.4 Auth event helpers
+
+    /// §32.4 — `auth.login.succeeded { method }`.
+    ///
+    /// - Parameter method: Authentication method used, e.g. `"password"`,
+    ///   `"passkey"`, `"pin"`, `"2fa_totp"`. Never include the credential value.
+    static func trackLoginSuccess(method: String) {
+        track(.loginSucceeded, properties: ["method": .string(method)])
+    }
+
+    /// §32.4 — `auth.login.failed { method, reason }`.
+    ///
+    /// - Parameters:
+    ///   - method: Authentication method attempted (same values as `trackLoginSuccess`).
+    ///   - reason: Failure category — `"bad_credentials"`, `"account_locked"`,
+    ///     `"mfa_required"`, `"server_error"`. No PII.
+    static func trackLoginFailed(method: String, reason: String) {
+        track(.loginFailed, properties: [
+            "method": .string(method),
+            "reason": .string(reason)
+        ])
+    }
+
+    // MARK: — §32.4 Domain entity event helpers
+
+    /// §32.4 — `customer.created { source }`.
+    ///
+    /// - Parameter source: Where creation originated, e.g. `"pos_checkout"`,
+    ///   `"crm_list"`, `"import"`, `"api"`. No PII.
+    static func trackCustomerCreated(source: String) {
+        track(.customerCreated, properties: ["source": .string(source)])
+    }
+
+    /// §32.4 — `ticket.created { priority, channel }`.
+    ///
+    /// - Parameters:
+    ///   - priority: Ticket priority string, e.g. `"low"`, `"normal"`, `"high"`, `"urgent"`.
+    ///   - channel: Creation channel, e.g. `"manual"`, `"email"`, `"sms"`, `"api"`.
+    static func trackTicketCreated(priority: String, channel: String) {
+        track(.ticketCreated, properties: [
+            "priority": .string(priority),
+            "channel": .string(channel)
+        ])
+    }
+
+    /// §32.4 — `pos.refund.issued { total_cents, reason }`.
+    ///
+    /// - Parameters:
+    ///   - totalCents: Refund amount in cents — numeric, no PII.
+    ///   - reason: Refund reason category, e.g. `"defective"`, `"customer_request"`,
+    ///     `"wrong_item"`. Free-form text is NOT accepted here; callers must map
+    ///     to an enum string before passing.
+    static func trackRefundIssued(totalCents: Int, reason: String) {
+        track(.refundIssued, properties: [
+            "total_cents": .int(totalCents),
+            "reason": .string(reason)
+        ])
+    }
 }

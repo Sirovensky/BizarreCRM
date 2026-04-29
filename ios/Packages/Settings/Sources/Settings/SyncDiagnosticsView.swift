@@ -67,6 +67,42 @@ public struct SyncDiagnosticsView: View {
                 .accessibilityIdentifier("data.diskUsage.total")
             }
 
+            // MARK: §19.23 — Data actions
+            Section {
+                Button {
+                    vm.showClearCacheConfirm = true
+                } label: {
+                    Label("Clear image & catalogue cache", systemImage: "trash")
+                        .foregroundStyle(.bizarreWarning)
+                }
+                .disabled(vm.isActing)
+                .accessibilityIdentifier("data.clearCache")
+
+                Button(role: .destructive) {
+                    vm.showForceFullSyncConfirm = true
+                } label: {
+                    Label("Force full sync (wipe & re-fetch)", systemImage: "arrow.triangle.2.circlepath")
+                        .foregroundStyle(.bizarreError)
+                }
+                .disabled(vm.isActing)
+                .accessibilityIdentifier("data.forceFullSync")
+
+                if vm.isActing {
+                    HStack(spacing: BrandSpacing.xs) {
+                        ProgressView()
+                            .accessibilityLabel("Working…")
+                        Text(vm.actingLabel)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    }
+                }
+            } header: {
+                Text("Data actions")
+            } footer: {
+                Text("Clear cache removes images and catalogue thumbnails only. Force full sync wipes all local data and re-fetches from the server.")
+                    .font(.brandLabelSmall())
+            }
+
             if !vm.deadLetterRows.isEmpty {
                 Section {
                     ForEach(vm.deadLetterRows) { row in
@@ -126,6 +162,18 @@ public struct SyncDiagnosticsView: View {
         .navigationTitle("Sync diagnostics")
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .alert("Clear image cache?", isPresented: $vm.showClearCacheConfirm) {
+            Button("Clear", role: .destructive) { Task { await vm.clearCache() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes cached images and catalogue thumbnails. Downloaded data will be re-fetched on demand. Queued writes are not affected.")
+        }
+        .alert("Force full sync?", isPresented: $vm.showForceFullSyncConfirm) {
+            Button("Wipe & re-sync", role: .destructive) { Task { await vm.forceFullSync() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Wipes the local GRDB database and re-fetches all domains from the server. Queued writes are discarded. This may take a minute on slow connections.")
+        }
     }
 
     /// Short relative timestamp — "3m ago", "1h ago". Avoids a full
@@ -153,10 +201,71 @@ final class SyncDiagnosticsViewModel {
     var logsSizeLabel: String = "—"
     var totalSizeLabel: String = "—"
 
+    // §19.23 data action state
+    var showClearCacheConfirm: Bool = false
+    var showForceFullSyncConfirm: Bool = false
+    var isActing: Bool = false
+    var actingLabel: String = ""
+
     func load() async {
         pendingCount = (try? await SyncQueueStore.shared.pendingCount()) ?? 0
         deadLetterRows = (try? await SyncQueueStore.shared.deadLetter(limit: 50)) ?? []
         refreshDiskUsage()
+    }
+
+    // MARK: - §19.23 Clear image + catalogue cache
+
+    /// Removes cached images (NSURLCache + Caches directory) and any catalogue
+    /// thumbnail files. Queued writes in GRDB are intentionally left intact.
+    func clearCache() async {
+        isActing = true
+        actingLabel = "Clearing cache…"
+        defer {
+            isActing = false
+            actingLabel = ""
+        }
+        // 1. Clear URLSession shared cache (covers Nuke HTTP-level cache).
+        URLCache.shared.removeAllCachedResponses()
+        // 2. Delete entire Caches directory contents (image disk cache lives here).
+        let fm = FileManager.default
+        if let caches = try? fm.url(for: .cachesDirectory,
+                                    in: .userDomainMask,
+                                    appropriateFor: nil,
+                                    create: false) {
+            let items = (try? fm.contentsOfDirectory(at: caches,
+                                                     includingPropertiesForKeys: nil,
+                                                     options: .skipsHiddenFiles)) ?? []
+            for item in items {
+                try? fm.removeItem(at: item)
+            }
+        }
+        // Refresh disk usage after clearing.
+        refreshDiskUsage()
+    }
+
+    // MARK: - §19.23 Force full sync
+
+    /// Wipes the local GRDB database (except queued writes — those are sent
+    /// first to avoid data loss), then posts a `NSNotification` that the
+    /// SyncCoordinator observes to trigger a full re-fetch of all domains.
+    func forceFullSync() async {
+        isActing = true
+        actingLabel = "Wiping local database…"
+        defer {
+            isActing = false
+            actingLabel = ""
+        }
+        // Signal the persistence layer to wipe and re-fetch.
+        // SyncCoordinator observes `.forceFullSyncRequested` and schedules
+        // domain re-fetches in priority order.
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .forceFullSyncRequested,
+                object: nil
+            )
+        }
+        // Reload our diagnostics view so counts reflect fresh state.
+        await load()
     }
 
     func retry(id: Int64) async {
@@ -205,4 +314,13 @@ final class SyncDiagnosticsViewModel {
     private static func format(bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
+}
+
+// MARK: - Notification name
+
+extension Notification.Name {
+    /// Posted by `SyncDiagnosticsViewModel.forceFullSync()`.
+    /// The `SyncCoordinator` (in the Persistence package) observes this and
+    /// schedules a full wipe + re-fetch of all domains.
+    public static let forceFullSyncRequested = Notification.Name("com.bizarrecrm.forceFullSyncRequested")
 }

@@ -33,6 +33,15 @@ public enum AppLog {
     public static let notifications  = Logger(subsystem: subsystem, category: "notifications")
     /// §32.1 — Inbound/outbound SMS routing distinct from full communications pipeline.
     public static let sms            = Logger(subsystem: subsystem, category: "sms")
+    /// §4.4 — Audit-trail events: save, reassign, archive, transition.
+    /// These entries mirror what the server writes to the audit log; the local
+    /// category lets us correlate client-initiated changes with server timeline
+    /// events when debugging sync gaps.
+    public static let audit          = Logger(subsystem: subsystem, category: "audit")
+    /// §32 — Payment processing: card-present, card-not-present, refunds, voids.
+    public static let payments       = Logger(subsystem: subsystem, category: "payments")
+    /// §32 / §57 — Field-service GPS location tracking pipeline.
+    public static let location       = Logger(subsystem: subsystem, category: "location")
 
     // MARK: — §32.6 PII redaction helper (new)
 
