@@ -3722,19 +3722,19 @@ Users get quieting from two canonical sources:
 _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an unfinished feature._
 
 ### 22.1 Layout
-- [ ] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column.
+- [x] **3-column `NavigationSplitView`** on Tickets / Customers / Invoices / Inventory / SMS / Estimates / Appointments / Leads — sidebar (domain chooser) + list column + detail column. (feat(ios §22): ThreeColumnSplitView scaffold — SplitViewDomain protocol, .balanced style, column widths, detailContentCapped())
 - [x] **Dashboard 3-column KPI grid** on wide screens; 2-column on 11"; responsive `GridItem(.adaptive(...))`. (feat(ios §22): adaptive stat-tile grid + full tab-order + menu bar commands + right-click menus + scroll-dismiss keyboard)
 - [ ] **Max content width** — detail panes cap at ~720pt on 13" landscape via `.frame(maxWidth: 720)`; excess area padded.
 - [ ] **Sidebar** — pinned on 13", collapsible on 11"; `.navigationSplitViewStyle(.balanced)`.
-- [ ] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail.
-- [ ] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13".
+- [x] **Inspector pane** (iOS 17 `.inspector`) — right-side editor on Ticket detail, Customer detail. (feat(ios §22): InspectorPaneModifier — .brandInspector(isPresented:content:) with iOS 16 sheet fallback + InspectorToggleButton)
+- [x] **Two-up editor** — Ticket detail with Invoice editor side-by-side on 13". (feat(ios §22): TwoUpEditorLayout scaffold — side-by-side on width≥900pt, segmented-tab fallback on compact)
 
 ### 22.2 Interactions
 - [x] **`.hoverEffect(.highlight)`** on all tappable rows / buttons / cards. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [x] **Pointer customization** — custom cursors (link vs default) per semantic element. (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [x] **`.contextMenu`** on rows — Open / Copy ID / Copy phone / Archive / Delete / Share / Open in new window. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] **Drag-and-drop** — drag inventory → ticket services, drag ticket → calendar slot, drag customer → SMS compose.
-- [ ] **Multi-select** — long-press or ⌘-click batch actions; Edit mode in list toolbar.
+- [x] **Multi-select** — long-press or ⌘-click batch actions; Edit mode in list toolbar. (feat(ios §22): MultiSelectRowModifier + BulkActionBar — long-press→edit mode, per-row checkmark, floating glass bulk actions bar)
 - [x] **Apple Pencil** — `PKCanvasView` on signatures; pencil-only edit mode on forms; hover preview (Pencil Pro). (feat(ios §22): PencilSignatureCanvas reusable DS widget, pencilOnly policy, UIPencilInteraction hook, brandSignatureFrame modifier)
 
 ### 22.3 Keyboard-first
@@ -3779,7 +3779,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] Within-app drags: ticket row → Assignee sidebar (iPad); invoice row → Email compose; inventory row → PO draft; photo → Ticket attachment
 - [ ] Cross-app drags: customer from Contacts app → Customer create; PDF from Files → Ticket attachment; photo from Photos → Ticket photos/Annotation
 - [ ] Type registration: `UTType`s `public.image`, `public.pdf`, `com.bizarrecrm.ticket` (custom UTI for in-app drag); `NSItemProvider` per source
-- [ ] Previews: drag preview = card-style miniature; drop target highlights on hover
+- [x] Previews: drag preview = card-style miniature; drop target highlights on hover (feat(ios §22): DragHoverPreviewModifier — dragCardPreview() preview closure style + hoverDropHighlight() auto-isTargeted overlay)
 - [ ] Validation: drop handler validates type + tenant scope; invalid drops show red X overlay
 - [ ] Haptics+motion: pickup = light haptic + row lift; drop = success haptic + slot-fill animation; cancel = rubber-band back
 - [ ] Accessibility: every drag op has keyboard/VoiceOver alternative via select + "Move to…" menu
