@@ -72,9 +72,6 @@ import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 import com.bizarreelectronics.crm.ui.theme.SharedTicketElement
 import com.bizarreelectronics.crm.ui.theme.sharedTicketKey
 import com.bizarreelectronics.crm.util.NetworkMonitor
-import com.bizarreelectronics.crm.util.draggableItem
-import com.bizarreelectronics.crm.util.dropTarget
-import com.bizarreelectronics.crm.util.textClipData
 import com.bizarreelectronics.crm.util.formatAsMoney
 import com.bizarreelectronics.crm.util.LocalScrollToTopBus
 import com.bizarreelectronics.crm.util.SaveScrollOnDispose
@@ -516,27 +513,16 @@ fun TicketListScreen(
                         }
 
                         Column(modifier = Modifier.fillMaxSize()) {
-                        // §22.8 — Assignee drop zone (tablet only).
-                        // Visible when isExpandedWidth; accepts text/plain drops whose
-                        // text is a ticket ID. Calls onAssignToMe (optimistic); full
-                        // server-side assignment pending PUT /tickets/:id {assignedTo}.
-                        // NOTE: drop zone shown always on tablet so users discover the
-                        // target before initiating a drag. draggableItem on rows below
-                        // starts the drag on long-press.
-                        if (isExpandedWidth) {
-                            AssigneeDropZone(
-                                onTicketDropped = { ticketId ->
-                                    viewModel.onAssignToMe(ticketId)
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                            )
-                        }
+                        // §22.8 drag-and-drop "Drop ticket here to assign to me"
+                        // tablet rail removed 2026-04-28 — pattern was a
+                        // discovery dead-end (users don't think to long-press
+                        // a row to start a drag) and ate vertical space at the
+                        // top of the list. Replace with the swipe-row "Assign
+                        // to me" action that already exists.
 
                         LazyColumn(
                             state = listState,
-                            contentPadding = PaddingValues(top = 8.dp, bottom = 80.dp),
+                            contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
                         ) {
                             // Paging3 items — filter + sort applied at VM/Room level
                             items(
@@ -554,24 +540,7 @@ fun TicketListScreen(
                                 // system reduce-motion flag via the row's own
                                 // `reduceMotion` path.
                                 androidx.compose.foundation.layout.Box(
-                                    // §22.8 — draggableItem: long-press on a ticket row starts a
-                                    // system drag-and-drop with the ticket's orderId as text payload.
-                                    // The assignee drop zone above accepts drops of this format.
-                                    // Phone rows are NOT affected (draggableItem's long-press
-                                    // is on top of combinedClickable; on phone isExpandedWidth
-                                    // is false so the zone is not rendered, making drops no-ops).
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .then(
-                                            if (isExpandedWidth) {
-                                                Modifier.draggableItem(
-                                                    clipData = textClipData(
-                                                        label = "ticket_id",
-                                                        text = ticket.id.toString(),
-                                                    ),
-                                                )
-                                            } else Modifier
-                                        ),
+                                    modifier = Modifier.animateItem(),
                                 ) {
                                 TicketSwipeRow(
                                     ticket = ticket,
@@ -1103,76 +1072,6 @@ private fun TicketGroupPill(group: TicketStatusGroup) {
     }
 }
 
-// -----------------------------------------------------------------------
-// §22.8 — Assignee drop zone (tablet/desktop only)
-// -----------------------------------------------------------------------
-
-/**
- * A drop zone strip rendered above the ticket list on medium+ width screens.
- *
- * Accepts text/plain drops where the text is a ticket ID (Long string).
- * When a ticket row is dropped here, [onTicketDropped] is called with the
- * parsed ticket ID so the ViewModel can call `onAssignToMe`.
- *
- * NOTE(server): Full multi-user assignment (drop → pick-assignee dialog →
- * PUT /tickets/:id {assignedTo}) requires a staff-list endpoint and an
- * assignee picker sheet. Until that lands, drops always assign to the
- * currently logged-in user (same as swipe-right behaviour).
- */
-@Composable
-private fun AssigneeDropZone(
-    onTicketDropped: (Long) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var isHovered by remember { mutableStateOf(false) }
-
-    Surface(
-        modifier = modifier
-            .defaultMinSize(minHeight = 48.dp)
-            .dropTarget(
-                acceptedMimeTypes = listOf("text/plain"),
-                onDrop = { clipData ->
-                    val text = clipData.getItemAt(0)?.text?.toString() ?: return@dropTarget false
-                    val ticketId = text.toLongOrNull() ?: return@dropTarget false
-                    onTicketDropped(ticketId)
-                    isHovered = false
-                    true
-                },
-            ),
-        shape = MaterialTheme.shapes.medium,
-        color = if (isHovered) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-        tonalElevation = if (isHovered) 4.dp else 1.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Default.AssignmentInd,
-                contentDescription = null,
-                tint = if (isHovered) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = "Drop ticket here to assign to me",
-                style = MaterialTheme.typography.labelMedium,
-                color = if (isHovered) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-        }
-    }
-}
+// §22.8 AssigneeDropZone removed 2026-04-28. Drag-to-assign was a UX
+// dead-end and ate vertical space on tablet. The swipe-right "Assign to
+// me" action covers the same need. See ActionPlan §22.8 / §4.16.

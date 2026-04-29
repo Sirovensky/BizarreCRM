@@ -116,7 +116,14 @@ object DatabaseModule {
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
                     super.onOpen(db)
+                    // setForeignKeyConstraintsEnabled affects only NEW
+                    // connections per Room docs ("does not change the value
+                    // for existing connections"). The connection running
+                    // this onOpen already has FK ON from its open-time
+                    // default, so any inserts on it still fail. Issue the
+                    // PRAGMA directly to flip THIS connection's flag now.
                     db.setForeignKeyConstraintsEnabled(false)
+                    db.execSQL("PRAGMA foreign_keys = OFF")
                     Log.d(TAG, "Foreign key enforcement disabled (server-authoritative)")
                 }
 

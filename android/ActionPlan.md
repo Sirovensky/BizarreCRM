@@ -3229,7 +3229,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 - [x] Submenus supported via `Submenu` construct. (commit bca059e — `Submenu` inline expansion)
 
 ### 22.8 Drag & drop
-- [x] Drag ticket row → Assignee rail target (§4.16). (session 2026-04-27 — `TicketListScreen.kt`: `draggableItem(textClipData("ticket_id", id))` on each row Box when `isExpandedWidth`; `AssigneeDropZone` composable above list accepts `text/plain` drops and calls `viewModel.onAssignToMe(ticketId)`; optimistic local update + server sync stub already wired) <!-- NOTE-defer: full multi-user assign (pick-assignee sheet + PUT /tickets/:id {assignedTo} with staff list) blocked on staff-list endpoint -->
+- [x] ~~Drag ticket row → Assignee rail target (§4.16).~~ ABANDONED 2026-04-28 — pattern was a discovery dead-end on tablet (users do not think to long-press a row to start a drag), the drop zone consumed vertical space for no observed benefit, and the equivalent action already exists as the swipe-right "Assign to me" affordance. AssigneeDropZone + draggableItem wrapper removed from TicketListScreen.kt. Do not re-introduce.
 - [x] Drag photo across multiple tickets (long-press → `startDragAndDrop`). (session 2026-04-27 — `TicketPhotoGallery.kt`: `draggableItem(uriClipData("photo_url", serverUrl+photo.url))` on each pager `Box`; drag source wired) <!-- NOTE-defer: cross-ticket photo drop acceptance (attach to another ticket) blocked on server POST /tickets/:id/photos with source_url param; drop-target side deferred -->
 - [x] Cross-app drag (tablet multi-window): drop text / URL / image from Chrome / Gmail into our composer fields. (commit bca059e — `textClipData`/`uriClipData` helpers in DragAndDropSupport)
 
