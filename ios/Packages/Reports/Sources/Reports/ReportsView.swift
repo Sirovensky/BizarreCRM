@@ -324,7 +324,12 @@ public struct ReportsView: View {
         TicketsByStatusCard(points: vm.ticketsByStatus)
 
         // §15.2 Avg ticket value KPI
-        AvgTicketValueCard(value: vm.avgTicketValue)
+        // §91.12 (2): pass period revenue + ticket count so card can detect inconsistency
+        AvgTicketValueCard(
+            value: vm.avgTicketValue,
+            periodRevenueDollars: vm.revenueTotalDollars,
+            ticketCount: vm.salesTotals.totalInvoices
+        )
 
         // §15.4 Employee performance
         TopEmployeesCard(employees: vm.employeePerf)

@@ -6,9 +6,13 @@ import DesignSystem
 
 public struct TicketsByStatusCard: View {
     public let points: [TicketStatusPoint]
+    /// When `true` (default), the entire card is hidden if all counts are zero.
+    /// §91.12 (3): SLA Breaches card must not appear when there are zero breaches.
+    public let hidesWhenAllZero: Bool
 
-    public init(points: [TicketStatusPoint]) {
+    public init(points: [TicketStatusPoint], hidesWhenAllZero: Bool = true) {
         self.points = points
+        self.hidesWhenAllZero = hidesWhenAllZero
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,7 +22,21 @@ public struct TicketsByStatusCard: View {
         .bizarreOrange, .bizarreTeal, .bizarreMagenta, .bizarreSuccess, .bizarreWarning
     ]
 
+    /// §91.12 (3): true when every data point has count == 0.
+    private var allCountsAreZero: Bool {
+        !points.isEmpty && points.allSatisfy { $0.count == 0 }
+    }
+
     public var body: some View {
+        // §91.12 (3): suppress the whole card rather than showing unlabelled zero bars
+        if hidesWhenAllZero && allCountsAreZero {
+            EmptyView()
+        } else {
+            cardBody
+        }
+    }
+
+    private var cardBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if points.isEmpty {

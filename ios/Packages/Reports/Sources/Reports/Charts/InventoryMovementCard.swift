@@ -26,6 +26,17 @@ public struct InventoryMovementCard: View {
         return Array(r.topMoving.sorted { $0.usedQty > $1.usedQty }.prefix(10))
     }
 
+    /// §91.12 (5): total retail value across all value-summary entries.
+    private func totalInventoryValue(_ r: InventoryReport) -> Double {
+        r.valueSummary.reduce(0) { $0 + $1.totalRetailValue }
+    }
+
+    /// §91.12 (5): true when OOS count > 0 but aggregate inventory value is $0.
+    /// This is contradictory — items can't be "out of stock" if inventory is unvalued.
+    private func isStockHealthContradiction(_ r: InventoryReport) -> Bool {
+        r.outOfStockCount > 0 && totalInventoryValue(r) == 0
+    }
+
     public var body: some View {
         if sizeClass == .regular {
             ipadBody
@@ -40,6 +51,7 @@ public struct InventoryMovementCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             alertRow
+            stockHealthWarning
             movementChart
                 .frame(height: max(160, Double(topItems.count) * 28))
                 .chartXAxisLabel("Units Used (30d)", alignment: .center)
@@ -57,6 +69,7 @@ public struct InventoryMovementCard: View {
             // Left: movement bar chart
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                 cardHeader
+                stockHealthWarning
                 movementChart
                     .frame(height: max(200, Double(topItems.count) * 28))
                     .chartXAxisLabel("Units Used (30d)", alignment: .center)
@@ -99,6 +112,31 @@ public struct InventoryMovementCard: View {
                 .foregroundStyle(.bizarreOnSurfaceMuted)
         }
         .accessibilityAddTraits(.isHeader)
+    }
+
+    // MARK: - Stock health contradiction warning (§91.12 item 5)
+
+    @ViewBuilder
+    private var stockHealthWarning: some View {
+        if let r = report, isStockHealthContradiction(r) {
+            HStack(spacing: BrandSpacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.bizarreError)
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text("Stock health contradiction: \(r.outOfStockCount) out-of-stock items reported but inventory value is $0. Check data sync.")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreError)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xs)
+            .background(Color.bizarreError.opacity(0.1), in: RoundedRectangle(cornerRadius: DesignTokens.Radius.sm))
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(
+                "Stock health contradiction: \(r.outOfStockCount) out-of-stock items but inventory value is zero. Check data sync."
+            )
+        }
     }
 
     // MARK: - Alert row (out of stock / low stock)
