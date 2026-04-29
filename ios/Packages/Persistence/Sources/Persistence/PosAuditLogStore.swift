@@ -92,6 +92,7 @@ public struct PosAuditEntry: Codable, FetchableRecord, MutablePersistableRecord,
         case "cash_drop":             return "Cash drop"
         case "drawer_open":           return "Drawer opened"
         case "manager_override":      return "Manager override"
+        case "receipt_skipped":       return "Receipt skipped"
         default:                      return eventType
         }
     }
@@ -125,6 +126,10 @@ public extension PosAuditEntry {
         /// period outside a refund). The `managerId` field is always non-nil
         /// for this event. `context` keys: `policy` (string), `overrideDetail`.
         public static let managerOverride        = "manager_override"
+        /// §39.5 — Cashier dismissed the post-sale receipt prompt without
+        /// printing or sending the receipt. Surfaced by `MissingReceiptCounter`
+        /// in the Z-report and end-of-shift summary.
+        public static let receiptSkipped         = "receipt_skipped"
     }
 }
 
