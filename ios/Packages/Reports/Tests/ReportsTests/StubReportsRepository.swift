@@ -63,6 +63,8 @@ actor StubReportsRepository: ReportsRepository {
     private(set) var revenueLastFrom: String?
     private(set) var scheduledDeletedIds: [Int64] = []
     private(set) var emailCallCount = 0
+    private(set) var inventoryReportCallCount = 0
+    private(set) var ticketsByStatusCallCount = 0
 
     // MARK: - Protocol conformance
 
@@ -81,7 +83,8 @@ actor StubReportsRepository: ReportsRepository {
     }
 
     func getTicketsByStatus(from: String, to: String) async throws -> [TicketStatusPoint] {
-        try ticketsResult.get()
+        ticketsByStatusCallCount += 1
+        return try ticketsResult.get()
     }
 
     func getTicketsReport(from: String, to: String) async throws -> TicketsReportResponse {
@@ -97,7 +100,8 @@ actor StubReportsRepository: ReportsRepository {
     }
 
     func getInventoryReport(from: String, to: String) async throws -> InventoryReport {
-        try inventoryReportResult.get()
+        inventoryReportCallCount += 1
+        return try inventoryReportResult.get()
     }
 
     func getInventoryTurnover(from: String, to: String) async throws -> [InventoryTurnoverRow] {
