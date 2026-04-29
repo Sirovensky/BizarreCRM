@@ -39,7 +39,7 @@ public struct InventoryMovementCard: View {
     private var phoneBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            alertRow
+            alertRow   // canonical stock-alert location (phone)
             movementChart
                 .frame(height: max(160, Double(topItems.count) * 28))
                 .chartXAxisLabel("Units Used (30d)", alignment: .center)
@@ -54,9 +54,10 @@ public struct InventoryMovementCard: View {
 
     private var ipadBody: some View {
         HStack(alignment: .top, spacing: BrandSpacing.md) {
-            // Left: movement bar chart
+            // Left: movement bar chart (canonical stock-alert location on iPad)
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                 cardHeader
+                alertRow   // shown once — left column only; omitted from right
                 movementChart
                     .frame(height: max(200, Double(topItems.count) * 28))
                     .chartXAxisLabel("Units Used (30d)", alignment: .center)
@@ -64,13 +65,12 @@ public struct InventoryMovementCard: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Right: value summary table
+            // Right: value summary table — no duplicate alert pill here
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                 Text("Stock Value")
                     .font(.brandTitleSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .accessibilityAddTraits(.isHeader)
-                alertRow
                 if let r = report {
                     valueSummaryTable(r.valueSummary)
                 }
@@ -93,6 +93,8 @@ public struct InventoryMovementCard: View {
             Text("Inventory Movement")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
             Spacer()
             Text("Top 10 · 30d")
                 .font(.brandLabelSmall())
