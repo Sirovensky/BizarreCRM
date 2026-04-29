@@ -268,6 +268,8 @@ public struct SupplierPanelCard: View {
         public let reorderSKU: String?
         public let leadTimeDays: Int?
         public let supplierId: Int64?
+        /// §6 Vendor website URL — displayed with a copy-to-clipboard button.
+        public let websiteURL: String?
     }
 
     public init(item: InventoryItemDetail, api: APIClient?) {
@@ -375,6 +377,10 @@ public struct SupplierPanelCard: View {
                     .accessibilityLabel("Call supplier: \(phone)")
             }
         }
+        // §6 Vendor-link copy — copy supplier website URL to clipboard
+        if let urlStr = d.websiteURL, !urlStr.isEmpty {
+            VendorLinkRow(urlString: urlStr)
+        }
         if let cost = d.lastCostCents {
             KeyValRow(key: "Last cost", value: formatMoney(cost))
         }
@@ -401,7 +407,8 @@ public struct SupplierPanelCard: View {
                 lastCostCents: d.lastCostCents,
                 reorderSKU: d.reorderSku,
                 leadTimeDays: d.leadTimeDays,
-                supplierId: d.supplierId
+                supplierId: d.supplierId,
+                websiteURL: d.websiteURL
             )
             // §6.9/§58 Load vendor analytics in background for degradation banner.
             if let sid = d.supplierId {
@@ -663,6 +670,186 @@ private struct KeyValRow: View {
     }
 }
 
+// MARK: - §6 Vendor-link copy helper
+
+/// Displays a vendor website URL with a copy-to-clipboard button.
+/// Tapping "Copy" writes the URL string to `UIPasteboard.general` and shows a brief ✓ badge.
+private struct VendorLinkRow: View {
+    let urlString: String
+    @State private var copied = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: BrandSpacing.sm) {
+            Image(systemName: "link")
+                .font(.system(size: 14))
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .accessibilityHidden(true)
+            Text(urlString)
+                .font(.brandBodyMedium())
+                .foregroundStyle(.bizarreOrange)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: BrandSpacing.xs)
+            Button {
+                UIPasteboard.general.string = urlString
+                withAnimation(.easeOut(duration: 0.15)) { copied = true }
+                Task {
+                    try? await Task.sleep(nanoseconds: 1_800_000_000)
+                    await MainActor.run {
+                        withAnimation { copied = false }
+                    }
+                }
+            } label: {
+                Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(copied ? .bizarreSuccess : .bizarreOrange)
+            }
+            .accessibilityLabel(copied ? "Link copied to clipboard" : "Copy vendor link to clipboard")
+            .accessibilityIdentifier("inventory.supplier.copyLink")
+        }
+    }
+}
+
+// MARK: - §6 Stock-Count History Chart
+
+/// `BarMark` chart of on-hand stock quantity over time (last 90 days).
+/// Data sourced from `GET /api/v1/inventory/:id/stock-history`.
+/// Gracefully falls back to a "no history" empty state when data is unavailable.
+public struct StockCountHistoryCard: View {
+    let itemId: Int64
+    let api: APIClient?
+
+    @State private var history: [StockCountPoint] = []
+    @State private var isLoading = false
+
+    public struct StockCountPoint: Identifiable, Sendable {
+        public let id = UUID()
+        public let date: Date
+        public let quantity: Int
+    }
+
+    public init(itemId: Int64, api: APIClient?) {
+        self.itemId = itemId
+        self.api = api
+    }
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Stock Count History")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            Text("Last 90 days")
+                .font(.brandLabelSmall())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+
+            if isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .accessibilityLabel("Loading stock count history")
+            } else if history.isEmpty {
+                HStack(spacing: BrandSpacing.sm) {
+                    Image(systemName: "chart.bar.xaxis")
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("No stock count history available yet.")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
+                .accessibilityLabel("No stock count history available")
+            } else {
+                Chart(history) { pt in
+                    LineMark(
+                        x: .value("Date", pt.date),
+                        y: .value("Qty", pt.quantity)
+                    )
+                    .foregroundStyle(Color.bizarreOrange)
+                    .lineStyle(StrokeStyle(lineWidth: 2))
+                    AreaMark(
+                        x: .value("Date", pt.date),
+                        y: .value("Qty", pt.quantity)
+                    )
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.bizarreOrange.opacity(0.4), Color.bizarreOrange.opacity(0.02)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+                .chartXAxis {
+                    AxisMarks(values: .stride(by: .day, count: 30)) { _ in
+                        AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                            .font(.brandLabelSmall())
+                        AxisGridLine()
+                    }
+                }
+                .chartYAxis {
+                    AxisMarks { val in
+                        AxisValueLabel {
+                            if let i = val.as(Int.self) {
+                                Text("\(i)").font(.brandLabelSmall())
+                            }
+                        }
+                        AxisGridLine()
+                    }
+                }
+                .frame(height: 110)
+                .accessibilityChartDescriptor(self)
+            }
+        }
+        .cardBackground()
+        .task { await loadHistory() }
+    }
+
+    @MainActor
+    private func loadHistory() async {
+        guard let api else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let resp = try await api.inventoryStockHistory(id: itemId, days: 90)
+            history = resp.map { StockCountPoint(date: $0.date, quantity: $0.quantity) }
+        } catch {
+            AppLog.ui.info("Stock history not available for item \(itemId): \(error.localizedDescription, privacy: .public)")
+            history = []
+        }
+    }
+}
+
+extension StockCountHistoryCard: AXChartDescriptorRepresentable {
+    public func makeChartDescriptor() -> AXChartDescriptor {
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Date",
+            categoryOrder: history.map { ISO8601DateFormatter().string(from: $0.date) }
+        )
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Quantity on hand",
+            range: 0...Double(history.map(\.quantity).max() ?? 1),
+            gridlinePositions: []
+        ) { "\($0, specifier: "%.0f") units" }
+        let series = AXDataSeriesDescriptor(
+            name: "Stock count",
+            isContinuous: true,
+            dataPoints: history.map {
+                AXDataPoint(
+                    x: ISO8601DateFormatter().string(from: $0.date),
+                    y: Double($0.quantity),
+                    label: "\($0.quantity) units"
+                )
+            }
+        )
+        return AXChartDescriptor(
+            title: "Stock count history — last 90 days",
+            summary: "Line chart of on-hand quantity over time",
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
+    }
+}
+
 // MARK: - APIClient extensions for new endpoints
 
 // These endpoints may not be live on the server yet — all calls gracefully
@@ -702,6 +889,8 @@ public struct InventorySupplierDetailResponse: Decodable, Sendable {
     public let leadTimeDays: Int?
     /// §6.9/§58 Supplier ID — used to fetch analytics for vendor degradation banner.
     public let supplierId: Int64?
+    /// §6 Vendor website URL — shown with copy-to-clipboard button in SupplierPanelCard.
+    public let websiteURL: String?
 
     enum CodingKeys: String, CodingKey {
         case name
@@ -711,6 +900,7 @@ public struct InventorySupplierDetailResponse: Decodable, Sendable {
         case reorderSku    = "reorder_sku"
         case leadTimeDays  = "lead_time_days"
         case supplierId    = "supplier_id"
+        case websiteURL    = "website_url"
     }
 }
 
@@ -759,6 +949,25 @@ public extension APIClient {
     func updateInventoryBinLocation(id: Int64, binLocation: String) async throws {
         let body = InventoryBinLocationRequest(binLocation: binLocation)
         _ = try await patch("/api/v1/inventory/\(id)", body: body, as: EmptyBody.self)
+    }
+
+    // MARK: §6 — Stock-count history
+    func inventoryStockHistory(id: Int64, days: Int) async throws -> [InventoryStockHistoryPoint] {
+        try await get(
+            "/api/v1/inventory/\(id)/stock-history",
+            query: [URLQueryItem(name: "days", value: "\(days)")],
+            as: [InventoryStockHistoryPoint].self
+        )
+    }
+}
+
+public struct InventoryStockHistoryPoint: Decodable, Sendable {
+    public let date: Date
+    public let quantity: Int
+
+    enum CodingKeys: String, CodingKey {
+        case date
+        case quantity
     }
 }
 

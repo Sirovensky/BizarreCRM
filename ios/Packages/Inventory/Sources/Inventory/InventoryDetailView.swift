@@ -59,9 +59,9 @@ public struct InventoryDetailView: View {
                 )
             }
         }
-        // §6.2 Deactivate confirm
+        // §6 Deactivate confirm — includes item name so staff know which item they are acting on.
         .confirmationDialog(
-            "Deactivate item?",
+            "Deactivate \"\(navTitle)\"?",
             isPresented: $showingDeactivateConfirm,
             titleVisibility: .visible
         ) {
@@ -70,7 +70,7 @@ public struct InventoryDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The item will be hidden from POS but history is preserved.")
+            Text("\"\(navTitle)\" will be hidden from POS and sales. All stock movements and history are preserved and the item can be reactivated from the server.")
         }
         // §6.2 Delete confirm
         .confirmationDialog(
@@ -281,6 +281,8 @@ public struct InventoryDetailView: View {
                             showingMovementHistory = true
                         }
                     }
+                    // §6 Stock-count history chart — on-hand qty over last 90 days
+                    StockCountHistoryCard(itemId: resp.item.id, api: api)
                     // §6.2 Price history chart — retail vs cost over time
                     PriceHistoryCard(itemId: resp.item.id, api: api)
                     // §6.2 Sales history — last 30d qty + revenue
@@ -344,6 +346,16 @@ private struct DetailsCard: View {
             }
             if let supplier = item.supplierName, !supplier.isEmpty {
                 KeyVal(key: "Supplier", value: supplier)
+            }
+            // §6 Location-name display — shows the store/warehouse location for multi-location tenants.
+            if let location = item.locationName, !location.isEmpty {
+                HStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: "mappin.and.ellipse")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    KeyVal(key: "Location", value: location)
+                }
             }
         }
         .cardBackground()
@@ -625,13 +637,36 @@ private struct ItemPhotosCard: View {
         .cardBackground()
     }
 
+    // §6 Item-photo placeholder — icon adapts to item type so it doesn't look empty.
     private var placeholderPhoto: some View {
-        HStack(spacing: BrandSpacing.sm) {
-            Image(systemName: "photo.on.rectangle").font(.system(size: 24)).foregroundStyle(.bizarreOnSurfaceMuted).accessibilityHidden(true)
-            Text("No photo yet").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+        VStack(spacing: BrandSpacing.xs) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.bizarreOnSurface.opacity(0.06))
+                    .frame(maxWidth: .infinity, minHeight: 90)
+                VStack(spacing: BrandSpacing.xs) {
+                    Image(systemName: placeholderIconName)
+                        .font(.system(size: 36, weight: .ultraLight))
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .accessibilityHidden(true)
+                    Text("No photo yet")
+                        .font(.brandLabelLarge())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                }
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 60, alignment: .leading)
         .accessibilityLabel("No photo uploaded yet")
+    }
+
+    /// Returns a type-appropriate SF Symbol based on the item's `itemType`.
+    private var placeholderIconName: String {
+        switch item.itemType?.lowercased() {
+        case "part":       return "gearshape"
+        case "service":    return "wrench.and.screwdriver"
+        case "product":    return "shippingbox"
+        case "device":     return "iphone"
+        default:           return "photo.on.rectangle.angled"
+        }
     }
 
     private var resolvedImageURL: URL? {
