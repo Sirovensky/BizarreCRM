@@ -8120,3 +8120,185 @@ Cross-agent dependency notes. Append by agent. Orchestrator routes each entry to
 - **[Agent 6 → Agent 1]** §7.7 dunning sequences (card declined → retry schedule → smart retry → escalation → self-service Apple Pay): §40 scope, HIGH RISK recurring cron + payment math. STOP for Agent 6. Agent 1 owns §40. (2026-04-26, b10)
 - **[Agent 6 → server]** §7.7 late-fee customer communications (reminder SMS/email 1-3d before fee; fee-applied notification with pay link): server-side cron + SMS dispatch. No iOS client code needed; server concern. (2026-04-26, b10)
 - **[Agent 6 → server]** §7.7 jurisdiction limits on late fees: server must enforce legal cap by tenant region; iOS can warn in UI once server exposes a `jurisdictionMaxFeeCents` field on tenant config. No iOS code until server provides field. (2026-04-26, b10)
+
+---
+
+## §91. Bug-hunt audit — iPad screenshots 2026-04-28
+
+> **Source.** Pavel Ivanov's iPad install at 22:18 local; 7 screenshots covering SMS landing + Reports / Sales / Tickets / Inventory / Insights tabs. The intent of this section is exhaustive — list every observed defect, however minor, so subsequent batches can pick atomic items. Items here are **observations only**, NOT fixes; don't bundle these into a single sweep PR. Reference the screenshot timestamp where useful.
+
+### 91.1 SMS landing (`2026-04-28 22.18.30`)
+
+- [ ] **Raw Swift decoder error dumped in UI.** `SmsConversationsListView` shows `keyNotFound(CodingKeys(stringValue: "conv_phone", intValue: nil)), Swift.DecodingError.Context(codingPath: [...] debugDescription: "No value associated with key CodingKeys(stringValue: \"conv_phone\"...")`. Cashier-hostile. Surface a friendly "We couldn't load conversations · check connection" error and collapse the technical payload behind a `Show details` disclosure.
+- [ ] **Server DTO mismatch — missing `conv_phone` key.** The conversations endpoint returns rows without `conv_phone`; client decoder requires it. Either change `SmsConversationDTO.conv_phone` to `String?` with `decodeIfPresent`, or fix the server payload. Document which side moves.
+- [ ] **`Try again` button is small + cream pill.** Should be the brand prominent CTA at primary tap-target size (≥44pt) and announce the retry attempt to VoiceOver.
+- [ ] **No retry countdown / next-attempt hint.** When connection is poor, surface "Retrying in Ns…" with a cancel option.
+- [ ] **No offline-mode hint despite "Never synced" pill.** Pill conveys state but doesn't say *when* the last attempt happened or what is pending. Show a timestamp or `Never · tap to sync now`.
+- [ ] **No way to compose a new SMS thread from this empty state.** "Pick a thread on the left or start a new one" — but no `+ New conversation` button on either pane.
+- [ ] **Sidebar toggle + chat icon clutter.** Top-right of left pane has a chat-bubble icon with a `0` notification dot whose meaning is opaque, plus a separate sidebar-collapse glyph. Either combine semantic meaning into one icon or label both.
+- [ ] **`SMS` title cramps top-left of detail area.** Title fights the topbar chrome; promote to the topbar slot or add proper hero chrome with subtitle.
+- [ ] **Search field absent on SMS landing despite present elsewhere.** Other screens have a global search affordance; SMS should as well — search by phone / customer / message body.
+- [ ] **No filter chips (All / Unread / Templates / Archived).** SMS list lacks segmentation; cashier with hundreds of threads has no triage.
+- [ ] **No customer-pick affordance on left when starting new SMS.** New-message UX absent altogether.
+- [ ] **No divider between SMS list pane and detail pane.** Both panes share a black background; visual depth lost.
+- [ ] **Empty state right pane is icon-only.** "Select a conversation" is correct copy but the icon is a generic chat bubble — match the SMS empty-state hero treatment used elsewhere.
+- [ ] **Error block centered horizontally only in left pane.** The error message has no glass card or border — it floats. Wrap in a `bizarreSurface1` card with clear edges.
+- [ ] **No analytics / error-reporting hook on this decoder failure.** `SmsConversationsRepository` should record the decode failure to the §32 telemetry pipeline so we know how often customers hit it.
+
+### 91.2 Reports — Sales tab (`2026-04-28 22.18.32`)
+
+- [ ] **Reports topbar lacks consistent title chrome.** Other screens centre title in the 60pt topbar; Reports puts a giant body-level "Reports" header instead. Pick one pattern (recommend topbar slot) so the cashier's eye doesn't relearn the layout each tab.
+- [ ] **`Just now` sync chip + ⇄ + ⋯ cluster overlaps body when scrolled.** As the user scrolls, the chip stays pinned but renders ON TOP of revenue card content (visible in 22.18.39 / 22.18.41). Either pin behind a glass topbar or scroll with content.
+- [ ] **Period segmented control low-contrast selection.** `30D` selected pill is the same near-grey as unselected `90D` — only a tiny shade difference. Use the cream-orange brand selection treatment.
+- [ ] **Day/Week/Month sub-segment same low-contrast issue.** "Day" selected; visually indistinguishable from peers.
+- [ ] **Revenue card sparkline tiny + no axis labels.** A small inline chart with no scale is decorative-only; either drop or label.
+- [ ] **`↗ 0.0%` shown on zero-change.** A 0.0% delta should not render the up-arrow + green colour; show a flat dash or `–`.
+- [ ] **Period Summary card content broken.** Four columns: dollar-icon "$0…" truncated to two characters, page-icon "0", people-icon "0", dollar "$0". Missing labels (Sales / Tickets / Customers / Avg). Tile too narrow; either wider tile or vertical stack.
+- [ ] **Period Summary `$0…` truncated.** First-column value appears clipped (`$0…R`). Either widen the column or use compact currency formatting.
+- [ ] **Revenue card duplicates Trend + By Period charts side-by-side.** Two near-identical bar charts render in one card — confusing for non-analyst cashier. Pick one or make the second a tab.
+- [ ] **Bar chart Y-axis values `0.0 / 0.5 / 1.0 / 1.5` without unit.** Add `$K` unit suffix or a clearer axis label.
+- [ ] **Bar chart bars too thin to read.** ~1px line of vertical bars; cashier can't tell good days from bad.
+- [ ] **KPIs block: `Peak: $1,320.93 2026-04-27`.** Date hangs as suffix; insert a label `on 2026-04-27` or move date below value.
+- [ ] **Revenue by Method shows "No payment data for this period" while Revenue card shows $15,758.14.** Contradictory — if there's revenue, payments must exist. Either source-of-truth mismatch or zero-payments-with-revenue (e.g., manual receipts) needs an explanation footnote.
+- [ ] **Cohort Revenue Retention card cut off at bottom.** Visible only as title + half a chevron-icon. Add a scroll affordance or collapse the empty version.
+- [ ] **Revenue chart pagination icons unclear.** ◀ ⊝ ⊕ ▶ at bottom — what's the pinch-zoom for? Either label or remove.
+- [ ] **`Custom` period button is plain text vs pill.** Visually inconsistent with `7D / 30D / 90D` pills.
+- [ ] **Expenses & Margin card uses brand cream for `$0.00` but plain text for `Revenue` label.** Typography hierarchy backwards — labels should be muted, values cream.
+- [ ] **`30D` and `90D` segments have the same width as `Custom`.** Hard-coded equal widths waste space; weight by typical use.
+
+### 91.3 Reports — Tickets tab (`2026-04-28 22.18.34`)
+
+- [ ] **`Tickets by Status` chart text overlays bars.** Status labels (`Created`, `Repaired & Collected`, `Waiting for Inspection`, `Waiting for Parts`, `Parts arrived, need the device — SMS`, etc.) render directly on top of the colored bars. Move labels to the left axis or above the bar.
+- [ ] **`Tickets by Status` X-axis numbers (`0  10  20`) overlap status names too.** Whole chart renders on top of itself.
+- [ ] **All bars same teal color.** Web client has color-coded statuses; iPad doesn't honour the tenant status color (server returns a hex per status).
+- [ ] **`Avg Ticket Value $0.00 ↗ 0.0%` with green pill.** Same zero-vs-trend problem as Sales tab.
+- [ ] **`Avg Ticket Value` subtitle `vs $0.00 prior period`.** Comparing zero to zero is non-actionable; hide row or replace with `Not enough data`.
+- [ ] **`Tickets by Technician` shows only `Admin · 0`.** With one technician and zero tickets, the entire bar chart should be a "Not enough data" empty state, not a chart with a 0-length bar.
+- [ ] **`Tap a bar to view technician details` hint shows even when there are no bars.** Suppress until there is data.
+- [ ] **`SLA Breaches` card has 2 anonymous grey horizontal bars.** Skeleton-loading visual? Or empty data? No header, no count, no zero-state copy.
+- [ ] **Revenue card on Tickets tab still says "Revenue" + sales total.** Should reflect ticket revenue (or hide on this tab).
+- [ ] **Revenue sparkline: 4 points only at 7D × Day.** Too few to be meaningful — cashier can't read direction.
+- [ ] **Tab icons (Sales/Tickets/Employees/Inventory/Tax/Insights) all teal monochrome.** No active-tab color treatment beyond pill background.
+- [ ] **Tab pill background contrast still poor (same issue as Sales).** Selected tab `Tickets` cream-yellow; unselected tabs same near-grey.
+
+### 91.4 Reports — Inventory tab (`2026-04-28 22.18.39` + `22.18.36`)
+
+- [ ] **Topbar bleeds into scrolled content.** When the user scrolls, content slides under the topbar — period selectors, tab chips, sync pill all visible faintly. Apply a glass / opaque mask to the topbar or move topbar to the scroll content top.
+- [ ] **Inventory Stock Health: `255 Out of Stock` + `0 Low Stock`.** With 255 OOS, Low Stock should also be elevated unless OOS dominates entirely. Verify data source — possibly an inventory-sync bug producing inflated OOS counts.
+- [ ] **`Inventory Value $0 Cost / $0 Retail / 0% Markup` while 255 items exist.** Math impossible — items cannot be valueless. Either the API doesn't include cost/retail in the OOS branch, or the iOS reduce step is broken.
+- [ ] **`Retail Value ($K)` chart has only `$0` on Y-axis, no bars.** Empty chart shouldn't render.
+- [ ] **Inventory Movement card title wraps oddly: `No / Move- / ment / Data`.** Word-break breaks readability. Use no-break or a single line.
+- [ ] **Inventory Movement sub-card has secondary header `Stock Value`.** Two cards collapsed into one; layout broken. Split or rename.
+- [ ] **`255 Out of stock` pill in Stock Value sub-card** repeats the headline KPI from Stock Health card — duplicate data, two places.
+- [ ] **Inventory Turnover card shows "No Inventory Data" empty state on the same data set.** Three cards all derive from the same inventory feed yet two say zero data and one says 255 OOS — internal inconsistency.
+- [ ] **`Inventory Shrinkage Trend` card has `Period Summary` inside it.** Period Summary appears in *two* tabs (Sales + Inventory) with different shapes — the labels don't match.
+- [ ] **`No shrinkage…` ellipsis copy.** Should be `No shrinkage events in this period` or hide entirely if zero.
+- [ ] **Cards different heights break grid alignment.** `Inventory Stock Health` is short; `Inventory Movement` tall. 3-col grid looks ragged on landscape iPad.
+- [ ] **Revenue card on Inventory tab shows Sales revenue.** Inventory tab should show inventory-related KPIs (stock value, turnover days, shrinkage cost) — not revenue.
+- [ ] **Revenue sparkline shape changes between tabs.** Same `Revenue` card on Sales vs Inventory shows wildly different spike patterns; cashier reads them as inventory data when they're not.
+
+### 91.5 Reports — Insights tab (`2026-04-28 22.18.41` + `22.18.48`)
+
+- [ ] **CSAT card body is just a loading spinner ✶ with no `Loading…` label.** Spinner alone provides no waiting feedback; add label and expected wait.
+- [ ] **CSAT card uses 70% whitespace for a 20% icon.** Resize empty state.
+- [ ] **NPS card: `Score: 0` + dial pointing to 0 + `Promoters 0% / Passives 100% / Detractors 0%`.** Math contradiction — passives at 100% with zero respondents possible only if the calculation treats no responses as passive. Suppress the score until N≥10 responses; show "Not enough data".
+- [ ] **NPS card chevron `›` on right with no destination.** Tapping should go to a detailed NPS view; verify the navigation handler exists.
+- [ ] **`Warranty Claims Trend` card empty body.** Just title + subtitle; no chart, no metric. Either render a sparkline or hide.
+- [ ] **`Device Models Repaired` list shows 8 rows but no counts.** What's the metric — frequency? Currency? Just a list adds no analytic value. Add a count + bar.
+- [ ] **Mixed model+service strings in `Device Models Repaired`** — `iPhone 15 Pro Max - LCD Replacement`, `Other Repair - Other Labor / Repair`. Should split by model, separate column for top service.
+- [ ] **`Device Models Repaired` list ordering not by frequency.** Looks alphabet-ish; cashiers need top-N by volume.
+- [ ] **`Parts Usage Analysis` empty state has no icon.** Other empty cards have a glyph; this one is text only.
+- [ ] **`Stalled & Overdue Tickets`: 0/0/0.0 D in green.** Green colour for `0 stalled` makes sense (good news) but `0 overdue` and `0.0 D avg stall` colored neutrally — inconsistent. Pick one.
+- [ ] **`Customer Acquisition & Churn`: +0 new / -0 churned / 0 returning.** Three zeros each in different colors (green / orange / yellow). Visual noise; either grey out all when zero or remove arrows.
+- [ ] **`Net: +0 customers · 0.0% churn rate` row redundant with the three-column block above.** Same data restated in different units.
+- [ ] **`Revenue & Margin by Category` empty.** Either hide on no-data or render a placeholder bar chart.
+- [ ] **`Conversion Funnel` shows three blank horizontal bars.** Skeleton-loading or empty data — UI doesn't say. If empty, label the funnel stages (Lead → Quoted → Won) so the cashier sees the shape even at zero.
+- [ ] **Insights tab is heavy with empty cards.** Aggregate empty-state: when ≥80% of cards have no data, render a single `Insights need more activity to populate · come back after your first 10 sales` card and hide the empties.
+- [ ] **`Repeat Customer Rate` shows `0.0% repeat rate` + `0 D avg return time`.** If zero customers repeated, "0 D avg return time" is undefined — show `—` instead of `0`.
+- [ ] **`Labor Utilization by Tech` empty state has no header indicator.** Add the wrench glyph and a clearer "No labor data" state.
+- [ ] **`Avg Ticket Value Trend` empty state lacks trend chart placeholder.** Skeleton bars or sparkline outline would communicate intent better.
+
+### 91.6 Reports — global (across all tabs)
+
+- [ ] **No `Export` / `Share` affordance** despite ⋯ overflow. Reports CSV/PDF export missing on iPad.
+- [ ] **`Custom` button has no visible flow** — tapping opens what? Date-range picker not surfaced.
+- [ ] **No comparison-period toggle.** Can't compare current 30D to prior 30D.
+- [ ] **Sync chip `Just now` overlaps body when scrolled** (same as Inventory observation, applies to every tab).
+- [ ] **Tab strip (Sales/Tickets/Employees/Inventory/Tax/Insights) icons monochrome** — switch to colored glyphs to match the brand or drop icons entirely.
+- [ ] **No empty-state for whole tab.** When everything is zero (e.g., new tenant), show a single tenant-level empty state instead of 12 empty cards.
+- [ ] **No skeleton-vs-empty distinction.** Loading and "no data" both render as blank rows; introduce a shimmer skeleton for the loading phase and a label for the empty phase.
+
+### 91.7 iPad rail (left)
+
+- [ ] **Rail icons unlabeled; discoverability poor.** Add hover/long-press tooltips with text labels (Dashboard, Tickets, Customers, POS, Inventory, SMS, Reports, Settings).
+- [ ] **No section grouping in rail.** Operations / Reports / Settings should be visually grouped with subtle dividers.
+- [ ] **All 8 nav icons same visual weight.** Selected has a pill background but icons themselves look identical — bump the selected icon weight or color.
+- [ ] **Profile circle bottom-left detached.** Floating avatar with a thin divider above; integrate into the rail's bottom group.
+- [ ] **Rail icons not perfectly center-aligned.** Subtle x-offset between icons; verify HStack alignment.
+
+### 91.8 Topbar consistency
+
+- [ ] **Reports has no topbar centered title.** Body-level `Reports` headline + small `Just now` chip in the top-right is the only chrome. Other surfaces (POS, Dashboard) have a centered `principal` title — unify.
+- [ ] **Reports has no Search affordance.** Search across reports / KPIs.
+- [ ] **Sync chip placement varies between surfaces.** Sometimes top-right, sometimes top-trailing toolbar item.
+- [ ] **Topbar sticky behaviour inconsistent.** Reports topbar is not opaque; SMS / POS topbars are. Pick one.
+
+### 91.9 Theme / color
+
+- [ ] **No light-mode verification on this audit.** Re-run in light mode to ensure parity (separate audit task).
+- [ ] **Cream highlight on selected nav looks dim.** The brand cream needs to read as "active" — bump saturation or pair with an outline.
+- [ ] **`Never synced` red/pink pill is the only attention chip with a clear treatment.** Other states (synced, syncing) use small green ticks — promote them to the same pill style for consistency.
+
+### 91.10 Typography
+
+- [ ] **Reports body title `Reports` is 28pt with no descriptor / subtitle.** Dashboard uses `Good afternoon` greeting; Reports could use date range or store name as subtitle.
+- [ ] **KPI numbers vary in font weight.** Some bold, some regular within same card row — verify token usage.
+- [ ] **Axis labels < 12pt.** Charts use 9–10pt labels; below 11pt fails Dynamic Type test.
+- [ ] **`Period Summary` inline values colored cream while labels white.** Reverse — labels should be muted.
+
+### 91.11 Charts
+
+- [ ] **Y-axis labels low contrast** (white-30% on dark — barely legible).
+- [ ] **Chart legends not surfaced** — bar colors vary but no key.
+- [ ] **No empty-state visual for charts.** Empty chart vs empty card both render as blank — introduce a "shape outline" empty state.
+- [ ] **No tap interaction on bars / sparklines.** Tap a bar in `Tickets by Status` does nothing; `Tap a bar to view technician details` hint promises an interaction that isn't wired.
+
+### 91.12 Data integrity / business logic
+
+- [ ] **Revenue same on Sales tab vs Inventory tab.** Different tabs should surface different revenues (sales-revenue vs inventory-cost). Audit the data layer.
+- [ ] **30D revenue $15,758.14 vs 7D revenue $3,661.54 with `Avg Ticket = $0.00`.** Math inconsistent. Either ticket count is zero (then revenue should also be zero) or revenue is double-counted from invoices.
+- [ ] **`SLA Breaches` not labeled when zero.** When zero, hide entire card; don't render anonymous grey bars.
+- [ ] **NPS score with zero respondents shouldn't compute.** Render `Not enough data` until N ≥ 10.
+- [ ] **`Inventory Stock Health 255 OOS` vs `Inventory Value $0` is mathematically contradictory.** Either OOS items have unit cost > 0 (so cost value > 0) or they are valueless (then cost & retail should be hidden, not zeroed).
+
+### 91.13 Accessibility
+
+- [ ] **Many label texts under 12pt** (period units, axis labels, KPI captions).
+- [ ] **Chart color-only encoding** — VoiceOver / Switch Control can't read which color is which status.
+- [ ] **Tap targets on segmented period selectors look < 44pt high.** Verify minHeight 44.
+- [ ] **No accessibility labels on charts.** Charts need a textual summary for VoiceOver.
+- [ ] **Sync chip `Just now` with no `accessibilityLabel`** — VoiceOver reads only "Just now" without context.
+
+### 91.14 SMS engineering follow-up
+
+- [ ] **DTO update.** Make `SmsConversation.conv_phone` optional (`String?`) with `decodeIfPresent`. File: `ios/Packages/Communications/Sources/Communications/Endpoints/...` (locate exact DTO).
+- [ ] **Add `errorMessage` rendering pipeline.** Wrap raw `DecodingError` in a `SmsError.localizedDescription` that returns a user-friendly string while logging the raw error to `AppLog.communications`.
+- [ ] **Telemetry on decode failure.** §32 hook so we can track tenants hitting this.
+- [ ] **Server-side audit.** Check whether `conv_phone` was renamed in a recent server release; align contracts package.
+
+### 91.15 Reports engineering follow-up
+
+- [ ] **Reports DTO audit.** Inspect every chart's source DTO; hide cards when source returns empty arrays instead of rendering "No xxx data" copies.
+- [ ] **Per-tab data scoping.** Tickets tab should fetch ticket-revenue not sales-revenue; Inventory tab should fetch inventory KPIs.
+- [ ] **Chart library audit.** Many charts look hand-rolled; consolidate on Swift Charts with a single `ReportsChartTheme`.
+- [ ] **Topbar masking.** Reports body must not bleed under topbar — either pin topbar in glass with `.scrollEdgeEffectStyle(.hard)` or move title into scroll content.
+- [ ] **`Just now` chip absolute-positioning fix.** Move into `PosRegisterLayout`-style topbar slot so it doesn't render above body content.
+
+### 91.16 Cross-screen polish queue
+
+- [ ] **Define a tenant-zero-state mode.** When tenant has < N transactions in selected period, swap the entire reports surface for a friendly onboarding panel ("Run your first sale to unlock these reports").
+- [ ] **Empty-state hierarchy review.** Audit every empty state: skeleton (loading) vs zero-data vs error vs offline; pick one of four and label it.
+- [ ] **Card-grid alignment.** Use a single shared `ReportsGrid` with consistent row heights and column counts on landscape vs portrait.
+- [ ] **No data → suggested action.** Each empty card should suggest the next step (e.g., "Add inventory items to enable stock health").
+
+
