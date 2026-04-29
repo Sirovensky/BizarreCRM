@@ -46,6 +46,106 @@ public enum Analytics {
         Task { await dispatcher.flush() }
     }
 
+    // MARK: — §32 WebSocket connectivity events
+
+    /// §32 — Record a WebSocket channel connection.
+    ///
+    /// Call this when the push-channel WebSocket handshake completes.
+    ///
+    /// - Parameters:
+    ///   - urlHost: The hostname of the WebSocket server (no path, query, or credentials).
+    ///   - latencyMs: Optional round-trip handshake latency in milliseconds.
+    public static func trackWebSocketConnected(urlHost: String, latencyMs: Int? = nil) {
+        var props: [String: AnalyticsValue] = ["url_host": .string(urlHost)]
+        if let ms = latencyMs { props["latency_ms"] = .int(ms) }
+        track(.webSocketConnected, properties: props)
+    }
+
+    /// §32 — Record a WebSocket channel disconnection.
+    ///
+    /// Call this in the `URLSessionWebSocketTask` delegate when the connection closes.
+    ///
+    /// - Parameters:
+    ///   - code: RFC 6455 close code integer (e.g. `1001` for "going away").
+    ///   - reason: Machine-readable label derived from the close code. Must not contain
+    ///     user data. Derive from a fixed mapping rather than passing the raw server reason.
+    public static func trackWebSocketDisconnected(code: Int? = nil, reason: String? = nil) {
+        var props: [String: AnalyticsValue] = [:]
+        if let c = code   { props["code"]   = .int(c) }
+        if let r = reason { props["reason"] = .string(r) }
+        track(.webSocketDisconnected, properties: props)
+    }
+
+    // MARK: — §32 Deep-link source attribution
+
+    /// §32 — Record that the app was launched or foregrounded via a deep link.
+    ///
+    /// Fire this immediately after resolving the incoming URL/activity before
+    /// navigating the user. `screen` is the destination screen name only — never
+    /// include URL parameters, query strings, or any user-typed text.
+    ///
+    /// - Parameters:
+    ///   - source: How the link arrived. Use one of the canonical labels:
+    ///     `"push_notification"`, `"universal_link"`, `"url_scheme"`, `"spotlight"`,
+    ///     `"widget"`, `"siri_shortcut"`, `"qr_code"`, or `"unknown"`.
+    ///   - screen: PII-free destination screen name, e.g. `"ticket_detail"`. Pass `nil` if
+    ///     the destination cannot be determined without resolving user data.
+    public static func trackDeepLinkAttributed(source: String, screen: String? = nil) {
+        var props: [String: AnalyticsValue] = ["source": .string(source)]
+        if let s = screen { props["screen"] = .string(s) }
+        track(.deepLinkAttributed, properties: props)
+    }
+
+    // MARK: — §32 App-update available event
+
+    /// §32 — Record that an app update was detected as available.
+    ///
+    /// Suitable for wiring to an `SKStoreProductViewController` or any in-app
+    /// update prompt. Only the version strings are transmitted — no user data.
+    ///
+    /// - Parameters:
+    ///   - currentVersion: The CFBundleShortVersionString of the running build.
+    ///   - availableVersion: The version string returned by the App Store or TestFlight.
+    public static func trackAppUpdateAvailable(currentVersion: String, availableVersion: String) {
+        track(.appUpdateAvailable, properties: [
+            "current_version":   .string(currentVersion),
+            "available_version": .string(availableVersion),
+        ])
+    }
+
+    // MARK: — §32 Device health events
+
+    /// §32 — Record that available disk space fell below the low-disk threshold.
+    ///
+    /// Call this when `URLResourceKey.volumeAvailableCapacityForImportantUsageKey` drops
+    /// below your chosen threshold (recommended: 500 MB). No filesystem paths or file
+    /// names should appear in the event.
+    ///
+    /// - Parameters:
+    ///   - freeBytes: Bytes available for important usage (from `URLResourceKey`).
+    ///   - thresholdBytes: The threshold that was crossed, e.g. `524_288_000` for 500 MB.
+    public static func trackLowDiskSpace(freeBytes: Int, thresholdBytes: Int) {
+        track(.lowDiskSpace, properties: [
+            "free_bytes":      .int(freeBytes),
+            "threshold_bytes": .int(thresholdBytes),
+        ])
+    }
+
+    /// §32 — Record that an `NSCache` evicted its contents due to memory pressure.
+    ///
+    /// Wire this to `UIApplication.didReceiveMemoryWarningNotification` in each
+    /// `NSCache`-owning type. `cacheName` must be a developer-defined literal
+    /// (e.g. `"ThumbnailCache"`); never pass user-derived strings.
+    ///
+    /// - Parameters:
+    ///   - cacheName: Developer-defined identifier for the cache, e.g. `"ThumbnailCache"`.
+    ///   - evictedCount: Optional count of objects removed (if tracked by the cache owner).
+    public static func trackNSCacheMemoryPressure(cacheName: String, evictedCount: Int? = nil) {
+        var props: [String: AnalyticsValue] = ["cache_name": .string(cacheName)]
+        if let n = evictedCount { props["evicted_count"] = .int(n) }
+        track(.nsCacheMemoryPressure, properties: props)
+    }
+
     // MARK: — §32 Domain convenience helpers
 
     /// §32 — Record a payment-approved event.

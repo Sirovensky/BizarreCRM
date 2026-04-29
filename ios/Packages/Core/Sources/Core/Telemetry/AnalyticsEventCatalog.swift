@@ -126,6 +126,15 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case supportEmailSent     = "help.support.email.sent"
     case bugReportSubmitted   = "help.bugreport.submitted"
 
+    // MARK: Connectivity
+
+    /// §32 — WebSocket transport connected to the tenant push channel.
+    /// Properties: `url_host` (string — hostname only, no path/query), `latency_ms`? (int).
+    case webSocketConnected   = "ws.connected"
+    /// §32 — WebSocket transport disconnected. Properties: `reason`? (string, machine-readable
+    /// close-code label e.g. `"going_away"`, `"protocol_error"`), `code`? (int — RFC 6455 code).
+    case webSocketDisconnected = "ws.disconnected"
+
     // MARK: SMS / Communications
 
     /// §91.14 — fired when `GET /sms/conversations` response fails JSON decode.
@@ -184,15 +193,38 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case liveActivityEnded    = "live_activity.ended"
     case featureFirstUse      = "feature.first_use"
 
+    // MARK: Deep-link attribution
+
+    /// §32 — App was opened via a deep link. Properties:
+    /// `source` (string — `"push_notification"`, `"universal_link"`, `"url_scheme"`,
+    /// `"spotlight"`, `"widget"`, `"siri_shortcut"`, `"qr_code"`, or `"unknown"`),
+    /// `screen`? (string — destination screen name, PII-free).
+    case deepLinkAttributed   = "deeplink.attributed"
+
+    // MARK: Device health
+
+    /// §32 — App Store / TestFlight signals an app update is available.
+    /// Properties: `current_version` (string), `available_version` (string).
+    case appUpdateAvailable   = "app.update_available"
+
+    /// §32 — Device free-disk-space crossed the low threshold (< 500 MB).
+    /// Properties: `free_bytes` (int), `threshold_bytes` (int).
+    case lowDiskSpace         = "device.low_disk_space"
+
+    /// §32 — `NSCache` received a `UIApplication.didReceiveMemoryWarningNotification` and
+    /// evicted its contents. Properties: `cache_name` (string), `evicted_count`? (int).
+    case nsCacheMemoryPressure = "device.nscache_memory_pressure"
+
     // MARK: — Category mapping
 
     public var category: AnalyticsCategory {
         switch self {
         case .appLaunched, .appBackgrounded, .appForegrounded,
-             .sessionStarted, .sessionEnded:
+             .sessionStarted, .sessionEnded,
+             .appUpdateAvailable:
             return .appLifecycle
 
-        case .screenViewed, .tabSwitched, .deepLinkOpened:
+        case .screenViewed, .tabSwitched, .deepLinkOpened, .deepLinkAttributed:
             return .navigation
 
         case .loginAttempted, .loginSucceeded, .loginFailed,
@@ -217,8 +249,12 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
             return .domain
 
         case .drawerKicked, .receiptPrinted, .barcodeScanned, .printerError,
-             .printerOnline, .printerOffline:
+             .printerOnline, .printerOffline,
+             .lowDiskSpace, .nsCacheMemoryPressure:
             return .hardware
+
+        case .webSocketConnected, .webSocketDisconnected:
+            return .appLifecycle
 
         case .campaignSent, .emailOpened:
             return .marketing

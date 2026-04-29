@@ -40,8 +40,14 @@ public enum AnalyticsRedactor {
         "delta_count", "reason",
         // Entity type
         "entity_type", "resolution",
-        // Hardware
+        // Hardware / device health
         "peripheral_type",
+        "free_bytes", "threshold_bytes",
+        "cache_name", "evicted_count",
+        // WebSocket
+        "url_host", "latency_ms", "code",
+        // App updates
+        "current_version", "available_version",
         // Feature flags
         "flag_key", "enabled", "source",
         // Action taps / mutations
