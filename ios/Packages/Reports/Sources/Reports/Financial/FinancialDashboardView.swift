@@ -12,6 +12,7 @@ public struct FinancialDashboardView: View {
     @State private var showTaxYear: Bool = false
     @State private var showExport: Bool = false
     @State private var exportCSV: String?
+    @State private var balanceSheetCopied: Bool = false   // §59/§15 balance-sheet snapshot copy
     private let api: APIClient
 
     public init(api: APIClient) {
@@ -87,6 +88,21 @@ public struct FinancialDashboardView: View {
                 } label: {
                     Label("Export CSV", systemImage: "square.and.arrow.up")
                 }
+                // §59/§15 balance-sheet snapshot copy
+                Button {
+                    if case .loaded(let data) = vm.loadState {
+                        UIPasteboard.general.string = FinancialExportService.copyBalanceSheet(
+                            data: data, period: vm.period.rawValue
+                        )
+                        balanceSheetCopied = true
+                        Task { try? await Task.sleep(for: .seconds(2)); balanceSheetCopied = false }
+                    }
+                } label: {
+                    Label(
+                        balanceSheetCopied ? "Copied!" : "Copy Balance Sheet",
+                        systemImage: balanceSheetCopied ? "checkmark" : "doc.on.doc"
+                    )
+                }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .accessibilityLabel("More actions")
@@ -127,6 +143,10 @@ public struct FinancialDashboardView: View {
                 // §59.3 30/60/90 day revenue forecast
                 RevenueForecastCard(cashFlow: data.cashFlow)
                 agedReceivablesTile(data.agedReceivables)
+                // §59/§15 expense category drilldown
+                if !data.expenseCategoryRows.isEmpty {
+                    expenseDrilldownTile(data.expenseCategoryRows)
+                }
                 topCustomersTile(data.topCustomers)
                 topSkusTile(data.topSkus)
             }
@@ -154,6 +174,10 @@ public struct FinancialDashboardView: View {
                 RevenueForecastCard(cashFlow: data.cashFlow)
                     .gridCellColumns(2)
                 agedReceivablesTile(data.agedReceivables)
+                // §59/§15 expense category drilldown
+                if !data.expenseCategoryRows.isEmpty {
+                    expenseDrilldownTile(data.expenseCategoryRows)
+                }
                 topCustomersTile(data.topCustomers)
                 topSkusTile(data.topSkus)
             }
@@ -208,6 +232,12 @@ public struct FinancialDashboardView: View {
             }
             .lineLimit(1)
             .minimumScaleFactor(0.75)
+
+            // §59/§15 P&L variance row — shows period-over-period net income delta
+            // when prior-period data is available (server populates priorNetCents).
+            if let v = pnl.variance {
+                pnlVarianceRow(v)
+            }
         }
         .padding(BrandSpacing.lg)
         .background {
@@ -236,6 +266,79 @@ public struct FinancialDashboardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    // §59/§15 P&L variance row
+    private func pnlVarianceRow(_ v: PnLVariance) -> some View {
+        let favorable = v.isFavorable(higherIsBetter: true)
+        let arrow = v.deltaCents >= 0 ? "arrow.up.right" : "arrow.down.right"
+        let color: Color = favorable ? .bizarreSuccess : .bizarreError
+        return HStack(spacing: BrandSpacing.xs) {
+            Image(systemName: arrow)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(color)
+            Text("vs prior period: \(v.deltaCents.financialString)")
+                .font(.brandLabelLarge())
+                .foregroundStyle(color)
+            if let pct = v.deltaPct {
+                Text(String(format: "(%.1f%%)", pct * 100))
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(color.opacity(0.8))
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(favorable ? "Up" : "Down") vs prior period: \(v.deltaCents.financialString)"
+            + (v.deltaPct.map { String(format: ", %.1f%%", $0 * 100) } ?? "")
+        )
+    }
+
+    // §59/§15 Expense category drilldown tile
+    private func expenseDrilldownTile(_ rows: [ExpenseCategoryRow]) -> some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Expenses by Category")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            if rows.isEmpty {
+                Text("No expense data").font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
+            } else {
+                ForEach(rows) { row in
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text(row.category)
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOnSurface)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(row.amountCents.financialString)
+                                .font(.brandTitleMedium())
+                                .monospacedDigit()
+                                .foregroundStyle(.bizarreError)
+                            Text(String(format: "%.0f%%", row.shareOfTotal * 100))
+                                .font(.brandLabelLarge())
+                                .foregroundStyle(.bizarreOnSurfaceMuted)
+                                .frame(minWidth: 36, alignment: .trailing)
+                        }
+                        GeometryReader { geo in
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.bizarreError.opacity(0.25))
+                                .frame(width: geo.size.width, height: 4)
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.bizarreError)
+                                .frame(width: geo.size.width * row.shareOfTotal, height: 4)
+                        }
+                        .frame(height: 4)
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(
+                        "\(row.category): \(row.amountCents.financialString), \(String(format: "%.0f", row.shareOfTotal * 100))% of total expenses"
+                    )
+                }
+            }
+        }
+        .padding(BrandSpacing.md)
+        .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
+    }
+
     // MARK: - Cash Flow tile
 
     private func cashFlowTile(_ points: [CashFlowPoint]) -> some View {
@@ -249,60 +352,33 @@ public struct FinancialDashboardView: View {
                     .foregroundStyle(.bizarreOnSurfaceMuted)
                     .frame(height: 160)
             } else {
+                // §59/§15 cash-flow chart legend — series keyed by name to match the
+                // foreground style scale so the automatic legend renders correctly.
                 Chart {
                     ForEach(points) { point in
                         LineMark(
                             x: .value("Date", point.date),
-                            y: .value("Inflow", Double(point.inflowCents) / 100.0)
+                            y: .value("Amount ($)", Double(point.inflowCents) / 100.0)
                         )
-                        .foregroundStyle(.bizarreSuccess)
+                        .foregroundStyle(by: .value("Series", "Inflow"))
                         LineMark(
                             x: .value("Date", point.date),
-                            y: .value("Outflow", Double(point.outflowCents) / 100.0)
+                            y: .value("Amount ($)", Double(point.outflowCents) / 100.0)
                         )
-                        .foregroundStyle(.bizarreError)
+                        .foregroundStyle(by: .value("Series", "Outflow"))
                     }
                 }
                 .chartForegroundStyleScale([
                     "Inflow": Color.bizarreSuccess,
                     "Outflow": Color.bizarreError
                 ])
+                .chartLegend(.visible)
                 .frame(height: 160)
-                // TODO accessibility chart descriptor wrapper needed
+                .accessibilityChartDescriptor(CashFlowChartDescriptorProvider(points: points))
             }
         }
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private func cashFlowChartDescriptor(_ points: [CashFlowPoint]) -> AXChartDescriptor {
-        let xAxis = AXCategoricalDataAxisDescriptor(
-            title: "Date",
-            categoryOrder: points.map(\.id)
-        )
-        let yAxis = AXNumericDataAxisDescriptor(title: "Amount ($)", range: 0...1, gridlinePositions: []) { _ in "" }
-        let inflows = AXDataSeriesDescriptor(
-            name: "Inflows",
-            isContinuous: true,
-            dataPoints: points.map {
-                AXDataPoint(x: $0.id, y: Double($0.inflowCents) / 100.0)
-            }
-        )
-        let outflows = AXDataSeriesDescriptor(
-            name: "Outflows",
-            isContinuous: true,
-            dataPoints: points.map {
-                AXDataPoint(x: $0.id, y: Double($0.outflowCents) / 100.0)
-            }
-        )
-        return AXChartDescriptor(
-            title: "Cash Flow",
-            summary: "\(points.count) data points",
-            xAxis: xAxis,
-            yAxis: yAxis,
-            additionalAxes: [],
-            series: [inflows, outflows]
-        )
     }
 
     // MARK: - Aged Receivables tile
@@ -312,6 +388,8 @@ public struct FinancialDashboardView: View {
             Text("Aged Receivables")
                 .font(.brandTitleMedium())
                 .foregroundStyle(.bizarreOnSurface)
+            // §59/§15 AR aging bucket totals badge — annotation shows dollar total
+            // (bold) and invoice count (muted) stacked above each bar.
             Chart {
                 ForEach(ar.buckets, id: \.label) { bucket in
                     BarMark(
@@ -319,15 +397,26 @@ public struct FinancialDashboardView: View {
                         y: .value("Amount", Double(bucket.totalCents) / 100.0)
                     )
                     .foregroundStyle(arBucketColor(bucket.label))
-                    .annotation(position: .top) {
-                        Text(bucket.invoiceCount > 0 ? "\(bucket.invoiceCount)" : "")
-                            .font(.brandLabelLarge())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .annotation(position: .top, spacing: 4) {
+                        if bucket.totalCents > 0 {
+                            VStack(spacing: 1) {
+                                Text(bucket.totalCents.financialString)
+                                    .font(.brandLabelLarge())
+                                    .foregroundStyle(.bizarreOnSurface)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                                Text("\(bucket.invoiceCount) inv")
+                                    .font(.system(size: 10, weight: .regular))
+                                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                            }
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(bucket.label) days: \(bucket.totalCents.financialString), \(bucket.invoiceCount) invoice\(bucket.invoiceCount == 1 ? "" : "s")")
+                        }
                     }
                 }
             }
-            .frame(height: 140)
-            // TODO accessibility chart descriptor wrapper needed
+            .frame(height: 160)
+            .accessibilityChartDescriptor(ARAgedChartDescriptorProvider(ar: ar))
             Text("Total outstanding: \(ar.totalCents.financialString)")
                 .font(.brandLabelLarge())
                 .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -343,30 +432,6 @@ public struct FinancialDashboardView: View {
         case "61-90": return .bizarreOrange
         default:      return .bizarreError
         }
-    }
-
-    private func arChartDescriptor(_ ar: AgedReceivablesSnapshot) -> AXChartDescriptor {
-        let xAxis = AXCategoricalDataAxisDescriptor(
-            title: "Age bucket",
-            categoryOrder: ar.buckets.map(\.label)
-        )
-        let yAxis = AXNumericDataAxisDescriptor(title: "Amount ($)", range: 0...1, gridlinePositions: []) { _ in "" }
-        let series = AXDataSeriesDescriptor(
-            name: "Aged Receivables",
-            isContinuous: false,
-            dataPoints: ar.buckets.map {
-                AXDataPoint(x: $0.label, y: Double($0.totalCents) / 100.0,
-                            additionalValues: [.number(Double($0.invoiceCount))])
-            }
-        )
-        return AXChartDescriptor(
-            title: "Aged Receivables",
-            summary: "Total outstanding \(ar.totalCents.financialString)",
-            xAxis: xAxis,
-            yAxis: yAxis,
-            additionalAxes: [],
-            series: [series]
-        )
     }
 
     // MARK: - Top Customers tile
@@ -394,12 +459,6 @@ public struct FinancialDashboardView: View {
         }
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    // TODO: restore AXChartDescriptor wrapping once AXChartDescriptorRepresentable
-    //       wrapper type added. For now, Chart uses accessibilityLabel fallback.
-    private func topCustomersDescriptor(_ customers: [TopCustomer]) -> String {
-        "Top customers chart, \(customers.count) entries"
     }
 
     // MARK: - Top SKUs tile
@@ -494,6 +553,70 @@ extension Int {
         formatter.numberStyle = .currency
         formatter.currencyCode = "USD"
         return formatter.string(from: NSNumber(value: Double(self) / 100.0)) ?? "$0.00"
+    }
+}
+
+// MARK: - §59/§15 AXChartDescriptorRepresentable providers
+
+/// Accessibility chart descriptor for the cash-flow line chart.
+private struct CashFlowChartDescriptorProvider: AXChartDescriptorRepresentable {
+    let points: [CashFlowPoint]
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Date",
+            categoryOrder: points.map(\.id)
+        )
+        let range = 0.0...max(1.0,
+            Double(points.map { max($0.inflowCents, $0.outflowCents) }.max() ?? 1) / 100.0
+        )
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Amount ($)", range: range, gridlinePositions: []
+        ) { v in String(format: "$%.0f", v) }
+        let inflows = AXDataSeriesDescriptor(
+            name: "Inflows", isContinuous: true,
+            dataPoints: points.map { AXDataPoint(x: $0.id, y: Double($0.inflowCents) / 100.0) }
+        )
+        let outflows = AXDataSeriesDescriptor(
+            name: "Outflows", isContinuous: true,
+            dataPoints: points.map { AXDataPoint(x: $0.id, y: Double($0.outflowCents) / 100.0) }
+        )
+        return AXChartDescriptor(
+            title: "Cash Flow",
+            summary: "\(points.count) period\(points.count == 1 ? "" : "s"); Inflow vs Outflow",
+            xAxis: xAxis, yAxis: yAxis, additionalAxes: [], series: [inflows, outflows]
+        )
+    }
+}
+
+/// Accessibility chart descriptor for the aged receivables bar chart.
+private struct ARAgedChartDescriptorProvider: AXChartDescriptorRepresentable {
+    let ar: AgedReceivablesSnapshot
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Age bucket (days)",
+            categoryOrder: ar.buckets.map(\.label)
+        )
+        let maxVal = Double(ar.buckets.map(\.totalCents).max() ?? 1) / 100.0
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Amount ($)", range: 0...max(1, maxVal), gridlinePositions: []
+        ) { v in String(format: "$%.0f", v) }
+        let series = AXDataSeriesDescriptor(
+            name: "Aged Receivables", isContinuous: false,
+            dataPoints: ar.buckets.map {
+                AXDataPoint(
+                    x: $0.label,
+                    y: Double($0.totalCents) / 100.0,
+                    additionalValues: [.number(Double($0.invoiceCount))]
+                )
+            }
+        )
+        return AXChartDescriptor(
+            title: "Aged Receivables",
+            summary: "Total outstanding \(ar.totalCents) cents across \(ar.buckets.count) buckets",
+            xAxis: xAxis, yAxis: yAxis, additionalAxes: [], series: [series]
+        )
     }
 }
 #endif

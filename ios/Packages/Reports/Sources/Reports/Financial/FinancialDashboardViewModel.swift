@@ -88,14 +88,16 @@ public final class FinancialDashboardViewModel {
         let to   = Self.dateFormatter.string(from: range.to)
 
         do {
-            async let pnlTask    = api.getFinancePnL(from: from, to: to)
-            async let flowTask   = api.getFinanceCashFlow(from: from, to: to)
-            async let agingTask  = api.getFinanceAging()
-            async let custTask   = api.getFinanceTopCustomers(from: from, to: to)
-            async let skuTask    = api.getFinanceTopSkus(from: from, to: to)
+            async let pnlTask      = api.getFinancePnL(from: from, to: to)
+            async let flowTask     = api.getFinanceCashFlow(from: from, to: to)
+            async let agingTask    = api.getFinanceAging()
+            async let custTask     = api.getFinanceTopCustomers(from: from, to: to)
+            async let skuTask      = api.getFinanceTopSkus(from: from, to: to)
+            // §59/§15 expense category drilldown
+            async let expCatTask   = api.getFinanceExpensesByCategory(from: from, to: to)
 
-            let (pnlResp, flowResp, agingResp, custResp, skuResp) =
-                try await (pnlTask, flowTask, agingTask, custTask, skuTask)
+            let (pnlResp, flowResp, agingResp, custResp, skuResp, expCatResp) =
+                try await (pnlTask, flowTask, agingTask, custTask, skuTask, expCatTask)
 
             let pnl = PnLSnapshot(
                 revenueCents: pnlResp.revenueCents,
@@ -129,12 +131,18 @@ public final class FinancialDashboardViewModel {
                                marginCents: $0.marginCents, marginPct: $0.marginPct)
             }
 
+            // §59/§15 expense category drilldown — map server response to domain rows
+            let expenseRows = PnLSnapshot.expenseCategoryRows(
+                from: expCatResp.map { (category: $0.category, amountCents: $0.amountCents) }
+            )
+
             loadState = .loaded(FinancialDashboardData(
                 pnl: pnl,
                 cashFlow: cashFlow,
                 agedReceivables: aging,
                 topCustomers: topCustomers,
-                topSkus: topSkus
+                topSkus: topSkus,
+                expenseCategoryRows: expenseRows
             ))
         } catch {
             AppLog.ui.error("FinancialDashboard load failed: \(error.localizedDescription, privacy: .public)")

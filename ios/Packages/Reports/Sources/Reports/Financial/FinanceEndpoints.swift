@@ -71,6 +71,19 @@ public struct FinanceTopSku: Decodable, Sendable {
     }
 }
 
+// §59/§15 expense category drilldown — server response model
+public struct FinanceExpenseCategory: Decodable, Sendable {
+    public let category: String
+    public let amountCents: Int
+    public let shareOfTotal: Double
+
+    enum CodingKeys: String, CodingKey {
+        case category
+        case amountCents   = "amount_cents"
+        case shareOfTotal  = "share_of_total"
+    }
+}
+
 // MARK: - APIClient + Finance endpoints
 
 public extension APIClient {
@@ -112,6 +125,16 @@ public extension APIClient {
             URLQueryItem(name: "limit", value: String(limit))
         ]
         return try await get("/api/v1/finance/top-skus", query: query, as: [FinanceTopSku].self)
+    }
+
+    // §59/§15 expense category drilldown — GET /api/v1/finance/expenses-by-category
+    func getFinanceExpensesByCategory(from: String, to: String) async throws -> [FinanceExpenseCategory] {
+        let query: [URLQueryItem] = [
+            URLQueryItem(name: "from", value: from),
+            URLQueryItem(name: "to", value: to)
+        ]
+        return try await get("/api/v1/finance/expenses-by-category", query: query,
+                             as: [FinanceExpenseCategory].self)
     }
 
     func getFinanceTaxYear(year: Int) async throws -> FinancePnLResponse {

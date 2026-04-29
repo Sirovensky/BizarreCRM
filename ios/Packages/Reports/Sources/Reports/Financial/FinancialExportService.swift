@@ -71,6 +71,43 @@ public enum FinancialExportService {
         return sections.joined(separator: "\r\n")
     }
 
+    // MARK: - Balance-Sheet Snapshot Copy (§59/§15)
+
+    /// Produces a plain-text balance-sheet snapshot suitable for pasting into a spreadsheet
+    /// or emailing to an accountant.  The "balance sheet" here is a simplified single-period
+    /// statement derived from the dashboard data: Assets (cash inflows YTD), Liabilities
+    /// (aged receivables), and Equity (net income).
+    ///
+    /// Call `UIPasteboard.general.string = copyBalanceSheet(...)` at the call site.
+    public static func copyBalanceSheet(data: FinancialDashboardData, period: String) -> String {
+        let totalInflows = data.cashFlow.reduce(0) { $0 + $1.inflowCents }
+        let totalOutflows = data.cashFlow.reduce(0) { $0 + $1.outflowCents }
+        let netCash = totalInflows - totalOutflows
+        let liabilities = data.agedReceivables.totalCents
+        let equity = data.pnl.netCents
+
+        var lines: [String] = []
+        lines.append("Balance Sheet Snapshot — \(period)")
+        lines.append(String(repeating: "-", count: 38))
+        lines.append("ASSETS")
+        lines.append("  Cash inflows (period):    \(centsToDollars(totalInflows))")
+        lines.append("  Cash outflows (period):  (\(centsToDollars(totalOutflows)))")
+        lines.append("  Net cash position:         \(centsToDollars(netCash))")
+        lines.append("")
+        lines.append("LIABILITIES")
+        lines.append("  Aged receivables (total):  \(centsToDollars(liabilities))")
+        for bucket in data.agedReceivables.buckets {
+            lines.append("    \(bucket.label) days:  \(centsToDollars(bucket.totalCents))  (\(bucket.invoiceCount) inv)")
+        }
+        lines.append("")
+        lines.append("EQUITY")
+        lines.append("  Net income (period):       \(centsToDollars(equity))")
+        lines.append("  Gross margin:              \(String(format: "%.1f%%", data.pnl.grossMarginPct * 100))")
+        lines.append("  Net margin:                \(String(format: "%.1f%%", data.pnl.netMarginPct * 100))")
+        lines.append(String(repeating: "-", count: 38))
+        return lines.joined(separator: "\n")
+    }
+
     // MARK: - Tax Year CSV
 
     public static func exportTaxYearCSV(data: TaxYearData) -> String {

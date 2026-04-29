@@ -63,6 +63,26 @@ public struct FinancialExpense: Sendable {
     }
 }
 
+// MARK: - PnLVariance (§59/§15 P&L variance row)
+
+/// Period-over-period change for a single P&L line item.
+public struct PnLVariance: Sendable {
+    /// Absolute change in cents (current − prior). Positive = improvement for revenue/profit lines.
+    public let deltaCents: Int
+    /// Percentage change. Nil when prior period was zero (avoids divide-by-zero).
+    public let deltaPct: Double?
+
+    public init(currentCents: Int, priorCents: Int) {
+        self.deltaCents = currentCents - priorCents
+        self.deltaPct = priorCents == 0 ? nil : Double(currentCents - priorCents) / Double(abs(priorCents))
+    }
+
+    /// True when the delta represents a favorable movement (revenue/profit grew, or expenses shrank).
+    public func isFavorable(higherIsBetter: Bool) -> Bool {
+        higherIsBetter ? deltaCents >= 0 : deltaCents <= 0
+    }
+}
+
 // MARK: - PnLSnapshot
 
 public struct PnLSnapshot: Sendable {
@@ -71,6 +91,9 @@ public struct PnLSnapshot: Sendable {
     public let expensesCents: Int
     public let grossProfitCents: Int
     public let netCents: Int
+
+    // §59/§15 P&L variance row — optional prior-period comparison.
+    public let variance: PnLVariance?
 
     public var grossMarginPct: Double {
         guard revenueCents > 0 else { return 0 }
@@ -82,12 +105,58 @@ public struct PnLSnapshot: Sendable {
         return Double(netCents) / Double(revenueCents)
     }
 
+    /// Convenience init without variance (prior-period data not available).
     public init(revenueCents: Int, cogsCents: Int, expensesCents: Int) {
         self.revenueCents = revenueCents
         self.cogsCents = cogsCents
         self.expensesCents = expensesCents
         self.grossProfitCents = revenueCents - cogsCents
         self.netCents = revenueCents - cogsCents - expensesCents
+        self.variance = nil
+    }
+
+    /// Full init including prior-period net for variance display.
+    public init(revenueCents: Int, cogsCents: Int, expensesCents: Int, priorNetCents: Int) {
+        self.revenueCents = revenueCents
+        self.cogsCents = cogsCents
+        self.expensesCents = expensesCents
+        self.grossProfitCents = revenueCents - cogsCents
+        self.netCents = revenueCents - cogsCents - expensesCents
+        self.variance = PnLVariance(currentCents: self.netCents, priorCents: priorNetCents)
+    }
+}
+
+// MARK: - ExpenseCategoryRow (§59/§15 expense category drilldown)
+
+/// A single category row in the expense breakdown drilldown.
+public struct ExpenseCategoryRow: Sendable, Identifiable {
+    public var id: String { category }
+    public let category: String
+    public let amountCents: Int
+    public let shareOfTotal: Double   // 0…1
+
+    public init(category: String, amountCents: Int, shareOfTotal: Double) {
+        self.category = category
+        self.amountCents = amountCents
+        self.shareOfTotal = shareOfTotal
+    }
+}
+
+extension PnLSnapshot {
+    // §59/§15 expense category drilldown — derive sorted rows from expenses grouped externally.
+    public static func expenseCategoryRows(
+        from grouped: [(category: String, amountCents: Int)]
+    ) -> [ExpenseCategoryRow] {
+        let total = grouped.reduce(0) { $0 + $1.amountCents }
+        guard total > 0 else { return [] }
+        return grouped.map {
+            ExpenseCategoryRow(
+                category: $0.category,
+                amountCents: $0.amountCents,
+                shareOfTotal: Double($0.amountCents) / Double(total)
+            )
+        }
+        .sorted { $0.amountCents > $1.amountCents }
     }
 }
 
@@ -205,19 +274,23 @@ public struct FinancialDashboardData: Sendable {
     public let agedReceivables: AgedReceivablesSnapshot
     public let topCustomers: [TopCustomer]
     public let topSkus: [TopSkuByMargin]
+    /// §59/§15 expense category drilldown — pre-grouped by the VM from server payload.
+    public let expenseCategoryRows: [ExpenseCategoryRow]
 
     public init(
         pnl: PnLSnapshot,
         cashFlow: [CashFlowPoint],
         agedReceivables: AgedReceivablesSnapshot,
         topCustomers: [TopCustomer],
-        topSkus: [TopSkuByMargin]
+        topSkus: [TopSkuByMargin],
+        expenseCategoryRows: [ExpenseCategoryRow] = []
     ) {
         self.pnl = pnl
         self.cashFlow = cashFlow
         self.agedReceivables = agedReceivables
         self.topCustomers = topCustomers
         self.topSkus = topSkus
+        self.expenseCategoryRows = expenseCategoryRows
     }
 }
 

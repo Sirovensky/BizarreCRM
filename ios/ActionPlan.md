@@ -4403,8 +4403,9 @@ Rules:
 - [ ] **Per-tenant crypto key** — distinct passphrase per tenant so switching doesn't decrypt wrong data.
 
 ### 28.13 Compliance
-- [ ] **GDPR export** — per-customer data package endpoint; mobile triggers + downloads.
-- [ ] **CCPA delete request** — audit trail + soft-delete 30-day grace.
+- [x] **GDPR export** — per-customer data package endpoint; mobile triggers + downloads. (`DataExportRequestView` + `DataExportRequestViewModel` in `Settings/Privacy/`; `POST /exports/personal-data-request`; 24 h rate-limit surfaced as cooldown state; entry point wired in `SettingsView` Privacy section. feat(§28.13))
+- [x] **CCPA delete request** — audit trail + soft-delete 30-day grace. (`AccountDeleteRequestView` + `AccountDeleteRequestViewModel` in `Settings/Privacy/`; typed-phrase confirmation "DELETE"; 30-day grace period explained; `POST /auth/request-account-deletion`; deletion scope table distinguishes PII vs retained financial records. feat(§28.13))
+- [x] **Consent reset on logout** — analytics consent reverts to opt-out default when a user signs out so the next user starts from the privacy-safe state. (`AnalyticsConsentManager.resetForLogout()` clears `UserDefaults` key; `Notification.Name.userDidSignOut` posted by `SettingsView.signOut(clearServer:)`; `ATTPromptPolicy.assertNotRequested()` called in debug builds. feat(§28.13))
 - [ ] **PCI-DSS scope** — BlockChyp handles card data; app never touches PAN.
 - [ ] **HIPAA** — tenant-level toggle to avoid storing PHI (applies to some vet clinics / medical-device repair).
 
@@ -4961,7 +4962,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Analytics opt-out** in Settings → Privacy — suspends event sink entirely. (`SinkDispatcher` already gates on `consentManager.shouldSendEvents`; opt-in/out flow now fires `analyticsOptedIn` / `analyticsOptedOut` events from `AnalyticsConsentManager.optIn()/optOut()` in `Core/Telemetry/AnalyticsConsentManager.swift`. feat(§32): opt-in flow telemetry)
 - [x] **Crash-report opt-out** — admin toggle `CrashReportingSettingsView` + `CrashReportingDefaults.enabledKey`. <!-- shipped feat(ios phase-11 §32) -->
 - [x] **Opt-in rationale** — "Data stays on your company server" messaging in `CrashReportingSettingsView` footer. <!-- shipped feat(ios phase-11 §32) -->
-- [ ] **ATT prompt skipped** — we don't cross-app track; no `AppTrackingTransparency` permission needed.
+- [x] **ATT prompt skipped** — we don't cross-app track; no `AppTrackingTransparency` permission needed. (`ATTPromptPolicy` enum in `Core/Privacy/ATTPromptPolicy.swift`; `shouldRequestAuthorization = false`; canonical copy strings (`summary`, `fullDisclosure`) used in `PrivacyNutritionLabelView`; `assertNotRequested()` debug assertion. feat(§32.5))
 
 ### 32.6 PII / secrets redaction — placeholders, not raw values
 
@@ -5076,7 +5077,7 @@ Dependencies that must be done first before picking this up: §33 certs/provisio
 - [ ] **Metadata** in `ios/fastlane/metadata/<locale>/` — per-locale description, keywords, promo text, what's new.
 - [ ] **Screenshots** — 6.7" iPhone, 6.5" iPhone, 13" iPad, 12.9" iPad, Mac. Light + dark variants. Generated via fastlane snapshot.
 - [ ] **App Preview video** — 15–30s per device class.
-- [ ] **App Privacy** — data types collected declared accurately in App Store Connect.
+- [x] **App Privacy** — data types collected declared accurately in App Store Connect. (`PrivacyNutritionLabelView` + `PrivacyNutritionLabelData` in `Settings/Privacy/`; rows mirror `PrivacyInfo.xcprivacy`; surfaces ATT-not-used note, tracked/linked chips, not-collected list; wired in `SettingsView` Privacy section. feat(§28.13))
 - [ ] **Review notes** — demo account + server URL + steps.
 - [ ] **Phased release** — 7-day auto-rollout on by default.
 
@@ -6108,6 +6109,11 @@ Number preserved as stub so cross-refs don't break.
 - [x] **Access control**. (`FinancialDashboardAccessControl`)
 - [x] **Cash flow chart**. (`CashFlowCalculator` + cash flow tile)
 - [x] **Aged receivables**. (`AgedReceivablesCalculator` + aged receivables tile)
+- [x] **Cash-flow chart legend** — `chartForegroundStyleScale` keys aligned with `foregroundStyle(by:)` series names; `.chartLegend(.visible)` makes Inflow/Outflow color legend visible; `CashFlowChartDescriptorProvider: AXChartDescriptorRepresentable` added. (`FinancialDashboardView`)
+- [x] **AR aging bucket totals badge** — stacked annotation above each bar shows dollar total (bold) + invoice count (muted "N inv"); a11y label per bar; `ARAgedChartDescriptorProvider` wired via `.accessibilityChartDescriptor`. (`FinancialDashboardView`)
+- [x] **P&L variance row** — `PnLVariance` model (delta cents + optional pct, `isFavorable`); `PnLSnapshot` gains `priorNetCents` init; hero tile renders arrow + delta + pct chip below margin line when prior-period data available. (`FinancialModels`, `FinancialDashboardView`)
+- [x] **Expense category drilldown** — `ExpenseCategoryRow` model + `PnLSnapshot.expenseCategoryRows(from:)` factory; `FinancialDashboardData.expenseCategoryRows`; `GET /api/v1/finance/expenses-by-category` endpoint; `expenseDrilldownTile` with share-of-total bars; wired in VM + both layouts. (`FinanceEndpoints`, `FinancialModels`, `FinancialDashboardViewModel`, `FinancialDashboardView`)
+- [x] **Balance-sheet snapshot copy** — `FinancialExportService.copyBalanceSheet(data:period:)` produces plain-text Assets/Liabilities/Equity summary; toolbar "Copy Balance Sheet" menu item writes to `UIPasteboard.general.string`; "Copied!" transient label auto-resets after 2 s. (`FinancialExportService`, `FinancialDashboardView`)
 
 ---
 ## §60. Multi-Location Management
