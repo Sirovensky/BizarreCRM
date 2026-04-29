@@ -599,6 +599,56 @@ public struct InventoryMovementItem: Codable, Sendable, Identifiable {
     }
 }
 
+// MARK: - SLABreachReport
+//
+// Maps to GET /api/v1/reports/sla-breaches (endpoint stub — not yet on server).
+// Server shape (anticipated): { breach_count: Int, breach_types: [{ type: String, count: Int }] }
+
+public struct SLABreachReport: Codable, Sendable {
+    public let breachCount: Int
+    public let breachTypes: [SLABreachType]
+
+    public var hasBreaches: Bool { breachCount > 0 }
+
+    enum CodingKeys: String, CodingKey {
+        case breachCount  = "breach_count"
+        case breachTypes  = "breach_types"
+    }
+
+    public init(breachCount: Int, breachTypes: [SLABreachType]) {
+        self.breachCount = breachCount
+        self.breachTypes = breachTypes
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.breachCount = (try? c.decode(Int.self, forKey: .breachCount)) ?? 0
+        self.breachTypes = (try? c.decode([SLABreachType].self, forKey: .breachTypes)) ?? []
+    }
+}
+
+public struct SLABreachType: Codable, Sendable, Identifiable {
+    public let id: String
+    /// Human-readable breach type, e.g. "First Response", "Resolution Time".
+    public let type: String
+    public let count: Int
+
+    enum CodingKeys: String, CodingKey { case type, count }
+
+    public init(type: String, count: Int) {
+        self.id = type
+        self.type = type
+        self.count = count
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.type = (try? c.decode(String.self, forKey: .type)) ?? ""
+        self.id = self.type
+        self.count = (try? c.decode(Int.self, forKey: .count)) ?? 0
+    }
+}
+
 // MARK: - SalesReportResponse
 //
 // Envelope for GET /api/v1/reports/sales.

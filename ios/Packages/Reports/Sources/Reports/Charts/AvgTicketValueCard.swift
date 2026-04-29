@@ -62,22 +62,33 @@ public struct AvgTicketValueCard: View {
 
     @ViewBuilder
     private func trendBadge(pct: Double) -> some View {
-        let isUp = pct >= 0
-        HStack(spacing: BrandSpacing.xxs) {
-            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
-                .imageScale(.small)
-                .accessibilityHidden(true)
-            Text(String(format: "%.1f%%", abs(pct)))
+        // §91.3 fix 4: show "–" (em-dash) when delta is zero — avoids misleading "↗ 0.0%".
+        if pct == 0 {
+            Text("–")
                 .font(.brandLabelLarge())
+                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .padding(.horizontal, BrandSpacing.sm)
+                .padding(.vertical, BrandSpacing.xxs)
+                .background(Color.bizarreOnSurfaceMuted.opacity(0.10), in: Capsule())
+        } else {
+            let isUp = pct > 0
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
+                    .imageScale(.small)
+                    .accessibilityHidden(true)
+                Text(String(format: "%.1f%%", abs(pct)))
+                    .font(.brandLabelLarge())
+            }
+            .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
         }
-        .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
-        .padding(.horizontal, BrandSpacing.sm)
-        .padding(.vertical, BrandSpacing.xxs)
-        .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
     }
 
     private func trendDescription(_ pct: Double) -> String {
-        let dir = pct >= 0 ? "up" : "down"
+        guard pct != 0 else { return "no change" }
+        let dir = pct > 0 ? "up" : "down"
         return "\(dir) \(String(format: "%.1f", abs(pct))) percent"
     }
 }

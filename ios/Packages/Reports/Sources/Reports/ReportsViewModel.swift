@@ -38,6 +38,8 @@ public final class ReportsViewModel {
     public var expensesReport: ExpensesReport?
     public var csatScore: CSATScore?
     public var npsScore: NPSScore?
+    /// nil = not yet loaded / endpoint not implemented; hasBreaches drives card visibility.
+    public var slaBreaches: SLABreachReport?
     public var lastSyncedAt: Date?
 
     // MARK: - Loading / error
@@ -85,6 +87,7 @@ public final class ReportsViewModel {
             group.addTask { await self.loadExpensesReport() }
             group.addTask { await self.loadCSAT() }
             group.addTask { await self.loadNPS() }
+            group.addTask { await self.loadSLABreaches() }
         }
         lastSyncedAt = Date()
         isLoading = false
@@ -197,6 +200,19 @@ public final class ReportsViewModel {
             npsScore = try await repository.getNPS(from: fromDateString, to: toDateString)
         } catch {
             errorMessage = "NPS: \(error.localizedDescription)"
+        }
+    }
+
+    private func loadSLABreaches() async {
+        do {
+            slaBreaches = try await repository.getSLABreaches(
+                from: fromDateString, to: toDateString
+            )
+        } catch let err as ReportsRepositoryError {
+            // Suppress stub error — card stays hidden until server implements the endpoint.
+            _ = err
+        } catch {
+            errorMessage = "SLA: \(error.localizedDescription)"
         }
     }
 }

@@ -22,6 +22,8 @@ public protocol ReportsRepository: Sendable {
     // CSAT / NPS — endpoint stubs: server routes not yet present; graceful fallback
     func getCSAT(from: String, to: String) async throws -> CSATScore
     func getNPS(from: String, to: String) async throws -> NPSScore
+    // SLA Breaches — endpoint stub: GET /api/v1/reports/sla-breaches (not yet on server)
+    func getSLABreaches(from: String, to: String) async throws -> SLABreachReport
     // Drill-through — endpoint stub
     func getDrillThrough(metric: String, date: String) async throws -> [DrillThroughRecord]
     // Scheduled reports — wired to GET /api/v1/reports/scheduled
@@ -178,6 +180,16 @@ public actor LiveReportsRepository: ReportsRepository {
             detractorPct: detractorPct,
             themes: []
         )
+    }
+
+    // MARK: - SLA Breaches — endpoint stub (GET /api/v1/reports/sla-breaches not yet on server)
+
+    public func getSLABreaches(from: String, to: String) async throws -> SLABreachReport {
+        // When server implements the route, replace with:
+        // let query = [URLQueryItem(name: "from_date", value: from),
+        //              URLQueryItem(name: "to_date",   value: to)]
+        // return try await api.get("/api/v1/reports/sla-breaches", query: query, as: SLABreachReport.self)
+        throw ReportsRepositoryError.endpointNotImplemented("/reports/sla-breaches")
     }
 
     // MARK: - Drill-through → GET /api/v1/reports/sales (single-day slice)

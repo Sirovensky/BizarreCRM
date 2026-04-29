@@ -340,6 +340,9 @@ public struct ReportsView: View {
         NPSScoreCard(score: vm.npsScore) {
             showNPSDetail = true
         }
+
+        // §91.3 fix 6: SLA Breaches card — hidden when zero breaches (card handles nil/zero guard).
+        SLABreachesCard(report: vm.slaBreaches)
     }
 
     // MARK: - Export

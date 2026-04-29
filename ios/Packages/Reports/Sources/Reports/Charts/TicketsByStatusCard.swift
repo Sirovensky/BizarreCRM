@@ -3,6 +3,12 @@ import Charts
 import DesignSystem
 
 // MARK: - TicketsByStatusCard
+//
+// §91.3 fixes applied:
+//  [x] 1. Horizontal bar chart; status labels on left Y-axis, OUTSIDE bars.
+//  [x] 2. X-axis numbers no longer overlap status names (Y-axis carries labels).
+//  [x] 3. Each bar uses the tenant status hex from `TicketStatusPoint.color`
+//         (falls back to cycling brand palette when server sends nil).
 
 public struct TicketsByStatusCard: View {
     public let points: [TicketStatusPoint]
@@ -13,10 +19,18 @@ public struct TicketsByStatusCard: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Brand palette per status slot (cycles for unknown statuses)
-    private static let statusColors: [Color] = [
+    // Brand palette fallback — cycles for statuses whose server color is nil.
+    private static let fallbackColors: [Color] = [
         .bizarreOrange, .bizarreTeal, .bizarreMagenta, .bizarreSuccess, .bizarreWarning
     ]
+
+    /// Resolve display color for a status point, preferring the server hex value.
+    private func barColor(for point: TicketStatusPoint, at index: Int) -> Color {
+        if let hex = point.color, let resolved = Color(hex: hex) {
+            return resolved
+        }
+        return Self.fallbackColors[index % Self.fallbackColors.count]
+    }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -25,9 +39,36 @@ public struct TicketsByStatusCard: View {
                 emptyState
             } else {
                 chart
-                    .frame(height: 160)
+                    // Height scales with number of status rows so bars stay readable.
+                    .frame(height: max(120, CGFloat(points.count) * 40))
+                    // X-axis: numeric count labels — no overlap since Y carries status names.
+                    .chartXAxis {
+                        AxisMarks(position: .bottom) { value in
+                            AxisGridLine()
+                            AxisTick()
+                            AxisValueLabel {
+                                if let v = value.as(Int.self) {
+                                    Text("\(v)")
+                                        .font(.brandLabelSmall())
+                                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                                }
+                            }
+                        }
+                    }
+                    // Y-axis: status name labels on the leading side, OUTSIDE bars.
+                    .chartYAxis {
+                        AxisMarks(position: .leading) { value in
+                            AxisValueLabel(anchor: .trailing) {
+                                if let label = value.as(String.self) {
+                                    Text(label)
+                                        .font(.brandLabelSmall())
+                                        .foregroundStyle(.bizarreOnSurface)
+                                        .lineLimit(1)
+                                }
+                            }
+                        }
+                    }
                     .chartXAxisLabel("Count", alignment: .center)
-                    .chartYAxisLabel("Status", position: .leading)
                     .accessibilityChartDescriptor(TicketStatusChartDescriptor(points: points))
             }
         }
@@ -54,14 +95,15 @@ public struct TicketsByStatusCard: View {
     private var chart: some View {
         Chart(points.indices, id: \.self) { idx in
             let pt = points[idx]
-            let color = Self.statusColors[idx % Self.statusColors.count]
+            let color = barColor(for: pt, at: idx)
             BarMark(
                 x: .value("Count", pt.count),
                 y: .value("Status", pt.status)
             )
             .foregroundStyle(color)
             .cornerRadius(DesignTokens.Radius.xs)
-            .annotation(position: .trailing) {
+            // Count annotation placed OUTSIDE (trailing) the bar.
+            .annotation(position: .trailing, alignment: .leading, spacing: BrandSpacing.xxs) {
                 Text("\(pt.count)")
                     .font(.brandLabelSmall())
                     .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -77,18 +119,49 @@ public struct TicketsByStatusCard: View {
     }
 }
 
+// MARK: - Color(hex:) helper (mirrors Dashboard/OpenTicketsByStatusWidget)
+
+private extension Color {
+    init?(hex: String) {
+        var h = hex.trimmingCharacters(in: .init(charactersIn: "#"))
+        guard h.count == 6 || h.count == 8 else { return nil }
+        if h.count == 6 { h = "FF" + h }
+        guard let val = UInt64(h, radix: 16) else { return nil }
+        self.init(
+            red:   Double((val >> 16) & 0xFF) / 255,
+            green: Double((val >>  8) & 0xFF) / 255,
+            blue:  Double( val        & 0xFF) / 255,
+            opacity: Double((val >> 24) & 0xFF) / 255
+        )
+    }
+}
+
 // MARK: - AXChartDescriptor
 
 private struct TicketStatusChartDescriptor: AXChartDescriptorRepresentable {
     let points: [TicketStatusPoint]
 
     func makeChartDescriptor() -> AXChartDescriptor {
-        // x is categorical (status label), y is the count value.
         let xAxis = AXCategoricalDataAxisDescriptor(title: "Status", categoryOrder: points.map(\.status))
-        let yAxis = AXNumericDataAxisDescriptor(title: "Count", range: 0...Double(points.map(\.count).max() ?? 1), gridlinePositions: []) { "\(Int($0))" }
-        let series = AXDataSeriesDescriptor(name: "Tickets by Status", isContinuous: false, dataPoints: points.map { pt in
-            AXDataPoint(x: pt.status, y: Double(pt.count))
-        })
-        return AXChartDescriptor(title: "Tickets by Status", summary: "Horizontal bar chart showing ticket count per status", xAxis: xAxis, yAxis: yAxis, additionalAxes: [], series: [series])
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Count",
+            range: 0...Double(points.map(\.count).max() ?? 1),
+            gridlinePositions: []
+        ) { "\(Int($0))" }
+        let series = AXDataSeriesDescriptor(
+            name: "Tickets by Status",
+            isContinuous: false,
+            dataPoints: points.map { pt in
+                AXDataPoint(x: pt.status, y: Double(pt.count))
+            }
+        )
+        return AXChartDescriptor(
+            title: "Tickets by Status",
+            summary: "Horizontal bar chart showing ticket count per status",
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
     }
 }
