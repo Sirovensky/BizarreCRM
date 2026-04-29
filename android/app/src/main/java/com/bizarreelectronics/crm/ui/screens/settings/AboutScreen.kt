@@ -1,17 +1,27 @@
 package com.bizarreelectronics.crm.ui.screens.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Policy
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -29,6 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -85,6 +98,17 @@ class AboutViewModel @Inject constructor(
     )
 
     fun recentBreadcrumbs(): List<String> = breadcrumbs.recent()
+
+    // §19.14 — privacy policy URL from auth prefs server URL (or fallback)
+    fun privacyPolicyUrl(): String {
+        val server = authPreferences.serverUrl?.trimEnd('/')
+        return if (!server.isNullOrBlank()) "$server/privacy" else "https://bizarrecrm.com/privacy"
+    }
+
+    fun termsUrl(): String {
+        val server = authPreferences.serverUrl?.trimEnd('/')
+        return if (!server.isNullOrBlank()) "$server/terms" else "https://bizarrecrm.com/terms"
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,6 +123,8 @@ fun AboutScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val bundle = remember(info, crumbs) { renderBundle(info, crumbs) }
+    val privacyUrl = remember { viewModel.privacyPolicyUrl() }
+    val termsUrl = remember { viewModel.termsUrl() }
 
     Scaffold(
         topBar = {
@@ -179,7 +205,120 @@ fun AboutScreen(
                     }
                 }
             }
+
+            // §19.14 — Legal + store links
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    Text("Legal & links", style = MaterialTheme.typography.titleSmall)
+                    androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+
+                    // OSS licenses — OssLicensesMenuActivity from play-services-oss-licenses
+                    AboutLinkRow(
+                        icon = Icons.Default.Description,
+                        label = "Open-source licenses",
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(context, Class.forName("com.google.android.gms.oss.licenses.OssLicensesMenuActivity"))
+                                context.startActivity(intent)
+                            }.onFailure {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("OSS licenses activity not available in this build")
+                                }
+                            }
+                        },
+                    )
+
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                    // Privacy policy — opens browser to server /privacy or fallback URL
+                    AboutLinkRow(
+                        icon = Icons.Default.Policy,
+                        label = "Privacy policy",
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(privacyUrl)))
+                            }
+                        },
+                    )
+
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                    // Terms of service
+                    AboutLinkRow(
+                        icon = Icons.Default.Description,
+                        label = "Terms of service",
+                        onClick = {
+                            runCatching {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(termsUrl)))
+                            }
+                        },
+                    )
+
+                    androidx.compose.material3.HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                    // Rate app — Play in-app review flow (ReviewManagerFactory via reflection;
+                    // falls back to Play Store browser link if play-core not in classpath).
+                    AboutLinkRow(
+                        icon = Icons.Default.Star,
+                        label = "Rate app",
+                        onClick = {
+                            val launched = runCatching {
+                                val factoryClass = Class.forName("com.google.android.play.core.review.ReviewManagerFactory")
+                                val createMethod = factoryClass.getMethod("create", android.content.Context::class.java)
+                                val manager = createMethod.invoke(null, context)
+                                val requestMethod = manager.javaClass.getMethod("requestReviewFlow")
+                                @Suppress("UNCHECKED_CAST")
+                                val task = requestMethod.invoke(manager) as? com.google.android.gms.tasks.Task<*>
+                                task?.addOnCompleteListener { t ->
+                                    if (t.isSuccessful) {
+                                        val activity = context as? android.app.Activity
+                                        if (activity != null) {
+                                            val launchMethod = manager.javaClass.getMethod("launchReviewFlow", android.app.Activity::class.java, t.result!!.javaClass)
+                                            runCatching { launchMethod.invoke(manager, activity, t.result) }
+                                        }
+                                    }
+                                }
+                                true
+                            }.getOrElse { false }
+                            if (!launched) {
+                                // Fallback: open Play Store listing in browser
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=${context.packageName}")))
+                                }.onFailure {
+                                    runCatching {
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=${context.packageName}")))
+                                    }
+                                }
+                            }
+                        },
+                    )
+                }
+            }
         }
+    }
+}
+
+/**
+ * §19.14 — Single tappable row in the Legal section.
+ */
+@Composable
+private fun AboutLinkRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .semantics(mergeDescendants = true) { role = Role.Button }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
     }
 }
 

@@ -885,7 +885,12 @@ export type OnboardingPatchBody = Partial<Record<OnboardingPatchableFlag, boolea
 export const onboardingApi = {
   getState: () => api.get('/onboarding/state'),
   patchState: (body: OnboardingPatchBody) => api.patch('/onboarding/state', body),
-  loadSampleData: () => api.post('/onboarding/sample-data'),
+  // Empty {} body is required so axios attaches the application/json
+  // Content-Type — the global CSRF middleware in
+  // packages/server/src/index.ts:1263 rejects state-changing requests
+  // without it (returns 403 ERR_CONTENT_TYPE). A bare api.post() with
+  // no second arg sends no body and no Content-Type → 403 every time.
+  loadSampleData: () => api.post('/onboarding/sample-data', {}),
   removeSampleData: () => api.delete('/onboarding/sample-data'),
   setShopType: (shop_type: OnboardingShopType) =>
     api.post('/onboarding/set-shop-type', { shop_type }),
@@ -1420,4 +1425,75 @@ export const superAdminApi = {
     superAdminClient.post<{ success: boolean; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
+};
+
+// ==================== Geocode + Custom Fields (BUILD-FIX-001) ====================
+// CustomerCreatePage.tsx imports geocodeApi + customFieldApi but those exports
+// were never added. Stubbed here so the production bundle builds. Both endpoints
+// are TODO-server: the routes don't exist on the backend yet either, so the calls
+// will fail at runtime — but they fail in a controlled way (caught by the page's
+// try/catch) instead of breaking `vite build`.
+//
+// Track in TODO.md as BUILD-FIX-001 / GEOCODE-1 / CUSTOM-FIELDS-1 to wire the
+// real backend endpoints. UI behavior on CustomerCreatePage will fall through
+// to the "no geocode result" / "no custom fields" branches until then.
+export const geocodeApi = {
+  lookup: (address: string) =>
+    api.get<{ success: boolean; data: { lat: number; lng: number } | null }>(
+      `/geocode/lookup?address=${encodeURIComponent(address)}`,
+    ),
+};
+
+export const customFieldApi = {
+  listDefinitions: (entityType: 'customer' | 'ticket' | 'invoice') =>
+    api.get<{ success: boolean; data: Array<{ id: number; key: string; label: string; type: string }> }>(
+      `/custom-fields/definitions?entity_type=${encodeURIComponent(entityType)}`,
+    ),
+  saveValues: (
+    entityType: 'customer' | 'ticket' | 'invoice',
+    entityId: number,
+    values: Record<string, unknown>,
+  ) =>
+    api.post<{ success: boolean }>(
+      `/custom-fields/values`,
+      { entity_type: entityType, entity_id: entityId, values },
+    ),
+};
+
+// ==================== Email + Installment plan stubs (BUILD-FIX-002) ====================
+// CommunicationPage imports emailApi; InvoiceDetailPage imports installmentApi
+// and type CreateInstallmentPlanInput. Both are missing on todofixes426 today
+// and break vite build. Stubbed with reasonable shapes so the bundle compiles;
+// real implementations TODO. Track in TODO.md as BUILD-FIX-002 / EMAIL-API-1 /
+// INSTALLMENT-API-1.
+export const emailApi = {
+  list: (params?: { customer_id?: number; ticket_id?: number; limit?: number; offset?: number }) =>
+    api.get<{ success: boolean; data: Array<{ id: number; subject: string; body: string; from: string; to: string; sent_at: string }> }>(
+      `/email/messages`,
+      { params },
+    ),
+  send: (payload: { to: string; subject: string; body: string; html?: string; customer_id?: number; ticket_id?: number }) =>
+    api.post<{ success: boolean; data: { id: number } }>(`/email/send`, payload),
+  get: (id: number) =>
+    api.get<{ success: boolean; data: { id: number; subject: string; body: string; from: string; to: string; sent_at: string } }>(
+      `/email/messages/${id}`,
+    ),
+};
+
+export interface CreateInstallmentPlanInput {
+  invoice_id: number;
+  installments: number;
+  start_date?: string;
+  notes?: string;
+}
+
+export const installmentApi = {
+  create: (payload: CreateInstallmentPlanInput) =>
+    api.post<{ success: boolean; data: { plan_id: number } }>(`/installments`, payload),
+  list: (invoiceId: number) =>
+    api.get<{ success: boolean; data: Array<{ id: number; due_date: string; amount: number; status: string }> }>(
+      `/installments?invoice_id=${invoiceId}`,
+    ),
+  cancel: (planId: number) =>
+    api.post<{ success: boolean }>(`/installments/${planId}/cancel`),
 };

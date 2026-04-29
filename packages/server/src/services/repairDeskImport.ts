@@ -319,6 +319,53 @@ function toISODate(val: any): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// Exported pure mappers (testable without DB)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract the fields that RepairDesk uses with typo'd names from a raw customer
+ * record. These field names MUST NOT be "corrected" — the RD API sends exactly
+ * these strings. See CLAUDE.md "RepairDesk API typos" section.
+ *
+ * Returns a plain object so unit tests can assert the keys without a DB.
+ */
+export function mapRdCustomerTypoFields(rd: Record<string, any>): {
+  orgonization: string | null;
+  refered_by: string | null;
+} {
+  return {
+    orgonization: safeStr(rd.orgonization),  // RD typo for "organization"
+    refered_by: safeStr(rd.refered_by),      // RD typo for "referred_by"
+  };
+}
+
+/**
+ * Extract the fields that RepairDesk uses with typo'd names from a raw ticket /
+ * note / part record. These field names MUST NOT be "corrected".
+ *
+ * - `hostory`      — typo for "history"; array of history entries on the ticket
+ * - `tittle`       — typo for "title"; used as note subject in ticket notes
+ * - `createdd_date`— typo for "created_date"; documented RD field name
+ * - `warrenty`     — typo for "warranty"; documented RD field name
+ * - `suplied`      — typo for "supplied"; array of supplied parts on a device
+ */
+export function mapRdTicketTypoFields(rd: Record<string, any>): {
+  hostory: any[];
+  tittle: string | null;
+  createdd_date: string | null;
+  warrenty: string | null;
+  suplied: any[];
+} {
+  return {
+    hostory: Array.isArray(rd.hostory) ? rd.hostory : [],          // RD typo for "history"
+    tittle: safeStr(rd.tittle),                                     // RD typo for "title" (note subject)
+    createdd_date: safeStr(rd.createdd_date),                       // RD typo for "created_date"
+    warrenty: safeStr(rd.warrenty),                                 // RD typo for "warranty"
+    suplied: Array.isArray(rd.suplied) ? rd.suplied : [],           // RD typo for "supplied" (parts list)
+  };
+}
+
+// ---------------------------------------------------------------------------
 // RepairDesk API Client
 // ---------------------------------------------------------------------------
 

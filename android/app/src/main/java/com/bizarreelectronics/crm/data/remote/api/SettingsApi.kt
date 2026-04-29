@@ -11,6 +11,7 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.POST
+import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 
@@ -75,4 +76,29 @@ interface SettingsApi {
      */
     @GET("settings/tag-palette")
     suspend fun getTagPalette(): ApiResponse<Map<String, String>>
+
+    // §19.8 — payment methods enabled (GET /settings/payment-methods)
+    @GET("settings/payment-methods")
+    suspend fun getPaymentMethods(): ApiResponse<List<Map<String, @JvmSuppressWildcards Any>>>
+
+    // §19.8 — SMS provider connection status + config (GET /settings/sms/providers)
+    @GET("settings/sms/providers")
+    suspend fun getSmsProviders(): ApiResponse<List<Map<String, @JvmSuppressWildcards Any>>>
+
+    // §19.19 — business/store info (GET /settings/store)
+    @GET("settings/store")
+    suspend fun getStoreConfig(): ApiResponse<Map<String, String>>
+
+    // §19.19 — update business/store info (PUT /settings/store)
+    @PUT("settings/store")
+    suspend fun putStoreConfig(
+        @Body body: Map<String, @JvmSuppressWildcards String>,
+    ): ApiResponse<Map<String, String>>
+
+    // §19.16 — reorder ticket statuses (PUT /settings/statuses/:id with sort_order)
+    @PUT("settings/statuses/{id}")
+    suspend fun putStatus(
+        @Path("id") id: Long,
+        @Body body: Map<String, @JvmSuppressWildcards Any>,
+    ): ApiResponse<@JvmSuppressWildcards Any>
 }

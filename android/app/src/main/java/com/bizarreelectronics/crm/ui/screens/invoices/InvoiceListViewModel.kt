@@ -1,5 +1,6 @@
 package com.bizarreelectronics.crm.ui.screens.invoices
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.db.entities.InvoiceEntity
@@ -25,6 +26,9 @@ data class InvoiceListUiState(
     val invoices: List<InvoiceEntity> = emptyList(),
     val isLoading: Boolean = true,
     val isRefreshing: Boolean = false,
+    // §7.1 — cursor paging
+    val isLoadingMore: Boolean = false,
+    val hasMore: Boolean = true,
     val error: String? = null,
     val searchQuery: String = "",
     val selectedStatus: String = "All",
@@ -53,9 +57,19 @@ class InvoiceListViewModel @Inject constructor(
     private var searchJob: Job? = null
     private var collectJob: Job? = null
 
+    // ── §7.1 Cursor paging ────────────────────────────────────────────────────
+    private var nextCursor: String? = null
+    private var loadMoreJob: Job? = null
+
+    companion object {
+        private const val TAG = "InvoiceListVM"
+        private const val PAGE_SIZE = 50
+    }
+
     init {
         loadInvoices()
         loadStats()
+        loadFirstPage()
     }
 
     // ── Data loading ─────────────────────────────────────────────────────────
@@ -109,6 +123,69 @@ class InvoiceListViewModel @Inject constructor(
         _state.value = _state.value.copy(isRefreshing = true)
         loadInvoices()
         loadStats()
+        // Also reset cursor paging so pull-to-refresh refetches page 1.
+        loadFirstPage()
+    }
+
+    // ── §7.1 Cursor-based paging ──────────────────────────────────────────────
+
+    /**
+     * Load the first cursor page. Called on init/refresh. Resets paging state.
+     * Results are merged into the Room flow via [InvoiceRepository.loadInvoicesPage]
+     * which inserts fetched rows — the existing [collectJob] flow re-emits automatically.
+     */
+    fun loadFirstPage() {
+        loadMoreJob?.cancel()
+        nextCursor = null
+        _state.value = _state.value.copy(hasMore = true)
+        viewModelScope.launch {
+            try {
+                val filters = buildApiFilters()
+                val (_, cursor) = invoiceRepository.loadInvoicesPage(null, PAGE_SIZE, filters)
+                nextCursor = cursor
+                _state.value = _state.value.copy(hasMore = cursor != null)
+            } catch (e: Exception) {
+                Log.d(TAG, "loadFirstPage error: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Append the next cursor page. No-op when already loading, no more pages,
+     * or in search mode (search uses its own debounced flow).
+     */
+    fun loadMore() {
+        val s = _state.value
+        if (s.isLoadingMore || !s.hasMore || s.isLoading || s.searchQuery.isNotEmpty()) return
+        val cursor = nextCursor ?: return
+        loadMoreJob?.cancel()
+        loadMoreJob = viewModelScope.launch {
+            _state.value = _state.value.copy(isLoadingMore = true)
+            try {
+                val filters = buildApiFilters()
+                val (_, newCursor) = invoiceRepository.loadInvoicesPage(cursor, PAGE_SIZE, filters)
+                nextCursor = newCursor
+                _state.value = _state.value.copy(
+                    hasMore = newCursor != null,
+                    isLoadingMore = false,
+                )
+            } catch (e: Exception) {
+                Log.d(TAG, "loadMore error: ${e.message}")
+                _state.value = _state.value.copy(isLoadingMore = false)
+            }
+        }
+    }
+
+    private fun buildApiFilters(): Map<String, String> {
+        val filters = _state.value.activeFilters
+        return buildMap {
+            if (_state.value.selectedStatus != "All") {
+                put("status", _state.value.selectedStatus.lowercase())
+            }
+            if (filters.customerQuery.isNotBlank()) put("customer", filters.customerQuery)
+            if (filters.dateFrom.isNotBlank()) put("date_from", filters.dateFrom)
+            if (filters.dateTo.isNotBlank()) put("date_to", filters.dateTo)
+        }
     }
 
     // ── Search / filter / sort ────────────────────────────────────────────────
@@ -125,6 +202,7 @@ class InvoiceListViewModel @Inject constructor(
     fun onStatusChanged(status: String) {
         _state.value = _state.value.copy(selectedStatus = status)
         loadInvoices()
+        loadFirstPage()
     }
 
     fun onSortChanged(sort: InvoiceSort) {
@@ -135,6 +213,7 @@ class InvoiceListViewModel @Inject constructor(
     fun onFiltersApplied(filters: InvoiceFilterState) {
         _state.value = _state.value.copy(activeFilters = filters)
         loadInvoices()
+        loadFirstPage()
     }
 
     // ── Bulk selection ────────────────────────────────────────────────────────

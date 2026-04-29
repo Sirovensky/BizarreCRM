@@ -1,12 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash,
+  UserCog, Clock, DollarSign, ChevronDown, ChevronRight, X, Hash, Pencil, Check,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { employeeApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
-import { formatCurrency } from '@/utils/format';
+import { formatCurrency, formatTime } from '@/utils/format';
 
 // ─── Types ──────────────────────────────────────────────────────────
 interface Employee {
@@ -22,6 +22,9 @@ interface Employee {
   permissions?: string;
   created_at: string;
   updated_at: string;
+  // WEB-S6-033: list endpoint now includes these fields so no per-row fetch needed
+  is_clocked_in?: number | boolean;
+  weekly_hours?: number;
 }
 
 interface EmployeeDetail extends Employee {
@@ -66,12 +69,6 @@ const _employeeLocale = typeof navigator !== 'undefined' ? navigator.language ||
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString(_employeeLocale, {
     month: 'short', day: 'numeric',
-  });
-}
-
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(_employeeLocale, {
-    hour: 'numeric', minute: '2-digit',
   });
 }
 
@@ -205,7 +202,7 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
             onClick={() => onSubmit(pin)}
             disabled={!employee.has_pin || pin.length < 4 || isPending}
             className={cn(
-              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed',
+              'rounded-lg px-4 py-2 text-sm font-medium text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
               action === 'clock-in'
                 ? 'bg-green-600 hover:bg-green-700'
                 : 'bg-red-600 hover:bg-red-700',
@@ -223,6 +220,96 @@ function PinModal({ employee, action, onClose, onSubmit, isPending }: {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Pay Rate inline editor (WEB-S6-014) ─────────────────────────
+function PayRateEditor({ employeeId, currentRate }: { employeeId: number; currentRate: number | null }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (rate: number | null) => employeeApi.updatePayRate(employeeId, rate),
+    onSuccess: () => {
+      toast.success('Pay rate updated');
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['employee-detail', employeeId] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.message || 'Failed to update pay rate');
+    },
+  });
+
+  function startEdit() {
+    setDraft(currentRate != null ? String(currentRate) : '');
+    setEditing(true);
+  }
+
+  function commit() {
+    const trimmed = draft.trim();
+    const rate = trimmed === '' ? null : parseFloat(trimmed);
+    if (trimmed !== '' && (isNaN(rate!) || rate! < 0 || rate! > 9999.99)) {
+      toast.error('Pay rate must be a number between 0 and 9999.99');
+      return;
+    }
+    mutation.mutate(rate);
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-surface-500">$/hr</span>
+        <input
+          type="number"
+          min="0"
+          max="9999.99"
+          step="0.01"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          autoFocus
+          placeholder="e.g. 18.50"
+          className="w-24 rounded-lg border border-surface-300 px-2 py-1 text-sm dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          disabled={mutation.isPending}
+          aria-label="Save pay rate"
+          className="rounded-lg p-1 text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-950/30"
+        >
+          <Check className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          aria-label="Cancel"
+          className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-sm font-medium text-surface-800 dark:text-surface-200">
+        {currentRate != null ? `${formatCurrency(currentRate)}/hr` : <span className="italic text-surface-400">Not set</span>}
+      </span>
+      <button
+        type="button"
+        onClick={startEdit}
+        aria-label="Edit pay rate"
+        className="rounded-lg p-1 text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-surface-700 dark:hover:text-surface-200"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }
@@ -257,6 +344,18 @@ function EmployeeExpandedRow({ employeeId }: { employeeId: number }) {
   return (
     <tr>
       <td colSpan={6} className="bg-surface-50/50 px-4 py-4 dark:bg-surface-800/50">
+        {/* WEB-S6-014: Pay Rate row */}
+        <div className="mb-4 flex items-center gap-4 rounded-lg border border-surface-200 bg-white px-4 py-3 shadow-sm dark:border-surface-700 dark:bg-surface-700">
+          <DollarSign className="h-4 w-4 shrink-0 text-surface-400" />
+          <span className="text-sm font-medium text-surface-700 dark:text-surface-300">Hourly Pay Rate</span>
+          <div className="ml-auto">
+            <PayRateEditor
+              employeeId={employeeId}
+              currentRate={(detail as any)?.pay_rate ?? null}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Recent Clock Entries */}
           <div>
@@ -363,15 +462,8 @@ export function EmployeeListPage() {
   });
   const employees: Employee[] = (listData?.data as any)?.data ?? [];
 
-  // Fetch detail for each employee to get clock status
-  const detailQueries = employees.map((emp) => ({
-    queryKey: ['employee-detail', emp.id],
-    queryFn: () => employeeApi.get(emp.id),
-    enabled: true,
-  }));
-  // Use individual queries for status
-  const employeeDetails = new Map<number, EmployeeDetail>();
-  // We'll fetch details within the table rendering via separate queries
+  // WEB-S6-033: is_clocked_in + weekly_hours are now included in the list
+  // response — no per-row detail queries needed.
 
   // Clock in mutation
   const clockInMutation = useMutation({
@@ -491,34 +583,29 @@ export function EmployeeListPage() {
   );
 }
 
-// ─── Employee Row (with detail query) ───────────────────────────────
+// ─── Employee Row ────────────────────────────────────────────────────
+// WEB-S6-033: clock status + weekly hours are now served by the list endpoint.
+// The per-row detail + hours queries are removed to eliminate the N+1 pattern.
+// The expanded detail panel (commissions, clock history) still fires a single
+// query when the row is expanded — that's intentional: only one employee is
+// expanded at a time and it needs the full payload.
 function EmployeeRow({ employee, isExpanded, onToggle, onClockAction }: {
   employee: Employee;
   isExpanded: boolean;
   onToggle: () => void;
   onClockAction: (action: 'clock-in' | 'clock-out') => void;
 }) {
-  // Memoized — `getWeekRange()` returned fresh object identity on every
-  // render, so the `['employee-hours', ..., weekRange.from_date]` key drifted
-  // if a render crossed midnight (Date-based). Stable across this row's
-  // lifetime; weekly boundary crossing will be picked up on a page reload.
-  const weekRange = useMemo(() => getWeekRange(), []);
+  // WEB-S6-033: use list-level fields; only fetch detail when expanded.
+  const isClockedIn = !!(employee.is_clocked_in);
+  const weeklyHours = Number(employee.weekly_hours ?? 0);
 
+  // Detail query fires only when the row is expanded (single call per user).
   const { data: detailData } = useQuery({
     queryKey: ['employee-detail', employee.id],
     queryFn: () => employeeApi.get(employee.id),
+    enabled: isExpanded,
     staleTime: 30000,
   });
-
-  const { data: hoursData } = useQuery({
-    queryKey: ['employee-hours', employee.id, weekRange.from_date],
-    queryFn: () => employeeApi.hours(employee.id, weekRange),
-    staleTime: 60000,
-  });
-
-  const detail = (detailData?.data as any)?.data as EmployeeDetail | undefined;
-  const weeklyHours = (hoursData?.data as any)?.data?.total_hours ?? 0;
-  const isClockedIn = detail?.is_clocked_in ?? false;
 
   const roleClass = ROLE_COLORS[employee.role] ?? 'bg-surface-100 text-surface-700 dark:bg-surface-700 dark:text-surface-300';
 

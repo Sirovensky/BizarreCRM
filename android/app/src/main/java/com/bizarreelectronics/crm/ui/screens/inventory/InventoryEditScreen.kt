@@ -1,12 +1,16 @@
 package com.bizarreelectronics.crm.ui.screens.inventory
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.SavedStateHandle
@@ -19,6 +23,7 @@ import com.bizarreelectronics.crm.data.local.db.entities.InventoryItemEntity
 // extension members in via the entity import alone.
 import com.bizarreelectronics.crm.data.local.db.entities.costPrice
 import com.bizarreelectronics.crm.data.local.db.entities.retailPrice
+import com.bizarreelectronics.crm.data.remote.dto.AdjustStockRequest
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
 import com.bizarreelectronics.crm.data.repository.InventoryRepository
 import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
@@ -66,6 +71,13 @@ data class InventoryEditUiState(
     val undoMessage: String? = null,
     /** True when the undo stack has at least one undoable action. */
     val canUndo: Boolean = false,
+    // §6.4: quick stock adjust in edit screen
+    val showSetStockDialog: Boolean = false,
+    val setStockValue: String = "",
+    /** True while delete/deactivate is in-flight. */
+    val isDeletingItem: Boolean = false,
+    /** True when delete succeeded — pop back. */
+    val deletedAndShouldPop: Boolean = false,
 )
 
 @HiltViewModel
@@ -348,6 +360,111 @@ class InventoryEditViewModel @Inject constructor(
         else           -> s
     }
 
+    // -----------------------------------------------------------------------
+    // §6.4: Quick stock adjust (+1 / −1 / Set to…)
+    // -----------------------------------------------------------------------
+
+    /** Adjust stock by [delta] (+1 or −1) using the adjust-stock endpoint. */
+    fun quickAdjustStock(delta: Int) {
+        val current = _state.value.item ?: return
+        val newStock = maxOf(0, current.inStock + delta)
+        // Optimistic local update
+        _state.value = _state.value.copy(
+            item = current.copy(inStock = newStock),
+            inStock = newStock.toString(),
+        )
+        viewModelScope.launch {
+            try {
+                inventoryRepository.adjustStock(
+                    id = itemId,
+                    request = AdjustStockRequest(
+                        quantity = delta,
+                        type = if (delta > 0) "received" else "adjusted",
+                        reason = if (delta > 0) "Quick +1" else "Quick -1",
+                    ),
+                )
+            } catch (e: Exception) {
+                // Roll back optimistic update
+                _state.value = _state.value.copy(
+                    item = current,
+                    inStock = current.inStock.toString(),
+                    saveMessage = "Stock adjust failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    fun showSetStockDialog() {
+        _state.value = _state.value.copy(
+            showSetStockDialog = true,
+            setStockValue = _state.value.inStock,
+        )
+    }
+
+    fun dismissSetStockDialog() {
+        _state.value = _state.value.copy(showSetStockDialog = false, setStockValue = "")
+    }
+
+    fun updateSetStockValue(v: String) {
+        if (v.isEmpty() || v.matches(Regex("^\\d+$"))) {
+            _state.value = _state.value.copy(setStockValue = v)
+        }
+    }
+
+    /** Set stock to an absolute value using a delta-based adjust call. */
+    fun confirmSetStock() {
+        val current = _state.value.item ?: return
+        val target = _state.value.setStockValue.toIntOrNull() ?: return
+        val delta = target - current.inStock
+        _state.value = _state.value.copy(
+            showSetStockDialog = false,
+            item = current.copy(inStock = target),
+            inStock = target.toString(),
+        )
+        viewModelScope.launch {
+            try {
+                inventoryRepository.adjustStock(
+                    id = itemId,
+                    request = AdjustStockRequest(
+                        quantity = delta,
+                        type = "adjusted",
+                        reason = "Set to $target",
+                    ),
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    item = current,
+                    inStock = current.inStock.toString(),
+                    saveMessage = "Set stock failed: ${e.message}",
+                )
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // §6.4: Delete (soft-deactivate) from edit screen
+    // -----------------------------------------------------------------------
+
+    /** Soft-delete (deactivate) the item. On success pops back to list. */
+    fun deleteItem() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(isDeletingItem = true)
+            try {
+                val warning = inventoryRepository.deleteItem(itemId)
+                _state.value = _state.value.copy(
+                    isDeletingItem = false,
+                    saveMessage = warning ?: "Item deactivated",
+                    deletedAndShouldPop = true,
+                )
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    isDeletingItem = false,
+                    saveMessage = "Delete failed: ${e.message}",
+                )
+            }
+        }
+    }
+
     /** Undo the most recent reversible field edit. */
     fun performUndo() {
         viewModelScope.launch {
@@ -419,12 +536,79 @@ fun InventoryEditScreen(
         }
     }
 
+    // Pop back when item was deleted/deactivated from the edit screen
+    LaunchedEffect(state.deletedAndShouldPop) {
+        if (state.deletedAndShouldPop) onBack()
+    }
+
     val canSave = state.name.isNotBlank() &&
         (state.retailPrice.toDoubleOrNull() ?: 0.0) > 0.0 &&
         !state.isSaving
 
     val barTitle = state.item?.name?.ifBlank { null }
         ?: if (state.isLoading) "Loading..." else "Edit item"
+
+    var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
+    var showOverflow by remember { mutableStateOf(false) }
+
+    // §6.4: Set-stock dialog
+    if (state.showSetStockDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissSetStockDialog() },
+            title = { Text("Set stock to…") },
+            text = {
+                OutlinedTextField(
+                    value = state.setStockValue,
+                    onValueChange = viewModel::updateSetStockValue,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Quantity") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.confirmSetStock() },
+                    enabled = state.setStockValue.toIntOrNull() != null,
+                ) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.dismissSetStockDialog() }) { Text("Cancel") }
+            },
+        )
+    }
+
+    // §6.4: Delete confirm dialog
+    if (showDeleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("Deactivate item?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This item will be marked inactive and hidden from inventory. Historical records are preserved.")
+                    if (state.isDeletingItem) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.deleteItem() },
+                    enabled = !state.isDeletingItem,
+                ) {
+                    Text("Deactivate", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteDialog = false },
+                    enabled = !state.isDeletingItem,
+                ) { Text("Cancel") }
+            },
+        )
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -437,7 +621,7 @@ fun InventoryEditScreen(
                     }
                 },
                 actions = {
-                    if (state.isSaving) {
+                    if (state.isSaving || state.isDeletingItem) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
@@ -449,6 +633,56 @@ fun InventoryEditScreen(
                             enabled = canSave,
                         ) {
                             Text("Save")
+                        }
+                        // §6.4: overflow menu — quick stock adjust + deactivate
+                        Box {
+                            IconButton(onClick = { showOverflow = true }) {
+                                Icon(Icons.Default.MoreVert, contentDescription = "More actions")
+                            }
+                            DropdownMenu(
+                                expanded = showOverflow,
+                                onDismissRequest = { showOverflow = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("+1 stock") },
+                                    onClick = {
+                                        showOverflow = false
+                                        viewModel.quickAdjustStock(+1)
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("-1 stock") },
+                                    onClick = {
+                                        showOverflow = false
+                                        viewModel.quickAdjustStock(-1)
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Remove, contentDescription = null) },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Set to…") },
+                                    onClick = {
+                                        showOverflow = false
+                                        viewModel.showSetStockDialog()
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                                )
+                                HorizontalDivider()
+                                DropdownMenuItem(
+                                    text = { Text("Deactivate", color = MaterialTheme.colorScheme.error) },
+                                    onClick = {
+                                        showOverflow = false
+                                        showDeleteDialog = true
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
+                                    },
+                                )
+                            }
                         }
                     }
                 },

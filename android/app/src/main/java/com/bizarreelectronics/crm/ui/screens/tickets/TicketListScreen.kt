@@ -53,8 +53,10 @@ import com.bizarreelectronics.crm.ui.screens.tickets.components.PinToggleMenuIte
 import com.bizarreelectronics.crm.ui.screens.tickets.components.PinnedTicketsHeader
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketFooterState
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketListFooter
+import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketLabelChips
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketRowBadges
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSavedViewSheet
+import com.bizarreelectronics.crm.ui.screens.tickets.components.SlaChip
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSortDropdown
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketSwipeRow
 import com.bizarreelectronics.crm.ui.screens.tickets.components.TicketUrgencyChip
@@ -236,6 +238,21 @@ fun TicketListScreen(
                                 modifier = Modifier.size(16.dp),
                             )
                         },
+                    )
+                }
+            }
+
+            // §4.21 — Active label filter chip
+            if (state.activeLabelFilter != null) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TicketLabelChips(
+                        labels = listOfNotNull(state.activeLabelFilter),
+                        selectedLabel = state.activeLabelFilter,
+                        onLabelClick = { viewModel.onLabelFilterChanged(null) },
+                        onLabelRemove = { viewModel.onLabelFilterChanged(null) },
                     )
                 }
             }
@@ -472,6 +489,13 @@ fun TicketListScreen(
                                                 ContextMenuAction.Pin -> viewModel.togglePin(ticket.id)
                                             }
                                         },
+                                        // §4.21 — Label chip tap → filter the list by that label
+                                        onLabelFilterClick = { label ->
+                                            viewModel.onLabelFilterChanged(
+                                                if (state.activeLabelFilter == label) null else label
+                                            )
+                                        },
+                                        activeLabelFilter = state.activeLabelFilter,
                                     )
                                 }
                                 BrandListItemDivider()
@@ -527,6 +551,10 @@ private fun TicketListRow(
     onTicketClick: () -> Unit,
     onLongPress: () -> Unit,
     onContextMenuAction: (ContextMenuAction) -> Unit,
+    // §4.21 — Label filter callback: tap a label chip to filter the list
+    onLabelFilterClick: ((String) -> Unit)? = null,
+    // §4.21 — Currently active label filter (for chip highlight)
+    activeLabelFilter: String? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     // Customer preview popover (L654) — null means hidden
@@ -626,6 +654,18 @@ private fun TicketListRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                // §4.21 — Label chips from comma-separated labels field
+                val labelList = remember(ticket.labels) {
+                    ticket.labels?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() } ?: emptyList()
+                }
+                if (labelList.isNotEmpty()) {
+                    TicketLabelChips(
+                        labels = labelList,
+                        selectedLabel = activeLabelFilter,
+                        onLabelClick = onLabelFilterClick,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
             },
             trailing = {
                 Column(horizontalAlignment = Alignment.End) {
@@ -644,6 +684,28 @@ private fun TicketListRow(
                         createdAtStr = ticket.createdAt,
                         dueAtStr = ticket.dueOn,
                     )
+                    // §4.22 — SLA chip: simple deadline-based tier from dueOn field.
+                    // Full SLA tracking with pause/resume is §4.19 (deferred — needs server SLA defs).
+                    val dueOnStr = ticket.dueOn
+                    if (dueOnStr != null) {
+                        val (slaTier, slaLabel) = remember(dueOnStr) {
+                            val dueMs = runCatching {
+                                java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                    .parse(dueOnStr)?.time ?: 0L
+                            }.getOrDefault(0L)
+                            val remainingMs = dueMs - System.currentTimeMillis()
+                            val pct = if (dueMs > 0L) {
+                                // Approximate 24h SLA budget for display only
+                                val budgetMs = 24L * 60 * 60 * 1000
+                                ((1.0 - remainingMs.toDouble() / budgetMs) * 100).toInt().coerceIn(0, 200)
+                            } else 100
+                            val tier = com.bizarreelectronics.crm.util.SlaCalculator.tier(100 - pct)
+                            val label = com.bizarreelectronics.crm.ui.screens.tickets.components.formatSlaRemaining(remainingMs)
+                            tier to label
+                        }
+                        Spacer(modifier = Modifier.height(2.dp))
+                        SlaChip(tier = slaTier, label = slaLabel)
+                    }
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         ticket.total.formatAsMoney(),

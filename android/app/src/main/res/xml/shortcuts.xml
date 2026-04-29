@@ -59,4 +59,60 @@
             android:data="bizarrecrm://scan" />
     </shortcut>
 
+    <!--
+      §24.3 / §24.1 — Clock-in static launcher shortcut.
+      Deep-link: bizarrecrm://clockin → ClockInOutScreen.
+      Placed after scan_barcode so the top 4 visible slots cover
+      the primary repair-shop quick actions.
+    -->
+    <shortcut
+        android:shortcutId="clock_in"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_clock_in_short"
+        android:shortcutLongLabel="@string/shortcut_clock_in_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://clockin" />
+    </shortcut>
+
+    <!--
+      §24.5 / §24.3 — SMS inbox static shortcut.
+      Maps to "New SMS" from the original §24 shortcut plan.
+    -->
+    <shortcut
+        android:shortcutId="new_sms"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/nav_messages"
+        android:shortcutLongLabel="@string/nav_messages">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.bizarreelectronics.crm"
+            android:targetClass="com.bizarreelectronics.crm.MainActivity"
+            android:data="bizarrecrm://messages" />
+    </shortcut>
+
+    <!--
+      §25.2 — Share target declaration.
+      <share-target> tells the OS chooser that BizarreCRM accepts shares from
+      other apps for the declared MIME types. Dynamic sharing shortcuts pushed
+      via ShortcutManagerCompat.pushDynamicShortcut (see ShareSheet.kt) must
+      carry the CATEGORY_SHARE_TARGET category declared below in <category>.
+
+      On Android 10+ (API 29+) shortcuts with this category appear in the
+      system chooser "direct share" row (the face icons above the app list).
+
+      mimeType list mirrors the inbound intent-filter MIME types declared in
+      AndroidManifest.xml so the two stay in sync.
+    -->
+    <share-target android:targetClass="com.bizarreelectronics.crm.MainActivity">
+        <data android:mimeType="text/plain" />
+        <data android:mimeType="image/*" />
+        <data android:mimeType="application/pdf" />
+        <category android:name="com.bizarreelectronics.crm.CATEGORY_SHARE_TARGET" />
+    </share-target>
+
 </shortcuts>

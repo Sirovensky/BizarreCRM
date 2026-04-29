@@ -72,6 +72,8 @@ data class TicketListUiState(
     // plan:L792 — Bulk transition summary
     /** Non-null when a bulk-transition operation completed with a summary to show. */
     val bulkTransitionSummary: BulkTransitionSummary? = null,
+    // §4.21 — Active label filter (null = show all)
+    val activeLabelFilter: String? = null,
 )
 
 /**
@@ -182,8 +184,15 @@ class TicketListViewModel @Inject constructor(
                 // Saved-view filter applied on top of status filter
                 val savedFiltered = applySavedView(filtered, savedView)
 
+                // §4.21 — Label filter: keep only tickets containing the active label
+                val labelFiltered = _state.value.activeLabelFilter?.let { activeLabel ->
+                    savedFiltered.filter { ticket ->
+                        ticket.labels?.split(",")?.any { it.trim().equals(activeLabel, ignoreCase = true) } == true
+                    }
+                } ?: savedFiltered
+
                 // Sort
-                val sorted = applySortOrder(savedFiltered, _state.value.currentSort)
+                val sorted = applySortOrder(labelFiltered, _state.value.currentSort)
 
                 _state.value = _state.value.copy(
                     tickets = sorted,
@@ -211,6 +220,12 @@ class TicketListViewModel @Inject constructor(
     fun onFilterChanged(filter: String) {
         _state.value = _state.value.copy(selectedFilter = filter)
         _filterKeyFlow.value = resolveFilterKey(filter = filter)
+        collectTickets()
+    }
+
+    // §4.21 — Filter ticket list by label (null clears the filter)
+    fun onLabelFilterChanged(label: String?) {
+        _state.value = _state.value.copy(activeLabelFilter = label)
         collectTickets()
     }
 

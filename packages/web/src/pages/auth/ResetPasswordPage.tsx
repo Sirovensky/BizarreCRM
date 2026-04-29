@@ -135,7 +135,7 @@ export function ResetPasswordPage() {
                   placeholder="Min 8 characters"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'reset-password-error' : undefined}
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
@@ -151,7 +151,7 @@ export function ResetPasswordPage() {
                   placeholder="Confirm new password"
                   aria-invalid={!!error}
                   aria-describedby={error ? 'reset-password-error' : undefined}
-                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-4 py-3 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
+                  className="w-full rounded-lg border border-surface-300 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus-visible:border-primary-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/20 dark:border-surface-600 dark:bg-surface-700 dark:text-surface-100"
                 />
               </div>
 
@@ -164,7 +164,7 @@ export function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={loading || password.length < 8}
-                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50"
+                className="w-full rounded-lg bg-primary-600 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {loading ? <Loader2 className="mx-auto h-5 w-5 animate-spin" /> : 'Reset Password'}
               </button>

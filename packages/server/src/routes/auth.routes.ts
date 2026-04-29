@@ -483,7 +483,12 @@ function recordUserLoginFailure(db: import('better-sqlite3').Database, tenantSlu
 // page or go straight to the single-tenant first-run wizard.
 router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => {
   const adb = req.asyncDb;
-  const row = await adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1');
+  const [row, wizCompletedRow, wizSkippedAtRow, wizSkipCountRow] = await Promise.all([
+    adb.get<{ c: number }>('SELECT COUNT(*) as c FROM users WHERE is_active = 1'),
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_completed'"),
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_skipped_at'"),
+    adb.get<{ value: string }>("SELECT value FROM store_config WHERE key = 'setup_wizard_skip_count'"),
+  ]);
   // SCAN-1149: prevent CDN / reverse-proxy caching of setup-status — after
   // first-run completes, we don't want a stale `needsSetup:true` response
   // redirecting other browsers back to the wizard.
@@ -493,6 +498,9 @@ router.get('/setup-status', asyncHandler(async (req: Request, res: Response) => 
     data: {
       needsSetup: row!.c === 0,
       isMultiTenant: config.multiTenant === true,
+      setupWizardCompleted: wizCompletedRow?.value === 'true',
+      setupWizardSkippedAt: wizSkippedAtRow?.value ?? null,
+      setupWizardSkipCount: parseInt(wizSkipCountRow?.value || '0', 10),
     },
   });
 }));

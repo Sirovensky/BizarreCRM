@@ -17,7 +17,7 @@ interface StalledTicketsData {
 }
 
 export function StalledTicketsTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'stalled-tickets', from, to],
     queryFn: async () => {
       const res = await reportApi.stalledTickets({ from_date: from, to_date: to });
@@ -26,7 +26,12 @@ export function StalledTicketsTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load stalled tickets report" />;
+  const errMsg: string =
+    (error as any)?.response?.data?.message ??
+    (error as any)?.response?.data?.error ??
+    (error as Error)?.message ??
+    'Failed to load stalled tickets report';
+  if (isError || !data) return <ErrorState message={errMsg} />;
 
   const { rows } = data;
   const totalStalled = rows.reduce((sum, r) => sum + r.stalled_count, 0);

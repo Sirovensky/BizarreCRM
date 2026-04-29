@@ -136,7 +136,7 @@ export function OffHoursAutoReplyToggle({ className }: OffHoursAutoReplyTogglePr
               <button
                 onClick={saveMessage}
                 disabled={saveMut.isPending}
-                className="rounded bg-primary-600 px-2 py-0.5 text-[10px] text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                className="rounded bg-primary-600 px-2 py-0.5 text-[10px] text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 Save
               </button>

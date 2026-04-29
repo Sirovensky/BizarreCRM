@@ -23,7 +23,7 @@
  * that need admin — currently only service restart — show a UAC consent
  * prompt at click-time instead of at launch-time.
  */
-import { app, BrowserWindow, Menu } from 'electron';
+import { app, BrowserWindow, Menu, crashReporter } from 'electron';
 import { spawn } from 'node:child_process';
 import fs from 'fs';
 import path from 'path';
@@ -326,6 +326,19 @@ if (app.isPackaged) {
   Menu.setApplicationMenu(null);
 }
 
+// DASH-ELEC-114: Disable crash-dump upload to any remote server and enable
+// compression so local minidumps don't accumulate un-compressed in
+// %APPDATA%\BizarreCRM Management\CrashDumps. Crash dumps may contain
+// in-memory superAdminToken, pending Zod passwords, or tenant PII — they
+// must never leave the local machine automatically.
+//
+// We call this synchronously before whenReady() so the crashpad process is
+// configured before any renderer or main-process code that could crash.
+crashReporter.start({
+  uploadToServer: false,
+  compress: true,
+});
+
 app.whenReady().then(() => {
   // SEC: Only log path/packaging details in development — avoids leaking the
   // local username and install layout to disk in packaged (production) builds.
@@ -333,6 +346,9 @@ app.whenReady().then(() => {
     console.log('[Dashboard] App path:', app.getAppPath());
     console.log('[Dashboard] isPackaged:', app.isPackaged);
   }
+  // Log the crash-dump directory so the operator can locate minidumps if
+  // needed for manual bug reports.
+  console.log('[Dashboard] Crash dump path:', app.getPath('crashDumps'));
   createWindow();
 
   app.on('activate', () => {

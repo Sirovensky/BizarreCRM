@@ -171,7 +171,7 @@ export function ShrinkagePage() {
             <button
               onClick={() => recordMut.mutate()}
               disabled={!itemId || !quantity || recordMut.isPending}
-              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {recordMut.isPending && <Loader2 className="inline h-4 w-4 animate-spin mr-1" />}
               Record

@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Plus, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/api/client';
 
@@ -59,12 +60,18 @@ interface DunningSummary {
   warnings: string[];
 }
 
+// WEB-W3-019: default blank step for the structured editor
+const blankStep = (): DunningStep => ({
+  days_offset: 3,
+  action: 'email',
+  template_id: DEFAULT_TEMPLATE_ID,
+});
+
 export function DunningPage() {
   const qc = useQueryClient();
   const [name, setName] = useState('');
-  const [stepsText, setStepsText] = useState(
-    `[{"days_offset":3,"action":"email","template_id":"${DEFAULT_TEMPLATE_ID}"}]`,
-  );
+  // WEB-W3-019: structured step editor replaces raw JSON textarea
+  const [steps, setSteps] = useState<DunningStep[]>([blankStep()]);
 
   const { data: sequences, isLoading } = useQuery({
     queryKey: ['dunning-sequences'],
@@ -76,26 +83,17 @@ export function DunningPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      let steps: DunningStep[];
-      try {
-        steps = JSON.parse(stepsText);
-      } catch {
-        throw new Error('steps must be valid JSON array');
+      // WEB-W3-019: validate structured steps (no JSON parsing needed)
+      if (steps.length === 0) {
+        throw new Error('Add at least one step');
       }
-      if (!Array.isArray(steps) || steps.length === 0) {
-        throw new Error('steps must be a non-empty JSON array');
-      }
-      // WEB-FA-018: warn when an unknown template_id slips through —
-      // the dispatcher will skip the step rather than crash, so the
-      // user gets a chance to fix it before submission.
-      const unknown = steps
-        .map((s) => s?.template_id)
-        .filter((t): t is string => typeof t === 'string' && t.length > 0)
-        .filter((t) => !(KNOWN_TEMPLATE_IDS as readonly string[]).includes(t));
-      if (unknown.length > 0) {
-        throw new Error(
-          `Unknown template_id(s): ${unknown.join(', ')}. Known: ${KNOWN_TEMPLATE_IDS.join(', ')}`,
-        );
+      for (const step of steps) {
+        if (!Number.isInteger(step.days_offset) || step.days_offset < 0) {
+          throw new Error('days_offset must be a non-negative integer');
+        }
+        if (!step.action) {
+          throw new Error('Each step must have an action');
+        }
       }
       const res = await api.post('/dunning/sequences', { name, steps });
       return res.data.data;
@@ -103,6 +101,7 @@ export function DunningPage() {
     onSuccess: () => {
       toast.success('Sequence created');
       setName('');
+      setSteps([blankStep()]);
       qc.invalidateQueries({ queryKey: ['dunning-sequences'] });
     },
     onError: (err: unknown) =>
@@ -158,7 +157,7 @@ export function DunningPage() {
         <button type="button"
           onClick={() => runNowMutation.mutate()}
           disabled={runNowMutation.isPending}
-          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+          className="rounded-md bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {runNowMutation.isPending ? 'Running…' : 'Run dunning now'}
         </button>
@@ -208,7 +207,8 @@ export function DunningPage() {
         </div>
       )}
 
-      <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4 shadow-sm space-y-3">
+      {/* WEB-W3-019: structured step editor */}
+      <div className="rounded-lg border border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 p-4 shadow-sm space-y-4">
         <h2 className="text-lg font-semibold">Create sequence</h2>
         <input
           type="text"
@@ -217,32 +217,76 @@ export function DunningPage() {
           onChange={(e) => setName(e.target.value)}
           className="w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 text-sm"
         />
-        <label className="block text-sm text-surface-600 dark:text-surface-300">
-          Steps (JSON array):
-          <textarea
-            rows={4}
-            value={stepsText}
-            onChange={(e) => setStepsText(e.target.value)}
-            className="mt-1 w-full rounded-md border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-3 py-2 font-mono text-xs"
-          />
-        </label>
-        <p className="text-xs text-surface-500">
-          Known template_id values:{' '}
-          {KNOWN_TEMPLATE_IDS.map((t) => (
-            <code
-              key={t}
-              className="mr-1 rounded bg-surface-100 dark:bg-surface-800 text-surface-700 dark:text-surface-200 px-1 py-0.5 font-mono text-[11px]"
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-surface-600 dark:text-surface-300">Steps</span>
+            <button
+              type="button"
+              onClick={() => setSteps((prev) => [...prev, blankStep()])}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary-600 hover:text-primary-700"
             >
-              {t}
-            </code>
+              <Plus className="h-3.5 w-3.5" /> Add step
+            </button>
+          </div>
+          {steps.map((step, idx) => (
+            <div key={idx} className="grid grid-cols-[auto_1fr_1fr_auto] gap-2 items-center rounded-md border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/50 px-3 py-2">
+              <span className="text-xs text-surface-400 font-mono w-5 text-right">{idx + 1}.</span>
+              <div className="flex items-center gap-1">
+                <label className="text-xs text-surface-500 whitespace-nowrap">Day offset</label>
+                <input
+                  type="number" min="0" step="1"
+                  value={step.days_offset}
+                  onChange={(e) => setSteps((prev) => prev.map((s, i) =>
+                    i === idx ? { ...s, days_offset: Number(e.target.value) || 0 } : s
+                  ))}
+                  className="w-16 rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs text-right"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <select
+                  value={step.action}
+                  onChange={(e) => setSteps((prev) => prev.map((s, i) =>
+                    i === idx ? { ...s, action: e.target.value } : s
+                  ))}
+                  className="rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs"
+                >
+                  <option value="email">Email</option>
+                  <option value="sms">SMS</option>
+                  <option value="call_queue">Call queue</option>
+                  <option value="escalate">Escalate</option>
+                </select>
+                {(step.action === 'email' || step.action === 'sms') && (
+                  <select
+                    value={step.template_id ?? DEFAULT_TEMPLATE_ID}
+                    onChange={(e) => setSteps((prev) => prev.map((s, i) =>
+                      i === idx ? { ...s, template_id: e.target.value } : s
+                    ))}
+                    className="rounded border border-surface-300 dark:border-surface-600 bg-white dark:bg-surface-800 px-2 py-1 text-xs"
+                  >
+                    {KNOWN_TEMPLATE_IDS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSteps((prev) => prev.filter((_, i) => i !== idx))}
+                disabled={steps.length === 1}
+                className="p-1 text-red-400 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                title="Remove step"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
           ))}
-        </p>
+        </div>
         <button type="button"
           onClick={() => createMutation.mutate()}
-          disabled={!name.trim() || createMutation.isPending}
-          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+          disabled={!name.trim() || steps.length === 0 || createMutation.isPending}
+          className="rounded-md bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
-          Create
+          {createMutation.isPending ? 'Creating…' : 'Create'}
         </button>
       </div>
 
@@ -284,7 +328,7 @@ export function DunningPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <button type="button"
-                      className="rounded border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50"
+                      className="rounded border border-surface-300 dark:border-surface-600 px-2 py-1 text-xs hover:bg-surface-50 dark:hover:bg-surface-800 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                       onClick={() =>
                         toggleMutation.mutate({ id: seq.id, is_active: !seq.is_active })
                       }

@@ -181,7 +181,7 @@ function MergeDialog({ ticketId, orderId, onClose, onMerged }: {
           <button
             onClick={handleMerge}
             disabled={!selectedId || isPending}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {isPending ? 'Merging...' : 'Merge'}
           </button>
@@ -361,6 +361,16 @@ export function TicketDetailPage() {
     onError: () => toast.error('Failed to clone ticket as warranty'),
   });
 
+  const duplicateMut = useMutation({
+    mutationFn: () => ticketApi.duplicate(ticketId),
+    onSuccess: (res) => {
+      const newTicket = res?.data?.data;
+      toast.success('Ticket duplicated');
+      if (newTicket?.id) navigate(`/tickets/${newTicket.id}`);
+    },
+    onError: () => toast.error('Failed to duplicate ticket'),
+  });
+
   const currentUser = useAuthStore((s) => s.user);
 
   // ─── UI state ─────────────────────────────────────────────────────
@@ -490,6 +500,7 @@ export function TicketDetailPage() {
           setShowMerge(true);
         }}
         onCloneWarranty={() => cloneWarrantyMut.mutate()}
+        onDuplicate={() => duplicateMut.mutate()}
         onHandoff={() => setShowHandoff(true)}
         activeTab={activeTab}
         setActiveTab={setActiveTab}

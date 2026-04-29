@@ -334,7 +334,7 @@ function AppointmentsCard({ ticketId }: { ticketId: number }) {
             <button
               onClick={() => createMut.mutate()}
               disabled={!startTime || createMut.isPending}
-              className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+              className="rounded bg-primary-600 px-3 py-1 text-xs font-medium text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending ? 'Creating...' : 'Schedule'}
             </button>
@@ -423,7 +423,7 @@ export function TicketSidebar({
       const prev = queryClient.getQueryData(['ticket', ticketId]);
       queryClient.setQueryData(['ticket', ticketId], (old: any) => {
         if (!old) return old;
-        const clone = JSON.parse(JSON.stringify(old));
+        const clone = structuredClone(old); // WEB-FO-012: structuredClone preserves Dates/undefined
         const t = clone?.data?.data;
         if (t) {
           t.assigned_to = userId;
@@ -598,7 +598,7 @@ export function TicketSidebar({
                   ))}
                   {assigned && (
                     <button
-                      onClick={() => { assignMut.mutate(null as any); setShowAssignDropdown(false); }}
+                      onClick={() => { assignMut.mutate(null); setShowAssignDropdown(false); }}
                       className="w-full border-t border-surface-200 px-3 py-1.5 text-left text-xs text-red-500 hover:bg-red-50 dark:border-surface-700 dark:hover:bg-red-900/10"
                     >
                       Unassign

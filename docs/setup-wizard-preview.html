@@ -1,0 +1,1066 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Setup Wizard Preview — Bizarre Electronics CRM</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=League+Spartan:wght@500;700&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui'], display: ["'League Spartan'", 'sans-serif'] },
+      colors: {
+        cream: { DEFAULT: '#fdeed0' },
+        primary: {
+          50:  '#fffefb', 100: '#fefcf4', 200: '#fdf8e8', 300: '#fdf4d6', 400: '#fdf0c8',
+          500: '#fdeed0', 600: '#f5dca7', 700: '#e9c477', 800: '#d6a54b',
+          900: '#2b1400', 950: '#1a0b00',
+        },
+        surface: { 50:'#FAFAF9',100:'#F5F5F4',200:'#E7E5E4',300:'#D6D3D1',400:'#A8A29E',500:'#78716C',600:'#57534E',700:'#44403C',800:'#292524',900:'#1C1917' }
+      }
+    }
+  }
+};
+</script>
+<style>
+body { font-family: 'Inter', system-ui, sans-serif; }
+.font-display { font-family: 'League Spartan', sans-serif; }
+.browser-frame { border: 1px solid #E7E5E4; border-radius: 12px; overflow: hidden; box-shadow: 0 12px 32px -12px rgba(0,0,0,0.18); background: white; }
+.dark .browser-frame { border-color: #44403C; background: #292524; }
+.browser-bar { background: #F5F5F4; border-bottom: 1px solid #E7E5E4; padding: 8px 14px; display: flex; align-items: center; gap: 10px; }
+.dark .browser-bar { background: #1C1917; border-bottom-color: #44403C; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.url-bar { flex: 1; background: white; border: 1px solid #E7E5E4; border-radius: 8px; padding: 4px 12px; font-size: 12px; color: #57534E; font-family: ui-monospace, monospace; }
+.dark .url-bar { background: #292524; color: #A8A29E; border-color: #44403C; }
+.screen { background: #FAFAF9; min-height: 600px; position: relative; padding-top: 64px !important; }
+.dark .screen { background: #1C1917; }
+.toc { position: sticky; top: 24px; max-height: calc(100vh - 48px); overflow-y: auto; }
+.toc a { display: block; padding: 6px 12px; border-radius: 8px; font-size: 12px; color: #57534E; }
+.toc a:hover { background: #fdeed0; color: #1a0b00; }
+.toc a.active { background: #fdeed0; color: #1a0b00; font-weight: 600; }
+.dark .toc a { color: #D6D3D1; }
+.dark .toc a:hover, .dark .toc a.active { background: #2b1400; color: #fdeed0; }
+.required::after { content: ' *'; color: #DC2626; font-weight: 700; }
+.kbd { font-family: ui-monospace, monospace; font-size: 11px; background: #F5F5F4; padding: 2px 6px; border: 1px solid #E7E5E4; border-radius: 4px; color: #44403C; }
+.dark .kbd { background: #44403C; color: #E7E5E4; border-color: #57534E; }
+.mode-tab { padding: 10px 24px; border-radius: 9999px; font-weight: 600; font-size: 14px; cursor: pointer; transition: all 0.2s; }
+.mode-tab.active { background: #1a0b00; color: #fdeed0; }
+.mode-tab:not(.active) { background: white; color: #57534E; border: 1px solid #E7E5E4; }
+.dark .mode-tab:not(.active) { background: #292524; color: #D6D3D1; border-color: #44403C; }
+.badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+.badge-self { background: #DBEAFE; color: #1E3A8A; }
+.badge-saas { background: #EDE9FE; color: #5B21B6; }
+.badge-both { background: #DCFCE7; color: #166534; }
+.badge-new { background: #fdeed0; color: #2b1400; border: 1px solid #d6a54b; }
+.annot { background: #F5F5F4; border-left: 4px solid #d6a54b; padding: 16px; border-radius: 8px; font-size: 13px; }
+.dark .annot { background: #292524; color: #D6D3D1; }
+.annot h4 { font-weight: 600; color: #292524; margin-bottom: 8px; font-size: 13px; }
+.dark .annot h4 { color: #FAFAF9; }
+.annot ul { list-style: disc; margin-left: 18px; color: #57534E; }
+.dark .annot ul { color: #A8A29E; }
+.annot ul li { margin-bottom: 4px; }
+.field { display: block; margin-bottom: 16px; }
+.field-label { display: block; font-size: 13px; font-weight: 500; color: #44403C; margin-bottom: 6px; }
+.dark .field-label { color: #D6D3D1; }
+.field-input { width: 100%; padding: 10px 14px; border: 1px solid #D6D3D1; border-radius: 10px; background: #FAFAF9; font-size: 14px; color: #1C1917; }
+.dark .field-input { background: #292524; color: #E7E5E4; border-color: #44403C; }
+.field-input:focus { outline: none; border-color: #d6a54b; box-shadow: 0 0 0 3px rgba(214,165,75,0.18); }
+.field-error { border-color: #DC2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,0.12) !important; }
+.field-err-text { color: #DC2626; font-size: 12px; margin-top: 4px; }
+.btn-primary { background: #fdeed0; color: #1a0b00; padding: 10px 24px; border-radius: 9999px; font-weight: 600; font-size: 14px; box-shadow: 0 2px 8px -2px rgba(0,0,0,0.15); border: 1px solid #f5dca7; cursor: pointer; }
+.btn-primary:hover { background: #f5dca7; }
+.btn-secondary { background: white; color: #2b1400; border: 1px solid #d6a54b; padding: 10px 24px; border-radius: 9999px; font-weight: 600; font-size: 14px; cursor: pointer; }
+.dark .btn-secondary { background: #292524; color: #fdeed0; }
+.btn-ghost { padding: 10px 16px; color: #57534E; font-size: 14px; cursor: pointer; }
+.dark .btn-ghost { color: #A8A29E; }
+.card { background: white; border: 1px solid #E7E5E4; border-radius: 16px; box-shadow: 0 4px 20px -8px rgba(0,0,0,0.1); padding: 32px; }
+.dark .card { background: #292524; border-color: #44403C; color: #E7E5E4; }
+.hero-card { background: linear-gradient(135deg, #fdf4d6 0%, white 100%); border: 1px solid #fdf0c8; border-radius: 24px; padding: 32px; }
+.dark .hero-card { background: linear-gradient(135deg, #2b1400 0%, #1C1917 100%); border-color: #44403C; }
+.step-icon-bg { width: 56px; height: 56px; border-radius: 16px; background: #fdeed0; color: #2b1400; display: flex; align-items: center; justify-content: center; }
+.step-icon-bg svg { color: #2b1400; }
+.phase-pill { padding: 6px 14px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+.phase-pill.active { background: #fdeed0; color: #1a0b00; }
+.phase-pill.done { background: #DCFCE7; color: #166534; }
+.phase-pill.pending { background: #F5F5F4; color: #78716C; }
+.dark .phase-pill.pending { background: #44403C; color: #A8A29E; }
+.bc-wrap { position: absolute; top: 14px; left: 16px; right: 16px; display: flex; justify-content: center; pointer-events: auto; z-index: 5; }
+.bc { display: inline-flex; align-items: center; justify-content: center; gap: 12px; padding: 10px 18px; border-radius: 9999px; background: white; border: 1px solid #E7E5E4; font-size: 13px; flex-wrap: wrap; box-shadow: 0 2px 8px -4px rgba(0,0,0,0.08); }
+.dark .bc { background: #292524; border-color: #44403C; }
+.bc-prev, .bc-next { color: #78716C; font-weight: 500; }
+.dark .bc-prev, .dark .bc-next { color: #A8A29E; }
+.bc-current { display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; border-radius: 9999px; background: #fdeed0; color: #1a0b00; font-weight: 700; font-size: 14px; }
+.bc-sep { color: #D6D3D1; }
+.dark .bc-sep { color: #57534E; }
+.flow-arrow { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 9999px; font-size: 12px; background: #fdeed0; color: #1a0b00; font-weight: 500; }
+.flow-arrow svg { width: 12px; height: 12px; }
+[data-mode="self-host"] .saas-only, [data-mode="saas"] .self-only { display: none !important; }
+.dark { color-scheme: dark; }
+.dark body { background: #1C1917; color: #E7E5E4; }
+.dark h1, .dark h2, .dark h3, .dark h4, .dark p, .dark span, .dark label, .dark li, .dark a { color: inherit; }
+.toc-search { width: 100%; padding: 6px 10px; border: 1px solid #E7E5E4; border-radius: 6px; font-size: 12px; margin-bottom: 8px; }
+.dark .toc-search { background: #1C1917; border-color: #44403C; color: #E7E5E4; }
+</style>
+</head>
+<body class="bg-surface-50 dark:bg-surface-900">
+
+<div class="max-w-[1700px] mx-auto px-6 py-8">
+  <header class="mb-8">
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h1 class="font-display text-4xl font-bold text-surface-900 dark:text-surface-50">Setup Wizard — Visual Preview</h1>
+        <p class="mt-2 text-surface-600 dark:text-surface-400 text-base">First-time shop owner experience. After this wizard, shop is fully operational.</p>
+      </div>
+      <button class="mode-tab" onclick="toggleDark()" id="dark-toggle" title="Toggle dark mode">🌗</button>
+    </div>
+
+    <div class="mt-6 flex gap-3 items-center flex-wrap">
+      <span class="text-sm text-surface-500 dark:text-surface-400">Deployment mode:</span>
+      <button class="mode-tab active" id="tab-self" onclick="setMode('self-host')">Self-hosted (LAN)</button>
+      <button class="mode-tab" id="tab-saas" onclick="setMode('saas')">Multi-tenant SaaS</button>
+      <span class="text-sm text-surface-400 ml-auto">Estimated total: <strong>~12-15 min</strong> (skip non-essentials to finish in ~5)</span>
+    </div>
+
+    <div class="mt-4 p-4 rounded-xl bg-primary-300 border border-primary-400 dark:bg-primary-900 dark:border-primary-800">
+      <p class="text-sm text-primary-900 dark:text-primary-300" id="mode-blurb"><strong>Self-hosted:</strong> Shop runs Bizarre CRM on its own LAN/box. Owner installs via setup.bat or Docker. Logs in with default <span class="kbd">admin/admin123</span>. No tenant slug, no signup, no trial. Free forever.</p>
+    </div>
+
+    <!-- Decision flowchart -->
+    <div class="mt-6 p-4 rounded-xl bg-white border border-surface-200 dark:bg-surface-800 dark:border-surface-700 overflow-x-auto">
+      <p class="text-xs uppercase font-semibold text-surface-500 mb-2">Wizard flow</p>
+      <div class="flex items-center gap-2 flex-wrap text-xs">
+        <span class="flow-arrow">Login</span><span>→</span>
+        <span class="flow-arrow">Welcome</span><span>→</span>
+        <span class="flow-arrow">Shop type</span><span>→</span>
+        <span class="flow-arrow">Store info</span><span>→</span>
+        <span class="flow-arrow">Import</span><span>→</span>
+        <span class="flow-arrow">Pricing</span><span>→</span>
+        <span class="flow-arrow">Statuses</span><span>→</span>
+        <span class="flow-arrow">Hours</span><span>→</span>
+        <span class="flow-arrow">Tax</span><span>→</span>
+        <span class="flow-arrow">Receipts</span><span>→</span>
+        <span class="flow-arrow">Logo</span><span>→</span>
+        <span class="flow-arrow">Payments</span><span>→</span>
+        <span class="flow-arrow">Team</span><span>→</span>
+        <span class="flow-arrow">SMS</span><span>→</span>
+        <span class="flow-arrow">Email</span><span>→</span>
+        <span class="flow-arrow">Notifications</span><span>→</span>
+        <span class="flow-arrow">Printer</span><span>→</span>
+        <span class="flow-arrow">Cash</span><span>→</span>
+        <span class="flow-arrow">Booking</span><span>→</span>
+        <span class="flow-arrow">Warranty</span><span>→</span>
+        <span class="flow-arrow">Backup</span><span>→</span>
+        <span class="flow-arrow">Mobile</span><span>→</span>
+        <span class="flow-arrow">Review</span><span>→</span>
+        <span class="flow-arrow">Done</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid grid-cols-[180px_1fr] gap-6" data-mode="self-host" id="root">
+    <!-- LEFT TOC -->
+    <aside class="toc text-sm">
+      <h3 class="font-semibold text-surface-900 dark:text-surface-50 px-3 mb-2">Steps</h3>
+      <input type="text" placeholder="Search…" class="toc-search" oninput="filterToc(this.value)" />
+      <div id="toc-list">
+        <a href="#screen-1" class="self-only active">1. First login</a>
+        <a href="#screen-2" class="self-only">2. Force password</a>
+        <a href="#screen-saas-1" class="saas-only active">1. Signup</a>
+        <a href="#screen-saas-2" class="saas-only">2. Verify email</a>
+        <a href="#screen-3">3. 2FA setup</a>
+        <a href="#screen-4">4. Welcome</a>
+        <a href="#screen-5">5. Shop type 🆕</a>
+        <a href="#screen-6">6. Store info</a>
+        <a href="#screen-7">7. Import</a>
+        <a href="#screen-8">8. Repair pricing 🆕</a>
+        <a href="#screen-9">9. Default statuses</a>
+        <a href="#screen-10">10. Business hours</a>
+        <a href="#screen-11">11. Tax</a>
+        <a href="#screen-12">12. Receipts</a>
+        <a href="#screen-13">13. Logo</a>
+        <a href="#screen-14">14. Payment terminal 🆕</a>
+        <a href="#screen-15">15. First employees 🆕</a>
+        <a href="#screen-16">16. SMS provider</a>
+        <a href="#screen-17">17. Email SMTP</a>
+        <a href="#screen-18">18. Notification templates 🆕</a>
+        <a href="#screen-19">19. Receipt printer 🆕</a>
+        <a href="#screen-20">20. Cash drawer 🆕</a>
+        <a href="#screen-21">21. Booking policy 🆕</a>
+        <a href="#screen-22">22. Warranty 🆕</a>
+        <a href="#screen-23">23. Backup 🆕</a>
+        <a href="#screen-24">24. Mobile app 🆕</a>
+        <a href="#screen-25">25. Review</a>
+        <a href="#screen-26">26. Done</a>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="space-y-12">
+
+      <!-- ============ SCREEN 1: SELF-HOST FIRST LOGIN ============ -->
+      <section id="screen-1"" class="self-only">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host only</span><h2 class="font-display text-2xl font-bold">Step 1 — First-time login</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Owner opens shop URL. Sees default-credential warning + login form.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login</div></div>
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Set password →</span></div></div><div class="card max-w-md w-full">
+              <div class="step-icon-bg mx-auto mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg></div>
+              <h2 class="font-display text-2xl font-bold text-center">Welcome to BizarreCRM</h2>
+              <p class="text-center text-sm text-surface-500 mt-1 mb-6">Sign in to your shop</p>
+              <div class="rounded-xl bg-amber-50 border border-amber-300 p-4 mb-5"><p class="text-sm text-amber-900"><strong>Default credentials in use.</strong> You'll be required to change them before continuing.</p></div>
+              <div class="field"><label class="field-label">Username</label><input class="field-input" value="admin" /></div>
+              <div class="field"><label class="field-label">Password</label><input type="password" class="field-input" value="••••••••" /></div>
+              <button class="btn-primary w-full">Sign in</button>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Default <span class="kbd">admin/admin123</span></li><li>Server flags <span class="kbd">force_password_change=true</span></li><li>No "Sign up" link — single tenant</li><li>Self-signed cert, port 443</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SAAS SCREEN 1: SIGNUP ============ -->
+      <section id="screen-saas-1"" class="saas-only">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-saas">SaaS only</span><h2 class="font-display text-2xl font-bold">Step 1 — Signup</h2></div>
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/signup</div></div>
+<div class="screen p-12"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-next">Step 2 · Verify email →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-3xl font-bold">Start your free trial</h2>
+              <p class="text-surface-600 dark:text-surface-400 mt-1 mb-6">14 days of Pro. No credit card.</p>
+              <div class="field"><label class="field-label required">Your name</label><input class="field-input" value="Joe Smith" /></div>
+              <div class="field"><label class="field-label required">Email</label><input class="field-input" value="joe@joesphonerepair.com" /></div>
+              <div class="field"><label class="field-label required">Password</label><input type="password" class="field-input" value="••••••••••" /><p class="text-xs text-surface-500 mt-1">Min 10 characters · strength: <span class="text-green-600 font-medium">Strong</span></p></div>
+              <div class="field"><label class="field-label required">Choose your shop URL</label><div class="flex items-center gap-2"><input class="field-input flex-1" value="joes-phone-repair" /><span class="text-surface-500 text-sm">.bizarrecrm.com</span></div></div>
+              <button class="btn-primary w-full mt-2">Create my shop</button>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Provisions tenant DB at <span class="kbd">data/tenants/&lt;slug&gt;.db</span></li><li>14-day Pro trial auto-issued</li><li>Email verification required</li><li>Password rule: min 10</li><li><strong>Email captured ONCE here</strong> (account email). Verify screen echoes it back, doesn't re-ask.</li><li><strong>Store-info Step 6 SHOP email is pre-filled from this</strong> — owner can change if shop uses a separate contact address. No duplicate manual entry.</li><li><strong>Landing CTA deprecation:</strong> any old modal/quick-menu signup form on landing page should redirect to <span class="kbd">/signup</span> (this canonical page). Single source of truth — kill the modal duplication.</li></ul></div>
+        </div>
+      </section>
+
+      <section id="screen-saas-2"" class="saas-only">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-saas">SaaS only</span><h2 class="font-display text-2xl font-bold">Step 2 — Verify email</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://bizarrecrm.com/verify-email</div></div>
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 1 · Signup</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Verify email</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div></div><div class="card max-w-md text-center">
+              <div class="step-icon-bg mx-auto mb-4 bg-green-100"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg></div>
+              <h2 class="font-display text-2xl font-bold">Check your email</h2>
+              <p class="text-surface-600 mt-2">Confirmation link sent to <strong>joe@joesphonerepair.com</strong></p>
+              <button class="btn-secondary mt-6">Resend email</button>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Login blocked until verified</li><li>Link expires 24h</li><li>Resend rate-limited (1/min)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 2: SELF-HOST FORCE PASSWORD ============ -->
+      <section id="screen-2"" class="self-only">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host only</span><h2 class="font-display text-2xl font-bold">Step 2 — Force new password</h2></div>
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">https://shop.local/login (set-password)</div></div>
+<div class="screen p-12 flex items-center justify-center"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 1 · First login</span><span class="bc-sep">·</span><span class="bc-current">Step 2 · Set password</span><span class="bc-sep">·</span><span class="bc-next">Step 3 · 2FA setup →</span></div></div><div class="card max-w-md w-full">
+              <h2 class="font-display text-2xl font-bold">Pick a new password</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Default credentials are insecure.</p>
+              <div class="field"><label class="field-label required">New password</label><input type="password" class="field-input" value="••••••••••" /><div class="mt-2 flex gap-1"><span class="h-1 flex-1 bg-green-500 rounded-full"></span><span class="h-1 flex-1 bg-green-500 rounded-full"></span><span class="h-1 flex-1 bg-green-500 rounded-full"></span></div><p class="text-xs text-green-700 mt-1 font-medium">Strong</p></div>
+              <div class="field"><label class="field-label required">Confirm password</label><input type="password" class="field-input" value="••••••••••" /></div>
+              <button class="btn-primary w-full">Save and continue</button>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Min 10 chars</li><li>Strength bar (WEB-S4-005)</li><li>Confirm-match check (WEB-S4-004)</li><li>Sets <span class="kbd">force_password_change=false</span></li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 3: 2FA ============ -->
+      <section id="screen-3"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both modes</span><h2 class="font-display text-2xl font-bold">Step 3 — 2FA setup</h2></div>
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/login (2fa)</span><span class="saas-only">https://acme.bizarrecrm.com/login (2fa)</span></div></div>
+<div class="screen p-10"><div class="bc-wrap"><div class="bc"><span class="bc-current">Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-next">Step 4 · Welcome →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold">Set up two-factor</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Scan with Google Authenticator, Authy, or 1Password.</p>
+              <div class="grid grid-cols-[180px_1fr] gap-6 items-start">
+                <div class="bg-white border border-surface-200 rounded-xl p-3 dark:bg-surface-700 dark:border-surface-600"><div class="w-40 h-40 bg-[url('data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22white%22/%3E%3Cg%20fill%3D%22%23000%22%3E%3Crect%20x%3D%2210%22%20y%3D%2210%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2270%22%20y%3D%2210%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2270%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2240%22%20y%3D%2240%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3C/g%3E%3C/svg%3E')] bg-contain"></div></div>
+                <div>
+                  <p class="text-xs uppercase font-semibold text-surface-500 mb-1">Manual entry</p>
+                  <code class="block font-mono text-sm bg-surface-100 dark:bg-surface-700 p-2 rounded mb-4">JBSWY3DPEHPK3PXP</code>
+                  <label class="field-label required">6-digit code</label>
+                  <input class="field-input font-mono text-center tracking-[0.4em] text-xl" maxlength="6" value="482910" />
+                  <button class="btn-primary mt-4 w-full">Verify and continue</button>
+                </div>
+              </div>
+              <div class="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl dark:bg-amber-900/20 dark:border-amber-700">
+                <p class="font-semibold text-amber-900 dark:text-amber-300 text-sm">Save your recovery codes</p>
+                <div class="grid grid-cols-2 gap-x-6 gap-y-1 mt-2 text-sm font-mono text-amber-900 dark:text-amber-300">
+                  <div>4f8a-3b2c-9d1e</div><div>7g3h-2k5p-8m1q</div><div>9c4d-7e2f-1a8b</div><div>5h6i-3j4k-7l8m</div><div>2n9o-5p4q-1r8s</div><div>6t7u-3v2w-9x1y</div>
+                </div>
+                <label class="flex items-center gap-2 mt-3 text-sm text-amber-900 dark:text-amber-300"><input type="checkbox" class="rounded" /> I've saved these codes somewhere safe</label>
+              </div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Mandatory for admin role</li><li>QR includes shop name + username</li><li>8 recovery codes (single-use)</li><li>Verify gated on ack-checkbox</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 4: WELCOME ============ -->
+      <section id="screen-4">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both modes</span><h2 class="font-display text-2xl font-bold">Step 4 — Welcome</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/setup</span><span class="saas-only">https://acme.bizarrecrm.com/setup</span></div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 3 · 2FA setup</span><span class="bc-sep">·</span><span class="bc-current">Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-next">Step 5 · Shop type →</span></div></div>
+        <div class="flex gap-2 mb-6 overflow-x-auto"><span class="phase-pill active">Welcome</span><span class="phase-pill pending">Shop type</span><span class="phase-pill pending">Store info</span><span class="phase-pill pending">…20 more</span></div>
+              <div class="hero-card max-w-2xl mx-auto">
+                <div class="step-icon-bg mx-auto mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 21V8l9-5 9 5v13M3 21h18M9 21V13h6v8"/></svg></div>
+                <h1 class="font-display text-3xl font-bold text-center">Welcome to BizarreCRM</h1>
+                <p class="text-center text-surface-600 dark:text-surface-400 mt-2 mb-6">Let's get your shop running. About 12 minutes — most steps are skippable if you want to finish fast.</p>
+                <div class="bg-white dark:bg-surface-700 p-6 rounded-2xl shadow-sm">
+                  <div class="field"><label class="field-label required">Shop name</label><input class="field-input" value="Joe's Phone Repair" /></div>
+                  <div class="field"><label class="field-label">Theme</label><div class="grid grid-cols-3 gap-3"><button class="border-2 border-primary-800 bg-primary-300 p-3 rounded-xl text-center"><div class="w-full h-8 bg-primary-500 rounded mb-2"></div><div class="text-sm font-medium">Light</div></button><button class="border border-surface-200 dark:border-surface-600 p-3 rounded-xl text-center"><div class="w-full h-8 bg-surface-800 rounded mb-2"></div><div class="text-sm font-medium">Dark</div></button><button class="border border-surface-200 dark:border-surface-600 p-3 rounded-xl text-center"><div class="w-full h-8 bg-gradient-to-r from-primary-500 to-surface-800 rounded mb-2"></div><div class="text-sm font-medium">System</div></button></div></div>
+                </div>
+                <div class="flex justify-end mt-6"><button class="btn-primary">Next — Shop type →</button></div>
+              </div>
+            </div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">store_name</span>, <span class="kbd">theme</span></li><li>Required: shop name (min 3)</li><li>Theme defaults to system</li><li>SaaS pre-fills from signup</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 5: SHOP TYPE (NEW) ============ -->
+      <section id="screen-5"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 5 — Shop type</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Drives default seed data: repair categories, services, base prices, ticket statuses.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 4 · Welcome</span><span class="bc-sep">·</span><span class="bc-current">Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-next">Step 6 · Store info →</span></div></div>
+        <div class="max-w-3xl mx-auto">
+              <h2 class="font-display text-3xl font-bold">What kind of shop?</h2>
+              <p class="text-base text-surface-600 dark:text-surface-400 mt-2 mb-8">We'll seed device categories + repair services so you can take a ticket day one.</p>
+              <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                <button class="text-left rounded-2xl border-2 border-primary-800 bg-primary-300 p-5 min-h-[140px]">
+                  <div class="text-2xl mb-2">📱</div><h3 class="font-medium">Phone repair</h3><p class="text-xs text-surface-700 mt-1">iPhones, Androids — 143 models</p><span class="text-xs text-primary-900 font-semibold">11 services seeded</span>
+                </button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
+                  <div class="text-2xl mb-2">📱💻🎮</div><h3 class="font-medium">Multi-device</h3><p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Phones + tablets + laptops + consoles — 236 models</p><span class="text-xs text-primary-900 font-semibold">~30 services</span>
+                </button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
+                  <div class="text-2xl mb-2">🎮</div><h3 class="font-medium">Console / PC</h3><p class="text-xs text-surface-500 mt-1">Xbox, PS, Switch, gaming PCs — 19 models</p><span class="text-xs text-amber-700 font-semibold">4 services <span class="text-amber-600">(thin — TODO DPI-12)</span></span>
+                </button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
+                  <div class="text-2xl mb-2">🖥️</div><h3 class="font-medium">IT services</h3><p class="text-xs text-surface-500 mt-1">Networking, virus removal, data recovery</p><span class="text-xs text-amber-700 font-semibold">~7 (subset of laptop) <span class="text-amber-600">(TODO DPI-12)</span></span>
+                </button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
+                  <div class="text-2xl mb-2">📺</div><h3 class="font-medium">TV repair</h3><p class="text-xs text-surface-500 mt-1">LED, OLED, plasma</p><span class="text-xs text-primary-900 font-semibold">9 services</span>
+                </button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-5 min-h-[140px] hover:border-primary-800">
+                  <div class="text-2xl mb-2">🛠️</div><h3 class="font-medium">Custom / skip</h3><p class="text-xs text-surface-500 mt-1">No defaults — I'll set up manually</p><span class="text-xs text-surface-500">0 services</span>
+                </button>
+              </div>
+              <div class="flex justify-between mt-8"><button class="btn-ghost">← Back</button><button class="btn-primary">Next — Store info →</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">shop_type</span></li><li><strong>Seed reality (current):</strong> 236 device models in <span class="kbd">device-models-seed.ts</span> (143 phones, 29 tablets, 45 laptops, 19 consoles). 11 phone + 14 laptop + 4 console + 9 TV + 2 tablet + 7 desktop services. <strong>repair_prices table empty — no labor seeded.</strong></li><li>"Custom" = empty catalog (CROSS31 manual-price prompt at ticket creation)</li><li><strong>Gaps tracked:</strong> DPI-12 (expand console + tablet + IT services seeds), DPI-13 (seed industry-median repair_prices per shop type via tier).</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 6: STORE INFO ============ -->
+      <section id="screen-6"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 6 — Store info</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">All fields required. Validation gate (red border + inline error). Includes invalid-input demo.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 5 · Shop type</span><span class="bc-sep">·</span><span class="bc-current">Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-next">Step 7 · Import →</span></div></div>
+        <div class="card max-w-2xl mx-auto">
+              <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2h-4a2 2 0 01-2-2v-4H10v4a2 2 0 01-2 2H4a2 2 0 01-2-2V9z"/></svg></div>
+              <h2 class="font-display text-2xl font-bold">Where's your shop?</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Used for receipts, invoices, customer notifications.</p>
+              <div class="grid grid-cols-2 gap-4">
+                <div class="field col-span-2"><label class="field-label required">Street address</label><input class="field-input" value="123 Main St, Suite 4B" /></div>
+                <div class="field"><label class="field-label required">Phone</label><input class="field-input field-error" value="555-1090" /><p class="field-err-text" role="alert">Phone must be 10-15 digits</p></div>
+                <div class="field"><label class="field-label required">Shop contact email</label><input class="field-input" value="contact@joesphonerepair.com" /><p class="text-xs text-surface-500 mt-1 saas-only">💡 Pre-filled from your signup email. Change if your shop uses a different contact address (printed on receipts + invoices).</p><p class="text-xs text-surface-500 mt-1 self-only">Used on receipts + invoices. Different from admin login.</p></div>
+                <div class="field"><label class="field-label required">Timezone</label><select class="field-input"><option>America/Los_Angeles</option><option>America/Denver</option></select></div>
+                <div class="field"><label class="field-label required">Currency</label><select class="field-input"><option>USD — US Dollar</option></select></div>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back</button><button class="btn-primary opacity-50 cursor-not-allowed" disabled>Next →</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes 5 keys: address/phone/email/timezone/currency</li><li>Phone: 10-15 digits (validation gate)</li><li>Address: ≥10 chars</li><li>Email: regex</li><li>Next blocked when invalid (shown above)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 7: IMPORT HANDOFF ============ -->
+      <section id="screen-7"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 7 — Existing data?</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 6 · Store info</span><span class="bc-sep">·</span><span class="bc-current">Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-next">Step 8 · Repair pricing →</span></div></div>
+        <div class="max-w-3xl mx-auto">
+              <h2 class="font-display text-3xl font-bold">Existing data?</h2>
+              <p class="text-base text-surface-600 dark:text-surface-400 mt-2 mb-8">Bring customers, tickets, and inventory from your old system.</p>
+              <div class="grid grid-cols-3 gap-4">
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-6 min-h-[160px] hover:border-primary-800"><svg class="w-8 h-8 text-primary-900" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/></svg><h3 class="text-xl font-medium mt-3">Yes, import data</h3><p class="text-sm text-surface-600 dark:text-surface-400 mt-1">RepairDesk, RepairShopr, or CSV</p><span class="text-sm font-medium text-primary-900 mt-3 inline-flex items-center gap-1">Open import wizard ↗</span></button>
+                <button class="text-left rounded-2xl border-2 border-primary-800 bg-primary-300 p-6 min-h-[160px]"><svg class="w-8 h-8 text-primary-900" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><h3 class="text-xl font-medium mt-3">I'll do it later</h3><p class="text-sm text-surface-700 mt-1">Settings → Data is always available</p></button>
+                <button class="text-left rounded-2xl border-2 border-surface-200 dark:border-surface-700 p-6 min-h-[160px] hover:border-primary-800"><svg class="w-8 h-8 text-primary-900" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z"/></svg><h3 class="text-xl font-medium mt-3">Fresh start</h3><p class="text-sm text-surface-600 dark:text-surface-400 mt-1">No legacy data</p></button>
+              </div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">setup_imported_legacy_data</span></li><li>"Yes" deep-links to <span class="kbd">/settings?tab=data</span> in new tab</li><li>NOT inline (heavy import flow lives in Settings)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 8: REPAIR PRICING (NEW) — TIERED ============ -->
+      <section id="screen-8"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW</span><h2 class="font-display text-2xl font-bold">Step 8 — Repair pricing (tiered by model age)</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Real shops price per device. Newer models = profit-drivers ($200+ margin), older = get-in-door ($40 margin). Default UI uses tiers; advanced mode unlocks per-device matrix.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 7 · Import</span><span class="bc-sep">·</span><span class="bc-current">Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-next">Step 9 · Default statuses →</span></div></div>
+        <div class="card max-w-3xl mx-auto">
+              <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></div>
+              <h2 class="font-display text-2xl font-bold">Repair pricing</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-4">Set labor by model tier. Auto-applies to all 203 device models in your shop's catalog.</p>
+
+              <!-- Mode toggle -->
+              <div class="inline-flex rounded-full bg-surface-100 dark:bg-surface-800 p-1 mb-6">
+                <button class="px-4 py-1.5 rounded-full bg-white dark:bg-surface-700 shadow-sm text-sm font-medium">Tier by model age</button>
+                <button class="px-4 py-1.5 text-sm text-surface-500">Flat per service</button>
+                <button class="px-4 py-1.5 text-sm text-surface-500">Per-device matrix →</button>
+              </div>
+
+              <!-- Tier explainer -->
+              <div class="grid grid-cols-3 gap-3 mb-6 text-xs">
+                <div class="rounded-xl border border-primary-800 bg-primary-300 p-3">
+                  <div class="font-bold text-primary-900 mb-1">🔥 Tier A — Flagship (0-2 yr)</div>
+                  <p class="text-primary-900">iPhone 15/16, Galaxy S24/S25, Pixel 9. Customers pay premium. Profit driver.</p>
+                  <p class="text-primary-900 mt-1 font-mono text-xs">42 models</p>
+                </div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
+                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">⚖️ Tier B — Mainstream (3-5 yr)</div>
+                  <p class="text-surface-600 dark:text-surface-400">iPhone 11/12/13, Galaxy S20/S21, Pixel 5/6. Bread-and-butter volume.</p>
+                  <p class="text-surface-500 mt-1 font-mono text-xs">87 models</p>
+                </div>
+                <div class="rounded-xl border border-surface-300 bg-surface-50 dark:bg-surface-800 dark:border-surface-700 p-3">
+                  <div class="font-bold text-surface-700 dark:text-surface-300 mb-1">🚪 Tier C — Older (6+ yr)</div>
+                  <p class="text-surface-600 dark:text-surface-400">iPhone X/XR/8, Galaxy S9/S10. Get-in-door pricing — break-even on labor, upsell add-ons.</p>
+                  <p class="text-surface-500 mt-1 font-mono text-xs">74 models</p>
+                </div>
+              </div>
+
+              <!-- Per-service tier grid -->
+              <table class="w-full text-sm">
+                <thead><tr class="border-b border-surface-200 dark:border-surface-700"><th class="text-left py-2">Service</th><th class="text-right py-2 px-2 text-primary-900">Tier A labor</th><th class="text-right py-2 px-2">Tier B labor</th><th class="text-right py-2 px-2">Tier C labor</th><th class="text-right py-2">Time</th></tr></thead>
+                <tbody class="divide-y divide-surface-100 dark:divide-surface-700">
+                  <tr>
+                    <td class="py-2">Screen replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$249" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
+                    <td class="text-right text-surface-500">45 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Battery replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$99" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$69" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right text-surface-500">30 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Charge port repair</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$89" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$59" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
+                    <td class="text-right text-surface-500">30 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Water damage diagnostic</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$45" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$35" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$25" /></td>
+                    <td class="text-right text-surface-500">15 min</td>
+                  </tr>
+                  <tr>
+                    <td class="py-2">Camera lens replacement</td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$129" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$79" /></td>
+                    <td class="text-right px-2"><input class="field-input w-20 text-right" value="$49" /></td>
+                    <td class="text-right text-surface-500">40 min</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p class="text-xs text-surface-500 mt-3">+ 7 more services. Set $0 in any tier to disable that service for that tier.</p>
+
+              <!-- Profit calculator hint -->
+              <div class="mt-4 p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 text-sm">
+                <p class="font-semibold text-amber-900 dark:text-amber-300 mb-2">💡 Profit estimator (Tier A · iPhone 15 Pro screen):</p>
+                <div class="grid grid-cols-4 gap-3 text-xs">
+                  <div><div class="text-amber-700 dark:text-amber-400">Labor charged</div><div class="font-bold text-amber-900 dark:text-amber-300 text-base">$249</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Part cost</div><div class="font-mono text-amber-900 dark:text-amber-300 text-base">−$45</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Tax/fees</div><div class="font-mono text-amber-900 dark:text-amber-300 text-base">−$8</div></div>
+                  <div><div class="text-amber-700 dark:text-amber-400">Profit</div><div class="font-bold text-green-700 dark:text-green-400 text-base">+$196</div></div>
+                </div>
+                <p class="text-xs text-amber-800 dark:text-amber-400 mt-2">Pulls part cost from Mobilesentrix/PhoneLcdParts catalog daily. Updates this estimate as part prices shift.</p>
+              </div>
+
+              <!-- Auto-margin toggle -->
+              <label class="flex items-start gap-3 mt-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700 cursor-pointer">
+                <input type="checkbox" class="mt-1" />
+                <div class="flex-1 text-sm"><strong class="block">Auto-update labor when supplier part costs change</strong><span class="text-xs text-surface-500">If part cost goes up by $20, labor auto-bumps by $20 to preserve margin. Off by default — most owners want to control retail price manually.</span></div>
+              </label>
+
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back · Skip pricing</button><button class="btn-primary">Save 12 services × 3 tiers = 36 rows → 2,436 device prices</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li><strong>Schema:</strong> writes <span class="kbd">repair_prices(device_model_id, repair_service_id, labor_price)</span> from migration 010 (composite key — already per-device).</li><li><strong>Tier expansion:</strong> server back-fills 2,436 rows: 12 services × 203 device models. Each device's tier looked up by <span class="kbd">device_models.released_year</span>.</li><li><strong>Tier rules (configurable in Settings):</strong> A = released &le; 2yr ago, B = 3-5yr, C = &gt;5yr. Re-evaluated nightly.</li><li><strong>Per-device override:</strong> "Per-device matrix" tab opens grid view (203 rows × 12 cols) for hot models needing custom prices.</li><li><strong>Auto-margin:</strong> when on, labor = (target_profit + supplier_part_cost). Catalog scrape (Mobilesentrix/PhoneLcdParts via cheerio per CLAUDE.md) refreshes part costs nightly.</li><li><strong>$0 sentinel:</strong> disables that service for that tier (CROSS31 manual-price still avail).</li><li><strong>Skip:</strong> empty catalog, manual price prompt per ticket.</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 9: STATUSES ============ -->
+      <section id="screen-9"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 9 — Default ticket statuses</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 8 · Repair pricing</span><span class="bc-sep">·</span><span class="bc-current">Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-next">Step 10 · Business hours →</span></div></div>
+        <div class="card max-w-3xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Ticket statuses</h2>
+              <p class="text-surface-600 text-sm mt-1 mb-4 text-center">Pick which statuses show in your kanban + sidebar.</p>
+              <div class="rounded-xl bg-amber-50 border border-amber-200 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm text-amber-900 dark:text-amber-300 mb-4">⚠️ Disabling status mid-shift loses access to existing tickets in that status.</div>
+              <div class="flex gap-2 mb-4 flex-wrap"><button class="text-xs px-3 py-1.5 bg-primary-300 rounded-lg text-primary-900">Enable all</button><button class="text-xs px-3 py-1.5 bg-surface-100 dark:bg-surface-700 rounded-lg">Disable all</button><button class="text-xs px-3 py-1.5 bg-surface-100 dark:bg-surface-700 rounded-lg">Reset defaults</button><span class="text-xs text-surface-500 self-center ml-auto">14 of 25 enabled</span></div>
+              <div class="grid grid-cols-2 gap-x-8 gap-y-1">
+                <div><p class="text-xs uppercase font-semibold text-surface-500 mb-1">OPEN</p><label class="flex items-center justify-between py-1.5 text-sm"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-blue-500"></span>Pending</span>✓</label><label class="flex items-center justify-between py-1.5 text-sm"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-yellow-500"></span>In Progress</span>✓</label><label class="flex items-center justify-between py-1.5 text-sm"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-orange-500"></span>Awaiting Parts</span>✓</label></div>
+                <div><p class="text-xs uppercase font-semibold text-surface-500 mb-1">HOLD</p><label class="flex items-center justify-between py-1.5 text-sm"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-purple-500"></span>Waiting on Customer</span>✓</label><label class="flex items-center justify-between py-1.5 text-sm text-surface-400"><span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-gray-400"></span>Backlog</span>○</label></div>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back</button><button class="btn-primary">Save 14 enabled →</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">ticket_statuses.is_active</span> per row</li><li>Promise.all batch save (WEB-S4-017)</li><li>25 seeds available, 14 sensible defaults</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 10: HOURS ============ -->
+      <section id="screen-10"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 10 — Business hours</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 9 · Default statuses</span><span class="bc-sep">·</span><span class="bc-current">Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-next">Step 11 · Tax →</span></div></div>
+        <div class="card max-w-2xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Business hours</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For off-hours auto-replies + portal "currently open" indicator.</p>
+              <div class="space-y-3">
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Mon</span></label><input type="time" class="field-input flex-1" value="09:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="17:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Tue</span></label><input type="time" class="field-input flex-1" value="09:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="17:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Wed</span></label><input type="time" class="field-input flex-1" value="09:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="17:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Thu</span></label><input type="time" class="field-input flex-1" value="09:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="17:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Fri</span></label><input type="time" class="field-input flex-1" value="09:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="18:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" checked /><span class="font-medium">Sat</span></label><input type="time" class="field-input flex-1" value="10:00" /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1" value="14:00" /></div>
+                <div class="flex items-center gap-3"><label class="flex w-28 items-center gap-2 text-sm"><input type="checkbox" /><span class="font-medium">Sun</span></label><input type="time" class="field-input flex-1 opacity-50" value="10:00" disabled /><span class="text-sm text-surface-400">to</span><input type="time" class="field-input flex-1 opacity-50" value="14:00" disabled /><span class="text-xs text-surface-400">Closed</span></div>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back to hub</button><button class="btn-primary">Save business hours</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">business_hours</span> JSON</li><li>Defaults 9-5 weekdays, closed weekends</li><li>Validates close &gt; open</li><li>Mobile: rows stack <span class="kbd">flex-col md:flex-row</span></li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 11: TAX ============ -->
+      <section id="screen-11"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 11 — Sales tax</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 10 · Business hours</span><span class="bc-sep">·</span><span class="bc-current">Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-next">Step 12 · Receipts →</span></div></div>
+        <div class="card max-w-md mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Sales tax</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Default tax class. Add more in Settings later.</p>
+              <div class="field"><label class="field-label">State</label><select class="field-input"><option>California — 8.25%</option><option>Texas — 8.25%</option><option>Other / custom</option></select><p class="text-xs text-surface-500 mt-1">We auto-fill state base rate. Add city/county on top in Settings.</p></div>
+              <div class="field"><label class="field-label">Class name</label><input class="field-input" value="Sales Tax" /></div>
+              <div class="field"><label class="field-label">Rate (%)</label><input class="field-input" type="number" step="0.01" value="8.25" /></div>
+              <p class="text-xs text-surface-500">Skip if you don't charge tax (some jurisdictions).</p>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back</button><button class="btn-primary">Save tax</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">tax_classes</span> table</li><li>Idempotent (WEB-S4-016)</li><li>State picker auto-fills base</li><li>Optional</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 12: RECEIPTS ============ -->
+      <section id="screen-12"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 12 — Receipts</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 11 · Tax</span><span class="bc-sep">·</span><span class="bc-current">Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-next">Step 13 · Logo →</span></div></div>
+        <div class="card max-w-3xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Receipt header & footer</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Optional. Live preview on right.</p>
+              <div class="grid grid-cols-2 gap-6">
+                <div>
+                  <div class="field"><label class="field-label">Title</label><input class="field-input" value="Joe's Phone Repair" /></div>
+                  <div class="field"><label class="field-label">Header</label><textarea class="field-input" rows="3">Thank you! Bring this for warranty service.</textarea></div>
+                  <div class="field"><label class="field-label">Footer</label><textarea class="field-input" rows="3">90-day warranty. Call (555) 234-1090.</textarea></div>
+                </div>
+                <div>
+                  <p class="text-xs uppercase font-semibold text-surface-500 mb-2">Live preview</p>
+                  <div class="bg-white border-2 border-dashed border-surface-300 dark:border-surface-600 p-4 rounded-xl font-mono text-xs text-surface-700 leading-relaxed">
+                    <p class="text-center font-bold text-base mb-2">JOE'S PHONE REPAIR</p>
+                    <p class="text-center mb-3">Thank you!<br>Bring this for warranty service.</p>
+                    <hr class="border-surface-300 my-2" />
+                    <p>iPhone 12 Screen   $189.00</p><p>Tax (8.25%)         $15.59</p><p class="font-bold mt-1">TOTAL              $204.59</p>
+                    <hr class="border-surface-300 my-2" />
+                    <p class="text-center mt-2">90-day warranty.<br>Call (555) 234-1090.</p>
+                  </div>
+                </div>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back</button><button class="btn-primary">Save receipt layout</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">receipt_title/header/footer</span></li><li>Preview on tablet+ (<span class="kbd">md:grid-cols-2</span>)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 13: LOGO ============ -->
+      <section id="screen-13"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 13 — Logo & color</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 12 · Receipts</span><span class="bc-sep">·</span><span class="bc-current">Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-next">Step 14 · Payment terminal →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Logo & branding</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Upload + accent color.</p>
+              <div class="field"><label class="field-label">Logo (PNG/JPG/WebP/GIF, max 2 MB)</label>
+                <div class="flex items-center gap-4 rounded-xl border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800 p-4"><div class="w-16 h-16 rounded-xl bg-primary-500 flex items-center justify-center"><span class="text-2xl">📱</span></div><div class="flex-1"><p class="text-sm font-medium">joes-logo.png</p></div><button class="text-xs px-3 py-1.5 border border-surface-300 dark:border-surface-600 rounded-lg">Replace</button></div>
+              </div>
+              <div class="field"><label class="field-label">Accent color</label><div class="flex items-center gap-3"><input type="color" value="#fdeed0" class="h-10 w-14 rounded-lg border border-surface-300" /><input class="field-input" value="#fdeed0" /></div><p class="text-xs text-surface-500 mt-1">Brand cream — used on buttons + receipts.</p></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Back</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">store_logo</span>, <span class="kbd">theme_primary_color</span></li><li>Default cream <span class="kbd">#fdeed0</span> (was teal)</li><li>Hex regex (WEB-S4-012)</li><li>Magic-byte sniff on upload</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 14: PAYMENT TERMINAL (NEW P0) ============ -->
+      <section id="screen-14"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 14 — Payment terminal (BlockChyp)</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Without this: no card payments. Skip allowed but POS card-leg disabled until configured.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 13 · Logo</span><span class="bc-sep">·</span><span class="bc-current">Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-next">Step 15 · First employees →</span></div></div>
+        <div class="card max-w-2xl mx-auto">
+              <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
+              <h2 class="font-display text-2xl font-bold">BlockChyp payment terminal</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Single processor for card-present (terminal) and card-not-present (payment links). Shop owns its own credentials — never platform-shared.</p>
+              <div class="grid grid-cols-2 gap-3"><div class="field"><label class="field-label">API Key ID</label><input class="field-input" value="ABC123XY" /></div><div class="field"><label class="field-label">Bearer token</label><input type="password" class="field-input" value="••••••••••••" /></div></div>
+              <div class="field"><label class="field-label">Signing key</label><input type="password" class="field-input" value="••••••••••••••••" /></div>
+              <div class="field"><label class="field-label">Terminal name (gateway-side)</label><input class="field-input" value="Front Counter" /></div>
+              <div class="grid grid-cols-3 gap-3"><div class="field"><label class="field-label">Default tip %</label><select class="field-input"><option>15%</option><option>18%</option><option>20%</option></select></div><div class="field"><label class="field-label">Tip option B</label><select class="field-input"><option>20%</option></select></div><div class="field"><label class="field-label">Tip option C</label><select class="field-input"><option>25%</option></select></div></div>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" checked /> Terminal capture enabled (recommended)</label>
+              <div class="flex gap-2 mt-4"><button class="btn-secondary text-sm">Test ping ✓</button><span class="text-xs text-green-700 self-center font-medium">Connected — Front Counter terminal online</span></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip — no card payments yet</button><button class="btn-primary">Save & continue</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes 5 keys: <span class="kbd">blockchyp_api_key</span>, <span class="kbd">_bearer_token</span>, <span class="kbd">_signing_key</span>, <span class="kbd">_terminal_name</span>, <span class="kbd">_tc_enabled</span></li><li>All credentials AES-256-GCM at rest</li><li>Test ping verifies terminal reachable on LAN</li><li>Tip presets feed POS tender modal</li><li>Skip → POS shows card-payments-disabled banner</li><li>SaaS: same — shop owns its own BlockChyp account, NOT platform's</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 15: FIRST EMPLOYEES (NEW P0) ============ -->
+      <section id="screen-15"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 15 — First employees</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Without team accounts, owner is alone in tickets. Add 1-3 now or skip.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 14 · Payment terminal</span><span class="bc-sep">·</span><span class="bc-current">Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-next">Step 16 · SMS provider →</span></div></div>
+        <div class="card max-w-2xl mx-auto">
+              <h2 class="font-display text-2xl font-bold">Add your team</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6"><span class="self-only">Self-host: creates local accounts. Set their password + 4-digit PIN now.</span><span class="saas-only">SaaS: invites sent via email. They set their own password + 2FA on first login.</span></p>
+              <div class="space-y-3">
+                <div class="grid grid-cols-[1fr_1fr_120px_120px_36px] gap-2 items-end"><div class="field mb-0"><label class="field-label">Name</label><input class="field-input" value="Sarah Kim" /></div><div class="field mb-0"><label class="field-label">Email</label><input class="field-input" value="sarah@..." /></div><div class="field mb-0"><label class="field-label">Role</label><select class="field-input"><option>Technician</option><option>Cashier</option><option>Manager</option></select></div><div class="field mb-0 self-only"><label class="field-label">PIN</label><input class="field-input" value="4729" /></div><div class="field mb-0 saas-only"><label class="field-label">Pay rate</label><input class="field-input" placeholder="$/hr" /></div><button class="btn-ghost text-red-500 mb-1">×</button></div>
+                <div class="grid grid-cols-[1fr_1fr_120px_120px_36px] gap-2 items-end"><div class="field mb-0"><input class="field-input" value="Mike Park" /></div><div class="field mb-0"><input class="field-input" value="mike@..." /></div><div class="field mb-0"><select class="field-input"><option>Technician</option></select></div><div class="field mb-0 self-only"><input class="field-input" value="3812" /></div><div class="field mb-0 saas-only"><input class="field-input" placeholder="$/hr" /></div><button class="btn-ghost text-red-500 mb-1">×</button></div>
+              </div>
+              <button class="text-sm text-primary-900 hover:underline mt-2">+ Add another employee</button>
+              <div class="mt-4 p-3 rounded-xl bg-primary-300 text-primary-900 text-sm self-only">📧 Self-host: no email sent. Hand out the PIN to each employee in person.</div>
+              <div class="mt-4 p-3 rounded-xl bg-primary-300 text-primary-900 text-sm saas-only">📧 SaaS: invite emails will be sent. Link expires in 48h.</div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip — solo operator</button><button class="btn-primary">Add 2 employees →</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes to <span class="kbd">users</span> table per row</li><li>Self-host: <span class="kbd">force_password_change=true</span> on first login</li><li>SaaS: server sends invite via email API, link includes signup token</li><li>Roles: <span class="kbd">technician</span>, <span class="kbd">cashier</span>, <span class="kbd">manager</span> (admin reserved for owner)</li><li>PIN required for self-host clock-in/out</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 16: SMS PROVIDER ============ -->
+      <section id="screen-16"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 16 — SMS provider</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 15 · First employees</span><span class="bc-sep">·</span><span class="bc-current">Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-next">Step 17 · Email SMTP →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">SMS provider</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For appointment reminders, ticket updates, marketing.</p>
+              <div class="grid grid-cols-5 gap-2 mb-6"><button class="border-2 border-primary-800 bg-primary-300 p-3 rounded-xl text-xs font-medium">Twilio</button><button class="border border-surface-200 dark:border-surface-700 p-3 rounded-xl text-xs">BizarreSMS</button><button class="border border-surface-200 dark:border-surface-700 p-3 rounded-xl text-xs">MessageBird</button><button class="border border-surface-200 dark:border-surface-700 p-3 rounded-xl text-xs">Plivo</button><button class="border border-surface-200 dark:border-surface-700 p-3 rounded-xl text-xs">Bandwidth</button></div>
+              <p class="text-xs text-surface-500 mb-3">📖 <a href="#" class="text-primary-900 underline">Find Twilio Account SID + Auth Token in your Twilio Console ↗</a></p>
+              <div class="field"><label class="field-label">Account SID</label><input class="field-input" value="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" /></div>
+              <div class="field"><label class="field-label">Auth token</label><input type="password" class="field-input" value="••••••••••••••••" /></div>
+              <div class="field"><label class="field-label">From number (E.164)</label><input class="field-input" value="+15552341090" /></div>
+              <div class="flex gap-2 mt-2"><button class="btn-secondary text-sm">Send test SMS</button><span class="text-xs text-green-700 self-center font-medium">✓ Test sent</span></div>
+              <div class="self-only mt-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 text-sm text-blue-900 dark:text-blue-300">
+                💡 Self-host tip: To receive inbound SMS replies, expose the webhook via <strong>Tailscale Funnel</strong> or your router port-forward. Webhook URL: <span class="kbd">https://shop.local/api/v1/sms/webhook</span>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip — no SMS yet</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Encrypts secrets at rest</li><li>Help link per provider (Twilio Console, etc.)</li><li>Test SMS button (batch 13)</li><li>Self-host: Tailscale Funnel hint for inbound webhook</li><li>Per memory: shop-owned creds, NOT platform's</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 17: EMAIL ============ -->
+      <section id="screen-17"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 17 — Email SMTP</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 16 · SMS provider</span><span class="bc-sep">·</span><span class="bc-current">Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-next">Step 18 · Notification templates →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Email (SMTP)</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For invoices, receipts, password resets.</p>
+              <p class="text-xs text-surface-500 mb-3">📖 <a href="#" class="text-primary-900 underline">Gmail requires an app password ↗</a></p>
+              <div class="grid grid-cols-2 gap-3"><div class="field"><label class="field-label">Host</label><input class="field-input" value="smtp.gmail.com" /></div><div class="field"><label class="field-label">Port</label><input class="field-input" value="587" /></div></div>
+              <div class="field"><label class="field-label">Username</label><input class="field-input" value="invoices@joesphonerepair.com" /></div>
+              <div class="field"><label class="field-label">App password</label><input type="password" class="field-input" value="••••••••••••••••" /></div>
+              <div class="field"><label class="field-label">From address</label><input class="field-input" value="invoices@joesphonerepair.com" /></div>
+              <div class="flex gap-2 mt-2"><button class="btn-secondary text-sm">Test connection</button><span class="text-xs text-green-700 self-center font-medium">✓ Connected</span></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">smtp_*</span> keys (encrypted)</li><li>Test via nodemailer.verify()</li><li>Port validation: 25/465/587/993/995</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 18: NOTIFICATION TEMPLATES (NEW P0) ============ -->
+      <section id="screen-18"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 18 — Notification templates</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">3 default templates active. Owner reviews + tweaks copy. Variables auto-substituted on send.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 17 · Email SMTP</span><span class="bc-sep">·</span><span class="bc-current">Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-next">Step 19 · Receipt printer →</span></div></div>
+        <div class="card max-w-3xl mx-auto">
+              <h2 class="font-display text-2xl font-bold">Customer notifications</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">3 templates active by default. Edit copy below — variables in <span class="kbd">{curly_braces}</span> auto-fill.</p>
+              <div class="space-y-4">
+                <div class="border border-surface-200 dark:border-surface-700 rounded-xl p-4">
+                  <div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><span class="badge badge-self">SMS</span><strong class="text-sm">Appointment reminder</strong></div><label class="text-xs"><input type="checkbox" checked /> Enabled</label></div>
+                  <textarea class="field-input text-sm" rows="2">Hi {first_name}, reminder: {service} appt at {shop_name} tomorrow at {time}. Reply C to confirm or R to reschedule.</textarea>
+                  <p class="text-xs text-surface-500 mt-1">Sends 24h before appointment. Variables: first_name, service, shop_name, time</p>
+                </div>
+                <div class="border border-surface-200 dark:border-surface-700 rounded-xl p-4">
+                  <div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><span class="badge badge-self">SMS</span><strong class="text-sm">Ticket ready</strong></div><label class="text-xs"><input type="checkbox" checked /> Enabled</label></div>
+                  <textarea class="field-input text-sm" rows="2">Good news {first_name}! Your {device} repair is done at {shop_name}. Ready for pickup. Total: ${total}.</textarea>
+                </div>
+                <div class="border border-surface-200 dark:border-surface-700 rounded-xl p-4">
+                  <div class="flex items-center justify-between mb-2"><div class="flex items-center gap-2"><span class="badge badge-saas">Email</span><strong class="text-sm">Deposit received</strong></div><label class="text-xs"><input type="checkbox" checked /> Enabled</label></div>
+                  <textarea class="field-input text-sm" rows="2">Receipt attached. We received ${amount} as a deposit on your {device} repair. Track status: {portal_link}</textarea>
+                </div>
+              </div>
+              <p class="text-xs text-surface-500 mt-4">7 more templates available in Settings → Notification Templates (warranty expiring, follow-up survey, no-show reminder, etc.)</p>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip — use defaults</button><button class="btn-primary">Save 3 templates</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">notification_templates</span> table</li><li>Variable substitution server-side</li><li>Disabled templates skip on event</li><li>Test-send button per template (in Settings)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 19: RECEIPT PRINTER (NEW P1) ============ -->
+      <section id="screen-19"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-self">Self-host</span><span class="badge badge-saas">SaaS</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 19 — Receipt printer</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 18 · Notification templates</span><span class="bc-sep">·</span><span class="bc-current">Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-next">Step 20 · Cash drawer →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <div class="step-icon-bg mb-4"><svg class="w-7 h-7" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></div>
+              <h2 class="font-display text-2xl font-bold">Receipt printer</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Thermal 80mm USB or network. Skip if you don't have one yet — receipts can still email.</p>
+              <div class="field"><label class="field-label">Printer type</label><select class="field-input"><option>USB thermal (default — Star, Epson, Citizen)</option><option>Network (IP)</option><option>None — email only</option></select></div>
+              <div class="field"><label class="field-label">Detected printers</label><div class="rounded-xl border border-surface-200 dark:border-surface-700 p-3 text-sm space-y-1"><label class="flex items-center gap-2"><input type="radio" checked /> Star TSP100 (USB001)</label><label class="flex items-center gap-2"><input type="radio" /> Epson TM-T20III (USB002)</label></div></div>
+              <div class="field"><label class="field-label">Paper width</label><select class="field-input"><option>80mm (3.15") — standard</option><option>58mm (2.28") — compact</option></select></div>
+              <label class="flex items-center gap-2 text-sm"><input type="checkbox" checked /> Cut paper after each receipt</label>
+              <div class="flex gap-2 mt-4"><button class="btn-secondary text-sm">Print test receipt</button><span class="text-xs text-green-700 self-center font-medium">✓ Test successful</span></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Save printer</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">printer_type</span>, <span class="kbd">_device_id</span>, <span class="kbd">_paper_width</span>, <span class="kbd">_auto_cut</span></li><li>USB enumeration via electron native (self-host); SaaS uses browser print</li><li>Test prints sample receipt with logo</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 20: CASH DRAWER (NEW P1) ============ -->
+      <section id="screen-20"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 20 — Cash drawer</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 19 · Receipt printer</span><span class="bc-sep">·</span><span class="bc-current">Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-next">Step 21 · Booking policy →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Cash drawer</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">For cash payments + nightly Z-report.</p>
+              <div class="space-y-3">
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="radio" checked class="mt-1" /><div><strong class="text-sm text-primary-900">Open on cash sale (recommended)</strong><p class="text-xs text-primary-900 mt-0.5">Auto-pulse when receipt prints with cash tender</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div><strong class="text-sm">Manual only (No-Sale button)</strong><p class="text-xs text-surface-500 mt-0.5">Cashier presses No-Sale button to open</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div><strong class="text-sm">Disable cash drawer</strong><p class="text-xs text-surface-500 mt-0.5">Card-only shop</p></div></label>
+              </div>
+              <div class="field mt-4"><label class="field-label">Starting drawer cash float</label><input class="field-input" value="$200.00" /><p class="text-xs text-surface-500 mt-1">Owner counts at start of day. Z-report compares to expected.</p></div>
+              <label class="flex items-center gap-2 text-sm mt-3"><input type="checkbox" checked /> Require manager PIN for No-Sale + refunds</label>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">cash_drawer_mode</span>, <span class="kbd">cash_drawer_float</span>, <span class="kbd">require_manager_pin_no_sale</span></li><li>Z-report at end-of-shift compares actual vs expected</li><li>Manager PIN gate via WEB-W1-P0 requirePosPin middleware</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 21: BOOKING POLICY (NEW P1) ============ -->
+      <section id="screen-21"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 21 — Walk-in vs appointment</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 20 · Cash drawer</span><span class="bc-sep">·</span><span class="bc-current">Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-next">Step 22 · Warranty →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Booking policy</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">How customers schedule.</p>
+              <div class="space-y-3">
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div><strong class="text-sm">Walk-in only</strong><p class="text-xs text-surface-500 mt-0.5">No appointments. First-come, first-served.</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div><strong class="text-sm">Appointment only</strong><p class="text-xs text-surface-500 mt-0.5">Customer books via portal first.</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="radio" checked class="mt-1" /><div><strong class="text-sm text-primary-900">Both (recommended)</strong><p class="text-xs text-primary-900 mt-0.5">Walk-ins welcome, appointments preferred. Portal shows next available slot.</p></div></label>
+              </div>
+              <div class="field mt-4"><label class="field-label">Default appointment duration</label><select class="field-input"><option>30 min</option><option>45 min</option><option>60 min</option></select></div>
+              <div class="field"><label class="field-label">Buffer between appointments</label><select class="field-input"><option>0 min — back-to-back</option><option>10 min</option><option>15 min</option></select></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">booking_policy</span>, <span class="kbd">_default_duration_mins</span>, <span class="kbd">_buffer_mins</span></li><li>Portal calendar reads these</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 22: WARRANTY (NEW P1) ============ -->
+      <section id="screen-22"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P1</span><h2 class="font-display text-2xl font-bold">Step 22 — Warranty defaults</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 21 · Booking policy</span><span class="bc-sep">·</span><span class="bc-current">Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-next">Step 23 · Backups →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Warranty defaults</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Standard warranty clause printed on receipt + ticket.</p>
+              <div class="field"><label class="field-label">Default warranty length</label><select class="field-input"><option>30 days</option><option selected>90 days (recommended)</option><option>180 days</option><option>1 year</option><option>None</option></select></div>
+              <div class="grid grid-cols-2 gap-3"><label class="flex items-center gap-2 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="checkbox" checked /><span class="text-sm text-primary-900 font-medium">Cover labor</span></label><label class="flex items-center gap-2 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="checkbox" checked /><span class="text-sm text-primary-900 font-medium">Cover parts</span></label></div>
+              <div class="field mt-3"><label class="field-label">Warranty terms text</label><textarea class="field-input" rows="3">90-day warranty on parts + labor. Excludes physical damage, water damage, and acts of God. Original receipt required for service.</textarea></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip — no warranty</button><button class="btn-primary">Save</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">warranty_default_days</span>, <span class="kbd">_covers_labor</span>, <span class="kbd">_covers_parts</span>, <span class="kbd">_terms_text</span></li><li>Auto-printed on every receipt + ticket detail</li><li>Per-service overrides done later in Settings</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 23: BACKUP (NEW P0) ============ -->
+      <section id="screen-23"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P0</span><h2 class="font-display text-2xl font-bold">Step 23 — Backup destination</h2></div>
+        <p class="text-surface-600 dark:text-surface-400 text-sm mb-6">Per <span class="kbd">project_deployment.md</span>: local-backup default. Cloud opt-in.</p>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 22 · Warranty defaults</span><span class="bc-sep">·</span><span class="bc-current">Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-next">Step 24 · Mobile app →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Backups</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Daily snapshot, encrypted, 30-day rolling.</p>
+              <div class="space-y-3">
+                <label class="self-only flex items-start gap-3 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="radio" checked class="mt-1" /><div class="flex-1"><strong class="text-sm text-primary-900">Local disk (recommended for self-host)</strong><p class="text-xs text-primary-900 mt-0.5">Encrypted backups stored at:</p><input class="field-input mt-2 text-xs font-mono" value="C:\BizarreBackups" /></div></label>
+                <label class="saas-only flex items-start gap-3 p-3 rounded-xl border border-primary-800 bg-primary-300"><input type="radio" checked class="mt-1" /><div class="flex-1"><strong class="text-sm text-primary-900">Platform-managed (default for SaaS)</strong><p class="text-xs text-primary-900 mt-0.5">We handle it. Daily encrypted snapshot. Restore via support ticket.</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div class="flex-1"><strong class="text-sm">Cloud storage (S3 / R2 / Backblaze)</strong><p class="text-xs text-surface-500 mt-0.5">Bring your own bucket — owner-controlled key</p></div></label>
+                <label class="flex items-start gap-3 p-3 rounded-xl border border-surface-200 dark:border-surface-700"><input type="radio" class="mt-1" /><div class="flex-1"><strong class="text-sm text-red-700">Disable backups (not recommended)</strong><p class="text-xs text-red-600 mt-0.5">⚠️ Data loss is permanent without backups.</p></div></label>
+              </div>
+              <div class="field mt-4"><label class="field-label">Encryption key</label><input type="password" class="field-input" value="••••••••••••••••" /><p class="text-xs text-surface-500 mt-1">Auto-generated. Save somewhere safe — required for restore.</p></div>
+              <button class="btn-secondary text-sm mt-2">Download key as .txt</button>
+              <div class="flex gap-2 mt-4"><button class="btn-secondary text-sm">Run backup now</button><span class="text-xs text-green-700 self-center font-medium">✓ 1.2 MB written</span></div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Save & enable</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Writes <span class="kbd">backup_destination</span>, <span class="kbd">_local_path</span>, <span class="kbd">_cloud_*</span> (encrypted)</li><li>Encryption key (BACKUP_ENCRYPTION_KEY) auto-generated by setup.bat</li><li>Daily cron at 3 AM local</li><li>Self-host default: local disk + 30-day rolling</li><li>SaaS default: platform-managed + bring-your-own opt-in</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 24: MOBILE APP QR (NEW P2) ============ -->
+      <section id="screen-24"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><span class="badge badge-new">NEW P2</span><h2 class="font-display text-2xl font-bold">Step 24 — Mobile app for techs</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 23 · Backups</span><span class="bc-sep">·</span><span class="bc-current">Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-next">Step 25 · Review →</span></div></div>
+        <div class="card max-w-xl mx-auto">
+              <h2 class="font-display text-2xl font-bold text-center">Get the Android app</h2>
+              <p class="text-center text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6">Techs scan to install. Auto-configures the server URL for your shop.</p>
+              <div class="flex justify-center"><div class="w-48 h-48 bg-[url('data:image/svg+xml,%3Csvg%20viewBox%3D%220%200%20100%20100%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Crect%20width%3D%22100%22%20height%3D%22100%22%20fill%3D%22white%22/%3E%3Cg%20fill%3D%22%23000%22%3E%3Crect%20x%3D%2210%22%20y%3D%2210%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2270%22%20y%3D%2210%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2210%22%20y%3D%2270%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2240%22%20y%3D%2240%22%20width%3D%2220%22%20height%3D%2220%22/%3E%3Crect%20x%3D%2270%22%20y%3D%2270%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3Crect%20x%3D%2245%22%20y%3D%2270%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3Crect%20x%3D%2270%22%20y%3D%2245%22%20width%3D%2210%22%20height%3D%2210%22/%3E%3C/g%3E%3C/svg%3E')] bg-contain"></div></div>
+              <p class="text-center text-xs text-surface-500 mt-2 self-only">Or download <a href="#" class="text-primary-900 underline">/downloads/BizarreCRM.apk</a></p>
+              <p class="text-center text-xs text-surface-500 mt-2 saas-only">Or get it from <a href="#" class="text-primary-900 underline">Play Store</a> (when published) or download APK</p>
+              <div class="mt-6 p-3 rounded-xl bg-primary-300 text-primary-900 text-sm">📱 Use: ticket intake (signature + photos), POS, clock-in, parts scanner. Offline-capable.</div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">← Skip</button><button class="btn-primary">Continue</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>QR encodes shop URL + setup token (auto-config on install)</li><li>Self-host: APK served from <span class="kbd">/downloads/BizarreCRM.apk</span></li><li>SaaS: Play Store + APK fallback</li><li>Skip allowed — owner can hand out QR later from Settings</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 25: REVIEW ============ -->
+      <section id="screen-25"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 25 — Review</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar">/setup</div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 24 · Mobile app</span><span class="bc-sep">·</span><span class="bc-current">Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-next">Step 26 · Done →</span></div></div>
+        <div class="card max-w-2xl mx-auto">
+              <div class="step-icon-bg mx-auto mb-3 bg-green-100"><svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4M21 12c0 5-4 9-9 9s-9-4-9-9 4-9 9-9 9 4 9 9z"/></svg></div>
+              <h2 class="font-display text-2xl font-bold text-center">Ready to go!</h2>
+              <p class="text-surface-600 dark:text-surface-400 text-sm mt-1 mb-6 text-center">Review and complete setup.</p>
+              <div class="space-y-1 text-sm">
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">Shop name</span><span>Joe's Phone Repair</span></div>
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">Shop type</span><span>Phone repair · 12 services</span></div>
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">Address · Phone · Email</span><span>complete ✓</span></div>
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">Hours · Tax · Receipts · Logo</span><span>complete ✓</span></div>
+                <div class="flex justify-between p-2 bg-primary-300 rounded-lg"><span class="font-medium text-primary-900">Payments (BlockChyp)</span><span class="text-primary-900">configured ✓</span></div>
+                <div class="flex justify-between p-2 bg-primary-300 rounded-lg"><span class="font-medium text-primary-900">Team</span><span class="text-primary-900">2 employees</span></div>
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">SMS · Email · Templates</span><span>configured ✓</span></div>
+                <div class="flex justify-between p-2 bg-surface-50 dark:bg-surface-800 rounded-lg"><span class="font-medium">Printer · Cash · Booking · Warranty</span><span>configured ✓</span></div>
+                <div class="flex justify-between p-2 bg-primary-300 rounded-lg"><span class="font-medium text-primary-900">Backups</span><span class="text-primary-900">local · key saved</span></div>
+              </div>
+              <div class="flex justify-between mt-6"><button class="btn-ghost">Skip remaining</button><button class="btn-primary">Complete setup ✓</button></div>
+            </div></div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Mandatory check: validates required keys present</li><li>If missing: red banner with edit links</li><li>Complete writes <span class="kbd">setup_wizard_completed='true'</span></li><li>Skip writes <span class="kbd">setup_wizard_skipped_at</span> + count (max 3 nags)</li></ul></div>
+        </div>
+      </section>
+
+      <!-- ============ SCREEN 26: DONE ============ -->
+      <section id="screen-26"">
+        <div class="flex items-center gap-3 mb-3"><span class="badge badge-both">Both</span><h2 class="font-display text-2xl font-bold">Step 26 — Done!</h2></div>
+        
+        <div class="grid grid-cols-[1fr_320px] gap-6">
+          <div class="browser-frame">
+            <div class="browser-bar"><span class="dot bg-red-400"></span><span class="dot bg-yellow-400"></span><span class="dot bg-green-400"></span><div class="url-bar"><span class="self-only">https://shop.local/dashboard</span><span class="saas-only">https://acme.bizarrecrm.com/dashboard</span></div></div>
+<div class="screen p-8"><div class="bc-wrap"><div class="bc"><span class="bc-prev">← Step 25 · Review</span><span class="bc-sep">·</span><span class="bc-current">Step 26 · Done</span></div></div>
+        <div class="card max-w-2xl mx-auto text-center">
+                <div class="text-6xl mb-3">🎉</div>
+                <h2 class="font-display text-3xl font-bold">You're all set, Joe!</h2>
+                <p class="text-surface-600 dark:text-surface-400 mt-2 mb-6">Shop is live. Dashboard has click-around tips for everything you set up. These advanced areas weren't covered — flip on later if needed.</p>
+                <div class="grid grid-cols-3 gap-3 mb-6">
+                  <a href="#" class="block text-left p-5 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-700 hover:border-primary-800 hover:shadow-lg transition-all">
+                    <div class="step-icon-bg mb-3" style="width:44px;height:44px;border-radius:12px"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg></div>
+                    <strong class="text-base block">Per-device pricing matrix</strong>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Override flagship/legacy tier for hot models (iPhone 15 Pro, Galaxy Fold). Wizard set tiers; matrix lets you override individual cells.</p>
+                    <span class="text-xs text-primary-900 font-medium mt-2 inline-block">Settings → Repair pricing → Matrix →</span>
+                  </a>
+                  <a href="#" class="block text-left p-5 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-700 hover:border-primary-800 hover:shadow-lg transition-all">
+                    <div class="step-icon-bg mb-3" style="width:44px;height:44px;border-radius:12px"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 010 20M12 2a15.3 15.3 0 000 20"/></svg></div>
+                    <strong class="text-base block">Customer portal</strong>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Custom domain (track.joesphonerepair.com), embed widget for your website, portal branding. Not in wizard.</p>
+                    <span class="text-xs text-primary-900 font-medium mt-2 inline-block">Settings → Customer portal →</span>
+                  </a>
+                  <a href="#" class="block text-left p-5 rounded-2xl border-2 border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-700 hover:border-primary-800 hover:shadow-lg transition-all">
+                    <div class="step-icon-bg mb-3" style="width:44px;height:44px;border-radius:12px"><svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-1.7 1.7a1 1 0 00.7 1.7H17"/><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/></svg></div>
+                    <strong class="text-base block">Auto-reorder rules</strong>
+                    <p class="text-xs text-surface-500 dark:text-surface-400 mt-1">Set min-stock per part. System drafts purchase orders when threshold breached. Inventory tab.</p>
+                    <span class="text-xs text-primary-900 font-medium mt-2 inline-block">Settings → Inventory → Auto-reorder →</span>
+                  </a>
+                </div>
+                <button class="btn-primary text-base px-10 py-3">Go to dashboard →</button>
+              </div>
+            </div>
+          </div>
+          <div class="annot"><h4>Annotations</h4><ul><li>Wizard gate now passes</li><li>Future logins skip wizard</li><li>"Take a tour" overlays Driver.js or similar tour lib</li><li>"Create test ticket" pre-fills demo customer</li><li>Welcome card auto-dismisses after first real ticket</li></ul></div>
+        </div>
+      </section>
+
+    </main>
+
+  </div>
+
+  <footer class="mt-16 p-6 border-t border-surface-200 dark:border-surface-800 text-sm text-surface-500 dark:text-surface-400">
+    <p><strong>Generated:</strong> 2026-04-26 · todofixes426 SSW1-5 expanded preview</p>
+    <p class="mt-1">26 screens · self-host vs SaaS toggle · dark mode toggle · sticky configured-tracker · decision flowchart</p>
+    <p class="mt-1">After this wizard a repair shop owner has: shop info, payments, team, SMS+email + templates, printer + cash drawer, booking + warranty, backups, mobile app for techs. Day-1 operational.</p>
+  </footer>
+</div>
+
+<script>
+function setMode(mode) {
+  document.getElementById('root').setAttribute('data-mode', mode);
+  document.getElementById('tab-self').classList.toggle('active', mode === 'self-host');
+  document.getElementById('tab-saas').classList.toggle('active', mode === 'saas');
+  const blurb = document.getElementById('mode-blurb');
+  if (mode === 'self-host') {
+    blurb.innerHTML = '<strong>Self-hosted:</strong> Shop runs Bizarre CRM on its own LAN/box. Owner installs via setup.bat or Docker. Logs in with default <span class="kbd">admin/admin123</span>. No tenant slug, no signup, no trial. Free forever.';
+  } else {
+    blurb.innerHTML = '<strong>Multi-tenant SaaS:</strong> Signup at <span class="kbd">bizarrecrm.com</span>, picks slug → <span class="kbd">&lt;slug&gt;.bizarrecrm.com</span>. Server provisions tenant DB, sends verification email. 14-day Pro trial. Hosted, paid extras only.';
+  }
+}
+function toggleDark() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('preview-dark', document.documentElement.classList.contains('dark') ? '1' : '0');
+}
+if (localStorage.getItem('preview-dark') === '1') document.documentElement.classList.add('dark');
+function filterToc(q) {
+  const list = document.querySelectorAll('#toc-list a');
+  q = q.toLowerCase();
+  list.forEach(a => { a.style.display = a.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+}
+const observers = document.querySelectorAll('section[id]');
+const tocLinks = document.querySelectorAll('#toc-list a');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = e.target.id;
+      tocLinks.forEach(l => l.classList.toggle('active', l.getAttribute('href') === '#' + id));
+    }
+  });
+}, { rootMargin: '-30% 0px -60% 0px' });
+observers.forEach(s => io.observe(s));
+</script>
+</body>
+</html>

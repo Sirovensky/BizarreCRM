@@ -198,3 +198,51 @@ data class IssueRefundRequest(
     val amount: Double,
     val reason: String? = null,
 )
+
+// ── Credit Note DTO ──────────────────────────────────────────────────────────
+
+/**
+ * Request body for POST /invoices/:id/credit-note.
+ * Server requires both `amount` (positive double) and `reason` (non-blank).
+ */
+data class CreditNoteRequest(
+    val amount: Double,
+    val reason: String,
+)
+
+/**
+ * Response data envelope for POST /invoices/:id/credit-note.
+ * Server returns the newly-created credit-note invoice.
+ */
+data class CreditNoteResponseData(
+    @SerializedName("credit_note")
+    val creditNote: InvoiceDetail? = null,
+)
+
+// ── Aging Report DTOs ────────────────────────────────────────────────────────
+
+data class AgingBucket(
+    val count: Int = 0,
+    @SerializedName("total_cents")
+    val totalCents: Long = 0L,
+)
+
+data class AgingInvoiceRow(
+    val id: Long,
+    @SerializedName("order_id")
+    val orderId: String?,
+    @SerializedName("customer_id")
+    val customerId: Long?,
+    @SerializedName("customer_name")
+    val customerName: String?,
+    @SerializedName("amount_due_cents")
+    val amountDueCents: Long,
+    @SerializedName("days_overdue")
+    val daysOverdue: Int,
+    val bucket: String,
+)
+
+data class AgingReportData(
+    val buckets: Map<String, AgingBucket> = emptyMap(),
+    val invoices: List<AgingInvoiceRow> = emptyList(),
+)

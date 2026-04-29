@@ -71,12 +71,17 @@ function applyAdjustment(basePrice: number, adj: { flat: number; pct: number }):
 // a clean 500 instead of an unhandled promise that hangs the request.
 router.get('/services', asyncHandler(async (_req, res) => {
   const adb = _req.asyncDb;
-  const { category } = _req.query;
-  let sql = 'SELECT * FROM repair_services';
+  const { category, q } = _req.query as { category?: string; q?: string };
+  let sql = 'SELECT * FROM repair_services WHERE 1=1';
   const params: any[] = [];
   if (category) {
-    sql += ' WHERE category = ?';
+    sql += ' AND category = ?';
     params.push(category);
+  }
+  if (q && typeof q === 'string' && q.trim().length > 0) {
+    sql += " AND (LOWER(name) LIKE ? OR LOWER(COALESCE(category,'')) LIKE ?)";
+    const like = `%${q.trim().toLowerCase()}%`;
+    params.push(like, like);
   }
   sql += ' ORDER BY category ASC, sort_order ASC';
   const services = await adb.all(sql, ...params);

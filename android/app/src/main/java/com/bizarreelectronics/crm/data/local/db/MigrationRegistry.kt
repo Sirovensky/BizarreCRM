@@ -137,6 +137,12 @@ object MigrationRegistry {
             name = "checkin-drafts-table: repair check-in autosave [Phase 3]",
             migration = Migrations.MIGRATION_10_11,
         ),
+        Entry(
+            fromVersion = 11,
+            toVersion = 12,
+            name = "expenses-approval-status: approval_status column + index [§11 filters]",
+            migration = Migrations.MIGRATION_11_12,
+        ),
     )
 
     /**

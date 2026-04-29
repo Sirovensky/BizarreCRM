@@ -16,4 +16,8 @@
     <string name="shortcut_new_customer_long">Add a new customer</string>
     <string name="shortcut_scan_short">Scan</string>
     <string name="shortcut_scan_long">Scan barcode or IMEI</string>
+
+    <string name="tile_clock_in_label">Clock In/Out</string>
+    <string name="shortcut_clock_in_short">Clock in</string>
+    <string name="shortcut_clock_in_long">Clock in or out of your shift</string>
 </resources>

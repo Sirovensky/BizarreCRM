@@ -701,4 +701,9 @@ object RetrofitClient {
     // BlockChypClient wrapper; this entry ensures Retrofit is available for that module).
     // BlockChypApi is provided directly in BlockChypModule to keep terminal-related
     // bindings co-located. No entry here — see di/BlockChypModule.kt.
+
+    // §14.6 — shift schedule CRUD; all endpoints 404-tolerant (manager/admin write-gate on server)
+    @Provides @Singleton fun provideShiftsApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.ShiftsApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.ShiftsApi::class.java)
+    // §14.4 — custom roles CRUD + user role assignment; admin-only; 404-tolerant
+    @Provides @Singleton fun provideRolesApi(retrofit: Retrofit): com.bizarreelectronics.crm.data.remote.api.RolesApi = retrofit.create(com.bizarreelectronics.crm.data.remote.api.RolesApi::class.java)
 }

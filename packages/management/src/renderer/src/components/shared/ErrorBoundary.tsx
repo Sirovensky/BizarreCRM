@@ -34,7 +34,10 @@ export class PageErrorBoundary extends Component<Props, State> {
   render(): ReactNode {
     if (this.state.hasError) {
       return (
-        <div className="flex flex-col items-center justify-center p-8 rounded-lg border border-red-900/50 bg-red-950/20">
+        // DASH-ELEC-274: role="alert" ensures AT immediately announces the
+        // section error without waiting for polling — mirrors the global
+        // ErrorBoundary in main.tsx which was already patched.
+        <div role="alert" className="flex flex-col items-center justify-center p-8 rounded-lg border border-red-900/50 bg-red-950/20">
           <AlertTriangle className="w-8 h-8 text-red-400 mb-3" />
           <h3 className="text-sm font-semibold text-surface-200 mb-1">
             {this.props.fallbackTitle ?? 'This section encountered an error'}

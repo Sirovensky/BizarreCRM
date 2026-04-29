@@ -9,7 +9,6 @@ import { CheckoutModal } from './CheckoutModal';
 import { SuccessScreen } from './SuccessScreen';
 import { UpsellPrompt } from './UpsellPrompt';
 import { InactivityTimer } from './InactivityTimer';
-import { TopFiveTiles } from './TopFiveTiles';
 import { usePosKeyboardShortcuts } from '@/hooks/usePosKeyboardShortcuts';
 import toast from 'react-hot-toast';
 import { ticketApi, customerApi, posApi, deviceTemplateApi } from '@/api/endpoints';
@@ -128,6 +127,7 @@ export function UnifiedPosPage() {
   const scanBufferRef = useRef('');
   const scanTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const lastKeyTimeRef = useRef(0);
+  const scanAbortRef = useRef<AbortController | null>(null);
   const { addProduct } = useUnifiedPosStore();
 
   useEffect(() => {
@@ -157,8 +157,12 @@ export function UnifiedPosPage() {
         setScanFlash(true);
         setTimeout(() => setScanFlash(false), 1200);
 
-        // Search and add to cart
-        posApi.products({ keyword: code }).then((res) => {
+        // Search and add to cart — cancel any in-flight lookup first
+        scanAbortRef.current?.abort();
+        const ac = new AbortController();
+        scanAbortRef.current = ac;
+        posApi.products({ keyword: code }, ac.signal).then((res) => {
+          if (ac.signal.aborted) return;
           const found = (res.data?.data?.items || [])[0];
           if (found) {
             addProduct({
@@ -176,7 +180,7 @@ export function UnifiedPosPage() {
           } else {
             toast.error(`No item found for barcode: ${code}`);
           }
-        }).catch(() => toast.error('Barcode search failed'));
+        }).catch((err) => { if (!ac.signal.aborted) toast.error('Barcode search failed'); void err; });
 
         return;
       }
@@ -397,9 +401,12 @@ export function UnifiedPosPage() {
           />
         </div>
 
-        {/* Right: tabs (repairs / products / misc) — audit §43.1 tiles above */}
+        {/* Right: tabs (repairs / products / misc).
+            TopFiveTiles ("Today's Top 5") removed 2026-04-28 — too much
+            real estate for two recently-sold parts. Quick-add affordance
+            now lives next to the search bar inside RightPanel where the
+            user is already looking. */}
         <div className="flex flex-1 flex-col overflow-hidden">
-          <TopFiveTiles />
           <div className="flex-1 overflow-hidden"><RightPanel /></div>
         </div>
       </div>

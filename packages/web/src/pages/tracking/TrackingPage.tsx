@@ -5,7 +5,8 @@ import {
   ChevronRight, FileText, MessageSquare, Send, CheckCircle2,
   DollarSign, ArrowLeft,
 } from 'lucide-react';
-import axios from 'axios';
+import { api } from '@/api/client';
+import { usePortalI18n } from '../portal/i18n';
 import { safeColor } from '../../utils/safeColor';
 // WEB-FM-008 (Fixer-B20 2026-04-25): replace the local `formatDate(iso)` (which
 // hardcoded `en-US` and was actually shaped as date+time) with the shared
@@ -118,6 +119,7 @@ export function TrackingPage() {
   const [fullInvoice, setFullInvoice] = useState<InvoiceSummary | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [storeConfig, setStoreConfig] = useState<Record<string, string> | null>(null);
+  const { t } = usePortalI18n();
 
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -128,7 +130,7 @@ export function TrackingPage() {
     // is down. Tracking is the unauthenticated customer surface; previously
     // a degraded `/portal/embed/config` was invisible to ops.
     void safeRunAsync(async () => {
-      const res = await axios.get('/api/v1/portal/embed/config');
+      const res = await api.get('/portal/embed/config');
       const cfg = res.data?.data;
       if (cfg) {
         setStoreConfig({
@@ -164,7 +166,7 @@ export function TrackingPage() {
     setResults([]);
     setPortalData(null);
     try {
-      const res = await axios.get(`/api/v1/track/token/${encodeURIComponent(token)}`);
+      const res = await api.get(`/track/token/${encodeURIComponent(token)}`);
       const ticket = res.data.data as TrackingTicket;
       setResults([ticket]);
       // Now load full portal data
@@ -182,7 +184,7 @@ export function TrackingPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await axios.get(`/api/v1/track/portal/${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}`);
+      const res = await api.get(`/track/portal/${encodeURIComponent(orderId)}?token=${encodeURIComponent(token)}`);
       setPortalData(res.data.data as PortalData);
       setActiveTab('status');
     } catch (err: any) {
@@ -205,7 +207,7 @@ export function TrackingPage() {
     setResults([]);
     setPortalData(null);
     try {
-      const res = await axios.post('/api/v1/track/lookup', { phone });
+      const res = await api.post('/track/lookup', { phone });
       const tickets = res.data.data as TrackingTicket[];
       if (tickets.length === 0) {
         setError('No tickets found for that phone number.');
@@ -253,8 +255,8 @@ export function TrackingPage() {
 
     setSendingMessage(true);
     try {
-      await axios.post(
-        `/api/v1/track/portal/${encodeURIComponent(portalData.order_id)}/message?token=${encodeURIComponent(token)}`,
+      await api.post(
+        `/track/portal/${encodeURIComponent(portalData.order_id)}/message?token=${encodeURIComponent(token)}`,
         { content: messageText.trim() }
       );
       setMessageText('');
@@ -275,8 +277,8 @@ export function TrackingPage() {
     if (!token) return;
     setLoadingInvoice(true);
     try {
-      const res = await axios.get(
-        `/api/v1/track/portal/${encodeURIComponent(portalData.order_id)}/invoice?token=${encodeURIComponent(token)}`
+      const res = await api.get(
+        `/track/portal/${encodeURIComponent(portalData.order_id)}/invoice?token=${encodeURIComponent(token)}`
       );
       if (res.data.data) {
         setFullInvoice(res.data.data as InvoiceSummary);
@@ -382,7 +384,7 @@ export function TrackingPage() {
             <div className="flex bg-white dark:bg-surface-900 rounded-xl shadow-sm border border-slate-200 dark:border-surface-700 overflow-hidden">
               {[
                 { key: 'status' as const, label: 'Details', icon: Search },
-                { key: 'timeline' as const, label: 'Timeline', icon: Clock },
+                { key: 'timeline' as const, label: t('timeline.title'), icon: Clock },
                 { key: 'invoice' as const, label: 'Invoice', icon: FileText },
                 { key: 'message' as const, label: 'Message', icon: MessageSquare },
               ].map(tab => (
@@ -453,9 +455,9 @@ export function TrackingPage() {
               {/* Timeline tab */}
               {activeTab === 'timeline' && (
                 <div className="p-5">
-                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">Status History</h3>
+                  <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">{t('timeline.title')}</h3>
                   {portalData.history.length === 0 ? (
-                    <p className="text-sm text-slate-400 py-4 text-center">No status changes recorded yet.</p>
+                    <p className="text-sm text-slate-400 py-4 text-center">{t('timeline.empty')}</p>
                   ) : (
                     <div className="relative">
                       {/* Vertical line */}
@@ -609,7 +611,7 @@ export function TrackingPage() {
                           type="button"
                           onClick={sendMessage}
                           disabled={sendingMessage || !messageText.trim()}
-                          className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                          className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-5 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
                         >
                           {sendingMessage ? (
                             <Loader2 className="w-4 h-4 animate-spin" />
@@ -666,7 +668,7 @@ export function TrackingPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="bg-primary-600 hover:bg-primary-700 text-primary-950 px-6 py-3 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none flex items-center gap-2"
                 >
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                   Track

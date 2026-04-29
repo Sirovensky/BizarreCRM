@@ -50,6 +50,46 @@ class InvoiceRepository @Inject constructor(
     /** Outstanding balance in **cents** — preferred over [getOutstandingBalance]. */
     fun getOutstandingBalanceCents(): Flow<Long?> = invoiceDao.getOutstandingBalance()
 
+    // ── Cursor-based paging (§7.1) ────────────────────────────────────────────
+
+    /**
+     * Returns a single page of invoices for offline-first cursor paging.
+     *
+     * Online: calls [InvoiceApi.getInvoicePage] with [cursor]; inserts results into
+     * Room then returns the list plus the next cursor token.
+     * Offline: falls back to [InvoiceDao.getPage] keyset query so the list still scrolls.
+     *
+     * @return [Pair] of (items, nextCursor). nextCursor is null when no more pages exist.
+     */
+    suspend fun loadInvoicesPage(
+        cursor: String?,
+        limit: Int = 50,
+        filters: Map<String, String> = emptyMap(),
+    ): Pair<List<InvoiceEntity>, String?> {
+        if (serverMonitor.isEffectivelyOnline.value) {
+            try {
+                val response = invoiceApi.getInvoicePage(cursor, limit, filters)
+                val page = response.data
+                if (page != null && page.invoices.isNotEmpty()) {
+                    invoiceDao.insertAll(page.invoices.map { it.toEntity() })
+                    return Pair(page.invoices.map { it.toEntity() }, page.cursor)
+                }
+                // Server returned empty or null data — treat as end of list.
+                return Pair(emptyList(), null)
+            } catch (e: Exception) {
+                Log.d(TAG, "Cursor page fetch failed, falling back to Room: ${e.message}")
+            }
+        }
+
+        // Offline fallback: keyset pagination from local Room cache.
+        val beforeCreatedAt = cursor ?: ""
+        val rows = invoiceDao.getPage(beforeCreatedAt, limit)
+        // Derive the next cursor from the last row's created_at; null when fewer than
+        // [limit] rows returned (end of local cache).
+        val nextCursor = if (rows.size >= limit) rows.last().createdAt else null
+        return Pair(rows, nextCursor)
+    }
+
     /**
      * Full pull from server — used by SyncManager.
      *

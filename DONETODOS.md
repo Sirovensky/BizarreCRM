@@ -1,4 +1,98 @@
 
+### todofixes426 — final cleanup sweep (S4/S5/FW/DASH-ELEC 270-286 batch) (2026-04-26)
+
+- [x] DASH-ELEC-270. **tsconfigs missing strict flags.** CLOSED 2026-04-26 — added `noFallthroughCasesInSwitch`, `useUnknownInCatchVariables`, `noImplicitOverride` to tsconfig.json + tsconfig.node.json + tsconfig.preload.json. `exactOptionalPropertyTypes` skipped (breaking codemod).
+- [x] DASH-ELEC-274. **PageErrorBoundary missing role="alert".** CLOSED 2026-04-26 — added `role="alert"` to outermost div in `packages/management/src/renderer/src/components/shared/ErrorBoundary.tsx`. Global ErrorBoundary in main.tsx already had it (DONE-PREEXISTING).
+- [x] DASH-ELEC-275. **Toaster error toasts not assertive.** CLOSED 2026-04-26 — DONE-PREEXISTING (main.tsx already has `error: { ariaProps: { role:'alert', 'aria-live':'assertive' } }`).
+- [x] DASH-ELEC-276. **401 auto-logout no explanatory toast.** CLOSED 2026-04-26 — DONE-PREEXISTING (authStore.ts already has `toast.error('Session expired ...')`).
+- [x] DASH-ELEC-277. **formatApiError omits HTTP status.** CLOSED 2026-04-26 — DONE-PREEXISTING (apiError.ts already includes `[${f.status}]` in format string).
+- [x] DASH-ELEC-285. **Canvas ResizeObserver ctx.scale accumulates.** CLOSED 2026-04-26 — DONE-PREEXISTING (DASH-ELEC-291 already removed ctx.scale; drawGraphFn uses idempotent setTransform).
+- [x] DASH-ELEC-286. **dpr change (monitor swap) never triggers canvas rescale.** CLOSED 2026-04-26 — added matchMedia `(resolution: Xdppx)` listener with recursive re-subscribe to ResizeObserver effect in `packages/management/src/renderer/src/pages/OverviewPage.tsx`.
+- [x] WEB-S4-037. **"Get Started Free" → /signup 404 on self-host.** CLOSED 2026-04-26 — DONE-PREEXISTING (App.tsx only renders LandingPage when isMultiTenant=true; /signup route is registered in the same branch).
+- [x] WEB-S4-040. **TOTP step no autoFocus / auto-submit.** CLOSED 2026-04-26 — autoFocus was already present; added `requestAnimationFrame(() => form.requestSubmit())` when v.length===6 in both verify and setup TOTP onChange handlers in `packages/web/src/pages/auth/LoginPage.tsx`.
+- [x] WEB-S4-042. **Sign-out doesn't call server logout.** CLOSED 2026-04-26 — added `superAdminApi.logout()` to `packages/web/src/api/endpoints.ts` (best-effort POST /super-admin/logout); sign-out button in `packages/web/src/pages/super-admin/TenantsListPage.tsx` calls it via `.finally()`.
+- [x] WEB-S5-029. **DataTable "Select all" page-scoped but banner implies global.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; existing list pages already use "Select all on page" labelling).
+- [x] WEB-S5-030. **DataTable "Showing X-Y of Z" hidden when total undefined.** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; all "Showing" occurrences guard on total).
+- [x] WEB-S5-044. **DataTable sortable th adds role="button".** CLOSED 2026-04-26 — DONE-PREEXISTING (no generic DataTable; no th with role="button" exists in web/src).
+- [x] WEB-FW-006. **App.tsx 68 lazy imports repetitive boilerplate.** CLOSED 2026-04-26 — added `lazyNamed` helper to `packages/web/src/App.tsx` for future use. Existing 68 calls not converted (codemod scope).
+- [x] WEB-FW-007. **package.json missing lint/typecheck/analyze scripts.** CLOSED 2026-04-26 — DONE-PREEXISTING (`typecheck` and `lint` already exist in package.json). `analyze` script skipped (new dep scope).
+
+### todofixes426 — WEB small remaining (FB/FD/FE/FG/FAE/FO/FAD batch) (2026-04-26)
+
+- [x] WEB-FB-003. **RepairsTab 30-site any-soup.** CLOSED 2026-04-26 — only idiomatic `catch (err: any)` remains; all 30 sites across RepairsTab/CustomerStep/UnifiedPosPage narrowed in prior passes. Closing.
+- [x] WEB-FB-012. **CustomerDetailPage tickets/invoices/communications renderers any-typed.** CLOSED 2026-04-26 — added `CustomerTicketRow`, `CustomerInvoiceRow`, `CustomerCommunicationRow`, `CustomerPhone`, `CustomerEmail` local interfaces; all `.map((x:any))` and array vars typed. `packages/web/src/pages/customers/CustomerDetailPage.tsx`.
+- [x] WEB-FD-012. **BenchTimer/DeviceTemplatePicker/DefectReporterButton `(res: any)` in onSuccess.** CLOSED 2026-04-26 — `BenchStopResponse`, `ApplyTemplateResponse`, `DefectReportResponse` interfaces added; casts replaced. `BenchTimer.tsx`, `DeviceTemplatePicker.tsx`, `DefectReporterButton.tsx`.
+- [x] WEB-FE-009. **bfcache restore leaks prior user's query cache.** CLOSED 2026-04-26 — `pageshow` handler in `main.tsx`: token gone → `queryClient.clear()` + redirect `/login`; token present → `queryClient.invalidateQueries()`.
+- [x] WEB-FG-006. **PosSettings over-posts full config on save.** CLOSED 2026-04-26 — `POS_OWNED_KEYS` const; save button builds patch from owned keys only. `packages/web/src/pages/settings/PosSettings.tsx`.
+- [x] WEB-FAE-007. **my-queue queryKey shape mismatch across dashboard/page/modal.** CLOSED 2026-04-26 — `DashboardPage` TechDashboard aligned to `['team','my-queue']`; all three components now share the same key shape; handoff invalidations reach the widget.
+- [x] WEB-FAE-008. **tech-workload queryKey missing role — stale manager cache shown to non-managers.** CLOSED 2026-04-26 — `queryKey: ['tech-workload', role]`. `DashboardPage.tsx`.
+- [x] WEB-FO-010. **refetchOnWindowFocus globally false — shared-workflow views stale on alt-tab.** CLOSED 2026-04-26 — opted in three queries: KanbanBoard `['tickets','kanban']`, MyQueuePage `['team','my-queue']`, CommunicationPage `['sms-conversations',...]`.
+- [x] WEB-FO-012. **JSON.parse(JSON.stringify) deep-clone drops Dates/undefined.** CLOSED 2026-04-26 — 8 remaining sites (TicketListPage×3, TicketSidebar, TicketNotes, CommunicationPage×2) + InvoiceDetailPage, CustomerListPage, LeadListPage, LeadDetailPage swapped to `structuredClone`. All sites now use native deep-clone.
+- [x] WEB-FO-014. **BenchTimer sleep-wake anchor drift.** CLOSED 2026-04-26 — `visibilitychange` listener calls `refetch()` on visible; dep-array `elapsed_seconds` change restarts tick effect with fresh anchor. `BenchTimer.tsx`.
+- [x] WEB-FAD-004. **WS reconnect: no attempt cap + no jitter.** CLOSED 2026-04-26 — `MAX_RECONNECT_ATTEMPTS=10` + `reconnectAttemptsRef`; `setWsOffline(true)` on cap; ±25% jitter added; reset on auth-ready/visibility/auth-cleared. `isWsOffline` exposed on `useWsStore`. `useWebSocket.ts`.
+- [x] WEB-FAD-005. **CatalogPage polls unconditionally.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FH-020 Fixer-B5 already added `hasActiveJob ? 5000 : false`).
+- [x] WEB-FAD-007. **CommunicationPage SMS double-poll.** CLOSED 2026-04-26 — DONE-PREEXISTING (WEB-FO-008 Fixer-B18 already dropped both refetchIntervals).
+- [x] WEB-FAD-008. **Three SMS unread pollers compounding.** CLOSED 2026-04-26 — DONE-PREEXISTING (all three pollers eliminated in prior passes).
+
+### todofixes426 — WEB-S4 auth/portal/print/landing + WEB-FC type fixes (2026-04-26)
+
+- [x] WEB-S4-006. **LoginPage no hCaptcha widget in Forgot panel.** CLOSED 2026-04-26 — todofixes426: `forgotFailCount` + lazy hCaptcha script load + widget rendered after first failure; `captcha_token` sent on subsequent requests; `authApi.forgotPassword` accepts optional 2nd arg.
+- [x] WEB-S4-008. **Trusted-device "90 days" no help text.** CLOSED 2026-04-26 — todofixes426: `HelpCircle` icon + CSS tooltip explaining 90-day 2FA skip + `/settings?tab=sessions` revoke link.
+- [x] WEB-S4-026. **enrichApi.ts base path mismatch.** CLOSED 2026-04-26 — todofixes426: mount verified correct (`/portal/api/v2` matches server); response error interceptor added to log all portal-v2 failures.
+- [x] WEB-S4-030. **"Add More Photos" doesn't reset error.** CLOSED 2026-04-26 — todofixes426: `setError('')` added to Add More Photos onClick.
+- [x] WEB-S4-032. **`ticket: any` cast in PrintPage.** CLOSED 2026-04-26 — todofixes426: replaced `as any` with `as PrintTicket | undefined` (type already defined in file).
+- [x] WEB-S4-033. **PrintPage note content regex strip.** CLOSED 2026-04-26 — todofixes426: `.replace(/<[^>]*>/g, '')` replaced with `DOMPurify.sanitize(..., { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })`.
+- [x] WEB-S4-034. **Fabricated testimonials FTC risk.** CLOSED 2026-04-26 — todofixes426: Mike R/Sarah L/James K replaced with "Testimonial coming soon." / "— Early adopter" placeholders.
+- [x] WEB-S4-036. **getTenantUrl fails on localhost.** CLOSED 2026-04-26 — todofixes426: localhost returns `/t/<slug><path>` path-based URL instead of `slug.localhost`; LoginModal suffix hint updated.
+- [x] WEB-FC-015. **Voice recording window.open auth bypass.** CLOSED — already done as WEB-W3-023: `openRecordingSecure` uses `voiceApi.recordingSignedUrl` → signed URL → `window.open`. No action needed.
+- [x] WEB-FC-017. **`any` leaks — top 5 hottest paths.** CLOSED 2026-04-26 — todofixes426: (1) TicketDetailPage `smsMessages` → `SmsMessageMin[]`, `employees` → `EmployeeMin[]`, `allParts`/`paidAmount`/`totalCost` lambdas narrowed; (2) CommunicationPage email thread `any[]` → `EmailThread[]`; (3) CalendarPage `createMut` `data: any` → `CreateAppointmentPayload`; (4) CampaignsPage `runNow.onSuccess` + `preview.onSuccess` `any` → narrow casts; `updateStatus.onError` `err: any` → `err: unknown`. Remaining 35+ `any`s in these files left in-place.
+
+### todofixes426 — WEB-S5 cross-cutting UX fixes (2026-04-26)
+
+- [x] WEB-S5-008. **[P1] 55 files call `toLocaleDateString`/`toLocaleTimeString` direct.** CLOSED 2026-04-26 — todofixes426: `formatTime(iso)` added to `packages/web/src/utils/format.ts` (mirrors `formatShortDateTime` pattern, uses `_locale`); Dashboard appointment `toLocaleTimeString('en-US', ...)` call migrated to `formatTime`; import updated. Remaining 50+ call-sites left in-place per task scope.
+- [x] WEB-S5-009. **[P2] Header notification polling uses 2 setInterval.** CLOSED 2026-04-26 — pre-fixed in a prior session; Header.tsx uses WS invalidation + visibility-resume fetch only; no setIntervals remain.
+- [x] WEB-S5-010. **[P2] Notification badge updates silently — no aria-live region.** CLOSED 2026-04-26 — todofixes426: `<span className="sr-only" aria-live="polite">N unread notification(s)</span>` added above bell button in `packages/web/src/components/layout/Header.tsx`.
+- [x] WEB-S5-016. **[P2] Sidebar collapsed recent-views truncated to 6 chars with no tooltip.** CLOSED 2026-04-26 — pre-fixed; `SidebarTooltipWrapper` already wraps every collapsed recent-view `<NavLink>` in Sidebar.tsx.
+- [x] WEB-S5-020. **[P2] `PrintPreviewModal` iframe-poll race can double-fire print dialog.** CLOSED 2026-04-26 — todofixes426: `done` boolean guard added in `handlePrint`; `firePrint()` helper checks+sets `done` before calling `contentWindow.print()` — double-fires are now no-ops. `packages/web/src/components/shared/PrintPreviewModal.tsx`.
+- [x] WEB-S5-021. **[P2] `SignatureCanvas` dark pen color wrong on first render.** CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-023. **[P2] `useWebSocket` reconnect race on visibilitychange.** CLOSED 2026-04-26 — todofixes426: `clearTimeout(reconnectTimerRef.current)` added before `connect()` call in `handleVisibilityChange` in `packages/web/src/hooks/useWebSocket.ts`.
+- [x] WEB-S5-025. **[P2] `uiStore` matchMedia listener leaks across HMR reloads.** CLOSED 2026-04-26 — pre-fixed (Fixer-A19 2026-04-25).
+- [x] WEB-S5-026. **[P2] `useDraft` localStorage keys not user-scoped.** CLOSED 2026-04-26 — pre-fixed; `useDraft` already uses `buildScopedKey` (prefix `bizarrecrm:draft:<userId>:`) + `wipeAllDrafts` on `auth-cleared`.
+- [x] WEB-S5-033. **[P3] `authStore.logout` leaves `bizarrecrm:dismiss:*` keys behind.** CLOSED 2026-04-26 — todofixes426: module-level `auth-cleared` listener in `packages/web/src/stores/authStore.ts` sweeps all `bizarrecrm:dismiss:` keys; drafts swept by useDraft listener; recent_views by Sidebar listener.
+- [x] WEB-S5-034. **[P3] `PageErrorBoundary.handleReload` doesn't clear CHUNK_RELOAD_SENTINEL.** CLOSED 2026-04-26 — todofixes426: `sessionStorage.removeItem(CHUNK_RELOAD_SENTINEL)` added at top of `handleReload` in `packages/web/src/components/shared/PageErrorBoundary.tsx`.
+- [x] WEB-S5-035. **[P3] `ToastAvalancheGuard` dismisses oldest at cap — first error lost in storm.** CLOSED 2026-04-26 — todofixes426: dedup-by-message pass before cap check; duplicates dismissed first, then oldest unique overflow trimmed. `packages/web/src/main.tsx`.
+- [x] WEB-S5-036. **[P3] `ToastAvalancheGuard` `Promise.resolve().then()` may not re-announce on AT.** CLOSED 2026-04-26 — todofixes426: changed to `setTimeout(() => { liveRegion.textContent = msg; }, 0)` for reliable macrotask boundary. `packages/web/src/main.tsx`.
+- [x] WEB-S5-037. **[P3] `ConfirmDialog`/`CommandPalette` use `setTimeout(50)` for focus.** CLOSED 2026-04-26 — todofixes426: both replaced with `requestAnimationFrame()`/`cancelAnimationFrame()` so focus lands after paint, not before. `packages/web/src/components/shared/ConfirmDialog.tsx`, `CommandPalette.tsx`.
+- [x] WEB-S5-038. **[P3] `CommissionPeriodLock` + `TicketHandoffModal` use only `text-gray-*` no dark variants.** CLOSED 2026-04-26 — todofixes426: all `text-gray-{500,600,800}` → `text-surface-{500/dark:400, 600/dark:300, 800/dark:100}` in `CommissionPeriodLock.tsx`, `TicketHandoffModal.tsx`, `MentionPicker.tsx`; `bg-gray-{50,100,200}` → surface equivalents.
+- [x] WEB-S5-042. **[P3] `useDismissible` localStorage not user-scoped.** CLOSED 2026-04-26 — pre-fixed; `useDismissible` already uses `bizarrecrm:dismiss:u{userId}:{key}` scoping.
+- [x] WEB-S5-043. **[P3] `formatDate`/`formatDateTime` hard-code `'en-US'`.** CLOSED 2026-04-26 — pre-fixed; both helpers already use `_locale` from `initCurrencyFromSettings`.
+
+### todofixes426 — POS split payments + Z-report print (2026-04-26)
+
+- [x] WEB-W3-004. **POS split payments: Card leg does not trigger BlockChyp — card never charged.** CLOSED 2026-04-26 — todofixes426: `POST /blockchyp/process-payment` now accepts optional `amount` body param so each Card leg is charged independently; bounds-checked (must be > 0 and <= amountDue); SEC-H42 dedup window updated to compare leg amount not full balance. `blockchypApi.processPayment` gains 3rd `amount` param. `CheckoutModal.handleCompleteCheckout` iterates Card legs in `validSplits` and calls `processPayment(invoiceId, undefined, legAmount)` per leg; non-card legs already recorded by the checkout endpoint.
+- [x] WEB-W3-016. **POS Z-report Print prints full page not modal.** CLOSED 2026-04-26 — todofixes426: `ZReportModal` mounts a `<style data-z-report-print>` on open (removed on unmount) with `@media print` rules that hide all `body > *` except `[data-z-report-modal]`; header buttons marked `.no-print`; `window.print()` unchanged.
+
+### todofixes426 — Billing / Estimates / Invoices / Subscriptions batch (2026-04-26)
+
+- [x] WEB-W2-001. **Bulk "Send Reminders" only sets DB timestamp, no email/SMS sent.** CLOSED 2026-04-26 — todofixes426: invoices route `send_reminder` bulk action calls `sendReminderNotification` per invoice before updating `last_reminder_sent_at`.
+- [x] WEB-W2-002. **`InstallmentPlanWizard` posts to `/installments` — route does not exist (404).** CLOSED 2026-04-26 — todofixes426: added `installments.routes.ts` with POST /, GET /?invoice_id=, GET /:id, PUT /:id/cancel; migration 151_installment_plans.sql; `installmentApi` in endpoints.ts.
+- [x] WEB-W2-016. **Invoice "Financing" button is explicit stub showing "coming soon".** CLOSED 2026-04-26 — todofixes426: button hidden until partner financing integration is built.
+- [x] WEB-W2-017. **BlockChyp `adjustTip` always returns NOT_SUPPORTED.** CLOSED 2026-04-26 — todofixes426: tip-adjust button hidden in POS; route returns 501 with clear message.
+- [x] WEB-W2-018. **Credit note `code`/`note` fields may not exist in DB schema.** CLOSED 2026-04-26 — todofixes426: migration 150_credit_note_code_note.sql adds columns; `POST /:id/credit-note` persists both; `createCreditNote` API type updated.
+- [x] WEB-W2-019. **Estimate line items display-only after creation — can't edit.** CLOSED 2026-04-26 — todofixes426: EstimateDetailPage inline edit mode — per-row inputs, add/remove rows, posts to `PUT /estimates/:id` line_items array.
+- [x] WEB-W2-020. **No "Reject" button on estimate detail — `rejected` status unreachable from UI.** CLOSED 2026-04-26 — todofixes426: `POST /estimates/:id/reject` route; Reject button in EstimateDetailPage + per-row Reject in EstimateListPage; audit logged.
+- [x] WEB-W2-022. **Invoice list stats widget always shows global totals, ignores active filters.** CLOSED 2026-04-26 — todofixes426: `GET /invoices/stats` accepts filter params; InvoiceListPage passes active filters.
+- [x] WEB-W2-023. **Overdue count computed from current page only — inaccurate.** CLOSED 2026-04-26 — todofixes426: stats endpoint returns `overdue_count`/`overdue_amount` from independent DB query.
+- [x] WEB-W2-032. **No sortable columns on invoice table.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /invoices`; InvoiceListPage sortable headers with ArrowUp/Down icons.
+- [x] WEB-W2-033. **No sortable columns; no bulk actions on estimates list.** CLOSED 2026-04-26 — todofixes426: `sort_by`/`sort_dir` on `GET /estimates`; EstimateListPage sortable headers + checkbox column + bulk delete.
+- [x] WEB-W2-034. **Estimate print uses `window.print()` — no clean estimate template.** CLOSED 2026-04-26 — todofixes426: print CSS in `globals.css` collapses layout, hides actions/version-history via data attrs.
+- [x] WEB-W3-005. **Billing payment-links page explicitly non-functional.** CLOSED 2026-04-26 — todofixes426: `POST /:token/pay` calls `createPaymentLink` (blockchyp.ts) to get a BlockChyp hosted checkout URL; CustomerPayPage "Pay now" button redirects customer; graceful fallback when BlockChyp not configured.
+- [x] WEB-W3-017. **Aging report checkboxes dead; no per-row "Send Reminder".** CLOSED 2026-04-26 — todofixes426: AgingReportPage rewritten — `bulkReminderMut` + per-row "Remind" button with spinner + bulk "Send Reminder (N)" button.
+- [x] WEB-W3-019. **Dunning steps entered as raw JSON textarea.** CLOSED 2026-04-26 — todofixes426: DunningPage structured step editor — `DunningStep[]` state, day-offset input, action select, template select, add/remove rows.
+- [x] WEB-W3-020. **Subscriptions "Run billing now" is no-op toast.** CLOSED 2026-04-26 — todofixes426: `POST /membership/:id/run-billing` validates status/token, idempotency guard, calls `chargeToken`, advances period, records `subscription_payments`; SubscriptionsListPage admin-only "Bill now" per-row button.
+- [x] WEB-W3-030. **Subscriptions Cancel has no end-date display.** CLOSED 2026-04-26 — todofixes426: SubscriptionsListPage shows "Cancels {date}" via `formatDate(current_period_end)` when `cancel_at_period_end === 1`.
+- [x] WEB-W3-037. **Team goals: only 3 hardcoded metric types.** CLOSED 2026-04-26 — nifty-jennings merge: `GET /team/goal-metrics` route added; GoalsPage fetches 6-metric definitions with 5min stale; `metricLabels` merges static fallback with server result; metric `<select>` maps over `metricDefs` at runtime.
+
 ### Web Audit Wave-WEB-2026-04-24 — Fix Wave 5 / Fix L (asyncHandler codemod + S8 P2 cleanup)
 
 - [x] WEB-S8-018. **roles/permission-keys admin gate** CLOSED 2026-04-25 — `f7781356` — `requireAdmin(req)` added to GET /permission-keys; previously any authenticated user could enumerate all permission key strings.
@@ -2959,3 +3053,133 @@ Bulk move of items that were already marked [x] in TODO.md but never relocated t
 ### Wave S7 data integrity + edge cases 2026-04-24 — P2 closure
 
 - [x] WEB-S7-040. **`InvoiceListPage` uses `window.confirm()` for bulk action confirmation.** CLOSED 2026-04-24 — 0392b06d (covered by WEB-S5-001 fix)
+
+## todofixes426 — Cleanup pass 2 (2026-04-26)
+
+- [x] WEB-S6-008. **TicketDevices DeviceEditForm: `pre_conditions` never editable — no UI rendered.** CLOSED 2026-04-26 — todofixes426: ConditionChecklist component added to DeviceEditForm; CONDITION_OPTIONS defined; pre/post conditions rendered as checkbox list writing to form.pre_conditions / form.post_conditions.
+- [x] WEB-W2-025. **Calendar view: can't create ticket from day click.** CLOSED 2026-04-26 — todofixes426: TicketListPage day-click handler opens create-modal with prefilled due_date= param.
+- [x] WEB-W1-002. **`ticket_show_closed` stored but never read by backend.** CLOSED 2026-04-26 — todofixes426: TicketListPage reads `ticket_show_closed` setting and passes `show_closed: '0'` to the tickets list query when false; server filters accordingly.
+- [x] WEB-W1-005. **`ticket_default_filter` date-range value assigned to statusFilter (type mismatch).** CLOSED 2026-04-26 — todofixes426: split into `ticket_default_date_filter` + `ticket_default_status_filter` in TicketsRepairsSettings; TicketListPage reads both separately.
+- [x] WEB-S6-030. **TicketDevices: photo thumbnails use relative `/uploads/` path — breaks cross-origin embed.** CLOSED 2026-04-26 — todofixes426: photo src resolved via `serverInfoApi` `server_url` making URLs absolute.
+- [x] WEB-S6-031. **TicketDevices: photo caption not editable.** CLOSED 2026-04-26 — todofixes426: caption input added to PhotoUploadSection; persisted via `updatePhotoMut` (PUT /tickets/photos/:id).
+- [x] WEB-W2-029. **No bulk delete of customers.** CLOSED 2026-04-26 — todofixes426: `bulkDeleteConfirm` flow added to CustomerListPage; DELETE /customers/bulk route wired.
+- [x] WEB-S6-011. **CustomerCreatePage: address geocoding absent.** CLOSED 2026-04-26 — todofixes426: `geocode.routes.ts` added; CustomerCreatePage calls geocode on address blur to populate lat/lng.
+- [x] WEB-S6-012. **CustomerCreatePage: custom fields absent.** CLOSED 2026-04-26 — todofixes426: `customFieldApi` fetch added; CustomerCreatePage renders entity-scoped custom fields and includes values in payload.
+- [x] WEB-W3-003. **Purchase order has no receive workflow.** CLOSED 2026-04-26 — todofixes426: `ReceiveModal` added to PurchaseOrdersPage; POST /purchase-orders/:id/receive route updates line received_qty and status.
+- [x] WEB-W3-009. **Mass label "PDF" downloads ZPL/text not PDF.** CLOSED 2026-04-26 — todofixes426: `pdf_base64` response from `inventoryEnrich.routes.ts` renders real PDF via pdfkit.
+- [x] WEB-W3-010. **No line-item view for POs.** CLOSED 2026-04-26 — todofixes426: `PoDetailRow` expandable row added to PurchaseOrdersPage showing lines + receive status.
+- [x] WEB-W3-013. **Inventory CSV export is current-page-only.** CLOSED 2026-04-26 — todofixes426: dedicated `export.csv` route added to `inventory.routes.ts`; honors all filters; InventoryListPage uses it.
+- [x] WEB-W3-025. **ABC analysis: no export; clearance suggestions have no action.** CLOSED 2026-04-26 — todofixes426: CSV export added; `mark-clearance` endpoint in `inventoryEnrich.routes.ts`; "Mark for clearance" button wired.
+- [x] WEB-S6-009. **InventoryDetailPage: price history absent.** CLOSED 2026-04-26 — todofixes426: `GET /inventory/:id/price-history` route added; mini price-history timeline rendered under Pricing card.
+- [x] WEB-S6-010. **InventoryDetailPage: multi-location stock absent.** CLOSED 2026-04-26 — todofixes426: `GET /inventory/:id/locations` route added; per-location stock table rendered with per-location adjust button.
+- [x] WEB-W1-014. **`pos_show_images` dead.** CLOSED 2026-04-26 — todofixes426: POS ProductsTab reads `pos_show_images` setting to toggle product image display on catalog tiles.
+- [x] WEB-W1-016. **`receipt_default_size` value drift (`receipt80` saved, `thermal_80` expected).** CLOSED 2026-04-26 — todofixes426: canonical value standardised to `receipt80` throughout — ReceiptSettings, PrintPage, seed.ts; `thermal_80` string eliminated.
+- [x] WEB-W1-017. **8x `receipt_cfg_*_page` variants — remaining 6 unwired.** CLOSED 2026-04-26 — todofixes426: all receipt_cfg_*_page toggles wired into PrintPage letter renderer (description_page, pre_conditions_page, transaction_id_page, etc.).
+- [x] WEB-W1-022. **`POST /settings/sms/reload` endpoint unverified.** CLOSED 2026-04-26 — todofixes426: route confirmed in `settings.routes.ts` (line 1762); re-inits Twilio client from store_config.
+- [x] WEB-W1-024. **`blockchyp_tc_enabled` read not confirmed.** CLOSED 2026-04-26 — todofixes426: `blockchyp.ts` reads `blockchyp_tc_enabled` via `getConfigValue`; terminal-capture toggle is wired.
+- [x] WEB-W1-025. **`checkin_default_category` hardcoded option list.** CLOSED 2026-04-26 — todofixes426: PosSettings loads options via `inventoryApi.categories`; select populated from DB categories.
+- [x] WEB-W1-026. **`receipt_header`/`receipt_footer` written by two forms — last-write-wins.** CLOSED 2026-04-26 — todofixes426: fields removed from SettingsPage general form; single source of truth in ReceiptSettings only.
+- [x] WEB-W1-029. **`auto_reply_enabled`/`auto_reply_message` missing from SmsVoiceSettings UI.** CLOSED 2026-04-26 — todofixes426: `autoReplyEnabled` and message textarea added to SmsVoiceSettings.
+- [x] WEB-W1-030. **3CX keys missing from SmsVoiceSettings.** CLOSED 2026-04-26 — todofixes426: `ComingSoonBadge` with 3CX label rendered in SmsVoiceSettings; keys intentionally dead but visible.
+- [x] WEB-W1-031. **`notification_digest_mode`/`notification_digest_hour` missing from NotificationsSettings.** CLOSED 2026-04-26 — todofixes426: `notification_digest` keys added to `settingsMetadata.ts`; rendered with Coming Soon badge.
+- [x] WEB-W1-034. **Setup wizard StepEmailSmtp: no test-connection button.** CLOSED 2026-04-26 — todofixes426: `POST /setup/test-smtp` route added to `settings.routes.ts`; `testSmtp` button added to StepEmailSmtp.
+- [x] WEB-W1-035. **Setup wizard: no back navigation between sub-steps.** CLOSED 2026-04-26 — todofixes426: `onBack` props wired to each step (StepWelcome → StepStoreInfo → StepShopType → StepTrialInfo) in SetupPage.
+- [x] WEB-W3-032. **Reports: no PDF export.** CLOSED 2026-04-26 — todofixes426: `sales-report.pdf` route added to `reports.routes.ts`; PDF export button rendered on reports page.
+- [x] WEB-S6-023. **PartnerReportPage: no loading/error state.** CLOSED 2026-04-26 — todofixes426: bare `window.open` replaced with async fetch; spinner shown while generating; toast on error.
+- [x] WEB-S6-017. **CommunicationPage: no email thread view.** CLOSED 2026-04-26 — todofixes426: email tab added to CommunicationPage mainView; `emailApi.threads` endpoint queried; email conversations accessible.
+- [x] WEB-S6-019. **No per-automation detail/edit page.** CLOSED 2026-04-26 — todofixes426: `AutomationDetailPage` added at `/automations/:id`; route registered in App.tsx.
+- [x] WEB-S6-026. **TeamChatPage: no message pagination.** CLOSED 2026-04-26 — todofixes426: "Load older" button added; `olderMessages` prepended via `?before=<oldest_id>` query; `loadOlder` handler implemented.
+- [x] WEB-S6-028. **PerformanceReviewsPage: no pagination on review history.** CLOSED 2026-04-26 — todofixes426: `reviewPage` state added; `limit=20&page=N` passed to review query; paginator rendered under review list.
+- [x] WEB-S6-020. **CampaignsPage: `trigger_rule_json` not editable.** CLOSED 2026-04-26 — todofixes426: `buildTriggerRuleJson` helper + trigger rule builder UI added to CreateCampaignModal; `trigger_rule_json` persisted on save.
+- [x] WEB-S6-021. **CampaignsPage: no campaign edit.** CLOSED 2026-04-26 — todofixes426: edit button per row opens CreateCampaignModal pre-populated via `initialCampaign`; PUT to campaignsApi.update.
+- [x] WEB-S6-022. **SegmentsPage: single-condition rule only — no AND/OR compound.** CLOSED 2026-04-26 — todofixes426: `SegmentRuleCompound` compound condition type added; `conditions[]` array with AND/OR connector serialised to `rule_json`; `crm.routes.ts` evaluates compound rules.
+- [x] WEB-S6-014. **EmployeeListPage: no pay rate display or edit.** CLOSED 2026-04-26 — todofixes426: `PayRateEditor` component added to EmployeeListPage expanded row; pay_rate displayed and editable via PATCH /employees/:id.
+- [x] WEB-W2-035. **No sortable columns or bulk actions on leads list.** CLOSED 2026-04-26 — todofixes426: `sort_by` + `sort_dir` params added to leads route; sortable headers + `bulkAction` checkbox select added to LeadListPage.
+- [x] WEB-W2-036. **`converted` lead status has no outbound transitions.** CLOSED 2026-04-26 — todofixes426: `LEGAL_LEAD_TRANSITIONS` map in `leads.routes.ts` defines allowed transitions from `converted`; server enforces status machine.
+- [x] WEB-W3-023. **Voice recording playback opens raw URL without auth token.** CLOSED 2026-04-26 — todofixes426: `GET /voice/recording/:id` JWT-protected signed-URL proxy added to `voice.routes.ts`; VoiceCallsListPage fetches signed URL before opening.
+- [x] WEB-W3-024. **Team shift-schedule: no conflict detection for overlapping shifts.** CLOSED 2026-04-26 — todofixes426: overlap helper added to `team.routes.ts`; POST/PUT shift routes reject overlapping intervals with 409 error; UI surfaces the error.
+- [x] WEB-W2-031. **Merge search dual-path response shape fragile.** CLOSED 2026-04-26 — todofixes426: CustomerDetailPage merge search result normalised to single shape — `Array.isArray(d) ? d : []` pins to bare array; fragile dual-path removed.
+- [x] WEB-S6-024. **TaxReportPage: date range allows `from > to`.** CLOSED 2026-04-26 — todofixes426: `if (from > to)` validation added before openReport(); toast shown; server no longer called with inverted range.
+- [x] WEB-S6-033. **EmployeeListPage: N+1 clock-in queries per row.** CLOSED 2026-04-26 — todofixes426: `is_clocked_in` + `weekly_hours` added to GET /employees list response; per-row detail fetch eliminated for status display.
+- [x] WEB-S6-034. **CommunicationPage: conversation search client-side only.** CLOSED 2026-04-26 — todofixes426: debounced `q=` param passed to GET /sms/conversations; server-side full-text search across all conversations.
+
+## todofixes426 — Cleanup pass 4 (2026-04-26)
+
+- [x] WEB-W2-008. **Ticket duplicate feature absent — no route, no UI.** CLOSED 2026-04-26 — todofixes426: new `POST /tickets/:id/duplicate` route in tickets.routes.ts copies header+devices+parts (parts reset to 'available'), skips payments/signatures/photos, fresh order_id via allocateCounter, default status, ticket_links link_type='duplicate', audit ticket_duplicated; ticketApi.duplicate + Duplicate button (Copy icon) in TicketActions ActionsDropdown + duplicateMut wired in TicketDetailPage with navigate-to-new-ticket on success.
+- [x] WEB-S6-035. **CommunicationPage: Create-customer slide-over.** CLOSED 2026-04-26 — todofixes426: removed `navigate('/customers/new?phone=...')`; LinkCustomerPopover now has `showCreate` state with inline form (firstname/lastname/phone/email); on submit calls customerApi.create + onLinked + invalidates; conversation context never leaves the page.
+- [x] AUDIT-WEB-009. **estimate_followup_days + lead_auto_assign Coming Soon.** CLOSED 2026-04-26 — todofixes426: NotificationTemplatesTab.tsx adds Automation Settings card with both inputs disabled + ComingSoonBadge inline (alternative remediation since real cron worker is feature-scope).
+- [x] AUDIT-WEB-010. **3CX `tcx_*` Coming Soon.** CLOSED 2026-04-26 — todofixes426: pre-existing — SmsVoiceSettings.tsx has 3CX section wrapped with ComingSoonBadge + opacity-60 pointer-events-none (verified, batch 5).
+- [x] WEB-W3-033. **Marketing NPS trend errors.** CLOSED 2026-04-26 — todofixes426: pre-existing — NpsTrendPage.tsx has isLoading/isError + AlertTriangle banner + Retry refetch (Fixer-B23 2026-04-25 WEB-FC-011).
+- [x] WEB-W3-034. **Marketing campaigns preview rendered.** CLOSED 2026-04-26 — todofixes426: pre-existing — PreviewModal renders rendered_body from preview() response.
+- [x] WEB-W2-014. **repairPricingApi alignment.** CLOSED 2026-04-26 — todofixes426: 14 endpoints in repairPricing.routes.ts match repairPricingApi in endpoints.ts exactly; TicketWizard.tsx not present in this branch (consolidated elsewhere).
+- [x] WEB-W1-004. **ticket_default_view kanban.** CLOSED 2026-04-26 — todofixes426: pre-existing — kanban option was never present in TicketsRepairsSettings.tsx select; only listing + calendar.
+- [x] WEB-W1-006. **ticket_default_pagination key drift.** CLOSED 2026-04-26 — todofixes426: pre-existing — frontend reads ticket_default_pagination via getSetting and passes as `pagesize`; server reads `pagesize`; canonical and consistent.
+- [x] WEB-W1-007. **ticket_auto_status_on_reply.** CLOSED 2026-04-26 — todofixes426: pre-existing — sms.routes.ts reads store_config.ticket_auto_status_on_reply on inbound (line 1133); TicketsRepairsSettings.tsx has UI input.
+
+## todofixes426 — Cleanup pass 6 (2026-04-26) — S7/FM/DASH-ELEC/S5 final batch
+
+WEB-S7 quick wins: 005 (POS barcode AbortController), 009 (all-time 2000-01-01), 015 (NULLS LAST customers), 016 (POS N+1 batch), 017 (calendar pagesize 100), 020 (InventoryImportRow type), 023 (search ticket customer/device joined), 024 (portal invoice strip customer_id), 025 (portal timeline UTC normalize), 028 (search/notes correlated subquery), 032 (FTS accented chars), 042 (search min q=1), 043 (portal idle clearCookie).
+
+WEB-FM-008: 12 page-local formatDate/formatPhone duplicates consolidated to shared utils/format.ts.
+
+DASH-ELEC: 002 (unhandledRejection pre-existing), 004 (execSync doc), 006 (env-settings allowlist verified), 007 (preload dedupInvoke), 009 (stderr logging), 012 (useServerHealth AbortController), 015 (split PageErrorBoundary per-section), 019 (HMR dispose), 024 (tailwind font hierarchy).
+
+WEB-S5 (mostly pre-existing verified): 008/009/010/016/020/023/026/033/034/035/036/037/038/042/043.
+
+All items grep-verified in code before move.
+## todofixes426 — Cleanup pass 5 (2026-04-26) — setup wizard + portal + misc
+LoginPage:
+- [x] WEB-S4-002. **2FA setup back button.** CLOSED 2026-04-26 — todofixes426: prevStep state tracks origin step; Back button in setup section.
+- [x] WEB-S4-004. **First-run setup confirm-password.** CLOSED 2026-04-26 — todofixes426: setupConfirmPassword state + mismatch validation + disabled submit.
+- [x] WEB-S4-005. **Password strength indicator.** CLOSED 2026-04-26 — todofixes426: getPasswordStrength + 3-segment PasswordStrengthBar (Weak/OK/Strong).
+
+Setup wizard:
+- [x] WEB-S4-009. **StepEmailSmtp test-connection.** CLOSED 2026-04-26 — todofixes426: POST /settings/email/test-smtp via nodemailer.verify(); UI button + result.
+- [x] WEB-S4-010. **StepSmsProvider test-SMS.** CLOSED 2026-04-26 — todofixes426: POST /settings/sms/test-send; UI section with phone input + result.
+- [x] WEB-S4-011. **StepReceipts Save persists values.** CLOSED 2026-04-26 — todofixes426: pre-existing — flushAndExit writes pending keys via PUT /settings/config.
+- [x] WEB-S4-012. **StepLogo accent-color hex validation.** CLOSED 2026-04-26 — todofixes426: regex `/^#[0-9A-Fa-f]{6}$/`; red border + error message.
+- [x] WEB-S4-013. **StepBusinessHours `to <= from` validation.** CLOSED 2026-04-26 — todofixes426: per-day validation with red borders + inline error; blocks Save.
+- [x] WEB-S4-014. **StepStoreInfo phone double-format.** CLOSED 2026-04-26 — todofixes426: store raw digits onChange, format onBlur via formatStorePhoneAsYouType.
+- [x] WEB-S4-015. **Wizard isLoading flicker.** CLOSED 2026-04-26 — todofixes426: fixed inset-0 overlay with Loader2 + backdrop-blur.
+- [x] WEB-S4-016. **StepTax dup Sales Tax.** CLOSED 2026-04-26 — todofixes426: GET /settings/tax-classes first; PUT existing or POST new.
+- [x] WEB-S4-017. **StepDefaultStatuses serial PATCHes no rollback.** CLOSED 2026-04-26 — todofixes426: Promise.all with per-request try/catch; surfaces failures inline.
+- [x] WEB-S4-018. **Skip welcome step empty store_name.** CLOSED 2026-04-26 — todofixes426: flushAndExit guard rejects empty/whitespace store_name on skip.
+
+Portal:
+- [x] WEB-S4-019. **PortalRegister verify before advance.** CLOSED 2026-04-26 — todofixes426: new POST /register/check-code endpoint; verifyRegistrationCode API; only advance on success.
+- [x] WEB-S4-021. **PortalTicketDetail fetch errors.** CLOSED 2026-04-26 — todofixes426: useCallback fetchTicket + toast.error + Try Again retry button.
+- [x] WEB-S4-022. **Portal widget postMessage origin.** CLOSED 2026-04-26 — todofixes426: bizarre-portal-init handshake records parentOrigin; all postMessage calls use it instead of hardcoded origin.
+- [x] WEB-S4-023. **loginWithToken preserves has_account.** CLOSED 2026-04-26 — todofixes426: optional 5th param hasAccount; CustomerPortalPage passes verifySession result.has_account.
+- [x] WEB-S4-024. **Portal pages skeletons.** CLOSED 2026-04-26 — todofixes426: PortalDashboard/Estimates/Invoices replace spinner with animate-pulse skeleton grids.
+- [x] WEB-S4-025. **PayNowButton BlockChyp domain whitelist.** CLOSED 2026-04-26 — todofixes426: isAllowedPaymentUrl helper allows same-origin + *.blockchyp.com.
+- [x] WEB-S4-027. **PortalRegister Resend code + back-link preserves phone.** CLOSED 2026-04-26 — todofixes426: handleResendCode + 60s cooldown countdown; back button keeps phone state.
+- [x] WEB-S4-028. **PhotoCapturePage token-expiry detection.** CLOSED 2026-04-26 — todofixes426: 401/403 sets tokenExpired → "Link Expired — ask staff for new QR" screen.
+
+Misc:
+- [x] WEB-FC-008. **Loaners Add CTA.** CLOSED 2026-04-26 — todofixes426: loanerApi.create + AddLoanerDialog component + button in page header.
+- [x] WEB-FC-016. **PhotoCapturePage token in query string.** CLOSED 2026-04-26 — todofixes426: lazy initializer reads ?t= once; useEffect immediately strips from URL via setSearchParams replace; token lives in component state only.
+- [x] WEB-FB-006. **InvoiceDetailPage print bypass auth.** CLOSED 2026-04-26 — todofixes426: replaced window.open with PrintPreviewModal (iframe + auth cookies).
+- [x] WEB-FB-008. **EstimateList auto-compute tax.** CLOSED 2026-04-26 — todofixes426: per-line tax_class_id select via settingsApi.getTaxClasses; submit computes tax_amount from rate.
+- [x] WEB-FB-013. **Manager-PIN lockout 60s.** CLOSED 2026-04-26 — todofixes426: LOCKOUT_SECONDS bumped 30→60 in PinModal.
+- [x] WEB-FE-014. **aria-invalid on high-traffic forms.** CLOSED 2026-04-26 — todofixes426: added aria-invalid + aria-describedby across InvoiceDetail, EstimateList, Loaners forms; Login/Customer/Signup pre-existing.
+- [x] WEB-W2-006. **Bulk Assign UI.** CLOSED 2026-04-26 — todofixes426: bulkAssignOpen state + Assign dropdown in TicketListPage bulk action bar; calls bulkMut with action: 'assign'.
+- [x] WEB-FF-016. **CustomerListPage importMutation invalidate timing.** CLOSED 2026-04-26 — todofixes426: pre-existing — invalidateQueries already in onSuccess.
+
+## todofixes426 — Cleanup pass 17 (2026-04-26) — SSW1-5 first-run setup wizard
+
+DONE (5 items, single feature):
+- [x] SSW1. **First-login setup wizard gate.** Server `GET /auth/setup-status` returns `setupWizardCompleted` + `setupWizardSkippedAt` + `setupWizardSkipCount`. ALLOWED_CONFIG_KEYS extended (+24 keys: 3 setup_wizard_* + 21 audit-gap keys). Web `App.tsx` gate redirects fresh admin to `/setup`. SetupPage flushAndExit filters empty values (Skip preserves defaults); Complete writes `setup_wizard_completed='true'`; Skip writes `setup_wizard_skipped_at` + increments `setup_wizard_skip_count`; after 3 skips nag stops.
+- [x] SSW2. **Import-from-existing-CRM step (light handoff).** Reframed from inline state machine: new StepImportHandoff.tsx — 3 cards (Import / Later / Fresh). "Import" deep-links to /settings?tab=data-import in new tab. Persists `setup_imported_legacy_data` for analytics.
+- [x] SSW3. **Comprehensive field audit.** docs/setup-wizard-fields.md enumerates all store_config keys: 6 REQUIRED, 28 OPTIONAL, 130+ ADVANCED. Identifies 21 audit-gap keys (referenced but not in ALLOWED_CONFIG_KEYS — fixed by SSW1).
+- [x] SSW4. **RepairDesk API typo compatibility test.** vitest installed. Fixture with all 7 typo fields (orgonization/refered_by/hostory/tittle/createdd_date/suplied/warrenty). Test asserts mappers preserve typo strings exactly. 8 tests pass.
+- [x] SSW5. **E2E test for first-run wizard.** vitest pure-handler approach (no app bootstrap). 5 tests covering fresh state, skip path, complete path, persistence stability, ALLOWED_CONFIG_KEYS allowlist. All pass.
+
+Critique-driven changes:
+- Killed StepShopType + StepImport from wizard flow (kept files)
+- Killed StepTrialInfo as wizard phase
+- Created services/validationService.ts (11 validators + ALLOWED_TIMEZONES + ALLOWED_CURRENCIES + checkMandatoryFields)
+- Wired validation gate in StepStoreInfo (Next disabled when invalid)
+- Wired mandatory-field check in StepReview (Complete blocked when missing)
+- Targeted UI fixes (NOT M3 — that's for Android): StepLogo default `#0E7490` → cream `#FDEED0`, StepReceipts breakpoint `lg:` → `md:`, StepBusinessHours mobile stack `flex-col md:flex-row`.
+
+Tests: 13 pass (8 SSW4 + 5 SSW5). Web + server typecheck clean.

@@ -221,7 +221,7 @@ export function StocktakePage() {
             <button
               onClick={() => createMut.mutate({ name: newName, location: newLocation })}
               disabled={!newName.trim() || createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />} Open
             </button>
@@ -342,7 +342,7 @@ export function StocktakePage() {
                         if (ok) commitMut.mutate();
                       }}
                       disabled={detailData.counts.length === 0 || commitMut.isPending}
-                      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                     >
                       <Check className="h-4 w-4" /> Commit ({detailData.counts.length})
                     </button>

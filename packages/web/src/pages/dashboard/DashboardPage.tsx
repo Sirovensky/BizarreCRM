@@ -1,4 +1,25 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+
+// WEB-FO-007: stagger dashboard polling intervals so every useQuery call in
+// this module does not fire near-simultaneously every 60s (thundering herd).
+// Each call site captures the jittered value once at module-evaluation time
+// via a const, so a single component re-render does not re-roll the offset
+// and accidentally change the interval mid-session.
+function jitter(base: number): number {
+  return base + Math.floor(Math.random() * 5_000);
+}
+const JITTER_60K = jitter(60_000);
+const JITTER_60K_B = jitter(60_000);
+const JITTER_60K_C = jitter(60_000);
+const JITTER_120K = jitter(120_000);
+const JITTER_120K_B = jitter(120_000);
+const JITTER_120K_C = jitter(120_000);
+const JITTER_120K_D = jitter(120_000);
+const JITTER_120K_E = jitter(120_000);
+const JITTER_120K_F = jitter(120_000);
+const JITTER_120K_G = jitter(120_000);
+const JITTER_60K_D = jitter(60_000);
+const JITTER_30K = jitter(30_000);
 import {
   ComposedChart, Area, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
@@ -128,7 +149,7 @@ function getDateRange(preset: DatePreset): { from: string; to: string } {
     case 'thisYear':
       return { from: `${today.getFullYear()}-01-01`, to: fmt(today) };
     case 'all':
-      return { from: '2020-01-01', to: fmt(today) };
+      return { from: '2000-01-01', to: fmt(today) };
   }
 }
 
@@ -407,7 +428,7 @@ function MissingPartsCard({ parts, queueSummary, queueItems = [] }: { parts: Mis
                   onClick={() => addToQueueMut.mutate(p)}
                   disabled={addToQueueMut.isPending}
                   title="Add to order queue"
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 px-2 py-1 text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                 >
                   {addToQueueMut.isPending ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -1003,11 +1024,15 @@ function NeedsAttentionCard({ data, loading }: { data: NeedsAttentionData | null
 function TechDashboard({ userId }: { userId: number }) {
   const navigate = useNavigate();
 
-  // Fetch only tickets assigned to this user
+  // Fetch only tickets assigned to this user.
+  // WEB-FAE-007 (Fixer-426B 2026-04-26): align key to ['team', 'my-queue'] so
+  // invalidations from TicketHandoffModal + TicketDetailPage (assign-out) hit
+  // this widget. Previously ['my-queue', userId] was a different shape and
+  // handoffs left stale rows until the 30s poll fired.
   const { data: queueData, isLoading: queueLoading } = useQuery({
-    queryKey: ['my-queue', userId],
+    queryKey: ['team', 'my-queue'],
     queryFn: () => ticketApi.myQueue(),
-    refetchInterval: 30_000,
+    refetchInterval: JITTER_30K,
     refetchIntervalInBackground: false,
   });
   const queue = queueData?.data?.data ?? { total: 0, open: 0, waiting_parts: 0, in_progress: 0 };
@@ -1016,7 +1041,7 @@ function TechDashboard({ userId }: { userId: number }) {
   const { data: ticketsData, isLoading: ticketsLoading } = useQuery({
     queryKey: ['my-tickets', userId],
     queryFn: () => ticketApi.list({ assigned_to: userId, pagesize: 20 }),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K,
     refetchIntervalInBackground: false,
   });
   const myTickets = ticketsData?.data?.data?.tickets ?? ticketsData?.data?.data ?? [];
@@ -1025,7 +1050,7 @@ function TechDashboard({ userId }: { userId: number }) {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_B,
     refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
@@ -1293,14 +1318,14 @@ function WidgetCustomizeModal({ widgets, onSave, onClose }: {
                   <button
                     onClick={() => move(i, -1)}
                     disabled={i === 0}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     <ChevronUp className="h-3.5 w-3.5" />
                   </button>
                   <button
                     onClick={() => move(i, 1)}
                     disabled={i === draft.length - 1}
-                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-30"
+                    className="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-700 text-surface-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                   >
                     <ChevronDown className="h-3.5 w-3.5" />
                   </button>
@@ -1344,7 +1369,7 @@ function TodaysAppointments() {
   const { data: apptData, isLoading } = useQuery({
     queryKey: ['todays-appointments', today],
     queryFn: () => leadApi.appointments({ from_date: today, to_date: tomorrow }),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K,
     refetchIntervalInBackground: false,
   });
 
@@ -1439,7 +1464,7 @@ function CogsInfoBanner({ kpis }: { kpis: DashboardKpis | null }) {
       <button
         onClick={handleSync}
         disabled={syncing}
-        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+        className="shrink-0 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
       >
         {syncing ? 'Syncing...' : 'Sync from Catalog'}
       </button>
@@ -1670,7 +1695,7 @@ function DailySalesWidget({ last7Range, employeeId }: { last7Range: { from: stri
   const { data: salesKpiData, isLoading: salesLoading } = useQuery({
     queryKey: ['dashboard-kpis-7day', last7Range.from, last7Range.to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: last7Range.from, to_date: last7Range.to, employee_id: employeeId }),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_B,
     refetchIntervalInBackground: false,
   });
   const dailySales = salesKpiData?.data?.data?.daily_sales ?? [];
@@ -1805,7 +1830,7 @@ function AdminOrManagerDashboard() {
   const { data: kpiData, isLoading: kpiLoading } = useQuery({
     queryKey: ['dashboard-kpis', from, to, employeeId],
     queryFn: () => reportApi.dashboardKpis({ from_date: from, to_date: to, employee_id: employeeId }),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_C,
     refetchIntervalInBackground: false,
   });
 
@@ -1823,21 +1848,21 @@ function AdminOrManagerDashboard() {
   const { data: missingData } = useQuery({
     queryKey: ['missing-parts'],
     queryFn: () => missingPartsApi.list(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_C,
     refetchIntervalInBackground: false,
   });
 
   const { data: queueData } = useQuery({
     queryKey: ['order-queue-summary'],
     queryFn: () => catalogApi.getOrderQueueSummary(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_D,
     refetchIntervalInBackground: false,
   });
 
   const { data: queueItemsData } = useQuery({
     queryKey: ['order-queue-items'],
     queryFn: () => catalogApi.getOrderQueue('pending'),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_E,
     refetchIntervalInBackground: false,
   });
 
@@ -1845,7 +1870,7 @@ function AdminOrManagerDashboard() {
   const { data: summaryData, isLoading: summaryLoading } = useQuery({
     queryKey: ['dashboard-summary'],
     queryFn: () => reportApi.dashboard(),
-    refetchInterval: 60_000,
+    refetchInterval: JITTER_60K_D,
     refetchIntervalInBackground: false,
   });
   const summary: DashboardSummary | null = summaryData?.data?.data ?? null;
@@ -1854,17 +1879,23 @@ function AdminOrManagerDashboard() {
   const { data: attentionData, isLoading: attentionLoading } = useQuery({
     queryKey: ['needs-attention'],
     queryFn: () => reportApi.needsAttention(),
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_F,
     refetchIntervalInBackground: false,
   });
   const needsAttention: NeedsAttentionData | null = attentionData?.data?.data ?? null;
 
   // Tech workload for manager emphasis
+  // WEB-FAE-008 (Fixer-426B 2026-04-26): include `role` in the queryKey so an
+  // admin/tech who logs in on the same tab after a manager doesn't briefly see
+  // the manager's cached workload data. With `enabled: role === 'manager'` the
+  // fetch is blocked for non-managers, but the stale cache under the un-scoped
+  // `['tech-workload']` key would still satisfy the query until gcTime (5min).
+  // Keying by role gives each role an isolated cache bucket.
   const { data: workloadData } = useQuery({
-    queryKey: ['tech-workload'],
+    queryKey: ['tech-workload', role],
     queryFn: () => reportApi.techWorkload(),
     enabled: role === 'manager',
-    refetchInterval: 120_000,
+    refetchInterval: JITTER_120K_G,
     refetchIntervalInBackground: false,
   });
   const techWorkload: any[] = workloadData?.data?.data ?? [];

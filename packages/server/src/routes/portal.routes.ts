@@ -142,6 +142,7 @@ async function portalAuth(req: PortalRequest, res: Response, next: NextFunction)
     // Evict the stale session so reuse of the token still fails on
     // the next request even if the expiry hasn't hit.
     await adb.run('DELETE FROM portal_sessions WHERE token = ?', token);
+    res.clearCookie('portalToken');
     res.status(401).json({ success: false, message: 'Session idle timeout. Please log in again.' });
     return;
   }
@@ -324,13 +325,14 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'tic
   }
 
   // Sort timeline chronologically
-  timeline.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  const toUtc = (s: string) => (s && !s.endsWith('Z') ? s + 'Z' : s);
+  timeline.sort((a, b) => new Date(toUtc(a.created_at)).getTime() - new Date(toUtc(b.created_at)).getTime());
 
   // Find invoice
   let invoice: AnyRow | undefined;
   if (ticket.invoice_id) {
     invoice = await adb.get<AnyRow>(
-      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+      `SELECT id, order_id, ticket_id, issued_at, amount_total_cents,
               amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
          FROM invoices WHERE id = ?`,
       ticket.invoice_id,
@@ -338,7 +340,7 @@ async function getTicketDetail(adb: AsyncDb, ticketId: number, portalScope: 'tic
   }
   if (!invoice) {
     invoice = await adb.get<AnyRow>(
-      `SELECT id, customer_id, order_id, ticket_id, issued_at, amount_total_cents,
+      `SELECT id, order_id, ticket_id, issued_at, amount_total_cents,
               amount_paid, amount_due, status, subtotal, discount, total_tax, total, created_at
          FROM invoices WHERE ticket_id = ? LIMIT 1`,
       ticket.id,
@@ -829,6 +831,61 @@ router.post('/register/send-code', asyncHandler(async (req: PortalRequest, res: 
   }
 
   res.json({ success: true, data: { sent: true } });
+}));
+
+// ---------------------------------------------------------------------------
+// POST /register/check-code — Validate OTP without consuming it (WEB-S4-019)
+// Used by the frontend to verify the code is correct before the customer
+// chooses a PIN, so step 2 advances only after a real backend check.
+// The code is NOT marked used here; /register/verify does that.
+// ---------------------------------------------------------------------------
+router.post('/register/check-code', asyncHandler(async (req: PortalRequest, res: Response) => {
+  const adb = req.asyncDb;
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  // Share the persistent login rate bucket (5 / 15 min) — same as /register/verify
+  if (!consumeRate(req, RL.LOGIN, ip, 5, 15 * 60 * 1000)) {
+    res.status(429).json({ success: false, message: 'Too many attempts. Please try again later.' });
+    return;
+  }
+
+  const { phone, code } = req.body as { phone?: string; code?: string };
+  if (!phone || !code) {
+    res.status(400).json({ success: false, message: 'Phone and verification code are required' });
+    return;
+  }
+  if (!/^\d{6}$/.test(code)) {
+    res.status(400).json({ success: false, message: 'Verification code must be 6 digits' });
+    return;
+  }
+
+  const normalized = normalizePhone(phone);
+  const verification = await adb.get<AnyRow>(`
+    SELECT id, customer_id, attempts
+    FROM portal_verification_codes
+    WHERE phone = ? AND code = ? AND used = 0 AND expires_at > datetime('now')
+    ORDER BY created_at DESC LIMIT 1
+  `, normalized, code);
+
+  if (!verification) {
+    // Increment attempt counter on any live code for this phone
+    const anyCode = await adb.get<AnyRow>(`
+      SELECT id, attempts FROM portal_verification_codes
+      WHERE phone = ? AND used = 0 AND expires_at > datetime('now')
+      ORDER BY created_at DESC LIMIT 1
+    `, normalized);
+    if (anyCode) {
+      const newAttempts = anyCode.attempts + 1;
+      if (newAttempts >= 5) {
+        await adb.run('UPDATE portal_verification_codes SET used = 1 WHERE id = ?', anyCode.id);
+      } else {
+        await adb.run('UPDATE portal_verification_codes SET attempts = ? WHERE id = ?', newAttempts, anyCode.id);
+      }
+    }
+    res.status(400).json({ success: false, message: 'Invalid or expired verification code' });
+    return;
+  }
+
+  res.json({ success: true, data: { valid: true } });
 }));
 
 // ---------------------------------------------------------------------------

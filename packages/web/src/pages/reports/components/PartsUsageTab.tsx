@@ -18,7 +18,7 @@ interface PartsUsageData {
 }
 
 export function PartsUsageTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'parts-usage', from, to],
     queryFn: async () => {
       const res = await reportApi.partsUsage({ from_date: from, to_date: to });
@@ -27,7 +27,12 @@ export function PartsUsageTab({ from, to }: { from: string; to: string }) {
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load parts usage report" />;
+  const errMsg: string =
+    (error as any)?.response?.data?.message ??
+    (error as any)?.response?.data?.error ??
+    (error as Error)?.message ??
+    'Failed to load parts usage report';
+  if (isError || !data) return <ErrorState message={errMsg} />;
 
   const { rows } = data;
   const totalQtyUsed = rows.reduce((sum, r) => sum + r.total_qty_used, 0);

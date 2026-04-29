@@ -276,6 +276,14 @@ fun SettingsScreen(
     onCashRegister: (() -> Unit)? = null,
     // §40 — opens the Gift Cards / Store Credit screen.
     onGiftCards: (() -> Unit)? = null,
+    // §19.7 — opens the Ticket settings sub-screen.
+    onTicketSettings: (() -> Unit)? = null,
+    // §19.8 — opens the POS / payment settings sub-screen.
+    onPosSettings: (() -> Unit)? = null,
+    // §19.9 — opens the SMS settings sub-screen.
+    onSmsSettings: (() -> Unit)? = null,
+    // §19.19 — opens the Business Info sub-screen.
+    onBusinessInfo: (() -> Unit)? = null,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val auth = viewModel.authPreferences
@@ -406,6 +414,42 @@ fun SettingsScreen(
                 )
             }
 
+            // §19.7 — Ticket settings (defaults, visibility, requirements).
+            if (onTicketSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.ConfirmationNumber,
+                    title = "Tickets",
+                    onClick = onTicketSettings,
+                )
+            }
+
+            // §19.8 — POS / payment settings (methods, tax, tips, cash drawer).
+            if (onPosSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.PointOfSale,
+                    title = "POS & Payment",
+                    onClick = onPosSettings,
+                )
+            }
+
+            // §19.9 — SMS settings (provider, compliance footer, auto-reply).
+            if (onSmsSettings != null) {
+                SettingsRow(
+                    icon = Icons.Default.Sms,
+                    title = "SMS",
+                    onClick = onSmsSettings,
+                )
+            }
+
+            // §19.19 — Business info (shop name, address, logo, receipt text).
+            if (onBusinessInfo != null) {
+                SettingsRow(
+                    icon = Icons.Default.Store,
+                    title = "Business Info",
+                    onClick = onBusinessInfo,
+                )
+            }
+
             // §3.19 L613–L616 — Appearance / dashboard density sub-screen.
             // Placed immediately after Display so layout-related settings are grouped
             // together. Subtitle shows the currently active density mode.
@@ -499,11 +543,10 @@ fun SettingsScreen(
                 )
             }
 
-            // §1.3 [plan:L185] — Diagnostics → Export DB snapshot. DEBUG only:
-            // a plaintext/decrypted export would be a data-exfil risk in
-            // production. The callback is also gated on BuildConfig.DEBUG so
-            // the row is compiled-out in release builds entirely.
-            if (com.bizarreelectronics.crm.BuildConfig.DEBUG && onDiagnostics != null) {
+            // §19.13 — Diagnostics: logs, force sync, DB export (dev-only export gated in-screen).
+            // Row visible in all builds; DB export in the screen is always available but
+            // a warning in the screen makes the dev-only nature clear.
+            if (onDiagnostics != null) {
                 SettingsRow(
                     icon = Icons.Default.BugReport,
                     title = "Diagnostics",

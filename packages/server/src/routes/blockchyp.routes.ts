@@ -131,7 +131,10 @@ router.post('/capture-signature', asyncHandler(async (req: Request, res: Respons
 router.post('/process-payment', asyncHandler(async (req: Request, res: Response) => {
   const db = req.db;
   const adb = req.asyncDb;
-  const { invoiceId, tip } = req.body;
+  // WEB-W3-004: `amount` is optional. When provided (split-payment card leg) the
+  // caller supplies exactly the leg amount rather than the remaining invoice
+  // balance. Must be > 0 and <= amountDue; validated after the invoice load.
+  const { invoiceId, tip, amount: requestedAmount } = req.body;
   const idempotencyKey = (req.body?.idempotency_key || req.headers['idempotency-key']) as string | undefined;
 
   // SEC-H43: processing a card payment commits the shop to settlement fees
@@ -191,7 +194,13 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   // charges in quick succession (e.g. parts + labor on one ticket)
   // can be disambiguated by the cashier waiting 30s.
   const amountDuePre = Number(invoice.total) - Number(invoice.amount_paid || 0);
-  const chargeAmountPre = amountDuePre + (typeof tip === 'number' && tip > 0 ? tip : 0);
+  // WEB-W3-004: mirror the requestedAmount override so the dedup window
+  // compares the actual leg amount, not the full remaining balance.
+  const basePre = (requestedAmount !== undefined && requestedAmount !== null &&
+    isFinite(Number(requestedAmount)) && Number(requestedAmount) > 0)
+    ? Math.min(Number(requestedAmount), amountDuePre)
+    : amountDuePre;
+  const chargeAmountPre = basePre + (typeof tip === 'number' && tip > 0 ? tip : 0);
   const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
   const recentDupe = await adb.get<{ id: number; transaction_id: string | null }>(
     `SELECT pi.id, pi.transaction_id
@@ -276,7 +285,25 @@ router.post('/process-payment', asyncHandler(async (req: Request, res: Response)
   }
 
   const tipAmount = tip && typeof tip === 'number' && tip > 0 ? tip : 0;
-  const chargeAmount = amountDue + tipAmount;
+
+  // WEB-W3-004: honour split-payment leg amount when caller supplies it.
+  // Bounds: must be a positive finite number that does not exceed amountDue.
+  // Tip is applied on top of the leg amount (or amountDue) as before.
+  let baseChargeAmount: number;
+  if (requestedAmount !== undefined && requestedAmount !== null) {
+    const parsed = typeof requestedAmount === 'number' ? requestedAmount : Number(requestedAmount);
+    if (!isFinite(parsed) || parsed <= 0) {
+      throw new AppError('amount must be a positive number', 400);
+    }
+    if (parsed > amountDue + 0.001) {
+      // Allow up to 0.1 cent tolerance for float rounding in the frontend.
+      throw new AppError(`Requested amount (${parsed.toFixed(2)}) exceeds remaining balance (${amountDue.toFixed(2)})`, 400);
+    }
+    baseChargeAmount = Math.min(parsed, amountDue);
+  } else {
+    baseChargeAmount = amountDue;
+  }
+  const chargeAmount = baseChargeAmount + tipAmount;
   const ticketRef = invoice.ticket_order_id || invoice.order_id;
 
   // Reserve the idempotency row as 'pending' before we dispatch.

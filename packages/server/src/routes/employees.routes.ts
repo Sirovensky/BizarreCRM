@@ -170,18 +170,39 @@ export async function autoClockOutStaleSessions(adb: AsyncDb, db: any): Promise<
 
 // ---------------------------------------------------------------------------
 // GET / – List employees (active users, no password_hash)
+// WEB-S6-033: includes is_clocked_in + weekly_hours to eliminate per-row
+// detail queries in EmployeeRow. The weekly_hours sub-query sums clock entries
+// from Monday 00:00:00 UTC to now; NULL clock_out rows (active sessions) use
+// the current timestamp as the end. is_clocked_in is true when any open
+// (clock_out IS NULL) entry exists for the user.
 // ---------------------------------------------------------------------------
 router.get(
   '/',
   asyncHandler(async (req, res) => {
     const adb = req.asyncDb;
     const employees = await adb.all(`
-      SELECT id, username, email, first_name, last_name, role, avatar_url,
-             is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
-             created_at, updated_at
-      FROM users
-      WHERE is_active = 1
-      ORDER BY first_name, last_name
+      SELECT u.id, u.username, u.email, u.first_name, u.last_name, u.role,
+             u.avatar_url, u.is_active, u.pin IS NOT NULL AS has_pin,
+             u.permissions, u.home_location_id, u.created_at, u.updated_at,
+             -- WEB-S6-033: clock status inline — no per-row detail call needed
+             CASE WHEN EXISTS (
+               SELECT 1 FROM clock_entries ce
+               WHERE ce.user_id = u.id AND ce.clock_out IS NULL
+             ) THEN 1 ELSE 0 END AS is_clocked_in,
+             COALESCE((
+               SELECT SUM(
+                 CASE WHEN ce.clock_out IS NULL
+                   THEN (unixepoch('now') - unixepoch(ce.clock_in)) / 3600.0
+                   ELSE ce.total_hours
+                 END
+               )
+               FROM clock_entries ce
+               WHERE ce.user_id = u.id
+                 AND ce.clock_in >= datetime('now', 'weekday 1', '-7 days', 'start of day')
+             ), 0.0) AS weekly_hours
+      FROM users u
+      WHERE u.is_active = 1
+      ORDER BY u.first_name, u.last_name
     `);
 
     res.json({ success: true, data: employees });
@@ -231,7 +252,7 @@ router.get(
     const employee = await adb.get<any>(`
       SELECT id, username, email, first_name, last_name, role, avatar_url,
              is_active, pin IS NOT NULL AS has_pin, permissions, home_location_id,
-             created_at, updated_at
+             pay_rate, created_at, updated_at
       FROM users WHERE id = ?
     `, id);
 
@@ -627,6 +648,56 @@ router.get(
         total_devices_repaired: deviceStats.total_devices,
       },
     });
+  }),
+);
+
+// ---------------------------------------------------------------------------
+// PATCH /:id – Update employee pay_rate (admin-only)
+// WEB-S6-014: Admin can set/clear an employee's hourly pay rate without
+// going through settings/users. Intentionally scoped to pay_rate only so
+// this route never overlaps with the settings.routes.ts user-edit handler.
+// ---------------------------------------------------------------------------
+router.patch(
+  '/:id',
+  asyncHandler(async (req, res) => {
+    const adb = req.asyncDb;
+    const id = validateId(req.params.id, 'id');
+
+    if (req.user?.role !== 'admin') {
+      throw new AppError('Admin only', 403);
+    }
+
+    const { pay_rate } = req.body;
+
+    // Allow explicit null to clear the rate; reject any non-numeric non-null value.
+    let resolvedRate: number | null = null;
+    if (pay_rate !== undefined && pay_rate !== null && pay_rate !== '') {
+      const n = Number(pay_rate);
+      if (!Number.isFinite(n) || n < 0 || n > 9999.99) {
+        throw new AppError('pay_rate must be a non-negative number ≤ 9999.99', 400);
+      }
+      resolvedRate = +n.toFixed(2);
+    }
+
+    const employee = await adb.get<any>('SELECT id FROM users WHERE id = ? AND is_active = 1', id);
+    if (!employee) throw new AppError('Employee not found', 404);
+
+    await adb.run(
+      "UPDATE users SET pay_rate = ?, updated_at = datetime('now') WHERE id = ?",
+      resolvedRate,
+      id,
+    );
+
+    audit(req.db, 'employee_pay_rate_updated', req.user!.id, req.ip || 'unknown', {
+      employee_id: id,
+      pay_rate: resolvedRate,
+    });
+
+    const updated = await adb.get<any>(
+      'SELECT id, username, email, first_name, last_name, role, is_active, pay_rate FROM users WHERE id = ?',
+      id,
+    );
+    res.json({ success: true, data: updated });
   }),
 );
 

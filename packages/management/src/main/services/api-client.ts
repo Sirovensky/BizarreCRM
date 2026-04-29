@@ -233,6 +233,15 @@ export interface ApiResult<T = unknown> {
   };
 }
 
+// DASH-ELEC-231: reuse TCP connections so each IPC → API round-trip doesn't
+// pay a full TLS handshake cost (~700+ per hour with default 10s poll).
+// keepAliveMsecs=10_000 keeps idle sockets warm between dashboard polls.
+const keepAliveAgent = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 10_000,
+  maxSockets: 4,
+});
+
 let superAdminToken: string | null = null;
 // FIXED-by-Fixer-A28 2026-04-25 (DASH-ELEC-001): track when the in-memory token
 // was set so we can hard-cap its lifetime even when the renderer never calls
@@ -264,11 +273,14 @@ export function getSuperAdminToken(): string | null {
   return superAdminToken;
 }
 
+// DASH-ELEC-255: long-running operations (backup, restore) need a much larger
+// timeout than the default 30 s. Callers supply timeoutMs to override.
 export function apiRequest<T = unknown>(
   method: string,
   endpoint: string,
   body: unknown = null,
-  authType: 'authenticated' | 'none' = 'authenticated'
+  authType: 'authenticated' | 'none' = 'authenticated',
+  timeoutMs: number = REQUEST_TIMEOUT,
 ): Promise<ApiResult<T>> {
   return new Promise((resolve, reject) => {
     const base = getServerBase();
@@ -301,6 +313,8 @@ export function apiRequest<T = unknown>(
       port: url.port || 443,
       path: url.pathname + url.search,
       rejectUnauthorized: !acceptSelfSigned,
+      // DASH-ELEC-231: reuse TLS connections via the shared keep-alive agent.
+      agent: keepAliveAgent,
       // @audit-fixed: explicit `servername` so SNI matches the URL hostname
       // even when an upstream HTTPS agent overrides the default. Without
       // this, a future change that swaps SERVER_BASE for a non-loopback
@@ -350,7 +364,21 @@ export function apiRequest<T = unknown>(
     });
 
     req.on('error', (err: Error) => reject(err));
-    req.setTimeout(REQUEST_TIMEOUT, () => {
+    // DASH-ELEC-085: separate connect-phase timeout from body-read timeout.
+    // Without a per-socket timeout, a process that port-squats on 443 (but
+    // never completes the TLS handshake) holds the request open for the full
+    // 30 s before the idle-time setTimeout fires. With this guard the socket
+    // is destroyed after 5 s if the connection isn't established, then the
+    // body read is still allowed up to REQUEST_TIMEOUT from that point.
+    req.on('socket', (socket) => {
+      socket.setTimeout(5_000, () => {
+        req.destroy(new Error('Connect timeout'));
+      });
+      // Once connected, clear the per-socket timer so it doesn't fire during
+      // a slow body read. The req.setTimeout below guards the idle phase.
+      socket.on('connect', () => socket.setTimeout(0));
+    });
+    req.setTimeout(timeoutMs, () => {
       req.destroy();
       reject(new Error('Request timeout'));
     });

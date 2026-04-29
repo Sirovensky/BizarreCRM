@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
-import { toCsvRow, parseCsvLine, CSV_BOM } from '@/utils/csv';
+import { parseCsvLine } from '@/utils/csv';
 // @audit-fixed (WEB-FF-003 / Fixer-UUU 2026-04-25): replace inline `$${n.toFixed(2)}` with formatCurrency to honor tenant currency.
 import { formatCurrency } from '@/utils/format';
 
@@ -32,6 +32,21 @@ const ALL_COLUMNS = [
 type ColKey = (typeof ALL_COLUMNS)[number]['key'];
 
 const DEFAULT_VISIBLE: ColKey[] = ['sku', 'name', 'type', 'category', 'stock', 'cost', 'price'];
+
+interface InventoryImportRow {
+  name: string;
+  sku: string;
+  item_type: string;
+  category: string;
+  manufacturer: string;
+  cost_price: string;
+  retail_price: string;
+  in_stock: string;
+  reorder_level: string;
+  supplier_id: string;
+  description: string;
+  [key: string]: string;
+}
 
 export function InventoryListPage() {
   const navigate = useNavigate();
@@ -67,7 +82,7 @@ export function InventoryListPage() {
   const [priceAdjustReason, setPriceAdjustReason] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
   const [importText, setImportText] = useState('');
-  const [importPreview, setImportPreview] = useState<any[]>([]);
+  const [importPreview, setImportPreview] = useState<InventoryImportRow[]>([]);
 
   // Receive Items (scan-to-receive)
   const [showReceiveModal, setShowReceiveModal] = useState(false);
@@ -251,7 +266,7 @@ export function InventoryListPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: (csvItems: any[]) => inventoryApi.importCsv(csvItems),
+    mutationFn: (csvItems: InventoryImportRow[]) => inventoryApi.importCsv(csvItems),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       const d = res?.data?.data;
@@ -318,21 +333,36 @@ export function InventoryListPage() {
     setPriceAdjustReason('');
   };
 
-  // CSV Export
-  // SCAN-1161: per-cell formula-injection sanitization via shared toCsvRow.
-  // WEB-FH-010: prepend UTF-8 BOM so Excel on Windows opens accented /
-  //   non-Latin SKUs and manufacturer names without mojibake.
-  const handleExport = () => {
-    const headers = ['id', 'name', 'sku', 'item_type', 'in_stock', 'cost_price', 'retail_price', 'reorder_level', 'manufacturer', 'category'];
-    const rows = items.map(i => headers.map(h => i[h] ?? ''));
-    const csv = [headers.join(','), ...rows.map(toCsvRow)].join('\n');
-    const blob = new Blob([CSV_BOM + csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // WEB-W3-013: Server-side CSV export — sends all matching rows (not just
+  // current page) honoring every active filter. Backend streams the full dataset
+  // and handles formula-injection sanitization and BOM-prepend server-side.
+  const [exportLoading, setExportLoading] = useState(false);
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      const filterParams: Record<string, unknown> = {};
+      if (tab) filterParams.item_type = tab;
+      if (keyword) filterParams.keyword = keyword;
+      if (manufacturer) filterParams.manufacturer = manufacturer;
+      if (supplierId) filterParams.supplier_id = Number(supplierId);
+      if (minPrice) filterParams.min_price = minPrice;
+      if (maxPrice) filterParams.max_price = maxPrice;
+      if (hideOutOfStock) filterParams.hide_out_of_stock = 'true';
+      const res = await inventoryApi.exportCsv(filterParams as Parameters<typeof inventoryApi.exportCsv>[0]);
+      const blob = res.data as Blob;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `inventory-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Export failed');
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   // CSV Import parse
@@ -414,8 +444,8 @@ export function InventoryListPage() {
           <button onClick={() => setShowVarianceModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
             <TrendingDown className="h-4 w-4" /> Variance
           </button>
-          <button onClick={handleExport} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors">
-            <Download className="h-4 w-4" /> Export
+          <button onClick={handleExport} disabled={exportLoading} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
+            {exportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export CSV
           </button>
           <button onClick={() => setShowReceiveModal(true)} className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300 bg-primary-50 dark:bg-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/50 transition-colors">
             <ScanBarcode className="h-4 w-4" /> Receive Items
@@ -779,7 +809,7 @@ export function InventoryListPage() {
                                   }).catch(() => toast.error('Failed to adjust stock'));
                                 }
                               }}
-                              className="rounded p-0.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors disabled:opacity-30"
+                              className="rounded p-0.5 text-surface-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
                               disabled={item.in_stock <= 0}
                               aria-label={`Decrease stock of ${item.name} by 1`}
                               title="Decrease stock by 1"
@@ -892,11 +922,11 @@ export function InventoryListPage() {
                 {pagination.total_pages > 1 && (
                   <div className="flex items-center gap-2">
                     <button onClick={() => setPage(page - 1)} disabled={page <= 1}
-                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors">
                       <ChevronLeft className="h-4 w-4" /> Previous
                     </button>
                     <button onClick={() => setPage(page + 1)} disabled={page >= pagination.total_pages}
-                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                      className="inline-flex items-center justify-center gap-1 px-4 py-2.5 min-h-[44px] md:min-h-0 md:px-3 md:py-1.5 text-sm font-medium rounded-md border border-surface-200 dark:border-surface-700 text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors">
                       Next <ChevronRight className="h-4 w-4" />
                     </button>
                   </div>
@@ -979,7 +1009,7 @@ export function InventoryListPage() {
               <button
                 onClick={handlePriceUpdate}
                 disabled={!priceAdjustPct || priceAdjustReason.trim().length < 3}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 Apply to {selectedIds.size} items
               </button>
@@ -1059,7 +1089,7 @@ export function InventoryListPage() {
               <button
                 onClick={() => importMutation.mutate(importPreview)}
                 disabled={importPreview.length === 0 || importMutation.isPending}
-                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5"
+                className="px-4 py-2 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1.5"
               >
                 {importMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Import {importPreview.length} items
@@ -1535,7 +1565,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
               {scanning && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-primary-500" />}
             </div>
             <button onClick={() => handleScan(barcodeInput)} disabled={!barcodeInput.trim() || scanning}
-              className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50">
+              className="px-4 py-2 bg-primary-600 text-primary-950 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
               Add
             </button>
           </div>
@@ -1589,7 +1619,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                     {/* Quantity controls */}
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => updateQuantity(idx, item.quantity - 1)} disabled={item.quantity <= 1}
-                        className="w-7 h-7 flex items-center justify-center rounded border border-surface-200 dark:border-surface-600 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-30">
+                        className="w-7 h-7 flex items-center justify-center rounded border border-surface-200 dark:border-surface-600 text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none">
                         <Minus className="h-3 w-3" />
                       </button>
                       <input type="number" value={item.quantity} min={1}
@@ -1643,7 +1673,7 @@ function ReceiveItemsModal({ onClose, onComplete }: { onClose: () => void; onCom
                 Cancel
               </button>
               <button onClick={handleReceiveAll} disabled={submitting || readyCount === 0}
-                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 inline-flex items-center gap-1.5">
+                className="px-5 py-2 text-sm font-semibold rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none inline-flex items-center gap-1.5">
                 {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Receive {readyCount} Items
               </button>

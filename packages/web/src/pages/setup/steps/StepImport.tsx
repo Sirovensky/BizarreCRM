@@ -271,7 +271,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={handleTestConnection}
             disabled={!canTest || testStatus === 'testing'}
-            className="flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
+            className="flex items-center gap-2 rounded-lg border border-surface-300 bg-white px-4 py-2 text-sm font-medium text-surface-700 hover:bg-surface-50 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none dark:border-surface-600 dark:bg-surface-800 dark:text-surface-200 dark:hover:bg-surface-700"
           >
             {testStatus === 'testing' && <Loader2 className="h-4 w-4 animate-spin" />}
             {testStatus === 'ok' && <CheckCircle2 className="h-4 w-4 text-green-500" />}
@@ -300,7 +300,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={() => setPhase('select-entities')}
             disabled={testStatus !== 'ok'}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next &rarr; What to import
           </button>
@@ -343,7 +343,7 @@ export function StepImport({ onComplete, onCancel }: SubStepProps) {
             type="button"
             onClick={startImport}
             disabled={selectedEntities.size === 0}
-            className="rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+            className="rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm hover:bg-primary-400 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Start import
           </button>

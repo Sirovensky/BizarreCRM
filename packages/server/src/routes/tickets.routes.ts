@@ -326,6 +326,7 @@ async function getFullTicketAsync(adb: AsyncDb, ticketId: number): Promise<AnyRo
     created_by: ticket.created_by,
     created_at: ticket.created_at,
     updated_at: ticket.updated_at,
+    tracking_token: ticket.tracking_token ?? null,
     customer: {
       id: ticket.customer_id,
       first_name: ticket.c_first_name,
@@ -510,6 +511,9 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const locationIdFilter = /^\d+$/.test(locationIdParam) ? parseInt(locationIdParam, 10) : null;
   const sortBy = (req.query.sort_by as string) || 'created_at';
   const sortOrder = (req.query.sort_order as string || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+  // WEB-W1-002: honour show_closed=0 from the client (mirrors ticket_show_closed store setting).
+  // Only suppress when the param is explicitly '0'; omitting it preserves existing behaviour.
+  const showClosed = req.query.show_closed !== '0';
 
   const allowedSorts = ['created_at', 'updated_at', 'order_id', 'total', 'due_on', 'status_id', 'urgency'];
   let safeSortBy: string;
@@ -543,6 +547,13 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       conditions.push("t.status_id IN (SELECT id FROM ticket_statuses WHERE is_closed = 0 AND is_cancelled = 0 AND (LOWER(name) LIKE '%hold%' OR LOWER(name) LIKE '%waiting%' OR LOWER(name) LIKE '%pending%' OR LOWER(name) LIKE '%transit%'))");
     }
   }
+  // WEB-W1-002: suppress closed/cancelled tickets when caller passes show_closed=0.
+  // Skip this condition when a status_id or status_group filter is already applied —
+  // an explicit status filter overrides the visibility setting.
+  if (!showClosed && !statusId && !statusGroup) {
+    conditions.push('t.status_id IN (SELECT id FROM ticket_statuses WHERE COALESCE(is_closed,0) = 0 AND COALESCE(is_cancelled,0) = 0)');
+  }
+
   if (assignedTo) {
     conditions.push('t.assigned_to = ?');
     params.push(assignedTo);
@@ -657,8 +668,24 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   `;
   const dataParams = [...params, pageSize, offset];
 
+  // WEB-S7-029: filtered status counts — use the same WHERE conditions as the
+  // main query so sidebar counts reflect active date/assignee/keyword filters.
+  // The LEFT JOIN from ticket_statuses ensures statuses with 0 matching tickets
+  // still appear (count = 0) rather than being absent from the list.
+  const filteredCountSql = `
+    SELECT ts.id, ts.name, ts.color, ts.sort_order,
+           COUNT(DISTINCT t.id) AS count
+    FROM ticket_statuses ts
+    LEFT JOIN tickets t ON t.status_id = ts.id
+    LEFT JOIN customers c ON c.id = t.customer_id
+    ${keywordJoin}
+    ${whereClause}
+    GROUP BY ts.id
+    ORDER BY ts.sort_order ASC
+  `;
+
   // Parallel round 1: count + data + status counts all at once
-  const [countRow, rows, statusCounts] = await Promise.all([
+  const [countRow, rows, statusCounts, filteredStatusCounts] = await Promise.all([
     adb.get<AnyRow>(countSql, ...params),
     adb.all<AnyRow>(dataSql, ...dataParams),
     adb.all<AnyRow>(`
@@ -668,6 +695,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
       GROUP BY ts.id
       ORDER BY ts.sort_order ASC
     `),
+    adb.all<AnyRow>(filteredCountSql, ...params),
   ]);
   const totalCount = countRow?.total ?? 0;
 
@@ -837,13 +865,16 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     };
   });
 
-  // statusCounts already fetched in parallel round 1 above
+  // statusCounts + filteredStatusCounts fetched in parallel round 1 above
 
   res.json({
     success: true,
     data: {
       tickets,
       status_counts: statusCounts,
+      // WEB-S7-029: filtered_status_counts match the active filters so the
+      // sidebar sidebar can show accurate per-status counts when filters are on.
+      filtered_status_counts: filteredStatusCounts,
       pagination: {
         page,
         per_page: pageSize,
@@ -1546,8 +1577,12 @@ router.get('/missing-parts', asyncHandler(async (req: Request, res: Response) =>
 
 // ===================================================================
 // GET /tv-display - Simplified view for shop TV
+// WEB-S8-008: restrict to admin/manager — exposes customer PII + tech names
 // ===================================================================
 router.get('/tv-display', asyncHandler(async (req: Request, res: Response) => {
+  if (req.user?.role !== 'admin' && req.user?.role !== 'manager') {
+    throw new AppError('Admin or manager access required', 403);
+  }
   const adb = req.asyncDb;
   // Single query joining ticket_devices via GROUP_CONCAT — eliminates the
   // previous Promise.all N-per-ticket round-trips for device names.
@@ -2595,6 +2630,30 @@ router.delete('/photos/:photoId', requirePermission('tickets.edit'), asyncHandle
   ]);
 
   res.json({ success: true, data: { id: photoId } });
+}));
+
+// ===================================================================
+// PUT /photos/:photoId - Update photo caption
+// ===================================================================
+router.put('/photos/:photoId', requirePermission('tickets.edit'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const photoId = validateId(req.params.photoId, 'photo id');
+  if (!photoId) throw new AppError('Invalid photo ID');
+
+  const photo = await adb.get<AnyRow>(`
+    SELECT tp.*, td.ticket_id
+    FROM ticket_photos tp
+    JOIN ticket_devices td ON td.id = tp.ticket_device_id
+    WHERE tp.id = ?
+  `, photoId);
+  if (!photo) throw new AppError('Photo not found', 404);
+
+  await assertTicketMutable(adb, photo.ticket_id, req.user?.role);
+
+  const caption = typeof req.body.caption === 'string' ? req.body.caption.slice(0, 500) : null;
+  await adb.run('UPDATE ticket_photos SET caption = ?, updated_at = ? WHERE id = ?', caption, now(), photoId);
+
+  res.json({ success: true, data: { id: photoId, caption } });
 }));
 
 // ===================================================================
@@ -4010,6 +4069,133 @@ router.delete('/links/:linkId', requirePermission('tickets.edit'), asyncHandler(
   await adb.run('DELETE FROM ticket_links WHERE id = ?', linkId);
 
   res.json({ success: true, data: { message: 'Link removed' } });
+}));
+
+// ===================================================================
+// POST /:id/duplicate - Duplicate ticket (header + devices + parts)
+// ===================================================================
+router.post('/:id/duplicate', requirePermission('tickets.create'), asyncHandler(async (req: Request, res: Response) => {
+  const adb = req.asyncDb;
+  const db = req.db;
+  const userId = req.user!.id;
+  const sourceId = validateId(req.params.id, 'id');
+
+  const source = await adb.get<AnyRow>('SELECT * FROM tickets WHERE id = ? AND is_deleted = 0', sourceId);
+  if (!source) throw new AppError('Source ticket not found', 404);
+
+  const defaultStatus = await adb.get<AnyRow>('SELECT id FROM ticket_statuses WHERE is_default = 1 LIMIT 1');
+  const statusId = defaultStatus?.id ?? 1;
+
+  const dupSeq = allocateCounter(db, 'ticket_order_id');
+  const orderId = formatTicketOrderId(dupSeq);
+
+  const trackingToken = crypto.randomBytes(16).toString('hex');
+
+  const result = await adb.run(`
+    INSERT INTO tickets (order_id, customer_id, status_id, assigned_to, discount, discount_reason,
+                         source, labels, is_warranty, created_by,
+                         tracking_token, location_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, NULL, ?, ?, 0, ?, ?, ?, ?, ?)
+  `,
+    orderId,
+    source.customer_id,
+    statusId,
+    source.assigned_to,
+    source.discount ?? 0,
+    source.source,
+    source.labels ?? '[]',
+    userId,
+    trackingToken,
+    source.location_id ?? 1,
+    now(),
+    now(),
+  );
+
+  const newTicketId = Number(result.lastInsertRowid);
+
+  const devices = await adb.all<AnyRow>('SELECT * FROM ticket_devices WHERE ticket_id = ?', sourceId);
+  for (const dev of devices) {
+    const devResult = await adb.run(`
+      INSERT INTO ticket_devices (ticket_id, device_name, device_type, device_model_id, service_name,
+                                  imei, serial, security_code, color, network, status_id, assigned_to,
+                                  service_id, price, line_discount, tax_amount, tax_class_id, tax_inclusive,
+                                  total, warranty, warranty_days, due_on, device_location,
+                                  additional_notes, pre_conditions, post_conditions,
+                                  created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+      newTicketId,
+      dev.device_name,
+      dev.device_type,
+      dev.device_model_id,
+      dev.service_name,
+      dev.imei,
+      dev.serial,
+      dev.security_code,
+      dev.color,
+      dev.network,
+      statusId,
+      dev.assigned_to,
+      dev.service_id,
+      dev.price,
+      dev.line_discount,
+      dev.tax_amount,
+      dev.tax_class_id,
+      dev.tax_inclusive,
+      dev.total,
+      dev.warranty,
+      dev.warranty_days,
+      dev.due_on,
+      dev.device_location,
+      dev.additional_notes,
+      dev.pre_conditions ?? '[]',
+      dev.post_conditions ?? '[]',
+      now(),
+      now(),
+    );
+
+    const newDeviceId = Number(devResult.lastInsertRowid);
+
+    const parts = await adb.all<AnyRow>('SELECT * FROM ticket_device_parts WHERE ticket_device_id = ?', dev.id);
+    for (const part of parts) {
+      await adb.run(`
+        INSERT INTO ticket_device_parts (ticket_device_id, inventory_item_id, quantity, price, warranty, serial,
+                                         status, catalog_item_id, supplier_url, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'available', ?, ?, ?, ?)
+      `,
+        newDeviceId,
+        part.inventory_item_id,
+        part.quantity,
+        part.price,
+        part.warranty,
+        part.serial,
+        part.catalog_item_id ?? null,
+        part.supplier_url ?? null,
+        now(),
+        now(),
+      );
+    }
+  }
+
+  await recalcTicketTotalsAsync(adb, newTicketId);
+
+  const idA = Math.min(sourceId, newTicketId);
+  const idB = Math.max(sourceId, newTicketId);
+  await adb.run(
+    'INSERT INTO ticket_links (ticket_id_a, ticket_id_b, link_type, created_by) VALUES (?, ?, ?, ?)',
+    idA, idB, 'duplicate', userId,
+  );
+
+  await insertHistoryAsync(adb, newTicketId, userId, 'ticket_duplicated', `Duplicated from ticket #${source.order_id} (ID ${sourceId})`);
+  await insertHistoryAsync(adb, sourceId, userId, 'ticket_duplicated', `Duplicated to ticket #${orderId} (ID ${newTicketId})`);
+
+  audit(db, 'ticket_duplicated', userId, req.ip || 'unknown', { source_ticket_id: sourceId, new_ticket_id: newTicketId });
+
+  const ticket = await getFullTicketAsync(adb, newTicketId);
+
+  broadcast(WS_EVENTS.TICKET_CREATED, ticket, req.tenantSlug || null);
+
+  res.status(201).json({ success: true, data: ticket });
 }));
 
 // ===================================================================

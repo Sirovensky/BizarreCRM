@@ -5,12 +5,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -23,7 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +37,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.data.remote.api.EmployeeApi
 import com.bizarreelectronics.crm.data.remote.api.SettingsApi
 import com.bizarreelectronics.crm.ui.theme.SuccessGreen
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -48,6 +45,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.time.LocalTime
+import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
@@ -55,10 +53,10 @@ import javax.inject.Inject
  * §3.11 — dashboard tile that surfaces the signed-in employee's clock
  * status + routes to the dedicated ClockInOutScreen on tap.
  *
- * Pulls `GET /employees`, finds the row matching `AuthPreferences.userId`,
- * reads `isClockedIn`. If the lookup fails (offline, role doesn't see
- * employees, etc.) the tile renders a neutral "Open clock in/out" state
- * — the screen itself is the source of truth on action.
+ * Pulls `GET /employees/:id` (self) to get [current_clock_entry.clock_in]
+ * for the "Since HH:MM" subtitle. Falls back to the list endpoint on
+ * failure (offline, permission) — tile still shows clocked-in state,
+ * just without the timestamp.
  */
 data class ClockInTileState(
     val isClockedIn: Boolean? = null,
@@ -66,11 +64,17 @@ data class ClockInTileState(
     /** §3.8 L557 — non-null after a successful toggle; cleared on next tap. */
     val justClockedInAt: String? = null,
     val isLoading: Boolean = false,
+    /**
+     * §3.11 — "Since h:mm a" label shown as subtitle when clocked in.
+     * Null when clocked out, offline, or server omits current_clock_entry.
+     */
+    val clockedInSince: String? = null,
 )
 
 @HiltViewModel
 class ClockInTileViewModel @Inject constructor(
     private val settingsApi: SettingsApi,
+    private val employeeApi: EmployeeApi,
     private val authPreferences: AuthPreferences,
 ) : ViewModel() {
 
@@ -88,11 +92,32 @@ class ClockInTileViewModel @Inject constructor(
     }
 
     fun refresh() {
+        val userId = authPreferences.userId ?: return
         viewModelScope.launch {
+            // §3.11 — Prefer the detail endpoint which returns current_clock_entry.clock_in
+            // so we can show "Since h:mm a". Fall back to the cheaper list endpoint on error.
             runCatching {
-                val response = settingsApi.getEmployees()
-                val me = response.data?.firstOrNull { it.id == authPreferences.userId }
-                _state.value = _state.value.copy(isClockedIn = me?.isClockedIn)
+                val detail = employeeApi.getEmployee(userId).data
+                val sinceLabel = detail?.currentClockEntry?.clockIn?.let { isoStr ->
+                    runCatching {
+                        val odt = OffsetDateTime.parse(isoStr)
+                        "Since " + odt.format(DateTimeFormatter.ofPattern("h:mm a"))
+                    }.getOrNull()
+                }
+                _state.value = _state.value.copy(
+                    isClockedIn = detail?.isClockedIn,
+                    clockedInSince = sinceLabel,
+                )
+            }.onFailure {
+                // Fallback: list endpoint has is_clocked_in but not the clock_in time.
+                runCatching {
+                    val response = settingsApi.getEmployees()
+                    val me = response.data?.firstOrNull { it.id == userId }
+                    _state.value = _state.value.copy(
+                        isClockedIn = me?.isClockedIn,
+                        clockedInSince = null,
+                    )
+                }
             }
         }
     }
@@ -100,12 +125,13 @@ class ClockInTileViewModel @Inject constructor(
     /**
      * §3.8 L557 — One-tap toggle. Calls clock-in or clock-out based on current state.
      *
-     * On success, sets [ClockInTileState.justClockedInAt] to the current HH:MM so
-     * the Composable can show a Snackbar. On failure, silently falls back to [onOpen].
+     * On success:
+     * - Clock-in: sets [ClockInTileState.clockedInSince] optimistically from [LocalTime.now].
+     * - Clock-out: clears [ClockInTileState.clockedInSince].
      *
      * @param onFallbackToScreen Called when toggle fails (e.g. PIN required) so the
      *   caller can navigate to [ClockInOutScreen] for the full flow.
-     * @param onSuccess Callback supplying the clock-in time string ("Clocked in at HH:MM").
+     * @param onSuccess Callback supplying the Snackbar message string.
      */
     fun toggle(
         onFallbackToScreen: () -> Unit,
@@ -121,12 +147,22 @@ class ClockInTileViewModel @Inject constructor(
             runCatching {
                 if (isClockedIn == true) {
                     settingsApi.clockOut(userId, emptyMap())
-                    _state.value = _state.value.copy(isClockedIn = false, isLoading = false)
+                    _state.value = _state.value.copy(
+                        isClockedIn = false,
+                        clockedInSince = null,
+                        isLoading = false,
+                    )
                     onSuccess("Clocked out")
                 } else {
                     settingsApi.clockIn(userId, emptyMap())
-                    val timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-                    _state.value = _state.value.copy(isClockedIn = true, justClockedInAt = timeStr, isLoading = false)
+                    val timeStr = LocalTime.now().format(DateTimeFormatter.ofPattern("h:mm a"))
+                    _state.value = _state.value.copy(
+                        isClockedIn = true,
+                        justClockedInAt = timeStr,
+                        // §3.11 — optimistic "Since h:mm a" immediately on clock-in
+                        clockedInSince = "Since $timeStr",
+                        isLoading = false,
+                    )
                     onSuccess("Clocked in at $timeStr")
                 }
             }.onFailure {
@@ -154,7 +190,7 @@ fun ClockInTile(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
-            // §26.1 — merge children so TalkBack reads "Clocked in, <name>,
+            // §26.1 — merge children so TalkBack reads "Clocked in, Since h:mm a,
             // Button" as one labeled action instead of focusing the icon,
             // title, subtitle, and chevron separately.
             // §22.3 — hand pointer on tablet / desktop hover.
@@ -183,7 +219,7 @@ fun ClockInTile(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // Status dot pulses green when clocked in, neutral otherwise.
+            // Status dot — green background when clocked in, neutral otherwise.
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier
                     .size(36.dp)
@@ -207,8 +243,15 @@ fun ClockInTile(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
+                // §3.11 — "Since h:mm a" when clocked in and timestamp available;
+                // falls back to display name, then generic hint.
+                val subtitle = when {
+                    isOn && state.clockedInSince != null -> state.clockedInSince ?: ""
+                    state.displayName.isNotBlank() -> state.displayName
+                    else -> "Tap to open clock screen"
+                }
                 Text(
-                    text = if (state.displayName.isNotBlank()) state.displayName else "Tap to open clock screen",
+                    text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

@@ -36,7 +36,7 @@ import { DeviceTemplatesPage } from './DeviceTemplatesPage';
 // PROD59: tenant self-service termination (Settings > Danger Zone).
 import { DangerZoneTab } from './DangerZoneTab';
 import { SkeletonCard } from '@/components/shared/Skeleton';
-import { DataRetentionTab } from './DataRetentionTab';
+import { DataTab } from './DataTab';
 import { usePlanStore } from '@/stores/planStore';
 import { useUiStore } from '@/stores/uiStore';
 import type { PlanFeatures } from '@bizarre-crm/shared';
@@ -54,10 +54,11 @@ import { SettingsChangeHistory } from './components/SettingsChangeHistory';
 import { SettingsGlobalSearch } from './components/SettingsGlobalSearch';
 import { SettingsTemplatePicker } from './components/SettingsTemplatePicker';
 import { getComingSoonCount, getLiveCount } from './settingsMetadata';
+import { ComingSoonBadge } from './components/ComingSoonBadge';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data-import' | 'audit-logs' | 'billing' | 'danger-zone' | 'data-retention';
+type Tab = 'setup-progress' | 'store' | 'statuses' | 'tax' | 'payment' | 'payment-terminal' | 'users' | 'customer-groups' | 'repair-pricing' | 'tickets-repairs' | 'pos' | 'invoices' | 'receipts' | 'conditions' | 'notifications' | 'sms-voice' | 'automations' | 'membership' | 'device-templates' | 'data' | 'audit-logs' | 'billing' | 'danger-zone';
 
 interface TicketStatus {
   id: number;
@@ -154,11 +155,10 @@ const TABS: TabConfig[] = [
   { key: 'sms-voice', label: 'SMS & Voice', icon: MessageSquare },
   { key: 'automations', label: 'Automations', icon: Zap, proFeature: 'automations' },
   { key: 'membership', label: 'Membership', icon: Crown, proFeature: 'memberships' },
-  { key: 'data-import', label: 'Data & Import', icon: Database },
+  { key: 'data', label: 'Data', icon: Database },
   { key: 'audit-logs', label: 'Audit Logs', icon: ScrollText },
   // PROD59: Danger Zone — multi-step self-service account termination.
   { key: 'danger-zone', label: 'Danger Zone', icon: AlertTriangle },
-  { key: 'data-retention', label: 'Data Retention', icon: Database },
   // Supplier Catalog sync is platform-level (managed by super admin, not per-shop).
   // Shops access the catalog via the /catalog page (read-only search).
   // Sync runs automatically via daily cron — no manual trigger needed in settings.
@@ -259,8 +259,8 @@ function StoreInfoTab() {
     { key: 'email', label: 'Email', type: 'email' },
     { key: 'timezone', label: 'Timezone', type: 'text' },
     { key: 'currency', label: 'Currency', type: 'text' },
-    { key: 'receipt_header', label: 'Receipt Header', type: 'text', placeholder: 'e.g. Thank you for choosing our shop!' },
-    { key: 'receipt_footer', label: 'Receipt Footer', type: 'text', placeholder: 'e.g. 30-day warranty on all repairs' },
+    // WEB-W1-026: receipt_header/footer moved to Receipt Settings tab (single source of truth).
+    // Removed from here to prevent duplicate forms writing to the same store_config keys.
   ] as { key: string; label: string; type: string; placeholder?: string }[];
 
   return (
@@ -544,7 +544,7 @@ function ReferralSourcesSection() {
           <button
             onClick={() => newSource.trim() && createMut.mutate(newSource.trim())}
             disabled={!newSource.trim()}
-            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            className="px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -856,7 +856,7 @@ function SettingsExportImportSection() {
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-surface-200 dark:border-surface-700 text-surface-700 dark:text-surface-300 hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderUp className="h-4 w-4" />}
           Import Settings
@@ -993,7 +993,7 @@ function StatusesTab() {
                 <button
                   onClick={() => createMutation.mutate(addForm)}
                   disabled={!addForm.name || createMutation.isPending}
-                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
                 >
                   {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                   Create
@@ -1188,7 +1188,7 @@ function TaxClassesTab() {
             <button
               onClick={() => createMutation.mutate({ ...addForm, rate: parseFloat(addForm.rate) || 0 })}
               disabled={!addForm.name || createMutation.isPending}
-              className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-1 px-3 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
             >
               {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               Create
@@ -1381,7 +1381,7 @@ function PaymentMethodsTab() {
         <button
           onClick={() => { if (newName.trim()) createMutation.mutate(newName.trim()); }}
           disabled={!newName.trim() || createMutation.isPending}
-          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
         >
           {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
           Add
@@ -1564,7 +1564,7 @@ function UsersTab() {
               <button
                 onClick={() => createMutation.mutate(addForm)}
                 disabled={!addForm.username || !addForm.first_name || !addForm.last_name || createMutation.isPending}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
               >
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
                 Create User
@@ -1789,8 +1789,9 @@ function UsersTab() {
             </tbody>
           </table>
         </div>
-        <div className="px-4 py-3 text-xs text-surface-400">
-          Admin role always has full access to all modules. Granular per-action permissions coming soon.
+        <div className="px-4 py-3 flex items-center gap-2 text-xs text-surface-400">
+          Admin role always has full access to all modules. Granular per-action permissions
+          <ComingSoonBadge status="coming_soon" compact />
         </div>
       </div>
     </div>
@@ -1937,7 +1938,7 @@ function CustomerGroupsTab() {
                   createMutation.mutate(addForm);
                 }}
                 disabled={createMutation.isPending}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
               >
                 {createMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 Create
@@ -2100,10 +2101,9 @@ const TAB_KEYWORDS: Record<Tab, string[]> = {
   'sms-voice': ['sms', 'mms', 'voice', 'call', 'phone', 'twilio', 'telnyx', 'bandwidth', 'plivo', 'vonage', 'provider', 'recording', 'transcription', '10dlc'],
   'automations': ['automation', 'rule', 'trigger', 'action', 'workflow', 'auto', 'event', 'when', 'then'],
   'membership': ['membership', 'subscribe', 'tier', 'vip', 'pro', 'basic', 'recurring', 'discount', 'member'],
-  'data-import': ['import', 'data', 'repairdesk', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'export', 'maintenance'],
+  'data': ['import', 'export', 'data', 'repairdesk', 'repairshopr', 'csv', 'migration', 'tools', 'reconcile', 'cogs', 'cost', 'sync', 'fix', 'maintenance', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
   'audit-logs': ['audit', 'log', 'security', 'event', 'history', 'trail'],
   'danger-zone': ['danger', 'zone', 'delete', 'terminate', 'close', 'account', 'cancel', 'shutdown'],
-  'data-retention': ['data', 'retention', 'pii', 'gdpr', 'ccpa', 'sweeper', 'purge', 'sms', 'email', 'notes', 'privacy'],
 };
 
 export function SettingsPage() {
@@ -2354,10 +2354,9 @@ function SettingsPageInner() {
       {activeTab === 'sms-voice' && <Suspense fallback={<div className="py-8 text-center"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></div>}><SmsVoiceSettings /></Suspense>}
       {activeTab === 'automations' && <AutomationsTab />}
       {activeTab === 'membership' && <MembershipSettings />}
-      {activeTab === 'data-import' && <DataImportTab />}
+      {activeTab === 'data' && <DataTab importContent={<DataImportTab />} />}
       {activeTab === 'audit-logs' && isAdmin && <AuditLogsTab />}
       {activeTab === 'danger-zone' && <DangerZoneTab />}
-      {activeTab === 'data-retention' && <DataRetentionTab />}
     </div>
   );
 }
@@ -2418,7 +2417,7 @@ function ImportSection({ apiKey, isActive, onStarted }: { apiKey: string; isActi
       <button
         onClick={() => importMut.mutate()}
         disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
-        className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+        className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
       >
         {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
         {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -2514,7 +2513,7 @@ function SupplierCatalogSyncSection() {
             <button
               onClick={() => loadMut.mutate()}
               disabled={loadMut.isPending || templateCount === 0}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+              className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
             >
               {loadMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               Load Latest Catalog
@@ -2903,7 +2902,7 @@ function DataImportTab() {
               if (ok) wipeMut.mutate();
             }}
             disabled={!anyWipeCategorySelected || wipeConfirmText !== 'FACTORY WIPE' || !wipePassword || wipeMut.isPending}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {wipeMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
             Wipe Selected Data
@@ -3013,7 +3012,7 @@ function DownloadAllDataSection() {
             if (ok) triggerDownload();
           }}
           disabled={downloading || !allowed}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-primary-600 hover:bg-primary-700 text-primary-950 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {downloading ? 'Preparing export&hellip;' : 'Download all my data'}
@@ -3084,7 +3083,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test
           </button>
@@ -3128,7 +3127,7 @@ function RepairDeskImportSection({ importStatus, onStarted }: { importStatus: an
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3215,7 +3214,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
             <span className="px-3 py-2 text-xs text-surface-400 bg-surface-50 dark:bg-surface-700 border-l border-surface-200 dark:border-surface-600 whitespace-nowrap">.repairshopr.com</span>
           </div>
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey || !subdomain}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test Connection
           </button>
@@ -3243,7 +3242,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
         <button
           onClick={() => importMut.mutate()}
           disabled={importMut.isPending || !apiKey || !subdomain || selectedEntities.length === 0 || isActive}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+          className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
         >
           {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -3271,7 +3270,7 @@ function RepairShoprImportSection({ importStatus, onStarted }: { importStatus: a
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey || !subdomain}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3347,7 +3346,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
             className="flex-1 input"
           />
           <button onClick={() => testMut.mutate()} disabled={testMut.isPending || !apiKey}
-            className="btn-secondary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm whitespace-nowrap">
+            className="btn-secondary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm whitespace-nowrap">
             {testMut.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
             Test Connection
           </button>
@@ -3375,7 +3374,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
         <button
           onClick={() => importMut.mutate()}
           disabled={importMut.isPending || !apiKey || selectedEntities.length === 0 || isActive}
-          className="btn-primary flex items-center gap-2 disabled:opacity-50 px-4 py-2 text-sm"
+          className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none px-4 py-2 text-sm"
         >
           {importMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           {isActive ? 'Import in Progress...' : `Import ${selectedEntities.length} ${selectedEntities.length === 1 ? 'category' : 'categories'}`}
@@ -3403,7 +3402,7 @@ function MyRepairAppImportSection({ importStatus, onStarted }: { importStatus: a
           <button
             onClick={() => nuclearMut.mutate()}
             disabled={confirmText !== 'NUCLEAR' || !nuclearPassword || nuclearMut.isPending || isActive || !apiKey}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             {nuclearMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
             Wipe &amp; Reimport Everything
@@ -3452,7 +3451,7 @@ function DataToolsTab() {
           <button
             onClick={runSyncCosts}
             disabled={syncRunning}
-            className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 transition-colors"
+            className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-semibold text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none transition-colors"
           >
             {syncRunning ? <><Loader2 className="h-4 w-4 animate-spin" /> Syncing...</> : 'Sync Cost Prices'}
           </button>

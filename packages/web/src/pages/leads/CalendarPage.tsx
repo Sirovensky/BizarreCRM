@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { leadApi, settingsApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { useSettings } from '@/hooks/useSettings';
+import { formatTime } from '@/utils/format';
 
 // ─── Types ───────────────────────────────────────────────────────
 interface Appointment {
@@ -48,15 +49,6 @@ function getStatusColor(status: string) {
   return STATUS_COLORS[status] || '#6b7280';
 }
 
-// WEB-FF-011 (Fixer-FFF 2026-04-25): drop hardcoded 'en-US' so non-US tenants
-// see locale-appropriate compact dates (e.g. "24 Apr" instead of "Apr 24") and
-// 24h time where the locale prefers it. `undefined` lets Intl pick the
-// browser's runtime locale — the same behaviour the shared formatDate helpers
-// in utils/format.ts use. The compact format-options stay so the calendar grid
-// keeps its tight layout.
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
 
 function formatDateShort(date: Date) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -180,17 +172,38 @@ function AppointmentDetailModal({
   );
 }
 
+// WEB-FK-015: convert a "YYYY-MM-DD", hour, minute triple to a UTC ISO string
+// using the browser's local timezone. The naive string (no offset) would be
+// interpreted differently by different browsers / server parsers — attaching
+// the local offset makes the intent unambiguous for SQLite datetime storage.
+function toISOWithOffset(dateStr: string, hour: string, min: string): string {
+  const local = new Date(`${dateStr}T${hour}:${min}:00`);
+  // toISOString() is UTC; we want the same instant with local-tz offset embedded.
+  // Build ±HH:MM offset string manually from getTimezoneOffset().
+  const off = -local.getTimezoneOffset(); // minutes, positive = ahead of UTC
+  const sign = off >= 0 ? '+' : '-';
+  const absOff = Math.abs(off);
+  const hh = String(Math.floor(absOff / 60)).padStart(2, '0');
+  const mm = String(absOff % 60).padStart(2, '0');
+  const yyyy = local.getFullYear();
+  const mo = String(local.getMonth() + 1).padStart(2, '0');
+  const dd = String(local.getDate()).padStart(2, '0');
+  return `${yyyy}-${mo}-${dd}T${hour}:${min}:00${sign}${hh}:${mm}`;
+}
+
 // ─── Create Appointment Modal ────────────────────────────────────
 function CreateAppointmentModal({
   open,
   onClose,
   defaultDate,
   users,
+  existingAppointments,
 }: {
   open: boolean;
   onClose: () => void;
   defaultDate: Date;
   users: { id: number; first_name: string; last_name: string }[];
+  existingAppointments: Appointment[];
 }) {
   const queryClient = useQueryClient();
   const dateStr = defaultDate.toISOString().slice(0, 10);
@@ -206,6 +219,8 @@ function CreateAppointmentModal({
     status: 'scheduled',
     notes: '',
   });
+  // WEB-FK-015: overlap warning state
+  const [overlapWarning, setOverlapWarning] = useState<string | null>(null);
 
   // Reset default date when it changes
   const createMut = useMutation({
@@ -228,6 +243,23 @@ function CreateAppointmentModal({
 
   if (!open) return null;
 
+  // WEB-FK-015: check for overlapping appointments for the selected assignee
+  function checkOverlap(startIso: string, endIso: string, assignedUserId: number | null): string | null {
+    if (!assignedUserId) return null;
+    const start = new Date(startIso).getTime();
+    const end = new Date(endIso).getTime();
+    const conflict = existingAppointments.find((a) => {
+      if (a.assigned_to !== assignedUserId) return false;
+      const aStart = new Date(a.start_time).getTime();
+      const aEnd = a.end_time ? new Date(a.end_time).getTime() : aStart + 3600_000;
+      return start < aEnd && end > aStart;
+    });
+    if (!conflict) return null;
+    const name = users.find((u) => u.id === assignedUserId);
+    const assigneeName = name ? `${name.first_name} ${name.last_name}` : 'this person';
+    return `${assigneeName} already has "${conflict.title || 'an appointment'}" overlapping this time slot.`;
+  }
+
   return (
     <div
       role="dialog"
@@ -247,17 +279,28 @@ function CreateAppointmentModal({
           className="space-y-4 px-6 py-4"
           onSubmit={(e) => {
             e.preventDefault();
-            const startTime = `${form.start_date}T${form.start_hour}:${form.start_min}:00`;
-            const endTime = `${form.start_date}T${form.end_hour}:${form.end_min}:00`;
+            // WEB-FK-015: use TZ-aware ISO strings so the server stores the
+            // correct instant regardless of server timezone.
+            const startTime = toISOWithOffset(form.start_date, form.start_hour, form.start_min);
+            const endTime = toISOWithOffset(form.start_date, form.end_hour, form.end_min);
             if (endTime <= startTime) {
               toast.error('End time must be after start time');
               return;
             }
+            // Overlap check — warn but still allow user to proceed after seeing the warning.
+            const assignedId = form.assigned_to ? Number(form.assigned_to) : null;
+            const warn = checkOverlap(startTime, endTime, assignedId);
+            if (warn && !overlapWarning) {
+              // Show warning on first submit; second submit proceeds.
+              setOverlapWarning(warn);
+              return;
+            }
+            setOverlapWarning(null);
             createMut.mutate({
               title: form.title,
               start_time: startTime,
               end_time: endTime,
-              assigned_to: form.assigned_to ? Number(form.assigned_to) : null,
+              assigned_to: assignedId,
               status: form.status,
               notes: form.notes || null,
             });
@@ -361,6 +404,12 @@ function CreateAppointmentModal({
               className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
             />
           </div>
+          {/* WEB-FK-015: overlap warning — shown after first submit attempt if conflict found */}
+          {overlapWarning && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/20 px-3 py-2 text-sm text-amber-700 dark:text-amber-400">
+              <strong>Scheduling conflict:</strong> {overlapWarning} Submit again to create anyway.
+            </div>
+          )}
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
@@ -372,10 +421,10 @@ function CreateAppointmentModal({
             <button
               type="submit"
               disabled={createMut.isPending}
-              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-primary-950 shadow-sm hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
             >
               {createMut.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-              Create
+              {overlapWarning ? 'Create Anyway' : 'Create'}
             </button>
           </div>
         </form>
@@ -824,6 +873,7 @@ export function CalendarPage() {
         onClose={() => setShowCreate(false)}
         defaultDate={currentDate}
         users={users}
+        existingAppointments={appointments}
       />
     </div>
   );

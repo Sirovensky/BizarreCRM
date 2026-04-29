@@ -30,7 +30,7 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 text-center">
+<div className="mb-6 mt-6 text-center">
         <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-100 dark:bg-primary-500/10">
           <Store className="h-7 w-7 text-primary-600 dark:text-primary-400" />
         </div>
@@ -38,7 +38,7 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
           Welcome to BizarreCRM
         </h1>
         <p className="mt-2 text-sm text-surface-500 dark:text-surface-400">
-          Let's set up your shop. This takes about 2 minutes.
+          Let's get your shop running. About 10 minutes — most steps are skippable.
         </p>
       </div>
 
@@ -102,7 +102,7 @@ export function StepWelcome({ pending, onUpdate, onNext }: StepProps) {
             type="button"
             onClick={onNext}
             disabled={!canAdvance}
-            className="flex items-center gap-2 rounded-lg bg-primary-600 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-2 rounded-lg bg-primary-500 px-6 py-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 disabled:cursor-not-allowed disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
           >
             Next — Store info
             <ArrowRight className="h-4 w-4" />

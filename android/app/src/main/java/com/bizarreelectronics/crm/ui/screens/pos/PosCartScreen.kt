@@ -321,6 +321,7 @@ fun PosCartScreen(
                         items(state.lines, key = { it.id }) { line ->
                             CartLineRow(
                                 line = line,
+                                isEditing = state.editingLineId == line.id,
                                 onTap = { viewModel.openLineEdit(line.id) },
                                 onRemove = { viewModel.removeLine(line.id) },
                             )
@@ -449,7 +450,13 @@ fun PosCartScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CartLineRow(line: CartLine, onTap: () -> Unit, onRemove: () -> Unit) {
+private fun CartLineRow(
+    line: CartLine,
+    isEditing: Boolean = false,
+    onTap: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val primaryColor = MaterialTheme.colorScheme.primary
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = { value ->
             if (value == SwipeToDismissBoxValue.EndToStart) { onRemove(); true } else false
@@ -471,7 +478,19 @@ private fun CartLineRow(line: CartLine, onTap: () -> Unit, onRemove: () -> Unit)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface)
+                .background(
+                    if (isEditing) primaryColor.copy(alpha = 0.05f)
+                    else MaterialTheme.colorScheme.surface
+                )
+                .then(
+                    if (isEditing) Modifier.drawBehind {
+                        drawRect(
+                            color = primaryColor,
+                            topLeft = Offset(0f, 0f),
+                            size = Size(3.dp.toPx(), size.height),
+                        )
+                    } else Modifier
+                )
                 .clickable(onClickLabel = "Edit ${line.name}") { onTap() }
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

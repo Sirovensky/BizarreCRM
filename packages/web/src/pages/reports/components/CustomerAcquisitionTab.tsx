@@ -16,7 +16,7 @@ interface CustomerAcquisitionData {
 }
 
 export function CustomerAcquisitionTab({ from, to }: { from: string; to: string }) {
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['reports', 'customer-acquisition', from, to],
     queryFn: async () => {
       const res = await reportApi.customerAcquisition({ from_date: from, to_date: to });
@@ -25,7 +25,12 @@ export function CustomerAcquisitionTab({ from, to }: { from: string; to: string 
   });
 
   if (isLoading) return <LoadingState />;
-  if (isError || !data) return <ErrorState message="Failed to load customer acquisition report" />;
+  const errMsg: string =
+    (error as any)?.response?.data?.message ??
+    (error as any)?.response?.data?.error ??
+    (error as Error)?.message ??
+    'Failed to load customer acquisition report';
+  if (isError || !data) return <ErrorState message={errMsg} />;
 
   const { rows, monthly_totals } = data;
   const totalNew = monthly_totals.reduce((sum, r) => sum + r.new_customers, 0);

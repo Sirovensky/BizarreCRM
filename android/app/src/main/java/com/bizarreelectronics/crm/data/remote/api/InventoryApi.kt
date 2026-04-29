@@ -5,6 +5,7 @@ import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
 import com.bizarreelectronics.crm.data.remote.dto.AutoReorderRequest
 import com.bizarreelectronics.crm.data.remote.dto.BinListData
 import com.bizarreelectronics.crm.data.remote.dto.CreateInventoryRequest
+import com.bizarreelectronics.crm.data.remote.dto.DeactivateInventoryData
 import com.bizarreelectronics.crm.data.remote.dto.InventoryDetailData
 import com.bizarreelectronics.crm.data.remote.dto.InventoryListData
 import com.bizarreelectronics.crm.data.remote.dto.MovementPage
@@ -15,6 +16,7 @@ import com.bizarreelectronics.crm.data.remote.dto.SupplierDetailData
 import com.bizarreelectronics.crm.data.remote.dto.TaxClassOption
 import com.bizarreelectronics.crm.data.remote.dto.TicketUsageData
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.PATCH
 import retrofit2.http.POST
@@ -98,4 +100,8 @@ interface InventoryApi {
     // ── L1083: Photos ────────────────────────────────────────────────────────
     @GET("inventory/{id}/photos")
     suspend fun getPhotos(@Path("id") id: Long): ApiResponse<PhotoListData>
+
+    // ── §6.4 Delete (soft deactivate via DELETE /inventory/:id) ──────────────
+    @DELETE("inventory/{id}")
+    suspend fun deleteItem(@Path("id") id: Long): ApiResponse<DeactivateInventoryData>
 }

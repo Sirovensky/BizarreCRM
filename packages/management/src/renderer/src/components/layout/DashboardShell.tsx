@@ -1,10 +1,12 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { useRef, useEffect } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { Header } from './Header';
 import { Sidebar } from './Sidebar';
 import { StatusFooter } from './StatusFooter';
 import { PageErrorBoundary } from '@/components/shared/ErrorBoundary';
 import { useServerHealth } from '@/hooks/useServerHealth';
+import { useServerStore } from '@/stores/serverStore';
 import { BannerCertWarning } from '@/components/BannerCertWarning';
 import { BannerTagVerifyWarning } from '@/components/BannerTagVerifyWarning';
 import { CommandPalette } from '@/components/CommandPalette';
@@ -15,6 +17,10 @@ export function DashboardShell() {
   useServerHealth();
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
+  // DASH-ELEC-233: global offline banner — was only in OverviewPage so
+  // navigating away silently hid the indicator.
+  const isOnline = useServerStore((s) => s.isOnline);
+  const lastError = useServerStore((s) => s.lastError);
 
   // DASH-ELEC-121: reset scroll position on route change
   // DASH-ELEC-092: move focus to main content on route change for keyboard/SR users
@@ -41,6 +47,20 @@ export function DashboardShell() {
       {/* `?` opens keyboard shortcut help overlay. */}
       <KeyboardShortcutsHelp />
       <Header />
+      {/* DASH-ELEC-233: offline banner in the shell so it appears on every page,
+          not only when the operator happens to be on OverviewPage. */}
+      {!isOnline && (
+        <div
+          role="alert"
+          className="flex items-center gap-3 px-4 py-2 bg-red-950/40 border-b border-red-900/50"
+        >
+          <AlertTriangle className="w-4 h-4 text-red-400 flex-shrink-0" />
+          <div>
+            <span className="text-xs font-semibold text-red-300">Server Offline — </span>
+            <span className="text-xs text-red-400">{lastError ?? 'Unable to reach the CRM server'}</span>
+          </div>
+        </div>
+      )}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         {/* DASH-ELEC-092: id + tabIndex=-1 so focus() works programmatically */}

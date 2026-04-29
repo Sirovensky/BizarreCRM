@@ -118,4 +118,26 @@ interface ReportApi {
     suspend fun runNow(
         @Body body: Map<String, @JvmSuppressWildcards Any>,
     ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    // ── §15.4 — employee performance report ──────────────────────────────────
+    /**
+     * GET /reports/employees — returns `{ rows, from, to }` where each row has:
+     *   id, name, role, tickets_assigned, tickets_closed,
+     *   commission_earned, hours_worked, revenue_generated
+     */
+    @GET("reports/employees")
+    suspend fun getEmployeesReport(
+        @QueryMap filters: Map<String, String> = emptyMap()
+    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
+
+    // ── §15.7 — busy-hours heatmap ────────────────────────────────────────────
+    /**
+     * GET /reports/busy-hours-heatmap — returns `{ grid, peak, days_analyzed, day_labels }`.
+     *   grid: 7×24 Int[][] indexed [dow][hour], Sunday=0.
+     *   peak: max value across grid (for normalisation).
+     */
+    @GET("reports/busy-hours-heatmap")
+    suspend fun getBusyHoursHeatmap(
+        @QueryMap params: Map<String, String> = emptyMap()
+    ): ApiResponse<Map<String, @JvmSuppressWildcards Any>>
 }

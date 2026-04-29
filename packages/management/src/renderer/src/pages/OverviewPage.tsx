@@ -485,21 +485,50 @@ function RequestRateGraph({ current, avg, peak, rpm, avgMs, p95Ms }: { current: 
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
-    const obs = new ResizeObserver(([entry]) => {
+
+    const resizeCanvas = (width: number, height: number) => {
       const dpr = window.devicePixelRatio || 1;
-      const { width, height } = entry.contentRect;
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      // DASH-ELEC-291: drawGraphFn calls setTransform/scale itself — the
-      // pre-draw scale here was a redundant second context grab that left
-      // the matrix doubly-scaled until drawGraphFn reset it on next frame.
+      // DASH-ELEC-291: drawGraphFn calls setTransform itself — no pre-scale here.
       // AUDIT-MGT-012: draw() reads live params via ref — no stale closure.
       draw(null);
+    };
+
+    const obs = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      resizeCanvas(width, height);
     });
     obs.observe(container);
-    return () => obs.disconnect();
+
+    // DASH-ELEC-286: when the operator moves the window to a monitor with a
+    // different devicePixelRatio (e.g. from 1x laptop to 2x external, or
+    // undock from Retina dock), the ResizeObserver only fires if the CSS size
+    // also changes.  Listen to a matchMedia resolution query so a pure-dpr
+    // change (no layout change) still triggers a canvas rescale + redraw.
+    // We use a recursive re-subscribe pattern so the listener always tracks
+    // the CURRENT dpr value rather than the one baked in at mount.
+    let dprMql: MediaQueryList | null = null;
+    const handleDprChange = () => {
+      // Rescale with the current canvas CSS size.
+      const rect = container.getBoundingClientRect();
+      resizeCanvas(rect.width, rect.height);
+      // Re-subscribe at the new dpr so we catch the next change too.
+      if (dprMql) {
+        dprMql.removeEventListener('change', handleDprChange);
+      }
+      dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+      dprMql.addEventListener('change', handleDprChange);
+    };
+    dprMql = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    dprMql.addEventListener('change', handleDprChange);
+
+    return () => {
+      obs.disconnect();
+      if (dprMql) dprMql.removeEventListener('change', handleDprChange);
+    };
   }, [draw]); // draw is stable (empty dep useCallback)
 
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {

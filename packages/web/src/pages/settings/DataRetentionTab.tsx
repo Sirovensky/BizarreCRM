@@ -113,12 +113,15 @@ export function DataRetentionTab() {
   }
 
   function val(key: string): string {
-    return config[key] ?? '24';
+    // Default-OFF policy: missing keys default to '0' (no deletion).
+    return config[key] ?? '0';
   }
 
+  const sweepEnabled = config.retention_sweep_enabled === '1';
+
   function handleSave(): void {
-    // Only save the retention keys (avoid overwriting unrelated config)
-    const patch: Record<string, string> = {};
+    // Save retention keys + master switch only (avoid overwriting unrelated config)
+    const patch: Record<string, string> = { retention_sweep_enabled: sweepEnabled ? '1' : '0' };
     for (const field of RETENTION_FIELDS) {
       patch[field.key] = val(field.key);
     }
@@ -154,7 +157,7 @@ export function DataRetentionTab() {
         <button
           onClick={handleSave}
           disabled={saveMutation.isPending || !dirty}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-primary-950 hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
         >
           {saveMutation.isPending ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -165,12 +168,34 @@ export function DataRetentionTab() {
         </button>
       </div>
 
+      {/* Master kill switch */}
+      <div className="px-4 py-3 border-b border-surface-100 dark:border-surface-800">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={sweepEnabled}
+            onChange={(e) => set('retention_sweep_enabled', e.target.checked ? '1' : '0')}
+            className="mt-1 h-4 w-4 rounded border-surface-300 text-primary-500 focus:ring-primary-500"
+          />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-surface-900 dark:text-surface-100">
+              Enable automatic data retention deletion
+            </p>
+            <p className="text-xs text-surface-500 dark:text-surface-400 mt-0.5">
+              {sweepEnabled
+                ? 'Nightly sweeper will delete data older than the per-category windows below.'
+                : 'All data is kept indefinitely. No automatic deletion. Turn this on only if you need GDPR/CCPA compliance or have a storage cap.'}
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* Description */}
-      <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/10 border-b border-surface-100 dark:border-surface-800">
-        <p className="text-sm text-amber-800 dark:text-amber-300">
-          Data older than these thresholds will have PII scrubbed by the nightly sweeper.
-          Set to <strong>0</strong> to disable retention for a given category.
-          Maximum is 120 months (10 years).
+      <div className={`px-4 py-3 border-b border-surface-100 dark:border-surface-800 ${sweepEnabled ? 'bg-amber-50 dark:bg-amber-900/10' : 'bg-surface-50 dark:bg-surface-900/30'}`}>
+        <p className={`text-sm ${sweepEnabled ? 'text-amber-800 dark:text-amber-300' : 'text-surface-500 dark:text-surface-400'}`}>
+          {sweepEnabled
+            ? <>Data older than these thresholds will have PII scrubbed by the nightly sweeper. Set to <strong>0</strong> to disable retention for a given category. Maximum is 120 months (10 years).</>
+            : <>Per-category retention windows below have no effect while the master switch above is off. Default for fresh shops: <strong>0</strong> (keep forever).</>}
         </p>
       </div>
 

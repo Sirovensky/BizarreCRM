@@ -210,6 +210,40 @@ if (typeof window !== 'undefined') {
     // or switchUser elsewhere). checkAuth() also covers refresh-token
     // rotation so this tab uses the freshest access token on next req.
     if (e.newValue && e.newValue !== e.oldValue) {
+      // WEB-FAE-009: detect cross-tenant token clobber before re-hydrating.
+      // JWT payloads are Base64URL-encoded and safe to read client-side
+      // (we are not verifying the signature — only comparing the tenantSlug
+      // claim to catch kiosk/shared-device accidents; server still enforces
+      // authN). If the new token belongs to a different tenantSlug, bail out
+      // and hard-redirect rather than silently swapping tenant context.
+      const readJwtSlug = (token: string | null): string | null => {
+        if (!token) return null;
+        try {
+          const parts = token.split('.');
+          if (parts.length !== 3) return null;
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          return typeof payload?.tenantSlug === 'string' ? payload.tenantSlug : null;
+        } catch { return null; }
+      };
+      const oldSlug = readJwtSlug(e.oldValue);
+      const newSlug = readJwtSlug(e.newValue);
+      if (oldSlug && newSlug && oldSlug !== newSlug) {
+        // A different tenant's token appeared — forcibly log out and
+        // surface a clear message rather than blending two tenants' data.
+        useAuthStore.setState({ user: null, isAuthenticated: false, isLoading: false });
+        emitAuthCleared();
+        // react-hot-toast is bundled with the app; broadcast the warning
+        // via a custom event so main.tsx (which imports toast) can pick it
+        // up without a dynamic import inside a sync event handler.
+        window.dispatchEvent(new CustomEvent('bizarre-crm:cross-tenant-token', {
+          detail: { message: 'Account changed in another tab. Please sign in again.' },
+        }));
+        if (!window.location.pathname.startsWith('/login')) {
+          requestLoginNav();
+        }
+        return;
+      }
+
       // Wipe per-user caches in this tab before /auth/me lands so a
       // tenant-switch doesn't bleed state across tabs.
       // WEB-FAE-004: also pre-emptively flip auth state to "loading"

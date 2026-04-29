@@ -17,9 +17,18 @@ interface AuditEntry {
   created_at: string;
 }
 
+const PAGE_SIZE = 200;
+
 export function AuditLogPage() {
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  // DASH-ELEC-219: track which row has its details expanded.
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // DASH-ELEC-064: offset-based pagination so installations with 50k+ entries
+  // don't silently truncate at 200. Resets to 0 when filters change.
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   // DASH-ELEC-063 (Fixer-B28 2026-04-25): mirror DiagnosticsPage and persist
   // filters in the URL search params so back-button + reload + shared deep
   // links restore the same view (e.g. ?action=login_failed&q=192.168). State
@@ -28,6 +37,7 @@ export function AuditLogPage() {
   const actionFilter = params.get('action') ?? '';
   const textFilter = params.get('q') ?? '';
   const setActionFilter = useCallback((value: string) => {
+    setOffset(0);
     setParams((prev) => {
       const next = new URLSearchParams(prev);
       if (value) next.set('action', value); else next.delete('action');
@@ -47,14 +57,16 @@ export function AuditLogPage() {
       // AUDIT-MGT-008: pass typed object; query string is built in main process.
       // Server-side `action` filter narrows to one audit event type; the
       // free-text filter is applied client-side against admin/details/ip.
-      const params: { limit: number; action?: string } = { limit: 200 };
-      if (actionFilter) params.action = actionFilter;
-      const res = await getAPI().superAdmin.getAuditLog(params);
+      const queryParams: { limit: number; action?: string } = { limit: PAGE_SIZE };
+      if (actionFilter) queryParams.action = actionFilter;
+      const res = await getAPI().superAdmin.getAuditLog(queryParams);
       // AUDIT-MGT-010: detect 401 and trigger global auto-logout.
       if (handleApiResponse(res)) return;
       if (res.success && res.data) {
         const list = Array.isArray(res.data) ? res.data : (res.data as { logs: AuditEntry[] }).logs ?? [];
         setEntries(list as AuditEntry[]);
+        setOffset(list.length);
+        setHasMore(list.length === PAGE_SIZE);
       }
     } catch {
       toast.error('Failed to load audit log');
@@ -62,6 +74,26 @@ export function AuditLogPage() {
       setLoading(false);
     }
   }, [actionFilter]);
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    try {
+      const queryParams: { limit: number; offset: number; action?: string } = { limit: PAGE_SIZE, offset };
+      if (actionFilter) queryParams.action = actionFilter;
+      const res = await getAPI().superAdmin.getAuditLog(queryParams);
+      if (handleApiResponse(res)) return;
+      if (res.success && res.data) {
+        const list = Array.isArray(res.data) ? res.data : (res.data as { logs: AuditEntry[] }).logs ?? [];
+        setEntries((prev) => [...prev, ...(list as AuditEntry[])]);
+        setOffset((prev) => prev + list.length);
+        setHasMore(list.length === PAGE_SIZE);
+      }
+    } catch {
+      toast.error('Failed to load more entries');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [actionFilter, offset]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -227,7 +259,21 @@ export function AuditLogPage() {
                       {e.action}
                     </button>
                   </td>
-                  <td className="py-1.5 px-2 text-surface-400 max-w-xs truncate" title={e.details}>{e.details}</td>
+                  {/* DASH-ELEC-219: click truncated details to expand inline. */}
+                  <td
+                    className="py-1.5 px-2 text-surface-400 max-w-xs"
+                    onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
+                  >
+                    {expandedId === e.id ? (
+                      <pre className="whitespace-pre-wrap break-all font-mono text-[10px] max-w-sm max-h-48 overflow-y-auto bg-surface-950 border border-surface-800 rounded p-1.5 cursor-pointer">
+                        {e.details}
+                      </pre>
+                    ) : (
+                      <span className="truncate block cursor-pointer hover:text-surface-200" title="Click to expand">
+                        {e.details}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-1.5 px-2 font-mono text-surface-500">
                     {e.ip_address ? (
                       <CopyText value={e.ip_address}>{e.ip_address}</CopyText>
@@ -237,6 +283,21 @@ export function AuditLogPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* DASH-ELEC-064: "Load next 200" button — only visible when more entries
+          may exist (last fetch returned a full page). */}
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-surface-400 border border-surface-700 rounded-lg hover:bg-surface-800 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loadingMore ? 'animate-spin' : ''}`} />
+            {loadingMore ? 'Loading…' : 'Load next 200'}
+          </button>
         </div>
       )}
     </div>

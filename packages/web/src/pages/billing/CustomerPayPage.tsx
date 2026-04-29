@@ -3,8 +3,9 @@
  *
  * Route: /pay/:token
  * Reads the payment-link token via the public API and shows the amount and
- * invoice ref. It does not mark links paid from the browser; hosted checkout
- * must be wired through a provider before this page can collect cards.
+ * invoice ref. WEB-W3-005: "Pay now" button POSTs to get a BlockChyp hosted
+ * checkout URL and redirects the customer to it. Falls back to "call shop"
+ * when BlockChyp is not configured for this tenant.
  *
  * IMPORTANT: this page must never depend on the AppShell or auth store.
  * It's rendered as a standalone route in App.tsx outside the protected
@@ -14,6 +15,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { formatCents } from '@/utils/format';
+import { Loader2 } from 'lucide-react';
 
 interface PublicLink {
   id: number;
@@ -31,13 +33,16 @@ type ViewState =
   | { kind: 'error'; message: string }
   | { kind: 'expired' }
   | { kind: 'paid'; link: PublicLink }
-  | { kind: 'ready'; link: PublicLink };
+  | { kind: 'ready'; link: PublicLink }
+  | { kind: 'paying'; link: PublicLink }
+  | { kind: 'checkout_unavailable'; link: PublicLink; reason?: string };
 
 const PUBLIC_BASE = '/api/v1/public/payment-links';
 
 export function CustomerPayPage() {
   const { token } = useParams<{ token: string }>();
   const [view, setView] = useState<ViewState>({ kind: 'loading' });
+  const [paying, setPaying] = useState(false);
 
   const loadLink = useCallback(async () => {
     if (!token) {
@@ -91,6 +96,30 @@ export function CustomerPayPage() {
     }
   }, [token]);
 
+  // WEB-W3-005: post to server to get a BlockChyp hosted checkout URL, then redirect.
+  const handlePay = useCallback(async () => {
+    if (!token || view.kind !== 'ready') return;
+    setPaying(true);
+    try {
+      const res = await axios.post(`${PUBLIC_BASE}/${encodeURIComponent(token)}/pay`);
+      const result = res.data?.data as { checkout_available: boolean; checkout_url?: string; error?: string } | undefined;
+      if (result?.checkout_available && result.checkout_url) {
+        // Redirect the customer to the BlockChyp-hosted card entry page.
+        window.location.href = result.checkout_url;
+      } else {
+        // BlockChyp not configured for this tenant — show "call shop" message.
+        setView({ kind: 'checkout_unavailable', link: view.link, reason: result?.error });
+      }
+    } catch (err) {
+      const msg = axios.isAxiosError(err)
+        ? err.response?.data?.message ?? 'Could not start checkout'
+        : 'Could not start checkout';
+      setView({ kind: 'checkout_unavailable', link: (view as any).link, reason: msg });
+    } finally {
+      setPaying(false);
+    }
+  }, [token, view]);
+
   useEffect(() => {
     loadLink();
   }, [loadLink]);
@@ -140,7 +169,7 @@ export function CustomerPayPage() {
             </div>
           ) : null}
 
-          {view.kind === 'ready' ? (
+          {(view.kind === 'ready' || view.kind === 'checkout_unavailable') ? (
             <div className="space-y-4">
               <div className="text-center">
                 <p className="text-sm text-gray-500">Amount due</p>
@@ -157,9 +186,27 @@ export function CustomerPayPage() {
                 ) : null}
               </div>
 
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                Online card checkout is not available for this link yet. Please call the shop to complete payment.
-              </div>
+              {view.kind === 'ready' ? (
+                /* WEB-W3-005: "Pay now" triggers BlockChyp hosted checkout */
+                <button
+                  onClick={handlePay}
+                  disabled={paying}
+                  className="flex w-full items-center justify-center gap-2 rounded-md bg-gray-900 px-4 py-3 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+                >
+                  {paying ? (
+                    <><Loader2 className="h-4 w-4 animate-spin" />Preparing checkout…</>
+                  ) : (
+                    'Pay now'
+                  )}
+                </button>
+              ) : (
+                /* Checkout unavailable (BlockChyp not configured for this tenant) */
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  {view.reason
+                    ? view.reason
+                    : 'Online card checkout is not available for this payment. Please call the shop to complete payment.'}
+                </div>
+              )}
             </div>
           ) : null}
         </div>

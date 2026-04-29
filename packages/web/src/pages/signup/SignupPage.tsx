@@ -73,7 +73,19 @@ export function SignupPage() {
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [apiError, setApiError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [success, setSuccess] = useState<{ slug: string; message: string } | null>(null);
+  const [success, setSuccess] = useState<{
+    slug: string;
+    message: string;
+    adminEmail: string;
+    /** True when the server provisioned the tenant immediately (dev-mode short-circuit). */
+    provisioned?: boolean;
+    /** Subdomain URL of the new shop, e.g. https://slug.bizarrecrm.com — present when provisioned. */
+    tenantUrl?: string;
+  } | null>(null);
+  // WIZARD-EMAIL-1: track dev-skip state on the signup success screen so the
+  // owner can short-circuit email verification while SMTP is still un-wired.
+  const [devSkipState, setDevSkipState] = useState<'idle' | 'submitting' | 'failed'>('idle');
+  const [devSkipError, setDevSkipError] = useState('');
   const captchaSiteKey = (import.meta.env.VITE_HCAPTCHA_SITE_KEY || '').trim();
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaReady, setCaptchaReady] = useState(!captchaSiteKey);
@@ -252,8 +264,23 @@ export function SignupPage() {
         admin_password: password,
         captcha_token: captchaTokenToSend,
       });
-      const { message } = res.data.data;
-      setSuccess({ slug: slug.toLowerCase().trim(), message });
+      const data = res.data.data as {
+        message: string;
+        tenant_id?: number;
+        url?: string;
+        accessToken?: string;
+      };
+      // Detect dev-mode auto-provision (server returns tenant_id + url + accessToken).
+      // In that case the shop is ALREADY live; we should not tell the user to
+      // check their email. Show a "ready" screen with the deep-link instead.
+      const provisioned = Boolean(data.tenant_id && data.url);
+      setSuccess({
+        slug: slug.toLowerCase().trim(),
+        message: data.message,
+        adminEmail: email.trim(),
+        provisioned,
+        tenantUrl: data.url,
+      });
       // Redirect after brief success message is no longer performed automatically,
       // as the user needs to check their email for the token URL.
     } catch (err: unknown) {
@@ -278,17 +305,130 @@ export function SignupPage() {
 
   // Success state
   if (success) {
+    // Two distinct shapes:
+    //   provisioned=true  → shop is already live (dev-mode short-circuit); show
+    //                       "Open your shop" CTA pointing at the subdomain URL
+    //                       returned by the server. NO "check your email" copy
+    //                       because there is no email to wait for.
+    //   provisioned=false → production path; verification email pending; user
+    //                       must click the link to finish provisioning.
+    const fallbackUrl = success.tenantUrl || getTenantUrl(success.slug, '/login?fresh=1');
     return (
       <div style={{ minHeight: '100vh', background: '#FBF3DB', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Roboto', sans-serif" }}>
         <div style={{ textAlign: 'center', maxWidth: 440, padding: 32 }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>&#x2709;&#xFE0F;</div>
-          <h2 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>Check Your Email</h2>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{success.provisioned ? '✅' : '✉️'}</div>
+          <h2 style={{ fontFamily: "'Inter', system-ui, sans-serif", fontSize: 36, color: '#0891B2', letterSpacing: 2, marginBottom: 8 }}>
+            {success.provisioned ? 'Shop ready!' : 'Check Your Email'}
+          </h2>
           <p style={{ color: '#555', fontSize: 16, marginBottom: 24, lineHeight: 1.5 }}>
-            {success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`}
+            {success.provisioned
+              ? (() => {
+                  // Display the host portion of the actual server-provided URL
+                  // so localhost dev shows "vizcompare.localhost" not the
+                  // hardcoded ".bizarrecrm.com" production string.
+                  let host = '';
+                  try {
+                    host = new URL(success.tenantUrl ?? fallbackUrl).host;
+                  } catch {
+                    host = `${success.slug}.${resolveBaseDomain(window.location.hostname) ?? 'bizarrecrm.com'}`;
+                  }
+                  return `Your shop ${host} is live and you're signed in. Click below to start setting it up.`;
+                })()
+              : (success.message || `We've sent a confirmation link to help finish creating your shop at ${success.slug}.`)}
           </p>
-          <div style={{ marginTop: 24, fontSize: 14, color: '#666' }}>
+
+          {success.provisioned && (
+            <a
+              href={fallbackUrl}
+              style={{
+                display: 'inline-block',
+                background: '#0891B2',
+                color: '#fff',
+                padding: '12px 28px',
+                borderRadius: 8,
+                fontSize: 16,
+                fontWeight: 600,
+                textDecoration: 'none',
+                marginBottom: 16,
+              }}
+            >
+              Open your shop &rarr;
+            </a>
+          )}
+
+          <div style={{ marginTop: success.provisioned ? 8 : 24, fontSize: 14, color: '#666' }}>
             <Link to="/" style={{ color: '#0E7490', fontWeight: 600, textDecoration: 'none' }}>Return to home</Link>
           </div>
+
+          {/* WIZARD-EMAIL-1 (TEMPORARY — must be removed before SaaS launch).
+              Outbound email isn't wired yet, so without this button a dev test
+              cannot complete the signup flow end-to-end. The matching backend
+              route /api/v1/signup/verify/dev-skip is gated behind
+              NODE_ENV !== 'production' AND WIZARD_DEV_SKIP_EMAIL=1. */}
+          {/* Dev-skip button only useful when the shop is NOT yet provisioned
+              (production-style email-pending path). When the server already
+              auto-provisioned in dev mode, success.provisioned is true and
+              the "Open your shop" CTA above is the right next step. */}
+          {import.meta.env.DEV && !success.provisioned && (
+            <div style={{ marginTop: 32, padding: 16, background: '#FEF3C7', border: '1px solid #FBBF24', borderRadius: 8, textAlign: 'left' }}>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Dev only</p>
+              <p style={{ fontSize: 13, color: '#78350F', marginBottom: 12 }}>
+                SMTP isn't wired yet. Use this to provision the tenant immediately and bypass the email-link step.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (devSkipState === 'submitting') return;
+                  setDevSkipState('submitting');
+                  setDevSkipError('');
+                  try {
+                    const r = await fetch('/api/v1/signup/verify/dev-skip', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                      credentials: 'include',
+                      body: JSON.stringify({ slug: success.slug, adminEmail: success.adminEmail }),
+                    });
+                    const body = await r.json().catch(() => ({}));
+                    if (!r.ok) {
+                      setDevSkipState('failed');
+                      if (r.status === 404) {
+                        setDevSkipError('Dev-skip not enabled on the server. Set NODE_ENV != production AND WIZARD_DEV_SKIP_EMAIL=1, then restart.');
+                      } else {
+                        setDevSkipError(body?.message || `Dev-skip failed (HTTP ${r.status}).`);
+                      }
+                      return;
+                    }
+                    // Success — backend has provisioned the tenant and set
+                    // refresh-token + csrf cookies. Redirect to the subdomain
+                    // login (or directly into the wizard if accessToken came
+                    // back). The full URL is guaranteed safe since slug is our
+                    // own input.
+                    const url = body?.data?.url || getTenantUrl(success.slug, '/login?verified=1');
+                    window.location.href = url;
+                  } catch (e: unknown) {
+                    setDevSkipState('failed');
+                    setDevSkipError(e instanceof Error ? e.message : 'Network error.');
+                  }
+                }}
+                disabled={devSkipState === 'submitting'}
+                style={{
+                  background: devSkipState === 'submitting' ? '#FBBF24' : '#F59E0B',
+                  color: '#451A03',
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '8px 14px',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: devSkipState === 'submitting' ? 'wait' : 'pointer',
+                }}
+              >
+                {devSkipState === 'submitting' ? 'Skipping…' : 'Skip email check (dev only)'}
+              </button>
+              {devSkipError && (
+                <p style={{ marginTop: 10, fontSize: 12, color: '#991B1B' }}>{devSkipError}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     );

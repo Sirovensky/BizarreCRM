@@ -5,9 +5,11 @@
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, TrendingUp, Skull } from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { ChevronLeft, TrendingUp, Skull, Download, Tag, Loader2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { api } from '@/api/client';
+import { inventoryApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
 
@@ -46,8 +48,10 @@ const CLASS_COLORS: Record<string, string> = {
 };
 
 export function AbcAnalysisPage() {
+  const queryClient = useQueryClient();
   const [days, setDays] = useState(180);
   const [filter, setFilter] = useState<string>('');
+  const [selectedClearance, setSelectedClearance] = useState<Set<number>>(new Set());
 
   const { data } = useQuery({
     queryKey: ['abc-analysis', days],
@@ -61,6 +65,46 @@ export function AbcAnalysisPage() {
 
   const items = data?.items || [];
   const filtered = filter ? items.filter((i) => i.abc_class === filter) : items;
+
+  // WEB-W3-025: CSV export
+  const handleExportCsv = () => {
+    if (!data) return;
+    const headers = ['id', 'sku', 'name', 'abc_class', 'units_sold', 'revenue', 'in_stock', 'last_sold_at'];
+    const CSV_BOM = '﻿';
+    const escCsv = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      const san = s.replace(/^[=+\-@\t\r]/, "'$&");
+      return san.includes(',') || san.includes('"') || san.includes('\n')
+        ? '"' + san.replace(/"/g, '""') + '"'
+        : san;
+    };
+    const rows = filtered.map((i) => [
+      i.id, i.sku ?? '', i.name, i.abc_class, i.units_sold,
+      (i.revenue_cents / 100).toFixed(2), i.in_stock, i.last_sold_at ?? '',
+    ].map(escCsv).join(','));
+    const csv = CSV_BOM + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `abc-analysis-${days}d-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // WEB-W3-025: Mark for clearance mutation
+  const clearanceMut = useMutation({
+    mutationFn: () => inventoryApi.markClearance(Array.from(selectedClearance)),
+    onSuccess: (res) => {
+      const d = res.data?.data;
+      toast.success(d?.message || 'Marked for clearance');
+      setSelectedClearance(new Set());
+      queryClient.invalidateQueries({ queryKey: ['abc-analysis', days] });
+    },
+    onError: () => toast.error('Failed to mark clearance'),
+  });
 
   return (
     <div className="space-y-6">
@@ -76,7 +120,7 @@ export function AbcAnalysisPage() {
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <select
           value={days}
           onChange={(e) => setDays(parseInt(e.target.value, 10))}
@@ -87,6 +131,24 @@ export function AbcAnalysisPage() {
           <option value={180}>Last 180 days</option>
           <option value={365}>Last year</option>
         </select>
+        {data && (
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-1.5 rounded-md border border-surface-300 px-3 py-2 text-sm font-medium hover:bg-surface-50"
+          >
+            <Download className="h-4 w-4" /> Export CSV
+          </button>
+        )}
+        {selectedClearance.size > 0 && (
+          <button
+            onClick={() => clearanceMut.mutate()}
+            disabled={clearanceMut.isPending}
+            className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none"
+          >
+            {clearanceMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tag className="h-4 w-4" />}
+            Mark {selectedClearance.size} for Clearance (50% off)
+          </button>
+        )}
       </div>
 
       {data && (
@@ -119,15 +181,38 @@ export function AbcAnalysisPage() {
 
       {data && data.clearance_suggestions.length > 0 && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-          <h3 className="font-semibold text-red-800 mb-2">Clearance suggestions</h3>
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-semibold text-red-800">Clearance suggestions</h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const allIds = new Set(data.clearance_suggestions.map((s) => s.id));
+                  setSelectedClearance(selectedClearance.size === allIds.size ? new Set() : allIds);
+                }}
+                className="text-xs text-red-700 underline"
+              >
+                {selectedClearance.size === data.clearance_suggestions.length ? 'Deselect all' : 'Select all'}
+              </button>
+            </div>
+          </div>
           <p className="text-sm text-red-700 mb-3">
-            {data.clearance_suggestions.length} dead-stock items tying up capital
+            {data.clearance_suggestions.length} dead-stock items tying up capital — select and mark for 50% clearance
           </p>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {data.clearance_suggestions.slice(0, 20).map((s) => (
-              <div key={s.id} className="flex items-center justify-between text-sm">
-                <span>{s.name}</span>
-                <span className="font-mono">
+              <div key={s.id} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedClearance.has(s.id)}
+                  onChange={() => {
+                    const next = new Set(selectedClearance);
+                    if (next.has(s.id)) next.delete(s.id); else next.add(s.id);
+                    setSelectedClearance(next);
+                  }}
+                  className="h-4 w-4 rounded border-red-400"
+                />
+                <span className="flex-1">{s.name}</span>
+                <span className="font-mono text-xs">
                   {s.in_stock} units · {formatCurrency(s.tied_up_cost_cents / 100)} tied up
                 </span>
               </div>

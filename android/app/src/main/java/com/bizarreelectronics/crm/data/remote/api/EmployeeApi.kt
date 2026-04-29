@@ -1,6 +1,7 @@
 package com.bizarreelectronics.crm.data.remote.api
 
 import com.bizarreelectronics.crm.data.remote.dto.ApiResponse
+import com.bizarreelectronics.crm.data.remote.dto.EmployeeDetailDto
 import com.bizarreelectronics.crm.data.remote.dto.ForgotPinTriggerRequest
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -77,6 +78,23 @@ interface EmployeeApi {
 
     // endregion
 
+    // region — employee detail
+
+    /**
+     * §3.11 — Fetch full employee detail including [current_clock_entry].
+     * Self-service: admin or self only; non-privileged callers receive a
+     * public-profile response without the clock array ([currentClockEntry]
+     * will be null in that case — tile stays in "Clocked in" state without
+     * a timestamp).
+     * 404 tolerated — callers guard with runCatching.
+     */
+    @GET("employees/{id}")
+    suspend fun getEmployee(
+        @Path("id") employeeId: Long,
+    ): ApiResponse<EmployeeDetailDto>
+
+    // endregion
+
     // region — timeclock admin
 
     /** Edit a time entry. Body keys: start_time, end_time (ISO 8601 strings). */
@@ -119,6 +137,16 @@ interface EmployeeApi {
     suspend fun getCommissions(
         @Path("id") employeeId: Long,
     ): ApiResponse<@JvmSuppressWildcards Any>
+
+    /**
+     * §14.7 — Leaderboard: all-employee performance summary.
+     * GET /employees/performance/all
+     * Returns a list of rows: { id, first_name, last_name, role,
+     *   total_tickets, closed_tickets, total_revenue, avg_ticket_value, avg_repair_hours }
+     * 404 tolerated — caller shows empty state.
+     */
+    @GET("employees/performance/all")
+    suspend fun getPerformanceAll(): ApiResponse<@JvmSuppressWildcards Any>
 
     // endregion
 }

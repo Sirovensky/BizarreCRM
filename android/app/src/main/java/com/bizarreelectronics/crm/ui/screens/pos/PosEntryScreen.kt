@@ -44,6 +44,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.bizarreelectronics.crm.data.local.prefs.AuthPreferences
+import com.bizarreelectronics.crm.ui.components.shared.BrandTopAppBar
 import com.bizarreelectronics.crm.ui.screens.pos.components.PosOfflineBanner
 import com.bizarreelectronics.crm.ui.theme.LocalExtendedColors
 
@@ -63,6 +65,7 @@ fun PosEntryScreen(
     onNavigateToTicket: (Long) -> Unit = {},
     onNavigateToStoreCreditPayment: () -> Unit = {},
     viewModel: PosEntryViewModel = hiltViewModel(),
+    authPreferences: AuthPreferences? = null,
 ) {
     val state by viewModel.uiState.collectAsState()
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -146,12 +149,10 @@ fun PosEntryScreen(
                     onNavigateToTender()
                 },
                 onWalkIn = {
-                    // Mockup PHONE 1 post-attach: walk-in still routes through
-                    // the path picker (Retail / Repair / Store credit) so the
-                    // cashier picks intent. Auto-nav to cart skipped that
-                    // picker for walk-ins; restore parity with named-customer
-                    // flow.
-                    viewModel.attachWalkIn()
+                    // Show the phone-capture dialog so the cashier can
+                    // optionally record a number for receipt SMS before
+                    // proceeding. Skip / dismiss falls back to bare walk-in.
+                    viewModel.showWalkInPhoneDialog()
                 },
                 onNavigateToCart = onNavigateToCart,
                 onNavigateToTicket = onNavigateToTicket,
@@ -265,6 +266,25 @@ fun PosEntryScreen(
             snackbarHostState.showSnackbar(msg)
             viewModel.clearError()
         }
+    }
+
+    // Walk-in phone capture dialog — rendered outside the Scaffold Box so it
+    // layers correctly over the full screen.
+    if (state.showWalkInPhoneDialog) {
+        WalkInPhoneCaptureDialog(
+            onSkip = {
+                viewModel.dismissWalkInPhoneDialog()
+                viewModel.attachWalkIn(phone = null)
+            },
+            onContinue = { phone ->
+                viewModel.dismissWalkInPhoneDialog()
+                viewModel.attachWalkIn(phone = phone.takeIf { it.isNotBlank() })
+            },
+            onDismiss = {
+                viewModel.dismissWalkInPhoneDialog()
+                viewModel.attachWalkIn(phone = null)
+            },
+        )
     }
     } // end PosKeyboardShortcuts
 }
@@ -477,6 +497,86 @@ private fun RecentTicketChip(repair: PastRepair, onClick: () -> Unit) {
             style = MaterialTheme.typography.labelMedium,
         )
     }
+}
+
+// ─── Walk-in phone capture dialog ────────────────────────────────────────────
+
+/**
+ * Brief dialog shown when the cashier taps the "Walk-in customer" tile.
+ * Captures an optional phone number for receipt SMS.
+ *
+ * - "Skip" / dismiss → bare walk-in, no phone recorded.
+ * - "Continue" with a typed number → walk-in with phone (creates a minimal
+ *   DB record so the number is available for receipt SMS).
+ * - "Continue" with an empty field → treated as Skip.
+ *
+ * Validation: 10 digits = US format; 7–15 digits accepted as international.
+ * We never block the cashier — invalid format shows a hint only.
+ */
+@Composable
+private fun WalkInPhoneCaptureDialog(
+    onSkip: () -> Unit,
+    onContinue: (phone: String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var phone by remember { mutableStateOf("") }
+
+    val digitsOnly = phone.filter { it.isDigit() }
+    val isUsFormat = digitsOnly.length == 10
+    val isInternational = phone.trimStart('+').filter { it.isDigit() }.length in 7..15
+    val phoneIsValid = phone.isBlank() || isUsFormat || isInternational
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Walk-in customer") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Optional — for receipt SMS later",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it.take(20) },
+                    label = { Text("Phone number") },
+                    placeholder = { Text("(555) 867-5309") },
+                    prefix = { Text("+1 ") },
+                    singleLine = true,
+                    isError = phone.isNotBlank() && !phoneIsValid,
+                    supportingText = if (phone.isNotBlank() && !phoneIsValid) {
+                        { Text("Enter 10 digits (US) or international format") }
+                    } else null,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = {
+                            if (phone.isBlank() || phoneIsValid) onContinue(phone.trim())
+                        },
+                    ),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onSkip) { Text("Skip") }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onContinue(phone.trim()) },
+                enabled = phone.isBlank() || phoneIsValid,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary,
+                ),
+            ) { Text("Continue") }
+        },
+    )
 }
 
 @Composable
