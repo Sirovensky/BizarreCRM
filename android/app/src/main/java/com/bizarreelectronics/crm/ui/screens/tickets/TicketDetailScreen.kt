@@ -1933,6 +1933,12 @@ fun TicketDetailScreen(
             // `navigationBarsPadding()` lives on `BottomAppBar` by default
             // via its Material3 windowInsets param, so the safe-area gap
             // is preserved.
+            //
+            // Tablet path renders its own actions in TabletTopAppBar +
+            // right-pane TabletComposeBar; suppress the phone bottom bar
+            // when the width class is medium/expanded so it does not
+            // overlap the right-pane compose bar.
+            if (com.bizarreelectronics.crm.util.isCompactWidth())
             BottomAppBar(contentPadding = PaddingValues(horizontal = 4.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2187,9 +2193,20 @@ fun TicketDetailScreen(
                                 viewModel.requestStatusChangeWithNotify(id)
                             },
                             topBarActions = {
-                                // T-C2 minimal action stub — Pin + overflow placeholder.
-                                // Full feature parity (Print actions / Share / Copy / etc.)
-                                // moves over from the phone topBar in a follow-up phase.
+                                // Print — opens server's /print/ticket/:id route. Disabled offline.
+                                run {
+                                    val isOnline by viewModel.isEffectivelyOnline.collectAsState()
+                                    val canPrint = viewModel.serverUrl.isNotBlank() && isOnline
+                                    IconButton(
+                                        enabled = canPrint,
+                                        onClick = {
+                                            val url = "${viewModel.serverUrl}/print/ticket/$ticketId?size=letter"
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                                        },
+                                    ) {
+                                        Icon(Icons.Default.Print, contentDescription = "Print")
+                                    }
+                                }
                                 IconButton(onClick = { viewModel.togglePin() }) {
                                     Icon(
                                         Icons.Default.PushPin,
