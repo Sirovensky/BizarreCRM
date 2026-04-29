@@ -123,6 +123,13 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
     case crashDetected        = "crash.detected"
     case errorPresented       = "error.presented"
 
+    // MARK: SMS
+
+    /// Fired when a `DecodingError` occurs decoding the SMS conversation list
+    /// or a thread response.  No PII in the event; context is logged server-side.
+    /// See §91.14 engineering follow-up.
+    case smsDecodeFailure     = "sms.decode.failure"
+
     // MARK: Sync / Offline
 
     case syncQueueDrained     = "sync.queue.drained"
@@ -180,7 +187,7 @@ public enum AnalyticsEvent: String, Codable, Sendable, CaseIterable {
         case .helpArticleViewed, .supportEmailSent, .bugReportSubmitted:
             return .support
 
-        case .crashDetected, .errorPresented:
+        case .crashDetected, .errorPresented, .smsDecodeFailure:
             return .error
         }
     }

@@ -1633,6 +1633,35 @@ _Server endpoints: `GET /sms/unread-count`, `GET /sms/conversations`, `GET /sms/
 - [x] **`EmailEndpoints`** — `listEmailTemplates`, `createEmailTemplate`, `updateEmailTemplate`, `deleteEmailTemplate`, `sendEmail` wrappers. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 - [x] **`EmailComposerViewModel`** — `@Observable`; cursor insert; `loadTemplate`; `isValid`; `send`; `htmlPreview`. 18 tests. (feat(ios phase-8 §12+§64): SMS composer dynamic-vars + Email templates)
 
+### §12.15 SMS Engineering Follow-up (§91.14)
+
+> **Status:** client-side items shipped in `actionplan/§91-sms-followup-a5900aa3`.
+
+- [x] **DTO — `conv_phone` optional** — `SmsConversation.init(from:)` now uses
+  `decodeIfPresent` with an empty-string sentinel so a missing or null
+  `conv_phone` from the server does not crash the entire conversation-list
+  decode.  Empty-phone rows are filtered out by `SmsListViewModel`.
+  File: `Networking/Endpoints/SmsEndpoints.swift`.
+
+- [x] **`SmsError` domain type** — New `enum SmsError: LocalizedError` in
+  `Communications/Sms/SmsError.swift`.  Cases: `.decodingConversations`,
+  `.decodingThread`, `.missingConvPhone`.  `errorDescription` converts
+  `DecodingError` key/type/value cases into user-readable strings without
+  leaking implementation detail.
+
+- [x] **Telemetry on decode failure** — `AnalyticsEvent.smsDecodeFailure`
+  (`"sms.decode.failure"`, category `.error`) added to
+  `Core/Telemetry/AnalyticsEventCatalog.swift`.  `SmsListViewModel.fetch`
+  calls `Analytics.track(.smsDecodeFailure)` when a `DecodingError` is caught
+  and surfaces `SmsError.decodingConversations` as the user-visible message.
+
+- [ ] **Server-side audit** — Verify `packages/server/src/routes/sms.routes.ts`
+  `GET /sms/conversations` always returns `conv_phone` as a non-null string for
+  every row.  Check `sms_conversations` table schema: `conv_phone` column must
+  have `NOT NULL` constraint.  If any row can ever have `conv_phone = NULL`
+  (e.g. during a migration) the server should filter those rows before
+  serialising.  **Not implementable on the iOS client — requires a server PR.**
+
 ---
 ## §13. Notifications
 

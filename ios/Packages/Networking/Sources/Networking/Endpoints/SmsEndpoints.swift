@@ -111,9 +111,14 @@ public struct SmsConversation: Decodable, Sendable, Identifiable, Hashable {
 
     /// Custom decode so `isArchived` defaults to `false` when the server
     /// omits the field (older rows / responses without ENR-SMS7 flags).
+    ///
+    /// `conv_phone` uses `decodeIfPresent` with an empty-string fallback so that
+    /// a missing or null field from the server (e.g. during a schema migration)
+    /// does not cause the entire conversation list to fail decoding.  The
+    /// empty-string sentinel is filtered out by `SmsListViewModel`.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        convPhone = try c.decode(String.self, forKey: .convPhone)
+        convPhone = (try? c.decodeIfPresent(String.self, forKey: .convPhone)) ?? ""
         lastMessageAt = try? c.decode(String.self, forKey: .lastMessageAt)
         lastMessage = try? c.decode(String.self, forKey: .lastMessage)
         lastDirection = try? c.decode(String.self, forKey: .lastDirection)

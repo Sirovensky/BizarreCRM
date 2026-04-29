@@ -176,7 +176,14 @@ public final class SmsListViewModel {
             }
         } catch {
             AppLog.ui.error("SMS list load failed: \(error.localizedDescription, privacy: .public)")
-            errorMessage = error.localizedDescription
+            if error is DecodingError {
+                // §91.14 — telemetry on decode failure so we catch server contract
+                // regressions in aggregate before users file support tickets.
+                Analytics.track(.smsDecodeFailure)
+                errorMessage = SmsError.decodingConversations(underlying: error).localizedDescription
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }
