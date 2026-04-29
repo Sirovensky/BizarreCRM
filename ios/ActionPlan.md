@@ -1958,7 +1958,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] Export at any level: share current filtered view as PDF / CSV. ([actionplan agent-6 b6] ef704dd0)
 - [x] "Save this drill as dashboard tile" saves with query. ([actionplan agent-6 b6] ef704dd0)
 - [x] Cross-report drilling: jump into related report with same filters applied. ([actionplan agent-6 b7] 55e60eb3)
-- [ ] Perf budget: server query index hints, p95 < 2s.
+- [x] Perf budget: server query index hints, p95 < 2s. Client-side p95 tracker shipped: `ReportsPerfBudget` actor with rolling 50-sample window, 2.0s budget, nearest-rank p95; wired in `ReportsViewModel.loadAll()` + `loadForActiveTab()` via begin/end tokens; `os.Logger` warns when single load or rolling p95 exceeds budget; on-device only, no analytics SDK. 5 unit tests. (Server query index hints out of iOS scope.)
 - [ ] See §39 for the full list.
 - [ ] See §6 for the full list.
 - [ ] See §19 for the full list.
