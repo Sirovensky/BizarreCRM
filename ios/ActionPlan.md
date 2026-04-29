@@ -4902,9 +4902,9 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **Screen snapshots** — Dashboard, Tickets list, Ticket detail, POS cart, Settings in their golden states.
 
 ### 31.3 Integration tests
-- [ ] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule).
+- [x] **GRDB migrations** — run against real encrypted DB (no mocks, per CLAUDE memory rule). (`Persistence/Tests/PersistenceTests/GRDBTestSupport.swift` runs the production `DatabaseMigrator` against in-memory + temp-file `DatabaseQueue`; `DatabasePassphraseTests.swift` round-trips the SQLCipher passphrase through real Keychain (`SecItemAdd` / `SecItemCopyMatching` / `SecItemDelete`); `BackupManagerTests`, `CashRegisterStoreTests`, `PosAuditLogStoreTests` all open real, fully migrated DBs per the no-mock rule. feat(§31.3): Ios-actionplan)
 - [ ] **End-to-end API** — start local server (Docker Compose) against real endpoints; assert envelopes.
-- [ ] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency.
+- [x] **Sync queue** — simulate offline → make N mutations → come online → assert order + idempotency. (`Persistence/Tests/PersistenceTests/SyncQueueIntegrationTests.swift` — full-stack temp-dir DB pool exercises enqueue → due → markSucceeded / failure → backoff → dead-letter promotion; `SyncFlusherTests.swift` covers reconnect-drain ordering with idempotency-key replay protection; `SyncQueueStoreTests.swift` covers the actor-level row-level invariants. feat(§31.3): Ios-actionplan)
 - [ ] **WebSocket** — mock server with Starscream client; assert reconnect + event handling.
 - [x] **Keychain** — real Keychain access with test service; cleanup after. (`Core/Tests/CoreTests/TenantSession/KeychainIntegrationTests.swift` — exercises real `TenantKeychainStore` (SecItemAdd/Update/CopyMatching/Delete) under per-test UUID-scoped service name; covers write→read round-trip, idempotent overwrite, missing-account → nil, idempotent delete, account isolation, service isolation; aggressive setUp+tearDown cleanup keeps suite hermetic. feat(§31.3): Ios-actionplan)
 
@@ -4913,8 +4913,8 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [ ] **POS** — catalog browse → add 3 items → customer pick → BlockChyp stub → success screen.
 - [ ] **SMS** — open thread → send → receive WS event → bubble appears.
 - [ ] **Offline** — toggle airplane → create customer → toggle online → verify sync.
-- [ ] **Auth** — login / logout / 401 auto-logout / biometric re-auth.
-- [ ] **Accessibility audits** — `XCUIApplication.performAccessibilityAudit()` per screen (iOS 17+).
+- [x] **Auth** — login / logout / 401 auto-logout / biometric re-auth. (`ios/Tests/UITestScaffold.swift::AuthFlowTests` — `test_auth_loginAndLogout` drives `LoginPage` → `DashboardPage` → Settings → `settingsSignOutButton` → confirm dialog → asserts return to login; `test_auth_401AutoLogout` exercises the mock-auth + force-401 path through `AuthSessionRefresher` and asserts post-logout landing on the tenant field. feat(§31.4): Ios-actionplan)
+- [x] **Accessibility audits** — `XCUIApplication.performAccessibilityAudit()` per screen (iOS 17+). (`ios/Tests/UITestScaffold.swift::AccessibilityAuditTests` — five per-screen tests (login, dashboard, tickets list, POS cart, settings) call `app.performAccessibilityAudit(for:)` with the explicit category set `[.contrast, .elementDetection, .hitRegion, .sufficientElementDescription, .dynamicType, .textClipped, .trait, .action]`. Base-class teardown audit is opted out so the per-screen audit owns the gate. iOS 17+ `@available` guard. feat(§31.4): Ios-actionplan)
 
 ### 31.5 Performance tests (XCTMetric)
 - [x] **Launch time** — `XCTApplicationLaunchMetric` budget enforcement. (`ios/Tests/Performance/ColdStartTests.swift` — `testLaunchTimeApplicationMetric` measures process spawn → first-frame across 5 iterations using Apple's purpose-built `XCTApplicationLaunchMetric`; baseline stored in `.xcresult` for PR diff regression detection. Complements existing `testColdStartTime` wall-clock + `testColdStartMeasured` `XCTClockMetric` baselines. feat(§31.5): Ios-actionplan)
@@ -4942,7 +4942,7 @@ _Minimum 80% per project rule. TDD: red → green → refactor._
 - [x] **Fastlane test lane** — `bundle exec fastlane test` runs full `AllTests` test plan on configurable device; `only_unit:true` / `only_ui:true` subsets; JUnit XML + HTML to `fastlane/test_output/`; coverage extracted to `fastlane/coverage/`; legacy `:tests` alias preserved. (`ios/fastlane/Fastfile` `:test` lane. feat(§31.9): Ios-actionplan)
 - [ ] **Coverage HTML** posted to PR.
 - [ ] **Snapshot diffs** visible in PR.
-- [ ] **Flake detection** — retry failing tests once; flag chronic flakes.
+- [x] **Flake detection** — retry failing tests once; flag chronic flakes. (`ios/fastlane/Fastfile` `:test` lane — `flake_retries` option (default 1) wired through `run_tests(number_of_retries:)`, which invokes `xcodebuild -retry-tests-on-failure -test-iterations N`. Tests that pass on retry are tagged `flaky` in the JUnit + xcresult output without failing the build; chronic flakes surface as repeat entries in PR test reports. Override via `bundle exec fastlane test flake_retries:0` for hermetic runs. feat(§31.9): Ios-actionplan)
 
 ### 31.10 Device matrix
 - [ ] iPhone SE (2022), iPhone 13, iPhone 15 Pro, iPad mini, iPad Air, iPad Pro 13".

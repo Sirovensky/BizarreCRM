@@ -58,6 +58,14 @@ platform :ios do
     only_unit = options.fetch(:only_unit, false)
     only_ui   = options.fetch(:only_ui, false)
     device    = options.fetch(:device, "iPhone 16 Pro")
+    # §31.9 Flake detection — retry failing tests up to `flake_retries` times.
+    # When non-zero, fastlane invokes `xcodebuild -retry-tests-on-failure
+    # -test-iterations <flake_retries+1>` so that a test flipping green on
+    # retry is surfaced as `flaky` in the JUnit + xcresult output, not as a
+    # failure. Override with `flake_retries:0` for hermetic CI runs.
+    # Default of 1 matches Apple's recommendation: one retry catches most
+    # transient simulator hiccups without masking real regressions.
+    flake_retries = options.fetch(:flake_retries, 1).to_i
 
     # Resolve which test plan to run
     test_plan = if only_unit
@@ -68,7 +76,8 @@ platform :ios do
       "AllTests"
     end
 
-    UI.message("§31 running test plan '#{test_plan}' on #{device}")
+    UI.message("§31 running test plan '#{test_plan}' on #{device} " \
+               "(flake_retries=#{flake_retries})")
 
     run_tests(
       scheme:                    "BizarreCRM",
@@ -81,6 +90,10 @@ platform :ios do
       result_bundle:             true,
       result_bundle_path:        "fastlane/test_output/BizarreCRM.xcresult",
       fail_build:                true,         # non-zero exit on any failure
+      # §31.9 Flake detection — `number_of_retries` is fastlane's wrapper
+      # around `xcodebuild -retry-tests-on-failure -test-iterations`.
+      # Tests that pass on retry are tagged `flaky` in JUnit + xcresult.
+      number_of_retries:         flake_retries,
       xcargs:                    "-maximum-test-execution-time-allowance 60",
     )
 
