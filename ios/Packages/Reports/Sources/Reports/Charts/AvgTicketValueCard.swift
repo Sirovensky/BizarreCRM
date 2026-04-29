@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 import DesignSystem
 
 // MARK: - AvgTicketValueCard
@@ -31,6 +32,7 @@ public struct AvgTicketValueCard: View {
                 dataInconsistencyWarning
             } else if let v = value {
                 metricRow(v)
+                    .accessibilityChartDescriptor(AvgTicketValueDescriptor(value: v))
             } else {
                 ChartDashedSilhouette(systemImage: "dollarsign.circle.fill", label: "No ticket value data for this period.")
             }
@@ -126,5 +128,41 @@ public struct AvgTicketValueCard: View {
         guard pct != 0 else { return "no change" }
         let dir = pct > 0 ? "up" : "down"
         return "\(dir) \(String(format: "%.1f", abs(pct))) percent"
+    }
+}
+
+// MARK: - AXChartDescriptor
+
+private struct AvgTicketValueDescriptor: AXChartDescriptorRepresentable {
+    let value: AvgTicketValue
+
+    func makeChartDescriptor() -> AXChartDescriptor {
+        let xAxis = AXCategoricalDataAxisDescriptor(
+            title: "Period",
+            categoryOrder: ["Prior Period", "Current Period"]
+        )
+        let yAxis = AXNumericDataAxisDescriptor(
+            title: "Value (USD)",
+            range: 0...max(value.previousDollars, value.currentDollars),
+            gridlinePositions: []
+        ) { String(format: "$%.2f", $0) }
+        let series = AXDataSeriesDescriptor(
+            name: "Avg Ticket Value",
+            isContinuous: false,
+            dataPoints: [
+                AXDataPoint(x: "Prior Period", y: value.previousDollars),
+                AXDataPoint(x: "Current Period", y: value.currentDollars)
+            ]
+        )
+        let trendDir = value.trendPct >= 0 ? "up" : "down"
+        return AXChartDescriptor(
+            title: "Avg Ticket Value",
+            summary: String(format: "Average ticket value is $%.2f, %@ %.1f%% vs prior period $%.2f.",
+                            value.currentDollars, trendDir, abs(value.trendPct), value.previousDollars),
+            xAxis: xAxis,
+            yAxis: yAxis,
+            additionalAxes: [],
+            series: [series]
+        )
     }
 }

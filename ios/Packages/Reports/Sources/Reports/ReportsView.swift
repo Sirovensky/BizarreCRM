@@ -16,9 +16,6 @@ public struct ReportsView: View {
     @State private var vm: ReportsViewModel
     private let exportService: ReportExportService
 
-    // §15.9 compare-periods picker state
-    @State private var showComparePicker = false
-
     // Sheet routing
     @State private var drillContext: DrillThroughContext?
     @State private var showCSATDetail = false
@@ -29,8 +26,6 @@ public struct ReportsView: View {
     @State private var exportError: String?
     @State private var emailRecipient = ""
     @State private var showEmailSheet  = false
-    // §15.4 Per-tech detail drill
-    @State private var selectedTechForDrill: TechnicianPerfRow?
 
     private let csvService: ReportCSVService
     private let onTapSaleRecord: (Int64) -> Void
@@ -59,20 +54,7 @@ public struct ReportsView: View {
             DrillThroughSheet(
                 context: ctx,
                 repository: vm.repository,
-                fromDate: vm.fromDateString,
-                toDate: vm.toDateString,
-                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) },
-                onCrossReportDrill: { target in
-                    drillContext = nil
-                    // Apply the target's date range if provided
-                    if let f = target.fromDate, let t = target.toDate,
-                       let fromDate = ISO8601DateFormatter.compareFullDate().date(from: f),
-                       let toDate   = ISO8601DateFormatter.compareFullDate().date(from: t) {
-                        vm.applyCustomRange(from: fromDate, to: toDate)
-                        Task { await vm.loadAll() }
-                    }
-                    vm.selectedSubTab = target.targetSubTab
-                }
+                onTapSale: { id in drillContext = nil; onTapSaleRecord(id) }
             )
         }
         .sheet(isPresented: $showCSATDetail) {
@@ -92,16 +74,6 @@ public struct ReportsView: View {
             if let url = exportURL {
                 ShareLink(item: url)
             }
-        }
-        // §15.4 Per-tech detail drill-through
-        .sheet(item: $selectedTechForDrill) { tech in
-            // TechDetailSheet not yet implemented — placeholder until §15.4 sheet ships.
-            VStack(spacing: BrandSpacing.md) {
-                Text(tech.name).font(.brandTitleLarge())
-                Text("Tech detail view coming soon.")
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            .padding(BrandSpacing.lg)
         }
         .alert("Email Report", isPresented: $showEmailSheet) {
             TextField("Recipient email", text: $emailRecipient)
@@ -124,8 +96,6 @@ public struct ReportsView: View {
                 Color.bizarreSurfaceBase.ignoresSafeArea()
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: BrandSpacing.md) {
-                        // §91.6 — pickers scroll with content so the sync-chip cluster
-                        // never overlaps body copy when the user scrolls.
                         dateRangePicker
                             .padding(.horizontal, BrandSpacing.base)
                         heroTile
@@ -138,20 +108,8 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
-                // §91.6 — prevent content bleed through the navigation bar by
-                // giving it an opaque/glass background rather than letting it go
-                // fully transparent as the scroll offset grows.
-                .scrollContentBackground(.hidden)
             }
-            // §91.8 — inline display mode shows "Reports" centred in the nav bar
-            // (same pattern as POS "POS" and Dashboard "Dashboard").  Large-title
-            // mode scrolls the headline under the bar and is avoided here.
             .navigationTitle("Reports")
-            .navigationBarTitleDisplayMode(.inline)
-            // §91.8 — opaque background so scrolled content is fully occluded;
-            // POS and Dashboard rely on the system default (also opaque) rather
-            // than ultraThinMaterial which lets content bleed through the bar.
-            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -186,13 +144,8 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
-                // §91.8 — same opaque backing on iPad (matches phone layout).
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Reports")
-            .navigationBarTitleDisplayMode(.inline)
-            // §91.8 — opaque to match POS / Dashboard (see phone layout above).
-            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -201,60 +154,8 @@ public struct ReportsView: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
-        // §91.8 — search affordance in top-trailing, matching the POS scan
-        // button placement pattern. Toggles `vm.isSearching` which can be
-        // wired to a searchable overlay or sheet by future agents.
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                vm.isSearching.toggle()
-            } label: {
-                Image(systemName: vm.isSearching
-                      ? "magnifyingglass.circle.fill"
-                      : "magnifyingglass")
-                    .accessibilityLabel(vm.isSearching ? "Close search" : "Search reports")
-            }
-            .accessibilityIdentifier("reports.toolbar.search")
-        }
-        // §91.8 — sync chip moved from .principal to .topBarTrailing so the
-        // centred "Reports" title shows in the navigation bar, matching
-        // Dashboard (StalenessIndicator in .topBarTrailing) and POS patterns.
-        ToolbarItem(placement: .topBarTrailing) {
-            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
-        }
-        // §15.9 Compare periods toggle
         ToolbarItem(placement: .automatic) {
-            Menu {
-                Button {
-                    Task { await vm.setComparePeriod(nil) }
-                } label: {
-                    Label("No comparison", systemImage: "xmark.circle")
-                }
-                .disabled(vm.comparePeriod == nil)
-
-                Button {
-                    Task { await vm.setComparePeriod(.previousWeek) }
-                } label: {
-                    Label("vs Prev Week", systemImage: "calendar")
-                }
-
-                Button {
-                    Task { await vm.setComparePeriod(.previousMonth) }
-                } label: {
-                    Label("vs Prev Month", systemImage: "calendar")
-                }
-
-                Button {
-                    Task { await vm.setComparePeriod(.previousYear) }
-                } label: {
-                    Label("vs Prev Year", systemImage: "calendar.badge.clock")
-                }
-            } label: {
-                Label(vm.comparePeriod?.displayLabel ?? "Compare",
-                      systemImage: "arrow.left.arrow.right")
-                    .font(.brandLabelSmall())
-            }
-            .brandGlass(.clear, in: Capsule())
-            .accessibilityLabel("Compare to prior period")
+            StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
         ToolbarItem(placement: .primaryAction) {
             Menu {
@@ -264,6 +165,7 @@ public struct ReportsView: View {
                     Label("Export PDF", systemImage: "doc.richtext")
                 }
                 .accessibilityLabel("Export PDF report")
+                .accessibilityHint("Generates a PDF of the current report and opens the share sheet")
 
                 Button {
                     Task { await exportCSV() }
@@ -271,6 +173,7 @@ public struct ReportsView: View {
                     Label("Export CSV", systemImage: "doc.plaintext")
                 }
                 .accessibilityLabel("Export CSV report")
+                .accessibilityHint("Generates a CSV spreadsheet of the current report data")
 
                 Button {
                     showEmailSheet = true
@@ -278,6 +181,7 @@ public struct ReportsView: View {
                     Label("Email Report", systemImage: "envelope")
                 }
                 .accessibilityLabel("Email report")
+                .accessibilityHint("Opens a dialog to enter a recipient email address")
 
                 Button {
                     showScheduled = true
@@ -285,105 +189,36 @@ public struct ReportsView: View {
                     Label("Scheduled Reports", systemImage: "clock")
                 }
                 .accessibilityLabel("Scheduled reports settings")
+                .accessibilityHint("Opens scheduled report delivery settings")
             } label: {
                 Image(systemName: "ellipsis.circle")
             }
             .brandGlass(.clear, in: Circle())
             .accessibilityLabel("Report actions")
+            .accessibilityHint("Double tap to open export and scheduling options")
         }
     }
 
-    // MARK: - Date Range Picker + Granularity Toggle + Sub-tab
+    // MARK: - Date Range Picker + Granularity Toggle
 
     private var dateRangePicker: some View {
         VStack(spacing: BrandSpacing.sm) {
-            // §15.1 Sub-routes segmented picker
-            subTabPicker
-
-            // §91.4 + §91.6 — Pill row replaces stock segmented Picker.
-            // §91.13 — minHeight enforced on each pill below for tap-target a11y.
-            periodPillRow
+            Picker("Date Range", selection: $vm.selectedPreset) {
+                ForEach(DateRangePreset.allCases) { preset in
+                    Text(preset.displayLabel).tag(preset)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(minHeight: 44)
+            .onChange(of: vm.selectedPreset) { _, _ in
+                Task { await vm.loadAll() }
+            }
+            .accessibilityLabel("Select date range preset")
 
             granularityToggle
         }
     }
 
-    // MARK: - §15.1 Sub-routes picker
-
-    private var subTabPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrandSpacing.sm) {
-                ForEach(ReportSubTab.allCases) { tab in
-                    Button {
-                        withAnimation(.easeInOut(duration: DesignTokens.Motion.quick)) {
-                            vm.selectedSubTab = tab
-                        }
-                    } label: {
-                        Label(tab.displayLabel, systemImage: tab.systemImage)
-                            .font(.brandLabelSmall())
-                            .padding(.horizontal, BrandSpacing.md)
-                            .padding(.vertical, BrandSpacing.sm)
-                            .foregroundStyle(vm.selectedSubTab == tab ? .white : .bizarreOnSurface)
-                            .background(
-                                vm.selectedSubTab == tab
-                                    ? Color.bizarreOrange
-                                    : Color.bizarreSurface2,
-                                in: Capsule()
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(tab.displayLabel) report section")
-                    .accessibilityAddTraits(vm.selectedSubTab == tab ? .isSelected : [])
-                }
-            }
-            .padding(.horizontal, BrandSpacing.xxs)
-        }
-        .accessibilityLabel("Report section selector")
-    }
-
-    /// §91.4 + §91.6 — Pill-based date-range selector.
-    ///
-    /// All four options (7D / 30D / 90D / Custom) render as equal Capsule pills.
-    /// The active pill fills with `bizarreOrangeContainer` and uses the on-surface
-    /// foreground; inactive pills use a low-prominence glass capsule.
-    private var periodPillRow: some View {
-        HStack(spacing: BrandSpacing.xs) {
-            ForEach(DateRangePreset.allCases) { preset in
-                let isSelected = vm.selectedPreset == preset
-                Button {
-                    vm.selectedPreset = preset
-                    Task { await vm.loadAll() }
-                } label: {
-                    Text(preset.displayLabel)
-                        .font(.brandLabelLarge())
-                        .foregroundStyle(
-                            isSelected
-                                ? Color.bizarreOrangeContainer
-                                : Color.bizarreOnSurfaceMuted
-                        )
-                        .padding(.horizontal, BrandSpacing.sm)
-                        .padding(.vertical, BrandSpacing.xs)
-                        .frame(maxWidth: .infinity)
-                        .background(
-                            Capsule()
-                                .fill(
-                                    isSelected
-                                        ? Color.bizarreOrange
-                                        : Color.bizarreSurface1
-                                )
-                        )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Date range: \(preset.displayLabel)")
-                .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-            }
-        }
-    }
-
-    /// §91.5 — Granularity sub-segment (Day / Week / Month).
-    ///
-    /// `.tint(.bizarreOrange)` upgrades the system-default low-contrast grey
-    /// selection indicator to the brand cream-orange treatment.
     private var granularityToggle: some View {
         Picker("Granularity", selection: $vm.granularity) {
             ForEach(ReportGranularity.allCases) { g in
@@ -391,9 +226,6 @@ public struct ReportsView: View {
             }
         }
         .pickerStyle(.segmented)
-        // §91.5 — brand-orange tint replaces the low-contrast system-grey fill.
-        .tint(.bizarreOrange)
-        // §91.13 — 44pt minimum tap target for a11y.
         .frame(minHeight: 44)
         .onChange(of: vm.granularity) { _, _ in
             Task { await vm.loadAll() }
@@ -407,14 +239,11 @@ public struct ReportsView: View {
     private var heroTile: some View {
         HStack(spacing: BrandSpacing.base) {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
-                // §91.10: hero tile — subtitle uses brandBodyMedium (body/label
-                // hierarchy), value uses brandKpiValue unified token
                 Text("Revenue")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurface)
+                    .font(.brandLabelLarge())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
                 Text(vm.revenueTotalDollars, format: .currency(code: "USD"))
-                    .font(.brandKpiValue())
-                    .monospacedDigit()
+                    .font(.brandHeadlineLarge())
                     .foregroundStyle(.bizarreOnSurface)
                 HStack(spacing: BrandSpacing.sm) {
                     sparklineView
@@ -483,121 +312,41 @@ public struct ReportsView: View {
         .padding(.horizontal, BrandSpacing.base)
     }
 
-    // MARK: - Card items (shared between phone/iPad, filtered by sub-tab)
+    // MARK: - Card items (shared between phone/iPad)
 
     @ViewBuilder
     private var cardItems: some View {
-        switch vm.selectedSubTab {
-        case .sales:
-            // §15.2 Period summary KPIs
-            SalesKPISummaryCard(totals: vm.salesTotals)
-            // §15.9 Zoomable revenue chart with optional compare overlay
-            ZoomableRevenueChartCard(
-                currentPoints: vm.revenue,
-                priorPoints: vm.priorRevenue,
-                comparePeriod: vm.comparePeriod,
-                overallVariancePct: vm.compareVariancePct ?? vm.salesTotals.revenueChangePct,
-                onDrillThrough: { pt in drillContext = .revenue(date: pt.date) }
-            )
-            // §15.2 Revenue by payment method pie
-            RevenueByMethodPieCard(points: vm.revenueByMethod)
-            // §15.9 Expenses chart
-            ExpensesChartCard(report: vm.expensesReport)
-            // §15.2 YoY growth
-            if !vm.yoyPoints.isEmpty {
-                YoYGrowthCard(
-                    points: vm.yoyPoints,
-                    overallGrowthPct: {
-                        let totalCurrent = vm.yoyPoints.reduce(0) { $0 + $1.currentRevenue }
-                        let totalPrior   = vm.yoyPoints.reduce(0) { $0 + $1.priorRevenue }
-                        guard totalPrior > 0 else { return nil }
-                        return (totalCurrent - totalPrior) / totalPrior * 100.0
-                    }()
-                )
-            }
-            // §15.2 Top 10 customers
-            if !vm.topCustomers.isEmpty {
-                TopCustomersCard(rows: vm.topCustomers)
-            }
-            // §15.2 Cohort revenue retention
-            CohortRetentionCard(data: vm.cohortRetention, isLoading: vm.isLoading && vm.cohortRetention == nil)
-
-        case .tickets:
-            // §15.3 Tickets by status
-            TicketsByStatusCard(points: vm.ticketsByStatus)
-            // §15.2 Avg ticket value
-            AvgTicketValueCard(value: vm.avgTicketValue)
-            // §15.3 Opened vs closed per day + close rate + avg turnaround
-            if !vm.ticketsTrend.isEmpty {
-                TicketsTrendCard(points: vm.ticketsTrend)
-            }
-            // §15.3 Tickets by tech bar
-            if !vm.employeePerf.isEmpty {
-                TicketsByTechCard(employees: vm.employeePerf) { name in
-                    if let row = vm.technicianPerf.first(where: { $0.name == name }) {
-                        selectedTechForDrill = row
-                    }
-                }
-            }
-            // §15.3 Busy-hours heatmap
-            if !vm.busyHours.isEmpty {
-                BusyHoursHeatmapCard(cells: vm.busyHours)
-            }
-            // §15.3 SLA breach count
-            SLABreachCard(summary: vm.slaSummary)
-
-        case .employees:
-            // §15.4 Top employees (revenue-ranked)
-            TopEmployeesCard(employees: vm.employeePerf)
-            // §15.4 Technician performance table + per-tech detail drill
-            TechnicianPerformanceCard(rows: vm.technicianPerf)
-
-        case .inventory:
-            // §15.5 Low stock / out-of-stock + inventory value (cost + retail)
-            if let report = vm.inventoryReport {
-                InventoryStockCard(report: report)
-            }
-            // §15.5 Inventory movement
-            InventoryMovementCard(report: vm.inventoryReport)
-            // §15.5 Inventory turnover
-            InventoryTurnoverCard(rows: vm.inventoryTurnover)
-            // §15.5 Shrinkage trend
-            ShrinkageTrendCard(report: vm.shrinkageReport)
-
-        case .tax:
-            // §15.6 Tax collected by class
-            TaxReportCard(report: vm.taxReport, isLoading: vm.taxReportLoading)
-
-        case .insights:
-            // §15.7 CSAT + NPS
-            CSATScoreCard(score: vm.csatScore) { showCSATDetail = true }
-            NPSScoreCard(score: vm.npsScore)   { showNPSDetail  = true }
-            // §15.7 Warranty claims trend
-            WarrantyClaimsTrendCard(points: vm.warrantyClaims)
-            // §15.7 Device models repaired distribution
-            DeviceModelsRepairedCard(rows: vm.deviceModelsRepaired)
-            // §15.7 Parts usage analysis
-            PartsUsageCard(rows: vm.partsUsage)
-            // §15.7 Technician hours worked
-            TechHoursCard(rows: vm.techHours)
-            // §15.7 Stalled / overdue tickets
-            StalledTicketsCard(summary: vm.stalledTickets)
-            // §15.7 Customer acquisition + churn
-            CustomerAcquisitionChurnCard(data: vm.customerAcquisitionChurn)
-            // §15.9 Revenue / margin by category
-            RevenueByCategoryCard(rows: vm.revenueByCategory)
-            // §15.9 Repeat customer rate + time-to-repeat
-            RepeatCustomerRateCard(stats: vm.repeatCustomerStats)
-            // §15.9 Avg ticket value trend
-            AvgTicketValueTrendCard(points: vm.avgTicketValueTrend)
-            // §15.9 Conversion funnel (lead → estimate → ticket → invoice → paid)
-            ConversionFunnelCard(stats: vm.conversionFunnel)
-            // §15.9 Labor utilization by tech
-            LaborUtilizationCard(rows: vm.laborUtilization)
+        // §15.2 Revenue chart — line + bar via /reports/sales
+        RevenueChartCard(points: vm.revenue, periodChangePct: vm.salesTotals.revenueChangePct) { pt in
+            drillContext = .revenue(date: pt.date)
         }
 
-        // §91.3 fix 6: SLA Breaches card — hidden when zero breaches (card handles nil/zero guard).
-        SLABreachesCard(report: vm.slaBreaches)
+        // §15.9 Expenses chart — bar via /reports/dashboard-kpis
+        ExpensesChartCard(report: vm.expensesReport)
+
+        // §15.5 Inventory movement chart — bar via /reports/inventory
+        InventoryMovementCard(report: vm.inventoryReport)
+
+        // §15.3 Tickets by status
+        TicketsByStatusCard(points: vm.ticketsByStatus)
+
+        // §15.2 Avg ticket value KPI
+        AvgTicketValueCard(value: vm.avgTicketValue)
+
+        // §15.4 Employee performance
+        TopEmployeesCard(employees: vm.employeePerf)
+
+        // §15.5 Inventory turnover (category table)
+        InventoryTurnoverCard(rows: vm.inventoryTurnover)
+
+        // §15.7 CSAT + NPS
+        CSATScoreCard(score: vm.csatScore) {
+            showCSATDetail = true
+        }
+
+        NPSScoreCard(score: vm.npsScore) {
+            showNPSDetail = true
+        }
     }
 
     // MARK: - Export
