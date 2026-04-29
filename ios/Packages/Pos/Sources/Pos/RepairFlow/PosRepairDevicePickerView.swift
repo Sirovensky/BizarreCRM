@@ -154,43 +154,10 @@ public struct PosRepairDevicePickerView: View {
                 .padding(.bottom, 16)
             }
 
-            // Inspector-style footer buttons
-            HStack(spacing: 12) {
-                Button("Cancel") {
-                    coordinator.cancel()
-                }
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.bizarreError)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(Color.bizarreError.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("repairFlow.devicePicker.cancel")
-
-                Button {
-                    coordinator.advance()
-                    BrandHaptics.tapMedium()
-                } label: {
-                    Text("Continue → issue")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(
-                            coordinator.draft.selectedDeviceOption == nil
-                                ? Color.bizarreOrange.opacity(0.4)
-                                : Color.bizarreOrange,
-                            in: RoundedRectangle(cornerRadius: 10)
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(coordinator.draft.selectedDeviceOption == nil || coordinator.isLoading)
-                .accessibilityLabel("Continue to describe issue")
-                .accessibilityIdentifier("repairFlow.devicePicker.continue")
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(Color.bizarreSurface1)
+            // Cancel/Continue buttons live in the parent
+            // `iPadRepairInspectorPane` footer — embedding another set here
+            // gave the user two pairs of buttons (one mid-screen, one at the
+            // bottom). Removed.
         }
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
     }

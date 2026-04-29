@@ -50,13 +50,21 @@ public struct PosDevicePickerRepositoryImpl: PosDevicePickerRepository {
     }
 
     public func fetchAssets(customerId: Int64) async throws -> [PosDeviceOption] {
-        let rows = try await api.get(
-            "/api/v1/customers/\(customerId)/assets",
-            as: [AssetRow].self
-        )
-
-        var options: [PosDeviceOption] = rows.map { row in
-            .asset(id: row.id, label: row.name, subtitle: row.subtitle)
+        // Walk-in tickets reach this view-model with `customerId == 0` (no
+        // server-side customer record yet). The server's
+        // `GET /api/v1/customers/:id/assets` route validates the param via
+        // `validateId(req.params.id, 'customerId')` and returns
+        // `Invalid customerId: must be positive integer`. Skip the fetch
+        // and surface only the sentinel options instead.
+        var options: [PosDeviceOption] = []
+        if customerId > 0 {
+            let rows = try await api.get(
+                "/api/v1/customers/\(customerId)/assets",
+                as: [AssetRow].self
+            )
+            options = rows.map { row in
+                .asset(id: row.id, label: row.name, subtitle: row.subtitle)
+            }
         }
 
         // Sentinel rows are always appended in a fixed order.

@@ -81,7 +81,12 @@ public struct ShellLayout<Content: View, CompactContent: View>: View {
 
             content(selection)
         }
-        .ignoresSafeArea(.container, edges: .top)
+        // Don't ignore the top safe area — the iPad status bar (clock,
+        // battery, wifi) is opaque chrome owned by the OS and content
+        // sliding under it produces collisions like the repair-flow step
+        // indicator overlapping the date/time row. Bottom edge stays
+        // ignored so the rail glass extends to the home-indicator strip.
+        .ignoresSafeArea(.container, edges: .bottom)
     }
 }
 
