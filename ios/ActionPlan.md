@@ -3387,7 +3387,7 @@ Page purpose: inspect + test the tenant server connection. No tenant-switch butt
 - [ ] Empty state: "No settings match 'xyz'. Try synonyms: card, payment, cash."
 - [ ] Recently changed: small section at top with last 5 toggles
 - [ ] Shake-to-report-bug: dev/staging builds only; `UIResponder.motionEnded(.motionShake)` opens bug-report form (§69); production is opt-in via Settings → Accessibility (subway riders)
-- [ ] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo)
+- [x] Shake-to-undo: iOS system gesture; `UndoManager` (§63) hooks in; honor user's iOS setting (Accessibility → Touch → Shake to Undo) (`.shakeToUndo(undoManager:isGestureActive:)` in `Motion/Section30MotionExtras2.swift`. feat(§30))
 - [ ] Accidental-trigger protection: debounce; ignore shakes during active gestures (scroll/pan)
 - [x] Device-local backup: Settings → Data → Backup now → exports SQLCipher DB + photos to `~/Documents/Backups/<date>.bzbackup` (encrypted bundle); share sheet to Files / iCloud Drive / AirDrop
 - [ ] Automatic schedule daily/weekly/off; runs in `BGProcessingTask`; skipped if low battery
@@ -4828,6 +4828,11 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [x] Search-bar focus glow — brand-primary glow ring animates in when search field gains focus. (`.searchBarFocusGlow(isFocused:cornerRadius:)` in `Motion/Section30MotionExtras.swift`; stroke + shadow; spring(0.28, 0.80); Reduce Motion: easeInOut 0.10s. feat(§30))
 - [x] Badge bounce on new content — scale overshoot + `.selection` haptic when badge count increases. (`.badgeBounceOnNew(count:)` in `Motion/Section30MotionExtras.swift`; spring 1.30 → 1.0 with delay; no-op on decrease; Reduce Motion: instant. feat(§30))
 - [x] Swipe-back gesture indicator — leading-edge chevron tracks drag-right progress, fades/scales with gesture. (`.swipeBackIndicator(dragOffset:)` in `Motion/Section30MotionExtras.swift`; opacity + scale proportional to 0…80pt drag; Reduce Motion: hidden. feat(§30))
+- [x] Shake-to-undo gesture — `ShakeHostingController` bridges `motionEnded(.motionShake)` to `UndoManager.undo()`; honors iOS Accessibility → Touch → Shake to Undo preference; debounce via `isGestureActive` flag; `.shakeToUndo(undoManager:isGestureActive:)` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
+- [x] Long-press preview lift — scale 1.0→1.035 + shadow bloom on long-press ≥ 0.40s; spring(0.25, 0.72); Reduce Motion: no scale/shadow change; `.longPressPreviewLift()` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
+- [x] Navigation-bar transition curve — `BrandMotion.navigationBarTransition` spring(0.32, 0.86) for programmatic title/button changes; `.navigationBarTransitionCurve(value:)` modifier; Reduce Motion: instant; `Motion/Section30MotionExtras2.swift`. feat(§30))
+- [x] List-row press scale — compress 0.965 on tap-down (response 0.14, crisp), spring back 1.0 on release (response 0.30, bouncy); `simultaneousGesture` safe alongside `.onTapGesture`; Reduce Motion: no scale; `.listRowPressScale()` modifier in `Motion/Section30MotionExtras2.swift`. feat(§30))
+- [x] Pull-to-load-more curve — `BrandMotion.pullToLoadMore` interactiveSpring(0.38, 0.60); opacity + scale(0.80→1.0) on appear; `.pullToLoadMoreCurve(isVisible:)` modifier; Reduce Motion: easeInOut 0.15s; `Motion/Section30MotionExtras2.swift`. feat(§30))
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).
 - [ ] Variant rules: `.fill` on active/selected, outline on inactive; default `.monochrome`, `.multicolor` for status (warning/error), `.hierarchical` for brand surfaces where depth helps.
 - [ ] Custom SF Symbols for brand glyphs (wrench-spark) in `Assets.xcassets/Symbols/`; naming `brand.wrench.spark`.
