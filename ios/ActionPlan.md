@@ -7338,6 +7338,14 @@ Compact text wireframes — informs Figma without being Figma.
 
 Pattern: every screen gets one ASCII wireframe in `docs/wireframes/`. Keeps a shared picture without a Figma license.
 
+### 83.6 Documentation checklist
+
+- [x] **DocC comments — `Customer` model** — add full DocC header + property docs to `Packages/Core/Sources/Core/Models/Customer.swift`; covers `displayName`, `Codable` conformance note, and tenant-scoping.
+- [x] **DocC comments — `InventoryItem` model** — add DocC header + property docs to `Packages/Core/Sources/Core/Models/InventoryItem.swift`; cover `isLowStock`, cent-denominated price/cost fields, and reorder logic.
+- [x] **DocC comments — `Ticket` + `TicketStatus`** — add DocC to `Packages/Core/Sources/Core/Models/Ticket.swift`; document state machine reference (§88.1), `totalCents` semantics, and all `TicketStatus` cases.
+- [x] **DocC comments — `Currency` formatter** — add DocC header + `formatCents(_:code:)` parameter docs to `Packages/Core/Sources/Core/Formatting/CurrencyFormatter.swift`.
+- [x] **DocC comments — `PhoneFormatter`** — add DocC header + `format(_:)` / `normalize(_:)` docs to `Packages/Core/Sources/Core/Formatting/PhoneFormatter.swift`; cover NANP convention and E.164 output contract.
+
 ---
 ## §84. Android ↔ iOS parity table
 
