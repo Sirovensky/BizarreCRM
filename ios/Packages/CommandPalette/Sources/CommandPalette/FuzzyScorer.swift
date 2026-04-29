@@ -8,7 +8,9 @@ import Foundation
 /// 3. Exact prefix → high bonus.
 /// 4. Consecutive character run → bonus per run length.
 /// 5. Word-boundary start → bonus per matched boundary character.
-/// 6. Plain subsequence match → base score.
+/// 6. Acronym match — query matches the first letter of each word → bonus.
+/// 7. Plain subsequence match → base score.
+/// 8. Position-in-string penalty — later-position first matches score lower.
 public enum FuzzyScorer {
     /// Score returned for an empty query or exact match.
     public static let maxScore: Double = 1_000
@@ -31,6 +33,13 @@ public enum FuzzyScorer {
             return maxScore * 0.9 + Double(q.count) * 2
         }
 
+        // Acronym match — query chars match the first letter of each word
+        // e.g. "nt" matches "New Ticket", "oi" matches "Open Inventory"
+        if let acronymScore = acronymScore(query: q, target: t) {
+            let subScore = subsequenceScore(query: q, target: t, original: target)
+            return max(acronymScore, subScore)
+        }
+
         return subsequenceScore(query: q, target: t, original: target)
     }
 
@@ -50,6 +59,38 @@ public enum FuzzyScorer {
             }
             .sorted { $0.1 > $1.1 }
             .map { $0.0 }
+    }
+
+    // MARK: - Private acronym scoring
+
+    /// Returns a score when `query` is a strict acronym of `target` (each query
+    /// character matches the first letter of consecutive words), nil otherwise.
+    private static func acronymScore(query: String, target: String) -> Double? {
+        // Build word-initial characters of the target
+        var initials: [Character] = []
+        var prevWasBoundary = true
+        for ch in target {
+            if ch == " " || ch == "-" || ch == "_" || ch == ":" {
+                prevWasBoundary = true
+            } else {
+                if prevWasBoundary {
+                    initials.append(ch)
+                }
+                prevWasBoundary = false
+            }
+        }
+        guard initials.count >= query.count else { return nil }
+
+        let qChars = Array(query)
+        var ii = 0
+        for init_ch in initials {
+            guard ii < qChars.count else { break }
+            if init_ch == qChars[ii] { ii += 1 }
+        }
+        guard ii == qChars.count else { return nil }
+
+        // Reward pure acronym match: high base + per-char boundary bonus
+        return 80 + Double(query.count) * 8
     }
 
     // MARK: - Private subsequence scoring
@@ -96,6 +137,14 @@ public enum FuzzyScorer {
 
         // All query characters must appear in order
         guard qi == qChars.count else { return 0 }
+
+        // Position penalty: first match occurring late in the string scores lower.
+        // This prevents "re" scoring the same on "Reports: Revenue" (position 0)
+        // and "Settings: Revenue" (position 10).
+        if lastMatchIndex >= 0 {
+            let positionPenalty = Double(tChars.count - qi) * 0.05
+            score = max(0, score - positionPenalty)
+        }
 
         return score
     }

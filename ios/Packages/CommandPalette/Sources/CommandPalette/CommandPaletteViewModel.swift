@@ -17,7 +17,12 @@ public final class CommandPaletteViewModel {
     /// Filtered + ranked actions for the current query.
     public private(set) var filteredResults: [CommandAction] = []
 
+    /// Grouped sections used by the results list view.
+    /// Each section carries a display title and its actions.
+    public private(set) var groupedResults: [ResultSection] = []
+
     /// Currently highlighted row index, or `nil` if nothing selected.
+    /// This indexes into the flat `filteredResults` array.
     public private(set) var selectedIndex: Int? = nil
 
     /// Set to `true` when the palette should be dismissed.
@@ -112,11 +117,26 @@ public final class CommandPaletteViewModel {
         let contextActions = contextActionBuilder(context)
 
         if query.isEmpty {
-            // Show context actions first, then all base actions sorted by recency
-            let sorted = baseActions.sorted { lhs, rhs in
-                recentStore.boost(for: lhs.id) > recentStore.boost(for: rhs.id)
+            // Show context actions first, then recent actions, then remaining
+            let recentIDs = Set(recentStore.recentIDs)
+            let recentActions = baseActions.filter { recentIDs.contains($0.id) }
+                .sorted { recentStore.boost(for: $0.id) > recentStore.boost(for: $1.id) }
+            let otherActions = baseActions.filter { !recentIDs.contains($0.id) }
+
+            filteredResults = contextActions + recentActions + otherActions
+
+            // Build groups for empty-query state
+            var sections: [ResultSection] = []
+            if !contextActions.isEmpty {
+                sections.append(ResultSection(id: "context", title: "In Context", actions: contextActions))
             }
-            filteredResults = contextActions + sorted
+            if !recentActions.isEmpty {
+                sections.append(ResultSection(id: "recents", title: "Recent", actions: recentActions))
+            }
+            if !otherActions.isEmpty {
+                sections.append(ResultSection(id: "all", title: "All Actions", actions: otherActions))
+            }
+            groupedResults = sections
             return
         }
 
@@ -150,6 +170,31 @@ public final class CommandPaletteViewModel {
             .map { $0.action }
 
         filteredResults = rankedContext + rankedBase
+
+        // Build sections for search state
+        var sections: [ResultSection] = []
+        if !rankedContext.isEmpty {
+            sections.append(ResultSection(id: "context", title: "In Context", actions: rankedContext))
+        }
+        if !rankedBase.isEmpty {
+            sections.append(ResultSection(id: "results", title: "Actions", actions: rankedBase))
+        }
+        groupedResults = sections
+    }
+}
+
+// MARK: - ResultSection
+
+/// A titled group of actions for display in the command palette results list.
+public struct ResultSection: Identifiable, Sendable {
+    public let id: String
+    public let title: String
+    public let actions: [CommandAction]
+
+    public init(id: String, title: String, actions: [CommandAction]) {
+        self.id = id
+        self.title = title
+        self.actions = actions
     }
 }
 

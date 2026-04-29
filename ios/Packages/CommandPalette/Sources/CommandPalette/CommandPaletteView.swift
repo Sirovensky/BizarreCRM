@@ -188,16 +188,100 @@ public struct CommandPaletteView: View {
         }
     }
 
-    // MARK: - iPhone result list (compact vertical)
+    // MARK: - iPhone result list (compact vertical, grouped)
 
     private var resultList: some View {
+        Group {
+            if vm.filteredResults.isEmpty && !vm.query.isEmpty {
+                noResultsEmptyState
+            } else if vm.filteredResults.isEmpty {
+                promptEmptyState
+            } else {
+                groupedResultList
+            }
+        }
+        .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
+    }
+
+    // Empty state when query is non-empty but nothing matched
+    private var noResultsEmptyState: some View {
+        VStack(spacing: BrandSpacing.md) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 36))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            Text("No results for "\(vm.query)"")
+                .font(.brandBodyLarge())
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Text("Try a different spelling, or use a ticket #, phone number, or SKU.")
+                .font(.brandBodyMedium())
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(BrandSpacing.xxl)
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No results for \(vm.query). Try a different spelling, or use a ticket number, phone number, or SKU.")
+    }
+
+    // Empty state shown before the user types anything (no actions registered yet)
+    private var promptEmptyState: some View {
+        VStack(spacing: BrandSpacing.sm) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 36))
+                .foregroundStyle(.tertiary)
+                .accessibilityHidden(true)
+            Text("Type to search actions")
+                .font(.brandBodyLarge())
+                .foregroundStyle(.secondary)
+        }
+        .padding(BrandSpacing.xxl)
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Type to search actions")
+    }
+
+    private var groupedResultList: some View {
+        // Build a flat index offset table so we can map section+row → flat index
+        let sections = vm.groupedResults
+        // If groupedResults not yet populated (shouldn't happen), fall back to ungrouped
+        if sections.isEmpty {
+            return AnyView(ungroupedResultList)
+        }
+        return AnyView(
+            List {
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(Array(section.actions.enumerated()), id: \.element.id) { localIndex, action in
+                            let flatIndex = flatIndex(for: action)
+                            resultRow(action: action, index: flatIndex)
+                        }
+                    } header: {
+                        Text(section.title)
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.secondary)
+                            .textCase(nil)
+                    }
+                }
+            }
+            .listStyle(.plain)
+            .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
+        )
+    }
+
+    // Fallback ungrouped list (used if groupedResults is empty for any reason)
+    private var ungroupedResultList: some View {
         List {
             ForEach(Array(vm.filteredResults.enumerated()), id: \.element.id) { index, action in
                 resultRow(action: action, index: index)
             }
         }
         .listStyle(.plain)
-        .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
+    }
+
+    /// Returns the flat index of `action` within `vm.filteredResults`.
+    private func flatIndex(for action: CommandAction) -> Int {
+        vm.filteredResults.firstIndex(where: { $0.id == action.id }) ?? 0
     }
 
     private func resultRow(action: CommandAction, index: Int) -> some View {
@@ -221,17 +305,65 @@ public struct CommandPaletteView: View {
     ]
 
     private var iPadResultGrid: some View {
-        ScrollView {
-            LazyVGrid(columns: iPadColumns, spacing: BrandSpacing.sm) {
-                ForEach(Array(vm.filteredResults.enumerated()), id: \.element.id) { index, action in
-                    iPadActionCell(action: action, index: index)
+        Group {
+            if vm.filteredResults.isEmpty && !vm.query.isEmpty {
+                // No results empty state for iPad overlay
+                VStack(spacing: BrandSpacing.md) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                    Text("No results for "\(vm.query)"")
+                        .font(.brandBodyLarge())
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .frame(maxWidth: .infinity)
+                .padding(BrandSpacing.xl)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("No results for \(vm.query)")
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: .sectionHeaders) {
+                        if vm.groupedResults.isEmpty {
+                            // Fallback: ungrouped grid
+                            LazyVGrid(columns: iPadColumns, spacing: BrandSpacing.sm) {
+                                ForEach(Array(vm.filteredResults.enumerated()), id: \.element.id) { index, action in
+                                    iPadActionCell(action: action, index: index)
+                                }
+                            }
+                            .padding(.horizontal, BrandSpacing.base)
+                            .padding(.vertical, BrandSpacing.sm)
+                        } else {
+                            ForEach(vm.groupedResults) { section in
+                                Section {
+                                    LazyVGrid(columns: iPadColumns, spacing: BrandSpacing.sm) {
+                                        ForEach(section.actions, id: \.id) { action in
+                                            let idx = flatIndex(for: action)
+                                            iPadActionCell(action: action, index: idx)
+                                        }
+                                    }
+                                    .padding(.horizontal, BrandSpacing.base)
+                                    .padding(.bottom, BrandSpacing.sm)
+                                } header: {
+                                    Text(section.title)
+                                        .font(.brandLabelSmall())
+                                        .foregroundStyle(.secondary)
+                                        .textCase(nil)
+                                        .padding(.horizontal, BrandSpacing.base)
+                                        .padding(.top, BrandSpacing.sm)
+                                        .padding(.bottom, BrandSpacing.xs)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .background(.ultraThinMaterial)
+                                }
+                            }
+                        }
+                    }
+                }
+                .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
+                .scrollIndicators(.hidden)
             }
-            .padding(.horizontal, BrandSpacing.base)
-            .padding(.vertical, BrandSpacing.sm)
         }
-        .animation(reduceMotion ? .none : .smooth(duration: DesignTokens.Motion.quick), value: vm.filteredResults.map { $0.id })
-        .scrollIndicators(.hidden)
     }
 
     private func iPadActionCell(action: CommandAction, index: Int) -> some View {
@@ -306,6 +438,17 @@ private struct ActionRow: View {
 
             Spacer()
 
+            // Keyboard shortcut hint (shown when not selected to avoid overlap with ↵)
+            if !isSelected, let hint = action.shortcutHint {
+                Text(hint.displayString)
+                    .font(.brandMono(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, BrandSpacing.xs)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xs))
+                    .accessibilityHidden(true)
+            }
+
             if isSelected {
                 Image(systemName: "return")
                     .font(.brandLabelSmall())
@@ -338,6 +481,17 @@ private struct ActionGridCell: View {
                 .lineLimit(2)
 
             Spacer()
+
+            // Keyboard shortcut chip
+            if let hint = action.shortcutHint {
+                Text(hint.displayString)
+                    .font(.brandMono(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, BrandSpacing.xs)
+                    .padding(.vertical, BrandSpacing.xxs)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.xs))
+                    .accessibilityHidden(true)
+            }
         }
         .padding(.horizontal, BrandSpacing.md)
         .padding(.vertical, BrandSpacing.sm)
