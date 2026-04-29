@@ -29,7 +29,25 @@ public struct NotificationsPage: View {
     @State private var paymentFailedCritical: Bool = true
     @State private var mentionCritical: Bool = false
 
-    public init() {}
+    // MARK: §19.3 Notification grouping
+
+    /// When enabled, repeated pushes from the same thread/ticket are collapsed
+    /// into a single notification group with a message-count badge.
+    @State private var groupingEnabled: Bool = true
+
+    // MARK: §19.3 Push-to-talk (PTT) volume
+
+    /// In-app speaker volume used when a staff member receives a PTT audio burst.
+    /// 0.0 = silent, 1.0 = full device volume. Stored in UserDefaults.
+    @State private var pttVolume: Double = 0.8
+
+    public init() {
+        // Load persisted PTT volume (defaults to 0.8 if never set).
+        let saved = UserDefaults.standard.object(forKey: "notif.pttVolume") as? Double
+        _pttVolume = State(initialValue: saved ?? 0.8)
+        let savedGrouping = UserDefaults.standard.object(forKey: "notif.grouping") as? Bool
+        _groupingEnabled = State(initialValue: savedGrouping ?? true)
+    }
 
     public var body: some View {
         Form {
@@ -60,6 +78,55 @@ public struct NotificationsPage: View {
                     .accessibilityIdentifier("notif.lowStock")
                 Toggle("Daily summary", isOn: $dailySummaryEnabled)
                     .accessibilityIdentifier("notif.dailySummary")
+            }
+
+            // MARK: - §19.3 Grouping
+
+            Section {
+                Toggle("Group related notifications", isOn: $groupingEnabled)
+                    .accessibilityIdentifier("notif.grouping.enabled")
+                    .onChange(of: groupingEnabled) { _, v in
+                        UserDefaults.standard.set(v, forKey: "notif.grouping")
+                    }
+            } header: {
+                Text("Grouping")
+            } footer: {
+                Text(groupingEnabled
+                    ? "Repeated alerts from the same ticket or SMS thread are collapsed into one group with a message count badge."
+                    : "Each notification appears individually in Notification Center.")
+            }
+
+            // MARK: - §19.3 Push-to-talk volume
+
+            Section {
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    HStack {
+                        Label("PTT volume", systemImage: "speaker.wave.2.fill")
+                            .font(.brandBodyLarge())
+                            .foregroundStyle(.bizarreOnSurface)
+                            .accessibilityHidden(true)
+                        Spacer()
+                        Text(pttVolume < 0.01 ? "Muted" : "\(Int(pttVolume * 100))%")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .monospacedDigit()
+                    }
+                    Slider(value: $pttVolume, in: 0...1, step: 0.05)
+                        .tint(.bizarreOrange)
+                        .accessibilityLabel(
+                            pttVolume < 0.01
+                            ? "Push to talk volume, muted"
+                            : "Push to talk volume, \(Int(pttVolume * 100)) percent"
+                        )
+                        .accessibilityIdentifier("notif.pttVolume")
+                        .onChange(of: pttVolume) { _, v in
+                            UserDefaults.standard.set(v, forKey: "notif.pttVolume")
+                        }
+                }
+            } header: {
+                Text("Push-to-talk")
+            } footer: {
+                Text("Controls the playback volume of incoming PTT audio bursts within the app. Device volume also applies.")
             }
 
             // MARK: - §19.3 Quiet hours
