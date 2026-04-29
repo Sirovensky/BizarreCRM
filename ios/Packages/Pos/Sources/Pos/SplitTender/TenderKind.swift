@@ -48,6 +48,6 @@ public enum TenderKind: String, CaseIterable, Sendable, Hashable {
     /// Returns `nil` for cash (always available).
     public var hardwareRequiredMessage: String? {
         guard !isAvailableWithoutHardware else { return nil }
-        return "\(displayName) requires a paired payment terminal (coming in §17)."
+        return "\(displayName) requires a paired payment terminal. Pair a terminal in Settings → Hardware to enable this method."
     }
 }

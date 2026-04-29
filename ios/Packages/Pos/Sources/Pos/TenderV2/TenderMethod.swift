@@ -78,7 +78,7 @@ public enum TenderMethod: String, CaseIterable, Sendable, Hashable, Identifiable
     /// `tileSubtitle` to match the mockup layout exactly.
     public var notReadyHint: String? {
         switch self {
-        case .card: return "Tap to Pay — coming soon"
+        case .card: return "Tap to Pay requires a paired terminal. Pair in Settings → Hardware."
         default:    return nil
         }
     }
