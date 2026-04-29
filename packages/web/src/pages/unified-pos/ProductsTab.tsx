@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Search, ShoppingCart, Loader2, Image } from 'lucide-react';
+import { Search, ShoppingCart, Loader2, Image, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 import { posApi } from '@/api/endpoints';
 import { cn } from '@/utils/cn';
 import { formatCurrency } from '@/utils/format';
@@ -17,6 +18,7 @@ const inputCls = 'w-full rounded-lg border border-surface-200 bg-surface-50 px-3
 // ─── ProductsTab ────────────────────────────────────────────────────
 
 export function ProductsTab() {
+  const navigate = useNavigate();
   const { addProduct } = useUnifiedPosStore();
   const { getSetting } = useSettings();
   // WEB-W1-014: pos_show_images — when '1', show product image/thumbnail in tiles.
@@ -83,19 +85,34 @@ export function ProductsTab() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Search + filters */}
+      {/* Search + filters. Quick-add button sits next to the search input
+          so the cashier can spin up a new inventory item without leaving
+          POS — replaces the "Today's Top 5" recently-sold widget that was
+          dropped 2026-04-28 (low signal-to-real-estate ratio). */}
       <div className="flex-shrink-0 space-y-2 px-4 pt-3 pb-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-          <input
-            type="text"
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            placeholder="Search products..."
-            aria-label="Search products"
-            className={cn(inputCls, 'pl-9')}
-          />
-          {isLoading && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-surface-400" />}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <input
+              type="text"
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
+              placeholder="Search products..."
+              aria-label="Search products"
+              className={cn(inputCls, 'pl-9')}
+            />
+            {isLoading && <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-surface-400" />}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/inventory/new?return=/pos')}
+            title="Quick add — create a new inventory item"
+            aria-label="Quick add inventory item"
+            className="flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary-500 px-3 text-sm font-semibold text-primary-950 shadow-sm transition-colors hover:bg-primary-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2"
+          >
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Quick add</span>
+          </button>
         </div>
 
         {/* Category filter pills */}

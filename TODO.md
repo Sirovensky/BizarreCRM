@@ -7,6 +7,21 @@ type: project
 > **NOTE:** All completed tasks must be moved to [DONETODOS.md](./DONETODOS.md).
 > **TODO format:** Use `- [ ] ID. **Title:** actionable summary`. Keep supporting evidence indented under the checkbox. Move completed tasks to [DONETODOS.md](./DONETODOS.md).
 
+## Button-sizing audit (UI-SIZE-1)
+
+- [ ] UI-SIZE-1. **Standardize button sizes app-wide — current per-component custom heights produce a clashing mix on high-DPR displays (2.8K OLED).** User reported 2026-04-28: some buttons too small, some too big. Symptoms visible on the POS screen — sidebar icons (32×32), brand pills (~32h), popular-model pills (~28h), top-bar tabs, bottom action bar (~48h), Quick add (~36h) all live in close visual proximity at different sizes.
+  - **Root cause:** no shared Button primitive. Every component composes raw `<button>` with ad-hoc padding (`px-3 py-2`, `px-4 py-3`, etc.). Tailwind defaults aren't enforced.
+  - **Solution:** add `packages/web/src/components/shared/Button.tsx` with a `size` prop:
+    - `xs` — h-7 (28px) — dense table actions, inline tags
+    - `sm` — h-9 (36px) — secondary actions in forms / modals
+    - `md` — h-10 (40px) — default for primary forms
+    - `lg` — h-12 (48px) — bottom action bars, prominent CTAs
+    - `xl` — h-14 (56px) — hero / wizard Continue
+    Plus `variant`: primary / secondary / ghost / danger.
+  - **Migration:** sweep all 200+ raw `<button>` callsites grouped by surface (POS, settings, wizard, modals, dashboard widgets) and convert. Lint rule (`no-restricted-syntax` for `<button>` outside Button.tsx) prevents regression.
+  - **Acceptance:** every CTA on every page sized from the 5-tier scale; visible audit on a 2.8K screen shows uniform rhythm; Tailwind preset for button heights enforced via Tailwind plugin.
+  - **Effort:** 2-3 days for the primitive + the high-traffic surfaces (POS, dashboard, settings); long tail of ~150 cosmetic files in the same week.
+
 ## BizarreSMS hosted-tier provider (HOSTED-SMS-1)
 
 - [ ] HOSTED-SMS-1. **Build BizarreSMS as a hosted-tier convenience SMS provider — Twilio-API-compatible relay through Bizarre's own upstream account.** Per memory `project_communications.md`: self-host shops bring their own Twilio creds; hosted-tier shops can opt into BizarreSMS as a "skip the Twilio setup" extra. Today the wizard SMS provider list excludes BizarreSMS because zero server code exists for it — picking it would silently no-op. Build sequence:
