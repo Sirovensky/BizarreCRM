@@ -614,7 +614,7 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
   - Deep-link open (e.g., from a push notification) selects the row + loads detail simultaneously.
   - Matches §83.3 wireframe which will be updated to two-pane iPad landscape.
 - [ ] **Export CSV** — `GET /tickets/export` + `.fileExporter` on iPad/Mac.
-- [ ] **Pinned/bookmarked** tickets at top (⭐ toggle).
+- [x] **Pinned/bookmarked** tickets at top (⭐ toggle). `TicketListViewModel.fetch` and `applySort` partition `isPinned` tickets to the front of the array after every sort/refresh; `TicketDetailViewModel.togglePin(api:)` flips the pin via `PATCH /tickets/:id { pinned }` with optimistic `pinnedOverride` state, and the detail Actions menu shows a "Pin to Top" / "Unpin Ticket" toggle wired to it. feat(§4)
 - [ ] **Customer-preview popover** — tap customer avatar on row → small glass card with recent-tickets + quick-actions.
 - [x] **Row age / due-date badges** — same color scheme as My Queue (red/amber/yellow/gray). `SLABadge` (icon + color from `slaStatus`: breached=red/xmark, warning=amber/exclaim, ok=gray) + `DueDateBadge` (days countdown: red overdue, amber &lt;24h, yellow &lt;3d, gray safe). Both shown inline on `TicketRow`. Commit `feat(ios §4-batch-d7f2a91c)`.
 - [x] **Attachment-count badge on ticket row** — `AttachmentCountBadge` (paperclip icon + count) rendered in `TicketRow` trailing column when `ticket.attachmentCount > 0`. `attachmentCount: Int?` added to `TicketSummary` DTO (server field `attachment_count`). This commit.
@@ -747,9 +747,9 @@ _Tickets are the largest surface — Android create screen is ~2109 LOC. Parity 
 
 ### 4.13 Empty / error states
 - [x] No tickets — glass illustration — db339de3 + "Create your first ticket".
-- [ ] Network error on detail — keep cached data, glass retry pill.
-- [ ] Deleted on server → banner "Ticket removed. [Close]".
-- [ ] Permission denied on action → inline toast "Ask your admin to enable this.".
+- [x] Network error on detail — keep cached data, glass retry pill. `TicketDetailViewModel.load()` records `hadCachedDetail` and on `AppError.network`/`.offline` flips `networkErrorBanner` while leaving `.loaded(detail)` intact; `TicketDetailView` overlays a `.brandGlass(.clear, in: Capsule())` retry pill with `wifi.exclamationmark` + Retry button. feat(§4)
+- [x] Deleted on server → banner "Ticket removed. [Close]". `TicketDetailViewModel.deletedOnServerBanner` flips on `AppError.notFound`; `TicketDetailView` renders red `safeAreaInset` banner with `trash.circle.fill` + Close → `dismiss()`. feat(§4)
+- [x] Permission denied on action → inline toast "Ask your admin to enable this.". `TicketDetailViewModel.handleActionError(_:)` funnels delete/convert/duplicate/togglePin through `AppError.from`; `.forbidden` flips `permissionDeniedToast` (3s auto-dismiss capsule). feat(§4)
 - [x] 409 stale edit — db339de3 → "This ticket changed. [Reload]".
 - [ ] Waiver PDF templates managed server-side; iOS renders.
 - [ ] Required contexts: drop-off agreement (liability / data loss / diagnostic fee), loaner agreement (§5), marketing consent (TCPA SMS / email opt-in).
