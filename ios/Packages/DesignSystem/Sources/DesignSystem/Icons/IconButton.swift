@@ -41,6 +41,10 @@ public struct IconButton: View {
                 .foregroundStyle(isActive ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
         }
         .accessibilityLabel(icon.accessibilityLabel)
+        // Voice Control synonyms — §26.8. The first element duplicates
+        // accessibilityLabel so the primary name always works; extra entries
+        // give shorter spoken alternatives ("new", "scan", etc.).
+        .accessibilityInputLabels(icon.voiceControlLabels)
         .buttonStyle(.plain)
         .minTapTarget()
     }

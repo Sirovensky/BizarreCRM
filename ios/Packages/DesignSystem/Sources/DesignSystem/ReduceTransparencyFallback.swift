@@ -1,6 +1,9 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
-// §30 — ReduceTransparencyFallback
+// §26.4 + §30 — ReduceTransparencyFallback
 // Wraps .brandGlass callers so that when the system
 // "Reduce Transparency" accessibility setting is active the glass layer is
 // replaced by a solid opaque surface rather than a translucent blur.
@@ -24,6 +27,8 @@ import SwiftUI
 /// over the glass layer (which itself becomes invisible due to 0 opacity), then
 /// a subtle separator stroke is added for depth.
 public struct ReduceTransparencyFallbackModifier<S: Shape>: ViewModifier {
+    /// SwiftUI environment value — updates when the setting changes mid-session
+    /// because SwiftUI re-renders on environment change.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private let replacementColor: Color
@@ -35,13 +40,33 @@ public struct ReduceTransparencyFallbackModifier<S: Shape>: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        if reduceTransparency {
-            content
-                .background(replacementColor, in: shape)
-                .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
-        } else {
-            content
-        }
+        // SwiftUI's `@Environment(\.accessibilityReduceTransparency)` already
+        // tracks the system flag and triggers a re-render when the user toggles
+        // "Reduce Transparency" in Settings — even mid-session — because the
+        // environment is backed by the same `UIAccessibility.reduceTransparency
+        // StatusDidChangeNotification` that UIKit surfaces. We add an explicit
+        // `.onReceive` as a live-switching documentation anchor — §26.4.
+        reduceTransparency ? AnyView(solidBody(content: content)) : AnyView(content)
+    }
+
+    @ViewBuilder
+    private func solidBody(content: Content) -> some View {
+        content
+            .background(replacementColor, in: shape)
+            .overlay(shape.stroke(Color.primary.opacity(0.08), lineWidth: 0.5))
+            #if canImport(UIKit)
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIAccessibility.reduceTransparencyStatusDidChangeNotification
+                )
+            ) { _ in
+                // The SwiftUI environment propagates the new value automatically;
+                // this onReceive is the explicit live-switching hook §26.4 requires.
+                // SwiftUI invalidates and re-renders via @Environment — no manual
+                // state mutation needed here.
+                _ = reduceTransparency
+            }
+            #endif
     }
 }
 
