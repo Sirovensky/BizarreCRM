@@ -205,6 +205,15 @@ public struct InvoiceCreateView: View {
                     }
                     .accessibilityLabel("Convert from existing record")
                 }
+                // §7.3+ Draft auto-save indicator in the status toolbar position
+                if let savedAt = vm.draftSavedAt {
+                    ToolbarItem(placement: .status) {
+                        Label("Draft saved \(savedAt, style: .time)", systemImage: "doc.badge.clock")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                            .accessibilityLabel("Draft auto-saved at \(savedAt, style: .time)")
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(vm.isSubmitting ? "Saving…" : "Save") {
                         Task {

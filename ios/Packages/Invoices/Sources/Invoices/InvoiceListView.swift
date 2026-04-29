@@ -8,6 +8,8 @@ import Sync
 
 // §7.1 Invoice list — status tabs, filters, sort, row chips, stats header, bulk, export CSV, context menu, pagination
 // §7.5 Deep-link navigation: push notification tap → .invoice(tenantSlug:id:) route → navigate to detail
+// §7.1+ Filter chips: active-filter summary pills shown below search bar for one-tap removal
+// §7.2+ Batch-print queue: bulk mode gains "Print Selected" action via UIPrintInteractionController
 
 public struct InvoiceListView: View {
     @State private var vm: InvoiceListViewModel
@@ -17,6 +19,7 @@ public struct InvoiceListView: View {
     @State private var showSortMenu: Bool = false
     @State private var showFilterSheet: Bool = false
     @State private var csvExportItem: ExportableCSV?
+    @State private var showBatchPrintAlert: Bool = false
     @State private var showPaySheet: Int64?
     @State private var showRefundSheet: Int64?
     @State private var showVoidAlert: Int64?
@@ -115,6 +118,11 @@ public struct InvoiceListView: View {
                     InvoiceStatsHeaderView(api: api)
                     // Status tabs
                     statusTabBar.padding(.bottom, BrandSpacing.xs)
+                    // §7.1+ Active-filter chips — one per active axis, tap to clear that axis
+                    if vm.hasActiveFilter {
+                        activeFilterChips
+                            .padding(.bottom, BrandSpacing.xs)
+                    }
                     content
                 }
                 if vm.isOffline {
@@ -143,6 +151,11 @@ public struct InvoiceListView: View {
                     VStack(spacing: 0) {
                         InvoiceStatsHeaderView(api: api)
                         statusTabBar.padding(.bottom, BrandSpacing.xs)
+                        // §7.1+ Active-filter chips on iPad sidebar too
+                        if vm.hasActiveFilter {
+                            activeFilterChips
+                                .padding(.bottom, BrandSpacing.xs)
+                        }
                         content
                     }
                     if vm.isOffline {
@@ -226,6 +239,81 @@ public struct InvoiceListView: View {
                     .accessibilityLabel("\(tab.displayName) invoices")
                     .accessibilityAddTraits(vm.statusTab == tab ? [.isSelected, .isButton] : .isButton)
                 }
+            }
+            .padding(.horizontal, BrandSpacing.base)
+        }
+    }
+
+    // MARK: - §7.1+ Active filter chips
+
+    /// Horizontally scrolling row of dismissible chips — one per active filter axis.
+    /// Tapping a chip clears that single axis and reloads the list.
+    private var activeFilterChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrandSpacing.sm) {
+                // Date range chip
+                if vm.advancedFilter.dateRangeStart != nil || vm.advancedFilter.dateRangeEnd != nil {
+                    ActiveFilterChip(label: "Date range") {
+                        var f = vm.advancedFilter
+                        f.dateRangeStart = nil
+                        f.dateRangeEnd = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Customer name chip
+                if !vm.advancedFilter.customerName.isEmpty {
+                    ActiveFilterChip(label: "Customer: \(vm.advancedFilter.customerName)") {
+                        var f = vm.advancedFilter
+                        f.customerName = ""
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Amount range chip
+                if vm.advancedFilter.amountMin != nil || vm.advancedFilter.amountMax != nil {
+                    let label: String = {
+                        switch (vm.advancedFilter.amountMin, vm.advancedFilter.amountMax) {
+                        case let (min?, max?): return "$\(Int(min))–$\(Int(max))"
+                        case let (min?, nil):  return "≥$\(Int(min))"
+                        case let (nil, max?):  return "≤$\(Int(max))"
+                        default:               return "Amount"
+                        }
+                    }()
+                    ActiveFilterChip(label: label) {
+                        var f = vm.advancedFilter
+                        f.amountMin = nil
+                        f.amountMax = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Payment method chip
+                if let method = vm.advancedFilter.paymentMethod, !method.isEmpty {
+                    let display = InvoicePaymentMethodFilter(rawValue: method)?.displayName ?? method
+                    ActiveFilterChip(label: display) {
+                        var f = vm.advancedFilter
+                        f.paymentMethod = nil
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Created-by chip
+                if !vm.advancedFilter.createdBy.isEmpty {
+                    ActiveFilterChip(label: "By: \(vm.advancedFilter.createdBy)") {
+                        var f = vm.advancedFilter
+                        f.createdBy = ""
+                        Task { await vm.applyAdvancedFilter(f) }
+                    }
+                }
+                // Clear-all chip
+                Button {
+                    Task { await vm.applyAdvancedFilter(InvoiceListFilter()) }
+                } label: {
+                    Text("Clear all")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreError)
+                        .padding(.horizontal, BrandSpacing.sm)
+                        .padding(.vertical, BrandSpacing.xxs)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear all active invoice filters")
             }
             .padding(.horizontal, BrandSpacing.base)
         }
@@ -481,6 +569,13 @@ public struct InvoiceListView: View {
                         } label: {
                             Label("Export CSV", systemImage: "arrow.down.doc")
                         }
+                        // §7.2+ Batch-print queue — enqueues selected invoice IDs for AirPrint
+                        Button {
+                            batchPrintSelected()
+                        } label: {
+                            Label("Print \(vm.selectedIds.count) Invoice\(vm.selectedIds.count == 1 ? "" : "s")", systemImage: "printer")
+                        }
+                        .accessibilityLabel("Print \(vm.selectedIds.count) selected invoice\(vm.selectedIds.count == 1 ? "" : "s")")
                         Button(role: .destructive) {
                             Task { await bulkVM.perform(action: "void", ids: Array(vm.selectedIds)) }
                         } label: {
@@ -594,6 +689,61 @@ public struct InvoiceListView: View {
     private func exportCSV() {
         let data = InvoiceCSVExporter.csv(from: vm.invoices)
         csvExportItem = ExportableCSV(data: data)
+    }
+
+    // MARK: - §7.2+ Batch-print queue
+
+    /// Enqueues all selected invoices for AirPrint via a single `UIPrintInteractionController`.
+    /// Builds a text-based placeholder for each invoice (full PDF render is handled by
+    /// `InvoicePrintService` per-invoice; here we compose a multi-page text document).
+    private func batchPrintSelected() {
+        let selected = vm.invoices.filter { vm.selectedIds.contains($0.id) }
+        guard !selected.isEmpty else { return }
+
+        let printInfo = UIPrintInfo(dictionary: nil)
+        printInfo.jobName = "Invoices (\(selected.count))"
+        printInfo.outputType = .general
+        printInfo.orientation = .portrait
+
+        // Build a plain-text summary page per invoice (PDF render deferred to per-invoice print service)
+        let pageText = selected.map { inv -> String in
+            let total = inv.total.map { String(format: "$%.2f", $0) } ?? "—"
+            let status = (inv.status ?? "unknown").capitalized
+            return "Invoice \(inv.displayId)\n\(inv.customerName)\nTotal: \(total)  Status: \(status)"
+        }.joined(separator: "\n\n---\n\n")
+
+        let formatter = UISimpleTextPrintFormatter(text: pageText)
+        let controller = UIPrintInteractionController.shared
+        controller.printInfo = printInfo
+        controller.printFormatter = formatter
+        controller.present(animated: true)
+    }
+}
+
+// MARK: - §7.1+ Active filter chip
+
+private struct ActiveFilterChip: View {
+    let label: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        Button(action: onRemove) {
+            HStack(spacing: BrandSpacing.xxs) {
+                Text(label)
+                    .font(.brandLabelSmall())
+                    .foregroundStyle(Color.black)
+                    .lineLimit(1)
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.black)
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .background(Color.bizarreOrange, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Remove filter: \(label)")
+        .accessibilityHint("Double-tap to remove this filter")
     }
 }
 

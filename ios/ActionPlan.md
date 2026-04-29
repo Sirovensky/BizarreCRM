@@ -1186,6 +1186,8 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Export CSV** via `.fileExporter`. (`InvoiceCSVExporter.csv(from:)` RFC-4180; `ExportableCSV: FileDocument`; wired in toolbar + bulk mode; 5 tests) (3c5f3522)
 - [x] **Row context menu** — Open, Copy invoice #, Send SMS, Send email, Print, Record payment, Void. (Full context menu + leading/trailing swipe actions in `InvoiceListView`) (3c5f3522)
 - [x] **Cursor-based pagination (offline-first)** per top-of-doc rule + §20.5. `GET /invoices?cursor=&limit=50` online; list reads from GRDB via `ValueObservation`. (`InvoiceRepository.listExtended` with cursor param; load-more footer in list; `hasMore`/`nextCursor` in ViewModel) (3c5f3522)
+- [x] **Search filter chips** — active-filter summary pills shown below the search bar; one chip per active axis (date range, customer, amount range, payment method, created-by); tap removes that axis; "Clear all" chip resets all axes. `ActiveFilterChip` in `InvoiceListView`; wired in both compact + regular layouts.
+- [x] **Batch-print queue UI** — "Print N Invoices" action in bulk-mode toolbar menu; builds a multi-page `UISimpleTextPrintFormatter` summary and presents `UIPrintInteractionController.shared` for AirPrint. `batchPrintSelected()` in `InvoiceListView`.
 
 ### 7.2 Detail
 - [x] Line items / totals / payments — shipped.
@@ -1206,6 +1208,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Convert to credit note** — if overpaid. `isOverpaid` helper + "Convert Overpayment to Credit" toolbar menu entry → `InvoiceCreditNoteSheet`; `showConvertToCreditNote` state. ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Timeline** — every status change, payment, note, email/SMS send. `InvoiceTimelineView` + `buildInvoiceTimeline()`; 12 tests. Row a11y: combined `accessibilityLabel` = title + formatted timestamp; `.isStaticText` trait; timestamp span marked `.accessibilityHidden`. (feat(§7.2) e9c1737e; §7-polish agent-aa4a1e8d)
 - [x] **Deposit invoices linked** — nested card showing connected deposit invoices. `DepositInvoicesCard` (GET /invoices?deposit_parent_id; status badge; tap → nested detail sheet); wired in `InvoiceDetailView`. ([actionplan agent-6 b7] 55e60eb3)
+- [x] **Customer-portal link copy** — capsule button in `HeaderCard` calls `GET /api/v1/customers/:id/portal-link` (now in `CustomerDetailEndpoints`), copies URL, shows "Portal link copied!" for 2 s. `CustomerPortalLinkResponse` DTO + `APIClient.customerPortalLink` moved to Networking package; duplicate removed from Customers package.
 
 ### 7.3 Create
 - [x] **Customer picker** (or pre-seeded from ticket). `InvoiceCustomerPickerSheet` — search GET /api/v1/customers, 300ms debounce, sheet with drag indicator. ([actionplan agent-6 b4] c0cb747c)
@@ -1217,6 +1220,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **Convert from estimate**. `InvoiceConvertFromEstimateSheet` + `InvoiceConvertFromEstimateViewModel`; toolbar "Convert → From Estimate…" in `InvoiceCreateView`; 2 tests. ([actionplan agent-6 b7] 55e60eb3)
 - [x] **Idempotency key** — server requires for POST /invoices. UUID generated at `InvoiceCreateViewModel.init`, sent as `idempotency_key` in `CreateInvoiceRequest`. ([actionplan agent-6 b4] c0cb747c)
 - [x] **Draft** autosave.
+- [x] **Draft auto-save indicator** — `draftSavedAt: Date?` added to `InvoiceCreateViewModel`; set on every `scheduleAutoSave()` call; shown as `ToolbarItem(placement: .status)` "Draft saved HH:mm" with `doc.badge.clock` icon in `InvoiceCreateView`.
 - [x] **Send now** checkbox — email/SMS on create. `sendOnCreate` toggle. (feat(§7.3) 5e509224)
 
 ### 7.4 Record payment
@@ -1275,6 +1279,7 @@ _Server endpoints: `GET /invoices`, `GET /invoices/stats`, `GET /invoices/{id}`,
 - [x] **`RecurringInvoiceListView`** — list with next-run + auto-send status; swipe delete/edit. (feat(ios post-phase §7))
 - [x] **`RecurringInvoiceEndpoints`** — CRUD (`GET/POST/PUT/DELETE /api/v1/invoices/recurring`). (feat(ios post-phase §7))
 - [x] **`RecurringInvoiceEditorViewModel`** — `@Observable`; 9 tests. (feat(ios post-phase §7))
+- [x] **Recurring-invoice template picker** — `RecurringInvoiceEditorSheet` gains a "Template Invoice" section that opens `InvoiceTemplatePickerSheet`; selected template name displayed in the row; `selectedTemplateName` field added to `RecurringInvoiceEditorViewModel`; `api` threaded into sheet.
 
 ### 7.9 Installment payment plans
 - [x] **`InstallmentPlan`** — `{ invoiceId, totalCents, installments: [{ dueDate, amountCents, paidAt? }], autopay }`. (feat(ios post-phase §7))

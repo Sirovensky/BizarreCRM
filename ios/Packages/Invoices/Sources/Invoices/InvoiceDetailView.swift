@@ -568,7 +568,7 @@ public struct InvoiceDetailView: View {
         case .loaded(let inv):
             ScrollView {
                 VStack(spacing: BrandSpacing.base) {
-                    HeaderCard(invoice: inv, onNavigateToCustomer: onNavigateToCustomer)
+                    HeaderCard(invoice: inv, api: api, onNavigateToCustomer: onNavigateToCustomer)
                     if let items = inv.lineItems, !items.isEmpty {
                         LineItemsCard(items: items)
                     }
@@ -624,10 +624,16 @@ public struct InvoiceDetailView: View {
 
 private struct HeaderCard: View {
     let invoice: InvoiceDetail
+    /// §7.2+ Portal link copy — requires APIClient for GET /customers/:id/portal-link
+    let api: APIClient
     /// §7 Customer card link callback — nil hides the chevron.
     var onNavigateToCustomer: ((Int64) -> Void)?
 
     @State private var didCopyLink = false
+    // §7.2+ Customer portal link copy state
+    @State private var didCopyPortalLink = false
+    @State private var isFetchingPortalLink = false
+    @State private var portalLinkError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
@@ -766,6 +772,52 @@ private struct HeaderCard: View {
                 .animation(.easeInOut(duration: 0.2), value: didCopyLink)
                 .accessibilityLabel(didCopyLink ? "Payment link copied to clipboard" : "Copy payment link")
                 .accessibilityHint("Copies the customer payment URL to the clipboard")
+            }
+
+            // §7.2+ Customer portal magic-link copy — generates a single-use login URL
+            // for the customer self-service portal via GET /customers/:id/portal-link.
+            if let custId = invoice.customerId {
+                Button {
+                    guard !isFetchingPortalLink else { return }
+                    Task {
+                        isFetchingPortalLink = true
+                        defer { isFetchingPortalLink = false }
+                        do {
+                            let resp = try await api.customerPortalLink(customerId: custId)
+                            UIPasteboard.general.string = resp.url
+                            withAnimation(.easeInOut(duration: 0.2)) { didCopyPortalLink = true }
+                            try? await Task.sleep(for: .seconds(2))
+                            withAnimation(.easeInOut(duration: 0.2)) { didCopyPortalLink = false }
+                        } catch {
+                            portalLinkError = error.localizedDescription
+                        }
+                    }
+                } label: {
+                    HStack(spacing: BrandSpacing.xs) {
+                        if isFetchingPortalLink {
+                            ProgressView().scaleEffect(0.7)
+                        } else {
+                            Image(systemName: didCopyPortalLink ? "checkmark.circle.fill" : "person.crop.circle.badge.checkmark")
+                                .foregroundStyle(didCopyPortalLink ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+                                .font(.system(size: 15))
+                        }
+                        Text(didCopyPortalLink ? "Portal link copied!" : "Copy portal link")
+                            .font(.brandLabelSmall())
+                            .foregroundStyle(didCopyPortalLink ? .bizarreSuccess : .bizarreOnSurfaceMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .animation(.easeInOut(duration: 0.2), value: didCopyPortalLink)
+                .accessibilityLabel(didCopyPortalLink ? "Customer portal link copied" : "Copy customer portal link")
+                .accessibilityHint("Generates a one-time login link for the customer self-service portal")
+                .alert("Couldn't generate portal link", isPresented: Binding(
+                    get: { portalLinkError != nil },
+                    set: { if !$0 { portalLinkError = nil } }
+                )) {
+                    Button("OK") { portalLinkError = nil }
+                } message: {
+                    if let e = portalLinkError { Text(e) }
+                }
             }
         }
         .cardBackground()

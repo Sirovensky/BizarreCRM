@@ -402,29 +402,6 @@ public struct CustomerPortalMagicLinkCopy: View {
     }
 }
 
-// MARK: - Portal link DTO + APIClient extension
-
-public struct CustomerPortalLinkResponse: Decodable, Sendable {
-    /// Fully-qualified URL the customer can open to log into the self-service portal.
-    public let url: String
-    /// ISO-8601 expiry; typically 24h from generation.
-    public let expiresAt: String?
-
-    enum CodingKeys: String, CodingKey {
-        case url
-        case expiresAt = "expires_at"
-    }
-}
-
-public extension APIClient {
-    /// `GET /api/v1/customers/:id/portal-link` — generate a magic-link URL for the
-    /// customer self-service portal.  Each call generates a fresh single-use token.
-    func customerPortalLink(customerId: Int64) async throws -> CustomerPortalLinkResponse {
-        try await get("/api/v1/customers/\(customerId)/portal-link",
-                      as: CustomerPortalLinkResponse.self)
-    }
-}
-
 // ---------------------------------------------------------------------------
 // MARK: - Birthday field extension on CustomerDetail
 // ---------------------------------------------------------------------------

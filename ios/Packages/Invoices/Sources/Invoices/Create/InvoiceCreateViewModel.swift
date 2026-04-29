@@ -54,6 +54,9 @@ public final class InvoiceCreateViewModel {
     public internal(set) var _pendingDraft: InvoiceDraft?
     public internal(set) var validationErrors: [String: String] = [:]
 
+    // §7.3+ Draft auto-save indicator — updated each time a push completes
+    public private(set) var draftSavedAt: Date?
+
     @ObservationIgnored internal let _draftStoreValue: DraftStore = DraftStore()
     @ObservationIgnored internal lazy var _draftAutoSaverValue: DraftAutoSaver<InvoiceDraft> =
         DraftAutoSaver(screen: "invoice.create", store: _draftStoreValue)
@@ -215,6 +218,8 @@ extension InvoiceCreateViewModel {
 
     public func scheduleAutoSave() {
         _draftAutoSaverValue.push(currentDraft())
+        // §7.3+ Record the moment so the view can show "Draft saved HH:mm"
+        draftSavedAt = Date()
     }
 }
 
