@@ -62,8 +62,9 @@ cat > "${PLIST}" <<'PLIST_EOF'
                     <string>Default Configuration</string>
                     <key>UISceneClassName</key>
                     <string>UIWindowScene</string>
-                    <key>UISceneDelegateClassName</key>
-                    <string></string>
+                    <!-- UISceneDelegateClassName omitted intentionally: SwiftUI App lifecycle
+                         provides the scene delegate automatically. An empty string here
+                         prints a "can't find class (null)" console warning every launch. -->
                 </dict>
             </array>
         </dict>
