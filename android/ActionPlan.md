@@ -3118,7 +3118,7 @@ _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT
 
 ### 20.12 Developer tools
 - [x] Debug drawer: force offline / force sync / inspect queue / inspect dead-letter / clear cache / reset sync state. (session 2026-04-26 — `DebugDrawer.kt` composable + `DebugDrawerViewModel` added; actions: Force Sync (WorkManager syncNow), Run Cache Eviction, Reset Delta Cursor (syncStateDao.clear), Clear Coil Memory Cache; live queue stats (pending + dead-letter) via Flow; gated at call site by BuildConfig.DEBUG)
-- [ ] Leak detection: LeakCanary in debug builds. (session 2026-04-26 — NOTE: requires `debugImplementation("com.squareup.leakcanary:leakcanary-android:...")` in `app/build.gradle.kts` which is shared infra; deferred — wire dep first, then expose `AppWatcher.objectWatcher.retainedObjectCount` in DebugDrawer)
+- [x] Leak detection: LeakCanary in debug builds. (session 2026-04-28 — dep already present at `app/build.gradle.kts:341`; wired `AppWatcher.objectWatcher.retainedObjectCount` polled every 2 s into `DebugDrawerViewModel.retainedObjectCount: StateFlow<Int>`; "Memory (LeakCanary)" panel added to `DebugDrawer` composable showing live count in error colour when >0; "Analyse Leaks" button calls `LeakCanary.dumpHeap()` when retained>0, disabled otherwise)
 
 ---
 ## 21. Background, Push, & Real-Time
