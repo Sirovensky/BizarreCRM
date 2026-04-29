@@ -452,7 +452,7 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [ ] **Tiles** mirror web: Sales today, Tax, Discounts, COGS, Net profit, Refunds, Expenses, Receivables, Open tickets, Appointments today, Low-stock count, Closed today.
 - [x] **Tile taps** deep-link to the filtered list (e.g., Open tickets → Tickets filtered `status_group=open`; Low-stock → Inventory filtered `low_stock=true`). (feat(§3): HeroMetricCard + StatTileCard wired with bizarrecrm:// deep-links, openURL, hoverEffect; 09e6a602)
 - [ ] **Date-range selector** — presets (Today / Yesterday / Last 7 / This month / Last month / This year / All-time / Custom); persists per user in `UserDefaults`; sync to server-side default.
-- [ ] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value.
+- [~] **Previous-period compare** — green ▲ / red ▼ delta badge per tile; driven by server diff field or client subtraction from cached prior value. Stat tile now expand-on-tap (`StatTileCard` toggle; detail row placeholder "No prior-period data yet"). Delta requires server field. <!-- feat(§3): stat tile expand-on-tap -->
 - [x] **Pull-to-refresh** via `.refreshable`. (7cfb248→4f4a11a→d1d3392; forceRefresh() wired in DashboardViewModel; StalenessIndicator in toolbar)
 - [x] **Skeleton loaders** — glass shimmer ≤300ms; cached value rendered immediately if present. (feat(§3): DashboardSkeletonView glass shimmer, Reduce Motion safe; 4ecb468d)
 - [x] **iPhone**: 2-column grid. **iPad**: 3-column ≥768pt wide, 4-column ≥1100pt, capped at 1200pt content width. **Mac**: 4-column. (feat(§3): kpiGridColumnCount + fourColumnIfWide + adaptive columns; 4ecb468d)
@@ -482,12 +482,21 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Always visible to every signed-in user.** "Assigned to me" is a universally useful convenience view — not gated by role or tenant flag. Shown on the dashboard for admins, managers, techs, cashiers alike. (`MyQueueView.swift` no role gate; a3a38f4b)
 - [x] **Separate from tenant-wide visibility.** Two orthogonal controls:
   - **Tenant-level setting `ticket_all_employees_view_all`** (Settings → Tickets → Visibility). Controls what non-manager roles see in the **full Tickets list** (§4): `0` = own tickets only; `1` = all tickets in their location(s). Admin + manager always see all regardless.
+<<<<<<< HEAD
   - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting. (`MyQueueView.swift` scope independent of tenant visibility; a3a38f4b)
 - [x] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin." (`MyQueueView.swift` `MyQueueFilter` Picker + `isTeamFilterBlocked` + `&scope=team` query param + disabled tooltip; a3a38f4b)
 - [x] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later). (`MyQueueView.swift` `QueueRow` + `StatusChip` + `AgeSeverity` + `DueSeverity`; a3a38f4b)
 - [x] **Sort** — due date ASC, then age DESC. (`MyQueueView.swift` client-sort in `load()`; a3a38f4b)
 - [x] **Tap** → ticket detail. (`MyQueueView.swift` `onTap` callback → `DeepLinkRouter`; a3a38f4b)
 - [x] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete. (`MyQueueView.swift` `.swipeActions` + `.contextMenu`; a3a38f4b)
+=======
+  - **My Queue section** (this subsection) stays on the dashboard for everyone; it is a per-user shortcut, never affected by the tenant setting.
+- [ ] **Per-user preference toggle** in My Queue header: `Mine` / `Mine + team` (team = same location + same role). Server returns appropriate set; if tenant flag blocks "team" for this role, toggle is disabled with tooltip "Your shop has limited visibility — ask an admin."
+- [x] **Row**: Order ID + customer avatar + name + status chip + age badge (red >14d / amber 7–14 / yellow 3–7 / gray <3) + due-date badge (red overdue / amber today / yellow ≤2d / gray later). `AgeBadge` + `LateArrivalChip` shipped; late-arrival warning chip on attention rows. <!-- feat(§3): late-arrival chip + age badge color ramp -->
+- [ ] **Sort** — due date ASC, then age DESC.
+- [ ] **Tap** → ticket detail.
+- [x] **Quick actions** (swipe or context menu): Start work, Mark ready, Complete. Leading swipe = assign-to-me with haptic; `MyQueueSection` + `MyQueueRow` + `AgeBadge` shipped. <!-- feat(§3): my-queue swipe-to-assign + age badge -->
+>>>>>>> 88507ca4 (feat(§3/dashboard): stat-tile expand, my-queue swipe, late-arrival chip, activity groups, badge a11y)
 
 ### 3.5 Getting-started / onboarding checklist
 - [x] **Backend:** `GET /account` + `GET /setup/progress` (verify). Checklist items: create first customer, create first ticket, record first payment, invite employee, configure SMS, print first receipt, etc. Commit `28073d86`.
@@ -495,8 +504,13 @@ _Server endpoints: `GET /reports/dashboard`, `GET /reports/dashboard-kpis`, `GET
 - [x] **Celebratory modal** — first sale / first customer / setup complete → confetti `Symbol Animation` + copy. Commit `28073d86`.
 
 ### 3.6 Recent activity feed
+<<<<<<< HEAD
 - [x] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing. Commit `eace0734`.
 - [x] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link. Commit `eace0734`.
+=======
+- [ ] **Backend:** `GET /activity?limit=20` (verify) — fall back to stitched union of tickets/invoices/sms `updated_at` if missing.
+- [x] **Frontend:** chronological list under KPI grid (collapsible). Icon per event type; tap → deep link. `ActivityFeedSection` with Today/Yesterday/Earlier grouping; `activityGroups(from:)` + `activityEntries(from:)` helpers. <!-- feat(§3): activity timestamp grouping -->
+>>>>>>> 88507ca4 (feat(§3/dashboard): stat-tile expand, my-queue swipe, late-arrival chip, activity groups, badge a11y)
 
 ### 3.7 Announcements / what's new
 - [x] **Backend:** `GET /system/announcements?since=<last_seen>` (verify). (`DashboardEndpoints.swift` `systemAnnouncements(since:)`; b04ae99b)
