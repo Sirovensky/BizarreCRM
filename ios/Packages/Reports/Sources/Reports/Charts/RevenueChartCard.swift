@@ -328,6 +328,20 @@ public struct RevenueChartCard: View {
     }
 }
 
+// MARK: - RevenueCardContext
+
+/// Controls which data context the RevenueChartCard surfaces.
+public enum RevenueCardContext: String, CaseIterable, Identifiable, Sendable {
+    /// Displays sales / invoicing revenue.
+    case sales     = "sales"
+    /// Displays inventory movement value.
+    case inventory = "inventory"
+    /// Card is hidden from the dashboard.
+    case hidden    = "hidden"
+
+    public var id: String { rawValue }
+}
+
 // MARK: - RevenueChartMode
 
 public enum RevenueChartMode: String, CaseIterable, Identifiable, Sendable {

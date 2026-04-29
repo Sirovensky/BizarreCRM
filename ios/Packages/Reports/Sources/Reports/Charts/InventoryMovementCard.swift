@@ -26,6 +26,19 @@ public struct InventoryMovementCard: View {
         return Array(r.topMoving.sorted { $0.usedQty > $1.usedQty }.prefix(10))
     }
 
+    /// Total retail value of all value-summary entries, summed client-side.
+    private var totalInventoryValue: Double {
+        report?.valueSummary.reduce(0) { $0 + $1.totalRetailValue } ?? 0
+    }
+
+    /// True when there are out-of-stock items but total inventory value is
+    /// reported as zero — a signal that stock records may be corrupt or
+    /// that the valuation pipeline has not run (§91.12 stock-health warning).
+    public var stockHealthWarning: Bool {
+        guard let r = report else { return false }
+        return r.outOfStockCount > 0 && totalInventoryValue == 0
+    }
+
     public var body: some View {
         if sizeClass == .regular {
             ipadBody
@@ -105,7 +118,7 @@ public struct InventoryMovementCard: View {
 
     @ViewBuilder
     private var alertRow: some View {
-        if let r = report, (r.outOfStockCount > 0 || r.lowStockCount > 0) {
+        if let r = report, (r.outOfStockCount > 0 || r.lowStockCount > 0 || stockHealthWarning) {
             HStack(spacing: BrandSpacing.sm) {
                 if r.outOfStockCount > 0 {
                     alertChip(
@@ -123,8 +136,26 @@ public struct InventoryMovementCard: View {
                         color: .bizarreWarning
                     )
                 }
+                if stockHealthWarning {
+                    stockHealthChip
+                }
             }
         }
+    }
+
+    private var stockHealthChip: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text("Stock health warning")
+                .font(.brandLabelSmall())
+        }
+        .foregroundStyle(Color.bizarreWarning)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+        .accessibilityLabel("Stock health warning: out-of-stock items detected but inventory value is zero")
     }
 
     private func alertChip(count: Int, label: String, icon: String, color: Color) -> some View {

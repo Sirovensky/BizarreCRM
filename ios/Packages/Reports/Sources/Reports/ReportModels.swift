@@ -322,25 +322,34 @@ public struct NPSScore: Codable, Sendable {
     public let promoterPct: Double
     public let detractorPct: Double
     public let themes: [String]
+    /// Number of survey respondents used to calculate this score.
+    /// Nil means the server did not supply a count.
+    public let respondentCount: Int?
 
     public var passivePct: Double { max(0, 100.0 - promoterPct - detractorPct) }
+
+    /// True when there are at least 10 respondents — the minimum for a
+    /// statistically meaningful NPS result (§91.12 spec).
+    public var hasEnoughData: Bool { (respondentCount ?? 0) >= 10 }
 
     enum CodingKeys: String, CodingKey {
         case current
         case previous
-        case promoterPct   = "promoter_pct"
-        case detractorPct  = "detractor_pct"
+        case promoterPct      = "promoter_pct"
+        case detractorPct     = "detractor_pct"
         case themes
+        case respondentCount  = "respondent_count"
     }
 
     public init(current: Int, previous: Int,
                 promoterPct: Double, detractorPct: Double,
-                themes: [String]) {
+                themes: [String], respondentCount: Int? = nil) {
         self.current = current
         self.previous = previous
         self.promoterPct = promoterPct
         self.detractorPct = detractorPct
         self.themes = themes
+        self.respondentCount = respondentCount
     }
 }
 

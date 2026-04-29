@@ -5,15 +5,27 @@ import DesignSystem
 
 public struct AvgTicketValueCard: View {
     public let value: AvgTicketValue?
+    /// Total revenue for the period — used to detect data inconsistency.
+    public let revenue: Double
+    /// Total ticket count — used to detect data inconsistency.
+    public let ticketCount: Int
 
-    public init(value: AvgTicketValue?) {
+    /// True when revenue is reported but ticket count is zero, indicating corrupt or
+    /// incomplete data from the server.
+    public var isDataInconsistent: Bool { revenue > 0 && ticketCount == 0 }
+
+    public init(value: AvgTicketValue?, revenue: Double = 0, ticketCount: Int = 0) {
         self.value = value
+        self.revenue = revenue
+        self.ticketCount = ticketCount
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
-            if let v = value {
+            if isDataInconsistent {
+                inconsistentChip
+            } else if let v = value {
                 metricRow(v)
             } else {
                 ProgressView()
@@ -58,6 +70,21 @@ public struct AvgTicketValueCard: View {
         Text("vs \(v.previousDollars, format: .currency(code: "USD")) prior period")
             .font(.brandLabelLarge())
             .foregroundStyle(.bizarreOnSurfaceMuted)
+    }
+
+    private var inconsistentChip: some View {
+        HStack(spacing: BrandSpacing.xxs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .imageScale(.small)
+                .accessibilityHidden(true)
+            Text("Data inconsistent")
+                .font(.brandLabelSmall())
+        }
+        .foregroundStyle(Color.bizarreWarning)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(Color.bizarreWarning.opacity(0.12), in: Capsule())
+        .accessibilityLabel("Data inconsistent: revenue reported but ticket count is zero")
     }
 
     @ViewBuilder

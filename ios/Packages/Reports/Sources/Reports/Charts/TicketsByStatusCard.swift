@@ -6,9 +6,16 @@ import DesignSystem
 
 public struct TicketsByStatusCard: View {
     public let points: [TicketStatusPoint]
+    /// When true the card returns EmptyView instead of rendering when all
+    /// status counts are zero. Defaults to true per §91.12 spec.
+    public let hidesWhenAllZero: Bool
 
-    public init(points: [TicketStatusPoint]) {
+    /// True when every status point has a count of zero.
+    public var allCountsAreZero: Bool { points.allSatisfy { $0.count == 0 } }
+
+    public init(points: [TicketStatusPoint], hidesWhenAllZero: Bool = true) {
         self.points = points
+        self.hidesWhenAllZero = hidesWhenAllZero
     }
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,7 +25,16 @@ public struct TicketsByStatusCard: View {
         .bizarreOrange, .bizarreTeal, .bizarreMagenta, .bizarreSuccess, .bizarreWarning
     ]
 
+    @ViewBuilder
     public var body: some View {
+        if hidesWhenAllZero && allCountsAreZero {
+            EmptyView()
+        } else {
+            cardBody
+        }
+    }
+
+    private var cardBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             if points.isEmpty {
