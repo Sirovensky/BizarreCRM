@@ -708,12 +708,13 @@ private struct InventoryRow: View {
                 .background(.bizarreError, in: Capsule())
                 .modifier(CriticalLowPulse())
         } else if item.isLowStock {
-            // Low stock — red badge with qty
+            // Low stock — amber badge with qty + gentle pulse animation
             Text("Low · \(stock)")
                 .font(.brandLabelSmall())
                 .padding(.horizontal, BrandSpacing.sm).padding(.vertical, BrandSpacing.xxs)
                 .foregroundStyle(.black)
-                .background(.bizarreError, in: Capsule())
+                .background(.bizarreWarning, in: Capsule())
+                .modifier(LowStockPulse())
         } else if stock > 0 {
             Text("\(stock) in stock")
                 .font(.brandLabelSmall())
@@ -735,6 +736,7 @@ private struct InventoryRow: View {
 
 // MARK: - §6.1 Critical-low pulse animation (respects Reduce Motion)
 
+// §6.1 Critical-low pulse: fast, deep opacity swing for out-of-stock (error red).
 private struct CriticalLowPulse: ViewModifier {
     @State private var pulsing: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -744,6 +746,23 @@ private struct CriticalLowPulse: ViewModifier {
             .opacity(reduceMotion ? 1.0 : (pulsing ? 0.5 : 1.0))
             .animation(
                 reduceMotion ? nil : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                value: pulsing
+            )
+            .onAppear { if !reduceMotion { pulsing = true } }
+    }
+}
+
+// §6.1 Low-stock pulse: slower, subtle scale+opacity swing for low-but-nonzero stock (warning amber).
+private struct LowStockPulse: ViewModifier {
+    @State private var pulsing: Bool = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(reduceMotion ? 1.0 : (pulsing ? 0.7 : 1.0))
+            .scaleEffect(reduceMotion ? 1.0 : (pulsing ? 0.96 : 1.0))
+            .animation(
+                reduceMotion ? nil : .easeInOut(duration: 1.4).repeatForever(autoreverses: true),
                 value: pulsing
             )
             .onAppear { if !reduceMotion { pulsing = true } }
