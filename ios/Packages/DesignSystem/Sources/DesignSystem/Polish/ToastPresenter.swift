@@ -205,6 +205,7 @@ public extension View {
     func toastOverlay() -> some View {
         overlay(alignment: .bottom) {
             ToastStackView()
+                .brandZ(.toast)   // §30 layering rule — toasts pinned to top of stack
         }
     }
 }

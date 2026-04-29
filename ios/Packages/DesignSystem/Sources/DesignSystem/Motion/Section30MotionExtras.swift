@@ -242,7 +242,13 @@ private struct SheetDetentAnimatedModifier: ViewModifier {
                 // doesn't fight the binding setter.
             }
             .animation(
-                reduceMotion ? .easeInOut(duration: 0) : BrandMotion.sheetDetentTransition,
+                // §30 — route through the canonical Reduce-Motion downgrade ladder
+                // so the same rule (>snappy → instant) applies uniformly.
+                BrandMotion.reducedIfNeeded(
+                    BrandMotion.sheetDetentTransition,
+                    duration: MotionDurationSpec.medium.seconds,
+                    reduceMotion: reduceMotion
+                ),
                 value: detent
             )
     }

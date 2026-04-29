@@ -4726,7 +4726,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 
 ### 30.9 Illustrations
 - [x] **Empty states** — branded flat illustrations (tickets / inventory / SMS). (`DesignSystem/Polish/BrandIllustrations.swift` — 14 IllustrationType cases, SF Symbol fallbacks, asset-catalog slot ready. feat(§30.9): 58d6ed1c)
-- [ ] **Tinted** via `.foregroundStyle(.brandPrimary)`.
+- [x] **Tinted** via `.foregroundStyle(.brandPrimary)`. (`BrandIllustration.brandIllustrationTinted(_:)` convenience in `DesignSystem/Polish/Section30PolishExtras.swift`; default `.bizarrePrimary`; wired into BrandIllustrations preview gallery. feat(§30))
 - [ ] **Lottie** animations for loading, errors, success — optional lightweight.
 
 ### 30.10 Component library (reusable)
@@ -4806,18 +4806,18 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Testing: snapshot at each breakpoint in CI (§31.4)
 - [ ] Hierarchy: (1) Surface (`bizarreSurfaceBase` app background); (2) Content (cards, list rows); (3) Glass (nav, toolbars, sheets); (4) Overlay (alerts, toasts)
 - [ ] Rules: glass never on Content layer; Overlay may sit atop glass with additional shadow; shadow on Content to separate from Surface; no shadow on Glass (blur is the separator)
-- [ ] Z-index: toasts 1000; sheets 900; nav 500; content 0
+- [x] Z-index: toasts 1000; sheets 900; nav 500; content 0 (`BrandZLayer` enum + `.brandZ(_:)` modifier in `DesignSystem/Polish/Section30PolishExtras.swift` backed by `DesignTokens.Z`; wired into `View.toastOverlay()` so the toast stack pins to `.toast`. feat(§30))
 - [ ] Transitions: glass appears with `.animation(.springSoft)` + `.opacity`; content slides without opacity to avoid flicker
 - [ ] Background composition: `bizarreSurfaceBase` solid; glass picks up implied color from tint tokens; dark mode base `#0B0D10`, glass tint `#202228`
 - [ ] Problem: bottom sheets (`.presentationDetents`) over keyboard hide content
 - [ ] Sheet root uses `.ignoresSafeArea(.keyboard)` + inner scroll
 - [ ] `defaultScrollAnchor(.bottom)` on active compose
-- [ ] `.scrollDismissesKeyboard(.interactively)` so dragging sheet down dismisses keyboard
+- [x] `.scrollDismissesKeyboard(.interactively)` so dragging sheet down dismisses keyboard (`.sheetKeyboardSafe()` modifier in `DesignSystem/Polish/Section30PolishExtras.swift` bundles `.scrollDismissesKeyboard(.interactively)` + `.ignoresSafeArea(.keyboard, edges: .bottom)`; wired into `Customers/Contacts/CustomerContactEditSheet.swift`. feat(§30))
 - [ ] Start at `.medium` detent; promote to `.large` on keyboard show
 - [x] Smooth detent transition with `.animation` (`BrandMotion.sheetDetentTransition` spring(0.36, 0.82) + `.sheetDetentAnimated(_:)` modifier in `Motion/Section30MotionExtras.swift`. feat(§30))
 - [ ] Date / segmented pickers in sheets need `.submitLabel(.done)` + explicit commit
 - [ ] External keyboard: avoidance no-ops; sheet stays as sized
-- [ ] Three levels: Strong (iOS 26 full refraction), Medium (thin material + slight tint), Minimal (opaque tint for Reduce Transparency / Low Power).
+- [x] Three levels: Strong (iOS 26 full refraction), Medium (thin material + slight tint), Minimal (opaque tint for Reduce Transparency / Low Power). (`BrandGlassIntensity` enum in `DesignSystem/Polish/Section30PolishExtras.swift` maps `.strong/.medium/.minimal` onto `BrandGlassVariant`; `.recommended(reduceTransparency:lowPower:)` auto-selects per device + a11y; wired into a new `BrandGlassBadge(_:intensity:tint:)` initializer. feat(§30))
 - [ ] Auto-select: iOS 26 + A17+ → Strong; iOS 26 + A14-A16 → Medium; pre-iOS 26 → Medium; Low Power / Reduce Transparency → Minimal.
 - [ ] Manual override in Settings → Appearance → Glass intensity (slider or 3 buttons); never fully disables glass.
 - [ ] Perf budget: Strong ~2% extra GPU on scroll (fine on ProMotion); Minimal effectively free.
@@ -4845,7 +4845,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Duration scale tokens: `instant` 0ms (state flip), `quick` 150ms (selection/hover), `snappy` 220ms (chip pop, toast), `smooth` 350ms (nav push, sheet present), `gentle` 500ms (celebratory), `slow` 800ms (decorative, onboarding).
 - [x] Curve tokens: `standard` .easeInOut; `bouncy` spring(0.55, 0.7); `crisp` spring(0.4, 1.0); `gentle` spring(0.8, 0.5). <!-- BrandCurve enum in Motion/BrandCurve.swift — animation(duration:) factory + natural-response default per case. -->
 
-- [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
+- [x] Reduce Motion: all > `snappy` downgrade to instant / opacity-only. (`BrandMotion.reducedIfNeeded(_:duration:reduceMotion:)` in `DesignSystem/Polish/Section30PolishExtras.swift` collapses to `.easeInOut(duration: 0)` whenever `reduceMotion` is true and `duration > MotionDurationSpec.short`; wired into `SheetDetentAnimatedModifier` in `Motion/Section30MotionExtras.swift`. feat(§30))
 - [x] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers. (`inline_animation_duration` WARNING rule in `ios/.swiftlint.yml` — regex catches `withAnimation(.easeInOut(duration: <digit>`. feat(§67): b12)
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
 - [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion. (`StaggeredAppearModifier` + `.staggeredAppear(index:trigger:)` in `DesignSystem/BrandMotion.swift`; Reduce Motion → opacity fade only. feat(§67): d8b0c172)
