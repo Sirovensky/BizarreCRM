@@ -13,9 +13,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.bizarreelectronics.crm.data.remote.dto.CustomerListItem
+import com.bizarreelectronics.crm.data.remote.dto.TicketDetail
 import com.bizarreelectronics.crm.data.remote.dto.TicketDevice
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.CustomerCard
 import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.DeviceCard
+import com.bizarreelectronics.crm.ui.screens.tickets.detail.tablet.cards.QuoteCard
 
 /**
  * Left meta pane for the tablet ticket-detail layout.
@@ -46,10 +48,13 @@ internal fun LeftMetaPane(
     customer: CustomerListItem?,
     fallbackCustomerName: String?,
     fallbackCustomerPhone: String?,
+    ticketDetail: TicketDetail?,
+    devices: List<TicketDevice>,
     onCustomerClick: (() -> Unit)? = null,
     onCall: (() -> Unit)? = null,
     onSms: (() -> Unit)? = null,
     onEditDevice: () -> Unit = {},
+    onCheckout: ((dueAmount: Double) -> Unit)? = null,
 ) {
     LazyColumn(
         modifier = Modifier
@@ -73,6 +78,13 @@ internal fun LeftMetaPane(
                 onSms = onSms,
             )
         }
+        item {
+            QuoteCard(
+                ticketDetail = ticketDetail,
+                devices = devices,
+                onCheckout = onCheckout,
+            )
+        }
         items(BUILD_OUT_PLACEHOLDERS) { placeholder ->
             CardPlaceholder(label = placeholder)
         }
@@ -81,7 +93,6 @@ internal fun LeftMetaPane(
 
 /** Build-out placeholders shown until each phase lands. */
 private val BUILD_OUT_PLACEHOLDERS: List<String> = listOf(
-    "Quote · lands in T-C5",
     "Quote add-row typeahead · lands in T-C6",
     "Photos · lands in T-C7",
     "Bench Timer · lands in T-C7",

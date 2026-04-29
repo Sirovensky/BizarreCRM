@@ -2061,6 +2061,8 @@ fun TicketDetailScreen(
                                     customer = state.ticketDetail?.customer,
                                     fallbackCustomerName = ticket.customerName,
                                     fallbackCustomerPhone = ticket.customerPhone,
+                                    ticketDetail = state.ticketDetail,
+                                    devices = state.devices,
                                     onCustomerClick = ticket.customerId
                                         ?.takeIf { it > 0 }
                                         ?.let { id -> { onNavigateToCustomer(id) } },
@@ -2077,6 +2079,16 @@ fun TicketDetailScreen(
                                     },
                                     onEditDevice = {
                                         firstDevice?.id?.let(onEditDevice)
+                                    },
+                                    onCheckout = onCheckout?.let { cb ->
+                                        { dueAmount ->
+                                            val displayName = state.ticketDetail?.customer?.let { c ->
+                                                listOfNotNull(c.firstName, c.lastName)
+                                                    .joinToString(" ")
+                                                    .ifBlank { null }
+                                            } ?: ticket.customerName ?: ""
+                                            cb(ticketId, dueAmount, displayName)
+                                        }
                                     },
                                 )
                             },
