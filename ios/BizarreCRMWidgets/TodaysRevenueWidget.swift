@@ -126,6 +126,8 @@ struct TodaysRevenueSmallView: View {
         .padding(DesignTokens.Spacing.sm)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .containerBackground(.fill.tertiary, for: .widget)
+        // §24 deep-link: tapping the whole small widget opens the revenue dashboard.
+        .widgetURL(URL(string: "bizarrecrm://dashboard/revenue")!)
     }
 }
 

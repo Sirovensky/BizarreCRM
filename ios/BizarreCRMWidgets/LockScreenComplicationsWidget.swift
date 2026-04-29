@@ -65,6 +65,8 @@ struct AccessoryCircularView: View {
             .accessibilityLabel("\(entry.openTicketCount) open tickets")
         }
         .containerBackground(.clear, for: .widget)
+        // §24 lock-screen deep-link: tap circular badge to open ticket list.
+        .widgetURL(URL(string: "bizarrecrm://tickets")!)
     }
 }
 
@@ -82,6 +84,8 @@ struct AccessoryRectangularView: View {
                 .accessibilityLabel("\(entry.openTicketCount) tickets open")
         }
         .containerBackground(.clear, for: .widget)
+        // §24 lock-screen deep-link: tap rectangular complication to open tickets.
+        .widgetURL(URL(string: "bizarrecrm://tickets")!)
     }
 }
 

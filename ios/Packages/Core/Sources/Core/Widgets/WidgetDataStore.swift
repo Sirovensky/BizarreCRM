@@ -103,6 +103,57 @@ public actor WidgetDataStore {
         defaults.set(enabled, forKey: kLiveActivitiesEnabledKey)
     }
 
+    // MARK: - Scheduled refresh
+
+    /// Keys used to persist scheduled-refresh state.
+    private static let kNextScheduledRefreshKey = "com.bizarrecrm.widget.nextScheduledRefresh"
+
+    /// Compute and store the next scheduled refresh date based on the current
+    /// `refreshInterval`, then request a timeline reload from WidgetKit.
+    ///
+    /// Call this after `write(_:)` completes to update the stored schedule, or
+    /// call it standalone when a background push notification arrives indicating
+    /// new data is available (`content-available: 1`).
+    ///
+    /// The stored date is purely informational (e.g. for a `WidgetSettingsView`
+    /// "Next refresh: 3:15 PM" label) — WidgetKit enforces its own rate limits
+    /// via `Timeline.policy`.
+    public func scheduleNextRefresh() {
+        let intervalSeconds = TimeInterval(refreshInterval.rawValue * 60)
+        let next = Date(timeIntervalSinceNow: intervalSeconds)
+        defaults.set(next, forKey: Self.kNextScheduledRefreshKey)
+        reloadAllTimelines()
+    }
+
+    /// The stored date of the next scheduled widget refresh, or `nil` if not set.
+    public var nextScheduledRefresh: Date? {
+        defaults.object(forKey: Self.kNextScheduledRefreshKey) as? Date
+    }
+
+    /// Reload only the specified widget kinds instead of all timelines.
+    /// Use this for targeted reloads when only specific data changed.
+    public func reload(kinds: [String]) {
+        #if canImport(WidgetKit)
+        for kind in kinds {
+            WidgetCenter.shared.reloadTimelines(ofKind: kind)
+        }
+        #endif
+    }
+
+    // MARK: - Background push-triggered refresh
+
+    /// Call from `AppDelegate.application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`
+    /// when a silent push with `content-available: 1` arrives and `aps.category` is
+    /// `"WIDGET_REFRESH"`. Writes the provided snapshot and reschedules the timeline.
+    ///
+    /// - Returns: The written snapshot so callers can confirm success.
+    @discardableResult
+    public func handleBackgroundRefreshPush(_ snapshot: WidgetSnapshot) throws -> WidgetSnapshot {
+        try write(snapshot)
+        scheduleNextRefresh()
+        return snapshot
+    }
+
     // MARK: - Private helpers
 
     private func reloadAllTimelines() {

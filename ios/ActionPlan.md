@@ -3895,18 +3895,22 @@ _Requires WidgetKit target + ActivityKit + App Intents extension. App Group `gro
 - [ ] iOS 26: register `AssistantSchemas.ShopManagement` domain so Apple Intelligence can orchestrate common nouns (Ticket / Customer / Invoice).
 - [ ] Testing: Shortcuts-app gallery + XCUITest each intent headless.
 - [x] Sizes supported: Small, Medium, Large; Accessory (circular/rectangular/inline); StandBy. Extra-Large deferred. (feat(ios phase-6 §24))
-- [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory). (feat(ios phase-6 §24))
+- [x] Catalog: OpenTicketsWidget (S/M/L), TodaysRevenueWidget (S/M), AppointmentsNextWidget (M/L), LockScreenComplicationsWidget (accessory), MyQueueWidget (M). (feat(ios phase-6 §24))
+- [x] **My Queue medium widget** — `MyQueueWidget` (medium) shows up to 3 tickets assigned to the signed-in technician; reads `WidgetSnapshot.myQueueTickets`; each row deep-links `bizarrecrm://tickets/:id`; whole-widget `.widgetURL` → `bizarrecrm://tickets?filter=mine`; same 5/15/30 min refresh schedule. (`BizarreCRMWidgets/MyQueueWidget.swift`; `WidgetSnapshot.myQueueTickets` added to Core; `MyQueueWidget` registered in bundle.)
 - [x] Data source: App Group UserDefaults group.com.bizarrecrm; WidgetSnapshot written by WidgetDataStore. (feat(ios phase-6 §24))
 - [x] Timeline entries: configurable 5/15/30 min interval via WidgetSettingsView; policy .after(refreshDate). (feat(ios phase-6 §24))
+- [x] **Widget refresh schedule** — `WidgetDataStore.scheduleNextRefresh()` persists next-refresh date and calls `reloadAllTimelines()`; `handleBackgroundRefreshPush(_:)` handles `content-available:1` silent push with `aps.category = WIDGET_REFRESH`; `reload(kinds:)` for targeted per-widget-kind reloads. (`Packages/Core/Sources/Core/Widgets/WidgetDataStore.swift`)
 - [x] Taps: deep-links via bizarrecrm://tickets/:id, bizarrecrm://appointments/:id, bizarrecrm://pos. (feat(ios phase-6 §24))
+- [x] **Deep-link from widget (small widgets)** — `TodaysRevenueSmallView` gains `.widgetURL("bizarrecrm://dashboard/revenue")`; `OpenTicketsSmallView` gains `.widgetURL("bizarrecrm://tickets")`; `AccessoryCircularView` and `AccessoryRectangularView` gain `.widgetURL("bizarrecrm://tickets")` so tapping any lock-screen complication opens the ticket list. (`BizarreCRMWidgets/TodaysRevenueWidget.swift`, `OpenTicketsWidget.swift`, `LockScreenComplicationsWidget.swift`)
 - [x] StandBy: AppointmentsNextWidget large + TodaysRevenueWidget medium in StandBy mode. (feat(ios phase-6 §24))
 - [x] Lock Screen variants: circular = ticket count; rectangular = X tickets open; inline = X open tickets. (feat(ios phase-6 §24))
+- [x] **Lock-screen ticket count deep-link** — `AccessoryCircularView` and `AccessoryRectangularView` in `LockScreenComplicationsWidget` each carry `.widgetURL("bizarrecrm://tickets")` so tapping the lock-screen complication routes directly to the tickets list on unlock. (`BizarreCRMWidgets/LockScreenComplicationsWidget.swift`)
 - [ ] Configuration: `AppIntentConfiguration` lets user pick which tenant (multi-tenant user) and which location
 - [x] Privacy: widget content stays on device; no customer names on lock screen complications. (feat(ios phase-6 §24))
 - [x] Ship these gallery shortcuts: "Create ticket for customer" (customer picker chain), "Log clock-in" (one-tap), "Today's revenue" (reads aloud), "Start sale for customer" (opens POS pre-loaded), "Open Tickets", "Open Dashboard". (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [x] Registration via `@ShortcutsProvider`; each entry ships image + description + parameter definitions. (feat(ios phase-6 §24): Siri + App Intents + Shortcuts gallery)
 - [ ] Automation support so tenants can wire Arrive at work → Clock in style triggers.
-- [ ] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution.
+- [x] Widget-to-shortcut: widgets pre-configure parameters for one-tap intent execution. (`.widgetURL()` on small/accessory widgets routes directly to the correct feature; row `Link(destination:)` on medium/large widgets carry per-record deep-links; `MyQueueWidget` filter URL `bizarrecrm://tickets?filter=mine` pre-applies the assignee filter.)
 - [ ] Siri learns to invoke by donated phrases.
 - [ ] Sovereignty: no external service invoked from shortcuts unless tenant explicitly adds it.
 
