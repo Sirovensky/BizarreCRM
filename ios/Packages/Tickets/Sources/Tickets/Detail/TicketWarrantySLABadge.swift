@@ -108,6 +108,38 @@ public struct TicketWarrantySLABadge: View {
             warrantyBadge
             slaBadge
         }
+        // §4.2 a11y — treat the badge pair as one combined element so
+        // VoiceOver reads "Under warranty. 3d left. SLA: ok" in one swipe.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(combinedA11yLabel)
+        .accessibilityAddTraits(.isStaticText)
+    }
+
+    // MARK: - Combined a11y label
+
+    private var combinedA11yLabel: String {
+        var parts: [String] = []
+        switch warrantyState {
+        case .underWarranty(let label):
+            parts.append("Under warranty, \(label)")
+        case .warrantyExpired:
+            parts.append("Warranty expired")
+        case .loading:
+            parts.append("Warranty loading")
+        case .noWarranty, .error:
+            break
+        }
+        if let sla = slaStatus, !sla.isEmpty {
+            let lower = sla.lowercased()
+            if lower.contains("breach") || lower.contains("overdue") {
+                parts.append("SLA breached")
+            } else if lower.contains("warn") || lower.contains("due soon") {
+                parts.append("SLA warning: \(sla)")
+            } else {
+                parts.append("SLA: \(sla)")
+            }
+        }
+        return parts.isEmpty ? "" : parts.joined(separator: ". ")
     }
 
     // MARK: - Warranty badge
