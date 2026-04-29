@@ -3701,7 +3701,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [x] **`.contextMenu`** on rows — Open / Copy ID / Copy phone / Archive / Delete / Share / Open in new window. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)
 - [ ] **Drag-and-drop** — drag inventory → ticket services, drag ticket → calendar slot, drag customer → SMS compose.
 - [ ] **Multi-select** — long-press or ⌘-click batch actions; Edit mode in list toolbar.
-- [ ] **Apple Pencil** — `PKCanvasView` on signatures; pencil-only edit mode on forms; hover preview (Pencil Pro).
+- [x] **Apple Pencil** — `PKCanvasView` on signatures; pencil-only edit mode on forms; hover preview (Pencil Pro). (feat(ios §22): PencilSignatureCanvas reusable DS widget, pencilOnly policy, UIPencilInteraction hook, brandSignatureFrame modifier)
 
 ### 22.3 Keyboard-first
 - [ ] **Shortcuts**: ⌘N / ⌘F / ⌘R / ⌘, / ⌘D / ⌘1–⌘9 / ⌘⇧F / ⌘⇧N / ⌘K (command palette) / ⌘P (print) / ⌘/ (help) / ⎋ (dismiss sheet) / ⌥↑↓ (row move) / Space (preview).
@@ -3711,7 +3711,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 
 ### 22.4 Multi-window / Stage Manager
 - [x] **Multiple scenes** — `UISceneConfiguration` supports N windows. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
-- [ ] **Scene state** restored per-window on relaunch.
+- [x] **Scene state** restored per-window on relaunch. (feat(ios §22): SceneStateRestorer — stateRestorationActivity(for:) + restore(from:) + SceneDelegate willConnectTo restoration path)
 - [x] **Open in new window** from context menu. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [x] **Scene activities** — detail views become independent activities. (feat(ios phase-7 §22): multi-window + Stage Manager + adaptive sidebar widths + Universal Clipboard)
 - [ ] **Slide Over / Split View** — layouts verified at 1/2, 1/3, 2/3 splits.
@@ -3730,12 +3730,12 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] **Presentation mode** — Reports dashboards full-screen on TV.
 - [ ] Scene types: primary (full app), secondary (single ticket detail), tertiary (POS register), quaternary (reports dashboard).
 - [ ] Drag-to-new-window: long-press ticket row → drag out → new window with that ticket. Long-press POS tab → dedicated register window.
-- [ ] `NSUserActivity` per scene persists position / ticket ID; relaunch re-opens all windows.
+- [x] `NSUserActivity` per scene persists position / ticket ID; relaunch re-opens all windows. (feat(ios §22): DetailHandoffModifier — Handoff advertisement + "Open in New Window" context menu + MultiWindowCoordinator.openDetail(routeURL:) routing helper)
 - [ ] Scene declares capabilities ("can show ticket detail", "can run POS"); drag-drop between windows validates target capability.
 - [ ] Stage Manager min content area 700×500; below that → compact layout.
 - [ ] External-display `UIScene` hosts customer-facing display (§16 POS CFD) mirrored from POS scene.
 - [ ] `UICommand` menu per scene (File / Edit / View / Window / Help) with custom items (New Ticket, Quick Find, Switch Tenant).
-- [ ] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels
+- [x] Hardware keyboard: iPad top-menu command menu populates from scene `UIKeyCommand` discoverabilityTitle; ⌘? shows all shortcuts overlay; arrow keys navigate lists; Tab/Shift-Tab traverse form fields; Enter submits primary action; Esc dismisses sheets/cancels (feat(ios §22): ArrowKeyRowSelectionModifier DS widget — ↑/↓ hidden buttons + .arrowKeyRowSelection(items:selectedId:) view extension)
 - [ ] Input accessory bar: numeric keyboard on money fields has $ + %; Done + Next + Prev arrows on all text fields; auto-hide with hardware keyboard attached
 - [ ] Field validation keys: IMEI/phone `.numberPad`; email `.emailAddress`; URL `.URL`; search `.webSearch`
 - [x] Autocorrect: off for IDs/codes/emails; on for message composers and notes; SmartDashes/SmartQuotes off for data entry (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
@@ -3753,7 +3753,7 @@ _Non-negotiable: iPad ≠ upscaled iPhone. Failures in this section indicate an 
 - [ ] iPad landscape: sidebar expanded (260–280pt) default; user toggles rail via ⌘\
 - [ ] Mac Designed-for-iPad: sidebar persistent, min 260pt
 - [ ] Drag-to-resize: iPad 13" Pro supports resize via split-view divider; inner sidebar also resizable 260–400pt
-- [ ] Persistence: width saved per-scene in `UserDefaults`
+- [x] Persistence: width saved per-scene in `UserDefaults` (feat(ios §22): RailSidebarView isExpanded backed by @AppStorage("rail.sidebar.isExpanded") — survives app restarts + scene reconnects)
 - [x] Overflow: if label truncates, icon-only mode kicks in automatically at <100pt (feat(ios §22): pointer-style modifiers + focus ring + sort indicator + adaptive icon-only label + data-entry field)
 - [ ] Tandem OLED: optional HDR content for hero dashboard images (brand gradients); verify blacks on real OLED (no gray haze)
 - [x] ProMotion 120fps: tune all animations for 120fps; avoid 60fps lock from `ProMotion: false` in Info.plist. (feat(ios phase-7 §22): Ticket quick-actions + hover effects + context menus + sidebar badges + iPad Pro M4 helpers)

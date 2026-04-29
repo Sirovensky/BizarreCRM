@@ -192,7 +192,10 @@ public struct RailSidebarView: View {
     // MARK: - State
 
     @Binding private var selection: RailDestination
-    @State private var isExpanded: Bool = false
+
+    // §22 sidebar collapse persistence — last expand/collapse state survives
+    // app restarts and scene reconnects.  Key is stable; no migration needed.
+    @AppStorage("rail.sidebar.isExpanded") private var isExpanded: Bool = false
 
     // MARK: - Environment
 
