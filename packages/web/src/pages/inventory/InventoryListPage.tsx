@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus, Minus, Search, AlertTriangle, Pencil, Trash2, Eye, ChevronLeft, ChevronRight, Loader2, Download, Upload, X, Check, Filter, EyeOff, Columns, ScanBarcode, TrendingDown } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { inventoryApi, preferencesApi, catalogApi } from '@/api/endpoints';
+import type { ImportInventoryItem } from '@/api/types';
 import { confirm } from '@/stores/confirmStore';
 import { cn } from '@/utils/cn';
 import { parseCsvLine } from '@/utils/csv';
@@ -266,7 +267,11 @@ export function InventoryListPage() {
   });
 
   const importMutation = useMutation({
-    mutationFn: (csvItems: InventoryImportRow[]) => inventoryApi.importCsv(csvItems),
+    // CSV rows are loosely-typed strings; the importApi DTO wants stricter
+    // shapes (numeric prices, narrowed item_type union). The server normalises
+    // again on its side, so a single cast at the boundary is safe.
+    mutationFn: (csvItems: InventoryImportRow[]) =>
+      inventoryApi.importCsv(csvItems as unknown as ImportInventoryItem[]),
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
       const d = res?.data?.data;
@@ -379,7 +384,9 @@ export function InventoryListPage() {
       headers.forEach((h, i) => { obj[h] = vals[i] || ''; });
       return obj;
     });
-    setImportPreview(rows);
+    // Loosely-typed dictionary cast to the InventoryImportRow shape — the row
+    // editor in the modal fills any missing required keys before submit.
+    setImportPreview(rows as InventoryImportRow[]);
   };
 
   // WEB-FX-003: shared Esc-to-close for the page-level modals on this page.

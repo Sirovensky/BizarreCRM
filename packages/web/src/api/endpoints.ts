@@ -47,7 +47,13 @@ interface AuthSwitchResponse {
 // ==================== Auth ====================
 export const authApi = {
   setupStatus: () =>
-    api.get<{ success: boolean; data: { needsSetup: boolean; isMultiTenant: boolean } }>(
+    api.get<{ success: boolean; data: {
+      needsSetup: boolean;
+      isMultiTenant: boolean;
+      setupWizardCompleted: boolean;
+      setupWizardSkippedAt: string | null;
+      setupWizardSkipCount: number;
+    } }>(
       '/auth/setup-status',
     ),
   setup: (data: {
@@ -86,8 +92,13 @@ export const authApi = {
   // breaking auto-login on every page reload. Type now matches the wire shape;
   // LoginPage was patched in tandem to read `res.data?.data` directly.
   me: () => api.get<{ success: boolean; data: User }>('/auth/me'),
-  forgotPassword: (email: string) =>
-    api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/forgot-password', { email }),
+  // WEB-S4-006: 2nd arg is an optional hCaptcha token sent on second+ attempts
+  // when the captcha widget is gated by the rate-limit threshold (auth.routes.ts:1641).
+  forgotPassword: (email: string, captchaToken?: string | null) =>
+    api.post<{ success: boolean; data: { message: string }; message?: string }>(
+      '/auth/forgot-password',
+      { email, ...(captchaToken ? { captcha_token: captchaToken } : {}) },
+    ),
   resetPassword: (token: string, password: string) =>
     api.post<{ success: boolean; data: { message: string }; message?: string }>('/auth/reset-password', { token, password }),
 };
@@ -226,6 +237,11 @@ export const ticketApi = {
   deleteLink: (linkId: number) => api.delete(`/tickets/links/${linkId}`),
   // Clone as warranty case
   cloneWarranty: (id: number) => api.post(`/tickets/${id}/clone-warranty`),
+  // Duplicate ticket (header + devices + parts) — server: POST /tickets/:id/duplicate
+  duplicate: (id: number) => api.post(`/tickets/${id}/duplicate`),
+  // Update photo caption — server: PUT /tickets/photos/:photoId
+  updatePhoto: (photoId: number, data: { caption: string | null }) =>
+    api.put(`/tickets/photos/${photoId}`, data),
   // AUDIT-WEB-002: mint a scoped short-lived photo-upload token for the QR URL.
   // Returns { token: string } — 30-minute JWT scoped to one ticket+device.
   getPhotoUploadToken: (ticketId: number, deviceId: number) =>
@@ -238,9 +254,13 @@ export const ticketApi = {
 import type { InvoiceDetail } from '@/types/invoice';
 
 export const invoiceApi = {
-  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number }) =>
+  // WEB-W2-022: server (invoices.routes.ts:236) accepts sort_by/sort_dir for the list view
+  list: (params?: { page?: number; pagesize?: number; status?: string; from_date?: string; to_date?: string; keyword?: string; customer_id?: number; sort_by?: string; sort_dir?: 'asc' | 'desc' }) =>
     api.get('/invoices', { params }),
-  stats: () => api.get('/invoices/stats'),
+  // WEB-W2-022: stats accepts the same filter params as list, so the KPI strip
+  // matches the visible invoice subset.
+  stats: (params?: { status?: string; from_date?: string; to_date?: string; keyword?: string }) =>
+    api.get('/invoices/stats', { params }),
   // Server returns { success: true, data: <flat invoice + line_items + payments + deposit_invoices> }
   get: (id: number) => api.get<{ success: boolean; data: InvoiceDetail }>(`/invoices/${id}`),
   // DA-6 / WEB-FH-002: send an idempotency key so a double-click or flaky
@@ -270,7 +290,9 @@ export const invoiceApi = {
       },
     }),
   void: (id: number) => api.post(`/invoices/${id}/void`),
-  createCreditNote: (id: number, data: { amount: number; reason: string }) =>
+  // WEB-W2-018: migration 150 added credit_note_code + credit_note_note columns;
+  // pages may pass these through alongside the legacy composed `reason` string.
+  createCreditNote: (id: number, data: { amount: number; reason: string; code?: string; note?: string }) =>
     api.post(`/invoices/${id}/credit-note`, data),
   bulkAction: (action: string, invoiceIds: number[]) =>
     api.post('/invoices/bulk-action', { action, invoice_ids: invoiceIds }),
@@ -357,6 +379,28 @@ export const inventoryApi = {
     api.get(`/inventory/${id}/barcode`, { params: { format: format || 'svg' } }),
   varianceReport: (months?: number) =>
     api.get('/inventory/variance-report', { params: { months: months || 6 } }),
+  // WEB-S6-009: per-item cost-price change log (admin/manager only).
+  // Server: GET /inventory/:id/price-history (inventory.routes.ts:1914)
+  priceHistory: (id: number) =>
+    api.get<{ success: boolean; data: Array<{ id: number; old_price: number; new_price: number; created_at: string; changed_by_name: string | null }> }>(
+      `/inventory/${id}/price-history`,
+    ),
+  // WEB-S6-010: multi-location stock breakdown.
+  // Server: GET /inventory/:id/locations (inventory.routes.ts:1939)
+  locationStock: (id: number) =>
+    api.get<{ success: boolean; data: { locations: Array<{ id: number; location_name: string; address: string | null; is_default: number; in_stock: number; is_primary: number }> } }>(
+      `/inventory/${id}/locations`,
+    ),
+  // WEB-W3-013: server-side CSV export (inventory.routes.ts:1849).
+  exportCsv: (params?: Record<string, unknown>) =>
+    api.get('/inventory/export.csv', { params, responseType: 'blob' }),
+  // WEB-W3-025: mark items as clearance (50% off). Server route lives under the
+  // inventory-enrich mount: POST /inventory-enrich/mark-clearance (inventoryEnrich.routes.ts:1384).
+  markClearance: (item_ids: number[]) =>
+    api.post<{ success: boolean; data: { marked: Array<{ id: number; name: string; old_price: number; new_price: number }>; skipped: number[]; message?: string } }>(
+      '/inventory-enrich/mark-clearance',
+      { item_ids },
+    ),
 };
 
 // ==================== Settings ====================
@@ -444,6 +488,8 @@ export const settingsApi = {
 // ==================== Automations ====================
 export const automationsApi = {
   list: () => api.get('/automations'),
+  // Server: GET /automations/:id (automations.routes.ts:162) — returns the full rule.
+  getOne: (id: number) => api.get(`/automations/${id}`),
   create: (data: { name: string; trigger_type: string; trigger_config?: Record<string, unknown>; action_type: string; action_config?: Record<string, unknown>; sort_order?: number }) =>
     api.post('/automations', data),
   update: (id: number, data: Partial<{ name: string; trigger_type: string; trigger_config: Record<string, unknown>; action_type: string; action_config: Record<string, unknown>; sort_order: number }>) =>
@@ -469,6 +515,18 @@ export const expenseApi = {
   update: (id: number, data: Partial<{ category: string; amount: number; description: string; date: string; location_id: number }>) =>
     api.put(`/expenses/${id}`, data),
   delete: (id: number) => api.delete(`/expenses/${id}`),
+  // WEB-FK-014: receipt-image upload + OCR queue.
+  // Server mounts expenseReceipts.routes.ts at /expenses/:expenseId/receipt
+  // (index.ts:1637). Multer field name is `receipt`.
+  uploadReceipt: (expenseId: number, file: File) => {
+    const form = new FormData();
+    form.append('receipt', file);
+    return api.post<{ success: boolean; data: { id: number; status: string } }>(
+      `/expenses/${expenseId}/receipt`,
+      form,
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    );
+  },
 };
 
 // ==================== Reports ====================
@@ -533,6 +591,10 @@ export const reportApi = {
   // `voiceApi.recordingPath` below.
   taxReportPdfUrl: (from: string, to: string, jurisdiction?: string) =>
     `/api/v1/reports/tax-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}${jurisdiction ? `&jurisdiction=${encodeURIComponent(jurisdiction)}` : ''}`,
+  // Server: GET /reports/sales-report.pdf (reports.routes.ts:2914) — print-to-PDF
+  // sales summary. Same caveat as taxReportPdfUrl on cookie-vs-bearer auth.
+  salesReportPdfUrl: (from: string, to: string) =>
+    `/api/v1/reports/sales-report.pdf?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
   partnerReportPdfUrl: (year: string | number) =>
     `/api/v1/reports/partner-report.pdf?year=${encodeURIComponent(String(year))}`,
   npsTrend: (months?: number) => api.get('/reports/nps-trend', { params: { months } }),
@@ -592,6 +654,10 @@ export interface VoiceCall {
   conv_phone: string | null;
   entity_type: string | null;
   entity_id: number | null;
+  // WEB-FK-009: 1 if the inbound caller was already informed the call may be
+  // recorded (consent disclosure logged). Anything else (0 / null) means the
+  // playback UI must surface a confirmation dialog before opening the audio.
+  was_disclosed_to_caller?: number | null;
 }
 
 export interface VoiceCallsResponse {
@@ -610,6 +676,11 @@ export const voiceApi = {
   callDetail: (id: number) => api.get(`/voice/calls/${id}`),
   /** Returns the URL path to stream/redirect to the recording. Opens in new tab. */
   recordingPath: (id: number) => `/api/v1/voice/calls/${id}/recording`,
+  // WEB-W3-023: short-lived signed URL for <audio>/new-tab playback.
+  recordingSignedUrl: (id: number) =>
+    api.get<{ success: boolean; data: { url: string; expiresAt: number } }>(
+      `/voice/calls/${id}/recording-url`,
+    ),
 };
 
 // ==================== POS ====================
@@ -620,8 +691,8 @@ export const posApi = {
   // the field misled callers into thinking they could query the service
   // catalog from POS. If/when the server supports a `service` filter, add
   // it back as a real param.
-  products: (params?: { keyword?: string; category?: string }) =>
-    api.get('/pos/products', { params }),
+  products: (params?: { keyword?: string; category?: string }, signal?: AbortSignal) =>
+    api.get('/pos/products', { params, signal }),
   register: () => api.get('/pos/register'),
   // WEB-FH-019: optional idempotency_key minted client-side per cash-drawer
   // event so a flaky-network double-click doesn't double-record opening float.
@@ -636,13 +707,17 @@ export const posApi = {
   // middleware returns the cached response, so we never charge twice.
   // Caller is REQUIRED to pass a stable key; internal fallback exists only
   // for legacy callers and should be removed once all callers migrate.
-  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string) =>
+  checkoutWithTicket: (data: CheckoutWithTicketInput, idempotencyKey?: string, pinVerified?: boolean) =>
     api.post('/pos/checkout-with-ticket', data, {
       headers: {
         'X-Idempotency-Key':
           idempotencyKey ??
           (globalThis.crypto?.randomUUID?.() ??
             `pos-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`),
+        // requirePosPinByMode middleware reads this when pos_require_pin_*
+        // store-config flags are on. Caller passes true after a successful
+        // /auth/verify-pin call in the same POS session.
+        ...(pinVerified ? { 'X-Pos-Pin-Verified': '1' } : {}),
       },
     }),
   openDrawer: (data?: { reason?: string }) => api.post('/pos/open-drawer', data ?? {}),
@@ -799,6 +874,10 @@ export const leadApi = {
   createAppointment: (data: CreateAppointmentInput) => api.post('/leads/appointments', data),
   updateAppointment: (id: number, data: UpdateAppointmentInput) => api.put(`/leads/appointments/${id}`, data),
   deleteAppointment: (id: number) => api.delete(`/leads/appointments/${id}`),
+  // WEB-W2-035: bulk action on leads. Server: POST /leads/bulk-action (leads.routes.ts:411)
+  // accepts { lead_ids, action, value? } and rejects batches > 500.
+  bulkAction: (lead_ids: number[], action: string, value?: string) =>
+    api.post('/leads/bulk-action', { lead_ids, action, value }),
 };
 
 // ==================== Estimates ====================
@@ -826,6 +905,9 @@ export const estimateApi = {
   approve: (id: number, token?: string) => api.post(`/estimates/${id}/approve`, token ? { token } : {}),
   versions: (id: number) => api.get(`/estimates/${id}/versions`),
   versionDetail: (id: number, versionId: number) => api.get(`/estimates/${id}/versions/${versionId}`),
+  // WEB-W2-020: estimates.routes.ts:1022 exposes POST /:id/reject (sets status='rejected').
+  reject: (id: number) =>
+    api.post<{ success: boolean; data: { id: number; status: string } }>(`/estimates/${id}/reject`),
 };
 
 // ==================== Employees ====================
@@ -838,6 +920,13 @@ export const employeeApi = {
     api.get(`/employees/${id}/hours`, { params }),
   commissions: (id: number, params?: { from_date?: string; to_date?: string }) =>
     api.get(`/employees/${id}/commissions`, { params }),
+  // WEB-S6-014: admin-only PATCH to set/clear an employee's hourly pay rate.
+  // Server: PATCH /employees/:id (employees.routes.ts:660). Pass null to clear.
+  updatePayRate: (id: number, pay_rate: number | null) =>
+    api.patch<{ success: boolean; data: { id: number; pay_rate: number | null } }>(
+      `/employees/${id}`,
+      { pay_rate },
+    ),
 };
 
 // ==================== Day-1 Onboarding (audit section 42) ====================
@@ -1053,7 +1142,10 @@ export const blockchypApi = {
   // exact bug SEC-M34 was trying to prevent. Pages should branch on
   // `data.status === 'pending_reconciliation'` (or check the HTTP status) before
   // recording a "successful" payment.
-  processPayment: (invoiceId: number, tip?: number) => {
+  // WEB-W3-004: optional `amount` for split-payment card legs. When present
+  // the server charges that exact leg amount instead of the remaining invoice
+  // balance. Validated server-side: > 0 and <= amountDue.
+  processPayment: (invoiceId: number, tip?: number, amount?: number) => {
     const idempotencyKey =
       globalThis.crypto?.randomUUID?.() ??
       `bc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -1083,7 +1175,7 @@ export const blockchypApi = {
       };
     }>(
       '/blockchyp/process-payment',
-      { invoiceId, tip, idempotency_key: idempotencyKey },
+      { invoiceId, tip, amount, idempotency_key: idempotencyKey },
     );
   },
   adjustTip: (transaction_id: string, new_tip: number) =>
@@ -1102,6 +1194,9 @@ export const loanerApi = {
     ),
   get: (id: number) =>
     api.get<{ success: boolean; data: LoanerDevice & { history: LoanerHistoryEntry[] } }>(`/loaners/${id}`),
+  // Server: POST /loaners (loaners.routes.ts:75) — create a new loaner device.
+  create: (data: { name: string; serial?: string; imei?: string; condition?: string; notes?: string }) =>
+    api.post<{ success: boolean; data: { id: number } }>('/loaners', data),
   returnDevice: (id: number, body: { condition_in?: string; notes?: string }) =>
     api.post<{ success: boolean; data: { returned: boolean } }>(`/loaners/${id}/return`, body),
 };
@@ -1209,6 +1304,9 @@ export const membershipApi = {
   // Admin: all active subscriptions
   getSubscriptions: () =>
     api.get('/membership/subscriptions'),
+  // WEB-W3-020: admin-triggered immediate charge for a subscription
+  runBilling: (id: number) =>
+    api.post(`/membership/${id}/run-billing`),
 };
 
 // ==================== Device Templates (audit 44.1, cross-cutting) ====================
@@ -1425,6 +1523,10 @@ export const superAdminApi = {
     superAdminClient.post<{ success: boolean; message?: string }>(
       `/tenants/${encodeURIComponent(slug)}/impersonate/${encodeURIComponent(jti)}/end`,
     ),
+  // WEB-S4-042: server-side logout so the audit log records the sign-out.
+  // Token is removed locally regardless on the client side.
+  logout: () =>
+    superAdminClient.post<{ success: boolean; message?: string }>('/logout'),
 };
 
 // ==================== Geocode + Custom Fields (BUILD-FIX-001) ====================
@@ -1445,14 +1547,19 @@ export const geocodeApi = {
 };
 
 export const customFieldApi = {
+  // BUILD-FIX-001 (widened): page consumers (e.g. CustomerCreatePage) expect
+  // the DB-shaped fields (`field_name`, `field_type`, `options`, `is_required`).
+  // Backend route is still TODO-server, so this matches the eventual schema.
   listDefinitions: (entityType: 'customer' | 'ticket' | 'invoice') =>
-    api.get<{ success: boolean; data: Array<{ id: number; key: string; label: string; type: string }> }>(
+    api.get<{ success: boolean; data: Array<{ id: number; field_name: string; field_type: string; options: string | null; is_required: number }> }>(
       `/custom-fields/definitions?entity_type=${encodeURIComponent(entityType)}`,
     ),
+  // saveValues accepts either the legacy keyed-record shape OR an array of
+  // { definition_id, value } pairs (what the page builds today).
   saveValues: (
     entityType: 'customer' | 'ticket' | 'invoice',
     entityId: number,
-    values: Record<string, unknown>,
+    values: Record<string, unknown> | Array<{ definition_id: number; value: unknown }>,
   ) =>
     api.post<{ success: boolean }>(
       `/custom-fields/values`,
@@ -1472,6 +1579,14 @@ export const emailApi = {
       `/email/messages`,
       { params },
     ),
+  // WEB-S6-017: list email threads. Server: GET /email/threads (email.routes.ts:32).
+  // Server returns { success: true, data: { threads, enabled, pagination } }; the
+  // page reads it untyped via `(emailData?.data as any)?.data`.
+  threads: (params?: { page?: number; pagesize?: number; keyword?: string }) =>
+    api.get<{ success: boolean; data: { threads: unknown[]; enabled: boolean; pagination?: unknown } }>(
+      `/email/threads`,
+      { params },
+    ),
   send: (payload: { to: string; subject: string; body: string; html?: string; customer_id?: number; ticket_id?: number }) =>
     api.post<{ success: boolean; data: { id: number } }>(`/email/send`, payload),
   get: (id: number) =>
@@ -1480,9 +1595,20 @@ export const emailApi = {
     ),
 };
 
+// BUILD-FIX-002 (widened): the InstallmentPlanWizard sends a richer payload
+// than the original stub assumed. Match what the wizard actually emits — the
+// page passes the wizard's onSubmit value straight through to installmentApi.create.
+// Both `installments` (legacy callers) and the wizard fields are accepted.
 export interface CreateInstallmentPlanInput {
-  invoice_id: number;
-  installments: number;
+  customer_id?: number;
+  invoice_id?: number | null;
+  total_cents?: number;
+  installment_count?: number;
+  installments?: number;
+  frequency_days?: number;
+  acceptance_token?: string;
+  acceptance_signed_at?: string;
+  schedule?: Array<{ index: number; due_date: string; amount_cents: number }>;
   start_date?: string;
   notes?: string;
 }

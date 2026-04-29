@@ -1021,6 +1021,7 @@ router.post('/bulk-action', requirePermission('invoices.bulk_action'), async (re
               await sendEmail(db, {
                 to: reminderCustomer.email,
                 subject: `Payment reminder: invoice ${invoice.order_id || invoice.id}`,
+                html: `<p>${reminderMsg.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`,
                 text: reminderMsg,
               });
             } catch (emailErr) {

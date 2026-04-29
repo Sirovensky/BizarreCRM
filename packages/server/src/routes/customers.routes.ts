@@ -1047,7 +1047,7 @@ router.post(
       }
     }
 
-    const inputAny = input as Record<string, unknown>;
+    const inputAny = input as unknown as Record<string, unknown>;
     const lat = typeof inputAny.lat === 'number' && isFinite(inputAny.lat) ? inputAny.lat : null;
     const lng = typeof inputAny.lng === 'number' && isFinite(inputAny.lng) ? inputAny.lng : null;
 

@@ -106,7 +106,7 @@ router.get(
   '/threads/:id/messages',
   asyncHandler(async (req, res) => {
     const adb: AsyncDb = req.asyncDb;
-    const threadId = parseInt(req.params.id, 10);
+    const threadId = parseInt(String(req.params.id), 10);
     if (!threadId || isNaN(threadId)) {
       res.status(400).json({ success: false, error: 'Invalid thread id' });
       return;

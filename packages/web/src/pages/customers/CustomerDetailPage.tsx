@@ -1496,6 +1496,11 @@ function InfoTab({
 
 interface CustomerTicketRow {
   id: number;
+  // Server `GET /customers/:id/tickets` spreads `t.*` from `tickets`, so the
+  // raw column names land on the row. Both order_id (display ID) and total
+  // are surfaced in the UI.
+  order_id?: string | number | null;
+  total?: number | string | null;
   created_at: string;
   status?: { color?: string; name?: string };
   devices?: Array<{ device_name?: string; service_name?: string; issue?: string }>;
@@ -1516,6 +1521,11 @@ interface CustomerCommunicationRow {
   comm_type?: string;
   subject?: string;
   body?: string;
+  // Server unifies SMS/call/email rows with `content` (sms.message,
+  // calls.transcription, emails.body) — see customers.routes.ts:1727.
+  // Keep `message` too so callers that read the legacy raw column also typecheck.
+  content?: string | null;
+  message?: string | null;
   created_at?: string;
 }
 
