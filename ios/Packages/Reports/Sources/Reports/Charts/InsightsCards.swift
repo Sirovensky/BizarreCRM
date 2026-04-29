@@ -455,10 +455,9 @@ public struct PartsUsageCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             header
             if rows.isEmpty {
-                Text("No parts usage data in selected period")
-                    .font(.brandBodyMedium())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityLabel("No parts usage data")
+                // §91.5: add glyph to match other empty-state cards
+                ChartDashedSilhouette(systemImage: "shippingbox.fill",
+                                      label: "No parts usage data in selected period.")
             } else {
                 kpiBand
                 partsList
@@ -683,12 +682,13 @@ public struct StalledTicketsCard: View {
                         color: s.stalledCount > 0 ? .bizarreWarning : .bizarreSuccess)
                 kpiTile(value: "\(s.overdueCount)", label: "overdue",
                         color: s.overdueCount > 0 ? .bizarreError : .bizarreSuccess)
-                kpiTile(value: String(format: "%.1f d", s.avgDaysStalled),
+                // §91.5: avgDaysStalled == 0 means undefined when no stalled tickets — show em-dash
+                kpiTile(value: s.avgDaysStalled > 0 ? String(format: "%.1f d", s.avgDaysStalled) : "—",
                         label: "avg stall", color: .bizarreOnSurface)
                 Spacer()
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("\(s.stalledCount) stalled, \(s.overdueCount) overdue, average \(String(format: "%.1f", s.avgDaysStalled)) days stalled")
+            .accessibilityLabel("\(s.stalledCount) stalled, \(s.overdueCount) overdue, average stall \(s.avgDaysStalled > 0 ? String(format: "%.1f days", s.avgDaysStalled) : "not available")")
 
             if let tech = s.topStalledTech {
                 HStack(spacing: BrandSpacing.xs) {

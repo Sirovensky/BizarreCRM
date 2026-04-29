@@ -383,13 +383,16 @@ public struct RepeatCustomerRateCard: View {
                 }
                 .accessibilityLabel(String(format: "Repeat customer rate: %.1f%%", s.repeatRatePct))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%.0f d", s.avgDaysToRepeat))
+                    // §91.5: avgDaysToRepeat == 0 means undefined (no one repeated yet) — show em-dash
+                    Text(s.avgDaysToRepeat > 0 ? String(format: "%.0f d", s.avgDaysToRepeat) : "—")
                         .font(.brandHeadlineLarge()).monospacedDigit()
                         .foregroundStyle(.bizarreOnSurface)
                     Text("avg return time")
                         .font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
                 }
-                .accessibilityLabel(String(format: "Average days to repeat: %.0f", s.avgDaysToRepeat))
+                .accessibilityLabel(s.avgDaysToRepeat > 0
+                    ? String(format: "Average days to repeat: %.0f", s.avgDaysToRepeat)
+                    : "Average return time: not available")
                 Spacer()
             }
             // Split bar: one-time vs repeat
@@ -452,9 +455,9 @@ public struct AvgTicketValueTrendCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             header
             if points.isEmpty {
-                Text("No trend data in selected period")
-                    .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityLabel("No avg ticket value trend data")
+                // §91.5: dashed silhouette communicates chart intent even when no data
+                ChartDashedSilhouette(systemImage: "chart.line.uptrend.xyaxis",
+                                      label: "No trend data in selected period.")
             } else {
                 kpiBand
                 chart
@@ -699,9 +702,9 @@ public struct LaborUtilizationCard: View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             header
             if rows.isEmpty {
-                Text("No labor utilization data in selected period")
-                    .font(.brandBodyMedium()).foregroundStyle(.bizarreOnSurfaceMuted)
-                    .accessibilityLabel("No labor utilization data")
+                // §91.5: add glyph to match other empty-state cards
+                ChartDashedSilhouette(systemImage: "gauge.with.needle.fill",
+                                      label: "No labor data in selected period.")
             } else {
                 avgUtilizationBadge
                 chart
