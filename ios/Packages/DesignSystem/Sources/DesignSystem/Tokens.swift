@@ -32,6 +32,8 @@ public enum DesignTokens {
         public static let lg: CGFloat = 16      // card
         public static let xl: CGFloat = 24      // sheet
         public static let pill: CGFloat = 999   // fully rounded
+        /// Alias for `pill` — use when the semantic intent is a capsule shape.
+        public static let capsule: CGFloat = 999
     }
 
     // MARK: - Shadow (§80.3)

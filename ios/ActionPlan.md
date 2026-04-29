@@ -4516,11 +4516,11 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **All tokens** — asset-catalog with light + dark + high-contrast variants.
 
 ### 30.2 Spacing (8-pt grid)
-- [ ] **Tokens**: `xxs (2)`, `xs (4)`, `sm (8)`, `md (12)`, `base (16)`, `lg (24)`, `xl (32)`, `xxl (48)`, `xxxl (72)`.
+- [x] **Tokens**: `xxs (2)`, `xs (4)`, `sm (8)`, `md (12)`, `base (16)`, `lg (24)`, `xl (32)`, `xxl (48)`, `xxxl (72)`.
 - [ ] **Density mode** — "compact" multiplies by 0.85 globally.
 
 ### 30.3 Radius
-- [ ] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`.
+- [x] **Tokens**: `sm (6)`, `md (10)`, `lg (16)`, `xl (24)`, `pill (999)`, `capsule`.
 
 ### 30.4 Typography (`DesignSystem/BrandFonts.swift`)
 
@@ -4562,9 +4562,9 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 ### 30.6 Motion (`DesignSystem/BrandMotion.swift`)
 - [ ] **Tokens**: `.fab` (160ms spring), `.banner` (200ms), `.sheet` (340ms), `.tab` (220ms), `.chip` (120ms).
 - [ ] **Reduce Motion fallback** — each token returns `.easeInOut(duration: 0)` if a11y flag.
-- [ ] **Spring** — `.interactiveSpring(response: 0.3, dampingFraction: 0.75)`.
+- [x] **Spring** — `.interactiveSpring(response: 0.3, dampingFraction: 0.75)`.
 - [ ] **Shared element transition** — matchedGeometryEffect for detail push.
-- [ ] **Pulse** — used on "new" badges (scale 1.0 ↔ 1.05, 600ms).
+- [x] **Pulse** — used on "new" badges (scale 1.0 ↔ 1.05, 600ms).
 
 ### 30.7 Haptics (`DesignSystem/Haptics.swift`)
 - [ ] **`.selection`** on picker / chip toggle.
@@ -4700,7 +4700,7 @@ Cross-ref: §80.8 master typography scale replaced to mirror this list; §80 alr
 - [ ] Reduce Motion: all > `snappy` downgrade to instant / opacity-only.
 - [ ] Discipline: no free-form duration literals in views — tokens only; SwiftLint rule bans inline `withAnimation(.easeInOut(duration:` numbers.
 - [ ] 120fps tuned (ProMotion); 60fps still feels good.
-- [ ] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion.
+- [x] Choreography: staggered list-appear cascade +40ms per row, 200ms cap; respects Reduce Motion.
 - [ ] Catalog every `Image(systemName:)` into `docs/symbols.md` (symbol name, usage, pre-iOS-17 fallback).
 - [ ] Variant rules: `.fill` on active/selected, outline on inactive; default `.monochrome`, `.multicolor` for status (warning/error), `.hierarchical` for brand surfaces where depth helps.
 - [ ] Custom SF Symbols for brand glyphs (wrench-spark) in `Assets.xcassets/Symbols/`; naming `brand.wrench.spark`.
