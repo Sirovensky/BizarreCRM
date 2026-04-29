@@ -60,6 +60,8 @@ public struct DispatcherSplitView: View {
                     .tag(job.id)
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel(dispatchRowA11y(job))
+                    .accessibilityAddTraits(vm.selectedJob?.id == job.id ? .isSelected : [])
+                    .accessibilityHint("Double-tap to view job on map")
             }
             .listStyle(.sidebar)
 
@@ -151,6 +153,12 @@ public struct DispatcherSplitView: View {
         if let customer = job.customerName { parts.append(customer) }
         parts.append(FSJobStatus(rawValue: job.status)?.displayLabel ?? job.status)
         parts.append(job.addressLine)
+        if let tech = job.techName { parts.append("Assigned to \(tech)") }
+        switch job.priority {
+        case "emergency": parts.append("Emergency priority")
+        case "high":      parts.append("High priority")
+        default:          break
+        }
         return parts.joined(separator: ", ")
     }
 }
