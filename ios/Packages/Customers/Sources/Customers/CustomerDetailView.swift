@@ -118,8 +118,14 @@ public struct CustomerDetailView: View {
                         CommentsCard(text: comments)
                     }
 
-                    if let notes = vm.snapshot.notes, !notes.isEmpty {
-                        NotesTimeline(notes: notes)
+                    // §5 batch-2: always show the notes section when the record
+                    // has loaded so staff aren't left wondering if notes exist.
+                    if let notes = vm.snapshot.notes {
+                        if notes.isEmpty {
+                            NotesSectionEmptyState()
+                        } else {
+                            NotesTimeline(notes: notes)
+                        }
                     }
 
                     // §5.6 Contacts section
@@ -146,11 +152,18 @@ private struct Header: View {
 
     var body: some View {
         VStack(spacing: BrandSpacing.sm) {
+            // §5 batch-2: fall back to person.fill icon when initials are blank.
             ZStack {
                 Circle().fill(Color.bizarreOrangeContainer)
-                Text(detail.initials)
-                    .font(.brandDisplayMedium())
-                    .foregroundStyle(.bizarreOnOrange)
+                if detail.initials.isEmpty {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 40, weight: .medium))
+                        .foregroundStyle(.bizarreOnOrange.opacity(0.65))
+                } else {
+                    Text(detail.initials)
+                        .font(.brandDisplayMedium())
+                        .foregroundStyle(.bizarreOnOrange)
+                }
             }
             .frame(width: 88, height: 88)
 
@@ -214,21 +227,51 @@ private struct QuickStatsRow: View {
 
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
-            tile("Tickets", value: "\(analytics.totalTickets)")
-            tile("Lifetime", value: formatMoney(analytics.lifetimeValue))
-            tile("Last visit", value: analytics.lastVisit.map { String($0.prefix(10)) } ?? "—")
+            // §5 batch-2: stat tiles each carry an SF Symbol icon for quick scanning.
+            tile("Tickets", icon: "ticket", value: "\(analytics.totalTickets)")
+            tile("Lifetime", icon: "dollarsign.circle", value: formatMoney(analytics.lifetimeValue))
+            tile("Last visit", icon: "calendar.badge.clock",
+                 value: analytics.lastVisit.map { formatLastVisit($0) } ?? "—")
         }
     }
 
-    private func tile(_ label: String, value: String) -> some View {
+    /// §5 batch-2: convert an ISO-8601 date string to a human-readable relative
+    /// label within 30 days ("3 days ago", "yesterday") or a short date beyond.
+    private func formatLastVisit(_ iso: String) -> String {
+        let trimmed = String(iso.prefix(10))
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy-MM-dd"
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = fmt.date(from: trimmed) else { return trimmed }
+        if abs(date.timeIntervalSinceNow) < 30 * 86400 {
+            let rf = RelativeDateTimeFormatter()
+            rf.dateTimeStyle = .named
+            rf.unitsStyle = .short
+            return rf.localizedString(for: date, relativeTo: Date())
+        }
+        let df = DateFormatter()
+        df.dateStyle = .medium
+        df.timeStyle = .none
+        return df.string(from: date)
+    }
+
+    private func tile(_ label: String, icon: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
-            Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+            HStack(spacing: BrandSpacing.xxs) {
+                Image(systemName: icon)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .accessibilityHidden(true)
+                Text(label).font(.brandLabelSmall()).foregroundStyle(.bizarreOnSurfaceMuted)
+            }
             Text(value).font(.brandTitleMedium()).foregroundStyle(.bizarreOnSurface).lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(BrandSpacing.md)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.bizarreOutline.opacity(0.4), lineWidth: 0.5))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
     }
 
     private func formatMoney(_ v: Double) -> String {
@@ -484,6 +527,33 @@ private struct CommentsCard: View {
                 .foregroundStyle(.bizarreOnSurface)
         }
         .cardBackground()
+    }
+}
+
+// MARK: - §5 batch-2: Notes section empty state
+
+/// Displayed when the customer record is loaded but has no notes yet.
+private struct NotesSectionEmptyState: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+            Text("Notes")
+                .font(.brandTitleMedium())
+                .foregroundStyle(.bizarreOnSurface)
+            HStack(alignment: .top, spacing: BrandSpacing.sm) {
+                Image(systemName: "note.text")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.bizarreOnSurfaceMuted.opacity(0.5))
+                    .accessibilityHidden(true)
+                Text("No notes yet — add one from the toolbar to track calls, visits, or anything else.")
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .cardBackground()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("No notes yet. Use the toolbar to add a note.")
+        .accessibilityIdentifier("customers.detail.notes.empty")
     }
 }
 

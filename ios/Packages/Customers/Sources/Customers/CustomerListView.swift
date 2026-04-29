@@ -813,12 +813,19 @@ private struct CustomerRow: View {
 
     var body: some View {
         HStack(spacing: BrandSpacing.md) {
+            // §5 batch-2: fall back to person.fill SF Symbol when initials are blank.
             ZStack {
                 Circle()
                     .fill(Color.bizarreOrangeContainer)
-                Text(customer.initials)
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnOrange)
+                if customer.initials.isEmpty {
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.bizarreOnOrange.opacity(0.65))
+                } else {
+                    Text(customer.initials)
+                        .font(.brandTitleSmall())
+                        .foregroundStyle(.bizarreOnOrange)
+                }
             }
             .frame(width: 36, height: 36)
             .accessibilityHidden(true)

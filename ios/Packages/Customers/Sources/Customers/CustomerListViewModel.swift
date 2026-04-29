@@ -58,7 +58,17 @@ public final class CustomerListViewModel {
 
     // MARK: - §5.1 Sort + Filter
 
-    public var sortOrder: CustomerSortOrder = .name
+    /// §5 batch-2: persisted across launches via UserDefaults so the user's
+    /// preferred sort is remembered. Defaults to `.name` on first launch.
+    public var sortOrder: CustomerSortOrder {
+        get {
+            let raw = UserDefaults.standard.string(forKey: "customers.list.sortOrder") ?? ""
+            return CustomerSortOrder(rawValue: raw) ?? .name
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "customers.list.sortOrder")
+        }
+    }
     public var filter: CustomerListFilter = .init()
 
     // MARK: - §5.1 Stats header
