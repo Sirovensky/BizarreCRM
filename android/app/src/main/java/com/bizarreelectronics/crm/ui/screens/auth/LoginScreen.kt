@@ -2209,18 +2209,34 @@ fun LoginScreen(
             animationSpec = tween,
             label = "login_wave_below",
         )
+        // 2026-04-28 — Tablet breathing room. On sw >= 600 dp the 420 dp card
+        // cap looked stranded in a sea of black; bump to 560 dp and pad the
+        // top with extra space so the form sits visually centered without
+        // every element clamped together.
+        val isTablet = androidx.compose.ui.platform.LocalConfiguration.current
+            .smallestScreenWidthDp >= 600
+        val cardMaxWidth = if (isTablet) 560.dp else 420.dp
+        val tabletExtraTop = if (isTablet) 32.dp else 0.dp
         Column(
             modifier = Modifier
-                .widthIn(max = 420.dp)
+                .widthIn(max = cardMaxWidth)
                 .padding(horizontal = 16.dp)
                 .padding(vertical = outerVertical)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Logo / App name — small top breathing room replaces the old 80dp pin.
-            Spacer(Modifier.height(topSpacer))
+            Spacer(Modifier.height(topSpacer + tabletExtraTop))
             // LOGIN-MOCK-097/054: merge wordmark + subtitle into one TalkBack heading stop.
-            Column(modifier = Modifier.semantics(mergeDescendants = true) { heading() }) {
+            // 2026-04-28 — Wordmark left-aligned (was Center via parent
+            // horizontalAlignment) so on wide tablets it doesn't float
+            // above a centered card looking dropped from nowhere.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Start)
+                    .fillMaxWidth()
+                    .semantics(mergeDescendants = true) { heading() },
+            ) {
                 Text(
                     "Bizarre CRM",
                     style = MaterialTheme.typography.headlineLarge,

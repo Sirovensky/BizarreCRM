@@ -198,7 +198,7 @@ fun SmsSettingsScreen(
                             MaterialTheme.colorScheme.error,
                     )
                     Text(
-                        "Provider credentials are configured via the web admin panel.",
+                        "Android version settings coming soon. Configuration synchronizes with the web admin panel when available.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )

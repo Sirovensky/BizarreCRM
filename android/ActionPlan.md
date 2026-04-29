@@ -2795,6 +2795,10 @@ _Server endpoints: `POST /pos/sales`, `GET /pos/carts`, `POST /pos/carts`, `POST
 
 _Server endpoints: `GET /settings/*`, `PUT /settings/*`, `GET /tenants/me`, `PUT /tenants/me`, `GET /account`, `GET /settings/payment`, `GET /settings/sms`, `GET /settings/statuses`, `GET /settings/templates`, `GET /settings/custom-fields`._
 
+### 19.0 Full settings parity with web (CROSS)
+- [ ] Bring every settings surface to the Android client at parity with the web admin panel (SMS/email providers, payment, statuses, templates, custom fields, integrations, billing, etc.). Hard but in scope per shop-owner-on-the-go premise. While each surface is being built, the read-only stub copy reads "Android version settings coming soon" + a sync note.
+- [ ] Bidirectional sync: every settings PUT issued from Android pushes through the same `/settings/*` endpoints the web client uses; pull side picks up web-edited values via the existing settings polling/refresh cadence. No new "android settings" silo.
+
 ### 19.1 Shell
 - [x] Settings screen — Material 3 grouped list.
 - [x] Search-in-settings (`SearchBar`) indexing every setting key + metadata (mirror web `settingsMetadata.ts`). (commit 922ef1f — `SettingsSearchBar.kt` + `SettingsMetadata.kt` 10-entry index; 300ms debounce; 12 JVM tests)
@@ -6420,6 +6424,7 @@ New `ui/screens/checkin/` package — 8 files total:
 - [x] `ui/screens/checkin/CheckInViewModel.kt` — shared ViewModel holding draft state across all steps; writes to Room `checkin_drafts` table. (commit `80578a59`)
 - [x] 6 step screens (`Step1CustomerScreen.kt` … `Step6SignatureScreen.kt`) inside `ui/screens/checkin/`. Step 6 reuses `ui/components/SignaturePad.kt`. (commit `80578a59`)
 - [x] Room schema migration 10→11 — `checkin_drafts` table added; migration SQL, DAO, entity class, and `DatabaseModule` Hilt provider all wired. (commit `80578a59`)
+- [ ] T&C copy in `CheckInStep6Sign.kt` reads shop name from settings/auth state (current `TERMS_SUMMARY` const + summary text hardcode "Bizarre Electronics" at lines 210 and 254-263; on a test tenant the customer-facing terms still show the dev shop name). Inject via `tenant.shop_name` from active session or a server-supplied terms blob.
 - [x] Legacy 7-step ticket-create package at `ui/screens/tickets/create/steps/*` left intact — removal is a planned follow-up (see Known Gaps below).
 
 ---
