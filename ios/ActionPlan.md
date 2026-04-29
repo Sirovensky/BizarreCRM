@@ -4370,9 +4370,9 @@ Tasks:
 - [x] **`ITSAppUsesNonExemptEncryption = false`** — only use HTTPS + standard Apple crypto; skip export-compliance paperwork. <!-- shipped ac159516 [actionplan agent-10 b2] -->
 
 ### 28.7 Logging redaction
-- [ ] **`privacySensitive()`** on password, PIN, SSN fields.
+- [x] **`privacySensitive()`** on password, PIN, SSN fields. (`SensitiveFieldPrivacyModifier` in `Core/Privacy/SensitiveFieldPrivacyModifier.swift`: `.passwordPrivate()` / `.pinPrivate()` / `.ssnPrivate()` View extensions wrap SwiftUI `.privacySensitive(true)` + a stable `accessibilityIdentifier` so UI tests can verify redaction; SwiftLint can flag any SecureField/PIN/SSN row missing one of the helpers. feat(§28.7))
 - [x] **`OSLog` privacy levels** — `.private` on tokens, phones, emails. (`LoggingPolicy.swift` catalogs public vs private field types; `AppLog.redacted()` helper for legacy string paths. feat(§28.7): 76e64d39)
-- [ ] **Crash logs** — no PII via symbolication hooks.
+- [x] **Crash logs** — no PII via symbolication hooks. (`CrashLogPIIScrubber` in `Core/Crash/CrashLogPIIScrubber.swift`: regex scrubber for email/phone/PAN/JWT/Bearer headers; `scrub(_:)` for free strings + `scrub(metadata:)` for breadcrumb dicts; replaces with typed placeholders so triage sees what was scrubbed without seeing who. feat(§28.7))
 - [x] **Network inspector** in dev redacts Authorization header. (`DebugNetworkLogRedactor` in `Networking/DebugNetworkLogRedactor.swift`: scheme-preserving Bearer/Basic redaction with length annotation; case-insensitive header-name match; covers `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-Api-Key`, `X-BlockChyp-Auth*`; URL-query redaction for `token`/`access_token`/`api_key`/`password`/`secret`. feat(§28.7))
 
 ### 28.8 Screen protection
@@ -4422,7 +4422,7 @@ Rules:
 - [ ] **Unit test** — snapshot-inspect the view hierarchy of each field on a payment/checkout screen, assert no field has a content-type from the `.creditCard*` family.
 
 ### 28.10 Biometric auth
-- [ ] **`LAContext`** — `.biometryAny` preferred; fallback to PIN.
+- [x] **`LAContext`** — `.biometryAny` preferred; fallback to PIN. (`BiometricWithPasscodeFallback` in `Auth/Biometric/BiometricWithPasscodeFallback.swift`: uses `.deviceOwnerAuthentication` so iOS routes biometryAny → device passcode automatically; `Outcome` enum (`.biometry` / `.devicePasscode` / `.cancelled`) attributes which path succeeded by snapshotting biometry availability before evaluation. feat(§28.10))
 - [ ] **Reuse window** — 10s after unlock so confirm-on-save doesn't double-prompt.
 - [x] **Failure limits** — after 3 fails, drop to password. (`BiometricFailureLimitPolicy` in `Core/Privacy/BiometricFailureLimitPolicy.swift`: `@Observable @MainActor` state machine with `BiometricFailureLimitState.allowed(consecutiveFailures:) | requiresPasswordFallback`; configurable `failureLimit` (default 3) trips before iOS's own 5-attempt sensor lockout so the user sees the PIN sheet first; `recordSuccess()` resets counter; `reset()` clears fallback after PIN succeeds. feat(§28.10))
 
@@ -4431,7 +4431,7 @@ Rules:
 - [x] **App Attest** (DeviceCheck) — verify device integrity per session. (`AppAttestService` actor in `Auth/SecurityPolish/AppAttestService.swift`; `prepare()` generates/reuses key in Keychain; `attest(challenge:)` produces DER attestation for `POST /auth/attest`; `assert(challenge:clientData:)` for step-up ops; degrades gracefully to `.unsupported` on simulator/old OS; `MockAppAttestService` for tests. feat(§28.11))
 
 ### 28.12 Tenant data sovereignty
-- [ ] **Tenant DBs are sacred** — never delete tenant DB to recover from missing state; only repair.
+- [x] **Tenant DBs are sacred** — never delete tenant DB to recover from missing state; only repair. (`TenantDatabaseSanctity` in `Core/Privacy/TenantDatabaseSanctity.swift`: `TenantDatabaseDeleteReason` enum hard-codes the only two allowed reasons (sign-out/tenant-switch + user-confirmed reset); `assertDeletable(reason:)` is the greppable choke point + audit log line; `decideRecovery(integrityCheckFailed:)` returns `.repairInPlace` or `.surfaceToUser` — deletion is intentionally NOT an option. feat(§28.12))
 - [ ] **Per-tenant crypto key** — distinct passphrase per tenant so switching doesn't decrypt wrong data.
 
 ### 28.13 Compliance
@@ -4442,7 +4442,7 @@ Rules:
 - [ ] **HIPAA** — tenant-level toggle to avoid storing PHI (applies to some vet clinics / medical-device repair).
 
 ### 28.14 Session & token
-- [ ] **Access token** 1h; refresh token 30d rotating.
+- [x] **Access token** 1h; refresh token 30d rotating. (`SessionTokenPolicy` + `SessionTokenPolicyOverride` in `Auth/SessionTokenPolicy.swift`: canonical 1h access / 30d refresh constants with `rotatesOnRefresh=true`; `shouldProactivelyRefresh(issuedAt:now:)` triggers 5-min before expiry; `isRefreshTokenExpired(...)` for hard-stop re-auth; server override clamped 5min ≤ access ≤ 24h, 1h ≤ refresh ≤ 90d. feat(§28.14))
 - [ ] **Force re-auth** — on sensitive actions (void > $X, delete customer).
 - [ ] **Token revocation** — server-sent 401 triggers global logout (already shipped).
 - [ ] **Device trust** — "Remember this device" reduces 2FA prompts; 90-day expiration.
