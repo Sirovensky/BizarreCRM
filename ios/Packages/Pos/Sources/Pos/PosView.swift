@@ -912,12 +912,14 @@ public struct PosView: View {
             .padding(.top, BrandSpacing.sm)
             .padding(.bottom, BrandSpacing.xl) // room for the labels under each circle
 
-            // Repair flow keeps the consistent rail | main | cart layout —
-            // every step's interactive content lives in the *catalog*
-            // (left/center) column, with the cart pinned on the right. The
-            // sliding inspector pane was moved over per UX feedback because
-            // device-picking and issue-description are the primary actions
-            // and deserve the larger column real-estate.
+            // Repair flow keeps the consistent rail | main | cart layout
+            // across every POS phase. Per user feedback, the right cart
+            // column reuses the same `PosIPadCartPanel` as path-choice and
+            // active-cart screens — same head, same coupon row, same
+            // totals stack — so the cashier's eye lands on the same place
+            // regardless of which step they're in. Repair-specific draft
+            // state (Draft chip, "Pick device first" CTA) lives inside
+            // the picker on the left now.
             PosRegisterLayout(
                 catalogFraction: 0.65
             ) {
@@ -929,7 +931,12 @@ public struct PosView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } cart: {
-                iPadRepairCartPlaceholder(coordinator: coordinator)
+                PosIPadCartPanel(
+                    cart: cart,
+                    onCharge: startChargeV5,
+                    onEditItem: { item in editingCartItem = item },
+                    editingItemId: editingCartItem?.id
+                )
             }
         }
         .animation(BrandMotion.snappy, value: coordinator.currentStep)
