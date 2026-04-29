@@ -52,6 +52,10 @@ public final class ProfileSettingsViewModel: Sendable {
     var successMessage: String?
     var showPasswordSection: Bool = false
 
+    // MARK: Slug copy
+    /// Drives the checkmark animation after the tenant slug is copied to the clipboard.
+    var slugCopied: Bool = false
+
     // MARK: Validation
     var passwordStrength: Int {
         let p = newPassword
