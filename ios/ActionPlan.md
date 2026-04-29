@@ -4198,12 +4198,12 @@ Product-mode opt-in, not an OS flag — but our app must be compatible so users 
 - [ ] **Translation service** — Lokalise / Crowdin workflow + CI sync.
 
 ### 27.2 Locale-aware formatters
-- [ ] **Dates** — `Date.FormatStyle.dateTime` with locale.
-- [ ] **Currency** — `Decimal.FormatStyle.Currency(code: tenantCurrency)`.
-- [ ] **Numbers** — `.number` with `.locale(Locale.current)`.
+- [x] **Dates** — `Date.FormatStyle.dateTime` with locale. `LocaleFormatter.formatDateTime(_:configure:)` in `FormatStyles.swift` wraps `Date.FormatStyle(date:.abbreviated, time:.shortened).locale(locale)` with caller-supplied field composition.
+- [x] **Currency** — `Decimal.FormatStyle.Currency(code: tenantCurrency)`. `LocaleFormatter.formatCurrency(_:Decimal, currencyCode:)` uses `Decimal.formatted(.currency(code:).locale(locale))` to avoid float rounding for POS amounts.
+- [x] **Numbers** — `.number` with `.locale(Locale.current)`. `LocaleFormatter.formatNumber(_:Int)` and `formatNumber(_:Double, fractionDigits:)` use `IntegerFormatStyle`/`FloatingPointFormatStyle.number.locale(locale)`.
 - [ ] **Percent** — `.percent`.
-- [ ] **Distance** — `MeasurementFormatter` (rare).
-- [ ] **Relative** — `RelativeDateTimeFormatter` for "2 min ago".
+- [x] **Distance** — `MeasurementFormatter` (rare). `LocaleFormatter.formatDistance(meters:)` and `formatDistance(_:Measurement<UnitLength>)` cache a `MeasurementFormatter` per (locale, unitOptions) and use `.naturalScale` so `en_US` shows miles, metric locales show km.
+- [x] **Relative** — `RelativeDateTimeFormatter` for "2 min ago". `LocaleFormatter.formatRelative(_:relativeTo:style:)` caches a `RelativeDateTimeFormatter` per (locale, unitsStyle) and calls `localizedString(for:relativeTo:)`.
 - [ ] **Phone** — `libPhoneNumber-iOS` or server-provided format respecting E.164 + locale.
 
 ### 27.3 Plural rules
