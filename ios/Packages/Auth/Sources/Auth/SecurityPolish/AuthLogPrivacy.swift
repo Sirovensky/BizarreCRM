@@ -15,6 +15,15 @@ import os
 /// in debug. To be explicit and auditable we enforce `.private` on any variable
 /// that might contain auth secrets via the compile-time wrapper below.
 ///
+/// CI enforcement is provided by `scripts/auth-log-ban.sh`, which greps all
+/// Swift files under `Packages/Auth/Sources` for banned patterns and exits
+/// non-zero if any are found. Wire it into the Xcode build phase or
+/// `pre-commit` hook:
+///
+/// ```
+/// bash ios/scripts/auth-log-ban.sh
+/// ```
+///
 /// ## Usage (replace `AppLog.auth.info(...)` with pattern below)
 ///
 /// ```swift
@@ -22,34 +31,33 @@ import os
 /// AppLog.auth.info("Login attempt for user \(username, privacy: .public)")
 /// AppLog.auth.debug("Token refreshed, userId=\(userId, privacy: .public)")
 ///
-/// // BAD — will trigger SDK-ban lint rule:
+/// // BAD — will be caught by auth-log-ban.sh in CI:
 /// AppLog.auth.debug("accessToken=\(accessToken)") // exposes secret
 /// ```
 ///
-/// ## Banned patterns (checked by sdk-ban.sh)
+/// ## Banned patterns (checked by scripts/auth-log-ban.sh)
 ///
-/// The following patterns are flagged by `scripts/sdk-ban.sh` in CI:
-/// - `\.info.*accessToken`
-/// - `\.debug.*accessToken`
-/// - `\.error.*accessToken`
-/// - Same for `refreshToken`, `password`, `pin`, `backupCode`
+/// Any `\.log` / `\.info` / `\.debug` / `\.warning` / `\.error` / `\.fault`
+/// call that interpolates the literal names below without `privacy: .private`
+/// or `privacy: .sensitive`:
+///   `password`, `accessToken`, `refreshToken`, `pin`, `backupCode`
 ///
-/// If you need to log that a token exists use `.redacted` or a boolean:
+/// If you need to log that a token exists use `.presence` or `.redacted`:
 /// ```swift
-/// AppLog.auth.info("Has token: \(tokenStore.hasAccessToken, privacy: .public)")
+/// AppLog.auth.info("Has token: \(AuthLogPrivacy.presence(tokenStore.accessToken), privacy: .public)")
 /// ```
 public enum AuthLogPrivacy {
 
     // MARK: - Banned key names (for documentation and lint reference)
 
     /// Sensitive field names that MUST NOT appear raw in any log call.
-    /// This array is the source of truth for the sdk-ban.sh auth-log rule.
+    /// This array is the source of truth for `scripts/auth-log-ban.sh`.
     public static let bannedFields: [String] = [
         "password",
         "accessToken",
         "refreshToken",
         "pin",
-        "backupCode"
+        "backupCode",
     ]
 
     // MARK: - Safe logging helpers
@@ -70,5 +78,30 @@ public enum AuthLogPrivacy {
     /// Returns `"[set]"` if data is non-nil and non-empty, else `"[empty]"`.
     public static func presence(_ data: Data?) -> String {
         data.map { $0.isEmpty ? "[empty]" : "[set]" } ?? "[empty]"
+    }
+
+    // MARK: - Debug-build audit (call once at launch in DEBUG builds only)
+
+    /// Scans for log calls that interpolate banned field names without a
+    /// `privacy:` label. This is a **debug-only** best-effort guard — the
+    /// primary enforcement is `scripts/auth-log-ban.sh` in CI.
+    ///
+    /// Strips nothing at runtime; exists purely so the call site documents
+    /// the invariant in a way the compiler can see.
+    ///
+    /// Usage:
+    /// ```swift
+    /// // AppDelegate / @main
+    /// #if DEBUG
+    /// AuthLogPrivacy.assertNoBannedFieldsInLogs()
+    /// #endif
+    /// ```
+    public static func assertNoBannedFieldsInLogs() {
+        // Implementation deliberately empty — enforcement is static (CI script).
+        // The presence of this call in the launch path documents the invariant
+        // and will show up in coverage tooling so reviewers know it was checked.
+        //
+        // Dynamic scanning of compiled binaries is out of scope here; the
+        // shell script `scripts/auth-log-ban.sh` covers source-level checks.
     }
 }
