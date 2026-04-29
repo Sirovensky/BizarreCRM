@@ -1730,8 +1730,8 @@ _Server endpoints: `GET /notifications`, `POST /device-tokens` (verify), `PATCH 
   - `APPOINTMENT_REMINDER` → Call / SMS / Reschedule.
   - `MENTION` → Reply / Open.
 - [x] **Entity allowlist** on deep-link parse (security — prevent injected types). (feat(§13): kEntityTypeAllowlist in NotificationDeepLinkCoordinator + deepLinkPath allowlist in NotificationListPolishedView — verified b14; 4ecb468d)
-- [ ] **Quiet hours** — respect Settings → Notifications → Quiet Hours.
-- [ ] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach.
+- [x] **Quiet hours** — respect Settings → Notifications → Quiet Hours. (`NotificationHandler.willPresent` calls `QuietHoursGate.shouldSuppress(eventType:)`; non-time-sensitive banners suppressed inside the user's window, badge still updates so unread counts stay accurate; critical / `.timeSensitive` events bypass.) (feat(§13/§21))
+- [x] **Notification-summary** (iOS 15+) — `interruptionLevel: .timeSensitive` for overdue invoice / SLA breach. (`NotificationHandler.willPresent` stamps `NotificationInterruptionLevelMapper.level(for:)` on the live content; `scheduleSnooze` re-applies on the snooze re-fire so overdue / SLA events keep escaping Focus + Scheduled Summary.) (feat(§13/§21))
 
 ### 13.3 In-app toast
 - [x] Foreground message on a different screen → glass toast at top with tap-to-open; auto-dismiss in 4s; `.selection` haptic. (`ForegroundPushToast.swift` — coordinator + glass overlay + `.foregroundPushToastOverlay()` modifier; 09e6a602)
@@ -3686,15 +3686,15 @@ Every subsequent subsection below is part of Phase 0 scope. Agent assignments in
 - [x] **`BGAppRefreshTask`** — opportunistic catch-up sync every 1–4h; schedule after launch. (feat(§21): AppBackgroundTaskScheduler — syncRefreshID + runSyncRefresh() with cancellation handler; 4ecb468d)
 - [x] **`BGProcessingTask`** — nightly GRDB VACUUM + image cache prune. (feat(§21): AppBackgroundTaskScheduler — maintenanceNightlyID + runMaintenance(); 4ecb468d)
 - [ ] **`BGContinuedProcessingTask`** (iOS 26) — "Sync now" extended run when user initiates a long sync.
-- [ ] **Task budgets** — complete within 30s; defer remainder.
+- [x] **Task budgets** — complete within 30s; defer remainder. (`AppBackgroundTaskScheduler.runWithBudget(_:taskName:onExpiry:work:)` races the work against `appRefreshBudget = 25s` (BGAppRefreshTask) / `processingBudget = 60s` (BGProcessingTask) via `withTaskGroup`; whichever finishes first wins, the loser is cancelled, `onExpiry` fires when the budget elapses, and `scheduleIfNeeded()` requeues so the next opportunistic launch resumes.) (feat(§13/§21))
 
 ### 21.5 WebSocket (Starscream)
 - [x] **Endpoints** — `wss://.../sms`, `wss://.../notifications`, `wss://.../dashboard`, `wss://.../tickets`. (feat(§21): WebSocketManager multi-endpoint enum + connect/disconnect; 4ecb468d)
-- [ ] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates.
+- [x] **Auth** — bearer in `Sec-WebSocket-Protocol` header; server validates. (`WebSocketConnection.swift` sets `Bearer <authToken>` on `Sec-WebSocket-Protocol` for the upgrade `URLRequest`; `WebSocketManager.configure(baseURL:authToken:)` plumbs the token; rotation handled by reconfiguring after `setAuthToken`.) (feat(§13/§21))
 - [x] **Reconnect** — exponential backoff 1s → 2s → 4s → 8s → 16s → 30s cap; jitter ±10%. (feat(§21): WebSocketClient.scheduleReconnect() via min(pow(2,n),30); 4ecb468d)
 - [x] **Heartbeat** — ping every 25s; timeout 30s → force reconnect. (feat(§21): WebSocketManager.startHeartbeat() 25s poll + state mirror; 4ecb468d)
 - [x] **Subscriptions** — per-view subscribe/unsubscribe; dedup server-side. (feat(§21): WebSocketManager.subscribe/unsubscribe with subscriberCount lifecycle; 4ecb468d)
-- [ ] **Event envelope** — `{ type, entity, id, payload, version }`.
+- [x] **Event envelope** — `{ type, entity, id, payload, version }`. (`WebSocketEvent` struct in `WebSocketManager.swift` is `Sendable, Decodable` with the four canonical fields plus optional `version`; `WSConnection.onEvent` decodes inbound frames via `JSONDecoder` and routes to `WebSocketEventBus`.) (feat(§13/§21))
 - [ ] **Backpressure** — coalesce high-frequency events (dashboard KPIs) at 1Hz client-side.
 - [ ] **Disconnect UX** — subtle glass chip "Reconnecting…"; lists keep showing stale data.
 - [ ] **Message bus** — `Combine` publisher per event type; repositories subscribe.

@@ -48,6 +48,24 @@ public final class AppBackgroundTaskScheduler: @unchecked Sendable {
     /// Nominal interval for nightly maintenance.
     public static let maintenanceNightlyInterval: TimeInterval = 60 * 60 * 24 // 24 hours
 
+    // MARK: - Task budgets (§21.4)
+    //
+    // iOS gives ~30 seconds for a BGAppRefreshTask before the system reclaims
+    // the runtime. We trip our soft budget at 25 seconds so we have a few
+    // seconds to flush state and call `setTaskCompleted(success:)` cleanly.
+    // Anything not finished by then is deferred — the task reschedules itself
+    // (see `runSyncRefresh` / `runMaintenance`), so the next opportunistic
+    // launch picks up where we left off.
+
+    /// Soft budget for `BGAppRefreshTask` execution before we voluntarily
+    /// expire the work. Stays under the iOS-imposed 30s ceiling.
+    public static let appRefreshBudget: TimeInterval = 25.0
+
+    /// Soft budget for `BGProcessingTask` execution. iOS allows up to a few
+    /// minutes for processing tasks, but we cap at 60s so VACUUM + cache
+    /// prune always re-yield to the OS rather than risking termination.
+    public static let processingBudget: TimeInterval = 60.0
+
     // MARK: - Init
 
     private init() {}
@@ -84,11 +102,19 @@ public final class AppBackgroundTaskScheduler: @unchecked Sendable {
         onExpiry: @escaping @Sendable () -> Void,
         syncBlock: @escaping @Sendable () async -> Void
     ) async {
-        // The task budget is ~30 s. Run the sync block; if it exceeds budget
-        // the OS calls `expirationHandler` and we stop via `onExpiry`.
+        // The task budget is ~30 s. Run the sync block under a soft budget
+        // race (`appRefreshBudget`) so we voluntarily yield before the OS
+        // calls `expirationHandler`. Whichever finishes first wins; the
+        // remaining work is deferred — `scheduleIfNeeded()` requeues so the
+        // next opportunistic launch picks up where we left off.
         AppLog.app.info("BGAppRefreshTask: sync.refresh starting")
         await withTaskCancellationHandler {
-            await syncBlock()
+            await Self.runWithBudget(
+                budget: Self.appRefreshBudget,
+                taskName: "sync.refresh",
+                onExpiry: onExpiry,
+                work: syncBlock
+            )
             AppLog.app.info("BGAppRefreshTask: sync.refresh complete — rescheduling")
             scheduleIfNeeded()
         } onCancel: {
@@ -110,11 +136,48 @@ public final class AppBackgroundTaskScheduler: @unchecked Sendable {
     ) async {
         AppLog.app.info("BGProcessingTask: maintenance.nightly starting")
         await withTaskCancellationHandler {
-            await maintenanceBlock()
+            await Self.runWithBudget(
+                budget: Self.processingBudget,
+                taskName: "maintenance.nightly",
+                onExpiry: onExpiry,
+                work: maintenanceBlock
+            )
             AppLog.app.info("BGProcessingTask: maintenance.nightly complete")
             scheduleIfNeeded()
         } onCancel: {
             onExpiry()
+        }
+    }
+
+    // MARK: - Budget enforcement (§21.4)
+
+    /// Race the work against a soft budget. If the budget elapses first the
+    /// work task is cancelled, `onExpiry` is invoked, and we return. The
+    /// caller still calls `setTaskCompleted(success:)` on the BGTask.
+    static func runWithBudget(
+        budget: TimeInterval,
+        taskName: String,
+        onExpiry: @escaping @Sendable () -> Void,
+        work: @escaping @Sendable () async -> Void
+    ) async {
+        await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                await work()
+                return true   // finished within budget
+            }
+            group.addTask {
+                let nanos = UInt64(budget * 1_000_000_000)
+                try? await Task.sleep(nanoseconds: nanos)
+                return false  // budget elapsed
+            }
+            // First child to return wins. Cancel the rest.
+            if let finishedInBudget = await group.next() {
+                if !finishedInBudget {
+                    AppLog.app.warning("BGTask \(taskName, privacy: .public): soft budget \(budget, format: .fixed(precision: 0))s exceeded — deferring remainder")
+                    onExpiry()
+                }
+                group.cancelAll()
+            }
         }
     }
 }
