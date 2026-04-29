@@ -80,8 +80,11 @@ public struct FieldSignatureView: View {
                 .allowsHitTesting(false)
                 .opacity(hasSignature ? 0 : 1)
         )
+        // Direct interaction required so VoiceOver users can draw on the canvas.
+        .accessibilityAddTraits(.allowsDirectInteraction)
         .accessibilityLabel("Customer signature pad")
-        .accessibilityHint("Draw your signature with your finger or Apple Pencil")
+        .accessibilityValue(hasSignature ? "Signed" : "Empty — not yet signed")
+        .accessibilityHint("Draw your signature with your finger or Apple Pencil. Double-tap and hold to start drawing in VoiceOver.")
     }
 
     // MARK: - Action bar
