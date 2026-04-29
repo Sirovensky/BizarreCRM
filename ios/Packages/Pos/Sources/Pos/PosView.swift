@@ -897,47 +897,29 @@ public struct PosView: View {
         let devicePickerVM = PosDevicePickerViewModel(
             repository: PosDevicePickerRepositoryImpl(api: api)
         )
-        VStack(spacing: 0) {
-            // Numbered-circle step indicator — easier to track at-a-glance
-            // than a progress bar + caption alone. Past steps fill cream
-            // with a checkmark and are tappable; current is the cream-filled
-            // current index; future steps render hollow.
-            RepairStepIndicator(
-                current: coordinator.currentStep,
-                onTapPastStep: { step in
-                    coordinator.jump(to: step)
-                }
+        // The repair flow lands inside the same `rail | catalog | cart`
+        // template as path-choice and the active-cart screen. Step indicator
+        // and hero header live INSIDE the catalog slot (top of
+        // `iPadRepairInspectorPane`) so the right cart column starts at the
+        // topbar y-origin on every phase — no vertical shift between
+        // path-choice and repair. Same river, no bumps.
+        PosRegisterLayout(
+            catalogFraction: 0.65
+        ) {
+            Color.clear.frame(height: 0)
+        } catalog: {
+            iPadRepairInspectorPane(
+                coordinator: coordinator,
+                devicePickerVM: devicePickerVM
             )
-            .padding(.horizontal, BrandSpacing.xl)
-            .padding(.top, BrandSpacing.sm)
-            .padding(.bottom, BrandSpacing.xl) // room for the labels under each circle
-
-            // Repair flow keeps the consistent rail | main | cart layout
-            // across every POS phase. Per user feedback, the right cart
-            // column reuses the same `PosIPadCartPanel` as path-choice and
-            // active-cart screens — same head, same coupon row, same
-            // totals stack — so the cashier's eye lands on the same place
-            // regardless of which step they're in. Repair-specific draft
-            // state (Draft chip, "Pick device first" CTA) lives inside
-            // the picker on the left now.
-            PosRegisterLayout(
-                catalogFraction: 0.65
-            ) {
-                Color.clear.frame(height: 0)
-            } catalog: {
-                iPadRepairInspectorPane(
-                    coordinator: coordinator,
-                    devicePickerVM: devicePickerVM
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } cart: {
-                PosIPadCartPanel(
-                    cart: cart,
-                    onCharge: startChargeV5,
-                    onEditItem: { item in editingCartItem = item },
-                    editingItemId: editingCartItem?.id
-                )
-            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } cart: {
+            PosIPadCartPanel(
+                cart: cart,
+                onCharge: startChargeV5,
+                onEditItem: { item in editingCartItem = item },
+                editingItemId: editingCartItem?.id
+            )
         }
         .animation(BrandMotion.snappy, value: coordinator.currentStep)
         .toolbar { repairTopbarPrincipal(coordinator: coordinator) }
@@ -962,193 +944,143 @@ public struct PosView: View {
         }
     }
 
-    /// Items column — dimmed centered "Creating ticket…" hint per mockup
-    /// (`pos-ipad-mockups.html` line 1741).
-    private func iPadRepairCatalogPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
-        VStack(spacing: 12) {
-            Text("🧾").font(.system(size: 56))
-            Text("Creating repair ticket…")
-                .font(.brandTitleSmall())
-                .foregroundStyle(.bizarreOnSurface)
-            Text(coordinator.currentStep.accessibilityDescription)
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-        }
-        .opacity(0.45)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityHidden(true)
-    }
-
-    /// Cart column — header + repair-in-progress placeholder + disabled
-    /// per-step charge button (mockup line 1750-1768).
-    private func iPadRepairCartPlaceholder(coordinator: PosRepairFlowCoordinator) -> some View {
-        VStack(spacing: 0) {
-            if let customer = cart.customer {
-                HStack(spacing: BrandSpacing.sm) {
-                    Image(systemName: "person.crop.circle.fill")
-                        .font(.title2)
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(customer.displayName)
-                            .font(.brandTitleSmall())
-                            .foregroundStyle(.bizarreOnSurface)
-                        Text("Repair ticket — in progress")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreWarning)
-                    }
-                    Spacer(minLength: BrandSpacing.xs)
-                    Text("Draft")
-                        .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.bizarreWarning.opacity(0.18), in: Capsule())
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 12)
-                Divider().background(.bizarreOutline)
-            }
-            Spacer(minLength: 0)
-            VStack(spacing: 10) {
-                Text("🔧").font(.system(size: 40))
-                Text("Complete the inspector to start adding parts.")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-            }
-            Spacer(minLength: 0)
-            Button(action: {}) {
-                Text(repairStepDisabledChargeLabel(coordinator.currentStep))
-                    .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .background(Color.bizarreSurface2, in: RoundedRectangle(cornerRadius: 12))
-            .padding(.horizontal, 18)
-            .padding(.bottom, 18)
-            .disabled(true)
-            .accessibilityIdentifier("pos.ipad.repair.disabledCharge")
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func repairStepDisabledChargeLabel(_ step: RepairStep) -> String {
-        switch step {
-        case .pickDevice:      return "Pick device first"
-        case .describeIssue:   return "Describe issue first"
-        case .diagnosticQuote: return "Set diagnostic & quote first"
-        case .deposit:         return "Pay deposit first"
-        }
-    }
-
-    /// Inspector pane — hosts the active repair step view + footer with
-    /// Cancel + Continue (per mockup line 1809-1812).
+    /// Catalog-slot content for the iPad repair flow.
+    ///
+    /// Mirrors `PosPathChoiceView`'s aesthetic so the cashier's eye lands in
+    /// the same place across every POS phase: step indicator + centered
+    /// hero header + centered scrollable step body (`maxWidth: 720`) +
+    /// Cancel / Skip / Continue footer. Surface tone is `bizarreSurfaceBase`
+    /// — identical to path-choice. No hard `Divider` lines inside the
+    /// content; whitespace separates sections.
     @ViewBuilder
     private func iPadRepairInspectorPane(coordinator: PosRepairFlowCoordinator,
                                           devicePickerVM: PosDevicePickerViewModel) -> some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack(alignment: .top, spacing: BrandSpacing.sm) {
-                VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+        let subtitle: String = {
+            if let name = coordinator.customerDisplayName {
+                return "\(coordinator.currentStep.accessibilityDescription) · \(name)"
+            } else {
+                return coordinator.currentStep.accessibilityDescription
+            }
+        }()
+
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                // Step indicator — relocated from above PosRegisterLayout to
+                // inside the catalog slot so it can't push the cart column
+                // y-origin around.
+                RepairStepIndicator(
+                    current: coordinator.currentStep,
+                    onTapPastStep: { step in
+                        coordinator.jump(to: step)
+                    }
+                )
+                .padding(.horizontal, BrandSpacing.xl)
+                .padding(.top, BrandSpacing.sm)
+                .padding(.bottom, BrandSpacing.lg)
+
+                // Hero header — typography parity with PosPathChoiceView.
+                VStack(alignment: .center, spacing: 6) {
                     Text(coordinator.currentStep.navigationTitle)
-                        .font(.brandTitleSmall())
-                        .foregroundStyle(.bizarreOnSurface)
-                    if let name = coordinator.customerDisplayName {
-                        Text("\(coordinator.currentStep.accessibilityDescription) · \(name)")
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
-                    } else {
-                        Text(coordinator.currentStep.accessibilityDescription)
-                            .font(.brandLabelSmall())
-                            .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .font(.system(size: 26, weight: .bold))
+                        .kerning(-0.4)
+                        .foregroundStyle(Color.bizarreOnSurface)
+                        .multilineTextAlignment(.center)
+                        .accessibilityAddTraits(.isHeader)
+                    Text(subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(Color.bizarreOnSurfaceMuted)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, BrandSpacing.xl)
+
+                // Step body — centered, same maxWidth as path-choice tiles.
+                ScrollView {
+                    Group {
+                        switch coordinator.currentStep {
+                        case .pickDevice:
+                            PosRepairDevicePickerView(coordinator: coordinator,
+                                                       devicePickerVM: devicePickerVM)
+                        case .describeIssue:
+                            PosRepairSymptomView(coordinator: coordinator)
+                        case .diagnosticQuote:
+                            PosRepairQuoteView(coordinator: coordinator)
+                        case .deposit:
+                            PosRepairDepositView(coordinator: coordinator)
+                        }
                     }
+                    .frame(maxWidth: 720)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, BrandSpacing.sm)
                 }
-                Spacer(minLength: BrandSpacing.xs)
-                Button {
-                    coordinator.cancel()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
-                }
-                .accessibilityLabel("Close repair flow")
-            }
-            .padding(.horizontal, BrandSpacing.md)
-            .padding(.top, BrandSpacing.md)
-            .padding(.bottom, BrandSpacing.sm)
 
-            Divider().background(.bizarreOutline)
+                Spacer(minLength: 0)
 
-            // Step body
-            ScrollView {
-                Group {
-                    switch coordinator.currentStep {
-                    case .pickDevice:
-                        PosRepairDevicePickerView(coordinator: coordinator,
-                                                   devicePickerVM: devicePickerVM)
-                    case .describeIssue:
-                        PosRepairSymptomView(coordinator: coordinator)
-                    case .diagnosticQuote:
-                        PosRepairQuoteView(coordinator: coordinator)
-                    case .deposit:
-                        PosRepairDepositView(coordinator: coordinator)
-                    }
-                }
-                .padding(.horizontal, BrandSpacing.md)
-                .padding(.vertical, BrandSpacing.sm)
-            }
-
-            Divider().background(.bizarreOutline)
-
-            // Footer — Cancel + Skip (skippable steps only) + Continue
-            HStack(spacing: BrandSpacing.sm) {
-                Button(role: .destructive) {
-                    coordinator.cancel()
-                } label: {
-                    Text("Cancel")
-                        .font(.brandTitleSmall())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrandSpacing.sm)
-                }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("pos.ipad.repair.cancel")
-
-                // Skip — only for steps where mockup CI-3 / CI-4 declares skippable
-                // (.describeIssue, .diagnosticQuote). Pick-device + Deposit required.
-                if coordinator.currentStep == .describeIssue ||
-                   coordinator.currentStep == .diagnosticQuote {
-                    Button {
-                        coordinator.skipCurrent()
+                // Footer — Cancel / Skip / Continue. No surrounding Dividers.
+                HStack(spacing: BrandSpacing.sm) {
+                    Button(role: .destructive) {
+                        coordinator.cancel()
                     } label: {
-                        Text("Skip")
+                        Text("Cancel")
                             .font(.brandTitleSmall())
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, BrandSpacing.sm)
                     }
                     .buttonStyle(.bordered)
-                    .tint(.bizarreOnSurfaceMuted)
-                    .accessibilityIdentifier("pos.ipad.repair.skip")
-                }
+                    .accessibilityIdentifier("pos.ipad.repair.cancel")
 
-                Button {
-                    coordinator.advance()
-                } label: {
-                    Text(repairContinueLabel(coordinator.currentStep))
-                        .font(.brandTitleSmall())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, BrandSpacing.sm)
+                    // Skip — only for skippable steps (`.describeIssue`, `.diagnosticQuote`).
+                    if coordinator.currentStep == .describeIssue ||
+                       coordinator.currentStep == .diagnosticQuote {
+                        Button {
+                            coordinator.skipCurrent()
+                        } label: {
+                            Text("Skip")
+                                .font(.brandTitleSmall())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, BrandSpacing.sm)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.bizarreOnSurfaceMuted)
+                        .accessibilityIdentifier("pos.ipad.repair.skip")
+                    }
+
+                    Button {
+                        coordinator.advance()
+                    } label: {
+                        Text(repairContinueLabel(coordinator.currentStep))
+                            .font(.brandTitleSmall())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, BrandSpacing.sm)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.bizarreOrange)
+                    .disabled(coordinator.isLoading)
+                    .accessibilityIdentifier("pos.ipad.repair.continue")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.bizarreOrange)
-                .disabled(coordinator.isLoading)
-                .accessibilityIdentifier("pos.ipad.repair.continue")
+                .frame(maxWidth: 720)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 32)
+                .padding(.vertical, BrandSpacing.md)
             }
-            .padding(BrandSpacing.md)
+
+            // Top-trailing close button — overlay so the centered hero
+            // header isn't broken by an asymmetric leading/trailing icon.
+            Button {
+                coordinator.cancel()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .padding(BrandSpacing.md)
+            }
+            .accessibilityLabel("Close repair flow")
+            .accessibilityIdentifier("pos.ipad.repair.close")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.bizarreSurface1)
+        .background(Color.bizarreSurfaceBase.ignoresSafeArea())
+        .animation(BrandMotion.snappy, value: coordinator.currentStep)
     }
 
     private func repairContinueLabel(_ step: RepairStep) -> String {

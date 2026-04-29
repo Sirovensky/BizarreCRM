@@ -80,7 +80,47 @@ public struct PosRepairQuoteView: View {
         self.coordinator = coordinator
     }
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
     public var body: some View {
+        // iPad: parent inspector pane provides step indicator + Cancel /
+        // Skip / Continue footer. Render content only.
+        // iPhone: full screen with progress strip + ctaBar.
+        if hSizeClass == .regular {
+            iPadBody
+        } else {
+            iPhoneBody
+        }
+    }
+
+    private var iPadBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            diagnosticNotesSection
+            partsLaborSection.padding(.top, 8)
+            estimateHeroCard.padding(.top, 10)
+            Spacer().frame(height: 16)
+
+            // "Add line" button surfaced inline since iPad has no nav-bar
+            // toolbar to host it.
+            Button {
+                showingAddLine = true
+            } label: {
+                Label("Add line", systemImage: "plus")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.bizarreOrange)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 8)
+            .accessibilityLabel("Add parts/labor line")
+            .accessibilityIdentifier("repairFlow.quote.addLine")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .sheet(isPresented: $showingAddLine) {
+            addLineSheet
+        }
+    }
+
+    private var iPhoneBody: some View {
         VStack(spacing: 0) {
             // Step 3/4 progress bar pinned below nav (66%)
             // Gradient: primary (orange) → primary-bright, left → right per mockup.

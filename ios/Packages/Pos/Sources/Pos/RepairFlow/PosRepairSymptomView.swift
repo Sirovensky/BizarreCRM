@@ -59,12 +59,46 @@ public struct PosRepairSymptomView: View {
     @State private var vm = PosRepairSymptomViewModel()
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var hSizeClass
 
     public init(coordinator: PosRepairFlowCoordinator) {
         self.coordinator = coordinator
     }
 
     public var body: some View {
+        // On iPad the step view is hosted inside `iPadRepairInspectorPane`,
+        // which already provides the step indicator (top) and Cancel / Skip
+        // / Continue footer. Render those only on compact (iPhone) so iPad
+        // doesn't get a duplicated progress strip + double footer.
+        if hSizeClass == .regular {
+            iPadBody
+        } else {
+            iPhoneBody
+        }
+    }
+
+    // MARK: - iPad body — content only, parent owns chrome.
+
+    private var iPadBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            symptomTextSection
+            conditionSection.padding(.top, 8)
+            quickChipsSection.padding(.top, 8)
+            internalNotesSection.padding(.top, 8)
+            Spacer().frame(height: 16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            symptomText = coordinator.draft.symptomText
+            selectedCondition = coordinator.draft.condition
+            selectedChips = coordinator.draft.quickChips
+            internalNotes = coordinator.draft.internalNotes
+        }
+    }
+
+    // MARK: - iPhone body — full screen with progress strip + ctaBar.
+
+    private var iPhoneBody: some View {
         VStack(spacing: 0) {
             // Step 2/4 progress bar pinned directly below nav bar (3pt strip, 33%)
             // Gradient: primary (orange) → primary-bright, left → right per mockup.

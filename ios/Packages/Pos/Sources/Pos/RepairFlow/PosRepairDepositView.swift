@@ -48,7 +48,67 @@ public struct PosRepairDepositView: View {
         max(0, receivedCents - depositCoordinator.depositCents)
     }
 
+    @Environment(\.horizontalSizeClass) private var hSizeClass
+
     public var body: some View {
+        // iPad: parent inspector pane provides step indicator + Cancel /
+        // Skip / Continue footer. Render content only.
+        // iPhone: full-screen with progress strip + ctaBar.
+        if hSizeClass == .regular {
+            iPadBody
+        } else {
+            iPhoneBody
+        }
+    }
+
+    private var iPadBody: some View {
+        VStack(spacing: 0) {
+            methodStripCard
+                .padding(.top, 4)
+
+            sectionLabel("Cash received")
+                .padding(.top, 8)
+
+            cashDisplayPanel
+
+            sectionLabel("Quick amount")
+                .padding(.top, 8)
+
+            quickAmountsRow
+
+            numpadGrid
+                .padding(.top, 8)
+
+            // Total estimate chip surfaced inline since iPad has no nav-bar
+            // toolbar to host it.
+            HStack {
+                Spacer()
+                Text(RepairDepositCoordinator.formatCurrency(cents: depositCoordinator.totalCents))
+                    .font(.system(size: 14, design: .default).weight(.bold))
+                    .foregroundStyle(Color.bizarreOrange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.bizarreOrange.opacity(0.15), in: Capsule())
+                    .overlay(Capsule().strokeBorder(Color.bizarreOrange.opacity(0.4), lineWidth: 1))
+                    .accessibilityLabel("Total estimate: \(RepairDepositCoordinator.formatCurrency(cents: depositCoordinator.totalCents))")
+            }
+            .padding(.top, 12)
+
+            Spacer().frame(height: 16)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear {
+            // Pre-fill input with suggested deposit
+            let cents = depositCoordinator.depositCents
+            inputString = String(format: "%.2f", Double(cents) / 100.0)
+            selectedQuickAmount = cents
+        }
+        .onChange(of: depositCoordinator.depositCents) { _, newValue in
+            coordinator.setDepositCents(newValue)
+        }
+    }
+
+    private var iPhoneBody: some View {
         VStack(spacing: 0) {
             // Step 4/4 progress bar — full width (100%)
             // Matches the 3pt custom strip used by steps 2 and 3 per mockup 1e.

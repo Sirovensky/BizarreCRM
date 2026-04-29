@@ -111,54 +111,46 @@ public struct PosRepairDevicePickerView: View {
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
     }
 
-    // MARK: - iPad layout (inspector-pane friendly — no List container)
+    // MARK: - iPad layout
+    //
+    // Renders the same card-style rows the iPhone uses, so the device
+    // picker matches the path-choice tile aesthetic the rest of the POS
+    // sticks to. No hard `Divider` lines between rows — whitespace
+    // separates cards, in keeping with the "no dividers inside catalog
+    // content" rule from the iPad layout-consistency plan.
 
     private var ipadContent: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    if coordinator.isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity, minHeight: 80)
-                            .accessibilityLabel("Loading devices…")
-                    } else if let error = devicePickerVM.errorMessage {
-                        errorRow(message: error)
-                            .padding(.horizontal, 18)
-                            .padding(.top, 12)
-                    } else {
-                        let savedOptions = devicePickerVM.options.filter {
-                            if case .addNew = $0 { return false }
-                            return true
+        VStack(alignment: .leading, spacing: 0) {
+            if coordinator.isLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, minHeight: 80)
+                    .accessibilityLabel("Loading devices…")
+            } else if let error = devicePickerVM.errorMessage {
+                errorRow(message: error)
+                    .padding(.top, 12)
+            } else {
+                let savedOptions = devicePickerVM.options.filter {
+                    if case .addNew = $0 { return false }
+                    return true
+                }
+
+                if !savedOptions.isEmpty {
+                    sectionLabel("On file · \(savedOptions.count)")
+
+                    VStack(spacing: 10) {
+                        ForEach(savedOptions) { option in
+                            deviceCard(option: option)
                         }
-
-                        // On file section
-                        inspectorSectionLabel("On file · \(savedOptions.count)")
-                            .padding(.horizontal, 18)
-
-                        VStack(spacing: 0) {
-                            ForEach(savedOptions) { option in
-                                inspectorDeviceRow(option: option)
-                                Divider()
-                                    .overlay(Color.bizarreOutline.opacity(0.4))
-                                    .padding(.leading, 18)
-                            }
-                        }
-
-                        // Add new section
-                        inspectorSectionLabel("Add new")
-                            .padding(.horizontal, 18)
-
-                        inspectorAddNewRow
                     }
                 }
-                .padding(.bottom, 16)
-            }
 
-            // Cancel/Continue buttons live in the parent
-            // `iPadRepairInspectorPane` footer — embedding another set here
-            // gave the user two pairs of buttons (one mid-screen, one at the
-            // bottom). Removed.
+                sectionLabel("Add new")
+
+                addNewDeviceCard
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.bottom, 16)
         .task { await devicePickerVM.load(customerId: coordinator.draft.customerId) }
     }
 
@@ -317,128 +309,6 @@ public struct PosRepairDevicePickerView: View {
         .accessibilityIdentifier("repairFlow.device.add-new")
     }
 
-    // MARK: - iPad inspector rows (compact, no card backgrounds — inline list style)
-
-    private func inspectorDeviceRow(option: PosDeviceOption) -> some View {
-        let isSelected = coordinator.draft.selectedDeviceOption == option
-        return Button {
-            devicePickerVM.select(option)
-            coordinator.setDevice(option)
-            BrandHaptics.tap()
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.bizarreOnSurface.opacity(0.05))
-                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.bizarreOnSurface.opacity(0.08), lineWidth: 1))
-                    Text(option.emojiIcon)
-                        .font(.system(size: 18))
-                }
-                .frame(width: 36, height: 36)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(option.displayLabel)
-                        .font(.system(size: 13.5, weight: .bold))
-                        .foregroundStyle(Color.bizarreOnSurface)
-                    if let subtitle = option.displaySubtitle {
-                        Text(subtitle)
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.bizarreOnSurfaceMuted)
-                    }
-                    if let warranty = option.warrantyLine {
-                        Text(warranty)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color.bizarreSuccess)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                if isSelected {
-                    ZStack {
-                        Circle().fill(Color.bizarreOrange).frame(width: 20, height: 20)
-                        Text("✓").font(.system(size: 11, weight: .black)).foregroundStyle(.white)
-                    }
-                } else {
-                    Circle().stroke(Color.bizarreOnSurface.opacity(0.2), lineWidth: 1.5).frame(width: 18, height: 18)
-                }
-            }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
-        }
-        .buttonStyle(.plain)
-        .background(
-            isSelected ? Color.bizarreOrange.opacity(0.06) : Color.clear
-        )
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(option.displayLabel)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private var inspectorAddNewRow: some View {
-        HStack(spacing: 12) {
-            Button {
-                devicePickerVM.select(.addNew)
-                coordinator.setDevice(.addNew)
-                BrandHaptics.tap()
-            } label: {
-                HStack(spacing: 12) {
-                    ZStack {
-                        LinearGradient(
-                            colors: [Color.bizarreOrangeBright, Color.bizarreOrange],
-                            startPoint: .top, endPoint: .bottom
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                        Text("+")
-                            .font(.system(size: 22, weight: .black))
-                            .foregroundStyle(Color.bizarreOnPrimary)
-                    }
-                    .frame(width: 36, height: 36)
-                    .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Add new device")
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundStyle(Color.bizarreOrange)
-                        Text("Scan IMEI or pick make / model")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Color.bizarreOnSurfaceMuted)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Text("›").font(.system(size: 16)).foregroundStyle(Color.bizarreOrange)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add new device")
-
-            Button {
-                AppLog.pos.info("RepairFlow: scan button tapped — awaiting camera integration")
-            } label: {
-                Text("📷")
-                    .font(.system(size: 16))
-                    .frame(width: 36, height: 36)
-                    .background(Color.bizarreOnSurface.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.bizarreOnSurface.opacity(0.1), lineWidth: 1))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Scan device IMEI")
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 10)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.bizarreOrange.opacity(0.3), Color.bizarreOrange.opacity(0.3)],
-                        startPoint: .top, endPoint: .bottom
-                    )
-                )
-                .frame(width: 3)
-        }
-    }
-
     // MARK: - Helpers
 
     private func sectionLabel(_ text: String) -> some View {
@@ -449,16 +319,6 @@ public struct PosRepairDevicePickerView: View {
             .foregroundStyle(Color.bizarreOnSurfaceMuted)
             .padding(.top, 16)
             .padding(.bottom, 8)
-    }
-
-    private func inspectorSectionLabel(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .textCase(.uppercase)
-            .tracking(0.6)
-            .foregroundStyle(Color.bizarreOnSurfaceMuted)
-            .padding(.top, 12)
-            .padding(.bottom, 4)
     }
 
     private func errorRow(message: String) -> some View {
