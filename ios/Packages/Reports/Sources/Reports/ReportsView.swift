@@ -137,14 +137,15 @@ public struct ReportsView: View {
                 // fully transparent as the scroll offset grows.
                 .scrollContentBackground(.hidden)
             }
-            // §91.8 — inline display mode puts "Reports" in the principal slot,
-            // consistent with POS and Dashboard topbars; large-title mode causes
-            // the headline to scroll under the bar and bleed through.
+            // §91.8 — inline display mode shows "Reports" centred in the nav bar
+            // (same pattern as POS "POS" and Dashboard "Dashboard").  Large-title
+            // mode scrolls the headline under the bar and is avoided here.
             .navigationTitle("Reports")
             .navigationBarTitleDisplayMode(.inline)
-            // §91.6 — glass backing on the nav bar so content scrolling under it
-            // is correctly occluded instead of showing through.
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            // §91.8 — opaque background so scrolled content is fully occluded;
+            // POS and Dashboard rely on the system default (also opaque) rather
+            // than ultraThinMaterial which lets content bleed through the bar.
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -179,12 +180,13 @@ public struct ReportsView: View {
                     }
                     .padding(.bottom, BrandSpacing.xxl)
                 }
-                // §91.6 — same glass backing on iPad.
+                // §91.8 — same opaque backing on iPad (matches phone layout).
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Reports")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            // §91.8 — opaque to match POS / Dashboard (see phone layout above).
+            .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { toolbarItems }
         }
     }
@@ -193,10 +195,24 @@ public struct ReportsView: View {
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {
-        // §91.8 — pin the sync-chip to the principal (centre) slot so it never
-        // drifts on top of body content when the user scrolls.  On iPhone
-        // .principal is the inline title area; on iPad it sits centre-bar.
-        ToolbarItem(placement: .principal) {
+        // §91.8 — search affordance in top-trailing, matching the POS scan
+        // button placement pattern. Toggles `vm.isSearching` which can be
+        // wired to a searchable overlay or sheet by future agents.
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                vm.isSearching.toggle()
+            } label: {
+                Image(systemName: vm.isSearching
+                      ? "magnifyingglass.circle.fill"
+                      : "magnifyingglass")
+                    .accessibilityLabel(vm.isSearching ? "Close search" : "Search reports")
+            }
+            .accessibilityIdentifier("reports.toolbar.search")
+        }
+        // §91.8 — sync chip moved from .principal to .topBarTrailing so the
+        // centred "Reports" title shows in the navigation bar, matching
+        // Dashboard (StalenessIndicator in .topBarTrailing) and POS patterns.
+        ToolbarItem(placement: .topBarTrailing) {
             StalenessIndicator(lastSyncedAt: vm.lastSyncedAt)
         }
         // §15.9 Compare periods toggle

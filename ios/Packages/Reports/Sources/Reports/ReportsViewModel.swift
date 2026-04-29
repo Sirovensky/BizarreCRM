@@ -120,6 +120,12 @@ public final class ReportsViewModel {
         return totalSales < Self.tenantZeroTransactionThreshold
     }
 
+    // MARK: - §91.8 Search affordance
+
+    /// Toggled by the search toolbar button (§91.8).  Future agents can wire
+    /// this to a `.searchable` modifier or a dedicated search sheet.
+    public var isSearching: Bool = false
+
     // MARK: - Loading / error
 
     public var isLoading = false
