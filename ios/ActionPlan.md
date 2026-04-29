@@ -4368,10 +4368,10 @@ Rules:
 - [ ] **List scroll** — 120fps on iPad Pro M; 60fps min on iPhone SE (no drops > 2 frames).
 - [ ] **`List` (not `LazyVStack`)** for long scrolling lists; UITableView cell reuse.
 - [ ] **Stable IDs** — server `id` (never `UUID()` per render); `.id(server.id)` on rows.
-- [ ] **`EquatableView`** wrapper on complex row content.
+- [x] **`EquatableView`** wrapper on complex row content.
 - [ ] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless.
 - [ ] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks.
-- [ ] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
+- [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
 
 ### 29.3 Image loading
 
@@ -4422,10 +4422,10 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Steady state** < 120 MB on iPhone SE for baseline (Dashboard + 1 list loaded).
 - [ ] **Heavy list** (1000+ rows) < 220 MB.
 - [ ] **POS with catalog** < 300 MB.
-- [ ] **Memory warnings** — flush image cache + Nuke memcache + GRDB page cache.
+- [x] **Memory warnings** — flush image cache + Nuke memcache + GRDB page cache.
 
 ### 29.7 Networking
-- [ ] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
+- [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
 - [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
 - [ ] **Request coalescing** — dedupe concurrent same-URL requests.
 - [ ] **Timeout** — 15s default; 30s for large uploads.
@@ -4478,7 +4478,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] Jump-to: iPad sidebar letter rail A-Z for fast jump; jump preserves filters
 - [ ] Estimated sizes: provide estimated height when rows vary so scrollbar is accurate
 - [ ] Diffable: use `Identifiable` models with stable IDs; never reuse IDs across deletions
-- [ ] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
+- [x] Detection: observe `ProcessInfo.processInfo.isLowPowerModeEnabled` changes; show banner "Low Power Mode on — reduced sync"
 - [ ] Behavior: halve background refresh cadence; disable push-registered silent pushes; pause image prefetch (§29.4); cap animations to 0.2s duration; reduce Glass intensity (swap to thin material)
 - [ ] User override: Settings toggle "Use normal sync even in Low Power"
 - [ ] Resume: on exiting LPM, kick off full sync

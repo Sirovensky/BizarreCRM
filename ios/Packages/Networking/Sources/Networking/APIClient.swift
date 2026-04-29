@@ -36,11 +36,19 @@ public actor APIClientImpl: APIClient {
     private var session: URLSession {
         if let s = _session { return s }
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 30
+        // §29.7 Networking — 15 s default; keep-alive; HTTP/2; gzip+br compression.
+        cfg.timeoutIntervalForRequest = 15          // §29.7: 15 s default (was 30)
+        cfg.timeoutIntervalForResource = 300        // 5 min outer resource limit
         cfg.waitsForConnectivity = true
+        cfg.httpShouldUsePipelining = false         // HTTP/2 multiplexes; pipelining not needed
+        cfg.httpMaximumConnectionsPerHost = 6       // keep-alive pool; enough for H/2 streams
+        cfg.urlCache = nil                          // data calls handled by repo layer (§29.7)
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         cfg.httpAdditionalHeaders = [
             "X-Origin": "ios",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            // §29.7 Compression — request gzip and brotli; URLSession decompresses transparently.
+            "Accept-Encoding": "gzip, br"
         ]
         let s: URLSession
         if pinnedSPKIBase64.isEmpty {
