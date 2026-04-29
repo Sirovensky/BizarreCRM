@@ -107,6 +107,8 @@ public extension PosAuditEntry {
         public static let deleteLine             = "delete_line"
         /// §16.9 — manager approved a refund above the tenant PIN threshold.
         public static let managerApprovedRefund  = "manager_approved_refund"
+        /// §16.10 — Mid-shift cash removal from the drawer to the safe.
+        public static let cashDrop               = "cash_drop"
     }
 }
 
