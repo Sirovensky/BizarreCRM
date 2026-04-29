@@ -127,7 +127,7 @@ public struct EstimateApproveSheet: View {
                             }
                         }
 
-                        Text("Optional — customer may sign on screen to confirm approval.")
+                        Text("Customer signature confirms their approval. Optional — skip if verbal approval was given.")
                             .font(.brandLabelMedium())
                             .foregroundStyle(.bizarreOnSurfaceMuted)
 
@@ -157,7 +157,9 @@ public struct EstimateApproveSheet: View {
                 }
                 .padding(BrandSpacing.lg)
             }
-            .navigationTitle("Approve Estimate")
+            // §8 item 4: "Record Customer Approval" — clarifies this is staff recording
+            // a decision made by the customer, not staff unilaterally approving.
+            .navigationTitle("Record Customer Approval")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -177,13 +179,13 @@ public struct EstimateApproveSheet: View {
                         if vm.isSubmitting {
                             ProgressView()
                         } else {
-                            Text("Approve")
+                            Text("Record Approval")
                                 .fontWeight(.semibold)
                                 .foregroundStyle(.bizarreOrange)
                         }
                     }
                     .disabled(vm.isSubmitting)
-                    .accessibilityLabel(vm.isSubmitting ? "Approving estimate…" : "Approve estimate")
+                    .accessibilityLabel(vm.isSubmitting ? "Recording customer approval…" : "Record customer approval of estimate")
                 }
             }
             .onChange(of: vm.didApprove) { _, approved in

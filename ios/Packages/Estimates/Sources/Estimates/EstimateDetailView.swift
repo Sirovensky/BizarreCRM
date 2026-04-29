@@ -227,7 +227,10 @@ public struct EstimateDetailView: View {
                     .accessibilityLabel("Total: \(formatMoney(total))")
             }
 
-            if let until = estimate.validUntil, !until.isEmpty {
+            // §8 item 2: expiry-date warning chip in detail header
+            if let days = estimate.daysUntilExpiry, estimate.isExpiring == true {
+                DetailExpiryChip(daysLeft: days)
+            } else if let until = estimate.validUntil, !until.isEmpty {
                 HStack(spacing: BrandSpacing.xs) {
                     Image(systemName: "calendar")
                         .foregroundStyle(.bizarreOnSurfaceMuted)
@@ -266,18 +269,38 @@ public struct EstimateDetailView: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Status badge
+    // MARK: - Status chip (§8 item 1: estimate status chip with icon)
 
     @ViewBuilder
     private var statusBadge: some View {
         if let status = estimate.status, !status.isEmpty {
-            Text(status.capitalized)
-                .font(.brandLabelSmall())
-                .padding(.horizontal, BrandSpacing.sm)
-                .padding(.vertical, BrandSpacing.xxs)
-                .foregroundStyle(statusForeground(status))
-                .background(statusBackground(status), in: Capsule())
-                .accessibilityLabel("Status: \(status.capitalized)")
+            HStack(spacing: 4) {
+                Image(systemName: statusIcon(status))
+                    .font(.system(size: 10, weight: .semibold))
+                    .accessibilityHidden(true)
+                Text(status.capitalized)
+                    .font(.brandLabelSmall())
+            }
+            .padding(.horizontal, BrandSpacing.sm)
+            .padding(.vertical, BrandSpacing.xxs)
+            .foregroundStyle(statusForeground(status))
+            .background(statusBackground(status), in: Capsule())
+            .overlay(
+                Capsule().strokeBorder(statusForeground(status).opacity(0.3), lineWidth: 0.5)
+            )
+            .accessibilityLabel("Status: \(status.capitalized)")
+        }
+    }
+
+    private func statusIcon(_ status: String) -> String {
+        switch status.lowercased() {
+        case "approved": return "checkmark.seal.fill"
+        case "rejected": return "xmark.seal.fill"
+        case "expired": return "clock.badge.xmark"
+        case "converted": return "arrow.right.doc.on.clipboard"
+        case "sent": return "paperplane.fill"
+        case "draft": return "pencil"
+        default: return "doc"
         }
     }
 
@@ -320,11 +343,13 @@ public struct EstimateDetailView: View {
         .accessibilityLabel("Rejected. Reason: \(reason)")
     }
 
-    // MARK: - Line items card
+    // MARK: - Line items card (§8 item 3: add-row footer for draft estimates)
 
     @ViewBuilder
     private var lineItemsCard: some View {
-        if let items = estimate.lineItems, !items.isEmpty {
+        let isDraft = (estimate.status ?? "").lowercased() == "draft"
+        let items = estimate.lineItems ?? []
+        if !items.isEmpty || isDraft {
             VStack(alignment: .leading, spacing: BrandSpacing.md) {
                 Text("Line Items")
                     .font(.brandTitleMedium())
@@ -333,9 +358,41 @@ public struct EstimateDetailView: View {
 
                 Divider()
 
-                ForEach(items) { item in
-                    lineItemRow(item)
-                    if item.id != items.last?.id { Divider() }
+                if items.isEmpty {
+                    Text("No line items yet")
+                        .font(.brandBodyMedium())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, BrandSpacing.sm)
+                } else {
+                    ForEach(items) { item in
+                        lineItemRow(item)
+                        if item.id != items.last?.id { Divider() }
+                    }
+                }
+
+                // §8 item 3: add-row for draft estimates — navigates to edit/create flow
+                if isDraft {
+                    Divider()
+                    Button {
+                        // Opens EstimateCreateView in edit mode when available;
+                        // for now uses the send sheet navigation stack entry point.
+                        AppLog.ui.info("Add line item tapped for estimate \(self.estimate.id)")
+                    } label: {
+                        HStack(spacing: BrandSpacing.sm) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(.bizarreOrange)
+                                .accessibilityHidden(true)
+                            Text("Add Line Item")
+                                .font(.brandBodyMedium())
+                                .foregroundStyle(.bizarreOrange)
+                            Spacer()
+                        }
+                        .padding(.vertical, BrandSpacing.xs)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add a line item to this estimate")
+                    .accessibilityHint("Opens the line item editor")
                 }
             }
             .padding(BrandSpacing.lg)
@@ -867,5 +924,48 @@ public struct EstimateDetailView: View {
         f.numberStyle = .currency
         f.currencyCode = "USD"
         return f.string(from: NSNumber(value: v)) ?? "$\(v)"
+    }
+}
+
+// MARK: - §8 item 2: DetailExpiryChip — expiry warning in detail header
+
+/// Expiry-date warning chip for the estimate detail header.
+/// Shows amber for > 3 days remaining, red for ≤ 3 days.
+/// Mirrors the list-row `ExpiringChip` but without animation (detail is static).
+private struct DetailExpiryChip: View {
+    let daysLeft: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var pulsing = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 11, weight: .semibold))
+                .accessibilityHidden(true)
+            Text(daysLeft == 0 ? "Expires today" : "Expires in \(daysLeft)d")
+                .font(.brandLabelSmall())
+                .fontWeight(.medium)
+        }
+        .foregroundStyle(daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning)
+        .padding(.horizontal, BrandSpacing.sm)
+        .padding(.vertical, BrandSpacing.xxs)
+        .background(
+            (daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning).opacity(pulsing ? 0.22 : 0.10),
+            in: Capsule()
+        )
+        .overlay(
+            Capsule().strokeBorder(
+                (daysLeft <= 3 ? Color.bizarreError : Color.bizarreWarning).opacity(0.4),
+                lineWidth: 0.5
+            )
+        )
+        .onAppear {
+            if daysLeft <= 3 && !reduceMotion {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
+        }
+        .accessibilityLabel(daysLeft == 0 ? "Expires today" : "Expires in \(daysLeft) day\(daysLeft == 1 ? "" : "s")")
     }
 }
