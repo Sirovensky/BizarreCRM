@@ -87,7 +87,10 @@ public extension View {
     }
 
     /// Capsule-shape convenience overload.
-    func reduceTransparencyFallback(_ color: Color = Color.primary.opacity(0.06)) -> some View {
+    ///
+    /// Defaults to `.bizarreSurfaceElevated` — the opaque brand surface used
+    /// as the solid replacement for glass on Reduce Transparency (§1.4).
+    func reduceTransparencyFallback(_ color: Color = .bizarreSurfaceElevated) -> some View {
         reduceTransparencyFallback(color, in: Capsule())
     }
 }
