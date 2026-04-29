@@ -37,6 +37,7 @@ public struct ExpensesChartCard: View {
             kpiRow
             chartContent
                 .frame(height: 160)
+                .brandChartAxisStyle()
                 .chartXAxisLabel("Date", alignment: .center)
                 .chartYAxisLabel("Amount ($)", position: .leading)
                 .accessibilityLabel(axLabel)
@@ -61,9 +62,10 @@ public struct ExpensesChartCard: View {
             .frame(maxWidth: .infinity)
 
             VStack(alignment: .leading, spacing: BrandSpacing.sm) {
+                // §91.10 Period Summary: section header uses primary text color
                 Text("Summary")
                     .font(.brandTitleSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .foregroundStyle(.bizarreOnSurface)
                     .accessibilityAddTraits(.isHeader)
                 kpiStack
                     .frame(maxWidth: 180)
@@ -140,11 +142,13 @@ public struct ExpensesChartCard: View {
 
     private func kpiCell(label: String, value: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            // §91.10: label = primary text; value = unified brandKpiValue weight
             Text(label)
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .foregroundStyle(.bizarreOnSurface)
             Text(value, format: .currency(code: "USD"))
-                .font(.brandTitleSmall())
+                .font(.brandKpiValue())
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)

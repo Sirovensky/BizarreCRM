@@ -45,19 +45,9 @@ public struct RevenueChartCard: View {
             modeToggle
             chartContent
                 .frame(height: 180)
+                .brandChartAxisStyle()
                 .chartXAxisLabel("Date", alignment: .center)
-                // §91.2-5: show "$K" suffix on Y-axis tick values instead of bare numbers
-                .chartYAxis {
-                    AxisMarks(position: .leading) { value in
-                        AxisValueLabel {
-                            if let v = value.as(Double.self) {
-                                Text("$\(String(format: "%.0fK", v))")
-                                    .font(.brandLabelSmall())
-                            }
-                        }
-                        AxisGridLine()
-                    }
-                }
+                .chartYAxisLabel("Revenue ($K)", position: .leading)
                 .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                 .chartOverlay { proxy in drillOverlay(proxy: proxy) }
         }
@@ -66,42 +56,42 @@ public struct RevenueChartCard: View {
         .overlay(strokeBorder)
     }
 
-    // MARK: - iPad layout: primary Trend chart | KPI panel; By Period behind DisclosureGroup
-    // §91.2-4: avoid duplicating Trend + By Period simultaneously — secondary chart
-    // is now collapsed behind a DisclosureGroup so the primary chart dominates.
-
-    @State private var showByPeriod = false
+    // MARK: - iPad 3-column layout: chart | legend | KPI panel
 
     private var ipadBody: some View {
         VStack(alignment: .leading, spacing: BrandSpacing.sm) {
             cardHeader
             HStack(alignment: .top, spacing: BrandSpacing.md) {
-                // Column 1 — primary line chart (Trend)
+                // Column 1 — line chart
                 VStack(alignment: .leading, spacing: BrandSpacing.xs) {
                     Text("Trend")
                         .font(.brandLabelSmall())
                         .foregroundStyle(.bizarreOnSurfaceMuted)
                     lineChart
                         .frame(height: 200)
+                        .brandChartAxisStyle()
                         .chartXAxisLabel("Date", alignment: .center)
-                        // §91.2-5: label Y-axis with $K unit
-                        .chartYAxis {
-                            AxisMarks(position: .leading) { value in
-                                AxisValueLabel {
-                                    if let v = value.as(Double.self) {
-                                        Text("$\(String(format: "%.0fK", v))")
-                                            .font(.brandLabelSmall())
-                                    }
-                                }
-                                AxisGridLine()
-                            }
-                        }
+                        .chartYAxisLabel("Revenue ($K)", position: .leading)
                         .accessibilityChartDescriptor(RevenueChartDescriptor(points: points))
                         .chartOverlay { proxy in drillOverlay(proxy: proxy) }
                 }
                 .frame(maxWidth: .infinity)
 
-                // Column 2 — KPI side panel (primary)
+                // Column 2 — bar chart (acts as period legend)
+                VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                    Text("By Period")
+                        .font(.brandLabelSmall())
+                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                    barChart
+                        .frame(height: 200)
+                        .brandChartAxisStyle()
+                        .chartXAxisLabel("Date", alignment: .center)
+                        .chartYAxisLabel("Revenue ($K)", position: .leading)
+                        .accessibilityLabel("Revenue bar chart by period")
+                }
+                .frame(maxWidth: .infinity)
+
+                // Column 3 — KPI side panel
                 VStack(alignment: .leading, spacing: BrandSpacing.sm) {
                     Text("KPIs")
                         .font(.brandTitleSmall())
@@ -112,32 +102,6 @@ public struct RevenueChartCard: View {
                 .frame(minWidth: 140, maxWidth: 180)
                 .padding(.top, BrandSpacing.xxs)
             }
-
-            // §91.2-4: "By Period" bar chart hidden by default; user can expand.
-            DisclosureGroup(isExpanded: $showByPeriod) {
-                barChart
-                    .frame(height: 160)
-                    .chartXAxisLabel("Date", alignment: .center)
-                    // §91.2-5: label Y-axis with $K unit
-                    .chartYAxis {
-                        AxisMarks(position: .leading) { value in
-                            AxisValueLabel {
-                                if let v = value.as(Double.self) {
-                                    Text("$\(String(format: "%.0fK", v))")
-                                        .font(.brandLabelSmall())
-                                }
-                            }
-                            AxisGridLine()
-                        }
-                    }
-                    .accessibilityLabel("Revenue bar chart by period")
-                    .padding(.top, BrandSpacing.xs)
-            } label: {
-                Text("By Period")
-                    .font(.brandLabelSmall())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
-            }
-            .accessibilityLabel(showByPeriod ? "By Period chart, expanded" : "By Period chart, collapsed")
         }
         .padding(BrandSpacing.base)
         .background(Color.bizarreSurface1, in: RoundedRectangle(cornerRadius: DesignTokens.Radius.lg))
@@ -159,11 +123,13 @@ public struct RevenueChartCard: View {
             Divider()
             if let p = peak {
                 VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+                    // §91.10: label primary, value uses unified brandKpiValue
                     Text("Peak")
                         .font(.brandLabelSmall())
-                        .foregroundStyle(.bizarreOnSurfaceMuted)
+                        .foregroundStyle(.bizarreOnSurface)
                     Text(p.amountDollars, format: .currency(code: "USD"))
-                        .font(.brandTitleSmall())
+                        .font(.brandKpiValue())
+                        .monospacedDigit()
                         .foregroundStyle(.bizarreSuccess)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -183,11 +149,13 @@ public struct RevenueChartCard: View {
 
     private func revenueKpiCell(label: String, value: Double, color: Color) -> some View {
         VStack(alignment: .leading, spacing: BrandSpacing.xxs) {
+            // §91.10: label = primary text, value = semantic color (not reversed)
             Text(label)
                 .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
+                .foregroundStyle(.bizarreOnSurface)
             Text(value, format: .currency(code: "USD"))
-                .font(.brandTitleSmall())
+                .font(.brandKpiValue())
+                .monospacedDigit()
                 .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -206,7 +174,6 @@ public struct RevenueChartCard: View {
             }
         }
         .pickerStyle(.segmented)
-        .frame(minHeight: 44)
         .accessibilityLabel("Revenue chart display mode")
     }
 
@@ -215,7 +182,7 @@ public struct RevenueChartCard: View {
     @ViewBuilder
     private var chartContent: some View {
         if points.isEmpty {
-            emptySparklineSilhouette
+            emptyState
         } else {
             switch chartMode {
             case .line: lineChart
@@ -229,7 +196,7 @@ public struct RevenueChartCard: View {
     private var lineChart: some View {
         Group {
             if points.isEmpty {
-                emptySparklineSilhouette
+                emptyState
             } else {
                 Chart(points) { pt in
                     AreaMark(
@@ -262,14 +229,6 @@ public struct RevenueChartCard: View {
                     }
                 }
                 .animation(reduceMotion ? nil : .easeInOut(duration: DesignTokens.Motion.smooth), value: points.count)
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.bizarreOnSurface)
-                    }
-                }
             }
         }
     }
@@ -279,7 +238,7 @@ public struct RevenueChartCard: View {
     private var barChart: some View {
         Group {
             if points.isEmpty {
-                emptySparklineSilhouette
+                emptyState
             } else {
                 Chart(points) { pt in
                     BarMark(
@@ -294,14 +253,6 @@ public struct RevenueChartCard: View {
                     .cornerRadius(DesignTokens.Radius.xs)
                 }
                 .animation(reduceMotion ? nil : .easeOut(duration: DesignTokens.Motion.smooth), value: points.count)
-                .chartYAxis {
-                    AxisMarks { value in
-                        AxisGridLine()
-                        AxisValueLabel()
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.bizarreOnSurface)
-                    }
-                }
             }
         }
     }
@@ -332,31 +283,22 @@ public struct RevenueChartCard: View {
         .accessibilityLabel("Revenue chart. Tap a data point to drill through.")
     }
 
-    // §91.2-1: flat delta (0.0%) → neutral dash, not green up-arrow.
     @ViewBuilder
     private func periodBadge(pct: Double) -> some View {
-        let isFlat = (pct == 0.0)
-        let isUp   = pct > 0
-        let icon: String = isFlat ? "minus" : (isUp ? "arrow.up.right" : "arrow.down.right")
-        let label: String = isFlat
-            ? "Unchanged vs prior period"
-            : (isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
-                    : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
-        let displayText: String = isFlat ? "–" : String(format: "%.1f%%", abs(pct))
-        let badgeColor: Color = isFlat ? .bizarreOnSurfaceMuted : (isUp ? .bizarreSuccess : .bizarreError)
-
+        let isUp = pct >= 0
         HStack(spacing: BrandSpacing.xxs) {
-            Image(systemName: icon)
+            Image(systemName: isUp ? "arrow.up.right" : "arrow.down.right")
                 .imageScale(.small)
                 .accessibilityHidden(true)
-            Text(displayText)
+            Text(String(format: "%.1f%%", abs(pct)))
                 .font(.brandLabelLarge())
         }
-        .foregroundStyle(badgeColor)
+        .foregroundStyle(isUp ? Color.bizarreSuccess : Color.bizarreError)
         .padding(.horizontal, BrandSpacing.sm)
         .padding(.vertical, BrandSpacing.xxs)
-        .background(badgeColor.opacity(0.12), in: Capsule())
-        .accessibilityLabel(label)
+        .background((isUp ? Color.bizarreSuccess : Color.bizarreError).opacity(0.12), in: Capsule())
+        .accessibilityLabel(isUp ? "Up \(String(format: "%.1f", abs(pct))) percent vs prior period"
+                                 : "Down \(String(format: "%.1f", abs(pct))) percent vs prior period")
     }
 
     // MARK: - Drill overlay
@@ -380,38 +322,6 @@ public struct RevenueChartCard: View {
     }
 
     // MARK: - Shared helpers
-
-    /// Dashed sparkline silhouette rendered when there are zero data points (§91.13 item 5).
-    private var emptySparklineSilhouette: some View {
-        GeometryReader { geo in
-            let w = geo.size.width
-            let h = geo.size.height
-            // Gentle wave path simulating a flat-ish trend line
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: h * 0.65))
-                path.addCurve(
-                    to: CGPoint(x: w * 0.5, y: h * 0.45),
-                    control1: CGPoint(x: w * 0.2, y: h * 0.55),
-                    control2: CGPoint(x: w * 0.3, y: h * 0.4)
-                )
-                path.addCurve(
-                    to: CGPoint(x: w, y: h * 0.5),
-                    control1: CGPoint(x: w * 0.7, y: h * 0.5),
-                    control2: CGPoint(x: w * 0.85, y: h * 0.55)
-                )
-            }
-            .stroke(
-                Color.bizarreOnSurface.opacity(0.18),
-                style: StrokeStyle(lineWidth: 2, dash: [6, 4], dashPhase: 0)
-            )
-        }
-        .overlay(alignment: .center) {
-            Text("No data")
-                .font(.brandLabelSmall())
-                .foregroundStyle(.bizarreOnSurfaceMuted)
-        }
-        .accessibilityLabel("No revenue data for this period")
-    }
 
     private var emptyState: some View {
         ContentUnavailableView("No Revenue Data",

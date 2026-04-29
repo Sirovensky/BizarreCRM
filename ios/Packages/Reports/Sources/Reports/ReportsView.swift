@@ -385,11 +385,14 @@ public struct ReportsView: View {
     private var heroTile: some View {
         HStack(spacing: BrandSpacing.base) {
             VStack(alignment: .leading, spacing: BrandSpacing.xs) {
+                // §91.10: hero tile — subtitle uses brandBodyMedium (body/label
+                // hierarchy), value uses brandKpiValue unified token
                 Text("Revenue")
-                    .font(.brandLabelLarge())
-                    .foregroundStyle(.bizarreOnSurfaceMuted)
+                    .font(.brandBodyMedium())
+                    .foregroundStyle(.bizarreOnSurface)
                 Text(vm.revenueTotalDollars, format: .currency(code: "USD"))
-                    .font(.brandHeadlineLarge())
+                    .font(.brandKpiValue())
+                    .monospacedDigit()
                     .foregroundStyle(.bizarreOnSurface)
                 HStack(spacing: BrandSpacing.sm) {
                     sparklineView

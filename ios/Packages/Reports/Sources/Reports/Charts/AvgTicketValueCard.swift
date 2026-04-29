@@ -44,8 +44,10 @@ public struct AvgTicketValueCard: View {
     @ViewBuilder
     private func metricRow(_ v: AvgTicketValue) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: BrandSpacing.md) {
+            // §91.10: unified KPI value token; monospacedDigit prevents jitter
             Text(v.currentDollars, format: .currency(code: "USD"))
-                .font(.brandHeadlineMedium())
+                .font(.brandKpiValue())
+                .monospacedDigit()
                 .foregroundStyle(.bizarreOnSurface)
 
             trendBadge(pct: v.trendPct)
