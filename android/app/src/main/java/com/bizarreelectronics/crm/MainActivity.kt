@@ -33,6 +33,7 @@ import com.bizarreelectronics.crm.ui.auth.BiometricAuth
 import com.bizarreelectronics.crm.ui.auth.PinLockScreen
 import com.bizarreelectronics.crm.ui.navigation.AppNavGraph
 import com.bizarreelectronics.crm.ui.theme.BizarreCrmTheme
+import com.bizarreelectronics.crm.ui.theme.ColorBlindMode
 import com.bizarreelectronics.crm.ui.theme.DashboardDensity
 import com.bizarreelectronics.crm.ui.theme.LocalDashboardDensity
 import com.bizarreelectronics.crm.ui.theme.shouldDefaultDarkMode
@@ -293,6 +294,12 @@ class MainActivity : FragmentActivity() {
             // whenever the user toggles the setting on AppearanceScreen. No activity
             // recreate needed — Compose recomposition propagates the new ColorScheme.
             val highContrast by appPreferences.highContrastEnabledFlow.collectAsState()
+            // §26.3 — Color-blind safe palette: observe colorBlindModeFlow so
+            // ExtendedColors (success/warning/error/info) are remapped to hue sets
+            // distinguishable for the selected color vision deficiency.
+            // High-contrast takes precedence inside BizarreCrmTheme when both are on.
+            val colorBlindModeKey by appPreferences.colorBlindModeFlow.collectAsState()
+            val colorBlindMode = ColorBlindMode.fromKey(colorBlindModeKey)
             val systemDark = isSystemInDarkTheme()
             val darkTheme = when (darkMode) {
                 "dark"  -> true
@@ -342,7 +349,7 @@ class MainActivity : FragmentActivity() {
             val dashboardDensity = if (sharedDeviceMode) DashboardDensity.Comfortable else rawDensity
 
             CompositionLocalProvider(LocalDashboardDensity provides dashboardDensity) {
-            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, highContrast = highContrast) {
+            BizarreCrmTheme(darkTheme = darkTheme, dynamicColor = dynamicColor, highContrast = highContrast, colorBlindMode = colorBlindMode) {
             // §28.9 — Force-upgrade blocker: blocks the UI when the server reports a
             // min_supported_version higher than the installed app version code.
             // serverMinVersion is populated from GET /auth/me; null = no floor enforced.

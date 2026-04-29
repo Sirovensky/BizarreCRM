@@ -1195,6 +1195,39 @@ class AppPreferences @Inject constructor(
             _highContrastFlow.value = value
         }
 
+    // --- §26.3 — Color-blind safe palette mode ----------------------------------
+    //
+    // Persisted as a key string matching [ColorBlindMode.key] so new enum values
+    // can be added without a migration (unknown keys fall back to [ColorBlindMode.None]).
+    // Sourced in MainActivity and passed to [BizarreCrmTheme] via the
+    // `colorBlindMode` parameter.
+
+    private val _colorBlindModeFlow = MutableStateFlow(
+        prefs.getString("color_blind_mode", "none") ?: "none",
+    )
+
+    /**
+     * §26.3 — Observable color-blind mode key.
+     *
+     * Collect in MainActivity via [collectAsState] so [BizarreCrmTheme] receives
+     * the updated [ColorBlindMode] on every pref change without an activity recreate.
+     */
+    val colorBlindModeFlow: StateFlow<String> = _colorBlindModeFlow.asStateFlow()
+
+    /**
+     * §26.3 — Color-blind safe palette selection.
+     *
+     * Stored as the [ColorBlindMode.key] string. Setting this immediately emits
+     * on [colorBlindModeFlow] so the theme recomposits in the same frame.
+     * Defaults to "none" (standard palette).
+     */
+    var colorBlindMode: String
+        get() = prefs.getString("color_blind_mode", "none") ?: "none"
+        set(value) {
+            prefs.edit().putString("color_blind_mode", value).apply()
+            _colorBlindModeFlow.value = value
+        }
+
     // --- plan:L2004 — Timezone override ------------------------------------
     //
     // Null means "use the device default". Non-null is a ZoneId string

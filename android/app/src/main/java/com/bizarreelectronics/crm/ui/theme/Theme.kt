@@ -341,6 +341,130 @@ fun tenantAccentWithContrastBump(
 }
 
 // ---------------------------------------------------------------------------
+// §26.3 — Color-blind safe palette variants
+//
+// Three simulation modes based on the most common forms of color vision
+// deficiency. Each mode remaps the ExtendedColors semantic slots so that
+// success/warning/error/info can be distinguished without relying on
+// red-green or blue-yellow hue differences.
+//
+// Deuteranopia / Protanopia (red-green, ~8% of males):
+//   success → blue (#4DB8C9 teal-blue); warning → amber (unchanged, safe);
+//   error   → orange-red (#E87D3E, distinguishable from teal);
+//   info    → violet (#9B6CF8, distinguishable from orange).
+//
+// Tritanopia (blue-yellow, ~0.01% prevalence):
+//   success → green (#34C47E, unchanged — green/red still distinguishable);
+//   warning → magenta (#D94F9B, avoids yellow);
+//   error   → red (#E2526C, unchanged);
+//   info    → dark-teal (#006878, avoids light blue).
+//
+// The primary brand accent (cream #FDEED0) is not affected — it is decorative,
+// not used as a status color.
+// ---------------------------------------------------------------------------
+
+/**
+ * §26.3 — Identifies which color-blind accommodation is active.
+ *
+ * [None] = standard palette; [Deuteranopia] covers both deuteranopia and
+ * protanopia (both are red-green deficiencies with very similar safe palettes);
+ * [Tritanopia] covers the rarer blue-yellow deficiency.
+ *
+ * Persisted as a String key in [AppPreferences] so new values can be added
+ * without a DB migration.
+ */
+enum class ColorBlindMode(val key: String, val label: String, val description: String) {
+    None(
+        key = "none",
+        label = "None",
+        description = "Standard color palette",
+    ),
+    Deuteranopia(
+        key = "deuteranopia",
+        label = "Deuteranopia / Protanopia",
+        description = "Red-green safe: replaces green with blue and red with orange",
+    ),
+    Tritanopia(
+        key = "tritanopia",
+        label = "Tritanopia",
+        description = "Blue-yellow safe: replaces yellow with magenta and blue with teal",
+    );
+
+    companion object {
+        /** Returns the mode matching [key], falling back to [None] for unknown keys. */
+        fun fromKey(key: String): ColorBlindMode =
+            entries.firstOrNull { it.key == key } ?: None
+    }
+}
+
+/**
+ * §26.3 — Dark-theme [ExtendedColors] tuned for deuteranopia / protanopia.
+ *
+ * Avoids hue pairs that red-green deficient viewers cannot distinguish:
+ * - success slot changed from green to teal-blue (#4DB8C9) — separable from orange
+ * - error   slot changed to orange-red (#E87D3E) — clearly distinct from teal
+ * - warning retains amber (#E8A33D) — remains visible in this deficiency
+ * - info    changes to violet (#9B6CF8) — adds a third separable hue
+ */
+fun deuteranopiaExtended(): ExtendedColors = ExtendedColors(
+    success          = Color(0xFF4DB8C9),   // teal-blue — safe replacement for green
+    warning          = Color(0xFFE8A33D),   // amber — unchanged, visible for red-green
+    error            = Color(0xFFE87D3E),   // orange-red — distinct from teal-blue
+    info             = Color(0xFF9B6CF8),   // violet — third distinguishable hue
+    successContainer = Color(0xFF003740),   // dark teal container
+    warningContainer = Color(0xFF2B1F0A),   // dark amber container (unchanged)
+    errorContainer   = Color(0xFF3A1A00),   // dark orange container
+    infoContainer    = Color(0xFF2A1A50),   // dark violet container
+)
+
+/**
+ * §26.3 — Light-theme [ExtendedColors] tuned for deuteranopia / protanopia.
+ */
+fun deuteranopiaLightExtended(): ExtendedColors = ExtendedColors(
+    success          = Color(0xFF006878),   // dark teal — AA on white
+    warning          = Color(0xFF8A5200),   // dark amber (unchanged)
+    error            = Color(0xFFB34700),   // dark orange — distinct from teal
+    info             = Color(0xFF5C3DAA),   // dark violet — AA on white
+    successContainer = Color(0xFFCCF0F5),   // light teal container
+    warningContainer = Color(0xFFFFDDB8),   // light amber container
+    errorContainer   = Color(0xFFFFE0CC),   // light orange container
+    infoContainer    = Color(0xFFEADDFF),   // light violet container
+)
+
+/**
+ * §26.3 — Dark-theme [ExtendedColors] tuned for tritanopia (blue-yellow blind).
+ *
+ * Avoids hue pairs that blue-yellow deficient viewers cannot distinguish:
+ * - warning changed from amber/yellow (#E8A33D) to magenta (#D94F9B) — distinguishable from red/green
+ * - info    changed from teal-blue (#4DB8C9) to darker teal (#006878) — the blue-yellow axis is shifted
+ * - success and error retain green/red — they are still distinguishable in tritanopia
+ */
+fun tritanopiaExtended(): ExtendedColors = ExtendedColors(
+    success          = Color(0xFF34C47E),   // green — unchanged, safe for tritanopia
+    warning          = Color(0xFFD94F9B),   // magenta — avoids yellow/amber ambiguity
+    error            = Color(0xFFE2526C),   // red — unchanged, safe for tritanopia
+    info             = Color(0xFF4FBFDF),   // brighter teal shifted away from blue-yellow axis
+    successContainer = Color(0xFF0A2B1C),   // dark green container (unchanged)
+    warningContainer = Color(0xFF3D0028),   // dark magenta container
+    errorContainer   = Color(0xFF2B0E14),   // dark red container (unchanged)
+    infoContainer    = Color(0xFF003A44),   // dark teal container
+)
+
+/**
+ * §26.3 — Light-theme [ExtendedColors] tuned for tritanopia.
+ */
+fun tritanopiaLightExtended(): ExtendedColors = ExtendedColors(
+    success          = Color(0xFF1F7A4A),   // dark green (unchanged)
+    warning          = Color(0xFF7A1A56),   // dark magenta — AA on white
+    error            = Color(0xFFBA1A2E),   // dark red (unchanged)
+    info             = Color(0xFF00606F),   // dark teal — distinct from magenta
+    successContainer = Color(0xFFB8F0D5),
+    warningContainer = Color(0xFFFFD8EC),   // light magenta container
+    errorContainer   = Color(0xFFFFDADC),
+    infoContainer    = Color(0xFFCCEFF5),
+)
+
+// ---------------------------------------------------------------------------
 // §30.8 — Dark mode after 7pm default
 // ---------------------------------------------------------------------------
 
@@ -405,6 +529,11 @@ fun BizarreCrmTheme(
     // dynamicColor is overridden (Material You palette cannot guarantee 7:1).
     // Sourced from AppPreferences.highContrastEnabledFlow in MainActivity.
     highContrast: Boolean = false,
+    // §26.3 — Color-blind safe palette. When not [ColorBlindMode.None], the
+    // ExtendedColors semantic slots (success/warning/error/info) are replaced
+    // with hue combinations safe for the specified color vision deficiency.
+    // High-contrast mode takes precedence and ignores this parameter.
+    colorBlindMode: ColorBlindMode = ColorBlindMode.None,
     // Tenant accent override — null uses BrandAccent (brand cream).
     tenantAccent: Color? = null,
     content: @Composable () -> Unit,
@@ -427,6 +556,8 @@ fun BizarreCrmTheme(
     // hardcoded top-level color vals.
     // §26.3: high-contrast mode uses its own extended color variants that
     // meet AAA 7:1 on their respective black/white surface.
+    // §26.3: color-blind modes override success/warning/error/info hues;
+    // high-contrast takes precedence (accessibility stacking order).
     val extendedColors = when {
         highContrast && darkTheme -> ExtendedColors(
             success          = Color(0xFF50FA7B),   // bright green — 9:1 on black
@@ -448,6 +579,11 @@ fun BizarreCrmTheme(
             errorContainer   = Color(0xFFFFE0E0),
             infoContainer    = Color(0xFFCCF0F5),
         )
+        // §26.3 — Color-blind extended colors. High-contrast already handled above.
+        colorBlindMode == ColorBlindMode.Deuteranopia && darkTheme  -> deuteranopiaExtended()
+        colorBlindMode == ColorBlindMode.Deuteranopia               -> deuteranopiaLightExtended()
+        colorBlindMode == ColorBlindMode.Tritanopia && darkTheme    -> tritanopiaExtended()
+        colorBlindMode == ColorBlindMode.Tritanopia                 -> tritanopiaLightExtended()
         darkTheme -> darkExtended()
         else -> lightExtended()
     }
@@ -506,6 +642,7 @@ fun DesignSystemTheme(
     darkTheme: Boolean = true,
     dynamicColor: Boolean = false,
     highContrast: Boolean = false,
+    colorBlindMode: ColorBlindMode = ColorBlindMode.None,
     tenantAccent: Color? = null,
     content: @Composable () -> Unit,
 ) {
@@ -513,6 +650,7 @@ fun DesignSystemTheme(
         darkTheme = darkTheme,
         dynamicColor = dynamicColor,
         highContrast = highContrast,
+        colorBlindMode = colorBlindMode,
         tenantAccent = tenantAccent,
         content = content,
     )
