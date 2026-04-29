@@ -55,6 +55,11 @@ public final class PosRepairFlowCoordinator {
     // MARK: - Private
 
     private let api: any APIClient
+    /// CROSS12 — when true, the draft `POST /tickets` body sets
+    /// `is_walk_in: true` and the server resolves the customer row
+    /// (per-ticket editable record or shared sentinel). The local
+    /// `customerId` may be 0 / placeholder until the server responds.
+    public let isWalkIn: Bool
 
     /// Closure called when the user cancels; gives the parent an opportunity
     /// to dismiss the sheet / pop the navigation stack.
@@ -65,9 +70,10 @@ public final class PosRepairFlowCoordinator {
 
     // MARK: - Init
 
-    public init(customerId: Int64, api: any APIClient) {
+    public init(customerId: Int64, api: any APIClient, isWalkIn: Bool = false) {
         self.draft = TicketDraft(customerId: customerId)
         self.api = api
+        self.isWalkIn = isWalkIn
     }
 
     // MARK: - Navigation
@@ -205,10 +211,24 @@ public final class PosRepairFlowCoordinator {
 
             if savedDraftId == nil {
                 // First time — create the ticket draft on the server.
-                let createReq = CreateTicketRequest(
-                    customerId: draft.customerId,
-                    devices: [.init(deviceName: deviceName)]
-                )
+                // Walk-in path: the server takes `is_walk_in: true` and
+                // resolves a customer row (per-ticket editable or shared
+                // sentinel). We don't yet collect walk-in name/phone in the
+                // pick-device step — those flow through a future "edit
+                // customer" screen which can rename the resolved row.
+                let createReq: CreateTicketRequest
+                if isWalkIn {
+                    createReq = CreateTicketRequest(
+                        customerId: nil,
+                        devices: [.init(deviceName: deviceName)],
+                        isWalkIn: true
+                    )
+                } else {
+                    createReq = CreateTicketRequest(
+                        customerId: draft.customerId,
+                        devices: [.init(deviceName: deviceName)]
+                    )
+                }
                 let created = try await api.createTicket(createReq)
                 savedDraftId = created.id
                 AppLog.pos.info("RepairFlow: created draft ticket id=\(created.id, privacy: .public)")

@@ -575,24 +575,18 @@ public struct PosView: View {
             tenderErrorMessage = "Repair check-in unavailable: no server connection."
             return
         }
-        // Walk-in customers don't have a server-side id (the cart attaches
-        // a synthetic `Customer.walkIn` with id 0). The repair pipeline
-        // hits `/api/v1/customers/:id/...` endpoints whose validateId
-        // middleware rejects 0 with "Invalid customer id: must be positive
-        // integer", which surfaces as a red banner + a blank items column.
-        // Block the flow up-front instead and prompt to attach a real
-        // customer.
-        guard let customer = cart.customer, !customer.isWalkIn, let customerId = customer.id, customerId > 0 else {
-            tenderErrorMessage = "Repairs need a real customer record. Pick or create one before starting check-in."
-            // Fall back to the customer gate so the cashier can choose.
-            pathChoice = .undecided
-            phase = .gate
-            return
-        }
+        // Walk-in customer (id == nil) is supported — the server's
+        // `POST /api/v1/tickets` accepts `is_walk_in: true` and resolves
+        // a customer row internally (per-ticket editable record if any
+        // walk-in identity fields are present, else the shared WALK-IN
+        // sentinel). See tickets.routes.ts:873.
+        let isWalkIn = cart.customer?.isWalkIn ?? true
+        let customerId = cart.customer?.id ?? 0
         let coordinator = PosRepairRouter.makeCoordinator(
             customerId: customerId,
-            customerDisplayName: customer.displayName,
+            customerDisplayName: cart.customer?.displayName,
             api: api,
+            isWalkIn: isWalkIn,
             onCancel: {
                 pathChoice = .undecided
                 phase = .cart
@@ -918,20 +912,24 @@ public struct PosView: View {
             .padding(.top, BrandSpacing.sm)
             .padding(.bottom, BrandSpacing.xl) // room for the labels under each circle
 
+            // Repair flow keeps the consistent rail | main | cart layout —
+            // every step's interactive content lives in the *catalog*
+            // (left/center) column, with the cart pinned on the right. The
+            // sliding inspector pane was moved over per UX feedback because
+            // device-picking and issue-description are the primary actions
+            // and deserve the larger column real-estate.
             PosRegisterLayout(
-                catalogFraction: 0.65,
-                inspectorActive: true
+                catalogFraction: 0.65
             ) {
                 Color.clear.frame(height: 0)
             } catalog: {
-                iPadRepairCatalogPlaceholder(coordinator: coordinator)
-            } cart: {
-                iPadRepairCartPlaceholder(coordinator: coordinator)
-            } inspector: {
                 iPadRepairInspectorPane(
                     coordinator: coordinator,
                     devicePickerVM: devicePickerVM
                 )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } cart: {
+                iPadRepairCartPlaceholder(coordinator: coordinator)
             }
         }
         .animation(BrandMotion.snappy, value: coordinator.currentStep)

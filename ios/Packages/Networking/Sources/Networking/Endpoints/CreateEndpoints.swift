@@ -229,17 +229,43 @@ public struct UpdateTicketRequest: Codable, Sendable {
 // MARK: - Ticket create (simplified — single device, minimum required fields)
 
 public struct CreateTicketRequest: Codable, Sendable {
-    public let customerId: Int64
+    /// Server-side id of the attached customer. May be 0 / nil when
+    /// `isWalkIn` is true — the server resolves a customer row (either a
+    /// fresh per-ticket record using the optional `walk*` identity fields,
+    /// or the shared `WALK-IN` sentinel for fully anonymous walk-ins).
+    public let customerId: Int64?
     public let devices: [NewDevice]
     public let statusId: Int64?
     public let assignedTo: Int64?
+    /// CROSS12 — set true for walk-in tickets so the server bypasses the
+    /// `customer_id required` rule. Mirrors web/Android behaviour
+    /// (tickets.routes.ts:873).
+    public let isWalkIn: Bool?
+    /// Optional walk-in identity fields. When any of `walkInFirstName`,
+    /// `walkInLastName`, or `walkInPhone` is non-empty the server creates
+    /// a unique editable customer row for this ticket — otherwise it falls
+    /// back to the shared sentinel (which can never be renamed).
+    public let walkInFirstName: String?
+    public let walkInLastName: String?
+    public let walkInPhone: String?
+    public let walkInEmail: String?
 
-    public init(customerId: Int64, devices: [NewDevice],
-                statusId: Int64? = nil, assignedTo: Int64? = nil) {
+    public init(customerId: Int64? = nil, devices: [NewDevice],
+                statusId: Int64? = nil, assignedTo: Int64? = nil,
+                isWalkIn: Bool? = nil,
+                walkInFirstName: String? = nil,
+                walkInLastName: String? = nil,
+                walkInPhone: String? = nil,
+                walkInEmail: String? = nil) {
         self.customerId = customerId
         self.devices = devices
         self.statusId = statusId
         self.assignedTo = assignedTo
+        self.isWalkIn = isWalkIn
+        self.walkInFirstName = walkInFirstName
+        self.walkInLastName = walkInLastName
+        self.walkInPhone = walkInPhone
+        self.walkInEmail = walkInEmail
     }
 
     public struct NewDevice: Codable, Sendable {
@@ -270,6 +296,11 @@ public struct CreateTicketRequest: Codable, Sendable {
         case customerId = "customer_id"
         case statusId = "status_id"
         case assignedTo = "assigned_to"
+        case isWalkIn = "is_walk_in"
+        case walkInFirstName = "walk_in_first_name"
+        case walkInLastName = "walk_in_last_name"
+        case walkInPhone = "walk_in_phone"
+        case walkInEmail = "walk_in_email"
     }
 }
 
