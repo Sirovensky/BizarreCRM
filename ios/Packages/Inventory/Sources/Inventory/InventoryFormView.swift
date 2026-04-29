@@ -37,27 +37,43 @@ struct InventoryFormView: View {
                     .focused($focus, equals: .name)
                     .submitLabel(.next)
                     .onSubmit { focus = .sku }
+                    .accessibilityLabel("Item name")
+                    .accessibilityIdentifier("inventory.form.name")
                 LabeledInventoryField("SKU", text: $sku, monospace: true)
                     .focused($focus, equals: .sku)
                     .submitLabel(.next)
                     .onSubmit { focus = .upc }
+                    .accessibilityLabel("SKU")
+                    .accessibilityIdentifier("inventory.form.sku")
                 LabeledInventoryField("UPC / Barcode", text: $upc, monospace: true)
                     .focused($focus, equals: .upc)
+                    .accessibilityLabel("UPC or barcode number")
+                    .accessibilityIdentifier("inventory.form.upc")
                 itemTypePicker
+                    .accessibilityLabel("Item type")
+                    .accessibilityIdentifier("inventory.form.itemType")
             }
 
             Section("Classification") {
                 LabeledInventoryField("Category", text: $category)
                     .focused($focus, equals: .category)
+                    .accessibilityLabel("Category")
+                    .accessibilityIdentifier("inventory.form.category")
                 LabeledInventoryField("Manufacturer", text: $manufacturer)
                     .focused($focus, equals: .manufacturer)
+                    .accessibilityLabel("Manufacturer")
+                    .accessibilityIdentifier("inventory.form.manufacturer")
             }
 
             Section("Pricing") {
                 LabeledInventoryField("Cost price", text: $costPrice, keyboard: .decimalPad, prefix: "$")
                     .focused($focus, equals: .costPrice)
+                    .accessibilityLabel("Cost price in dollars")
+                    .accessibilityIdentifier("inventory.form.costPrice")
                 LabeledInventoryField("Retail price", text: $retailPrice, keyboard: .decimalPad, prefix: "$")
                     .focused($focus, equals: .retailPrice)
+                    .accessibilityLabel("Retail price in dollars")
+                    .accessibilityIdentifier("inventory.form.retailPrice")
             }
 
             if !isEdit {
@@ -66,13 +82,19 @@ struct InventoryFormView: View {
                 Section("Stock") {
                     LabeledInventoryField("In stock", text: $inStock, keyboard: .numberPad)
                         .focused($focus, equals: .inStock)
+                        .accessibilityLabel("Quantity in stock")
+                        .accessibilityIdentifier("inventory.form.inStock")
                     LabeledInventoryField("Reorder level", text: $reorderLevel, keyboard: .numberPad)
                         .focused($focus, equals: .reorderLevel)
+                        .accessibilityLabel("Reorder threshold quantity")
+                        .accessibilityIdentifier("inventory.form.reorderLevel")
                 }
             } else {
                 Section("Stock") {
                     LabeledInventoryField("Reorder level", text: $reorderLevel, keyboard: .numberPad)
                         .focused($focus, equals: .reorderLevel)
+                        .accessibilityLabel("Reorder threshold quantity")
+                        .accessibilityIdentifier("inventory.form.reorderLevel")
                 }
             }
 
@@ -80,6 +102,8 @@ struct InventoryFormView: View {
                 TextField("Description", text: $description, axis: .vertical)
                     .lineLimit(3...6)
                     .focused($focus, equals: .description)
+                    .accessibilityLabel("Item description")
+                    .accessibilityIdentifier("inventory.form.description")
             }
 
             if let err = errorMessage {
