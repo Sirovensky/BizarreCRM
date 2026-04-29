@@ -4446,6 +4446,7 @@ Rules:
 - [ ] **`@State` minimized** — prefer `@Observable` models at container; leaf views stateless.
 - [ ] **No ViewBuilder closures holding strong refs** — weakify self in VM callbacks.
 - [x] **Redraw traces** — SwiftUI `_printChanges()` on critical views in debug.
+- [x] **Lazy view modifier guards** — `lazyGuard(isVisible:)` suppresses body re-eval when view is not visible; `visibilityGuard()` auto-tracks `onAppear`/`onDisappear`; `conditionalBody(condition:placeholder:)` preserves view identity across show/hide toggles. (`Core/Performance/LazyViewGuard.swift`. feat(§29.2): actionplan §29-batch3)
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 
 ### 29.3 Image loading
@@ -4467,7 +4468,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Manual pin** — "Keep offline" toggle on ticket detail + inventory item. Moves referenced images into `offline_pinned/`. Useful for a tech about to work off-grid.
 - [x] **Storage panel (Settings → Data)** — shows breakdown: Thumbnails X MB / Full-res Y MB / Pinned Z MB / DB W MB / Logs V MB. Per-row "Clear" buttons (except DB + pinned — those require explicit Danger-zone action). (`StorageBreakdown` + `StorageMonitor` + `ImageCachePolicy` in `Core/Performance/StorageBreakdown.swift`; `StorageCategory.isEvictable` gates clear buttons. feat(§29.3): b12)
 - [ ] **Re-fetch on tap** — if a requested full-res was evicted and we're online, refetch transparently with a faint "Downloading…" label. If offline, show thumbnail + "Available when online" chip; never blank.
-- [ ] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`).
+- [x] **Prefetch** next 10 rows on scroll (online only; skips on cellular + Low Data Mode or `NWPathMonitor.isConstrained`). (`ListPrefetchScheduler` — `rowAppeared(index:)` / `rowDisappeared(index:)` with look-ahead window (default 5), debounce 0.3s, LPM guard, cancellable `Task`. feat(§29.3/§29.4): actionplan §29-batch3)
 - [ ] **Thumbnail vs full** — rows always use thumb; detail uses full; gallery uses progressive to show thumb then upgrade.
 - [ ] **Progressive JPEG** decode.
 - [ ] **Formats accepted on decode (iOS side)**: JPEG, PNG, **HEIC** (iOS default since iOS 11), **HEIF**, **TIFF** (multi-page supported; show first page as thumbnail, page-picker on detail), **DNG** (raw — use embedded JPEG preview for thumb, full decode on detail). Nuke relies on iOS Image I/O which handles all of the above; no custom decoder code needed for iOS.
@@ -4478,6 +4479,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Placeholder** — SF Symbol + brand tint on load.
 - [ ] **Failure** — branded SF Symbol + retry tap.
 - [x] **Tenant-size defaults** — on first launch after login, read tenant "size tier" hint from `/auth/me` (`tenant_size: s | m | l | xl`) and pick an initial cap (s=1GB, m=3GB, l=6GB, xl=10GB). User can override. (`ImageCacheSizeConfig.forTenantSize(_:)` + `TenantSizeHint` Codable enum. feat(§29.3): actionplan/§29-batch2)
+- [x] **Image content-hash deduplication** — second dedup layer keyed on SHA-256 of image bytes; catches same content served from multiple CDN URLs or re-encoded uploads that changed URL but not pixels. `register(url:data:)` after download; `canonicalURL(for:)` returns existing cache key; `invalidateAll()` on memory warning / session change. (`Core/Performance/ImageHashDeduplicator.swift`. feat(§29.3): actionplan §29-batch3)
 - [ ] **Cleanup is defensive, not aggressive** — runs at most once / 24h in `BGProcessingTask` (not on main thread). Never during active use.
 - [ ] **Low-disk guard** — if device < 2 GB free, temporary freeze on writes to cache, toast "Free up space — app cache paused" without deleting anything the user might be mid-using.
 
@@ -4507,7 +4509,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [x] **URLSession config** — HTTP/2; caching disabled for data calls (handled by repo).
 >>>>>>> ff61f80d (perf(ios §29): add 5 small performance helpers — LPM observer, memory flush, view modifiers, URLSession tuning)
 - [ ] **Connection reuse** — keep-alive; avoid per-call sessions.
-- [ ] **Request coalescing** — dedupe concurrent same-URL requests.
+- [x] **Request coalescing** — dedupe concurrent same-URL requests. (`SyncCoalescer<Resource>` — `execute(key:work:)` coalesces concurrent tasks under a shared `Task`; `cancel(key:)` / `cancelAll()`; thread-safe via `NSLock`. feat(§29.7): actionplan §29-batch3)
 - [ ] **Timeout** — 15s default; 30s for large uploads.
 - [x] **Compression** — Accept-Encoding: gzip, br. (Added to `httpAdditionalHeaders` in `APIClient.swift`. feat(§29.7): 7ae3cd0c)
 
@@ -4521,7 +4523,7 @@ Earlier draft said 500 MB disk cap. Too small for medium+ shops (200 tickets/day
 - [ ] **Time Profiler** — no single function > 5% main-thread time on a list scroll.
 - [ ] **Allocations** — no unbounded growth over 5 min session.
 - [ ] **Metal Frame Capture** — check overdraw on glass stacks.
-- [ ] **SwiftUI Profiler** — no view body > 16ms.
+- [x] **SwiftUI Profiler** — no view body > 16ms. (`ViewUpdateBudget` — `track(_:budgetMs:)` records inter-call ms, 60-sample rolling window, p95/mean/max stats, OSLog signpost event per update, `BudgetGuard` violation on re-renders faster than budget. feat(§29.9): actionplan §29-batch3)
 - [ ] **Network** — audit request waterfall on first-launch.
 
 ### 29.10 App size
